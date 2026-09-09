@@ -29,6 +29,26 @@
             MainPage.xaml rather than here so you can use Page features such as
             navigation events and the Loaded lifecycle.
         -->
-        <Frame x:Name="RootFrame" Grid.Row="1" />
+        <Grid Grid.Row="1">
+            <Frame x:Name="RootFrame" />
+            <StackPanel
+                x:Name="StartupPane"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="12">
+                <ProgressBar
+                    x:Name="PrgStartup"
+                    Width="240"
+                    Height="4"
+                    AutomationProperties.AutomationId="PrgStartup"
+                    AutomationProperties.Name="Starting Palace"
+                    IsIndeterminate="True"
+                    ShowPaused="False" />
+                <TextBlock
+                    x:Name="TxtStartup"
+                    AutomationProperties.AutomationId="TxtStartup"
+                    Text="Loading…" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

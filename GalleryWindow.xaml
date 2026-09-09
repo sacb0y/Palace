@@ -5,9 +5,9 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:helpers="using:Palace.Helpers"
+    xmlns:local="using:Palace"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
-    xmlns:pages="using:Palace.Pages"
     Title="{x:Bind Gallery.Title, Mode=OneWay}"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
@@ -39,7 +39,7 @@
         <Grid Grid.Row="1">
             <Image
                 Stretch="Uniform"
-                Source="{x:Bind pages:LibraryPage.FileToFullImage(Gallery.CurrentPath), Mode=OneWay}"
+                Source="{x:Bind local:GalleryWindow.ToImage(Gallery.PreviewImageUri), Mode=OneWay}"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />
             <MediaPlayerElement
                 x:Name="MpeGallery"
@@ -99,6 +99,11 @@
                     Style="{StaticResource BodyStrongTextBlockStyle}"
                     Text="{x:Bind Gallery.Title, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    AutomationProperties.AutomationId="TxtGalleryPreviewStatus"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Gallery.PreviewStatus, Mode=OneWay}"
+                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.PreviewStatus), Mode=OneWay}" />
                 <ItemsControl
                     x:Name="LstGalleryWindowTags"
                     AutomationProperties.AutomationId="LstGalleryWindowTags"
@@ -134,14 +139,32 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </StackPanel>
-            <Button
-                x:Name="BtnGalleryWindowClose"
+            <StackPanel
                 Grid.Column="1"
                 VerticalAlignment="Center"
-                AutomationProperties.AutomationId="BtnGalleryWindowClose"
-                AutomationProperties.Name="Close"
-                Click="BtnGalleryWindowClose_Click"
-                Content="Close" />
+                Orientation="Horizontal"
+                Spacing="8">
+                <Button
+                    x:Name="BtnGalleryDownload"
+                    AutomationProperties.AutomationId="BtnGalleryDownload"
+                    AutomationProperties.Name="Download original"
+                    Command="{x:Bind Gallery.DownloadOriginalCommand}"
+                    Content="Download"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanDownloadOriginal), Mode=OneWay}" />
+                <Button
+                    x:Name="BtnGalleryOpenExplorer"
+                    AutomationProperties.AutomationId="BtnGalleryOpenExplorer"
+                    AutomationProperties.Name="Open in Explorer"
+                    Command="{x:Bind Gallery.OpenInExplorerCommand}"
+                    Content="Open in Explorer"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanOpenInExplorer), Mode=OneWay}" />
+                <Button
+                    x:Name="BtnGalleryWindowClose"
+                    AutomationProperties.AutomationId="BtnGalleryWindowClose"
+                    AutomationProperties.Name="Close"
+                    Click="BtnGalleryWindowClose_Click"
+                    Content="Close" />
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>

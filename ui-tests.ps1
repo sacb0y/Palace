@@ -510,6 +510,8 @@ Test-UI 'Navigate to Settings' { winapp ui invoke 'NavSettings' -a $AppPid }
 Test-UI 'Theme combo exists' { winapp ui wait-for 'CmbTheme' -a $AppPid -t 4000 }
 Test-UI 'Sources list exists' { winapp ui wait-for 'LstSources' -a $AppPid -t 3000 }
 Test-UI 'Auto-organize toggle exists' { winapp ui wait-for 'TglAutoOrganize' -a $AppPid -t 3000 }
+Test-UI 'Connect OneDrive exists' { winapp ui wait-for 'BtnConnectOneDrive' -a $AppPid -t 4000 }
+Test-UI 'Connect Dropbox exists' { winapp ui wait-for 'BtnConnectDropbox' -a $AppPid -t 4000 }
 
 Test-UI 'Navigate back to Library' {
     winapp ui invoke 'NavLibrary' -a $AppPid
@@ -1003,6 +1005,63 @@ Test-UI 'Sonic chip appears on assigned image' {
     if ($LASTEXITCODE -ne 0) { throw 'TxtAssignedTags missing Sonic' }
     $chips = (Get-UiElements -Selector 'LstTags' -Depth 12 | ForEach-Object { $_.name }) -join ' '
     if ($chips -notmatch 'Sonic') { throw "LstTags chips missing Sonic: $chips" }
+    Ok
+}
+
+# ─── Online-only scan fixture (skip if attributes cannot be stamped) ───
+Test-UI 'Scan lists stamped online-only file without changing size' {
+    Bind-MainWindow
+    winapp ui invoke 'NavSettings' @(WinArgs)
+    winapp ui wait-for 'LstSources' @(WinArgs) -t 4000
+    Start-Sleep -Milliseconds 300
+    $folders = Get-WatchedFolders
+    winapp ui invoke 'NavLibrary' @(WinArgs)
+    winapp ui wait-for 'BtnScan' @(WinArgs) -t 4000
+    winapp ui wait-for 'GrdAssets' @(WinArgs) -t 4000
+    $root = @($folders | Where-Object { $_ -match 'PalaceUiTest' } | Select-Object -First 1)
+    if (-not $root) {
+        $root = @($folders | Where-Object { $_ -match '\\Temp\\' } | Select-Object -First 1)
+    }
+    if (-not $root) {
+        Write-Host 'Note: skipped online-only scan fixture; no PalaceUiTest/Temp watched folder'
+        Ok
+        return
+    }
+    $root = $root[0]
+    $name = "palace-ui-online-$([guid]::NewGuid().ToString('N').Substring(0, 8)).png"
+    $path = Join-Path $root $name
+    New-TestPng $path
+    $stamped = $false
+    try {
+        attrib +O "$path" | Out-Null
+        $item = Get-Item -LiteralPath $path -Force
+        $stamped = [bool]($item.Attributes -band [IO.FileAttributes]::Offline)
+    } catch {
+        $stamped = $false
+    }
+    if (-not $stamped) {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        Write-Host 'Note: skipped online-only scan fixture; could not stamp Offline attribute'
+        Ok
+        return
+    }
+
+    $before = (Get-Item -LiteralPath $path -Force).Length
+    winapp ui invoke 'BtnScan' @(WinArgs)
+    if ($LASTEXITCODE -ne 0) { throw 'BtnScan failed' }
+    $hit = $null
+    $deadline = (Get-Date).AddSeconds(45)
+    do {
+        Search-Library $name
+        $hit = Get-LibraryAssets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+        if ($hit) { break }
+        Start-Sleep -Milliseconds 700
+    } while ((Get-Date) -lt $deadline)
+    $after = (Get-Item -LiteralPath $path -Force).Length
+    Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    Search-Library ''
+    if (-not $hit) { throw "Scan did not list stamped online-only file $name" }
+    if ($after -ne $before) { throw "Scan changed on-disk size from $before to $after" }
     Ok
 }
 

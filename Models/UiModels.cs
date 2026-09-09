@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Microsoft.UI.Xaml.Media;
 
 namespace Palace.Models;
 
@@ -32,6 +33,11 @@ public partial class AssetItem : ObservableObject
     public partial string? ThumbPath { get; set; }
 
     [ObservableProperty]
+    public partial ImageSource? ThumbImage { get; set; }
+
+    public bool ThumbLoadStarted { get; set; }
+
+    [ObservableProperty]
     public partial AssetKind Kind { get; set; }
 
     [ObservableProperty]
@@ -53,7 +59,24 @@ public partial class AssetItem : ObservableObject
 
     public int? Height { get; set; }
 
-    public bool HasThumbnail => !string.IsNullOrEmpty(ThumbPath) && File.Exists(ThumbPath);
+    [ObservableProperty]
+    public partial bool IsOnlineOnly { get; set; }
+
+    [ObservableProperty]
+    public partial string? CloudItemId { get; set; }
+
+    public bool HasThumbnail => !string.IsNullOrEmpty(ThumbPath);
+
+    public bool ShowCloudTile => IsOnlineOnly && !HasThumbnail;
+
+    partial void OnIsOnlineOnlyChanged(bool value) => OnPropertyChanged(nameof(ShowCloudTile));
+
+    partial void OnThumbPathChanged(string? value)
+    {
+        ThumbLoadStarted = false;
+        OnPropertyChanged(nameof(HasThumbnail));
+        OnPropertyChanged(nameof(ShowCloudTile));
+    }
 
     public double AspectRatio
     {
@@ -143,6 +166,13 @@ public partial class SourceFolderItem : ObservableObject
 
     [ObservableProperty]
     public partial string? DestinationPath { get; set; }
+
+    [ObservableProperty]
+    public partial string Kind { get; set; } = nameof(Models.SourceKind.Local);
+
+    public string? CloudAccountId { get; set; }
+
+    public string? CloudRootItemId { get; set; }
 }
 
 public partial class RoomSection : ObservableObject

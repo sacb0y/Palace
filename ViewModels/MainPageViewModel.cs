@@ -10,6 +10,19 @@ public partial class MainPageViewModel : ObservableObject
 {
     private bool _loading;
 
+    public MainPageViewModel()
+    {
+        AppServices.Library.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(LibraryViewModel.IsBusy))
+            {
+                OnPropertyChanged(nameof(IsLibraryBusy));
+            }
+        };
+    }
+
+    public bool IsLibraryBusy => AppServices.Library.IsBusy;
+
     public ObservableCollection<Project> Projects { get; } = [];
 
     [ObservableProperty]

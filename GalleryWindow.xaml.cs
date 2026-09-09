@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.ViewModels;
 using Windows.Graphics;
 using Windows.Media.Core;
@@ -35,6 +36,7 @@ public sealed partial class GalleryWindow : Window
         Gallery.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
+                or nameof(GalleryViewModel.PreviewImageUri)
                 or nameof(GalleryViewModel.IsVideo)
                 or nameof(GalleryViewModel.IsImage))
             {
@@ -64,6 +66,34 @@ public sealed partial class GalleryWindow : Window
         foreach (var window in OpenWindows.ToArray())
         {
             window.Close();
+        }
+    }
+
+    public static BitmapImage? ToImage(string? uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return new BitmapImage { UriSource = new Uri(uri, UriKind.Absolute) };
+            }
+
+            if (!File.Exists(uri))
+            {
+                return null;
+            }
+
+            return new BitmapImage { UriSource = new Uri(uri, UriKind.Absolute) };
+        }
+        catch
+        {
+            return null;
         }
     }
 

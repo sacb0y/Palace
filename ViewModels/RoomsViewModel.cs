@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 
@@ -174,19 +175,7 @@ public partial class RoomsViewModel : ObservableObject
                 continue;
             }
 
-            var thumb = asset.ContentHash is null ? null : _thumbs.PathForHash(asset.ContentHash);
-            section.Items.Add(new AssetItem
-            {
-                Id = asset.Id,
-                SourceFolderId = asset.SourceFolderId,
-                FileName = asset.FileName,
-                Path = asset.Path,
-                ThumbPath = thumb is not null && File.Exists(thumb) ? thumb : null,
-                Kind = asset.Kind,
-                IsOrphan = asset.IsOrphan,
-                Model = asset.Model,
-                Prompt = asset.Prompt
-            });
+            section.Items.Add(AssetItemMapper.FromAsset(asset, _thumbs));
         }
 
         if (Sections.Count == 0)

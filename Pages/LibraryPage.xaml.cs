@@ -20,8 +20,13 @@ public sealed partial class LibraryPage : Page
 {
     private GalleryViewModel? _hookedOverlay;
     private int _thumbUpgradeEpoch;
+    private int _mosaicGeneration;
+    private int _upgradeScheduled;
+    private bool _thumbsMayUpgrade;
     private string? _lastPointerAssetId;
     private DateTime _lastPointerUtc;
+    private static readonly SemaphoreSlim TileDecodeGate = new(4);
+    private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
@@ -34,6 +39,8 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestFocusAssignTag = () =>
             DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
+        ViewModel.MosaicReset = OnMosaicReset;
+        ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LibraryViewModel.PreviewPath) or nameof(LibraryViewModel.IsVideoPreview) or nameof(LibraryViewModel.IsImagePreview))
@@ -41,13 +48,9 @@ public sealed partial class LibraryPage : Page
                 UpdatePreview();
             }
 
-            if (e.PropertyName is nameof(LibraryViewModel.Assets) or nameof(LibraryViewModel.MosaicRowHeight))
+            if (e.PropertyName is nameof(LibraryViewModel.MosaicRowHeight))
             {
                 MosaicLayout.InvalidateItemsInfo();
-                if (e.PropertyName is nameof(LibraryViewModel.Assets))
-                {
-                    _ = UpgradeThumbsAsync();
-                }
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.OverlayGallery) or nameof(LibraryViewModel.IsGalleryOverlayOpen))
@@ -69,10 +72,23 @@ public sealed partial class LibraryPage : Page
             GrdAssets.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(GrdAssets_DoubleTapped), true);
             GrdAssets.AddHandler(PointerPressedEvent, new PointerEventHandler(AssetItem_PointerPressed), true);
             GrdAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdAssets_KeyDown), true);
-            _ = UpgradeThumbsAsync();
+            if (ViewModel.Assets.Count > 0)
+            {
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    _thumbsMayUpgrade = true;
+                    ScheduleViewportUpgrade();
+                });
+            }
         };
         Unloaded += (_, _) =>
         {
+            if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
+            {
+                ViewModel.MosaicReset = null;
+                ViewModel.MosaicChunkAppended = null;
+            }
+
             if (_hookedOverlay is not null)
             {
                 _hookedOverlay.PropertyChanged -= OverlayGallery_PropertyChanged;
@@ -105,7 +121,7 @@ public sealed partial class LibraryPage : Page
 
     public static BitmapImage? FileToImage(string? path)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        if (string.IsNullOrEmpty(path) || !File.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
             return null;
         }
@@ -138,7 +154,7 @@ public sealed partial class LibraryPage : Page
 
     public static BitmapImage? FileToFullImage(string? path)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        if (string.IsNullOrEmpty(path) || !File.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
             return null;
         }
@@ -432,17 +448,189 @@ public sealed partial class LibraryPage : Page
         GrdAssets.Select(index);
     }
 
+    private void OnMosaicReset()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        _mosaicGeneration++;
+        _thumbsMayUpgrade = false;
+        Interlocked.Increment(ref _thumbUpgradeEpoch);
+        _realizedTiles.Clear();
+        MosaicLayout.InvalidateItemsInfo();
+    }
+
+    private void OnMosaicChunkAppended()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        MosaicLayout.InvalidateItemsInfo();
+        if (ViewModel.Assets.Count == 0)
+        {
+            return;
+        }
+
+        var generation = _mosaicGeneration;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (generation != _mosaicGeneration)
+            {
+                return;
+            }
+
+            _thumbsMayUpgrade = true;
+            ScheduleViewportUpgrade();
+        });
+    }
+
+    private void TileImage_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Image image)
+        {
+            TrackTile(image, FindAssetItem(image) ?? image.DataContext as AssetItem);
+        }
+    }
+
+    private void TileImage_DataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+    {
+        if (sender is Image image)
+        {
+            TrackTile(image, args.NewValue as AssetItem);
+        }
+    }
+
+    private void TileImage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is Image image)
+        {
+            _realizedTiles.Remove(image);
+        }
+    }
+
+    private void TrackTile(Image image, AssetItem? item)
+    {
+        if (item is null)
+        {
+            _realizedTiles.Remove(image);
+            return;
+        }
+
+        _realizedTiles[image] = item;
+        _ = LoadTileThumbAsync(item);
+        ScheduleViewportUpgrade();
+    }
+
+    private void ScheduleViewportUpgrade()
+    {
+        if (!_thumbsMayUpgrade)
+        {
+            return;
+        }
+
+        var token = Interlocked.Increment(ref _upgradeScheduled);
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (token != _upgradeScheduled || !_thumbsMayUpgrade)
+            {
+                return;
+            }
+
+            _ = UpgradeThumbsAsync();
+        });
+    }
+
+    private async Task LoadTileThumbAsync(AssetItem item)
+    {
+        if (item.IsOrphan || item.ThumbLoadStarted || item.ThumbImage is not null)
+        {
+            return;
+        }
+
+        if (string.IsNullOrEmpty(item.ThumbPath))
+        {
+            return;
+        }
+
+        item.ThumbLoadStarted = true;
+        await TileDecodeGate.WaitAsync();
+        try
+        {
+            if (item.ThumbImage is not null)
+            {
+                return;
+            }
+
+            var path = item.ThumbPath;
+            await UiDispatch.RunAsync(() =>
+            {
+                if (item.ThumbImage is not null)
+                {
+                    return;
+                }
+
+                item.ThumbImage = CreateTileBitmap(path);
+            });
+        }
+        finally
+        {
+            TileDecodeGate.Release();
+        }
+    }
+
+    private BitmapImage? CreateTileBitmap(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var rowHeight = ViewModel.MosaicRowHeight;
+            var scale = 1.0;
+            try
+            {
+                scale = XamlRoot?.RasterizationScale ?? 1.0;
+            }
+            catch
+            {
+                // XamlRoot is unavailable during early bind.
+            }
+
+            var decode = (int)Math.Clamp(Math.Round(rowHeight * Math.Min(Math.Max(scale, 1.0), 2.0)), 96, 560);
+            return new BitmapImage
+            {
+                DecodePixelHeight = decode,
+                UriSource = new Uri(path, UriKind.Absolute)
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private async Task UpgradeThumbsAsync()
     {
+        if (!_thumbsMayUpgrade)
+        {
+            return;
+        }
+
         var epoch = Interlocked.Increment(ref _thumbUpgradeEpoch);
-        foreach (var item in ViewModel.Assets.ToList())
+        foreach (var item in _realizedTiles.Values.Distinct().ToList())
         {
             if (epoch != _thumbUpgradeEpoch)
             {
                 return;
             }
 
-            if (string.IsNullOrEmpty(item.Path) || string.IsNullOrEmpty(item.ThumbPath))
+            if (item.IsOnlineOnly || item.IsOrphan || string.IsNullOrEmpty(item.Path) || string.IsNullOrEmpty(item.ThumbPath))
             {
                 continue;
             }
@@ -462,8 +650,9 @@ public sealed partial class LibraryPage : Page
                     return;
                 }
 
-                item.ThumbPath = null;
                 item.ThumbPath = path;
+                item.ThumbLoadStarted = false;
+                item.ThumbImage = CreateTileBitmap(path);
             });
         }
     }
@@ -503,7 +692,8 @@ public sealed partial class LibraryPage : Page
             ImgPreview.Source = null;
         }
 
-        if (ViewModel.IsVideoPreview && ViewModel.PreviewPath is not null)
+        if (ViewModel.IsVideoPreview && ViewModel.PreviewPath is not null
+            && !AccessService.WouldHydrateOnOpen(ViewModel.PreviewPath))
         {
             try
             {

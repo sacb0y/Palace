@@ -23,6 +23,75 @@
                 ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}" />
 
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Cloud accounts" />
+            <TextBlock
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Public-client app IDs stay on this device. Register the redirect URI below on the provider app and enable public client flows." />
+            <TextBox
+                x:Name="TxtCloudRedirectUri"
+                AutomationProperties.AutomationId="TxtCloudRedirectUri"
+                Header="OAuth redirect URI"
+                IsReadOnly="True"
+                Text="{x:Bind ViewModel.RedirectUri, Mode=OneWay}" />
+            <Button
+                AutomationProperties.AutomationId="BtnCopyRedirectUri"
+                Command="{x:Bind ViewModel.CopyRedirectUriCommand}"
+                Content="Copy redirect URI" />
+
+            <TextBox
+                x:Name="TxtOneDriveClientId"
+                AutomationProperties.AutomationId="TxtOneDriveClientId"
+                Header="OneDrive application (client) ID"
+                Text="{x:Bind ViewModel.OneDriveClientId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBlock
+                x:Name="TxtOneDriveStatus"
+                AutomationProperties.AutomationId="TxtOneDriveStatus"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="{x:Bind ViewModel.OneDriveStatus, Mode=OneWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="BtnConnectOneDrive"
+                    Command="{x:Bind ViewModel.ConnectOneDriveCommand}"
+                    Content="Connect OneDrive" />
+                <Button
+                    AutomationProperties.AutomationId="BtnDisconnectOneDrive"
+                    Command="{x:Bind ViewModel.DisconnectOneDriveCommand}"
+                    Content="Disconnect"
+                    IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}" />
+                <Button
+                    AutomationProperties.AutomationId="BtnAddOneDriveFolder"
+                    Command="{x:Bind ViewModel.AddOneDriveFolderCommand}"
+                    Content="Add OneDrive folder"
+                    IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}" />
+            </StackPanel>
+
+            <TextBox
+                x:Name="TxtDropboxAppKey"
+                AutomationProperties.AutomationId="TxtDropboxAppKey"
+                Header="Dropbox app key"
+                Text="{x:Bind ViewModel.DropboxAppKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBlock
+                x:Name="TxtDropboxStatus"
+                AutomationProperties.AutomationId="TxtDropboxStatus"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="{x:Bind ViewModel.DropboxStatus, Mode=OneWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="BtnConnectDropbox"
+                    Command="{x:Bind ViewModel.ConnectDropboxCommand}"
+                    Content="Connect Dropbox" />
+                <Button
+                    AutomationProperties.AutomationId="BtnDisconnectDropbox"
+                    Command="{x:Bind ViewModel.DisconnectDropboxCommand}"
+                    Content="Disconnect"
+                    IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}" />
+                <Button
+                    AutomationProperties.AutomationId="BtnAddDropboxFolder"
+                    Command="{x:Bind ViewModel.AddDropboxFolderCommand}"
+                    Content="Add Dropbox folder"
+                    IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}" />
+            </StackPanel>
+
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Watched folders" />
             <ListView
                 x:Name="LstSources"

@@ -55,10 +55,7 @@ public sealed class CatalogService
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT Id, Path, AccessToken, AutoOrganizeNewFiles, FolderTemplate, FileTemplate,
-                       DestinationPolicy, DestinationPath, ProjectId
-                FROM SourceFolder
+            cmd.CommandText = SelectSourceSql + """
                 WHERE ($project IS NULL OR ProjectId = $project)
                 ORDER BY Path
                 """;
@@ -70,11 +67,7 @@ public sealed class CatalogService
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT Id, Path, AccessToken, AutoOrganizeNewFiles, FolderTemplate, FileTemplate,
-                       DestinationPolicy, DestinationPath, ProjectId
-                FROM SourceFolder WHERE Id = $id
-                """;
+            cmd.CommandText = SelectSourceSql + " WHERE Id = $id";
             cmd.Parameters.AddWithValue("$id", id);
             var list = ReadSources(cmd);
             return list.Count > 0 ? list[0] : null;
@@ -84,13 +77,14 @@ public sealed class CatalogService
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT Id, Path, AccessToken, AutoOrganizeNewFiles, FolderTemplate, FileTemplate,
-                       DestinationPolicy, DestinationPath, ProjectId
-                FROM SourceFolder
-                """;
+            cmd.CommandText = SelectSourceSql;
             foreach (var source in ReadSources(cmd))
             {
+                if (source.Kind != SourceKind.Local)
+                {
+                    continue;
+                }
+
                 if (PathSafe.IsUnderRoot(path, source.Path))
                 {
                     return source;
@@ -106,8 +100,8 @@ public sealed class CatalogService
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO SourceFolder (Id, Path, AccessToken, AutoOrganizeNewFiles, FolderTemplate, FileTemplate,
-                                          DestinationPolicy, DestinationPath, ProjectId)
-                VALUES ($id, $path, $token, $auto, $folder, $file, $policy, $dest, $project)
+                                          DestinationPolicy, DestinationPath, ProjectId, Kind, CloudAccountId, CloudRootItemId)
+                VALUES ($id, $path, $token, $auto, $folder, $file, $policy, $dest, $project, $kind, $cloud, $root)
                 ON CONFLICT(Id) DO UPDATE SET
                     Path = excluded.Path,
                     AccessToken = excluded.AccessToken,
@@ -116,7 +110,10 @@ public sealed class CatalogService
                     FileTemplate = excluded.FileTemplate,
                     DestinationPolicy = excluded.DestinationPolicy,
                     DestinationPath = excluded.DestinationPath,
-                    ProjectId = excluded.ProjectId;
+                    ProjectId = excluded.ProjectId,
+                    Kind = excluded.Kind,
+                    CloudAccountId = excluded.CloudAccountId,
+                    CloudRootItemId = excluded.CloudRootItemId;
                 """;
             cmd.Parameters.AddWithValue("$id", folder.Id);
             cmd.Parameters.AddWithValue("$path", folder.Path);
@@ -127,6 +124,9 @@ public sealed class CatalogService
             cmd.Parameters.AddWithValue("$policy", folder.DestinationPolicy.ToString());
             cmd.Parameters.AddWithValue("$dest", (object?)folder.DestinationPath ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$project", (object?)folder.ProjectId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$kind", folder.Kind.ToString());
+            cmd.Parameters.AddWithValue("$cloud", (object?)folder.CloudAccountId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$root", (object?)folder.CloudRootItemId ?? DBNull.Value);
             cmd.ExecuteNonQuery();
         });
 
@@ -168,11 +168,7 @@ public sealed class CatalogService
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT RowId, Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
-                       IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-                       DateAdded, DateModified, FileSize
-                FROM Asset
+            cmd.CommandText = SelectAssetSql + """
                 WHERE ($source IS NULL OR SourceFolderId = $source)
                   AND ($prefix IS NULL OR Path LIKE $like)
                   AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
@@ -196,6 +192,91 @@ public sealed class CatalogService
             cmd.Parameters.AddWithValue("$path", path);
             var list = ReadAssets(cmd);
             return list.Count > 0 ? list[0] : null;
+        });
+
+    public Task<Asset?> GetAssetByCloudItemIdAsync(string sourceFolderId, string cloudItemId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = SelectAssetSql + " WHERE SourceFolderId = $source AND CloudItemId = $cloud LIMIT 1";
+            cmd.Parameters.AddWithValue("$source", sourceFolderId);
+            cmd.Parameters.AddWithValue("$cloud", cloudItemId);
+            var list = ReadAssets(cmd);
+            return list.Count > 0 ? list[0] : null;
+        });
+
+    public Task<IReadOnlyList<string>> GetIndexedCloudItemIdsAsync(string sourceId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT CloudItemId FROM Asset WHERE SourceFolderId = $id AND CloudItemId IS NOT NULL AND CloudItemId != ''";
+            cmd.Parameters.AddWithValue("$id", sourceId);
+            var list = new List<string>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                list.Add(reader.GetString(0));
+            }
+
+            return (IReadOnlyList<string>)list;
+        });
+
+    public Task<IReadOnlyList<CloudAccount>> GetCloudAccountsAsync() =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id, Provider, AccountId, DisplayName, VaultKey FROM CloudAccount ORDER BY Provider, DisplayName";
+            return (IReadOnlyList<CloudAccount>)ReadCloudAccounts(cmd);
+        });
+
+    public Task<CloudAccount?> GetCloudAccountAsync(string id) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id, Provider, AccountId, DisplayName, VaultKey FROM CloudAccount WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$id", id);
+            var list = ReadCloudAccounts(cmd);
+            return list.Count > 0 ? list[0] : null;
+        });
+
+    public Task<CloudAccount?> GetCloudAccountByProviderAsync(CloudProvider provider) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id, Provider, AccountId, DisplayName, VaultKey FROM CloudAccount WHERE Provider = $p LIMIT 1";
+            cmd.Parameters.AddWithValue("$p", provider.ToString());
+            var list = ReadCloudAccounts(cmd);
+            return list.Count > 0 ? list[0] : null;
+        });
+
+    public Task UpsertCloudAccountAsync(CloudAccount account) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO CloudAccount (Id, Provider, AccountId, DisplayName, VaultKey)
+                VALUES ($id, $provider, $account, $name, $vault)
+                ON CONFLICT(Id) DO UPDATE SET
+                    Provider = excluded.Provider,
+                    AccountId = excluded.AccountId,
+                    DisplayName = excluded.DisplayName,
+                    VaultKey = excluded.VaultKey;
+                """;
+            cmd.Parameters.AddWithValue("$id", account.Id);
+            cmd.Parameters.AddWithValue("$provider", account.Provider.ToString());
+            cmd.Parameters.AddWithValue("$account", account.AccountId);
+            cmd.Parameters.AddWithValue("$name", (object?)account.DisplayName ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$vault", account.VaultKey);
+            cmd.ExecuteNonQuery();
+        });
+
+    public Task DeleteCloudAccountAsync(string id) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM CloudAccount WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
         });
 
     public Task<IReadOnlyList<Asset>> GetAssetsByIdsAsync(IEnumerable<string> ids) =>
@@ -959,9 +1040,9 @@ public sealed class CatalogService
         cmd.CommandText = """
             INSERT INTO Asset (Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-                               DateAdded, DateModified, FileSize)
+                               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId)
             VALUES ($id, $source, $path, $name, $hash, $kind, $w, $h, $dur, $orphan, $model, $seed, $prompt, $neg,
-                    $json, $err, $rating, $notes, $added, $mod, $size)
+                    $json, $err, $rating, $notes, $added, $mod, $size, $online, $cloud)
             ON CONFLICT(Path) DO UPDATE SET
                 SourceFolderId = excluded.SourceFolderId,
                 FileName = excluded.FileName,
@@ -977,7 +1058,9 @@ public sealed class CatalogService
                 NegativePrompt = excluded.NegativePrompt,
                 MetadataJson = excluded.MetadataJson,
                 DateModified = excluded.DateModified,
-                FileSize = excluded.FileSize
+                FileSize = excluded.FileSize,
+                IsOnlineOnly = excluded.IsOnlineOnly,
+                CloudItemId = excluded.CloudItemId
             RETURNING RowId, Id;
             """;
         cmd.Parameters.AddWithValue("$id", asset.Id);
@@ -1001,6 +1084,8 @@ public sealed class CatalogService
         cmd.Parameters.AddWithValue("$added", asset.DateAdded);
         cmd.Parameters.AddWithValue("$mod", (object?)asset.DateModified ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$size", (object?)asset.FileSize ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$online", asset.IsOnlineOnly ? 1 : 0);
+        cmd.Parameters.AddWithValue("$cloud", (object?)asset.CloudItemId ?? DBNull.Value);
         using var reader = cmd.ExecuteReader();
         if (reader.Read())
         {
@@ -1064,12 +1149,18 @@ public sealed class CatalogService
         return list;
     }
 
+    private const string SelectSourceSql = """
+        SELECT Id, Path, AccessToken, AutoOrganizeNewFiles, FolderTemplate, FileTemplate,
+               DestinationPolicy, DestinationPath, ProjectId, Kind, CloudAccountId, CloudRootItemId
+        FROM SourceFolder
+        """ + "\n";
+
     private const string SelectAssetSql = """
         SELECT RowId, Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-               DateAdded, DateModified, FileSize
+               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId
         FROM Asset
-        """;
+        """ + "\n";
 
     private static List<SourceFolder> ReadSources(SqliteCommand cmd)
     {
@@ -1087,7 +1178,12 @@ public sealed class CatalogService
                 FileTemplate = reader.IsDBNull(5) ? null : reader.GetString(5),
                 DestinationPolicy = Enum.TryParse<DestinationPolicy>(reader.GetString(6), out var p) ? p : DestinationPolicy.InSource,
                 DestinationPath = reader.IsDBNull(7) ? null : reader.GetString(7),
-                ProjectId = reader.IsDBNull(8) ? null : reader.GetString(8)
+                ProjectId = reader.IsDBNull(8) ? null : reader.GetString(8),
+                Kind = reader.FieldCount > 9 && !reader.IsDBNull(9) && Enum.TryParse<SourceKind>(reader.GetString(9), out var kind)
+                    ? kind
+                    : SourceKind.Local,
+                CloudAccountId = reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetString(10) : null,
+                CloudRootItemId = reader.FieldCount > 11 && !reader.IsDBNull(11) ? reader.GetString(11) : null
             });
         }
 
@@ -1123,7 +1219,28 @@ public sealed class CatalogService
                 Notes = reader.IsDBNull(18) ? null : reader.GetString(18),
                 DateAdded = reader.GetString(19),
                 DateModified = reader.IsDBNull(20) ? null : reader.GetString(20),
-                FileSize = reader.IsDBNull(21) ? null : reader.GetInt64(21)
+                FileSize = reader.IsDBNull(21) ? null : reader.GetInt64(21),
+                IsOnlineOnly = reader.FieldCount > 22 && !reader.IsDBNull(22) && reader.GetInt32(22) != 0,
+                CloudItemId = reader.FieldCount > 23 && !reader.IsDBNull(23) ? reader.GetString(23) : null
+            });
+        }
+
+        return list;
+    }
+
+    private static List<CloudAccount> ReadCloudAccounts(SqliteCommand cmd)
+    {
+        var list = new List<CloudAccount>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new CloudAccount
+            {
+                Id = reader.GetString(0),
+                Provider = Enum.TryParse<CloudProvider>(reader.GetString(1), out var provider) ? provider : CloudProvider.OneDrive,
+                AccountId = reader.GetString(2),
+                DisplayName = reader.IsDBNull(3) ? null : reader.GetString(3),
+                VaultKey = reader.GetString(4)
             });
         }
 

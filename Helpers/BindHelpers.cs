@@ -14,4 +14,7 @@ public static class BindHelpers
 
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;
+
+    public static Visibility StringToVisibility(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
 }

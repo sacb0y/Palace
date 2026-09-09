@@ -22,7 +22,15 @@ public sealed partial class MainWindow : Window
         var scale = GetDpiForWindow(hwnd) / 96.0;
         AppWindow.Resize(new SizeInt32((int)(1200 * scale), (int)(800 * scale)));
 
-        RootFrame.Navigate(typeof(MainPage));
         Closed += (_, _) => GalleryWindow.CloseAll();
+    }
+
+    public void ShowMain()
+    {
+        StartupPane.Visibility = Visibility.Collapsed;
+        if (RootFrame.Content is null)
+        {
+            RootFrame.Navigate(typeof(MainPage));
+        }
     }
 }

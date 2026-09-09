@@ -1,3 +1,4 @@
+using Palace.Helpers;
 using Windows.Storage;
 using Windows.Storage.AccessCache;
 using Windows.Storage.Pickers;
@@ -7,6 +8,32 @@ namespace Palace.Services;
 
 public sealed class AccessService
 {
+    public const string OnlineOnlyCopyWarning =
+        "Skipped online-only files. Copying them would download the original. Open the file first, then copy.";
+
+    public static bool ShouldSkipClipboardCopy(string? path) => CloudFile.IsOnlineOnly(path);
+
+    public static bool WouldHydrateOnOpen(string? path) => CloudFile.IsOnlineOnly(path);
+
+    public static IReadOnlyList<string> FilterCopyPaths(IEnumerable<string> paths, out int skippedOnlineOnly)
+    {
+        var kept = new List<string>();
+        var skipped = 0;
+        foreach (var path in paths)
+        {
+            if (ShouldSkipClipboardCopy(path))
+            {
+                skipped++;
+                continue;
+            }
+
+            kept.Add(path);
+        }
+
+        skippedOnlineOnly = skipped;
+        return kept;
+    }
+
     public async Task<StorageFolder?> PickFolderAsync()
     {
         var picker = new FolderPicker

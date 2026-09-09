@@ -30,7 +30,7 @@ public sealed class WatcherService : IDisposable
 
     public void Start(SourceFolder source)
     {
-        if (!Directory.Exists(source.Path))
+        if (source.Kind != SourceKind.Local || !Directory.Exists(source.Path))
         {
             return;
         }

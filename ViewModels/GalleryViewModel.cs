@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
+using Palace.Services.Cloud;
 
 namespace Palace.ViewModels;
 
@@ -54,6 +56,21 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanGoNext { get; set; }
 
+    [ObservableProperty]
+    public partial string? PreviewImageUri { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsCloudPreview { get; set; }
+
+    [ObservableProperty]
+    public partial string PreviewStatus { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool CanDownloadOriginal { get; set; }
+
+    [ObservableProperty]
+    public partial bool CanOpenInExplorer { get; set; }
+
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
 
     [RelayCommand]
@@ -74,6 +91,66 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private async Task DownloadOriginalAsync()
+    {
+        var item = Current;
+        if (item is null || string.IsNullOrEmpty(item.CloudItemId))
+        {
+            return;
+        }
+
+        var folder = await AppServices.Access.PickFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var url = await ResolveOriginalUrlAsync(item);
+            if (string.IsNullOrEmpty(url))
+            {
+                PreviewStatus = "Could not get a download link.";
+                return;
+            }
+
+            var dest = Path.Combine(folder.Path, item.FileName);
+            dest = PathSafe.UniquePath(dest);
+            await using var stream = await CloudOAuth.GetStreamAsync(url, null, CancellationToken.None);
+            if (stream is null)
+            {
+                PreviewStatus = "Download failed.";
+                return;
+            }
+
+            await using var output = File.Create(dest);
+            await stream.CopyToAsync(output);
+            PreviewStatus = "Downloaded " + Path.GetFileName(dest) + ".";
+        }
+        catch (Exception)
+        {
+            PreviewStatus = "Download failed.";
+        }
+    }
+
+    [RelayCommand]
+    private void OpenInExplorer()
+    {
+        var path = Current?.Path;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"/select,\"{path}\"",
+            UseShellExecute = true
+        });
+    }
+
     private async Task LoadCurrentAsync()
     {
         var epoch = Interlocked.Increment(ref _loadEpoch);
@@ -88,11 +165,16 @@ public partial class GalleryViewModel : ObservableObject
 
                 Current = null;
                 CurrentPath = null;
+                PreviewImageUri = null;
                 Title = "";
                 PositionLabel = "0 / 0";
                 IsImage = false;
                 IsVideo = false;
                 IsMissing = false;
+                IsCloudPreview = false;
+                PreviewStatus = "";
+                CanDownloadOriginal = false;
+                CanOpenInExplorer = false;
                 CanGoPrevious = false;
                 CanGoNext = false;
                 Tags.Clear();
@@ -111,6 +193,15 @@ public partial class GalleryViewModel : ObservableObject
             assigned = [];
         }
 
+        var localExists = !string.IsNullOrEmpty(item.Path) && File.Exists(item.Path);
+        var apiOnly = AssetItemMapper.IsApiOnly(item);
+        string? previewUrl = null;
+        string? previewCache = null;
+        if (apiOnly && !string.IsNullOrEmpty(item.CloudItemId))
+        {
+            (previewUrl, previewCache) = await LoadCloudPreviewAsync(item);
+        }
+
         if (epoch != _loadEpoch)
         {
             return;
@@ -124,14 +215,27 @@ public partial class GalleryViewModel : ObservableObject
             }
 
             Current = item;
-            CurrentPath = item.IsOrphan || string.IsNullOrEmpty(item.Path) || !File.Exists(item.Path)
-                ? null
-                : item.Path;
+            CurrentPath = apiOnly
+                ? previewCache
+                : item.IsOrphan || !localExists
+                    ? null
+                    : item.Path;
+            PreviewImageUri = previewUrl ?? CurrentPath;
             Title = item.FileName;
             PositionLabel = $"{CurrentIndex + 1} / {_items.Count}";
-            IsVideo = item.Kind == AssetKind.Video && CurrentPath is not null;
-            IsImage = item.Kind is AssetKind.Image or AssetKind.Gif && CurrentPath is not null;
-            IsMissing = CurrentPath is null;
+            IsCloudPreview = apiOnly && (previewUrl is not null || previewCache is not null);
+            PreviewStatus = IsCloudPreview
+                ? "Online preview — the original stays in the cloud."
+                : item.IsOnlineOnly && localExists
+                    ? "Online-only file. Opening downloads it."
+                    : "";
+            IsVideo = item.Kind == AssetKind.Video && CurrentPath is not null && !apiOnly;
+            IsImage = (item.Kind is AssetKind.Image or AssetKind.Gif && CurrentPath is not null)
+                || IsCloudPreview
+                || (!string.IsNullOrEmpty(PreviewImageUri) && item.Kind is AssetKind.Image or AssetKind.Gif);
+            IsMissing = CurrentPath is null && string.IsNullOrEmpty(PreviewImageUri);
+            CanDownloadOriginal = apiOnly && !string.IsNullOrEmpty(item.CloudItemId);
+            CanOpenInExplorer = localExists && !apiOnly;
             CanGoPrevious = CurrentIndex > 0;
             CanGoNext = CurrentIndex < _items.Count - 1;
 
@@ -149,5 +253,68 @@ public partial class GalleryViewModel : ObservableObject
                 });
             }
         });
+
+        if (!apiOnly && localExists)
+        {
+            _ = AppServices.Hydration.HydrateAfterOpenAsync(item.Id);
+        }
+    }
+
+    private async Task<(string? Url, string? CachedPath)> LoadCloudPreviewAsync(AssetItem item)
+    {
+        try
+        {
+            var source = await _catalog.GetSourceFolderAsync(item.SourceFolderId);
+            if (source is null)
+            {
+                return default;
+            }
+
+            var library = await AppServices.CloudLibraries.ForSourceAsync(source);
+            if (library is null || string.IsNullOrEmpty(item.CloudItemId))
+            {
+                return default;
+            }
+
+            var url = await library.GetLargePreviewUrlAsync(item.CloudItemId);
+            var asset = await _catalog.GetAssetByIdAsync(item.Id);
+            var hash = asset?.ContentHash;
+            if (string.IsNullOrEmpty(hash))
+            {
+                return (url, null);
+            }
+
+            var existing = AppServices.Thumbnails.ExistingPathForHash(hash, ThumbnailService.LargePreviewSuffix)
+                ?? AppServices.Thumbnails.ExistingPathForHash(hash);
+            if (existing is not null)
+            {
+                return (url, existing);
+            }
+
+            await using var stream = await library.OpenLargePreviewAsync(item.CloudItemId);
+            if (stream is null)
+            {
+                return (url, null);
+            }
+
+            var cached = await AppServices.Thumbnails.CacheJpegAsync(hash, stream, ThumbnailService.LargePreviewSuffix);
+            return (url, cached?.Path);
+        }
+        catch
+        {
+            return default;
+        }
+    }
+
+    private async Task<string?> ResolveOriginalUrlAsync(AssetItem item)
+    {
+        var source = await _catalog.GetSourceFolderAsync(item.SourceFolderId);
+        if (source is null || string.IsNullOrEmpty(item.CloudItemId))
+        {
+            return null;
+        }
+
+        var library = await AppServices.CloudLibraries.ForSourceAsync(source);
+        return library is null ? null : await library.GetOriginalDownloadUrlAsync(item.CloudItemId);
     }
 }

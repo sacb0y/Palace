@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentDialog
+    x:Class="Palace.Pages.CloudFolderPickerDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:cloud="using:Palace.Services.Cloud"
+    Title="Pick a cloud folder"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonText="Use this folder"
+    Style="{StaticResource DefaultContentDialogStyle}">
+    <Grid MinWidth="400" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="280" />
+        </Grid.RowDefinitions>
+        <TextBlock
+            x:Name="TxtCloudFolderPath"
+            AutomationProperties.AutomationId="TxtCloudFolderPath"
+            Style="{StaticResource BodyTextBlockStyle}"
+            Text="Root" />
+        <Button
+            x:Name="BtnCloudFolderUp"
+            Grid.Row="1"
+            AutomationProperties.AutomationId="BtnCloudFolderUp"
+            Click="BtnCloudFolderUp_Click"
+            Content="Up one level"
+            IsEnabled="False" />
+        <ListView
+            x:Name="LstCloudFolders"
+            Grid.Row="2"
+            AutomationProperties.AutomationId="LstCloudFolders"
+            AutomationProperties.Name="Cloud folders"
+            DoubleTapped="LstCloudFolders_DoubleTapped"
+            ItemsSource="{x:Bind Folders, Mode=OneWay}">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="cloud:CloudEntry">
+                    <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Name}" />
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+    </Grid>
+</ContentDialog>

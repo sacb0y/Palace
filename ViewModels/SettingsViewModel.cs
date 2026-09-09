@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Palace.Data;
 using Palace.Models;
 using Palace.Services;
+using Palace.Services.Cloud;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 
 namespace Palace.ViewModels;
@@ -13,18 +16,30 @@ public partial class SettingsViewModel : ObservableObject
     private readonly AccessService _access;
     private readonly ScanService _scan;
     private readonly WatcherService _watchers;
+    private readonly CloudAccountService _cloud;
+    private readonly ICloudLibraryFactory _libraries;
     private bool _loading;
 
-    public SettingsViewModel(CatalogService catalog, AccessService access, ScanService scan, WatcherService watchers)
+    public SettingsViewModel(
+        CatalogService catalog,
+        AccessService access,
+        ScanService scan,
+        WatcherService watchers,
+        CloudAccountService cloud,
+        ICloudLibraryFactory libraries)
     {
         _catalog = catalog;
         _access = access;
         _scan = scan;
         _watchers = watchers;
+        _cloud = cloud;
+        _libraries = libraries;
     }
 
     public ObservableCollection<SourceFolderItem> Sources { get; } = [];
     public IReadOnlyList<string> ThemeOptions { get; } = ["System", "Light", "Dark"];
+
+    public Func<ICloudLibrary, Task<CloudEntry?>>? RequestPickCloudFolder { get; set; }
 
     [ObservableProperty]
     public partial string SelectedTheme { get; set; } = "System";
@@ -34,6 +49,27 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string StatusText { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string OneDriveClientId { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string DropboxAppKey { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string OneDriveStatus { get; set; } = "Not connected";
+
+    [ObservableProperty]
+    public partial string DropboxStatus { get; set; } = "Not connected";
+
+    [ObservableProperty]
+    public partial string RedirectUri { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool IsOneDriveConnected { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsDropboxConnected { get; set; }
 
     public async Task LoadAsync()
     {
@@ -49,7 +85,10 @@ public partial class SettingsViewModel : ObservableObject
                 FolderTemplate = source.FolderTemplate ?? "{Character}/{tags:2}",
                 FileTemplate = source.FileTemplate ?? "{Character}-{tags}.{ext}",
                 DestinationPolicy = source.DestinationPolicy.ToString(),
-                DestinationPath = source.DestinationPath
+                DestinationPath = source.DestinationPath,
+                Kind = source.Kind.ToString(),
+                CloudAccountId = source.CloudAccountId,
+                CloudRootItemId = source.CloudRootItemId
             };
             item.PropertyChanged += SourceOnPropertyChanged;
             Sources.Add(item);
@@ -58,6 +97,10 @@ public partial class SettingsViewModel : ObservableObject
         var stored = ApplicationData.Current.LocalSettings.Values["Theme"] as string;
         SelectedTheme = stored is "Light" or "Dark" or "System" ? stored : "System";
         ApplyTheme(SelectedTheme);
+        OneDriveClientId = _cloud.OneDriveClientId;
+        DropboxAppKey = _cloud.DropboxAppKey;
+        RedirectUri = _cloud.RedirectUriDisplay;
+        await RefreshCloudStatusAsync();
         _loading = false;
         StatusText = Sources.Count == 0 ? "No watched folders yet." : $"{Sources.Count} watched folders.";
     }
@@ -71,6 +114,22 @@ public partial class SettingsViewModel : ObservableObject
 
         ApplicationData.Current.LocalSettings.Values["Theme"] = value;
         ApplyTheme(value);
+    }
+
+    partial void OnOneDriveClientIdChanged(string value)
+    {
+        if (!_loading)
+        {
+            _cloud.OneDriveClientId = value ?? "";
+        }
+    }
+
+    partial void OnDropboxAppKeyChanged(string value)
+    {
+        if (!_loading)
+        {
+            _cloud.DropboxAppKey = value ?? "";
+        }
     }
 
     [RelayCommand]
@@ -117,6 +176,146 @@ public partial class SettingsViewModel : ObservableObject
         SelectedSource.DestinationPath = folder.Path;
         SelectedSource.DestinationPolicy = nameof(DestinationPolicy.Destination);
         await PersistSourceAsync(SelectedSource);
+    }
+
+    [RelayCommand]
+    private async Task ConnectOneDriveAsync()
+    {
+        try
+        {
+            StatusText = "Connecting to OneDrive…";
+            var result = await _cloud.ConnectOneDriveAsync();
+            await RefreshCloudStatusAsync();
+            StatusText = "Connected OneDrive as " + result.DisplayName + ".";
+        }
+        catch (CloudAuthException ex)
+        {
+            StatusText = ex.Message;
+        }
+        catch (Exception)
+        {
+            StatusText = "Could not connect OneDrive.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task ConnectDropboxAsync()
+    {
+        try
+        {
+            StatusText = "Connecting to Dropbox…";
+            var result = await _cloud.ConnectDropboxAsync();
+            await RefreshCloudStatusAsync();
+            StatusText = "Connected Dropbox as " + result.DisplayName + ".";
+        }
+        catch (CloudAuthException ex)
+        {
+            StatusText = ex.Message;
+        }
+        catch (Exception)
+        {
+            StatusText = "Could not connect Dropbox.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task DisconnectOneDriveAsync()
+    {
+        await _cloud.DisconnectAsync(CloudProvider.OneDrive);
+        await RefreshCloudStatusAsync();
+        StatusText = "Disconnected OneDrive.";
+    }
+
+    [RelayCommand]
+    private async Task DisconnectDropboxAsync()
+    {
+        await _cloud.DisconnectAsync(CloudProvider.Dropbox);
+        await RefreshCloudStatusAsync();
+        StatusText = "Disconnected Dropbox.";
+    }
+
+    [RelayCommand]
+    private Task AddOneDriveFolderAsync() => AddCloudFolderAsync(CloudProvider.OneDrive);
+
+    [RelayCommand]
+    private Task AddDropboxFolderAsync() => AddCloudFolderAsync(CloudProvider.Dropbox);
+
+    [RelayCommand]
+    private void CopyRedirectUri()
+    {
+        if (string.IsNullOrWhiteSpace(RedirectUri))
+        {
+            StatusText = "Redirect URI is not available yet.";
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetText(RedirectUri);
+        Clipboard.SetContent(package);
+        StatusText = "Copied the OAuth redirect URI. Register it on the provider app.";
+    }
+
+    private async Task AddCloudFolderAsync(CloudProvider provider)
+    {
+        var account = await _cloud.GetAccountAsync(provider);
+        if (account is null)
+        {
+            StatusText = provider == CloudProvider.OneDrive
+                ? "Connect OneDrive first."
+                : "Connect Dropbox first.";
+            return;
+        }
+
+        var library = await _libraries.ForAccountAsync(account);
+        if (library is null || RequestPickCloudFolder is null)
+        {
+            StatusText = "Cloud folder picker is not available.";
+            return;
+        }
+
+        CloudEntry? picked;
+        try
+        {
+            picked = await RequestPickCloudFolder(library);
+        }
+        catch (CloudAuthException ex)
+        {
+            StatusText = ex.Message;
+            return;
+        }
+
+        if (picked is null)
+        {
+            return;
+        }
+
+        var label = account.DisplayName ?? account.AccountId;
+        var path = CloudAccountService.BuildSourcePath(provider, label, picked.DisplayPath);
+        var folder = new SourceFolder
+        {
+            Id = PalaceDb.NewId(),
+            Path = path,
+            Kind = provider == CloudProvider.Dropbox ? SourceKind.Dropbox : SourceKind.OneDrive,
+            CloudAccountId = account.Id,
+            CloudRootItemId = picked.Id,
+            ProjectId = AppServices.CurrentProject.Id
+        };
+        await _catalog.UpsertSourceFolderAsync(folder);
+        StatusText = "Scanning " + picked.Name + "…";
+        await _scan.ScanSourceAsync(folder);
+        await _watchers.RestartAsync();
+        await LoadAsync();
+        await AppServices.Library.LoadAsync();
+        StatusText = "Added cloud folder " + picked.Name + ".";
+    }
+
+    private async Task RefreshCloudStatusAsync()
+    {
+        OneDriveStatus = await _cloud.StatusTextAsync(CloudProvider.OneDrive);
+        DropboxStatus = await _cloud.StatusTextAsync(CloudProvider.Dropbox);
+        IsOneDriveConnected = await _cloud.GetAccountAsync(CloudProvider.OneDrive) is not null;
+        IsDropboxConnected = await _cloud.GetAccountAsync(CloudProvider.Dropbox) is not null;
+        RedirectUri = _cloud.RedirectUriDisplay;
     }
 
     private async void SourceOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

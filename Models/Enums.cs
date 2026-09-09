@@ -33,3 +33,16 @@ public enum OrganizeItemStatus
     Error,
     Undone
 }
+
+public enum SourceKind
+{
+    Local,
+    OneDrive,
+    Dropbox
+}
+
+public enum CloudProvider
+{
+    OneDrive,
+    Dropbox
+}

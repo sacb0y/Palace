@@ -112,6 +112,9 @@ public sealed class PalaceDb : IDisposable
                 DestinationPolicy TEXT NOT NULL DEFAULT 'InSource',
                 DestinationPath TEXT,
                 ProjectId TEXT,
+                Kind TEXT NOT NULL DEFAULT 'Local',
+                CloudAccountId TEXT,
+                CloudRootItemId TEXT,
                 FOREIGN KEY (ProjectId) REFERENCES Project(Id)
             );
 
@@ -138,7 +141,18 @@ public sealed class PalaceDb : IDisposable
                 DateAdded TEXT NOT NULL,
                 DateModified TEXT,
                 FileSize INTEGER,
+                IsOnlineOnly INTEGER NOT NULL DEFAULT 0,
+                CloudItemId TEXT,
                 FOREIGN KEY (SourceFolderId) REFERENCES SourceFolder(Id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS CloudAccount (
+                Id TEXT PRIMARY KEY,
+                Provider TEXT NOT NULL,
+                AccountId TEXT NOT NULL,
+                DisplayName TEXT,
+                VaultKey TEXT NOT NULL,
+                UNIQUE (Provider, AccountId)
             );
 
             CREATE TABLE IF NOT EXISTS Tag (
@@ -244,12 +258,50 @@ public sealed class PalaceDb : IDisposable
             CREATE INDEX IF NOT EXISTS IX_TagImplication_Tag ON TagImplication(TagId);
             CREATE INDEX IF NOT EXISTS IX_TagImplication_Implied ON TagImplication(ImpliedTagId);
             CREATE INDEX IF NOT EXISTS IX_SourceFolder_Project ON SourceFolder(ProjectId);
+            CREATE INDEX IF NOT EXISTS IX_CloudAccount_Provider ON CloudAccount(Provider);
             """;
         cmd.ExecuteNonQuery();
         MigrateLegacyFacets();
         EnsureTagColorColumn();
+        EnsureCloudColumns();
         SeedDefaults();
         EnsureDefaultProject();
+    }
+
+    private void EnsureCloudColumns()
+    {
+        EnsureColumn("SourceFolder", "Kind", "TEXT NOT NULL DEFAULT 'Local'");
+        EnsureColumn("SourceFolder", "CloudAccountId", "TEXT");
+        EnsureColumn("SourceFolder", "CloudRootItemId", "TEXT");
+        EnsureColumn("Asset", "IsOnlineOnly", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("Asset", "CloudItemId", "TEXT");
+
+        using var accounts = _connection.CreateCommand();
+        accounts.CommandText = """
+            CREATE TABLE IF NOT EXISTS CloudAccount (
+                Id TEXT PRIMARY KEY,
+                Provider TEXT NOT NULL,
+                AccountId TEXT NOT NULL,
+                DisplayName TEXT,
+                VaultKey TEXT NOT NULL,
+                UNIQUE (Provider, AccountId)
+            );
+            CREATE INDEX IF NOT EXISTS IX_Asset_CloudItem ON Asset(SourceFolderId, CloudItemId);
+            CREATE INDEX IF NOT EXISTS IX_CloudAccount_Provider ON CloudAccount(Provider);
+            """;
+        accounts.ExecuteNonQuery();
+    }
+
+    private void EnsureColumn(string table, string column, string definition)
+    {
+        if (ColumnExists(table, column))
+        {
+            return;
+        }
+
+        using var alter = _connection.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition}";
+        alter.ExecuteNonQuery();
     }
 
     private void EnsureTagColorColumn()

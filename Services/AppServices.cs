@@ -1,5 +1,6 @@
 using Palace.Data;
 using Palace.Models;
+using Palace.Services.Cloud;
 using Palace.ViewModels;
 using Windows.Storage;
 
@@ -17,6 +18,9 @@ public static class AppServices
     public static OrganizeService Organize { get; private set; } = null!;
     public static ScanService Scan { get; private set; } = null!;
     public static WatcherService Watchers { get; private set; } = null!;
+    public static CloudAccountService CloudAccounts { get; private set; } = null!;
+    public static ICloudLibraryFactory CloudLibraries { get; private set; } = null!;
+    public static HydrationService Hydration { get; private set; } = null!;
     public static LibraryViewModel Library { get; private set; } = null!;
     public static TagsViewModel Tags { get; private set; } = null!;
     public static RoomsViewModel Rooms { get; private set; } = null!;
@@ -31,19 +35,22 @@ public static class AppServices
         var thumbs = Path.Combine(LocalRoot, "thumbs");
         Directory.CreateDirectory(thumbs);
 
-        Db = new PalaceDb(dbPath);
+        Db = await Task.Run(() => new PalaceDb(dbPath));
         Catalog = new CatalogService(Db);
         await RestoreCurrentProjectAsync();
         Access = new AccessService();
         Metadata = new MetadataExtractorService();
         Thumbnails = new ThumbnailService(thumbs);
         Organize = new OrganizeService(Catalog);
-        Scan = new ScanService(Catalog, Metadata, Thumbnails, Organize);
+        CloudAccounts = new CloudAccountService(Catalog);
+        CloudLibraries = new CloudLibraryFactory(Catalog, CloudAccounts);
+        Hydration = new HydrationService(Catalog, Metadata, Thumbnails);
+        Scan = new ScanService(Catalog, Metadata, Thumbnails, Organize, CloudLibraries);
         Watchers = new WatcherService(Catalog, Scan);
         Library = new LibraryViewModel(Catalog, Access, Scan, Organize, Thumbnails, Watchers);
         Tags = new TagsViewModel(Catalog, Organize, Access);
         Rooms = new RoomsViewModel(Catalog, Thumbnails);
-        Settings = new SettingsViewModel(Catalog, Access, Scan, Watchers);
+        Settings = new SettingsViewModel(Catalog, Access, Scan, Watchers, CloudAccounts, CloudLibraries);
         Watchers.SetCallback(_ =>
         {
             App.DispatcherQueue.TryEnqueue(async () =>
@@ -52,11 +59,28 @@ public static class AppServices
                 await Rooms.RefreshAsync();
             });
         });
-        await Watchers.RestartAsync();
-        await Library.LoadAsync();
-        await Tags.LoadAsync();
-        await Rooms.LoadAsync();
-        await Settings.LoadAsync();
+    }
+
+    public static async Task LoadInitialDataAsync()
+    {
+        if (Library is null)
+        {
+            return;
+        }
+
+        Library.BeginBusy("Loading…");
+        try
+        {
+            await Watchers.RestartAsync();
+            await Library.LoadAsync();
+            await Tags.LoadAsync();
+            await Rooms.LoadAsync();
+            await Settings.LoadAsync();
+        }
+        finally
+        {
+            Library.EndBusy();
+        }
     }
 
     public static async Task SetCurrentProjectAsync(Project project)
@@ -68,9 +92,17 @@ public static class AppServices
             return;
         }
 
-        await Library.LoadAsync();
-        await Rooms.RefreshAsync();
-        await Settings.LoadAsync();
+        Library.BeginBusy("Loading…");
+        try
+        {
+            await Library.LoadAsync();
+            await Rooms.RefreshAsync();
+            await Settings.LoadAsync();
+        }
+        finally
+        {
+            Library.EndBusy();
+        }
     }
 
     private static async Task RestoreCurrentProjectAsync()

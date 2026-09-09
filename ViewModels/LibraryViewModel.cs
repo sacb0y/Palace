@@ -26,6 +26,8 @@ public partial class LibraryViewModel : ObservableObject
     private AssetItem? _selectionAnchor;
     private bool _suppressFilter;
     private int _filterEpoch;
+    private int _busyDepth;
+    private const int MosaicChunkSize = 80;
 
     public LibraryViewModel(
         CatalogService catalog,
@@ -48,13 +50,14 @@ public partial class LibraryViewModel : ObservableObject
     public Func<IReadOnlyList<Room>, Task<Room?>>? RequestPickRoom { get; set; }
     public Action? RequestFocusAssignTag { get; set; }
     public Action<GalleryViewModel>? RequestOpenGalleryWindow { get; set; }
+    public Action? MosaicReset { get; set; }
+    public Action? MosaicChunkAppended { get; set; }
 
     public ObservableCollection<FolderNode> FolderTree { get; } = [];
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
     public ObservableCollection<PathCrumb> Breadcrumbs { get; } = [];
 
-    [ObservableProperty]
-    public partial ObservableCollection<AssetItem> Assets { get; set; } = [];
+    public ObservableCollection<AssetItem> Assets { get; } = [];
     public ObservableCollection<AssignedTagItem> AssignedTags { get; } = [];
     public ObservableCollection<PromptSuggestion> Suggestions { get; } = [];
     public ObservableCollection<TagPickItem> AllTags { get; } = [];
@@ -311,44 +314,81 @@ public partial class LibraryViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        LoadRowHeight();
-        await RefreshQuietAsync();
+        BeginBusy("Loading…");
+        try
+        {
+            LoadRowHeight();
+            await RefreshQuietAsync();
+        }
+        finally
+        {
+            EndBusy();
+        }
     }
 
     public async Task RefreshQuietAsync(string? preferredFolderPath = null)
     {
-        var projectId = AppServices.CurrentProject.Id;
-        var sources = await _catalog.GetSourceFoldersAsync(projectId);
-        var assets = await _catalog.GetAssetsAsync(projectId: projectId);
-        var tags = await _catalog.GetTagsAsync();
-        var memberships = await _catalog.GetMembershipsAsync();
-        var selectedPath = preferredFolderPath ?? SelectedFolder?.Path;
-        var selectedTagId = SelectedTag?.TagId;
-        var pickItems = BuildTagPicks(tags, memberships);
-
-        await UiDispatch.RunAsync(() =>
+        BeginBusy("Loading…");
+        try
         {
-            _allAssets = assets;
-            _suppressFilter = true;
-            RebuildTree(sources, assets);
-            TagTreeBuilder.Replace(TagTree, tags, memberships);
-            ReplaceTagPicks(pickItems);
+            var projectId = AppServices.CurrentProject.Id;
+            var sources = await _catalog.GetSourceFoldersAsync(projectId);
+            var assets = await _catalog.GetAssetsAsync(projectId: projectId);
+            var tags = await _catalog.GetTagsAsync();
+            var memberships = await _catalog.GetMembershipsAsync();
+            var selectedPath = preferredFolderPath ?? SelectedFolder?.Path;
+            var selectedTagId = SelectedTag?.TagId;
+            var pickItems = BuildTagPicks(tags, memberships);
+            var tree = BuildFolderNodes(sources, assets);
 
-            if (IsTagBrowse)
+            await UiDispatch.RunAsync(() =>
             {
-                SelectedTag = selectedTagId is null ? null : TagTreeBuilder.Find(TagTree, selectedTagId);
-                SelectedFolder = null;
-            }
-            else
-            {
-                SelectedTag = null;
-                SelectedFolder = selectedPath is null ? null : FindNode(FolderTree, selectedPath);
-            }
+                _allAssets = assets;
+                _suppressFilter = true;
+                ReplaceFolderTree(tree);
+                TagTreeBuilder.Replace(TagTree, tags, memberships);
+                ReplaceTagPicks(pickItems);
 
-            _suppressFilter = false;
-            RebuildBreadcrumbs();
-        });
-        await ApplyFilterAsync();
+                if (IsTagBrowse)
+                {
+                    SelectedTag = selectedTagId is null ? null : TagTreeBuilder.Find(TagTree, selectedTagId);
+                    SelectedFolder = null;
+                }
+                else
+                {
+                    SelectedTag = null;
+                    SelectedFolder = selectedPath is null ? null : FindNode(FolderTree, selectedPath);
+                }
+
+                _suppressFilter = false;
+                RebuildBreadcrumbs();
+            });
+            await ApplyFilterAsync();
+        }
+        finally
+        {
+            EndBusy();
+        }
+    }
+
+    public void BeginBusy(string? status = null)
+    {
+        if (status is not null)
+        {
+            StatusText = status;
+        }
+
+        Interlocked.Increment(ref _busyDepth);
+        IsBusy = true;
+    }
+
+    public void EndBusy()
+    {
+        if (Interlocked.Decrement(ref _busyDepth) <= 0)
+        {
+            Interlocked.Exchange(ref _busyDepth, 0);
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -385,10 +425,9 @@ public partial class LibraryViewModel : ObservableObject
     [RelayCommand]
     private async Task ScanAsync()
     {
-        IsBusy = true;
+        BeginBusy("Scanning…");
         try
         {
-            StatusText = "Scanning…";
             var report = await _scan.ScanAllAsync(
                 new Progress<string>(p => StatusText = $"Scanning {Path.GetFileName(p)}"),
                 projectId: AppServices.CurrentProject.Id);
@@ -397,7 +436,7 @@ public partial class LibraryViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusy();
         }
     }
 
@@ -548,7 +587,7 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        IsBusy = true;
+        BeginBusy("Organizing…");
         try
         {
             var applied = await _organize.ApplyAsync(OrganizePreview.ToList());
@@ -557,14 +596,14 @@ public partial class LibraryViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusy();
         }
     }
 
     [RelayCommand]
     private async Task UndoOrganizeAsync()
     {
-        IsBusy = true;
+        BeginBusy("Undoing…");
         try
         {
             var count = await _organize.UndoLastAsync();
@@ -574,7 +613,7 @@ public partial class LibraryViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            EndBusy();
         }
     }
 
@@ -621,6 +660,7 @@ public partial class LibraryViewModel : ObservableObject
 
         OverlayGallery = gallery;
         IsGalleryOverlayOpen = true;
+        HydrateAfterLibraryOpen(item ?? gallery.Current);
     }
 
     [RelayCommand]
@@ -639,6 +679,7 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         RequestOpenGalleryWindow(gallery);
+        HydrateAfterLibraryOpen(item ?? gallery.Current);
     }
 
     [RelayCommand]
@@ -673,17 +714,18 @@ public partial class LibraryViewModel : ObservableObject
     private async Task CopyFilesAsync()
     {
         var targets = await SelectedAssetsAsync();
+        var paths = AccessService.FilterCopyPaths(targets.Select(t => t.Path), out var skipped);
         var files = new List<IStorageItem>();
-        foreach (var asset in targets)
+        foreach (var path in paths)
         {
-            if (!File.Exists(asset.Path))
+            if (!File.Exists(path))
             {
                 continue;
             }
 
             try
             {
-                files.Add(await StorageFile.GetFileFromPathAsync(asset.Path));
+                files.Add(await StorageFile.GetFileFromPathAsync(path));
             }
             catch
             {
@@ -693,14 +735,14 @@ public partial class LibraryViewModel : ObservableObject
 
         if (files.Count == 0)
         {
-            Notify("Nothing to copy.");
+            Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : "Nothing to copy.");
             return;
         }
 
         var package = new DataPackage();
         package.SetStorageItems(files);
         Clipboard.SetContent(package);
-        Notify($"Copied {files.Count} file(s).");
+        Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : $"Copied {files.Count} file(s).");
     }
 
     [RelayCommand]
@@ -713,10 +755,19 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
+        var paths = AccessService.FilterCopyPaths(targets.Select(t => t.Path), out var skipped);
+        if (paths.Count == 0)
+        {
+            Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : "Nothing to copy.");
+            return;
+        }
+
         var package = new DataPackage();
-        package.SetText(string.Join(Environment.NewLine, targets.Select(t => t.Path)));
+        package.SetText(string.Join(Environment.NewLine, paths));
         Clipboard.SetContent(package);
-        Notify(targets.Count == 1 ? "Copied path." : $"Copied {targets.Count} paths.");
+        Notify(skipped > 0
+            ? AccessService.OnlineOnlyCopyWarning
+            : paths.Count == 1 ? "Copied path." : $"Copied {paths.Count} paths.");
     }
 
     [RelayCommand]
@@ -851,51 +902,129 @@ public partial class LibraryViewModel : ObservableObject
 
     private async Task ScanFolderAsync(SourceFolder source)
     {
-        IsBusy = true;
+        BeginBusy($"Scanning {source.Path}…");
         try
         {
-            StatusText = $"Scanning {source.Path}…";
             var report = await _scan.ScanSourceAsync(source);
             await RefreshQuietAsync(source.Path);
             StatusText = $"Indexed {report.Added} files from {Path.GetFileName(source.Path)}.";
         }
         finally
         {
-            IsBusy = false;
+            EndBusy();
         }
     }
 
     private async Task ApplyFilterAsync()
     {
+        BeginBusy("Loading…");
         var epoch = Interlocked.Increment(ref _filterEpoch);
-        IEnumerable<Asset> source = _allAssets;
-        if (IsTagBrowse && SelectedTag?.TagId is { } tagId)
+        try
         {
-            var ids = new List<string> { tagId };
-            ids.AddRange(await _catalog.GetDescendantTagIdsAsync(tagId));
-            var tagged = await _catalog.GetAssetsForTagsAsync(ids, AppServices.CurrentProject.Id);
-            var set = tagged.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
-            source = source.Where(a => set.Contains(a.Id));
+            var projectId = AppServices.CurrentProject.Id;
+            var search = SearchQuery;
+            var tagName = SelectedTag?.Name;
+            var folderName = SelectedFolder?.Name;
+            var tagBrowse = IsTagBrowse && SelectedTag?.TagId is not null;
+            var folderPath = !IsTagBrowse ? SelectedFolder?.Path : null;
+            var tagId = IsTagBrowse ? SelectedTag?.TagId : null;
+
+            IReadOnlyList<Asset> assets;
+            if (tagId is not null)
+            {
+                var ids = new List<string> { tagId };
+                ids.AddRange(await _catalog.GetDescendantTagIdsAsync(tagId));
+                assets = await _catalog.GetAssetsForTagsAsync(ids, projectId);
+            }
+            else if (folderPath is not null)
+            {
+                assets = await _catalog.GetAssetsAsync(folderPrefix: folderPath, projectId: projectId);
+            }
+            else
+            {
+                assets = _allAssets.Count > 0
+                    ? _allAssets
+                    : await _catalog.GetAssetsAsync(projectId: projectId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var hits = await _catalog.SearchAsync(search, projectId);
+                var set = hits.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+                assets = assets.Where(a => set.Contains(a.Id)).ToList();
+            }
+
+            if (epoch != _filterEpoch)
+            {
+                return;
+            }
+
+            var items = await Task.Run(() => assets.Select(ToItem).ToList());
+            if (epoch != _filterEpoch)
+            {
+                return;
+            }
+
+            var doneStatus = !string.IsNullOrWhiteSpace(search)
+                ? $"{items.Count} search results"
+                : tagBrowse
+                    ? $"{items.Count} tagged {tagName}"
+                    : folderPath is not null
+                        ? $"{items.Count} in {folderName}"
+                        : items.Count == 0
+                            ? "Add a folder to start your library."
+                            : $"{items.Count} assets";
+
+            await PopulateMosaicAsync(items, epoch, doneStatus);
         }
-        else if (!IsTagBrowse && SelectedFolder is not null)
+        finally
         {
-            var folder = SelectedFolder;
-            source = source.Where(a => AssetIsInFolder(a, folder));
+            EndBusy();
+        }
+    }
+
+    private async Task PopulateMosaicAsync(IReadOnlyList<AssetItem> items, int epoch, string doneStatus)
+    {
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch != _filterEpoch)
+            {
+                return;
+            }
+
+            ClearSelection();
+            Assets.Clear();
+            MosaicReset?.Invoke();
+        });
+
+        var total = items.Count;
+        for (var i = 0; i < total; i += MosaicChunkSize)
+        {
+            if (epoch != _filterEpoch)
+            {
+                return;
+            }
+
+            var end = Math.Min(i + MosaicChunkSize, total);
+            await UiDispatch.RunAsync(() =>
+            {
+                if (epoch != _filterEpoch)
+                {
+                    return;
+                }
+
+                for (var n = i; n < end; n++)
+                {
+                    Assets.Add(items[n]);
+                }
+
+                StatusText = $"Showing {end} of {total}";
+                MosaicChunkAppended?.Invoke();
+            });
+
+            await UiDispatch.YieldAsync();
         }
 
-        if (!string.IsNullOrWhiteSpace(SearchQuery))
-        {
-            var hits = await _catalog.SearchAsync(SearchQuery, AppServices.CurrentProject.Id);
-            var set = hits.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
-            source = source.Where(a => set.Contains(a.Id));
-        }
-
-        var items = source.Select(ToItem).ToList();
-        var search = SearchQuery;
-        var tagName = SelectedTag?.Name;
-        var folderName = SelectedFolder?.Name;
-        var tagBrowse = IsTagBrowse && SelectedTag?.TagId is not null;
-        var hasFolder = SelectedFolder is not null;
         if (epoch != _filterEpoch)
         {
             return;
@@ -908,26 +1037,7 @@ public partial class LibraryViewModel : ObservableObject
                 return;
             }
 
-            ClearSelection();
-            Assets = new ObservableCollection<AssetItem>(items);
-            if (!string.IsNullOrWhiteSpace(search))
-            {
-                StatusText = $"{items.Count} search results";
-            }
-            else if (tagBrowse)
-            {
-                StatusText = $"{items.Count} tagged {tagName}";
-            }
-            else if (hasFolder)
-            {
-                StatusText = $"{items.Count} in {folderName}";
-            }
-            else
-            {
-                StatusText = items.Count == 0
-                    ? "Add a folder to start your library."
-                    : $"{items.Count} assets";
-            }
+            StatusText = doneStatus;
         });
     }
 
@@ -973,14 +1083,18 @@ public partial class LibraryViewModel : ObservableObject
 
         var existing = await _catalog.GetTagsAsync();
         var suggestions = PromptTagSuggester.Suggest(asset.Prompt, existing);
-        var previewPath = asset.IsOrphan ? null : asset.Path;
+        var hydrateOnOpen = AccessService.WouldHydrateOnOpen(asset.Path);
+        var previewPath = asset.IsOrphan
+            ? null
+            : hydrateOnOpen ? item.ThumbPath : asset.Path;
         var canEdit = total == 1;
         await UiDispatch.RunAsync(() =>
         {
             CanEditNotes = canEdit;
             PreviewPath = previewPath;
-            IsVideoPreview = asset.Kind == AssetKind.Video && previewPath is not null;
-            IsImagePreview = asset.Kind is AssetKind.Image or AssetKind.Gif && previewPath is not null;
+            IsVideoPreview = !hydrateOnOpen && asset.Kind == AssetKind.Video && previewPath is not null;
+            IsImagePreview = previewPath is not null &&
+                (hydrateOnOpen || asset.Kind is AssetKind.Image or AssetKind.Gif);
             PreviewPrompt = asset.Prompt;
             PreviewNegative = asset.NegativePrompt;
             PreviewModel = asset.Model;
@@ -1160,22 +1274,6 @@ public partial class LibraryViewModel : ObservableObject
         return picks;
     }
 
-    private static bool AssetIsInFolder(Asset asset, FolderNode folder)
-    {
-        var folderPath = NormalizeDir(folder.Path);
-        var assetDir = NormalizeDir(Path.GetDirectoryName(asset.Path) ?? "");
-        if (string.Equals(assetDir, folderPath, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        var prefix = folderPath + Path.DirectorySeparatorChar;
-        return asset.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string NormalizeDir(string path) =>
-        path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
     private async Task<IReadOnlyList<Asset>> SelectedAssetsAsync()
     {
         if (_selection.Count > 0)
@@ -1191,7 +1289,9 @@ public partial class LibraryViewModel : ObservableObject
 
         if (SelectedFolder is not null)
         {
-            return _allAssets.Where(a => AssetIsInFolder(a, SelectedFolder)).ToList();
+            return await _catalog.GetAssetsAsync(
+                folderPrefix: SelectedFolder.Path,
+                projectId: AppServices.CurrentProject.Id);
         }
 
         return [];
@@ -1238,44 +1338,20 @@ public partial class LibraryViewModel : ObservableObject
             : $"Tagged {targets.Count} images with {tagName}";
     }
 
-    private AssetItem ToItem(Asset asset)
-    {
-        var thumb = asset.ContentHash is null ? null : _thumbs.PathForHash(asset.ContentHash);
-        var thumbPath = thumb is not null && File.Exists(thumb) ? thumb : null;
-        var width = asset.Width;
-        var height = asset.Height;
-        if (width is not > 0 || height is not > 0)
-        {
-            var probed = ImageDimensions.TryRead(thumbPath) ?? ImageDimensions.TryRead(asset.Path);
-            if (probed is { } size)
-            {
-                width = size.Width;
-                height = size.Height;
-                asset.Width = size.Width;
-                asset.Height = size.Height;
-            }
-        }
+    private AssetItem ToItem(Asset asset) => AssetItemMapper.FromAsset(asset, _thumbs);
 
-        return new AssetItem
-        {
-            Id = asset.Id,
-            SourceFolderId = asset.SourceFolderId,
-            FileName = asset.FileName,
-            Path = asset.Path,
-            ThumbPath = thumbPath,
-            Kind = asset.Kind,
-            IsOrphan = asset.IsOrphan,
-            Model = asset.Model,
-            Prompt = asset.Prompt,
-            OrganizeError = asset.OrganizeError,
-            Width = width,
-            Height = height
-        };
-    }
-
-    private void RebuildTree(IReadOnlyList<SourceFolder> sources, IReadOnlyList<Asset> assets)
+    private void ReplaceFolderTree(IReadOnlyList<FolderNode> roots)
     {
         FolderTree.Clear();
+        foreach (var root in roots)
+        {
+            FolderTree.Add(root);
+        }
+    }
+
+    private static List<FolderNode> BuildFolderNodes(IReadOnlyList<SourceFolder> sources, IReadOnlyList<Asset> assets)
+    {
+        var roots = new List<FolderNode>();
         foreach (var source in sources)
         {
             var root = new FolderNode
@@ -1294,8 +1370,10 @@ public partial class LibraryViewModel : ObservableObject
                 EnsurePath(root, source.Path, dir);
             }
 
-            FolderTree.Add(root);
+            roots.Add(root);
         }
+
+        return roots;
     }
 
     private static void EnsurePath(FolderNode root, string sourcePath, string fullDir)
@@ -1436,5 +1514,15 @@ public partial class LibraryViewModel : ObservableObject
         var index = snapshot.FindIndex(a => a.Id == start.Id);
         gallery = new GalleryViewModel(snapshot, index < 0 ? 0 : index, _catalog);
         return true;
+    }
+
+    private static void HydrateAfterLibraryOpen(AssetItem? item)
+    {
+        if (item is null || !AccessService.WouldHydrateOnOpen(item.Path))
+        {
+            return;
+        }
+
+        _ = AppServices.Hydration.HydrateAfterOpenAsync(item.Id);
     }
 }

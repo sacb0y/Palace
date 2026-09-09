@@ -5,7 +5,7 @@ namespace Palace;
 
 public partial class App : Application
 {
-    public static Window Window { get; private set; } = null!;
+    public static MainWindow Window { get; private set; } = null!;
 
     public static Microsoft.UI.Dispatching.DispatcherQueue DispatcherQueue { get; private set; } = null!;
 
@@ -20,8 +20,29 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
-        await AppServices.InitializeAsync();
         Window = new MainWindow();
         Window.Activate();
+        try
+        {
+            await AppServices.InitializeAsync();
+            Window.ShowMain();
+            await AppServices.LoadInitialDataAsync();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                var log = Path.Combine(
+                    Windows.Storage.ApplicationData.Current.LocalFolder.Path,
+                    "startup-error.txt");
+                File.WriteAllText(log, ex.ToString());
+            }
+            catch
+            {
+                // Best-effort diagnostics only.
+            }
+
+            throw;
+        }
     }
 }

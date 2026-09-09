@@ -28,35 +28,47 @@
             <ColumnDefinition Width="340" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel
-            Grid.ColumnSpan="3"
-            Orientation="Horizontal"
-            Spacing="8">
-            <Button
-                AutomationProperties.AutomationId="BtnAddFolder"
-                AutomationProperties.Name="Add folder"
-                Command="{x:Bind ViewModel.AddFolderCommand}"
-                Content="Add folder" />
-            <Button
-                AutomationProperties.AutomationId="BtnScan"
-                Command="{x:Bind ViewModel.ScanCommand}"
-                Content="Scan"
-                IsEnabled="{x:Bind helpers:BindHelpers.Not(ViewModel.IsBusy), Mode=OneWay}" />
-            <Button
-                AutomationProperties.AutomationId="BtnOrganize"
-                Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
-                Content="Organize"
-                IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
-            <Button
-                AutomationProperties.AutomationId="BtnUndoOrganize"
-                Command="{x:Bind ViewModel.UndoOrganizeCommand}"
-                Content="Undo last organize" />
-            <Button
-                AutomationProperties.AutomationId="BtnAddToRoom"
-                Command="{x:Bind ViewModel.AddSelectionToRoomCommand}"
-                Content="Add to room"
-                IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
-        </StackPanel>
+        <Grid Grid.ColumnSpan="3" RowSpacing="4">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="BtnAddFolder"
+                    AutomationProperties.Name="Add folder"
+                    Command="{x:Bind ViewModel.AddFolderCommand}"
+                    Content="Add folder" />
+                <Button
+                    AutomationProperties.AutomationId="BtnScan"
+                    Command="{x:Bind ViewModel.ScanCommand}"
+                    Content="Scan"
+                    IsEnabled="{x:Bind helpers:BindHelpers.Not(ViewModel.IsBusy), Mode=OneWay}" />
+                <Button
+                    AutomationProperties.AutomationId="BtnOrganize"
+                    Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
+                    Content="Organize"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+                <Button
+                    AutomationProperties.AutomationId="BtnUndoOrganize"
+                    Command="{x:Bind ViewModel.UndoOrganizeCommand}"
+                    Content="Undo last organize" />
+                <Button
+                    AutomationProperties.AutomationId="BtnAddToRoom"
+                    Command="{x:Bind ViewModel.AddSelectionToRoomCommand}"
+                    Content="Add to room"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+            </StackPanel>
+            <ProgressBar
+                x:Name="PrgLibrary"
+                Grid.Row="1"
+                Height="4"
+                AutomationProperties.AutomationId="PrgLibrary"
+                AutomationProperties.Name="Library loading"
+                IsIndeterminate="True"
+                ShowPaused="False"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsBusy), Mode=OneWay}" />
+        </Grid>
 
         <Grid Grid.Row="1" RowSpacing="8">
             <Grid.RowDefinitions>
@@ -238,19 +250,39 @@
                                 IsDoubleTapEnabled="True"
                                 ManipulationMode="None">
                                 <Image
+                                    DataContextChanged="TileImage_DataContextChanged"
                                     DoubleTapped="AssetItem_DoubleTapped"
                                     IsDoubleTapEnabled="True"
+                                    Loaded="TileImage_Loaded"
                                     ManipulationMode="None"
                                     Stretch="UniformToFill"
-                                    Source="{x:Bind pages:LibraryPage.FileToImage(ThumbPath), Mode=OneWay}" />
+                                    Source="{x:Bind ThumbImage, Mode=OneWay}"
+                                    Unloaded="TileImage_Unloaded" />
                                 <TextBlock
                                     Margin="8"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     IsHitTestVisible="False"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="Missing"
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsOrphan), Mode=OneWay}" />
+                                <StackPanel
+                                    Margin="8"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False"
+                                    Spacing="4"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
+                                    <FontIcon
+                                        FontSize="16"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Glyph="&#xE724;" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="Online" />
+                                </StackPanel>
                             </Grid>
                         </ItemContainer>
                     </DataTemplate>

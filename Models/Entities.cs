@@ -11,6 +11,9 @@ public sealed class SourceFolder
     public DestinationPolicy DestinationPolicy { get; set; } = DestinationPolicy.InSource;
     public string? DestinationPath { get; set; }
     public string? ProjectId { get; set; }
+    public SourceKind Kind { get; set; } = SourceKind.Local;
+    public string? CloudAccountId { get; set; }
+    public string? CloudRootItemId { get; set; }
 }
 
 public sealed class Asset
@@ -37,6 +40,17 @@ public sealed class Asset
     public string DateAdded { get; set; } = "";
     public string? DateModified { get; set; }
     public long? FileSize { get; set; }
+    public bool IsOnlineOnly { get; set; }
+    public string? CloudItemId { get; set; }
+}
+
+public sealed class CloudAccount
+{
+    public string Id { get; set; } = "";
+    public CloudProvider Provider { get; set; }
+    public string AccountId { get; set; } = "";
+    public string? DisplayName { get; set; }
+    public string VaultKey { get; set; } = "";
 }
 
 public sealed class Tag

@@ -1,6 +1,7 @@
 using Palace.Data;
 using Palace.Helpers;
 using Palace.Models;
+using Palace.Services.Cloud;
 
 namespace Palace.Services;
 
@@ -10,17 +11,20 @@ public sealed class ScanService
     private readonly MetadataExtractorService _metadata;
     private readonly ThumbnailService _thumbs;
     private readonly OrganizeService _organize;
+    private readonly ICloudLibraryFactory _cloudLibraries;
 
     public ScanService(
         CatalogService catalog,
         MetadataExtractorService metadata,
         ThumbnailService thumbs,
-        OrganizeService organize)
+        OrganizeService organize,
+        ICloudLibraryFactory cloudLibraries)
     {
         _catalog = catalog;
         _metadata = metadata;
         _thumbs = thumbs;
         _organize = organize;
+        _cloudLibraries = cloudLibraries;
     }
 
     public async Task<ScanReport> ScanAllAsync(
@@ -44,6 +48,11 @@ public sealed class ScanService
 
     public async Task<ScanReport> ScanSourceAsync(SourceFolder source, IProgress<string>? progress = null, CancellationToken ct = default)
     {
+        if (source.Kind != SourceKind.Local)
+        {
+            return await ScanCloudSourceAsync(source, progress, ct).ConfigureAwait(false);
+        }
+
         var report = new ScanReport();
         if (!Directory.Exists(source.Path))
         {
@@ -119,9 +128,8 @@ public sealed class ScanService
 
         var existing = await _catalog.GetAssetByPathAsync(file);
         var isNew = existing is null;
-        var hash = await HashService.HashFileAsync(file, info.Length, ct).ConfigureAwait(false);
+        var onlineOnly = CloudFile.IsOnlineOnly(file);
         var kind = PathSafe.KindFromExt(info.Extension);
-        var meta = _metadata.Extract(file);
         var asset = existing ?? new Asset
         {
             Id = PalaceDb.NewId(),
@@ -131,36 +139,220 @@ public sealed class ScanService
         asset.SourceFolderId = source.Id;
         asset.Path = file;
         asset.FileName = info.Name;
-        asset.ContentHash = hash;
         asset.Kind = kind;
         asset.IsOrphan = false;
-        asset.Model = meta.Model;
-        asset.Seed = meta.Seed;
-        asset.Prompt = meta.Prompt;
-        asset.NegativePrompt = meta.NegativePrompt;
-        asset.MetadataJson = meta.RawJson;
         asset.DateModified = info.LastWriteTimeUtc.ToString("O");
         asset.FileSize = info.Length;
+        asset.IsOnlineOnly = onlineOnly;
 
-        var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind);
-        if (thumb is { Width: > 0, Height: > 0 } thumbSize)
+        if (onlineOnly)
         {
-            asset.Width = thumbSize.Width;
-            asset.Height = thumbSize.Height;
+            asset.ContentHash = KeepOrStubHash(existing, file, info.Length, info.LastWriteTimeUtc);
+            var thumb = await _thumbs.EnsureThumbnailAsync(file, asset.ContentHash, kind).ConfigureAwait(false);
+            if (thumb is { Width: > 0, Height: > 0 } onlineThumb && asset.Width is not > 0)
+            {
+                asset.Width = onlineThumb.Width;
+                asset.Height = onlineThumb.Height;
+            }
         }
-        else if (ImageDimensions.TryRead(file) is { } size)
+        else
         {
-            asset.Width = size.Width;
-            asset.Height = size.Height;
+            var hash = await HashService.HashFileAsync(file, info.Length, ct).ConfigureAwait(false);
+            var meta = _metadata.Extract(file);
+            asset.ContentHash = hash;
+            asset.Model = meta.Model;
+            asset.Seed = meta.Seed;
+            asset.Prompt = meta.Prompt;
+            asset.NegativePrompt = meta.NegativePrompt;
+            asset.MetadataJson = meta.RawJson;
+            var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind).ConfigureAwait(false);
+            if (thumb is { Width: > 0, Height: > 0 } localThumb)
+            {
+                asset.Width = localThumb.Width;
+                asset.Height = localThumb.Height;
+            }
+            else if (ImageDimensions.TryRead(file) is { } size)
+            {
+                asset.Width = size.Width;
+                asset.Height = size.Height;
+            }
         }
 
         await _catalog.UpsertAssetAsync(asset, "");
 
-        if (isNew && autoOrganize)
+        if (isNew && autoOrganize && !onlineOnly)
         {
             await _organize.AutoOrganizeNewFileAsync(source, asset);
         }
 
         return isNew;
+    }
+
+    private async Task<ScanReport> ScanCloudSourceAsync(
+        SourceFolder source,
+        IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        var report = new ScanReport();
+        var library = await _cloudLibraries.ForSourceAsync(source, ct).ConfigureAwait(false);
+        if (library is null)
+        {
+            report.Errors++;
+            return report;
+        }
+
+        var found = new HashSet<string>(StringComparer.Ordinal);
+        try
+        {
+            await WalkCloudAsync(source, library, source.CloudRootItemId, source.Path, found, report, progress, ct)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            report.Errors++;
+            return report;
+        }
+
+        foreach (var known in await _catalog.GetIndexedCloudItemIdsAsync(source.Id))
+        {
+            if (!found.Contains(known))
+            {
+                var asset = await _catalog.GetAssetByCloudItemIdAsync(source.Id, known);
+                if (asset is not null)
+                {
+                    await _catalog.MarkOrphanAsync(asset.Id, true);
+                    report.Orphaned++;
+                }
+            }
+        }
+
+        return report;
+    }
+
+    private async Task WalkCloudAsync(
+        SourceFolder source,
+        ICloudLibrary library,
+        string? parentId,
+        string displayPrefix,
+        HashSet<string> found,
+        ScanReport report,
+        IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        IReadOnlyList<CloudEntry> children;
+        try
+        {
+            children = await library.ListChildrenAsync(parentId, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            report.Errors++;
+            return;
+        }
+
+        foreach (var child in children)
+        {
+            ct.ThrowIfCancellationRequested();
+            var display = Path.Combine(displayPrefix, child.Name);
+            if (child.IsFolder)
+            {
+                await WalkCloudAsync(source, library, child.Id, display, found, report, progress, ct)
+                    .ConfigureAwait(false);
+                continue;
+            }
+
+            if (!PathSafe.IsCatalogExt(Path.GetExtension(child.Name)))
+            {
+                continue;
+            }
+
+            found.Add(child.Id);
+            progress?.Report(display);
+            try
+            {
+                var created = await IndexCloudItemAsync(source, library, child, display, ct).ConfigureAwait(false);
+                if (created)
+                {
+                    report.Added++;
+                }
+                else
+                {
+                    report.Updated++;
+                }
+            }
+            catch
+            {
+                report.Errors++;
+            }
+        }
+    }
+
+    private async Task<bool> IndexCloudItemAsync(
+        SourceFolder source,
+        ICloudLibrary library,
+        CloudEntry entry,
+        string displayPath,
+        CancellationToken ct)
+    {
+        var existing = await _catalog.GetAssetByCloudItemIdAsync(source.Id, entry.Id)
+            ?? await _catalog.GetAssetByPathAsync(displayPath);
+        var isNew = existing is null;
+        var modified = entry.ModifiedUtc ?? DateTimeOffset.UtcNow;
+        var size = entry.Size ?? 0;
+        var asset = existing ?? new Asset
+        {
+            Id = PalaceDb.NewId(),
+            SourceFolderId = source.Id,
+            DateAdded = PalaceDb.NowIso()
+        };
+        asset.SourceFolderId = source.Id;
+        asset.Path = displayPath;
+        asset.FileName = entry.Name;
+        asset.Kind = PathSafe.KindFromExt(Path.GetExtension(entry.Name));
+        asset.IsOrphan = false;
+        asset.IsOnlineOnly = true;
+        asset.CloudItemId = entry.Id;
+        asset.DateModified = modified.ToString("O");
+        asset.FileSize = entry.Size;
+        asset.ContentHash = KeepOrStubHash(existing, displayPath, size, modified);
+
+        if (_thumbs.ExistingPathForHash(asset.ContentHash) is null)
+        {
+            try
+            {
+                await using var stream = await library.OpenThumbnailAsync(entry.Id, ct).ConfigureAwait(false);
+                if (stream is not null)
+                {
+                    var thumb = await _thumbs.CacheJpegAsync(asset.ContentHash, stream).ConfigureAwait(false);
+                    if (thumb is { Width: > 0, Height: > 0 } cloudThumb && asset.Width is not > 0)
+                    {
+                        asset.Width = cloudThumb.Width;
+                        asset.Height = cloudThumb.Height;
+                    }
+                }
+            }
+            catch
+            {
+                // Provider thumb is optional; mosaic shows a cloud tile.
+            }
+        }
+
+        await _catalog.UpsertAssetAsync(asset, "");
+        return isNew;
+    }
+
+    private static string KeepOrStubHash(Asset? existing, string path, long size, DateTimeOffset modifiedUtc)
+    {
+        if (existing?.ContentHash is { Length: > 0 } hash && !HashService.IsCloudStub(hash))
+        {
+            return hash;
+        }
+
+        if (HashService.IsCloudStub(existing?.ContentHash))
+        {
+            return existing!.ContentHash!;
+        }
+
+        return HashService.CloudStubHash(path, size, modifiedUtc);
     }
 }
