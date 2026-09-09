@@ -1,0 +1,4 @@
+{
+  "name": "Palace",
+  "install": "bash .cursor/install.sh"
+}
