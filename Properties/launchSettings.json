@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Palace (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Palace (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}
