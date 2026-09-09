@@ -39,23 +39,27 @@ public sealed class Asset
     public long? FileSize { get; set; }
 }
 
-public sealed class TagFacet
-{
-    public string Id { get; set; } = "";
-    public string Name { get; set; } = "";
-    public string? ParentId { get; set; }
-    public int Priority { get; set; }
-    public string Slug { get; set; } = "";
-}
-
 public sealed class Tag
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
-    public string FacetId { get; set; } = "";
-    public string? ParentId { get; set; }
     public int Priority { get; set; }
     public string Slug { get; set; } = "";
+}
+
+public sealed class TagMembership
+{
+    public string ParentId { get; set; } = "";
+    public string ChildId { get; set; } = "";
+}
+
+public sealed class TagPath
+{
+    public IReadOnlyList<Tag> Nodes { get; init; } = [];
+
+    public string Display => string.Join(" / ", Nodes.Select(n => n.Name));
+
+    public IReadOnlyList<string> Slugs => Nodes.Select(n => n.Slug).ToList();
 }
 
 public sealed class AssetTag
@@ -69,9 +73,7 @@ public sealed class AssignedTag
 {
     public string TagId { get; set; } = "";
     public string TagName { get; set; } = "";
-    public string FacetId { get; set; } = "";
-    public string FacetName { get; set; } = "";
-    public int FacetPriority { get; set; }
+    public IReadOnlyList<string> ParentNames { get; set; } = [];
     public int TagPriority { get; set; }
     public TagSource Source { get; set; }
     public string Slug { get; set; } = "";

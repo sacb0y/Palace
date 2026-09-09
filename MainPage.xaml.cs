@@ -27,6 +27,9 @@ public sealed partial class MainPage : Page
         var tag = item.Tag as string;
         switch (tag)
         {
+            case "tags":
+                ContentFrame.Navigate(typeof(TagsPage));
+                break;
             case "rooms":
                 ContentFrame.Navigate(typeof(RoomsPage));
                 break;

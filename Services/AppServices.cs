@@ -15,6 +15,7 @@ public static class AppServices
     public static ScanService Scan { get; private set; } = null!;
     public static WatcherService Watchers { get; private set; } = null!;
     public static LibraryViewModel Library { get; private set; } = null!;
+    public static TagsViewModel Tags { get; private set; } = null!;
     public static RoomsViewModel Rooms { get; private set; } = null!;
     public static SettingsViewModel Settings { get; private set; } = null!;
     public static string LocalRoot { get; private set; } = "";
@@ -35,6 +36,7 @@ public static class AppServices
         Scan = new ScanService(Catalog, Metadata, Thumbnails, Organize);
         Watchers = new WatcherService(Catalog, Scan);
         Library = new LibraryViewModel(Catalog, Access, Scan, Organize, Thumbnails, Watchers);
+        Tags = new TagsViewModel(Catalog, Organize, Access);
         Rooms = new RoomsViewModel(Catalog, Thumbnails);
         Settings = new SettingsViewModel(Catalog, Access, Scan, Watchers);
         Watchers.SetCallback(_ =>
@@ -47,6 +49,7 @@ public static class AppServices
         });
         await Watchers.RestartAsync();
         await Library.LoadAsync();
+        await Tags.LoadAsync();
         await Rooms.LoadAsync();
         await Settings.LoadAsync();
     }

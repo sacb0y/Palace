@@ -27,6 +27,15 @@
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem
+                x:Name="NavTags"
+                AutomationProperties.AutomationId="NavTags"
+                Content="Tags"
+                Tag="tags">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE8EC;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem
                 x:Name="NavRooms"
                 x:Uid="NavRooms"
                 AutomationProperties.AutomationId="NavRooms"

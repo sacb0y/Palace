@@ -244,16 +244,8 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        var facets = await _catalog.GetFacetsAsync();
-        var subject = facets.FirstOrDefault(f => f.Name.Equals("Subject", StringComparison.OrdinalIgnoreCase))
-            ?? facets.FirstOrDefault();
-        if (subject is null)
-        {
-            return;
-        }
-
         var existing = await _catalog.FindTagByNameAsync(NewTagName);
-        var tag = existing ?? await _catalog.CreateTagAsync(NewTagName.Trim(), subject.Id);
+        var tag = existing ?? await _catalog.CreateTagAsync(NewTagName.Trim());
         await _catalog.AssignTagAsync(SelectedAsset.Id, tag.Id, TagSource.Manual);
         NewTagName = "";
         await LoadPreviewAsync(SelectedAsset);
@@ -287,10 +279,7 @@ public partial class LibraryViewModel : ObservableObject
         }
         else
         {
-            var facets = await _catalog.GetFacetsAsync();
-            var promptFacet = facets.FirstOrDefault(f => f.Name.Equals("Prompt", StringComparison.OrdinalIgnoreCase))
-                ?? facets.First();
-            var created = await _catalog.CreateTagAsync(suggestion.Token, promptFacet.Id);
+            var created = await _catalog.CreateTagAsync(suggestion.Token);
             tagId = created.Id;
         }
 
@@ -502,11 +491,12 @@ public partial class LibraryViewModel : ObservableObject
 
         foreach (var tag in await _catalog.GetAssignedTagsAsync(asset.Id))
         {
+            var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
             AssignedTags.Add(new AssignedTagItem
             {
                 TagId = tag.TagId,
-                FacetId = tag.FacetId,
-                Display = $"{tag.FacetName}: {tag.TagName}",
+                TagName = tag.TagName,
+                Display = tag.TagName + groups,
                 Source = tag.Source,
                 SourceLabel = tag.Source.ToString()
             });
@@ -516,7 +506,7 @@ public partial class LibraryViewModel : ObservableObject
         Suggestions.Clear();
         foreach (var suggestion in PromptTagSuggester.Suggest(asset.Prompt, existing))
         {
-            if (AssignedTags.Any(t => t.Display.EndsWith(": " + suggestion.Token, StringComparison.OrdinalIgnoreCase)))
+            if (AssignedTags.Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
@@ -527,14 +517,18 @@ public partial class LibraryViewModel : ObservableObject
 
     private async Task ReloadTagPicksAsync()
     {
-        var facets = (await _catalog.GetFacetsAsync()).ToDictionary(f => f.Id);
         var tags = await _catalog.GetTagsAsync();
+        var memberships = await _catalog.GetMembershipsAsync();
+        var byId = tags.ToDictionary(t => t.Id);
         AllTags.Clear();
-        foreach (var tag in tags.OrderByDescending(t => facets.TryGetValue(t.FacetId, out var f) ? f.Priority : 0)
-                     .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var tag in tags.OrderByDescending(t => t.Priority).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
         {
-            var facetName = facets.TryGetValue(tag.FacetId, out var facet) ? facet.Name : "Tag";
-            AllTags.Add(new TagPickItem { TagId = tag.Id, Display = $"{facetName}: {tag.Name}" });
+            var parents = memberships
+                .Where(m => m.ChildId == tag.Id && byId.ContainsKey(m.ParentId))
+                .Select(m => byId[m.ParentId].Name)
+                .ToList();
+            var extra = parents.Count > 0 ? $" ({string.Join(", ", parents)})" : "";
+            AllTags.Add(new TagPickItem { TagId = tag.Id, Display = tag.Name + extra });
         }
     }
 

@@ -10,6 +10,8 @@ public sealed class OrganizeChoice
     public string? DestinationRoot { get; set; }
     public string FolderTemplate { get; set; } = "{Character}/{tags:2}";
     public string FileTemplate { get; set; } = "{Character}-{tags}.{ext}";
+    public IReadOnlyList<string>? FolderSegments { get; set; }
+    public bool KeepOriginalFileName { get; set; }
 }
 
 public sealed class OrganizeService
@@ -62,8 +64,12 @@ public sealed class OrganizeService
                     continue;
                 }
 
-                var relativeFolder = RenderFolder(choice.FolderTemplate, asset, tags);
-                var fileName = RenderFile(choice.FileTemplate, asset, tags);
+                var relativeFolder = choice.FolderSegments is { Count: > 0 }
+                    ? Path.Combine(choice.FolderSegments.Select(PathSafe.Slug).Where(s => s.Length > 0).ToArray())
+                    : RenderFolder(choice.FolderTemplate, asset, tags);
+                var fileName = choice.KeepOriginalFileName
+                    ? asset.FileName
+                    : RenderFile(choice.FileTemplate, asset, tags);
                 var destDir = Path.GetFullPath(Path.Combine(root, relativeFolder));
                 var desired = Path.Combine(destDir, fileName);
                 if (string.Equals(Path.GetFullPath(asset.Path), Path.GetFullPath(desired), StringComparison.OrdinalIgnoreCase))
@@ -315,18 +321,21 @@ public sealed class OrganizeService
             return string.Join("/", top.Select(t => t.Slug));
         }
 
-        if (key.StartsWith("facet:", StringComparison.OrdinalIgnoreCase))
+        if (key.StartsWith("facet:", StringComparison.OrdinalIgnoreCase)
+            || key.StartsWith("group:", StringComparison.OrdinalIgnoreCase))
         {
-            var facetName = key["facet:".Length..];
-            var hit = tags.FirstOrDefault(t => t.FacetName.Equals(facetName, StringComparison.OrdinalIgnoreCase));
-            return hit is null ? "" : hit.FacetName;
+            var groupName = key[(key.IndexOf(':') + 1)..];
+            var hit = tags.FirstOrDefault(t =>
+                t.ParentNames.Any(p => p.Equals(groupName, StringComparison.OrdinalIgnoreCase)));
+            return hit?.TagName ?? "";
         }
 
-        var byFacet = tags.FirstOrDefault(t => t.FacetName.Equals(key, StringComparison.OrdinalIgnoreCase));
-        if (byFacet is not null)
+        var byGroup = tags.FirstOrDefault(t =>
+            t.ParentNames.Any(p => p.Equals(key, StringComparison.OrdinalIgnoreCase)));
+        if (byGroup is not null)
         {
-            used.Add(byFacet.TagId);
-            return byFacet.TagName;
+            used.Add(byGroup.TagId);
+            return byGroup.TagName;
         }
 
         var byTag = tags.FirstOrDefault(t => t.TagName.Equals(key, StringComparison.OrdinalIgnoreCase));

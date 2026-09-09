@@ -238,42 +238,21 @@ public sealed class CatalogService
             return (IReadOnlyList<string>)list;
         });
 
-    public Task<IReadOnlyList<TagFacet>> GetFacetsAsync() =>
-        _db.ReadAsync(conn =>
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, Name, ParentId, Priority, Slug FROM TagFacet ORDER BY Priority DESC, Name";
-            var list = new List<TagFacet>();
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-            {
-                list.Add(new TagFacet
-                {
-                    Id = reader.GetString(0),
-                    Name = reader.GetString(1),
-                    ParentId = reader.IsDBNull(2) ? null : reader.GetString(2),
-                    Priority = reader.GetInt32(3),
-                    Slug = reader.GetString(4)
-                });
-            }
-
-            return (IReadOnlyList<TagFacet>)list;
-        });
-
     public Task<IReadOnlyList<Tag>> GetTagsAsync() =>
-        _db.ReadAsync(conn =>
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, Name, FacetId, ParentId, Priority, Slug FROM Tag ORDER BY Priority DESC, Name";
-            return (IReadOnlyList<Tag>)ReadTags(cmd);
-        });
+        _db.ReadAsync(conn => (IReadOnlyList<Tag>)LoadTags(conn));
+
+    public Task<Tag?> GetTagAsync(string id) =>
+        _db.ReadAsync(conn => LoadTags(conn).FirstOrDefault(t => t.Id == id));
+
+    public Task<IReadOnlyList<TagMembership>> GetMembershipsAsync() =>
+        _db.ReadAsync(conn => (IReadOnlyList<TagMembership>)LoadMemberships(conn));
 
     public Task<Tag?> FindTagByNameAsync(string name) =>
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, Name, FacetId, ParentId, Priority, Slug FROM Tag
+                SELECT Id, Name, Priority, Slug FROM Tag
                 WHERE Name = $name COLLATE NOCASE
                 LIMIT 1
                 """;
@@ -282,31 +261,106 @@ public sealed class CatalogService
             return list.Count > 0 ? list[0] : null;
         });
 
-    public Task<Tag> CreateTagAsync(string name, string facetId, string? parentId = null, int priority = 0) =>
+    public Task<Tag> CreateTagAsync(string name, int priority = 0) =>
+        _db.WriteAsync(conn => InsertTag(conn, name, priority));
+
+    public Task<Tag> CreateChildTagAsync(string parentId, string name, int priority = 0) =>
         _db.WriteAsync(conn =>
         {
-            var tag = new Tag
-            {
-                Id = PalaceDb.NewId(),
-                Name = name.Trim(),
-                FacetId = facetId,
-                ParentId = parentId,
-                Priority = priority,
-                Slug = PathSafe.Slug(name)
-            };
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO Tag (Id, Name, FacetId, ParentId, Priority, Slug)
-                VALUES ($id, $name, $facet, $parent, $priority, $slug)
-                """;
-            cmd.Parameters.AddWithValue("$id", tag.Id);
-            cmd.Parameters.AddWithValue("$name", tag.Name);
-            cmd.Parameters.AddWithValue("$facet", tag.FacetId);
-            cmd.Parameters.AddWithValue("$parent", (object?)tag.ParentId ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("$priority", tag.Priority);
-            cmd.Parameters.AddWithValue("$slug", tag.Slug);
-            cmd.ExecuteNonQuery();
+            var tag = InsertTag(conn, name, priority);
+            TryAddMembership(conn, parentId, tag.Id);
             return tag;
+        });
+
+    public Task RenameTagAsync(string id, string name) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Tag SET Name = $name, Slug = $slug WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$name", name.Trim());
+            cmd.Parameters.AddWithValue("$slug", PathSafe.Slug(name));
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+            RefreshFtsForTag(conn, id);
+        });
+
+    public Task SetTagPriorityAsync(string id, int priority) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Tag SET Priority = $p WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$p", priority);
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        });
+
+    public Task<bool> AddMembershipAsync(string parentId, string childId) =>
+        _db.WriteAsync(conn => TryAddMembership(conn, parentId, childId));
+
+    public Task RemoveMembershipAsync(string parentId, string childId) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM TagMembership WHERE ParentId = $p AND ChildId = $c";
+            cmd.Parameters.AddWithValue("$p", parentId);
+            cmd.Parameters.AddWithValue("$c", childId);
+            cmd.ExecuteNonQuery();
+        });
+
+    public Task<IReadOnlyList<Tag>> GetParentsAsync(string tagId) =>
+        _db.ReadAsync(conn => (IReadOnlyList<Tag>)ParentsOf(conn, tagId));
+
+    public Task<IReadOnlyList<TagPath>> GetPathsToTagAsync(string tagId) =>
+        _db.ReadAsync(conn => (IReadOnlyList<TagPath>)BuildPaths(conn, tagId));
+
+    public Task<IReadOnlyList<string>> GetDescendantTagIdsAsync(string tagId) =>
+        _db.ReadAsync(conn => (IReadOnlyList<string>)DescendantsOf(conn, tagId));
+
+    public Task<int> CountAssetsForTagsAsync(IEnumerable<string> tagIds) =>
+        _db.ReadAsync(conn =>
+        {
+            var ids = tagIds.Distinct().ToList();
+            if (ids.Count == 0)
+            {
+                return 0;
+            }
+
+            using var cmd = conn.CreateCommand();
+            var names = new List<string>();
+            for (var i = 0; i < ids.Count; i++)
+            {
+                var p = $"$t{i}";
+                names.Add(p);
+                cmd.Parameters.AddWithValue(p, ids[i]);
+            }
+
+            cmd.CommandText = $"SELECT COUNT(DISTINCT AssetId) FROM AssetTag WHERE TagId IN ({string.Join(",", names)})";
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        });
+
+    public Task<IReadOnlyList<Asset>> GetAssetsForTagsAsync(IEnumerable<string> tagIds) =>
+        _db.ReadAsync(conn =>
+        {
+            var ids = tagIds.Distinct().ToList();
+            if (ids.Count == 0)
+            {
+                return (IReadOnlyList<Asset>)[];
+            }
+
+            using var cmd = conn.CreateCommand();
+            var names = new List<string>();
+            for (var i = 0; i < ids.Count; i++)
+            {
+                var p = $"$t{i}";
+                names.Add(p);
+                cmd.Parameters.AddWithValue(p, ids[i]);
+            }
+
+            cmd.CommandText = SelectAssetSql + $"""
+                 WHERE Id IN (SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({string.Join(",", names)}))
+                 ORDER BY FileName COLLATE NOCASE
+                """;
+            return ReadAssets(cmd);
         });
 
     public Task AssignTagAsync(string assetId, string tagId, TagSource source) =>
@@ -698,12 +752,11 @@ public sealed class CatalogService
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT t.Id, t.Name, t.FacetId, f.Name, f.Priority, t.Priority, at.Source, t.Slug
+            SELECT t.Id, t.Name, t.Priority, at.Source, t.Slug
             FROM AssetTag at
             JOIN Tag t ON t.Id = at.TagId
-            JOIN TagFacet f ON f.Id = t.FacetId
             WHERE at.AssetId = $id
-            ORDER BY f.Priority DESC, t.Priority DESC, t.Name
+            ORDER BY t.Priority DESC, t.Name
             """;
         cmd.Parameters.AddWithValue("$id", assetId);
         var list = new List<AssignedTag>();
@@ -714,13 +767,15 @@ public sealed class CatalogService
             {
                 TagId = reader.GetString(0),
                 TagName = reader.GetString(1),
-                FacetId = reader.GetString(2),
-                FacetName = reader.GetString(3),
-                FacetPriority = reader.GetInt32(4),
-                TagPriority = reader.GetInt32(5),
-                Source = Enum.Parse<TagSource>(reader.GetString(6)),
-                Slug = reader.GetString(7)
+                TagPriority = reader.GetInt32(2),
+                Source = Enum.Parse<TagSource>(reader.GetString(3)),
+                Slug = reader.GetString(4)
             });
+        }
+
+        foreach (var tag in list)
+        {
+            tag.ParentNames = ParentsOf(conn, tag.TagId).Select(p => p.Name).ToList();
         }
 
         return list;
@@ -802,14 +857,193 @@ public sealed class CatalogService
             {
                 Id = reader.GetString(0),
                 Name = reader.GetString(1),
-                FacetId = reader.GetString(2),
-                ParentId = reader.IsDBNull(3) ? null : reader.GetString(3),
-                Priority = reader.GetInt32(4),
-                Slug = reader.GetString(5)
+                Priority = reader.GetInt32(2),
+                Slug = reader.GetString(3)
             });
         }
 
         return list;
+    }
+
+    private static List<Tag> LoadTags(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Id, Name, Priority, Slug FROM Tag ORDER BY Priority DESC, Name COLLATE NOCASE";
+        return ReadTags(cmd);
+    }
+
+    private static List<TagMembership> LoadMemberships(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT ParentId, ChildId FROM TagMembership";
+        var list = new List<TagMembership>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new TagMembership { ParentId = reader.GetString(0), ChildId = reader.GetString(1) });
+        }
+
+        return list;
+    }
+
+    private static Tag InsertTag(SqliteConnection conn, string name, int priority)
+    {
+        var tag = new Tag
+        {
+            Id = PalaceDb.NewId(),
+            Name = name.Trim(),
+            Priority = priority,
+            Slug = PathSafe.Slug(name)
+        };
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT INTO Tag (Id, Name, Priority, Slug) VALUES ($id, $name, $priority, $slug)";
+        cmd.Parameters.AddWithValue("$id", tag.Id);
+        cmd.Parameters.AddWithValue("$name", tag.Name);
+        cmd.Parameters.AddWithValue("$priority", tag.Priority);
+        cmd.Parameters.AddWithValue("$slug", tag.Slug);
+        cmd.ExecuteNonQuery();
+        return tag;
+    }
+
+    private static bool TryAddMembership(SqliteConnection conn, string parentId, string childId)
+    {
+        if (string.Equals(parentId, childId, StringComparison.Ordinal) || WouldCycle(conn, parentId, childId))
+        {
+            return false;
+        }
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR IGNORE INTO TagMembership (ParentId, ChildId) VALUES ($p, $c)";
+        cmd.Parameters.AddWithValue("$p", parentId);
+        cmd.Parameters.AddWithValue("$c", childId);
+        cmd.ExecuteNonQuery();
+        return true;
+    }
+
+    private static bool WouldCycle(SqliteConnection conn, string parentId, string childId) =>
+        DescendantsOf(conn, childId).Contains(parentId);
+
+    private static List<string> DescendantsOf(SqliteConnection conn, string tagId)
+    {
+        var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var edge in LoadMemberships(conn))
+        {
+            if (!children.TryGetValue(edge.ParentId, out var list))
+            {
+                list = [];
+                children[edge.ParentId] = list;
+            }
+
+            list.Add(edge.ChildId);
+        }
+
+        var found = new List<string>();
+        var stack = new Stack<string>();
+        stack.Push(tagId);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { tagId };
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!children.TryGetValue(current, out var kids))
+            {
+                continue;
+            }
+
+            foreach (var kid in kids)
+            {
+                if (seen.Add(kid))
+                {
+                    found.Add(kid);
+                    stack.Push(kid);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private static List<Tag> ParentsOf(SqliteConnection conn, string tagId)
+    {
+        var tags = LoadTags(conn).ToDictionary(t => t.Id);
+        return LoadMemberships(conn)
+            .Where(m => m.ChildId == tagId && tags.ContainsKey(m.ParentId))
+            .Select(m => tags[m.ParentId])
+            .OrderByDescending(t => t.Priority)
+            .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<TagPath> BuildPaths(SqliteConnection conn, string tagId)
+    {
+        var tags = LoadTags(conn).ToDictionary(t => t.Id);
+        if (!tags.ContainsKey(tagId))
+        {
+            return [];
+        }
+
+        var parents = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var edge in LoadMemberships(conn))
+        {
+            if (!parents.TryGetValue(edge.ChildId, out var list))
+            {
+                list = [];
+                parents[edge.ChildId] = list;
+            }
+
+            list.Add(edge.ParentId);
+        }
+
+        var results = new List<TagPath>();
+        WalkUp(tagId, [], parents, tags, results);
+        return results;
+    }
+
+    private static void WalkUp(
+        string id,
+        List<Tag> acc,
+        Dictionary<string, List<string>> parents,
+        Dictionary<string, Tag> tags,
+        List<TagPath> results)
+    {
+        acc.Add(tags[id]);
+        if (!parents.TryGetValue(id, out var ups) || ups.Count == 0)
+        {
+            var nodes = acc.ToList();
+            nodes.Reverse();
+            results.Add(new TagPath { Nodes = nodes });
+            acc.RemoveAt(acc.Count - 1);
+            return;
+        }
+
+        foreach (var parent in ups)
+        {
+            if (acc.Any(t => t.Id == parent) || !tags.ContainsKey(parent))
+            {
+                continue;
+            }
+
+            WalkUp(parent, acc, parents, tags, results);
+        }
+
+        acc.RemoveAt(acc.Count - 1);
+    }
+
+    private void RefreshFtsForTag(SqliteConnection conn, string tagId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT DISTINCT AssetId FROM AssetTag WHERE TagId = $id";
+        cmd.Parameters.AddWithValue("$id", tagId);
+        var ids = new List<string>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            ids.Add(reader.GetString(0));
+        }
+
+        foreach (var assetId in ids)
+        {
+            RefreshFts(conn, assetId);
+        }
     }
 
     private static string ToFtsQuery(string query)

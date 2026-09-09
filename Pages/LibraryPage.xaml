@@ -264,7 +264,7 @@
                     Content="Assign tag" />
                 <TextBox
                     AutomationProperties.AutomationId="TxtNewTag"
-                    Header="New tag"
+                    Header="Quick new tag (ungrouped)"
                     Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <Button
                     AutomationProperties.AutomationId="BtnCreateTag"

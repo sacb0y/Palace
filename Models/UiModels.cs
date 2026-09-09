@@ -52,7 +52,9 @@ public partial class AssetItem : ObservableObject
 public partial class AssignedTagItem : ObservableObject
 {
     public string TagId { get; set; } = "";
-    public string FacetId { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string TagName { get; set; } = "";
 
     [ObservableProperty]
     public partial string Display { get; set; } = "";
@@ -117,4 +119,21 @@ public sealed class TagPickItem
 {
     public string TagId { get; set; } = "";
     public string Display { get; set; } = "";
+}
+
+public partial class TagTreeNode : ObservableObject
+{
+    public string? TagId { get; set; }
+    public bool IsUngroupedBucket { get; set; }
+
+    [ObservableProperty]
+    public partial string Name { get; set; } = "";
+
+    public ObservableCollection<TagTreeNode> Children { get; } = [];
+}
+
+public sealed class TagGroupPick
+{
+    public string TagId { get; set; } = "";
+    public string Name { get; set; } = "";
 }

@@ -23,6 +23,7 @@ function Test-UI {
 }
 
 Test-UI 'NavLibrary exists' { winapp ui wait-for 'NavLibrary' -a $AppPid -t 5000 }
+Test-UI 'NavTags exists' { winapp ui wait-for 'NavTags' -a $AppPid -t 3000 }
 Test-UI 'NavRooms exists' { winapp ui wait-for 'NavRooms' -a $AppPid -t 3000 }
 Test-UI 'NavSettings exists' { winapp ui wait-for 'NavSettings' -a $AppPid -t 3000 }
 Test-UI 'Add folder exists' { winapp ui wait-for 'BtnAddFolder' -a $AppPid -t 3000 }
@@ -33,6 +34,16 @@ Test-UI 'Search exists' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 3000 }
 Test-UI 'Asset grid exists' { winapp ui wait-for 'GrdAssets' -a $AppPid -t 3000 }
 Test-UI 'Folder tree exists' { winapp ui wait-for 'TreFolders' -a $AppPid -t 3000 }
 Test-UI 'Status exists' { winapp ui wait-for 'TxtStatus' -a $AppPid -t 3000 }
+
+Test-UI 'Navigate to Tags' { winapp ui invoke 'NavTags' -a $AppPid }
+Test-UI 'Tags tree loaded' { winapp ui wait-for 'TreTags' -a $AppPid -t 4000 }
+Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 3000 }
+Test-UI 'Set tag name' { winapp ui set-value 'TxtNewTagName' 'Sonic' -a $AppPid }
+Test-UI 'Create ungrouped tag' { winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid }
+Start-Sleep -Milliseconds 500
+Test-UI 'Tags status mentions tag' {
+    winapp ui wait-for 'TxtTagsStatus' -a $AppPid -t 4000
+}
 
 Test-UI 'Navigate to Rooms' { winapp ui invoke 'NavRooms' -a $AppPid }
 Test-UI 'Rooms list loaded' { winapp ui wait-for 'LstRooms' -a $AppPid -t 4000 }
@@ -54,6 +65,9 @@ Test-UI 'Library search still present' { winapp ui wait-for 'AsbSearch' -a $AppP
 
 New-Item -ItemType Directory -Force -Path 'screenshots' | Out-Null
 winapp ui screenshot -a $AppPid -o 'screenshots/01-library.png' 2>$null
+winapp ui invoke 'NavTags' -a $AppPid
+Start-Sleep -Milliseconds 400
+winapp ui screenshot -a $AppPid -o 'screenshots/04-tags.png' 2>$null
 winapp ui invoke 'NavRooms' -a $AppPid
 Start-Sleep -Milliseconds 400
 winapp ui screenshot -a $AppPid -o 'screenshots/02-rooms.png' 2>$null

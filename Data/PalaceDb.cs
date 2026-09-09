@@ -141,24 +141,19 @@ public sealed class PalaceDb : IDisposable
                 FOREIGN KEY (SourceFolderId) REFERENCES SourceFolder(Id) ON DELETE CASCADE
             );
 
-            CREATE TABLE IF NOT EXISTS TagFacet (
-                Id TEXT PRIMARY KEY,
-                Name TEXT NOT NULL,
-                ParentId TEXT,
-                Priority INTEGER NOT NULL DEFAULT 0,
-                Slug TEXT NOT NULL,
-                FOREIGN KEY (ParentId) REFERENCES TagFacet(Id)
-            );
-
             CREATE TABLE IF NOT EXISTS Tag (
                 Id TEXT PRIMARY KEY,
                 Name TEXT NOT NULL,
-                FacetId TEXT NOT NULL,
-                ParentId TEXT,
                 Priority INTEGER NOT NULL DEFAULT 0,
-                Slug TEXT NOT NULL,
-                FOREIGN KEY (FacetId) REFERENCES TagFacet(Id),
-                FOREIGN KEY (ParentId) REFERENCES Tag(Id)
+                Slug TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS TagMembership (
+                ParentId TEXT NOT NULL,
+                ChildId TEXT NOT NULL,
+                PRIMARY KEY (ParentId, ChildId),
+                FOREIGN KEY (ParentId) REFERENCES Tag(Id) ON DELETE CASCADE,
+                FOREIGN KEY (ChildId) REFERENCES Tag(Id) ON DELETE CASCADE
             );
 
             CREATE TABLE IF NOT EXISTS AssetTag (
@@ -233,30 +228,122 @@ public sealed class PalaceDb : IDisposable
 
             CREATE INDEX IF NOT EXISTS IX_Asset_Source ON Asset(SourceFolderId);
             CREATE INDEX IF NOT EXISTS IX_Asset_Hash ON Asset(ContentHash);
-            CREATE INDEX IF NOT EXISTS IX_Tag_Facet ON Tag(FacetId);
+            CREATE INDEX IF NOT EXISTS IX_TagMembership_Parent ON TagMembership(ParentId);
+            CREATE INDEX IF NOT EXISTS IX_TagMembership_Child ON TagMembership(ChildId);
             """;
         cmd.ExecuteNonQuery();
+        MigrateLegacyFacets();
         SeedDefaults();
+    }
+
+    private void MigrateLegacyFacets()
+    {
+        if (!TableExists("TagFacet") || !ColumnExists("Tag", "FacetId"))
+        {
+            return;
+        }
+
+        using var off = _connection.CreateCommand();
+        off.CommandText = "PRAGMA foreign_keys=OFF";
+        off.ExecuteNonQuery();
+
+        using var tx = _connection.BeginTransaction();
+        using (var create = _connection.CreateCommand())
+        {
+            create.Transaction = tx;
+            create.CommandText = """
+                CREATE TABLE IF NOT EXISTS Tag_dag (
+                    Id TEXT PRIMARY KEY,
+                    Name TEXT NOT NULL,
+                    Priority INTEGER NOT NULL DEFAULT 0,
+                    Slug TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS TagMembership_dag (
+                    ParentId TEXT NOT NULL,
+                    ChildId TEXT NOT NULL,
+                    PRIMARY KEY (ParentId, ChildId)
+                );
+                INSERT OR IGNORE INTO Tag_dag (Id, Name, Priority, Slug)
+                SELECT Id, Name, Priority, Slug FROM TagFacet;
+                INSERT OR IGNORE INTO Tag_dag (Id, Name, Priority, Slug)
+                SELECT Id, Name, Priority, Slug FROM Tag;
+                INSERT OR IGNORE INTO TagMembership_dag (ParentId, ChildId)
+                SELECT ParentId, Id FROM TagFacet WHERE ParentId IS NOT NULL;
+                INSERT OR IGNORE INTO TagMembership_dag (ParentId, ChildId)
+                SELECT FacetId, Id FROM Tag WHERE FacetId IS NOT NULL AND FacetId != '';
+                INSERT OR IGNORE INTO TagMembership_dag (ParentId, ChildId)
+                SELECT ParentId, Id FROM Tag WHERE ParentId IS NOT NULL;
+                DROP TABLE Tag;
+                DROP TABLE TagFacet;
+                DROP TABLE IF EXISTS TagMembership;
+                ALTER TABLE Tag_dag RENAME TO Tag;
+                ALTER TABLE TagMembership_dag RENAME TO TagMembership;
+                """;
+            create.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+
+        using var on = _connection.CreateCommand();
+        on.CommandText = "PRAGMA foreign_keys=ON";
+        on.ExecuteNonQuery();
+    }
+
+    private bool TableExists(string name)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = $n";
+        cmd.Parameters.AddWithValue("$n", name);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private bool ColumnExists(string table, string column)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info({table})";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (reader.GetString(1).Equals(column, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void SeedDefaults()
     {
         using var check = _connection.CreateCommand();
-        check.CommandText = "SELECT COUNT(*) FROM TagFacet";
+        check.CommandText = "SELECT COUNT(*) FROM Tag";
         var count = Convert.ToInt64(check.ExecuteScalar());
         if (count > 0)
         {
+            EnsureDefaultRule();
             return;
         }
 
         var subject = NewId();
         var character = NewId();
-        InsertFacet(subject, "Subject", null, 100, "Subject");
-        InsertFacet(character, "Character", subject, 90, "Character");
-        InsertFacet(NewId(), "Clothing", null, 70, "Clothing");
-        InsertFacet(NewId(), "Shot", null, 60, "Shot");
-        InsertFacet(NewId(), "Style", null, 50, "Style");
-        InsertFacet(NewId(), "Prompt", null, 20, "Prompt");
+        InsertTag(subject, "Subject", 100, "Subject");
+        InsertTag(character, "Character", 90, "Character");
+        InsertTag(NewId(), "Clothing", 70, "Clothing");
+        InsertTag(NewId(), "Shot", 60, "Shot");
+        InsertTag(NewId(), "Style", 50, "Style");
+        InsertTag(NewId(), "Prompt", 20, "Prompt");
+        InsertMembership(subject, character);
+        EnsureDefaultRule();
+    }
+
+    private void EnsureDefaultRule()
+    {
+        using var check = _connection.CreateCommand();
+        check.CommandText = "SELECT COUNT(*) FROM OrganizeRule";
+        if (Convert.ToInt64(check.ExecuteScalar()) > 0)
+        {
+            return;
+        }
 
         using var rule = _connection.CreateCommand();
         rule.CommandText = """
@@ -267,18 +354,23 @@ public sealed class PalaceDb : IDisposable
         rule.ExecuteNonQuery();
     }
 
-    private void InsertFacet(string id, string name, string? parentId, int priority, string slug)
+    private void InsertTag(string id, string name, int priority, string slug)
     {
         using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO TagFacet (Id, Name, ParentId, Priority, Slug)
-            VALUES ($id, $name, $parent, $priority, $slug);
-            """;
+        cmd.CommandText = "INSERT INTO Tag (Id, Name, Priority, Slug) VALUES ($id, $name, $priority, $slug)";
         cmd.Parameters.AddWithValue("$id", id);
         cmd.Parameters.AddWithValue("$name", name);
-        cmd.Parameters.AddWithValue("$parent", (object?)parentId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$priority", priority);
         cmd.Parameters.AddWithValue("$slug", slug);
+        cmd.ExecuteNonQuery();
+    }
+
+    private void InsertMembership(string parentId, string childId)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "INSERT OR IGNORE INTO TagMembership (ParentId, ChildId) VALUES ($p, $c)";
+        cmd.Parameters.AddWithValue("$p", parentId);
+        cmd.Parameters.AddWithValue("$c", childId);
         cmd.ExecuteNonQuery();
     }
 
