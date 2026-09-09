@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="Palace.Pages.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Palace.Models"
+    mc:Ignorable="d">
+
+    <ScrollViewer>
+        <StackPanel
+            MaxWidth="720"
+            Padding="24"
+            Spacing="16">
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Settings" />
+
+            <ComboBox
+                x:Name="CmbTheme"
+                MinWidth="240"
+                AutomationProperties.AutomationId="CmbTheme"
+                Header="Theme"
+                ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}" />
+
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Watched folders" />
+            <ListView
+                x:Name="LstSources"
+                MinHeight="160"
+                AutomationProperties.AutomationId="LstSources"
+                ItemsSource="{x:Bind ViewModel.Sources, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedSource, Mode=TwoWay}">
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="models:SourceFolderItem">
+                        <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Path, Mode=OneWay}" />
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="BtnAddSource"
+                    Command="{x:Bind ViewModel.AddSourceCommand}"
+                    Content="Add folder" />
+                <Button
+                    AutomationProperties.AutomationId="BtnRemoveSource"
+                    Command="{x:Bind ViewModel.RemoveSourceCommand}"
+                    Content="Remove folder" />
+            </StackPanel>
+
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Selected folder" />
+            <ToggleSwitch
+                x:Name="TglAutoOrganize"
+                AutomationProperties.AutomationId="TglAutoOrganize"
+                Header="Auto-organize new files"
+                IsOn="{x:Bind ViewModel.SelectedSource.AutoOrganizeNewFiles, Mode=TwoWay, FallbackValue=False}"
+                OffContent="Off"
+                OnContent="On" />
+            <TextBox
+                x:Name="TxtSourceFolderTemplate"
+                AutomationProperties.AutomationId="TxtSourceFolderTemplate"
+                Header="Folder template"
+                Text="{x:Bind ViewModel.SelectedSource.FolderTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, FallbackValue=''}" />
+            <TextBox
+                x:Name="TxtSourceFileTemplate"
+                AutomationProperties.AutomationId="TxtSourceFileTemplate"
+                Header="Filename template"
+                Text="{x:Bind ViewModel.SelectedSource.FileTemplate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged, FallbackValue=''}" />
+            <ComboBox
+                x:Name="CmbDestinationPolicy"
+                MinWidth="240"
+                AutomationProperties.AutomationId="CmbDestinationPolicy"
+                Header="New-file destination"
+                SelectedItem="{x:Bind ViewModel.SelectedSource.DestinationPolicy, Mode=TwoWay, FallbackValue='InSource'}">
+                <x:String>InSource</x:String>
+                <x:String>Destination</x:String>
+            </ComboBox>
+            <TextBox
+                x:Name="TxtDestinationPath"
+                AutomationProperties.AutomationId="TxtDestinationPath"
+                Header="Saved destination"
+                IsReadOnly="True"
+                Text="{x:Bind ViewModel.SelectedSource.DestinationPath, Mode=OneWay, FallbackValue=''}" />
+            <Button
+                AutomationProperties.AutomationId="BtnPickSourceDestination"
+                Command="{x:Bind ViewModel.PickDestinationCommand}"
+                Content="Pick auto-organize destination" />
+
+            <TextBlock
+                AutomationProperties.AutomationId="TxtSettingsStatus"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

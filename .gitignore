@@ -69,3 +69,6 @@ appsettings.*.local.json
 *.db-shm
 thumbs/
 thumbnails/
+screenshots/
+test-results.json
+test-screenshot.png

@@ -1,14 +1,9 @@
 using Microsoft.UI.Xaml.Controls;
+using Palace.Pages;
 using Palace.ViewModels;
-
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
 
 namespace Palace;
 
-/// <summary>
-/// The main content page displayed inside the application window.
-/// </summary>
 public sealed partial class MainPage : Page
 {
     public MainPageViewModel ViewModel { get; } = new();
@@ -16,5 +11,31 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
+        Loaded += (_, _) =>
+        {
+            NavMain.SelectedItem = NavLibrary;
+        };
+    }
+
+    private void NavMain_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    {
+        if (args.SelectedItem is not NavigationViewItem item)
+        {
+            return;
+        }
+
+        var tag = item.Tag as string;
+        switch (tag)
+        {
+            case "rooms":
+                ContentFrame.Navigate(typeof(RoomsPage));
+                break;
+            case "settings":
+                ContentFrame.Navigate(typeof(SettingsPage));
+                break;
+            default:
+                ContentFrame.Navigate(typeof(LibraryPage));
+                break;
+        }
     }
 }

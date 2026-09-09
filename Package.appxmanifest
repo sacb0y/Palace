@@ -36,7 +36,7 @@
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
         DisplayName="Palace"
-        Description="Palace"
+        Description="Palace — local image, video, and asset library"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
@@ -48,6 +48,7 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <rescap:Capability Name="broadFileSystemAccess" />
     <systemai:Capability Name="systemAIModels"/>
   </Capabilities>
 </Package>
