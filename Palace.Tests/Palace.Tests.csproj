@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <Compile Include="..\Helpers\CloudFile.cs" Link="CloudFile.cs" />
+    <Compile Include="..\Helpers\RoomIcons.cs" Link="RoomIcons.cs" />
   </ItemGroup>
 
   <ItemGroup>

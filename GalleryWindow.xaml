@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:helpers="using:Palace.Helpers"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:local="using:Palace"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
@@ -66,7 +67,7 @@
                 Command="{x:Bind Gallery.GoPreviousCommand}"
                 IsEnabled="{x:Bind Gallery.CanGoPrevious, Mode=OneWay}"
                 ToolTipService.ToolTip="Previous">
-                <SymbolIcon Symbol="Back" />
+                <ic:FluentIcon Icon="ChevronLeft" IconSize="Size20" IconVariant="Regular" />
             </Button>
             <Button
                 x:Name="BtnGalleryWindowNext"
@@ -80,7 +81,7 @@
                 Command="{x:Bind Gallery.GoNextCommand}"
                 IsEnabled="{x:Bind Gallery.CanGoNext, Mode=OneWay}"
                 ToolTipService.ToolTip="Next">
-                <SymbolIcon Symbol="Forward" />
+                <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
             </Button>
         </Grid>
 
@@ -149,21 +150,33 @@
                     AutomationProperties.AutomationId="BtnGalleryDownload"
                     AutomationProperties.Name="Download original"
                     Command="{x:Bind Gallery.DownloadOriginalCommand}"
-                    Content="Download"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanDownloadOriginal), Mode=OneWay}" />
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanDownloadOriginal), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowDownload" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Download" />
+                    </StackPanel>
+                </Button>
                 <Button
                     x:Name="BtnGalleryOpenExplorer"
                     AutomationProperties.AutomationId="BtnGalleryOpenExplorer"
                     AutomationProperties.Name="Open in Explorer"
                     Command="{x:Bind Gallery.OpenInExplorerCommand}"
-                    Content="Open in Explorer"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanOpenInExplorer), Mode=OneWay}" />
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanOpenInExplorer), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Open in Explorer" />
+                    </StackPanel>
+                </Button>
                 <Button
                     x:Name="BtnGalleryWindowClose"
                     AutomationProperties.AutomationId="BtnGalleryWindowClose"
                     AutomationProperties.Name="Close"
-                    Click="BtnGalleryWindowClose_Click"
-                    Content="Close" />
+                    Click="BtnGalleryWindowClose_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Close" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
     </Grid>

@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:helpers="using:Palace.Helpers"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
@@ -31,13 +32,21 @@
                     <Button
                         AutomationProperties.AutomationId="BtnNewProject"
                         AutomationProperties.Name="New project"
-                        Command="{x:Bind ViewModel.NewProjectCommand}"
-                        Content="New" />
+                        Command="{x:Bind ViewModel.NewProjectCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="New" />
+                        </StackPanel>
+                    </Button>
                     <Button
                         AutomationProperties.AutomationId="BtnRenameProject"
                         AutomationProperties.Name="Rename project"
-                        Command="{x:Bind ViewModel.RenameProjectCommand}"
-                        Content="Rename" />
+                        Command="{x:Bind ViewModel.RenameProjectCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="Rename" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Rename" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
                 <ProgressBar
                     x:Name="PrgProjectLoad"
@@ -57,7 +66,7 @@
                 Content="Library"
                 Tag="library">
                 <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE8B7;" />
+                    <ic:FluentIcon Icon="Library" IconSize="Size20" IconVariant="Regular" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem
@@ -66,7 +75,7 @@
                 Content="Tags"
                 Tag="tags">
                 <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE8EC;" />
+                    <ic:FluentIcon Icon="Tag" IconSize="Size20" IconVariant="Regular" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem
@@ -76,7 +85,7 @@
                 Content="Rooms"
                 Tag="rooms">
                 <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE8F1;" />
+                    <ic:FluentIcon Icon="BuildingBank" IconSize="Size20" IconVariant="Regular" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.MenuItems>
@@ -88,7 +97,7 @@
                 Content="Settings"
                 Tag="settings">
                 <NavigationViewItem.Icon>
-                    <FontIcon Glyph="&#xE713;" />
+                    <ic:FluentIcon Icon="Settings" IconSize="Size20" IconVariant="Regular" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.FooterMenuItems>

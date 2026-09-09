@@ -133,6 +133,7 @@ public sealed class Room
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "Room";
+    public string? Icon { get; set; }
     public int SortOrder { get; set; }
     public string? ProjectId { get; set; }
 }
