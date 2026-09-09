@@ -2,9 +2,12 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
+using Windows.UI;
 
 namespace Palace.Pages;
 
@@ -12,11 +15,85 @@ public sealed partial class TagsPage : Page
 {
     public TagsViewModel ViewModel => AppServices.Tags;
 
+    private bool _ignoreColorChanges;
+    private bool _colorDirty;
+
     public TagsPage()
     {
         InitializeComponent();
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         Loaded += async (_, _) => await ViewModel.RefreshAsync();
+    }
+
+    private void TagColorFlyout_Opening(object sender, object e)
+    {
+        _ignoreColorChanges = true;
+        _colorDirty = false;
+        PkrTagColor.Color = TagColor.TryParse(ViewModel.SelectedEffectiveColor, out var color)
+            ? color
+            : Color.FromArgb(255, 255, 255, 255);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            EnsureColorHexAutomationId(PkrTagColor);
+            _ignoreColorChanges = false;
+        });
+    }
+
+    private static void EnsureColorHexAutomationId(DependencyObject root)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is TextBox box)
+            {
+                var header = box.Header?.ToString() ?? "";
+                var labeled = AutomationProperties.GetName(box) ?? "";
+                var text = box.Text ?? "";
+                if (header.Contains("Hex", StringComparison.OrdinalIgnoreCase) ||
+                    labeled.Contains("Hex", StringComparison.OrdinalIgnoreCase) ||
+                    text.StartsWith('#') ||
+                    (text.Length is 6 or 8 && text.All(Uri.IsHexDigit)))
+                {
+                    AutomationProperties.SetAutomationId(box, "TxtTagColorHex");
+                    return;
+                }
+            }
+
+            EnsureColorHexAutomationId(child);
+        }
+    }
+
+    private void PkrTagColor_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
+    {
+        if (_ignoreColorChanges)
+        {
+            return;
+        }
+
+        _colorDirty = true;
+    }
+
+    private async void TagColorFlyout_Closed(object sender, object e)
+    {
+        if (!_colorDirty || ViewModel.SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        await ViewModel.ApplyColorAsync(TagColor.ToHex(PkrTagColor.Color));
+        _colorDirty = false;
+    }
+
+    private async void BtnClearTagColor_Click(object sender, RoutedEventArgs e)
+    {
+        _colorDirty = false;
+        _ignoreColorChanges = true;
+        await ViewModel.ClearColorCommand.ExecuteAsync(null);
+        PkrTagColor.Color = TagColor.TryParse(ViewModel.SelectedEffectiveColor, out var color)
+            ? color
+            : Color.FromArgb(255, 255, 255, 255);
+        DispatcherQueue.TryEnqueue(() => _ignoreColorChanges = false);
     }
 
     public static IRelayCommand<TagGroupPick> GetRemoveGroupCommand() => AppServices.Tags.RemoveFromGroupCommand;

@@ -1,18 +1,28 @@
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
 using Windows.Media.Core;
 using Windows.Storage;
+using Windows.System;
 
 namespace Palace.Pages;
 
 public sealed partial class LibraryPage : Page
 {
+    private GalleryViewModel? _hookedOverlay;
+    private int _thumbUpgradeEpoch;
+    private string? _lastPointerAssetId;
+    private DateTime _lastPointerUtc;
+
     public LibraryViewModel ViewModel => AppServices.Library;
 
     public LibraryPage()
@@ -21,6 +31,9 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestPickRoom = AskRoomAsync;
+        ViewModel.RequestFocusAssignTag = () =>
+            DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
+        ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LibraryViewModel.PreviewPath) or nameof(LibraryViewModel.IsVideoPreview) or nameof(LibraryViewModel.IsImagePreview))
@@ -31,6 +44,20 @@ public sealed partial class LibraryPage : Page
             if (e.PropertyName is nameof(LibraryViewModel.Assets) or nameof(LibraryViewModel.MosaicRowHeight))
             {
                 MosaicLayout.InvalidateItemsInfo();
+                if (e.PropertyName is nameof(LibraryViewModel.Assets))
+                {
+                    _ = UpgradeThumbsAsync();
+                }
+            }
+
+            if (e.PropertyName is nameof(LibraryViewModel.OverlayGallery) or nameof(LibraryViewModel.IsGalleryOverlayOpen))
+            {
+                HookOverlayGallery();
+                UpdateOverlayMedia();
+                if (ViewModel.IsGalleryOverlayOpen)
+                {
+                    GrdGalleryOverlay.Focus(FocusState.Programmatic);
+                }
             }
         };
         Loaded += async (_, _) =>
@@ -38,12 +65,43 @@ public sealed partial class LibraryPage : Page
             await ViewModel.ReloadTagCatalogAsync();
             UpdatePreview();
             MosaicLayout.InvalidateItemsInfo();
+            HookOverlayGallery();
+            GrdAssets.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(GrdAssets_DoubleTapped), true);
+            GrdAssets.AddHandler(PointerPressedEvent, new PointerEventHandler(AssetItem_PointerPressed), true);
+            GrdAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdAssets_KeyDown), true);
+            _ = UpgradeThumbsAsync();
+        };
+        Unloaded += (_, _) =>
+        {
+            if (_hookedOverlay is not null)
+            {
+                _hookedOverlay.PropertyChanged -= OverlayGallery_PropertyChanged;
+                _hookedOverlay = null;
+            }
         };
     }
 
     public static IRelayCommand<AssignedTagItem> GetRemoveTagCommand() => AppServices.Library.RemoveAssignedTagCommand;
 
     public static IRelayCommand<PromptSuggestion> GetAcceptSuggestionCommand() => AppServices.Library.AcceptSuggestionCommand;
+
+    public static IRelayCommand<AssetItem?> GetOpenOverlayCommand() => AppServices.Library.OpenOverlayCommand;
+
+    public static IRelayCommand<AssetItem?> GetOpenInNewWindowCommand() => AppServices.Library.OpenInNewWindowCommand;
+
+    public static IRelayCommand GetShowInExplorerCommand() => AppServices.Library.ShowInExplorerCommand;
+
+    public static IRelayCommand GetCopyFilesCommand() => AppServices.Library.CopyFilesCommand;
+
+    public static IRelayCommand GetCopyPathCommand() => AppServices.Library.CopyPathCommand;
+
+    public static IRelayCommand GetMoveToFolderCommand() => AppServices.Library.MoveToFolderCommand;
+
+    public static IRelayCommand GetAddSelectionToRoomCommand() => AppServices.Library.AddSelectionToRoomCommand;
+
+    public static IRelayCommand GetFocusAssignTagCommand() => AppServices.Library.FocusAssignTagCommand;
+
+    public static IRelayCommand GetDeleteFilesCommand() => AppServices.Library.DeleteFilesCommand;
 
     public static BitmapImage? FileToImage(string? path)
     {
@@ -54,9 +112,41 @@ public sealed partial class LibraryPage : Page
 
         try
         {
+            var rowHeight = AppServices.Library?.MosaicRowHeight ?? 140;
+            var scale = 1.0;
+            try
+            {
+                scale = App.Window?.Content?.XamlRoot?.RasterizationScale ?? 1.0;
+            }
+            catch
+            {
+                // XamlRoot is unavailable during early bind.
+            }
+
+            var decode = (int)Math.Clamp(Math.Round(rowHeight * Math.Min(Math.Max(scale, 1.0), 2.0)), 96, 560);
             return new BitmapImage
             {
-                DecodePixelHeight = 280,
+                DecodePixelHeight = decode,
+                UriSource = new Uri(path, UriKind.Absolute)
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static BitmapImage? FileToFullImage(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new BitmapImage
+            {
                 UriSource = new Uri(path, UriKind.Absolute)
             };
         }
@@ -133,10 +223,16 @@ public sealed partial class LibraryPage : Page
 
     private void AsbAssignTag_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
     {
-        if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput ||
-            args.Reason == AutoSuggestionBoxTextChangeReason.ProgrammaticChange)
+        if (args.Reason != AutoSuggestionBoxTextChangeReason.UserInput)
         {
-            ViewModel.TagQuery = sender.Text;
+            return;
+        }
+
+        ViewModel.TagQuery = sender.Text ?? "";
+        // Updating ItemsSource can reset AutoSuggestBox.Text; keep the query the user typed.
+        if (!string.Equals(sender.Text, ViewModel.TagQuery, StringComparison.Ordinal))
+        {
+            sender.Text = ViewModel.TagQuery;
         }
     }
 
@@ -147,6 +243,12 @@ public sealed partial class LibraryPage : Page
             ViewModel.SelectedPickTag = pick;
             ViewModel.TagQuery = pick.Name;
         }
+    }
+
+    private void BtnAssignTag_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.TagQuery = AsbAssignTag.Text ?? "";
+        ViewModel.AssignFromQueryCommand.Execute(null);
     }
 
     private void AsbAssignTag_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -164,11 +266,237 @@ public sealed partial class LibraryPage : Page
         ViewModel.AssignFromQueryCommand.Execute(null);
     }
 
+    private void GrdAssets_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        var item = FindAssetItem(e.OriginalSource);
+        if (item is null)
+        {
+            return;
+        }
+
+        OpenOverlayFor(item);
+        e.Handled = true;
+    }
+
+    private void AssetItem_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (item is null)
+        {
+            return;
+        }
+
+        OpenOverlayFor(item);
+        e.Handled = true;
+    }
+
+    private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter || ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
+        var item = FindAssetItem(e.OriginalSource)
+            ?? ViewModel.SelectedAsset
+            ?? ViewModel.Assets.FirstOrDefault();
+        if (item is null)
+        {
+            return;
+        }
+
+        OpenOverlayFor(item);
+        e.Handled = true;
+    }
+
+    private void AssetItem_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var point = e.GetCurrentPoint((UIElement)sender);
+        var kind = point.PointerDeviceType;
+        if (!point.Properties.IsLeftButtonPressed &&
+            kind != PointerDeviceType.Touch &&
+            kind != PointerDeviceType.Pen)
+        {
+            return;
+        }
+
+        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (item is null)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        if (string.Equals(_lastPointerAssetId, item.Id, StringComparison.Ordinal) &&
+            now - _lastPointerUtc < TimeSpan.FromMilliseconds(600))
+        {
+            OpenOverlayFor(item);
+            e.Handled = true;
+            _lastPointerAssetId = null;
+            _lastPointerUtc = DateTime.MinValue;
+            return;
+        }
+
+        _lastPointerAssetId = item.Id;
+        _lastPointerUtc = now;
+    }
+
+    private void OpenOverlayFor(AssetItem item)
+    {
+        EnsureSelectedForContext(item);
+        ViewModel.OpenOverlayCommand.Execute(item);
+    }
+
+    private static AssetItem? FindAssetItem(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement { DataContext: AssetItem item })
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private void AssetItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: AssetItem item })
+        {
+            EnsureSelectedForContext(item);
+        }
+    }
+
+    private void AssetMenu_Opening(object sender, object e)
+    {
+        if (sender is MenuFlyout { Target: FrameworkElement { DataContext: AssetItem item } })
+        {
+            EnsureSelectedForContext(item);
+        }
+    }
+
+    private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (ViewModel.OverlayGallery is null)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case VirtualKey.Escape:
+                ViewModel.CloseOverlayCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case VirtualKey.Left:
+                ViewModel.OverlayGallery.GoPreviousCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case VirtualKey.Right:
+                ViewModel.OverlayGallery.GoNextCommand.Execute(null);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void GalleryOverlay_BackdropPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.OriginalSource == sender)
+        {
+            ViewModel.CloseOverlayCommand.Execute(null);
+        }
+    }
+
+    private void EnsureSelectedForContext(AssetItem item)
+    {
+        if (GrdAssets.SelectedItems.OfType<AssetItem>().Any(a => a.Id == item.Id))
+        {
+            return;
+        }
+
+        var index = ViewModel.Assets.IndexOf(item);
+        if (index < 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < ViewModel.Assets.Count; i++)
+        {
+            if (GrdAssets.IsSelected(i))
+            {
+                GrdAssets.Deselect(i);
+            }
+        }
+
+        GrdAssets.Select(index);
+    }
+
+    private async Task UpgradeThumbsAsync()
+    {
+        var epoch = Interlocked.Increment(ref _thumbUpgradeEpoch);
+        foreach (var item in ViewModel.Assets.ToList())
+        {
+            if (epoch != _thumbUpgradeEpoch)
+            {
+                return;
+            }
+
+            if (string.IsNullOrEmpty(item.Path) || string.IsNullOrEmpty(item.ThumbPath))
+            {
+                continue;
+            }
+
+            var hash = Path.GetFileNameWithoutExtension(item.ThumbPath);
+            var info = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, hash, item.Kind);
+            if (epoch != _thumbUpgradeEpoch || info is null)
+            {
+                continue;
+            }
+
+            var path = info.Value.Path;
+            await UiDispatch.RunAsync(() =>
+            {
+                if (epoch != _thumbUpgradeEpoch)
+                {
+                    return;
+                }
+
+                item.ThumbPath = null;
+                item.ThumbPath = path;
+            });
+        }
+    }
+
+    private void HookOverlayGallery()
+    {
+        if (_hookedOverlay is not null)
+        {
+            _hookedOverlay.PropertyChanged -= OverlayGallery_PropertyChanged;
+        }
+
+        _hookedOverlay = ViewModel.OverlayGallery;
+        if (_hookedOverlay is not null)
+        {
+            _hookedOverlay.PropertyChanged += OverlayGallery_PropertyChanged;
+        }
+    }
+
+    private void OverlayGallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
+            or nameof(GalleryViewModel.IsVideo)
+            or nameof(GalleryViewModel.IsImage))
+        {
+            UpdateOverlayMedia();
+        }
+    }
+
     private async void UpdatePreview()
     {
         if (ViewModel.IsImagePreview && ViewModel.PreviewPath is not null)
         {
-            ImgPreview.Source = FileToImage(ViewModel.PreviewPath);
+            ImgPreview.Source = FileToFullImage(ViewModel.PreviewPath);
         }
         else
         {
@@ -190,6 +518,26 @@ public sealed partial class LibraryPage : Page
         else
         {
             MpePreview.Source = null;
+        }
+    }
+
+    private async void UpdateOverlayMedia()
+    {
+        if (ViewModel.OverlayGallery is { IsVideo: true, CurrentPath: not null } gallery)
+        {
+            try
+            {
+                var file = await StorageFile.GetFileFromPathAsync(gallery.CurrentPath);
+                MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
+            }
+            catch
+            {
+                MpeOverlay.Source = null;
+            }
+        }
+        else
+        {
+            MpeOverlay.Source = null;
         }
     }
 

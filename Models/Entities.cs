@@ -45,6 +45,7 @@ public sealed class Tag
     public string Name { get; set; } = "";
     public int Priority { get; set; }
     public string Slug { get; set; } = "";
+    public string? Color { get; set; }
 }
 
 public sealed class TagMembership
@@ -83,6 +84,7 @@ public sealed class AssignedTag
     public int TagPriority { get; set; }
     public TagSource Source { get; set; }
     public string Slug { get; set; } = "";
+    public string? EffectiveColor { get; set; }
 }
 
 public sealed class OrganizeRule

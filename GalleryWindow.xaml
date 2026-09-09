@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="Palace.GalleryWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:helpers="using:Palace.Helpers"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Palace.Models"
+    xmlns:pages="using:Palace.Pages"
+    Title="{x:Bind Gallery.Title, Mode=OneWay}"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid
+        x:Name="GrdGalleryWindow"
+        AutomationProperties.AutomationId="GrdGalleryWindow"
+        AutomationProperties.Name="Gallery window"
+        Background="{ThemeResource LayerFillColorDefaultBrush}"
+        IsTabStop="True"
+        PreviewKeyDown="GalleryRoot_PreviewKeyDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TitleBar
+            x:Name="GalleryTitleBar"
+            Title="{x:Bind Gallery.Title, Mode=OneWay}"
+            Subtitle="{x:Bind Gallery.PositionLabel, Mode=OneWay}">
+            <TitleBar.IconSource>
+                <ImageIconSource ImageSource="Assets/AppIcon.ico" />
+            </TitleBar.IconSource>
+        </TitleBar>
+
+        <Grid Grid.Row="1">
+            <Image
+                Stretch="Uniform"
+                Source="{x:Bind pages:LibraryPage.FileToFullImage(Gallery.CurrentPath), Mode=OneWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />
+            <MediaPlayerElement
+                x:Name="MpeGallery"
+                AreTransportControlsEnabled="True"
+                AutoPlay="False"
+                AutomationProperties.AutomationId="MpeGalleryWindow"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="Missing"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsMissing), Mode=OneWay}" />
+
+            <Button
+                x:Name="BtnGalleryWindowPrev"
+                MinWidth="48"
+                MinHeight="48"
+                Margin="16,0,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="BtnGalleryWindowPrev"
+                AutomationProperties.Name="Previous"
+                Command="{x:Bind Gallery.GoPreviousCommand}"
+                IsEnabled="{x:Bind Gallery.CanGoPrevious, Mode=OneWay}"
+                ToolTipService.ToolTip="Previous">
+                <SymbolIcon Symbol="Back" />
+            </Button>
+            <Button
+                x:Name="BtnGalleryWindowNext"
+                MinWidth="48"
+                MinHeight="48"
+                Margin="0,0,16,0"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="BtnGalleryWindowNext"
+                AutomationProperties.Name="Next"
+                Command="{x:Bind Gallery.GoNextCommand}"
+                IsEnabled="{x:Bind Gallery.CanGoNext, Mode=OneWay}"
+                ToolTipService.ToolTip="Next">
+                <SymbolIcon Symbol="Forward" />
+            </Button>
+        </Grid>
+
+        <Grid
+            Grid.Row="2"
+            Padding="16,12"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            ColumnSpacing="12"
+            RowSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="8">
+                <TextBlock
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="{x:Bind Gallery.Title, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+                <ItemsControl
+                    x:Name="LstGalleryWindowTags"
+                    AutomationProperties.AutomationId="LstGalleryWindowTags"
+                    AutomationProperties.Name="Tags"
+                    ItemsSource="{x:Bind Gallery.Tags, Mode=OneWay}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="8" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:AssignedTagItem">
+                            <Border
+                                Padding="8,4"
+                                Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="{StaticResource ControlCornerRadius}"
+                                Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock
+                                        Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind TagName, Mode=OneWay}" />
+                                    <TextBlock
+                                        Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind CountLabel, Mode=OneWay}"
+                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+            <Button
+                x:Name="BtnGalleryWindowClose"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="BtnGalleryWindowClose"
+                AutomationProperties.Name="Close"
+                Click="BtnGalleryWindowClose_Click"
+                Content="Close" />
+        </Grid>
+    </Grid>
+</Window>

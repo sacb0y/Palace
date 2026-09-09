@@ -145,7 +145,8 @@ public sealed class PalaceDb : IDisposable
                 Id TEXT PRIMARY KEY,
                 Name TEXT NOT NULL,
                 Priority INTEGER NOT NULL DEFAULT 0,
-                Slug TEXT NOT NULL
+                Slug TEXT NOT NULL,
+                Color TEXT
             );
 
             CREATE TABLE IF NOT EXISTS TagMembership (
@@ -246,8 +247,21 @@ public sealed class PalaceDb : IDisposable
             """;
         cmd.ExecuteNonQuery();
         MigrateLegacyFacets();
+        EnsureTagColorColumn();
         SeedDefaults();
         EnsureDefaultProject();
+    }
+
+    private void EnsureTagColorColumn()
+    {
+        if (ColumnExists("Tag", "Color"))
+        {
+            return;
+        }
+
+        using var alter = _connection.CreateCommand();
+        alter.CommandText = "ALTER TABLE Tag ADD COLUMN Color TEXT";
+        alter.ExecuteNonQuery();
     }
 
     private void MigrateLegacyFacets()

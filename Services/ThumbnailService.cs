@@ -1,7 +1,6 @@
 using Palace.Helpers;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
-using Windows.Storage.Streams;
 
 namespace Palace.Services;
 
@@ -9,6 +8,8 @@ public readonly record struct ThumbnailInfo(string Path, int Width, int Height);
 
 public sealed class ThumbnailService
 {
+    public const int MaxSide = 512;
+
     private readonly string _root;
 
     public ThumbnailService(string thumbsRoot)
@@ -19,6 +20,27 @@ public sealed class ThumbnailService
 
     public string PathForHash(string hash) => Path.Combine(_root, $"{hash}.jpg");
 
+    public void TryDelete(string? hash)
+    {
+        if (string.IsNullOrEmpty(hash))
+        {
+            return;
+        }
+
+        var path = PathForHash(hash);
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Best-effort cache cleanup.
+        }
+    }
+
     public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
     {
         if (string.IsNullOrEmpty(hash) || kind == Models.AssetKind.Video || kind == Models.AssetKind.Other)
@@ -27,7 +49,7 @@ public sealed class ThumbnailService
         }
 
         var dest = PathForHash(hash);
-        if (File.Exists(dest))
+        if (File.Exists(dest) && !ShouldRegenerate(dest, filePath))
         {
             var existing = ImageDimensions.TryRead(dest);
             return existing is { } size
@@ -47,8 +69,7 @@ public sealed class ThumbnailService
                 return null;
             }
 
-            const uint max = 256;
-            var scale = Math.Min(max / (double)width, max / (double)height);
+            var scale = Math.Min(MaxSide / (double)width, MaxSide / (double)height);
             scale = Math.Min(scale, 1.0);
             var tw = Math.Max(1u, (uint)Math.Round(width * scale));
             var th = Math.Max(1u, (uint)Math.Round(height * scale));
@@ -88,5 +109,29 @@ public sealed class ThumbnailService
                 ? new ThumbnailInfo(dest, size.Width, size.Height)
                 : new ThumbnailInfo(dest, 0, 0);
         }
+    }
+
+    private static bool ShouldRegenerate(string dest, string originalPath)
+    {
+        var thumb = ImageDimensions.TryRead(dest);
+        if (thumb is null)
+        {
+            return true;
+        }
+
+        var thumbMax = Math.Max(thumb.Value.Width, thumb.Value.Height);
+        if (thumbMax >= MaxSide)
+        {
+            return false;
+        }
+
+        var original = ImageDimensions.TryRead(originalPath);
+        if (original is null)
+        {
+            return false;
+        }
+
+        var originalMax = Math.Max(original.Value.Width, original.Value.Height);
+        return originalMax > thumbMax;
     }
 }

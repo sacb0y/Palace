@@ -134,16 +134,23 @@ public sealed class CatalogService
         _db.WriteAsync(conn =>
         {
             using var tx = conn.BeginTransaction();
-            using (var fts = conn.CreateCommand())
+            using (var rows = conn.CreateCommand())
             {
-                fts.Transaction = tx;
-                fts.CommandText = """
-                    DELETE FROM AssetFts WHERE rowid IN (
-                        SELECT RowId FROM Asset WHERE SourceFolderId = $id
-                    );
-                    """;
-                fts.Parameters.AddWithValue("$id", id);
-                fts.ExecuteNonQuery();
+                rows.Transaction = tx;
+                rows.CommandText = "SELECT RowId FROM Asset WHERE SourceFolderId = $id";
+                rows.Parameters.AddWithValue("$id", id);
+                using var reader = rows.ExecuteReader();
+                var rowIds = new List<long>();
+                while (reader.Read())
+                {
+                    rowIds.Add(reader.GetInt64(0));
+                }
+
+                reader.Close();
+                foreach (var rowId in rowIds)
+                {
+                    DeleteFtsRow(conn, rowId, tx);
+                }
             }
 
             using (var del = conn.CreateCommand())
@@ -229,6 +236,50 @@ public sealed class CatalogService
             cmd.Parameters.AddWithValue("$id", assetId);
             cmd.ExecuteNonQuery();
             RefreshFts(conn, assetId);
+        });
+
+    public Task DeleteAssetsAsync(IEnumerable<string> assetIds) =>
+        _db.WriteAsync(conn =>
+        {
+            var ids = assetIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToList();
+            if (ids.Count == 0)
+            {
+                return;
+            }
+
+            using var tx = conn.BeginTransaction();
+            foreach (var id in ids)
+            {
+                using var row = conn.CreateCommand();
+                row.Transaction = tx;
+                row.CommandText = "SELECT RowId FROM Asset WHERE Id = $id";
+                row.Parameters.AddWithValue("$id", id);
+                var rowId = row.ExecuteScalar();
+                if (rowId is not null and not DBNull)
+                {
+                    DeleteFtsRow(conn, Convert.ToInt64(rowId), tx);
+                }
+
+                using var batch = conn.CreateCommand();
+                batch.Transaction = tx;
+                batch.CommandText = "DELETE FROM OrganizeBatchItem WHERE AssetId = $id";
+                batch.Parameters.AddWithValue("$id", id);
+                batch.ExecuteNonQuery();
+
+                using var ai = conn.CreateCommand();
+                ai.Transaction = tx;
+                ai.CommandText = "DELETE FROM AiJob WHERE AssetId = $id";
+                ai.Parameters.AddWithValue("$id", id);
+                ai.ExecuteNonQuery();
+
+                using var del = conn.CreateCommand();
+                del.Transaction = tx;
+                del.CommandText = "DELETE FROM Asset WHERE Id = $id";
+                del.Parameters.AddWithValue("$id", id);
+                del.ExecuteNonQuery();
+            }
+
+            tx.Commit();
         });
 
     public Task MarkOrphanAsync(string assetId, bool orphan) =>
@@ -320,7 +371,7 @@ public sealed class CatalogService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, Name, Priority, Slug FROM Tag
+                SELECT Id, Name, Priority, Slug, Color FROM Tag
                 WHERE Name = $name COLLATE NOCASE
                 LIMIT 1
                 """;
@@ -361,6 +412,118 @@ public sealed class CatalogService
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
         });
+
+    public Task SetTagColorAsync(string id, string? color) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Tag SET Color = $c WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$c", (object?)TagColor.Normalize(color) ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        });
+
+    public string? EffectiveColor(Tag tag, IReadOnlyList<Tag> tags, IReadOnlyList<TagMembership> memberships) =>
+        MapEffectiveColors(tags, memberships).GetValueOrDefault(tag.Id);
+
+    public static IReadOnlyDictionary<string, string?> MapEffectiveColors(
+        IReadOnlyList<Tag> tags,
+        IReadOnlyList<TagMembership> memberships)
+    {
+        var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
+        var parents = new Dictionary<string, List<Tag>>(StringComparer.Ordinal);
+        foreach (var edge in memberships)
+        {
+            if (!byId.TryGetValue(edge.ParentId, out var parent))
+            {
+                continue;
+            }
+
+            if (!parents.TryGetValue(edge.ChildId, out var list))
+            {
+                list = [];
+                parents[edge.ChildId] = list;
+            }
+
+            list.Add(parent);
+        }
+
+        var cache = new Dictionary<string, string?>(StringComparer.Ordinal);
+        foreach (var tag in tags)
+        {
+            ResolveEffectiveColor(tag.Id, byId, parents, cache, []);
+        }
+
+        return cache;
+    }
+
+    public static string DescribeTagColor(
+        Tag tag,
+        IReadOnlyList<Tag> tags,
+        IReadOnlyList<TagMembership> memberships)
+    {
+        if (!string.IsNullOrWhiteSpace(tag.Color) && TagColor.Normalize(tag.Color) is not null)
+        {
+            return "Custom";
+        }
+
+        var colors = MapEffectiveColors(tags, memberships);
+        if (colors.GetValueOrDefault(tag.Id) is null)
+        {
+            return "No color";
+        }
+
+        var ancestor = FindColorAncestorName(tag.Id, tags.ToDictionary(t => t.Id, StringComparer.Ordinal), memberships);
+        return ancestor is null ? "Inherited" : $"Inherited from {ancestor}";
+    }
+
+    public async Task<int> BackfillImplicationAddedAsync(string sourceTagId, CancellationToken cancellationToken = default)
+    {
+        var assetIds = await _db.ReadAsync(conn =>
+        {
+            var sources = TagsThatImply(conn, sourceTagId);
+            sources.Add(sourceTagId);
+            return AssetsHavingAnyTag(conn, sources);
+        }).ConfigureAwait(false);
+
+        var updated = 0;
+        foreach (var chunk in assetIds.Chunk(75))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            updated += await _db.WriteAsync(conn => ApplyMissingImplied(conn, chunk)).ConfigureAwait(false);
+        }
+
+        return updated;
+    }
+
+    public async Task<int> BackfillImplicationRemovedAsync(string impliedTagId, CancellationToken cancellationToken = default)
+    {
+        var assetIds = await _db.ReadAsync(conn => AssetsHavingAnyTag(conn, [impliedTagId])).ConfigureAwait(false);
+        var updated = 0;
+        foreach (var chunk in assetIds.Chunk(75))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            updated += await _db.WriteAsync(conn =>
+            {
+                var count = 0;
+                foreach (var assetId in chunk)
+                {
+                    var before = LoadAssignedRefs(conn, assetId);
+                    SweepUnjustifiedImplied(conn, assetId);
+                    var after = LoadAssignedRefs(conn, assetId);
+                    if (before.Count != after.Count)
+                    {
+                        RefreshFts(conn, assetId);
+                        count++;
+                    }
+                }
+
+                return count;
+            }).ConfigureAwait(false);
+        }
+
+        return updated;
+    }
 
     public Task<bool> AddMembershipAsync(string parentId, string childId) =>
         _db.WriteAsync(conn => TryAddMembership(conn, parentId, childId));
@@ -454,21 +617,7 @@ public sealed class CatalogService
             // implying tag went away. We do not re-apply implications here, so removing
             // an Implied tag while its source tag stays assigned keeps that removal.
             DeleteAssetTag(conn, assetId, tagId);
-            var remaining = GetAssignedTags(conn, assetId);
-            var justified = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var assigned in remaining.Where(t => t.Source != TagSource.Implied))
-            {
-                foreach (var impliedId in TransitiveImplied(conn, assigned.TagId))
-                {
-                    justified.Add(impliedId);
-                }
-            }
-
-            foreach (var orphan in remaining.Where(t => t.Source == TagSource.Implied && !justified.Contains(t.TagId)))
-            {
-                DeleteAssetTag(conn, assetId, orphan.TagId);
-            }
-
+            SweepUnjustifiedImplied(conn, assetId);
             RefreshFts(conn, assetId);
         });
 
@@ -753,31 +902,55 @@ public sealed class CatalogService
 
     public void RefreshFts(SqliteConnection conn, string assetId)
     {
-        var asset = GetAssetById(conn, assetId);
-        if (asset is null)
+        try
         {
-            return;
+            var asset = GetAssetById(conn, assetId);
+            if (asset is null)
+            {
+                return;
+            }
+
+            var tags = string.Join(" ", AssignedTagNamesForFts(conn, assetId));
+            DeleteFtsRow(conn, asset.RowId);
+
+            using var ins = conn.CreateCommand();
+            ins.CommandText = """
+                INSERT INTO AssetFts (rowid, FileName, Path, Tags, Prompt, Model, Notes)
+                VALUES ($row, $name, $path, $tags, $prompt, $model, $notes)
+                """;
+            ins.Parameters.AddWithValue("$row", asset.RowId);
+            ins.Parameters.AddWithValue("$name", asset.FileName);
+            ins.Parameters.AddWithValue("$path", asset.Path);
+            ins.Parameters.AddWithValue("$tags", tags);
+            ins.Parameters.AddWithValue("$prompt", asset.Prompt ?? "");
+            ins.Parameters.AddWithValue("$model", asset.Model ?? "");
+            ins.Parameters.AddWithValue("$notes", asset.Notes ?? "");
+            ins.ExecuteNonQuery();
         }
+        catch (SqliteException)
+        {
+            // Tag writes must succeed even if the contentless FTS index is stale.
+        }
+    }
 
-        var tags = string.Join(" ", GetAssignedTags(conn, assetId).Select(t => t.TagName));
-        using var del = conn.CreateCommand();
-        del.CommandText = "DELETE FROM AssetFts WHERE rowid = $row";
-        del.Parameters.AddWithValue("$row", asset.RowId);
-        del.ExecuteNonQuery();
-
-        using var ins = conn.CreateCommand();
-        ins.CommandText = """
-            INSERT INTO AssetFts (rowid, FileName, Path, Tags, Prompt, Model, Notes)
-            VALUES ($row, $name, $path, $tags, $prompt, $model, $notes)
+    private static void DeleteFtsRow(SqliteConnection conn, long rowId, SqliteTransaction? tx = null)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        // content='' FTS5 tables reject DELETE; tombstone with the 'delete' command.
+        cmd.CommandText = """
+            INSERT INTO AssetFts(AssetFts, rowid, FileName, Path, Tags, Prompt, Model, Notes)
+            VALUES('delete', $row, '', '', '', '', '', '')
             """;
-        ins.Parameters.AddWithValue("$row", asset.RowId);
-        ins.Parameters.AddWithValue("$name", asset.FileName);
-        ins.Parameters.AddWithValue("$path", asset.Path);
-        ins.Parameters.AddWithValue("$tags", tags);
-        ins.Parameters.AddWithValue("$prompt", asset.Prompt ?? "");
-        ins.Parameters.AddWithValue("$model", asset.Model ?? "");
-        ins.Parameters.AddWithValue("$notes", asset.Notes ?? "");
-        ins.ExecuteNonQuery();
+        cmd.Parameters.AddWithValue("$row", rowId);
+        try
+        {
+            cmd.ExecuteNonQuery();
+        }
+        catch (SqliteException)
+        {
+            // Row was never indexed.
+        }
     }
 
     internal void UpsertAsset(SqliteConnection conn, Asset asset, string tagsText)
@@ -860,22 +1033,32 @@ public sealed class CatalogService
             """;
         cmd.Parameters.AddWithValue("$id", assetId);
         var list = new List<AssignedTag>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        using (var reader = cmd.ExecuteReader())
         {
-            list.Add(new AssignedTag
+            while (reader.Read())
             {
-                TagId = reader.GetString(0),
-                TagName = reader.GetString(1),
-                TagPriority = reader.GetInt32(2),
-                Source = Enum.Parse<TagSource>(reader.GetString(3)),
-                Slug = reader.GetString(4)
-            });
+                list.Add(new AssignedTag
+                {
+                    TagId = reader.GetString(0),
+                    TagName = reader.GetString(1),
+                    TagPriority = reader.GetInt32(2),
+                    Source = Enum.Parse<TagSource>(reader.GetString(3)),
+                    Slug = reader.IsDBNull(4) ? "" : reader.GetString(4)
+                });
+            }
         }
 
+        var tags = LoadTags(conn);
+        var memberships = LoadMemberships(conn);
+        var colors = MapEffectiveColors(tags, memberships);
+        var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
         foreach (var tag in list)
         {
-            tag.ParentNames = ParentsOf(conn, tag.TagId).Select(p => p.Name).ToList();
+            tag.ParentNames = memberships
+                .Where(m => m.ChildId == tag.TagId && byId.ContainsKey(m.ParentId))
+                .Select(m => byId[m.ParentId].Name)
+                .ToList();
+            tag.EffectiveColor = colors.GetValueOrDefault(tag.TagId);
         }
 
         return list;
@@ -958,7 +1141,8 @@ public sealed class CatalogService
                 Id = reader.GetString(0),
                 Name = reader.GetString(1),
                 Priority = reader.GetInt32(2),
-                Slug = reader.GetString(3)
+                Slug = reader.GetString(3),
+                Color = reader.FieldCount > 4 && !reader.IsDBNull(4) ? reader.GetString(4) : null
             });
         }
 
@@ -968,7 +1152,7 @@ public sealed class CatalogService
     private static List<Tag> LoadTags(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Priority, Slug FROM Tag ORDER BY Priority DESC, Name COLLATE NOCASE";
+        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color FROM Tag ORDER BY Priority DESC, Name COLLATE NOCASE";
         return ReadTags(cmd);
     }
 
@@ -1082,6 +1266,224 @@ public sealed class CatalogService
         }
 
         return found;
+    }
+
+    private static string? ResolveEffectiveColor(
+        string tagId,
+        IReadOnlyDictionary<string, Tag> tags,
+        IReadOnlyDictionary<string, List<Tag>> parents,
+        Dictionary<string, string?> cache,
+        HashSet<string> visiting)
+    {
+        if (cache.TryGetValue(tagId, out var cached))
+        {
+            return cached;
+        }
+
+        if (!visiting.Add(tagId) || !tags.TryGetValue(tagId, out var tag))
+        {
+            return null;
+        }
+
+        if (TagColor.Normalize(tag.Color) is { } own)
+        {
+            cache[tagId] = own;
+            visiting.Remove(tagId);
+            return own;
+        }
+
+        if (!parents.TryGetValue(tagId, out var list) || list.Count == 0)
+        {
+            cache[tagId] = null;
+            visiting.Remove(tagId);
+            return null;
+        }
+
+        var winner = list
+            .OrderByDescending(p => p.Priority)
+            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .First();
+        var inherited = ResolveEffectiveColor(winner.Id, tags, parents, cache, visiting);
+        cache[tagId] = inherited;
+        visiting.Remove(tagId);
+        return inherited;
+    }
+
+    private static string? FindColorAncestorName(
+        string tagId,
+        IReadOnlyDictionary<string, Tag> tags,
+        IReadOnlyList<TagMembership> memberships)
+    {
+        var parents = new Dictionary<string, List<Tag>>(StringComparer.Ordinal);
+        foreach (var edge in memberships)
+        {
+            if (!tags.TryGetValue(edge.ParentId, out var parent))
+            {
+                continue;
+            }
+
+            if (!parents.TryGetValue(edge.ChildId, out var list))
+            {
+                list = [];
+                parents[edge.ChildId] = list;
+            }
+
+            list.Add(parent);
+        }
+
+        var current = tagId;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        while (seen.Add(current) && tags.TryGetValue(current, out var tag))
+        {
+            if (current != tagId && TagColor.Normalize(tag.Color) is not null)
+            {
+                return tag.Name;
+            }
+
+            if (!parents.TryGetValue(current, out var list) || list.Count == 0)
+            {
+                return null;
+            }
+
+            current = list
+                .OrderByDescending(p => p.Priority)
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .First().Id;
+        }
+
+        return null;
+    }
+
+    private static List<string> TagsThatImply(SqliteConnection conn, string targetId)
+    {
+        var sources = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var edge in LoadImplications(conn))
+        {
+            if (!sources.TryGetValue(edge.ImpliedTagId, out var list))
+            {
+                list = [];
+                sources[edge.ImpliedTagId] = list;
+            }
+
+            list.Add(edge.TagId);
+        }
+
+        var found = new List<string>();
+        var stack = new Stack<string>();
+        stack.Push(targetId);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { targetId };
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!sources.TryGetValue(current, out var parents))
+            {
+                continue;
+            }
+
+            foreach (var parent in parents)
+            {
+                if (seen.Add(parent))
+                {
+                    found.Add(parent);
+                    stack.Push(parent);
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private static List<string> AssetsHavingAnyTag(SqliteConnection conn, IReadOnlyList<string> tagIds)
+    {
+        var ids = tagIds.Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        using var cmd = conn.CreateCommand();
+        var names = new List<string>();
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var p = $"$t{i}";
+            names.Add(p);
+            cmd.Parameters.AddWithValue(p, ids[i]);
+        }
+
+        cmd.CommandText = $"SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({string.Join(",", names)})";
+        var list = new List<string>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(reader.GetString(0));
+        }
+
+        return list;
+    }
+
+    private int ApplyMissingImplied(SqliteConnection conn, IReadOnlyList<string> assetIds)
+    {
+        var updated = 0;
+        foreach (var assetId in assetIds)
+        {
+            var assigned = LoadAssignedRefs(conn, assetId);
+            var have = assigned.Select(t => t.TagId).ToHashSet(StringComparer.Ordinal);
+            var changed = false;
+            foreach (var tag in assigned)
+            {
+                foreach (var impliedId in TransitiveImplied(conn, tag.TagId))
+                {
+                    if (!have.Add(impliedId))
+                    {
+                        continue;
+                    }
+
+                    UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied);
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                RefreshFts(conn, assetId);
+                updated++;
+            }
+        }
+
+        return updated;
+    }
+
+    private static List<(string TagId, TagSource Source)> LoadAssignedRefs(SqliteConnection conn, string assetId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT TagId, Source FROM AssetTag WHERE AssetId = $id";
+        cmd.Parameters.AddWithValue("$id", assetId);
+        var list = new List<(string, TagSource)>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add((reader.GetString(0), Enum.Parse<TagSource>(reader.GetString(1))));
+        }
+
+        return list;
+    }
+
+    private static void SweepUnjustifiedImplied(SqliteConnection conn, string assetId)
+    {
+        var remaining = LoadAssignedRefs(conn, assetId);
+        var justified = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var assigned in remaining.Where(t => t.Source != TagSource.Implied))
+        {
+            foreach (var impliedId in TransitiveImplied(conn, assigned.TagId))
+            {
+                justified.Add(impliedId);
+            }
+        }
+
+        foreach (var orphan in remaining.Where(t => t.Source == TagSource.Implied && !justified.Contains(t.TagId)))
+        {
+            DeleteAssetTag(conn, assetId, orphan.TagId);
+        }
     }
 
     private static Tag InsertTag(SqliteConnection conn, string name, int priority)
@@ -1232,10 +1634,12 @@ public sealed class CatalogService
         cmd.CommandText = "SELECT DISTINCT AssetId FROM AssetTag WHERE TagId = $id";
         cmd.Parameters.AddWithValue("$id", tagId);
         var ids = new List<string>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        using (var reader = cmd.ExecuteReader())
         {
-            ids.Add(reader.GetString(0));
+            while (reader.Read())
+            {
+                ids.Add(reader.GetString(0));
+            }
         }
 
         foreach (var assetId in ids)
@@ -1244,17 +1648,54 @@ public sealed class CatalogService
         }
     }
 
+    private static IEnumerable<string> AssignedTagNamesForFts(SqliteConnection conn, string assetId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT t.Name FROM AssetTag at JOIN Tag t ON t.Id = at.TagId WHERE at.AssetId = $id";
+        cmd.Parameters.AddWithValue("$id", assetId);
+        var names = new List<string>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (!reader.IsDBNull(0))
+            {
+                names.Add(reader.GetString(0));
+            }
+        }
+
+        return names;
+    }
+
     private static string ToFtsQuery(string query)
     {
-        var parts = query.Split([' ', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 0)
+        var parts = new List<string>();
+        var current = new System.Text.StringBuilder();
+        foreach (var ch in query)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                current.Append(ch);
+            }
+            else if (current.Length > 0)
+            {
+                parts.Add(current.ToString());
+                current.Clear();
+            }
+        }
+
+        if (current.Length > 0)
+        {
+            parts.Add(current.ToString());
+        }
+
+        if (parts.Count == 0)
         {
             return "\"\"";
         }
 
         return string.Join(" AND ", parts.Select(p =>
         {
-            var clean = p.Replace("\"", "").Replace("*", "");
+            var clean = p.Replace("\"", "");
             return string.IsNullOrWhiteSpace(clean) ? "\"\"" : $"{clean}*";
         }));
     }
