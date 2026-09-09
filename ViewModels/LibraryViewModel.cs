@@ -1504,14 +1504,14 @@ public partial class LibraryViewModel : ObservableObject
     {
         gallery = null!;
         var start = item ?? SelectedAsset ?? _selection.LastOrDefault();
-        if (start is null || Assets.Count == 0)
+        if (!GalleryMedia.CanOpen(Assets.Count, start is not null))
         {
             Notify("Select an asset first.");
             return false;
         }
 
         var snapshot = Assets.ToList();
-        var index = snapshot.FindIndex(a => a.Id == start.Id);
+        var index = GalleryMedia.StartIndex(snapshot.Select(a => a.Id).ToList(), start!.Id);
         gallery = new GalleryViewModel(snapshot, index < 0 ? 0 : index, _catalog);
         return true;
     }

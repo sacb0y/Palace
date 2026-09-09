@@ -29,6 +29,8 @@ public partial class AssetItem : ObservableObject
     [ObservableProperty]
     public partial string Path { get; set; } = "";
 
+    public string? ContentHash { get; set; }
+
     [ObservableProperty]
     public partial string? ThumbPath { get; set; }
 

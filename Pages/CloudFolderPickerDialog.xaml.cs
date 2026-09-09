@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
+using Palace.Helpers;
 using Palace.Services.Cloud;
 
 namespace Palace.Pages;
@@ -11,10 +11,15 @@ public sealed partial class CloudFolderPickerDialog : ContentDialog
     private readonly ICloudLibrary _library;
     private readonly List<CloudEntry> _stack = [];
 
-    public CloudFolderPickerDialog(ICloudLibrary library)
+    public CloudFolderPickerDialog(ICloudLibrary library, string? projectName = null)
     {
         _library = library;
         InitializeComponent();
+        if (!string.IsNullOrWhiteSpace(projectName))
+        {
+            Title = "Pick a cloud folder for " + projectName;
+        }
+
         Opened += async (_, _) => await LoadChildrenAsync();
         PrimaryButtonClick += OnPrimaryButtonClick;
     }
@@ -34,9 +39,9 @@ public sealed partial class CloudFolderPickerDialog : ContentDialog
         await LoadChildrenAsync();
     }
 
-    private async void LstCloudFolders_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private async void LstCloudFolders_ItemClick(object sender, ItemClickEventArgs e)
     {
-        if (LstCloudFolders.SelectedItem is not CloudEntry folder)
+        if (e.ClickedItem is not CloudEntry folder)
         {
             return;
         }
@@ -56,9 +61,9 @@ public sealed partial class CloudFolderPickerDialog : ContentDialog
         {
             return new CloudEntry
             {
-                Id = "",
+                Id = CloudSourcePath.NormalizeRootItemId("") ?? "",
                 Name = "Root",
-                DisplayPath = "Root",
+                DisplayPath = CloudSourcePath.FolderDisplay(null),
                 IsFolder = true
             };
         }
@@ -67,9 +72,9 @@ public sealed partial class CloudFolderPickerDialog : ContentDialog
         var current = _stack[^1];
         return new CloudEntry
         {
-            Id = current.Id,
+            Id = CloudSourcePath.NormalizeRootItemId(current.Id) ?? current.Id,
             Name = current.Name,
-            DisplayPath = names,
+            DisplayPath = CloudSourcePath.FolderDisplay(names),
             IsFolder = true
         };
     }

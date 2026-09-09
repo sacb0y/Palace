@@ -23,6 +23,7 @@ public static class AssetItemMapper
         item.SourceFolderId = asset.SourceFolderId;
         item.FileName = asset.FileName;
         item.Path = asset.Path;
+        item.ContentHash = asset.ContentHash;
         item.ThumbPath = thumbs.ExistingPathForHash(asset.ContentHash);
         item.Kind = asset.Kind;
         item.IsOrphan = asset.IsOrphan;

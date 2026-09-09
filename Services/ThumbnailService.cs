@@ -21,11 +21,8 @@ public sealed class ThumbnailService
         Directory.CreateDirectory(_root);
     }
 
-    public string PathForHash(string hash, string? suffix = null)
-    {
-        var safe = SanitizeHash(hash);
-        return Path.Combine(_root, string.IsNullOrEmpty(suffix) ? $"{safe}.jpg" : $"{safe}{suffix}.jpg");
-    }
+    public string PathForHash(string hash, string? suffix = null) =>
+        Path.Combine(_root, ThumbFileName.FileName(hash, suffix));
 
     public string? ExistingPathForHash(string? hash, string? suffix = null)
     {
@@ -83,9 +80,14 @@ public sealed class ThumbnailService
             return await EnsureOnlineOnlyThumbnailAsync(filePath, hash, kind).ConfigureAwait(false);
         }
 
-        if (kind == Models.AssetKind.Video || kind == Models.AssetKind.Other)
+        if (kind == Models.AssetKind.Other)
         {
             return ReadCached(hash);
+        }
+
+        if (kind == Models.AssetKind.Video)
+        {
+            return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
         }
 
         var dest = PathForHash(hash);
@@ -141,6 +143,21 @@ public sealed class ThumbnailService
         if (kind == Models.AssetKind.Other)
         {
             return null;
+        }
+
+        return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Windows shell / provider poster. Used for videos and online-only
+    /// placeholders — never opens a decode stream on the original file.
+    /// </summary>
+    private async Task<ThumbnailInfo?> EnsureShellThumbnailAsync(string filePath, string hash)
+    {
+        var cached = ReadCached(hash);
+        if (cached is not null)
+        {
+            return cached;
         }
 
         try
@@ -243,15 +260,5 @@ public sealed class ThumbnailService
         return originalMax > thumbMax;
     }
 
-    internal static string SanitizeHash(string hash)
-    {
-        var buffer = new char[hash.Length];
-        for (var i = 0; i < hash.Length; i++)
-        {
-            var ch = hash[i];
-            buffer[i] = char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_';
-        }
-
-        return new string(buffer);
-    }
+    internal static string SanitizeHash(string hash) => ThumbFileName.Sanitize(hash);
 }

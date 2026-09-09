@@ -27,7 +27,7 @@
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Cloud accounts" />
             <TextBlock
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Public-client app IDs stay on this device. Register the redirect URI below on the provider app and enable public client flows." />
+                Text="Public-client app IDs stay on this device. Register the redirect URI below on the provider app and enable public client flows. Connecting OneDrive or Dropbox asks which cloud folder belongs to the current project." />
             <TextBox
                 x:Name="TxtCloudRedirectUri"
                 AutomationProperties.AutomationId="TxtCloudRedirectUri"
