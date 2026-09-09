@@ -217,6 +217,7 @@
                             AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
+                            Tag="{x:Bind Id, Mode=OneWay}"
                             ManipulationMode="None"
                             PointerPressed="AssetItem_PointerPressed"
                             RightTapped="AssetItem_RightTapped">
@@ -654,8 +655,9 @@
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
             <Grid>
                 <Image
+                    x:Name="ImgOverlay"
                     Stretch="Uniform"
-                    Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.CurrentPath), Mode=OneWay, FallbackValue={x:Null}}"
+                    Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.PreviewImageUri), Mode=OneWay, FallbackValue={x:Null}}"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
                 <MediaPlayerElement
                     x:Name="MpeOverlay"
@@ -663,6 +665,19 @@
                     AutoPlay="False"
                     AutomationProperties.AutomationId="MpeGalleryOverlay"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
+                <Button
+                    x:Name="BtnGalleryPlay"
+                    MinWidth="72"
+                    MinHeight="72"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnGalleryPlay"
+                    AutomationProperties.Name="Play"
+                    Click="BtnGalleryPlay_Click"
+                    ToolTipService.ToolTip="Play"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
+                    <ic:FluentIcon Icon="Play" IconSize="Size32" IconVariant="Regular" />
+                </Button>
                 <TextBlock
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"

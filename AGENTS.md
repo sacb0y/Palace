@@ -45,6 +45,9 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 | Asset → tile | `Helpers/AssetItemMapper.cs` (not ad-hoc `ToItem` probes) |
 | UI thread hops | `Helpers/UiDispatch.cs` |
 | On-Demand detect | `Helpers/CloudFile.cs` |
+| Thumb cache names | `Helpers/ThumbFileName.cs` |
+| Overlay / mosaic media | `Helpers/GalleryMedia.cs` |
+| Cloud source paths | `Helpers/CloudSourcePath.cs` |
 | Room icon ids | `Helpers/RoomIcons.cs` |
 | Fluent enum parse | `Helpers/FluentGlyph.cs` (XAML only) |
 | UI tests | `ui-tests.ps1` (`winapp ui`, AutomationIds) |
@@ -67,6 +70,10 @@ Opening a project, Library, or a large folder must stay interactive.
 - Mutate `Assets` only on the UI thread (`UiDispatch`). After chunks, `LinedFlowLayout.InvalidateItemsInfo` (`MosaicChunkAppended`).
 - `ToItem` → `AssetItemMapper.FromAsset`. Never `File.Exists` or `ImageDimensions.TryRead` on the **original** while building the mosaic. Use stored Width/Height or a default aspect.
 - Lazy thumbs: bind `ThumbImage`, not a static `FileToImage` during measure. Decode only realized tiles; cap in-flight decodes.
+- `ItemsView` may not set `DataContext` on tiles. Stamp `Tag="{x:Bind Id, Mode=OneWay}"` and resolve via `GalleryMedia.FindAssetId` so double-click / lazy decode still find the `AssetItem`.
+- `AssetItem.ContentHash` is required for lazy generate and viewport upgrade. Do not recover the hash from the JPEG file name.
+- Overlay image/video sources are applied in code-behind (`UpdateOverlayMedia`). Do not rely only on nested `x:Bind` of `OverlayGallery.CurrentPath` through a converter — that path is null until `LoadCurrentAsync` finishes and often never refreshes.
+- Video posters use `StorageFile.GetThumbnailAsync` (shell/provider stream), not `BitmapDecoder` on the original. Overlay play uses `MediaPlayer.Play()` (`BtnGalleryPlay`).
 - `UpgradeThumbsAsync`: viewport only, never on first paint, skip `IsOnlineOnly`.
 
 ## Cloud files — do not download the original
@@ -74,7 +81,7 @@ Opening a project, Library, or a large folder must stay interactive.
 Two source kinds:
 
 1. **Local + Files On-Demand** (OneDrive/Dropbox sync folders added with the normal folder picker).
-2. **API sources** (`SourceKind.OneDrive` / `Dropbox`) after Settings → Connect. Index via Graph / Dropbox `list_folder`. Store `CloudItemId` + display path.
+2. **API sources** (`SourceKind.OneDrive` / `Dropbox`) after Settings → Connect. Connect opens the cloud-folder picker for the **current project**. Index via Graph / Dropbox `list_folder`. Store `CloudItemId` (`SourceFolder.CloudRootItemId`) + display path (`CloudSourcePath.Build`). Path stays UNIQUE across projects.
 
 Detect On-Demand with `CloudFile.IsOnlineOnly` (`File.GetAttributes` only): `RecallOnDataAccess` (`0x00400000`), `RecallOnOpen`, `Offline`. **Never open a stream** to test this.
 
@@ -108,7 +115,7 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 .\ui-tests.ps1 -AppPid <pid>
 ```
 
-`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`). Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
+`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`), `RoomIcons.Normalize`, `ThumbFileName`, `GalleryMedia`, and `CloudSourcePath`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
 
 ## Cursor Cloud specific instructions
 

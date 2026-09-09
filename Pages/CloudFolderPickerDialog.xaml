@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:cloud="using:Palace.Services.Cloud"
     xmlns:ic="using:FluentIcons.WinUI"
-    Title="Pick a cloud folder"
+    Title="Pick a cloud folder for this project"
     CloseButtonText="Cancel"
     DefaultButton="Primary"
     PrimaryButtonText="Use this folder"
@@ -14,16 +14,24 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="280" />
         </Grid.RowDefinitions>
         <TextBlock
+            x:Name="TxtCloudFolderHint"
+            AutomationProperties.AutomationId="TxtCloudFolderHint"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            Text="Click a folder to open it. Use this folder adds the current location to this project."
+            TextWrapping="Wrap" />
+        <TextBlock
             x:Name="TxtCloudFolderPath"
+            Grid.Row="1"
             AutomationProperties.AutomationId="TxtCloudFolderPath"
             Style="{StaticResource BodyTextBlockStyle}"
             Text="Root" />
         <Button
             x:Name="BtnCloudFolderUp"
-            Grid.Row="1"
+            Grid.Row="2"
             AutomationProperties.AutomationId="BtnCloudFolderUp"
             Click="BtnCloudFolderUp_Click"
             IsEnabled="False">
@@ -34,10 +42,11 @@
         </Button>
         <ListView
             x:Name="LstCloudFolders"
-            Grid.Row="2"
+            Grid.Row="3"
             AutomationProperties.AutomationId="LstCloudFolders"
             AutomationProperties.Name="Cloud folders"
-            DoubleTapped="LstCloudFolders_DoubleTapped"
+            IsItemClickEnabled="True"
+            ItemClick="LstCloudFolders_ItemClick"
             ItemsSource="{x:Bind Folders, Mode=OneWay}">
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="cloud:CloudEntry">

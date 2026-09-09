@@ -11,6 +11,7 @@ using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
 using Windows.Media.Core;
+using Windows.Media.Playback;
 using Windows.Storage;
 using Windows.System;
 
@@ -154,13 +155,23 @@ public sealed partial class LibraryPage : Page
 
     public static BitmapImage? FileToFullImage(string? path)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path) || CloudFile.IsOnlineOnly(path))
+        if (string.IsNullOrEmpty(path))
         {
             return null;
         }
 
         try
         {
+            if (GalleryMedia.IsRemoteUri(path))
+            {
+                return new BitmapImage { UriSource = new Uri(path, UriKind.Absolute) };
+            }
+
+            if (!File.Exists(path) || CloudFile.IsOnlineOnly(path))
+            {
+                return null;
+            }
+
             return new BitmapImage
             {
                 UriSource = new Uri(path, UriKind.Absolute)
@@ -363,13 +374,26 @@ public sealed partial class LibraryPage : Page
         ViewModel.OpenOverlayCommand.Execute(item);
     }
 
-    private static AssetItem? FindAssetItem(object? source)
+    private AssetItem? FindAssetItem(object? source)
     {
         for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            if (current is FrameworkElement { DataContext: AssetItem item })
+            if (current is FrameworkElement element)
             {
-                return item;
+                if (element.DataContext is AssetItem bound)
+                {
+                    return bound;
+                }
+
+                var id = GalleryMedia.FindAssetId(element.Tag, element.DataContext);
+                if (!string.IsNullOrEmpty(id))
+                {
+                    var match = ViewModel.Assets.FirstOrDefault(a => a.Id == id);
+                    if (match is not null)
+                    {
+                        return match;
+                    }
+                }
             }
         }
 
@@ -378,7 +402,8 @@ public sealed partial class LibraryPage : Page
 
     private void AssetItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: AssetItem item })
+        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (item is not null)
         {
             EnsureSelectedForContext(item);
         }
@@ -386,9 +411,13 @@ public sealed partial class LibraryPage : Page
 
     private void AssetMenu_Opening(object sender, object e)
     {
-        if (sender is MenuFlyout { Target: FrameworkElement { DataContext: AssetItem item } })
+        if (sender is MenuFlyout { Target: FrameworkElement target })
         {
-            EnsureSelectedForContext(item);
+            var item = FindAssetItem(target);
+            if (item is not null)
+            {
+                EnsureSelectedForContext(item);
+            }
         }
     }
 
@@ -546,12 +575,12 @@ public sealed partial class LibraryPage : Page
 
     private async Task LoadTileThumbAsync(AssetItem item)
     {
-        if (item.IsOrphan || item.ThumbLoadStarted || item.ThumbImage is not null)
-        {
-            return;
-        }
-
-        if (string.IsNullOrEmpty(item.ThumbPath))
+        if (!GalleryMedia.ShouldLoadTileThumb(
+                item.IsOrphan,
+                item.ThumbLoadStarted,
+                item.ThumbImage is not null,
+                item.ThumbPath,
+                item.ContentHash))
         {
             return;
         }
@@ -566,6 +595,24 @@ public sealed partial class LibraryPage : Page
             }
 
             var path = item.ThumbPath;
+            if (string.IsNullOrEmpty(path)
+                && !string.IsNullOrEmpty(item.ContentHash)
+                && !item.IsOnlineOnly
+                && !string.IsNullOrEmpty(item.Path))
+            {
+                var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
+                path = generated?.Path;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    item.ThumbPath = path;
+                }
+            }
+
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
             await UiDispatch.RunAsync(() =>
             {
                 if (item.ThumbImage is not null)
@@ -630,13 +677,17 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
-            if (item.IsOnlineOnly || item.IsOrphan || string.IsNullOrEmpty(item.Path) || string.IsNullOrEmpty(item.ThumbPath))
+            if (!GalleryMedia.ShouldUpgradeThumb(
+                    _thumbsMayUpgrade,
+                    item.IsOnlineOnly,
+                    item.IsOrphan,
+                    item.Path,
+                    item.ContentHash))
             {
                 continue;
             }
 
-            var hash = Path.GetFileNameWithoutExtension(item.ThumbPath);
-            var info = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, hash, item.Kind);
+            var info = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
             if (epoch != _thumbUpgradeEpoch || info is null)
             {
                 continue;
@@ -673,7 +724,8 @@ public sealed partial class LibraryPage : Page
 
     private void OverlayGallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
+            if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
+            or nameof(GalleryViewModel.PreviewImageUri)
             or nameof(GalleryViewModel.IsVideo)
             or nameof(GalleryViewModel.IsImage))
         {
@@ -711,24 +763,66 @@ public sealed partial class LibraryPage : Page
         }
     }
 
+    private int _overlayMediaEpoch;
+
     private async void UpdateOverlayMedia()
     {
-        if (ViewModel.OverlayGallery is { IsVideo: true, CurrentPath: not null } gallery)
+        var epoch = Interlocked.Increment(ref _overlayMediaEpoch);
+        var gallery = ViewModel.OverlayGallery;
+        var still = gallery is { IsImage: true }
+            ? gallery.PreviewImageUri ?? gallery.CurrentPath
+            : null;
+        ImgOverlay.Source = FileToFullImage(still);
+
+        if (gallery is { IsVideo: true, CurrentPath: not null } video
+            && !AccessService.WouldHydrateOnOpen(video.CurrentPath))
         {
+            BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
             try
             {
-                var file = await StorageFile.GetFileFromPathAsync(gallery.CurrentPath);
+                EnsureOverlayPlayer();
+                var file = await StorageFile.GetFileFromPathAsync(video.CurrentPath);
+                if (epoch != _overlayMediaEpoch)
+                {
+                    return;
+                }
+
                 MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
             }
             catch
             {
-                MpeOverlay.Source = null;
+                if (epoch == _overlayMediaEpoch)
+                {
+                    MpeOverlay.Source = null;
+                }
             }
         }
         else
         {
+            BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
             MpeOverlay.Source = null;
         }
+    }
+
+    private void EnsureOverlayPlayer()
+    {
+        if (MpeOverlay.MediaPlayer is null)
+        {
+            MpeOverlay.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
+        }
+    }
+
+    private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)
+    {
+        EnsureOverlayPlayer();
+        var player = MpeOverlay.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
+        player.Play();
+        BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
     }
 
     private async Task<OrganizeChoice?> AskOrganizeChoiceAsync()
