@@ -112,6 +112,7 @@ public sealed class Room
     public string Name { get; set; } = "";
     public string Kind { get; set; } = "Room";
     public int SortOrder { get; set; }
+    public string? ProjectId { get; set; }
 }
 
 public sealed class RoomItem

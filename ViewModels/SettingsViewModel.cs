@@ -39,7 +39,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         _loading = true;
         Sources.Clear();
-        foreach (var source in await _catalog.GetSourceFoldersAsync())
+        foreach (var source in await _catalog.GetSourceFoldersAsync(AppServices.CurrentProject.Id))
         {
             var item = new SourceFolderItem
             {

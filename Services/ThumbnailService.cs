@@ -1,8 +1,11 @@
+using Palace.Helpers;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
 
 namespace Palace.Services;
+
+public readonly record struct ThumbnailInfo(string Path, int Width, int Height);
 
 public sealed class ThumbnailService
 {
@@ -16,7 +19,7 @@ public sealed class ThumbnailService
 
     public string PathForHash(string hash) => Path.Combine(_root, $"{hash}.jpg");
 
-    public async Task<string?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
+    public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
     {
         if (string.IsNullOrEmpty(hash) || kind == Models.AssetKind.Video || kind == Models.AssetKind.Other)
         {
@@ -26,7 +29,10 @@ public sealed class ThumbnailService
         var dest = PathForHash(hash);
         if (File.Exists(dest))
         {
-            return dest;
+            var existing = ImageDimensions.TryRead(dest);
+            return existing is { } size
+                ? new ThumbnailInfo(dest, size.Width, size.Height)
+                : new ThumbnailInfo(dest, 0, 0);
         }
 
         try
@@ -65,11 +71,22 @@ public sealed class ThumbnailService
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
             encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, tw, th, 96, 96, pixels.DetachPixelData());
             await encoder.FlushAsync();
-            return dest;
+            var written = ImageDimensions.TryRead(dest);
+            return written is { } size
+                ? new ThumbnailInfo(dest, size.Width, size.Height)
+                : new ThumbnailInfo(dest, (int)width, (int)height);
         }
         catch
         {
-            return File.Exists(dest) ? dest : null;
+            if (!File.Exists(dest))
+            {
+                return null;
+            }
+
+            var existing = ImageDimensions.TryRead(dest);
+            return existing is { } size
+                ? new ThumbnailInfo(dest, size.Width, size.Height)
+                : new ThumbnailInfo(dest, 0, 0);
         }
     }
 }

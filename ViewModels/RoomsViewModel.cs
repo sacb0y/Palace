@@ -41,7 +41,7 @@ public partial class RoomsViewModel : ObservableObject
     {
         var selectedId = SelectedRoom?.Id;
         Rooms.Clear();
-        foreach (var room in await _catalog.GetRoomsAsync())
+        foreach (var room in await _catalog.GetRoomsAsync(AppServices.CurrentProject.Id))
         {
             Rooms.Add(room);
         }
@@ -56,7 +56,7 @@ public partial class RoomsViewModel : ObservableObject
     private async Task CreateRoomAsync()
     {
         var name = string.IsNullOrWhiteSpace(NewRoomName) ? $"Room {Rooms.Count + 1}" : NewRoomName.Trim();
-        var room = await _catalog.CreateRoomAsync(name);
+        var room = await _catalog.CreateRoomAsync(name, AppServices.CurrentProject.Id);
         NewRoomName = "";
         Rooms.Add(room);
         SelectedRoom = room;

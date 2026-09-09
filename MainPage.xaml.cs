@@ -1,3 +1,5 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Palace.Pages;
 using Palace.ViewModels;
@@ -11,8 +13,10 @@ public sealed partial class MainPage : Page
     public MainPage()
     {
         InitializeComponent();
-        Loaded += (_, _) =>
+        ViewModel.RequestProjectName = AskProjectNameAsync;
+        Loaded += async (_, _) =>
         {
+            await ViewModel.LoadAsync();
             NavMain.SelectedItem = NavLibrary;
         };
     }
@@ -40,5 +44,30 @@ public sealed partial class MainPage : Page
                 ContentFrame.Navigate(typeof(LibraryPage));
                 break;
         }
+    }
+
+    private async Task<string?> AskProjectNameAsync(string title, string primary, string initial)
+    {
+        var box = new TextBox
+        {
+            Header = "Name",
+            Text = initial,
+            PlaceholderText = "Project name"
+        };
+        AutomationProperties.SetAutomationId(box, "TxtProjectName");
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            PrimaryButtonText = primary,
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            Content = box
+        };
+        dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(box.Text)
+            ? box.Text.Trim()
+            : null;
     }
 }

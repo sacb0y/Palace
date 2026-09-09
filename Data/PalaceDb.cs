@@ -195,7 +195,9 @@ public sealed class PalaceDb : IDisposable
                 Id TEXT PRIMARY KEY,
                 Name TEXT NOT NULL,
                 Kind TEXT NOT NULL DEFAULT 'Room',
-                SortOrder INTEGER NOT NULL DEFAULT 0
+                SortOrder INTEGER NOT NULL DEFAULT 0,
+                ProjectId TEXT,
+                FOREIGN KEY (ProjectId) REFERENCES Project(Id)
             );
 
             CREATE TABLE IF NOT EXISTS CollectionItem (
@@ -230,10 +232,12 @@ public sealed class PalaceDb : IDisposable
             CREATE INDEX IF NOT EXISTS IX_Asset_Hash ON Asset(ContentHash);
             CREATE INDEX IF NOT EXISTS IX_TagMembership_Parent ON TagMembership(ParentId);
             CREATE INDEX IF NOT EXISTS IX_TagMembership_Child ON TagMembership(ChildId);
+            CREATE INDEX IF NOT EXISTS IX_SourceFolder_Project ON SourceFolder(ProjectId);
             """;
         cmd.ExecuteNonQuery();
         MigrateLegacyFacets();
         SeedDefaults();
+        EnsureDefaultProject();
     }
 
     private void MigrateLegacyFacets()
@@ -352,6 +356,61 @@ public sealed class PalaceDb : IDisposable
             """;
         rule.Parameters.AddWithValue("$id", NewId());
         rule.ExecuteNonQuery();
+    }
+
+    private void EnsureDefaultProject()
+    {
+        if (!ColumnExists("Collection", "ProjectId"))
+        {
+            using var alter = _connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE Collection ADD COLUMN ProjectId TEXT";
+            alter.ExecuteNonQuery();
+        }
+
+        string defaultId;
+        using (var find = _connection.CreateCommand())
+        {
+            find.CommandText = "SELECT Id FROM Project WHERE Name = 'Palace' LIMIT 1";
+            defaultId = find.ExecuteScalar() as string ?? "";
+        }
+
+        if (string.IsNullOrEmpty(defaultId))
+        {
+            using var countCmd = _connection.CreateCommand();
+            countCmd.CommandText = "SELECT COUNT(*) FROM Project";
+            if (Convert.ToInt64(countCmd.ExecuteScalar()) == 0)
+            {
+                defaultId = NewId();
+                using var insert = _connection.CreateCommand();
+                insert.CommandText = "INSERT INTO Project (Id, Name) VALUES ($id, 'Palace')";
+                insert.Parameters.AddWithValue("$id", defaultId);
+                insert.ExecuteNonQuery();
+            }
+            else
+            {
+                using var first = _connection.CreateCommand();
+                first.CommandText = "SELECT Id FROM Project ORDER BY Name LIMIT 1";
+                defaultId = (string)first.ExecuteScalar()!;
+            }
+        }
+
+        using (var sources = _connection.CreateCommand())
+        {
+            sources.CommandText = "UPDATE SourceFolder SET ProjectId = $id WHERE ProjectId IS NULL OR ProjectId = ''";
+            sources.Parameters.AddWithValue("$id", defaultId);
+            sources.ExecuteNonQuery();
+        }
+
+        using (var rooms = _connection.CreateCommand())
+        {
+            rooms.CommandText = "UPDATE Collection SET ProjectId = $id WHERE ProjectId IS NULL OR ProjectId = ''";
+            rooms.Parameters.AddWithValue("$id", defaultId);
+            rooms.ExecuteNonQuery();
+        }
+
+        using var index = _connection.CreateCommand();
+        index.CommandText = "CREATE INDEX IF NOT EXISTS IX_Collection_Project ON Collection(ProjectId)";
+        index.ExecuteNonQuery();
     }
 
     private void InsertTag(string id, string name, int priority, string slug)

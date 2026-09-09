@@ -58,16 +58,48 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Folders" />
+            <SelectorBar
+                x:Name="SelBrowseMode"
+                AutomationProperties.AutomationId="SelBrowseMode"
+                AutomationProperties.Name="Browse by"
+                SelectionChanged="SelBrowseMode_SelectionChanged">
+                <SelectorBarItem
+                    x:Name="SelFolders"
+                    AutomationProperties.AutomationId="SelFolders"
+                    IsSelected="True"
+                    Text="Folders" />
+                <SelectorBarItem
+                    x:Name="SelTags"
+                    AutomationProperties.AutomationId="SelTags"
+                    Text="Tags" />
+            </SelectorBar>
             <TreeView
                 x:Name="TreFolders"
                 Grid.Row="1"
                 AutomationProperties.AutomationId="TreFolders"
                 AutomationProperties.Name="Source folders"
                 ItemInvoked="TreFolders_ItemInvoked"
-                ItemsSource="{x:Bind ViewModel.FolderTree, Mode=OneWay}">
+                ItemsSource="{x:Bind ViewModel.FolderTree, Mode=OneWay}"
+                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="models:FolderNode">
+                        <TreeViewItem
+                            Content="{x:Bind Name, Mode=OneWay}"
+                            IsExpanded="True"
+                            ItemsSource="{x:Bind Children, Mode=OneWay}" />
+                    </DataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+            <TreeView
+                x:Name="TreTagsBrowse"
+                Grid.Row="1"
+                AutomationProperties.AutomationId="TreTagsBrowse"
+                AutomationProperties.Name="Tags"
+                ItemInvoked="TreTagsBrowse_ItemInvoked"
+                ItemsSource="{x:Bind ViewModel.TagTree, Mode=OneWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
+                <TreeView.ItemTemplate>
+                    <DataTemplate x:DataType="models:TagTreeNode">
                         <TreeViewItem
                             Content="{x:Bind Name, Mode=OneWay}"
                             IsExpanded="True"
@@ -97,58 +129,79 @@
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
-            <AutoSuggestBox
-                x:Name="AsbSearch"
-                Grid.Row="1"
-                AutomationProperties.AutomationId="AsbSearch"
-                PlaceholderText="Search filename, tags, prompt, model"
-                QueryIcon="Find"
-                QuerySubmitted="AsbSearch_QuerySubmitted"
-                Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <GridView
+            <Grid Grid.Row="1" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="200" />
+                </Grid.ColumnDefinitions>
+                <AutoSuggestBox
+                    x:Name="AsbSearch"
+                    AutomationProperties.AutomationId="AsbSearch"
+                    PlaceholderText="Search filename, tags, prompt, model"
+                    QueryIcon="Find"
+                    QuerySubmitted="AsbSearch_QuerySubmitted"
+                    Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Slider
+                    x:Name="SldRowHeight"
+                    Grid.Column="1"
+                    AutomationProperties.AutomationId="SldRowHeight"
+                    AutomationProperties.Name="Mosaic row height"
+                    Header="Row height"
+                    Maximum="280"
+                    Minimum="96"
+                    StepFrequency="4"
+                    TickFrequency="20"
+                    Value="{x:Bind ViewModel.MosaicRowHeight, Mode=TwoWay}" />
+            </Grid>
+            <ItemsView
                 x:Name="GrdAssets"
                 Grid.Row="2"
                 AutomationProperties.AutomationId="GrdAssets"
                 AutomationProperties.Name="Assets"
-                IsItemClickEnabled="True"
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
                 SelectionChanged="GrdAssets_SelectionChanged"
                 SelectionMode="Extended">
-                <GridView.ItemTemplate>
+                <ItemsView.Layout>
+                    <LinedFlowLayout
+                        x:Name="MosaicLayout"
+                        ItemsInfoRequested="MosaicLayout_ItemsInfoRequested"
+                        ItemsStretch="Fill"
+                        LineHeight="{x:Bind ViewModel.MosaicRowHeight, Mode=OneWay}"
+                        LineSpacing="8"
+                        MinItemSpacing="8" />
+                </ItemsView.Layout>
+                <ItemsView.ItemTemplate>
                     <DataTemplate x:DataType="models:AssetItem">
-                        <Grid Width="152" Height="196">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="*" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Border
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="{StaticResource ControlCornerRadius}">
-                                <Grid>
-                                    <Image
-                                        Stretch="UniformToFill"
-                                        Source="{x:Bind pages:LibraryPage.FileToImage(ThumbPath), Mode=OneWay}" />
+                        <ItemContainer AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}">
+                            <Grid
+                                Width="{x:Bind AspectHintWidth, Mode=OneWay}"
+                                Height="100"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                <Image
+                                    Stretch="Uniform"
+                                    Source="{x:Bind pages:LibraryPage.FileToImage(ThumbPath), Mode=OneWay}" />
+                                <TextBlock
+                                    Margin="8"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    IsHitTestVisible="False"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="Missing"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsOrphan), Mode=OneWay}" />
+                                <Border
+                                    Padding="6,2"
+                                    VerticalAlignment="Bottom"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                                     <TextBlock
-                                        Margin="8"
-                                        HorizontalAlignment="Center"
-                                        VerticalAlignment="Center"
                                         Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="Missing"
-                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsOrphan), Mode=OneWay}" />
-                                </Grid>
-                            </Border>
-                            <TextBlock
-                                Grid.Row="1"
-                                Margin="0,4,0,0"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="{x:Bind FileName, Mode=OneWay}"
-                                TextTrimming="CharacterEllipsis" />
-                        </Grid>
+                                        Text="{x:Bind FileName, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </Border>
+                            </Grid>
+                        </ItemContainer>
                     </DataTemplate>
-                </GridView.ItemTemplate>
-            </GridView>
+                </ItemsView.ItemTemplate>
+            </ItemsView>
         </Grid>
 
         <ScrollViewer

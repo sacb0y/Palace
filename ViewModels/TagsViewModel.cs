@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 
@@ -290,90 +291,11 @@ public partial class TagsViewModel : ObservableObject
     private void RebuildTree()
     {
         var keepId = SelectedNode?.TagId;
-        var byId = _tags.ToDictionary(t => t.Id);
-        var children = new Dictionary<string, List<Tag>>(StringComparer.Ordinal);
-        var childIds = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var edge in _memberships)
-        {
-            if (!byId.TryGetValue(edge.ChildId, out var child))
-            {
-                continue;
-            }
-
-            childIds.Add(edge.ChildId);
-            if (!children.TryGetValue(edge.ParentId, out var list))
-            {
-                list = [];
-                children[edge.ParentId] = list;
-            }
-
-            list.Add(child);
-        }
-
-        TagTree.Clear();
-        foreach (var root in _tags.Where(t => !childIds.Contains(t.Id) && children.ContainsKey(t.Id))
-                     .OrderByDescending(t => t.Priority)
-                     .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
-        {
-            TagTree.Add(BuildNode(root, children, []));
-        }
-
-        var ungrouped = _tags.Where(t => !childIds.Contains(t.Id) && !children.ContainsKey(t.Id))
-            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (ungrouped.Count > 0)
-        {
-            var bucket = new TagTreeNode { Name = "Ungrouped", IsUngroupedBucket = true };
-            foreach (var tag in ungrouped)
-            {
-                bucket.Children.Add(new TagTreeNode { TagId = tag.Id, Name = tag.Name });
-            }
-
-            TagTree.Add(bucket);
-        }
-
+        TagTreeBuilder.Replace(TagTree, _tags, _memberships);
         if (keepId is not null)
         {
-            SelectedNode = FindNode(TagTree, keepId);
+            SelectedNode = TagTreeBuilder.Find(TagTree, keepId);
             HasSelection = SelectedNode?.TagId is not null;
         }
-    }
-
-    private static TagTreeNode BuildNode(Tag tag, Dictionary<string, List<Tag>> children, HashSet<string> trail)
-    {
-        var node = new TagTreeNode { TagId = tag.Id, Name = tag.Name };
-        if (!trail.Add(tag.Id))
-        {
-            return node;
-        }
-
-        if (children.TryGetValue(tag.Id, out var kids))
-        {
-            foreach (var kid in kids.OrderByDescending(t => t.Priority).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
-            {
-                node.Children.Add(BuildNode(kid, children, [.. trail]));
-            }
-        }
-
-        return node;
-    }
-
-    private static TagTreeNode? FindNode(IEnumerable<TagTreeNode> nodes, string tagId)
-    {
-        foreach (var node in nodes)
-        {
-            if (node.TagId == tagId)
-            {
-                return node;
-            }
-
-            var child = FindNode(node.Children, tagId);
-            if (child is not null)
-            {
-                return child;
-            }
-        }
-
-        return null;
     }
 }

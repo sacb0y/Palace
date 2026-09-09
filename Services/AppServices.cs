@@ -1,4 +1,5 @@
 using Palace.Data;
+using Palace.Models;
 using Palace.ViewModels;
 using Windows.Storage;
 
@@ -6,6 +7,8 @@ namespace Palace.Services;
 
 public static class AppServices
 {
+    private const string CurrentProjectKey = "CurrentProjectId";
+
     public static PalaceDb Db { get; private set; } = null!;
     public static CatalogService Catalog { get; private set; } = null!;
     public static AccessService Access { get; private set; } = null!;
@@ -19,6 +22,7 @@ public static class AppServices
     public static RoomsViewModel Rooms { get; private set; } = null!;
     public static SettingsViewModel Settings { get; private set; } = null!;
     public static string LocalRoot { get; private set; } = "";
+    public static Project CurrentProject { get; private set; } = null!;
 
     public static async Task InitializeAsync()
     {
@@ -29,6 +33,7 @@ public static class AppServices
 
         Db = new PalaceDb(dbPath);
         Catalog = new CatalogService(Db);
+        await RestoreCurrentProjectAsync();
         Access = new AccessService();
         Metadata = new MetadataExtractorService();
         Thumbnails = new ThumbnailService(thumbs);
@@ -52,5 +57,32 @@ public static class AppServices
         await Tags.LoadAsync();
         await Rooms.LoadAsync();
         await Settings.LoadAsync();
+    }
+
+    public static async Task SetCurrentProjectAsync(Project project)
+    {
+        CurrentProject = project;
+        ApplicationData.Current.LocalSettings.Values[CurrentProjectKey] = project.Id;
+        if (Library is null)
+        {
+            return;
+        }
+
+        await Library.LoadAsync();
+        await Rooms.RefreshAsync();
+        await Settings.LoadAsync();
+    }
+
+    private static async Task RestoreCurrentProjectAsync()
+    {
+        var projects = await Catalog.GetProjectsAsync();
+        if (projects.Count == 0)
+        {
+            projects = [await Catalog.CreateProjectAsync("Palace")];
+        }
+
+        var stored = ApplicationData.Current.LocalSettings.Values[CurrentProjectKey] as string;
+        CurrentProject = projects.FirstOrDefault(p => p.Id == stored) ?? projects[0];
+        ApplicationData.Current.LocalSettings.Values[CurrentProjectKey] = CurrentProject.Id;
     }
 }

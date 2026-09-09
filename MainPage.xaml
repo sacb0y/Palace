@@ -12,9 +12,34 @@
         AutomationProperties.AutomationId="NavMain"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
-        OpenPaneLength="200"
+        OpenPaneLength="248"
         PaneDisplayMode="Left"
         SelectionChanged="NavMain_SelectionChanged">
+        <NavigationView.PaneHeader>
+            <StackPanel Margin="12,8,12,4" Spacing="6">
+                <ComboBox
+                    x:Name="CmbProject"
+                    HorizontalAlignment="Stretch"
+                    AutomationProperties.AutomationId="CmbProject"
+                    AutomationProperties.Name="Project"
+                    DisplayMemberPath="Name"
+                    Header="Project"
+                    ItemsSource="{x:Bind ViewModel.Projects, Mode=OneWay}"
+                    SelectedItem="{x:Bind ViewModel.SelectedProject, Mode=TwoWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        AutomationProperties.AutomationId="BtnNewProject"
+                        AutomationProperties.Name="New project"
+                        Command="{x:Bind ViewModel.NewProjectCommand}"
+                        Content="New" />
+                    <Button
+                        AutomationProperties.AutomationId="BtnRenameProject"
+                        AutomationProperties.Name="Rename project"
+                        Command="{x:Bind ViewModel.RenameProjectCommand}"
+                        Content="Rename" />
+                </StackPanel>
+            </StackPanel>
+        </NavigationView.PaneHeader>
         <NavigationView.MenuItems>
             <NavigationViewItem
                 x:Name="NavLibrary"

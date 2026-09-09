@@ -23,10 +23,13 @@ public sealed class ScanService
         _organize = organize;
     }
 
-    public async Task<ScanReport> ScanAllAsync(IProgress<string>? progress = null, CancellationToken ct = default)
+    public async Task<ScanReport> ScanAllAsync(
+        IProgress<string>? progress = null,
+        CancellationToken ct = default,
+        string? projectId = null)
     {
         var report = new ScanReport();
-        foreach (var source in await _catalog.GetSourceFoldersAsync())
+        foreach (var source in await _catalog.GetSourceFoldersAsync(projectId))
         {
             ct.ThrowIfCancellationRequested();
             var part = await ScanSourceAsync(source, progress, ct).ConfigureAwait(false);
@@ -139,8 +142,19 @@ public sealed class ScanService
         asset.DateModified = info.LastWriteTimeUtc.ToString("O");
         asset.FileSize = info.Length;
 
+        var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind);
+        if (thumb is { Width: > 0, Height: > 0 } thumbSize)
+        {
+            asset.Width = thumbSize.Width;
+            asset.Height = thumbSize.Height;
+        }
+        else if (ImageDimensions.TryRead(file) is { } size)
+        {
+            asset.Width = size.Width;
+            asset.Height = size.Height;
+        }
+
         await _catalog.UpsertAssetAsync(asset, "");
-        await _thumbs.EnsureThumbnailAsync(file, hash, kind);
 
         if (isNew && autoOrganize)
         {

@@ -46,7 +46,29 @@ public partial class AssetItem : ObservableObject
     [ObservableProperty]
     public partial string? OrganizeError { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    public int? Width { get; set; }
+
+    public int? Height { get; set; }
+
     public bool HasThumbnail => !string.IsNullOrEmpty(ThumbPath) && File.Exists(ThumbPath);
+
+    public double AspectRatio
+    {
+        get
+        {
+            if (Width is > 0 && Height is > 0)
+            {
+                return (double)Width.Value / Height.Value;
+            }
+
+            return Kind == AssetKind.Video ? 16.0 / 9.0 : 1.0;
+        }
+    }
+
+    public double AspectHintWidth => Math.Clamp(AspectRatio, 0.15, 6.0) * 100;
 }
 
 public partial class AssignedTagItem : ObservableObject

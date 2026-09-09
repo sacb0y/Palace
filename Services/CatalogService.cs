@@ -14,7 +14,44 @@ public sealed class CatalogService
         _db = db;
     }
 
-    public Task<IReadOnlyList<SourceFolder>> GetSourceFoldersAsync() =>
+    public Task<IReadOnlyList<Project>> GetProjectsAsync() =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id, Name FROM Project ORDER BY Name COLLATE NOCASE";
+            var list = new List<Project>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                list.Add(new Project { Id = reader.GetString(0), Name = reader.GetString(1) });
+            }
+
+            return (IReadOnlyList<Project>)list;
+        });
+
+    public Task<Project> CreateProjectAsync(string name) =>
+        _db.WriteAsync(conn =>
+        {
+            var project = new Project { Id = PalaceDb.NewId(), Name = name.Trim() };
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO Project (Id, Name) VALUES ($id, $name)";
+            cmd.Parameters.AddWithValue("$id", project.Id);
+            cmd.Parameters.AddWithValue("$name", project.Name);
+            cmd.ExecuteNonQuery();
+            return project;
+        });
+
+    public Task RenameProjectAsync(string id, string name) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Project SET Name = $name WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$name", name.Trim());
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        });
+
+    public Task<IReadOnlyList<SourceFolder>> GetSourceFoldersAsync(string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
@@ -22,8 +59,10 @@ public sealed class CatalogService
                 SELECT Id, Path, AccessToken, AutoOrganizeNewFiles, FolderTemplate, FileTemplate,
                        DestinationPolicy, DestinationPath, ProjectId
                 FROM SourceFolder
+                WHERE ($project IS NULL OR ProjectId = $project)
                 ORDER BY Path
                 """;
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
             return (IReadOnlyList<SourceFolder>)ReadSources(cmd);
         });
 
@@ -118,7 +157,7 @@ public sealed class CatalogService
             tx.Commit();
         });
 
-    public Task<IReadOnlyList<Asset>> GetAssetsAsync(string? folderPrefix = null, string? sourceId = null) =>
+    public Task<IReadOnlyList<Asset>> GetAssetsAsync(string? folderPrefix = null, string? sourceId = null, string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
@@ -129,11 +168,13 @@ public sealed class CatalogService
                 FROM Asset
                 WHERE ($source IS NULL OR SourceFolderId = $source)
                   AND ($prefix IS NULL OR Path LIKE $like)
+                  AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
                 ORDER BY FileName COLLATE NOCASE
                 """;
             cmd.Parameters.AddWithValue("$source", (object?)sourceId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$prefix", (object?)folderPrefix ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$like", folderPrefix is null ? DBNull.Value : folderPrefix.TrimEnd('\\') + @"\%");
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
             return (IReadOnlyList<Asset>)ReadAssets(cmd);
         });
 
@@ -338,7 +379,7 @@ public sealed class CatalogService
             return Convert.ToInt32(cmd.ExecuteScalar());
         });
 
-    public Task<IReadOnlyList<Asset>> GetAssetsForTagsAsync(IEnumerable<string> tagIds) =>
+    public Task<IReadOnlyList<Asset>> GetAssetsForTagsAsync(IEnumerable<string> tagIds, string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
             var ids = tagIds.Distinct().ToList();
@@ -356,8 +397,10 @@ public sealed class CatalogService
                 cmd.Parameters.AddWithValue(p, ids[i]);
             }
 
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
             cmd.CommandText = SelectAssetSql + $"""
                  WHERE Id IN (SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({string.Join(",", names)}))
+                   AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
                  ORDER BY FileName COLLATE NOCASE
                 """;
             return ReadAssets(cmd);
@@ -509,11 +552,17 @@ public sealed class CatalogService
             items.ExecuteNonQuery();
         });
 
-    public Task<IReadOnlyList<Room>> GetRoomsAsync() =>
+    public Task<IReadOnlyList<Room>> GetRoomsAsync(string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, Name, Kind, SortOrder FROM Collection WHERE Kind = 'Room' ORDER BY SortOrder, Name";
+            cmd.CommandText = """
+                SELECT Id, Name, Kind, SortOrder, ProjectId
+                FROM Collection
+                WHERE Kind = 'Room' AND ($project IS NULL OR ProjectId = $project)
+                ORDER BY SortOrder, Name
+                """;
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
             var list = new List<Room>();
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
@@ -523,22 +572,31 @@ public sealed class CatalogService
                     Id = reader.GetString(0),
                     Name = reader.GetString(1),
                     Kind = reader.GetString(2),
-                    SortOrder = reader.GetInt32(3)
+                    SortOrder = reader.GetInt32(3),
+                    ProjectId = reader.IsDBNull(4) ? null : reader.GetString(4)
                 });
             }
 
             return (IReadOnlyList<Room>)list;
         });
 
-    public Task<Room> CreateRoomAsync(string name) =>
+    public Task<Room> CreateRoomAsync(string name, string projectId) =>
         _db.WriteAsync(conn =>
         {
-            var room = new Room { Id = PalaceDb.NewId(), Name = name.Trim(), Kind = "Room", SortOrder = 0 };
+            var room = new Room
+            {
+                Id = PalaceDb.NewId(),
+                Name = name.Trim(),
+                Kind = "Room",
+                SortOrder = 0,
+                ProjectId = projectId
+            };
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO Collection (Id, Name, Kind, SortOrder) VALUES ($id, $name, 'Room', $sort)";
+            cmd.CommandText = "INSERT INTO Collection (Id, Name, Kind, SortOrder, ProjectId) VALUES ($id, $name, 'Room', $sort, $project)";
             cmd.Parameters.AddWithValue("$id", room.Id);
             cmd.Parameters.AddWithValue("$name", room.Name);
             cmd.Parameters.AddWithValue("$sort", room.SortOrder);
+            cmd.Parameters.AddWithValue("$project", projectId);
             cmd.ExecuteNonQuery();
             return room;
         });
@@ -632,16 +690,18 @@ public sealed class CatalogService
             }
         });
 
-    public Task<IReadOnlyList<Asset>> SearchAsync(string query) =>
+    public Task<IReadOnlyList<Asset>> SearchAsync(string query, string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
             var match = ToFtsQuery(query);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = SelectAssetSql + """
                  WHERE RowId IN (SELECT rowid FROM AssetFts WHERE AssetFts MATCH $q)
+                   AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
                  ORDER BY FileName COLLATE NOCASE
                 """;
             cmd.Parameters.AddWithValue("$q", match);
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
             try
             {
                 return ReadAssets(cmd);
@@ -691,6 +751,7 @@ public sealed class CatalogService
             VALUES ($id, $source, $path, $name, $hash, $kind, $w, $h, $dur, $orphan, $model, $seed, $prompt, $neg,
                     $json, $err, $rating, $notes, $added, $mod, $size)
             ON CONFLICT(Path) DO UPDATE SET
+                SourceFolderId = excluded.SourceFolderId,
                 FileName = excluded.FileName,
                 ContentHash = excluded.ContentHash,
                 Kind = excluded.Kind,

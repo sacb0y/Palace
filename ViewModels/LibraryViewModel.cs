@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Palace.Data;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
+using Windows.Storage;
 
 namespace Palace.ViewModels;
 
@@ -17,6 +19,9 @@ public partial class LibraryViewModel : ObservableObject
     private readonly WatcherService _watchers;
     private IReadOnlyList<Asset> _allAssets = [];
     private List<AssetItem> _selection = [];
+    private AssetItem? _selectionAnchor;
+    private bool _suppressFilter;
+    private int _filterEpoch;
 
     public LibraryViewModel(
         CatalogService catalog,
@@ -39,8 +44,11 @@ public partial class LibraryViewModel : ObservableObject
     public Func<IReadOnlyList<Room>, Task<Room?>>? RequestPickRoom { get; set; }
 
     public ObservableCollection<FolderNode> FolderTree { get; } = [];
+    public ObservableCollection<TagTreeNode> TagTree { get; } = [];
     public ObservableCollection<PathCrumb> Breadcrumbs { get; } = [];
-    public ObservableCollection<AssetItem> Assets { get; } = [];
+
+    [ObservableProperty]
+    public partial ObservableCollection<AssetItem> Assets { get; set; } = [];
     public ObservableCollection<AssignedTagItem> AssignedTags { get; } = [];
     public ObservableCollection<PromptSuggestion> Suggestions { get; } = [];
     public ObservableCollection<TagPickItem> AllTags { get; } = [];
@@ -48,6 +56,15 @@ public partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial FolderNode? SelectedFolder { get; set; }
+
+    [ObservableProperty]
+    public partial TagTreeNode? SelectedTag { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsTagBrowse { get; set; }
+
+    [ObservableProperty]
+    public partial double MosaicRowHeight { get; set; } = 140;
 
     [ObservableProperty]
     public partial AssetItem? SelectedAsset { get; set; }
@@ -110,8 +127,52 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnSelectedFolderChanged(FolderNode? value)
     {
-        RebuildBreadcrumbs(value);
+        RebuildBreadcrumbs();
+        if (!_suppressFilter)
+        {
+            _ = ApplyFilterAsync();
+        }
+    }
+
+    partial void OnSelectedTagChanged(TagTreeNode? value)
+    {
+        RebuildBreadcrumbs();
+        if (!_suppressFilter)
+        {
+            _ = ApplyFilterAsync();
+        }
+    }
+
+    partial void OnIsTagBrowseChanged(bool value)
+    {
+        _suppressFilter = true;
+        if (value)
+        {
+            SelectedFolder = null;
+        }
+        else
+        {
+            SelectedTag = null;
+        }
+
+        _suppressFilter = false;
+        RebuildBreadcrumbs();
         _ = ApplyFilterAsync();
+    }
+
+    partial void OnMosaicRowHeightChanged(double value)
+    {
+        var clamped = Math.Clamp(value, 96, 280);
+        if (Math.Abs(clamped - value) > 0.01)
+        {
+            MosaicRowHeight = clamped;
+            return;
+        }
+
+        if (AppServices.CurrentProject is { } project)
+        {
+            ApplicationData.Current.LocalSettings.Values[RowHeightKey(project.Id)] = clamped;
+        }
     }
 
     partial void OnSelectedAssetChanged(AssetItem? value) => _ = LoadPreviewAsync(value);
@@ -139,33 +200,106 @@ public partial class LibraryViewModel : ObservableObject
     public void SetSelection(IEnumerable<AssetItem> items)
     {
         _selection = items.ToList();
-        HasSelection = _selection.Count > 0;
-        if (_selection.Count == 1)
+        foreach (var asset in Assets)
         {
-            SelectedAsset = _selection[0];
+            asset.IsSelected = _selection.Contains(asset);
         }
+
+        HasSelection = _selection.Count > 0;
+        SelectedAsset = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
+        _selectionAnchor = SelectedAsset;
+    }
+
+    public void SelectAsset(AssetItem item, bool toggle, bool range = false)
+    {
+        if (range && _selectionAnchor is not null)
+        {
+            var list = Assets.ToList();
+            var from = list.IndexOf(_selectionAnchor);
+            var to = list.IndexOf(item);
+            if (from >= 0 && to >= 0)
+            {
+                var lo = Math.Min(from, to);
+                var hi = Math.Max(from, to);
+                for (var i = 0; i < list.Count; i++)
+                {
+                    list[i].IsSelected = i >= lo && i <= hi;
+                }
+
+                _selection = list.Where(a => a.IsSelected).ToList();
+                HasSelection = _selection.Count > 0;
+                SelectedAsset = item;
+                return;
+            }
+        }
+
+        if (!toggle)
+        {
+            foreach (var asset in Assets)
+            {
+                asset.IsSelected = asset == item;
+            }
+
+            _selection = [item];
+            _selectionAnchor = item;
+        }
+        else
+        {
+            item.IsSelected = !item.IsSelected;
+            _selection = Assets.Where(a => a.IsSelected).ToList();
+            if (item.IsSelected)
+            {
+                _selectionAnchor = item;
+            }
+        }
+
+        HasSelection = _selection.Count > 0;
+        SelectedAsset = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
     }
 
     public async Task LoadAsync()
     {
+        LoadRowHeight();
         await RefreshQuietAsync();
-        StatusText = Assets.Count == 0
-            ? "Add a folder to start your library."
-            : $"{Assets.Count} assets";
     }
 
-    public async Task RefreshQuietAsync()
+    public async Task RefreshQuietAsync(string? preferredFolderPath = null)
     {
-        var sources = await _catalog.GetSourceFoldersAsync();
-        var assets = new List<Asset>();
-        foreach (var source in sources)
-        {
-            assets.AddRange(await _catalog.GetAssetsAsync(sourceId: source.Id));
-        }
+        var projectId = AppServices.CurrentProject.Id;
+        var sources = await _catalog.GetSourceFoldersAsync(projectId);
+        var assets = await _catalog.GetAssetsAsync(projectId: projectId);
+        var tags = await _catalog.GetTagsAsync();
+        var memberships = await _catalog.GetMembershipsAsync();
+        var selectedPath = preferredFolderPath ?? SelectedFolder?.Path;
+        var selectedTagId = SelectedTag?.TagId;
+        var pickItems = BuildTagPicks(tags, memberships);
 
-        _allAssets = assets;
-        RebuildTree(sources, assets);
-        await ReloadTagPicksAsync();
+        await UiDispatch.RunAsync(() =>
+        {
+            _allAssets = assets;
+            _suppressFilter = true;
+            RebuildTree(sources, assets);
+            TagTreeBuilder.Replace(TagTree, tags, memberships);
+            AllTags.Clear();
+            foreach (var pick in pickItems)
+            {
+                AllTags.Add(pick);
+            }
+
+            if (IsTagBrowse)
+            {
+                SelectedTag = selectedTagId is null ? null : TagTreeBuilder.Find(TagTree, selectedTagId);
+                SelectedFolder = null;
+            }
+            else
+            {
+                SelectedTag = null;
+                SelectedFolder = selectedPath is null ? null : FindNode(FolderTree, selectedPath);
+            }
+
+            _suppressFilter = false;
+            RebuildBreadcrumbs();
+        });
         await ApplyFilterAsync();
     }
 
@@ -178,7 +312,7 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        var existing = (await _catalog.GetSourceFoldersAsync())
+        var existing = (await _catalog.GetSourceFoldersAsync(AppServices.CurrentProject.Id))
             .FirstOrDefault(s => string.Equals(s.Path, folder.Path, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
@@ -192,7 +326,8 @@ public partial class LibraryViewModel : ObservableObject
             Path = folder.Path,
             AccessToken = _access.Remember(folder),
             FolderTemplate = "{Character}/{tags:2}",
-            FileTemplate = "{Character}-{tags}.{ext}"
+            FileTemplate = "{Character}-{tags}.{ext}",
+            ProjectId = AppServices.CurrentProject.Id
         };
         await _catalog.UpsertSourceFolderAsync(source);
         await ScanFolderAsync(source);
@@ -206,8 +341,9 @@ public partial class LibraryViewModel : ObservableObject
         try
         {
             StatusText = "Scanning…";
-            var report = await _scan.ScanAllAsync(new Progress<string>(p =>
-                StatusText = $"Scanning {Path.GetFileName(p)}"));
+            var report = await _scan.ScanAllAsync(
+                new Progress<string>(p => StatusText = $"Scanning {Path.GetFileName(p)}"),
+                projectId: AppServices.CurrentProject.Id);
             await RefreshQuietAsync();
             StatusText = $"Indexed {report.Added} new, {report.Updated} updated, {report.Orphaned} missing.";
         }
@@ -367,7 +503,7 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        var rooms = await _catalog.GetRoomsAsync();
+        var rooms = await _catalog.GetRoomsAsync(AppServices.CurrentProject.Id);
         if (rooms.Count == 0)
         {
             Notify("Create a room in the Rooms page first.");
@@ -393,6 +529,18 @@ public partial class LibraryViewModel : ObservableObject
 
     public void NavigateBreadcrumb(PathCrumb crumb)
     {
+        if (IsTagBrowse)
+        {
+            SelectedTag = crumb.Path.Length == 0 ? null : TagTreeBuilder.Find(TagTree, crumb.Path);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(crumb.Path))
+        {
+            SelectedFolder = null;
+            return;
+        }
+
         var node = FindNode(FolderTree, crumb.Path);
         if (node is not null)
         {
@@ -407,7 +555,7 @@ public partial class LibraryViewModel : ObservableObject
         {
             StatusText = $"Scanning {source.Path}…";
             var report = await _scan.ScanSourceAsync(source);
-            await RefreshQuietAsync();
+            await RefreshQuietAsync(source.Path);
             StatusText = $"Indexed {report.Added} files from {Path.GetFileName(source.Path)}.";
         }
         finally
@@ -418,41 +566,68 @@ public partial class LibraryViewModel : ObservableObject
 
     private async Task ApplyFilterAsync()
     {
-        IReadOnlyList<Asset> source = _allAssets;
+        var epoch = Interlocked.Increment(ref _filterEpoch);
+        IEnumerable<Asset> source = _allAssets;
+        if (IsTagBrowse && SelectedTag?.TagId is { } tagId)
+        {
+            var ids = new List<string> { tagId };
+            ids.AddRange(await _catalog.GetDescendantTagIdsAsync(tagId));
+            var tagged = await _catalog.GetAssetsForTagsAsync(ids, AppServices.CurrentProject.Id);
+            var set = tagged.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+            source = source.Where(a => set.Contains(a.Id));
+        }
+        else if (!IsTagBrowse && SelectedFolder is not null)
+        {
+            var folder = SelectedFolder;
+            source = source.Where(a => AssetIsInFolder(a, folder));
+        }
+
         if (!string.IsNullOrWhiteSpace(SearchQuery))
         {
-            source = await _catalog.SearchAsync(SearchQuery);
+            var hits = await _catalog.SearchAsync(SearchQuery, AppServices.CurrentProject.Id);
+            var set = hits.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+            source = source.Where(a => set.Contains(a.Id));
         }
-        else if (SelectedFolder is not null)
+
+        var items = source.Select(ToItem).ToList();
+        var search = SearchQuery;
+        var tagName = SelectedTag?.Name;
+        var folderName = SelectedFolder?.Name;
+        var tagBrowse = IsTagBrowse && SelectedTag?.TagId is not null;
+        var hasFolder = SelectedFolder is not null;
+        if (epoch != _filterEpoch)
         {
-            var prefix = SelectedFolder.Path.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-            source = _allAssets.Where(a =>
+            return;
+        }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch != _filterEpoch)
             {
-                var dir = Path.GetDirectoryName(a.Path) ?? "";
-                if (SelectedFolder.Children.Count == 0)
-                {
-                    return string.Equals(dir, SelectedFolder.Path, StringComparison.OrdinalIgnoreCase)
-                        || a.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
-                }
+                return;
+            }
 
-                return string.Equals(dir, SelectedFolder.Path, StringComparison.OrdinalIgnoreCase);
-            }).ToList();
-        }
-
-        Assets.Clear();
-        foreach (var asset in source)
-        {
-            Assets.Add(ToItem(asset));
-        }
-
-        if (!string.IsNullOrWhiteSpace(SearchQuery))
-        {
-            StatusText = $"{Assets.Count} search results";
-        }
-        else if (SelectedFolder is not null)
-        {
-            StatusText = $"{Assets.Count} in {SelectedFolder.Name}";
-        }
+            ClearSelection();
+            Assets = new ObservableCollection<AssetItem>(items);
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                StatusText = $"{items.Count} search results";
+            }
+            else if (tagBrowse)
+            {
+                StatusText = $"{items.Count} tagged {tagName}";
+            }
+            else if (hasFolder)
+            {
+                StatusText = $"{items.Count} in {folderName}";
+            }
+            else
+            {
+                StatusText = items.Count == 0
+                    ? "Add a folder to start your library."
+                    : $"{items.Count} assets";
+            }
+        });
     }
 
     private async Task LoadPreviewAsync(AssetItem? item)
@@ -517,10 +692,21 @@ public partial class LibraryViewModel : ObservableObject
 
     private async Task ReloadTagPicksAsync()
     {
-        var tags = await _catalog.GetTagsAsync();
-        var memberships = await _catalog.GetMembershipsAsync();
+        var picks = BuildTagPicks(await _catalog.GetTagsAsync(), await _catalog.GetMembershipsAsync());
+        await UiDispatch.RunAsync(() =>
+        {
+            AllTags.Clear();
+            foreach (var pick in picks)
+            {
+                AllTags.Add(pick);
+            }
+        });
+    }
+
+    private static List<TagPickItem> BuildTagPicks(IReadOnlyList<Tag> tags, IReadOnlyList<TagMembership> memberships)
+    {
         var byId = tags.ToDictionary(t => t.Id);
-        AllTags.Clear();
+        var picks = new List<TagPickItem>();
         foreach (var tag in tags.OrderByDescending(t => t.Priority).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
         {
             var parents = memberships
@@ -528,9 +714,27 @@ public partial class LibraryViewModel : ObservableObject
                 .Select(m => byId[m.ParentId].Name)
                 .ToList();
             var extra = parents.Count > 0 ? $" ({string.Join(", ", parents)})" : "";
-            AllTags.Add(new TagPickItem { TagId = tag.Id, Display = tag.Name + extra });
+            picks.Add(new TagPickItem { TagId = tag.Id, Display = tag.Name + extra });
         }
+
+        return picks;
     }
+
+    private static bool AssetIsInFolder(Asset asset, FolderNode folder)
+    {
+        var folderPath = NormalizeDir(folder.Path);
+        var assetDir = NormalizeDir(Path.GetDirectoryName(asset.Path) ?? "");
+        if (string.Equals(assetDir, folderPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var prefix = folderPath + Path.DirectorySeparatorChar;
+        return asset.Path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeDir(string path) =>
+        path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     private async Task<IReadOnlyList<Asset>> SelectedAssetsAsync()
     {
@@ -547,29 +751,57 @@ public partial class LibraryViewModel : ObservableObject
 
         if (SelectedFolder is not null)
         {
-            return _allAssets.Where(a =>
-                a.Path.StartsWith(SelectedFolder.Path.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(Path.GetDirectoryName(a.Path), SelectedFolder.Path, StringComparison.OrdinalIgnoreCase)).ToList();
+            return _allAssets.Where(a => AssetIsInFolder(a, SelectedFolder)).ToList();
         }
 
         return [];
     }
 
+    private void ClearSelection()
+    {
+        foreach (var asset in Assets)
+        {
+            asset.IsSelected = false;
+        }
+
+        _selection.Clear();
+        _selectionAnchor = null;
+        HasSelection = false;
+        SelectedAsset = null;
+    }
+
     private AssetItem ToItem(Asset asset)
     {
         var thumb = asset.ContentHash is null ? null : _thumbs.PathForHash(asset.ContentHash);
+        var thumbPath = thumb is not null && File.Exists(thumb) ? thumb : null;
+        var width = asset.Width;
+        var height = asset.Height;
+        if (width is not > 0 || height is not > 0)
+        {
+            var probed = ImageDimensions.TryRead(thumbPath) ?? ImageDimensions.TryRead(asset.Path);
+            if (probed is { } size)
+            {
+                width = size.Width;
+                height = size.Height;
+                asset.Width = size.Width;
+                asset.Height = size.Height;
+            }
+        }
+
         return new AssetItem
         {
             Id = asset.Id,
             SourceFolderId = asset.SourceFolderId,
             FileName = asset.FileName,
             Path = asset.Path,
-            ThumbPath = thumb is not null && File.Exists(thumb) ? thumb : null,
+            ThumbPath = thumbPath,
             Kind = asset.Kind,
             IsOrphan = asset.IsOrphan,
             Model = asset.Model,
             Prompt = asset.Prompt,
-            OrganizeError = asset.OrganizeError
+            OrganizeError = asset.OrganizeError,
+            Width = width,
+            Height = height
         };
     }
 
@@ -627,12 +859,23 @@ public partial class LibraryViewModel : ObservableObject
         }
     }
 
-    private void RebuildBreadcrumbs(FolderNode? node)
+    private void RebuildBreadcrumbs()
     {
         Breadcrumbs.Clear();
+        Breadcrumbs.Add(new PathCrumb { Name = "Library", Path = "" });
+        if (IsTagBrowse)
+        {
+            if (SelectedTag?.TagId is { } tagId)
+            {
+                Breadcrumbs.Add(new PathCrumb { Name = SelectedTag.Name, Path = tagId });
+            }
+
+            return;
+        }
+
+        var node = SelectedFolder;
         if (node is null)
         {
-            Breadcrumbs.Add(new PathCrumb { Name = "Library", Path = "" });
             return;
         }
 
@@ -689,6 +932,20 @@ public partial class LibraryViewModel : ObservableObject
 
         return null;
     }
+
+    private void LoadRowHeight()
+    {
+        var key = RowHeightKey(AppServices.CurrentProject.Id);
+        MosaicRowHeight = ApplicationData.Current.LocalSettings.Values[key] switch
+        {
+            double d => Math.Clamp(d, 96, 280),
+            float f => Math.Clamp(f, 96, 280),
+            int i => Math.Clamp(i, 96, 280),
+            _ => 140
+        };
+    }
+
+    private static string RowHeightKey(string projectId) => $"MosaicRowHeight_{projectId}";
 
     private void Notify(string message)
     {

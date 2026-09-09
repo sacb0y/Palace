@@ -27,8 +27,17 @@ public sealed partial class LibraryPage : Page
             {
                 UpdatePreview();
             }
+
+            if (e.PropertyName is nameof(LibraryViewModel.Assets) or nameof(LibraryViewModel.MosaicRowHeight))
+            {
+                MosaicLayout.InvalidateItemsInfo();
+            }
         };
-        Loaded += (_, _) => UpdatePreview();
+        Loaded += (_, _) =>
+        {
+            UpdatePreview();
+            MosaicLayout.InvalidateItemsInfo();
+        };
     }
 
     public static IRelayCommand<AssignedTagItem> GetRemoveTagCommand() => AppServices.Library.RemoveAssignedTagCommand;
@@ -42,7 +51,43 @@ public sealed partial class LibraryPage : Page
             return null;
         }
 
-        return new BitmapImage(new Uri(path));
+        try
+        {
+            return new BitmapImage
+            {
+                DecodePixelHeight = 280,
+                UriSource = new Uri(path, UriKind.Absolute)
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void MosaicLayout_ItemsInfoRequested(LinedFlowLayout sender, LinedFlowLayoutItemsInfoRequestedEventArgs args)
+    {
+        var assets = ViewModel.Assets;
+        var start = Math.Max(0, args.ItemsRangeStartIndex);
+        if (start >= assets.Count)
+        {
+            return;
+        }
+
+        var available = assets.Count - start;
+        var length = Math.Max(args.ItemsRangeRequestedLength, available);
+        if (length <= 0)
+        {
+            return;
+        }
+
+        var ratios = new double[length];
+        for (var i = 0; i < length; i++)
+        {
+            ratios[i] = i < available ? assets[start + i].AspectRatio : 1.0;
+        }
+
+        args.SetDesiredAspectRatios(ratios);
     }
 
     private void TreFolders_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
@@ -51,6 +96,24 @@ public sealed partial class LibraryPage : Page
         {
             ViewModel.SelectedFolder = node;
         }
+    }
+
+    private void TreTagsBrowse_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is TagTreeNode node)
+        {
+            ViewModel.SelectedTag = node;
+        }
+    }
+
+    private void SelBrowseMode_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        ViewModel.IsTagBrowse = sender.SelectedItem == SelTags;
+    }
+
+    private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)
+    {
+        ViewModel.SetSelection(sender.SelectedItems.OfType<AssetItem>());
     }
 
     private void BcrPath_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
@@ -65,12 +128,6 @@ public sealed partial class LibraryPage : Page
     {
         ViewModel.SearchQuery = sender.Text;
         ViewModel.SearchCommand.Execute(null);
-    }
-
-    private void GrdAssets_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        ViewModel.SetSelection(GrdAssets.SelectedItems.OfType<AssetItem>());
-        UpdatePreview();
     }
 
     private async void UpdatePreview()
