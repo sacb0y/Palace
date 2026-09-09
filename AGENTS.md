@@ -98,3 +98,15 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 ```
 
 `Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`). Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
+
+## Cursor Cloud specific instructions
+
+Cloud Agents run on **Linux**, so the packaged WinUI 3 app (`Palace.csproj`) cannot build or run there — `BuildAndRun.ps1`, `winapp`, and `ui-tests.ps1` are Windows-only and must be run on a Windows host. The buildable, runnable surface on Linux is **`Palace.Tests`** (`net10.0`, off WinUI/WinRT).
+
+The environment is repo-managed via `.cursor/environment.json`, whose `install` runs `.cursor/install.sh` to install the .NET 10 SDK into `$HOME/.dotnet` (added to `PATH`/`DOTNET_ROOT` in `~/.bashrc`) and warm a build of the test project. To verify the environment on Linux:
+
+```bash
+dotnet test ./Palace.Tests/Palace.Tests.csproj
+```
+
+Keep `Palace.Tests` cross-platform so it stays runnable here. Any Windows-only verification (the WinUI app, UI automation) must be done on Windows.
