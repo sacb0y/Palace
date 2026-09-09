@@ -72,7 +72,21 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSelection { get; set; }
 
+    [ObservableProperty]
+    public partial string? SelectedEffectiveColor { get; set; }
+
+    [ObservableProperty]
+    public partial string SelectedColorLabel { get; set; } = "No color";
+
+    [ObservableProperty]
+    public partial bool HasCustomColor { get; set; }
+
+    [ObservableProperty]
+    public partial string BackfillStatus { get; set; } = "";
+
     public Func<IReadOnlyList<TagPath>, Task<OrganizeChoice?>>? RequestOrganizeChoice { get; set; }
+
+    private int _backfillEpoch;
 
     public async Task LoadAsync() => await RefreshAsync();
 
@@ -86,6 +100,7 @@ public partial class TagsViewModel : ObservableObject
         if (AppServices.Library is { } library)
         {
             await library.ReloadTagCatalogAsync();
+            await library.ReloadAssignedTagsAsync();
         }
     }
 
@@ -157,6 +172,31 @@ public partial class TagsViewModel : ObservableObject
         StatusText = "Tag updated.";
     }
 
+    public async Task ApplyColorAsync(string? hex)
+    {
+        if (SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        await _catalog.SetTagColorAsync(SelectedNode.TagId, hex);
+        await RefreshAsync();
+        StatusText = "Tag color updated.";
+    }
+
+    [RelayCommand]
+    private async Task ClearColorAsync()
+    {
+        if (SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        await _catalog.SetTagColorAsync(SelectedNode.TagId, null);
+        await RefreshAsync();
+        StatusText = "Tag color cleared; it will inherit again.";
+    }
+
     [RelayCommand]
     private async Task AddToGroupAsync()
     {
@@ -191,15 +231,20 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
+        var sourceId = SelectedNode.TagId;
         var name = ImpliedQuery.Trim();
         var existing = await _catalog.FindTagByNameAsync(name);
         var target = existing ?? await _catalog.CreateTagAsync(name);
-        var ok = await _catalog.AddImplicationAsync(SelectedNode.TagId, target.Id);
+        var ok = await _catalog.AddImplicationAsync(sourceId, target.Id);
         await UiDispatch.RunAsync(() => ImpliedQuery = "");
         await RefreshAsync();
         StatusText = ok
             ? $"Assigning this tag will also apply {target.Name}."
             : "That implicit tag would create a cycle.";
+        if (ok)
+        {
+            QueueBackfill(() => _catalog.BackfillImplicationAddedAsync(sourceId));
+        }
     }
 
     [RelayCommand]
@@ -210,9 +255,11 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        await _catalog.RemoveImplicationAsync(SelectedNode.TagId, item.TagId);
+        var impliedId = item.TagId;
+        await _catalog.RemoveImplicationAsync(SelectedNode.TagId, impliedId);
         await RefreshAsync();
         StatusText = $"{item.Name} is no longer implied.";
+        QueueBackfill(() => _catalog.BackfillImplicationRemovedAsync(impliedId));
     }
 
     [RelayCommand]
@@ -310,6 +357,9 @@ public partial class TagsViewModel : ObservableObject
                 AssetCount = 0;
                 AssetCountLabel = "Select a tag";
                 ImpliedTagsSummary = "";
+                SelectedEffectiveColor = null;
+                SelectedColorLabel = "No color";
+                HasCustomColor = false;
                 ParentGroups.Clear();
                 AvailableGroups.Clear();
                 ImpliedTags.Clear();
@@ -339,10 +389,14 @@ public partial class TagsViewModel : ObservableObject
             .ToList();
         var impliedIds = _implications.Where(i => i.TagId == tag.Id).Select(i => i.ImpliedTagId).ToHashSet();
         var implied = _tags.Where(t => impliedIds.Contains(t.Id)).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var colors = CatalogService.MapEffectiveColors(_tags, _memberships);
         await UiDispatch.RunAsync(() =>
         {
             SelectedName = tag.Name;
             SelectedPriority = tag.Priority;
+            SelectedEffectiveColor = colors.GetValueOrDefault(tag.Id);
+            HasCustomColor = TagColor.Normalize(tag.Color) is not null;
+            SelectedColorLabel = CatalogService.DescribeTagColor(tag, _tags, _memberships);
             AssetCount = count;
             AssetCountLabel = $"{count} images with this tag";
             ParentGroups.Clear();
@@ -400,10 +454,76 @@ public partial class TagsViewModel : ObservableObject
     {
         var keepId = SelectedNode?.TagId;
         TagTreeBuilder.Replace(TagTree, _tags, _memberships);
+        ApplyTreeColors(TagTree);
         if (keepId is not null)
         {
             SelectedNode = TagTreeBuilder.Find(TagTree, keepId);
             HasSelection = SelectedNode?.TagId is not null;
+        }
+    }
+
+    private void ApplyTreeColors(IEnumerable<TagTreeNode> nodes)
+    {
+        var colors = CatalogService.MapEffectiveColors(_tags, _memberships);
+        var byId = _tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
+        ApplyTreeColors(nodes, colors, byId);
+    }
+
+    private static void ApplyTreeColors(
+        IEnumerable<TagTreeNode> nodes,
+        IReadOnlyDictionary<string, string?> colors,
+        IReadOnlyDictionary<string, Tag> byId)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.TagId is { } id && byId.TryGetValue(id, out var tag))
+            {
+                node.EffectiveColor = colors.GetValueOrDefault(id);
+                node.ColorIsCustom = TagColor.Normalize(tag.Color) is not null;
+                node.ColorSourceLabel = node.ColorIsCustom
+                    ? "Custom"
+                    : node.EffectiveColor is not null ? "Inherited" : "";
+            }
+
+            ApplyTreeColors(node.Children, colors, byId);
+        }
+    }
+
+    private void QueueBackfill(Func<Task<int>> work)
+    {
+        var epoch = Interlocked.Increment(ref _backfillEpoch);
+        _ = Task.Run(() => RunBackfillAsync(work, epoch));
+    }
+
+    private async Task RunBackfillAsync(Func<Task<int>> work, int epoch)
+    {
+        await UiDispatch.RunAsync(() => BackfillStatus = "Updating tagged images…");
+        try
+        {
+            var updated = await work();
+            if (epoch != _backfillEpoch)
+            {
+                return;
+            }
+
+            await UiDispatch.RunAsync(() =>
+                BackfillStatus = updated == 0
+                    ? "No tagged images needed updating."
+                    : $"Updated {updated} images.");
+            if (AppServices.Library is { } library)
+            {
+                await library.ReloadAssignedTagsAsync();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            if (epoch == _backfillEpoch)
+            {
+                await UiDispatch.RunAsync(() => BackfillStatus = $"Could not update tagged images. {ex.Message}");
+            }
         }
     }
 }

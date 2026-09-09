@@ -37,10 +37,36 @@
                 ItemsSource="{x:Bind ViewModel.TagTree, Mode=OneWay}">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="models:TagTreeNode">
-                        <TreeViewItem
-                            Content="{x:Bind Name, Mode=OneWay}"
-                            IsExpanded="True"
-                            ItemsSource="{x:Bind Children, Mode=OneWay}" />
+                        <TreeViewItem IsExpanded="True" ItemsSource="{x:Bind Children, Mode=OneWay}">
+                            <TreeViewItem.Content>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border
+                                        Width="12"
+                                        Height="12"
+                                        VerticalAlignment="Center"
+                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="2" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource BodyTextBlockStyle}"
+                                        Text="{x:Bind Name, Mode=OneWay}" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind ColorSourceLabel, Mode=OneWay}" />
+                                </Grid>
+                            </TreeViewItem.Content>
+                        </TreeViewItem>
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
@@ -84,6 +110,48 @@
                     Command="{x:Bind ViewModel.SaveRenameCommand}"
                     Content="Save name"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+
+                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Color" />
+                <TextBlock
+                    x:Name="TxtTagColorSource"
+                    AutomationProperties.AutomationId="TxtTagColorSource"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.SelectedColorLabel, Mode=OneWay}" />
+                <Button
+                    x:Name="BtnTagColor"
+                    AutomationProperties.AutomationId="BtnTagColor"
+                    AutomationProperties.Name="Tag color"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border
+                            Width="16"
+                            Height="16"
+                            Background="{x:Bind helpers:TagColor.ChipFill(ViewModel.SelectedEffectiveColor), Mode=OneWay}"
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource ControlCornerRadius}" />
+                        <TextBlock Text="Choose color" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <Flyout Closed="TagColorFlyout_Closed" Opening="TagColorFlyout_Opening">
+                            <StackPanel Spacing="12">
+                                <ColorPicker
+                                    x:Name="PkrTagColor"
+                                    AutomationProperties.AutomationId="PkrTagColor"
+                                    AutomationProperties.Name="Tag color picker"
+                                    IsAlphaEnabled="True"
+                                    IsHexInputVisible="True"
+                                    ColorChanged="PkrTagColor_ColorChanged" />
+                                <Button
+                                    x:Name="BtnClearTagColor"
+                                    AutomationProperties.AutomationId="BtnClearTagColor"
+                                    Click="BtnClearTagColor_Click"
+                                    Content="Clear color"
+                                    IsEnabled="{x:Bind ViewModel.HasCustomColor, Mode=OneWay}" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
 
                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Groups this tag belongs to" />
                 <ListView
@@ -224,12 +292,17 @@
             </StackPanel>
         </ScrollViewer>
 
-        <TextBlock
-            x:Name="TxtTagsStatus"
-            Grid.Row="2"
-            Grid.ColumnSpan="2"
-            AutomationProperties.AutomationId="TxtTagsStatus"
-            Style="{StaticResource CaptionTextBlockStyle}"
-            Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+        <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="4">
+            <TextBlock
+                x:Name="TxtBackfillStatus"
+                AutomationProperties.AutomationId="TxtBackfillStatus"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.BackfillStatus, Mode=OneWay}" />
+            <TextBlock
+                x:Name="TxtTagsStatus"
+                AutomationProperties.AutomationId="TxtTagsStatus"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+        </StackPanel>
     </Grid>
 </Page>
