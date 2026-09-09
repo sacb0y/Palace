@@ -33,8 +33,9 @@ public sealed partial class LibraryPage : Page
                 MosaicLayout.InvalidateItemsInfo();
             }
         };
-        Loaded += (_, _) =>
+        Loaded += async (_, _) =>
         {
+            await ViewModel.ReloadTagCatalogAsync();
             UpdatePreview();
             MosaicLayout.InvalidateItemsInfo();
         };
@@ -128,6 +129,39 @@ public sealed partial class LibraryPage : Page
     {
         ViewModel.SearchQuery = sender.Text;
         ViewModel.SearchCommand.Execute(null);
+    }
+
+    private void AsbAssignTag_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput ||
+            args.Reason == AutoSuggestionBoxTextChangeReason.ProgrammaticChange)
+        {
+            ViewModel.TagQuery = sender.Text;
+        }
+    }
+
+    private void AsbAssignTag_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+    {
+        if (args.SelectedItem is TagPickItem pick)
+        {
+            ViewModel.SelectedPickTag = pick;
+            ViewModel.TagQuery = pick.Name;
+        }
+    }
+
+    private void AsbAssignTag_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is TagPickItem pick)
+        {
+            ViewModel.SelectedPickTag = pick;
+            ViewModel.TagQuery = pick.Name;
+        }
+        else
+        {
+            ViewModel.TagQuery = sender.Text;
+        }
+
+        ViewModel.AssignFromQueryCommand.Execute(null);
     }
 
     private async void UpdatePreview()

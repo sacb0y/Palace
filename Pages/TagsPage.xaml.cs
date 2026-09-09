@@ -21,12 +21,45 @@ public sealed partial class TagsPage : Page
 
     public static IRelayCommand<TagGroupPick> GetRemoveGroupCommand() => AppServices.Tags.RemoveFromGroupCommand;
 
+    public static IRelayCommand<TagGroupPick> GetRemoveImpliedCommand() => AppServices.Tags.RemoveImpliedCommand;
+
     private void TreTags_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
         if (args.InvokedItem is TagTreeNode node)
         {
             ViewModel.SelectNode(node);
         }
+    }
+
+    private void AsbAddImplied_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
+    {
+        if (args.Reason == AutoSuggestionBoxTextChangeReason.UserInput ||
+            args.Reason == AutoSuggestionBoxTextChangeReason.ProgrammaticChange)
+        {
+            ViewModel.ImpliedQuery = sender.Text;
+        }
+    }
+
+    private void AsbAddImplied_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+    {
+        if (args.SelectedItem is TagGroupPick pick)
+        {
+            ViewModel.ImpliedQuery = pick.Name;
+        }
+    }
+
+    private void AsbAddImplied_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (args.ChosenSuggestion is TagGroupPick pick)
+        {
+            ViewModel.ImpliedQuery = pick.Name;
+        }
+        else
+        {
+            ViewModel.ImpliedQuery = sender.Text;
+        }
+
+        ViewModel.AddImpliedCommand.Execute(null);
     }
 
     private async Task<OrganizeChoice?> AskOrganizeChoiceAsync(IReadOnlyList<TagPath> paths)

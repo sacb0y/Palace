@@ -288,6 +288,33 @@ public sealed class CatalogService
     public Task<IReadOnlyList<TagMembership>> GetMembershipsAsync() =>
         _db.ReadAsync(conn => (IReadOnlyList<TagMembership>)LoadMemberships(conn));
 
+    public Task<IReadOnlyList<TagImplication>> GetImplicationsAsync() =>
+        _db.ReadAsync(conn => (IReadOnlyList<TagImplication>)LoadImplications(conn));
+
+    public Task<IReadOnlyList<Tag>> GetImpliedTagsAsync(string tagId) =>
+        _db.ReadAsync(conn =>
+        {
+            var tags = LoadTags(conn).ToDictionary(t => t.Id);
+            return (IReadOnlyList<Tag>)LoadImplications(conn)
+                .Where(i => i.TagId == tagId && tags.ContainsKey(i.ImpliedTagId))
+                .Select(i => tags[i.ImpliedTagId])
+                .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        });
+
+    public Task<bool> AddImplicationAsync(string tagId, string impliedTagId) =>
+        _db.WriteAsync(conn => TryAddImplication(conn, tagId, impliedTagId));
+
+    public Task RemoveImplicationAsync(string tagId, string impliedTagId) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM TagImplication WHERE TagId = $t AND ImpliedTagId = $i";
+            cmd.Parameters.AddWithValue("$t", tagId);
+            cmd.Parameters.AddWithValue("$i", impliedTagId);
+            cmd.ExecuteNonQuery();
+        });
+
     public Task<Tag?> FindTagByNameAsync(string name) =>
         _db.ReadAsync(conn =>
         {
@@ -409,27 +436,39 @@ public sealed class CatalogService
     public Task AssignTagAsync(string assetId, string tagId, TagSource source) =>
         _db.WriteAsync(conn =>
         {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                INSERT INTO AssetTag (AssetId, TagId, Source)
-                VALUES ($asset, $tag, $source)
-                ON CONFLICT(AssetId, TagId) DO UPDATE SET Source = excluded.Source
-                """;
-            cmd.Parameters.AddWithValue("$asset", assetId);
-            cmd.Parameters.AddWithValue("$tag", tagId);
-            cmd.Parameters.AddWithValue("$source", source.ToString());
-            cmd.ExecuteNonQuery();
+            UpsertAssetTag(conn, assetId, tagId, source);
+            foreach (var impliedId in TransitiveImplied(conn, tagId))
+            {
+                UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied);
+            }
+
             RefreshFts(conn, assetId);
         });
 
     public Task RemoveTagAsync(string assetId, string tagId) =>
         _db.WriteAsync(conn =>
         {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM AssetTag WHERE AssetId = $asset AND TagId = $tag";
-            cmd.Parameters.AddWithValue("$asset", assetId);
-            cmd.Parameters.AddWithValue("$tag", tagId);
-            cmd.ExecuteNonQuery();
+            // Explicit remove wins: we delete the requested tag and any Implied-only
+            // tags that are no longer justified by a remaining non-Implied assignment.
+            // Direct (Manual/Prompt/AI) assignments are never stripped just because an
+            // implying tag went away. We do not re-apply implications here, so removing
+            // an Implied tag while its source tag stays assigned keeps that removal.
+            DeleteAssetTag(conn, assetId, tagId);
+            var remaining = GetAssignedTags(conn, assetId);
+            var justified = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var assigned in remaining.Where(t => t.Source != TagSource.Implied))
+            {
+                foreach (var impliedId in TransitiveImplied(conn, assigned.TagId))
+                {
+                    justified.Add(impliedId);
+                }
+            }
+
+            foreach (var orphan in remaining.Where(t => t.Source == TagSource.Implied && !justified.Contains(t.TagId)))
+            {
+                DeleteAssetTag(conn, assetId, orphan.TagId);
+            }
+
             RefreshFts(conn, assetId);
         });
 
@@ -945,6 +984,104 @@ public sealed class CatalogService
         }
 
         return list;
+    }
+
+    private static List<TagImplication> LoadImplications(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT TagId, ImpliedTagId FROM TagImplication";
+        var list = new List<TagImplication>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new TagImplication { TagId = reader.GetString(0), ImpliedTagId = reader.GetString(1) });
+        }
+
+        return list;
+    }
+
+    private static void UpsertAssetTag(SqliteConnection conn, string assetId, string tagId, TagSource source)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO AssetTag (AssetId, TagId, Source)
+            VALUES ($asset, $tag, $source)
+            ON CONFLICT(AssetId, TagId) DO UPDATE SET
+                Source = CASE
+                    WHEN excluded.Source = 'Implied' THEN AssetTag.Source
+                    ELSE excluded.Source
+                END
+            """;
+        cmd.Parameters.AddWithValue("$asset", assetId);
+        cmd.Parameters.AddWithValue("$tag", tagId);
+        cmd.Parameters.AddWithValue("$source", source.ToString());
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void DeleteAssetTag(SqliteConnection conn, string assetId, string tagId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM AssetTag WHERE AssetId = $asset AND TagId = $tag";
+        cmd.Parameters.AddWithValue("$asset", assetId);
+        cmd.Parameters.AddWithValue("$tag", tagId);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static bool TryAddImplication(SqliteConnection conn, string tagId, string impliedTagId)
+    {
+        if (string.Equals(tagId, impliedTagId, StringComparison.Ordinal) || WouldImplicationCycle(conn, tagId, impliedTagId))
+        {
+            return false;
+        }
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "INSERT OR IGNORE INTO TagImplication (TagId, ImpliedTagId) VALUES ($t, $i)";
+        cmd.Parameters.AddWithValue("$t", tagId);
+        cmd.Parameters.AddWithValue("$i", impliedTagId);
+        cmd.ExecuteNonQuery();
+        return true;
+    }
+
+    private static bool WouldImplicationCycle(SqliteConnection conn, string tagId, string impliedTagId) =>
+        TransitiveImplied(conn, impliedTagId).Contains(tagId);
+
+    private static List<string> TransitiveImplied(SqliteConnection conn, string tagId)
+    {
+        var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var edge in LoadImplications(conn))
+        {
+            if (!children.TryGetValue(edge.TagId, out var list))
+            {
+                list = [];
+                children[edge.TagId] = list;
+            }
+
+            list.Add(edge.ImpliedTagId);
+        }
+
+        var found = new List<string>();
+        var stack = new Stack<string>();
+        stack.Push(tagId);
+        var seen = new HashSet<string>(StringComparer.Ordinal) { tagId };
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!children.TryGetValue(current, out var kids))
+            {
+                continue;
+            }
+
+            foreach (var kid in kids)
+            {
+                if (seen.Add(kid))
+                {
+                    found.Add(kid);
+                    stack.Push(kid);
+                }
+            }
+        }
+
+        return found;
     }
 
     private static Tag InsertTag(SqliteConnection conn, string name, int priority)

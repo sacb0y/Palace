@@ -273,6 +273,11 @@
                     TextWrapping="Wrap" />
 
                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Tags" />
+                <TextBlock
+                    AutomationProperties.AutomationId="TxtAssignedTags"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.AssignedTagsSummary, Mode=OneWay}"
+                    TextWrapping="Wrap" />
                 <ListView
                     x:Name="LstTags"
                     AutomationProperties.AutomationId="LstTags"
@@ -304,17 +309,35 @@
                         </DataTemplate>
                     </ListView.ItemTemplate>
                 </ListView>
-                <ComboBox
-                    x:Name="CmbTags"
-                    AutomationProperties.AutomationId="CmbTags"
-                    DisplayMemberPath="Display"
-                    Header="Existing tags"
-                    ItemsSource="{x:Bind ViewModel.AllTags, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPickTag, Mode=TwoWay}" />
+                <AutoSuggestBox
+                    x:Name="AsbAssignTag"
+                    AutomationProperties.AutomationId="AsbAssignTag"
+                    Header="Add tag"
+                    ItemsSource="{x:Bind ViewModel.TagSuggestions, Mode=OneWay}"
+                    PlaceholderText="Type to find or create a tag"
+                    QueryIcon="Find"
+                    QuerySubmitted="AsbAssignTag_QuerySubmitted"
+                    SuggestionChosen="AsbAssignTag_SuggestionChosen"
+                    TextChanged="AsbAssignTag_TextChanged"
+                    Text="{x:Bind ViewModel.TagQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextMemberPath="Display"
+                    UpdateTextOnSelect="True">
+                    <AutoSuggestBox.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagPickItem">
+                            <TextBlock Text="{x:Bind Display, Mode=OneWay}" />
+                        </DataTemplate>
+                    </AutoSuggestBox.ItemTemplate>
+                </AutoSuggestBox>
+                <TextBlock
+                    AutomationProperties.AutomationId="TxtTagSuggestions"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.TagSuggestionsSummary, Mode=OneWay}"
+                    TextWrapping="Wrap" />
                 <Button
                     AutomationProperties.AutomationId="BtnAssignTag"
-                    Command="{x:Bind ViewModel.AssignPickedTagCommand}"
-                    Content="Assign tag" />
+                    Command="{x:Bind ViewModel.AssignFromQueryCommand}"
+                    Content="Assign tag"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
                 <TextBox
                     AutomationProperties.AutomationId="TxtNewTag"
                     Header="Quick new tag (ungrouped)"
@@ -322,7 +345,8 @@
                 <Button
                     AutomationProperties.AutomationId="BtnCreateTag"
                     Command="{x:Bind ViewModel.CreateAndAssignTagCommand}"
-                    Content="Create and assign" />
+                    Content="Create and assign"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
 
                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Prompt suggestions" />
                 <ListView

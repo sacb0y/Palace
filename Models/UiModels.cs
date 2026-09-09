@@ -140,6 +140,7 @@ public partial class RoomSection : ObservableObject
 public sealed class TagPickItem
 {
     public string TagId { get; set; } = "";
+    public string Name { get; set; } = "";
     public string Display { get; set; } = "";
 }
 

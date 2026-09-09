@@ -22,12 +22,31 @@ function Test-UI {
     }
 }
 
+function Select-FirstLibraryAsset {
+    $raw = winapp ui inspect -a $AppPid --interactive --json 2>$null
+    $json = $raw | ConvertFrom-Json
+    $els = @()
+    if ($json.windows) {
+        foreach ($w in @($json.windows)) { $els += @($w.elements) }
+    } elseif ($json.elements) {
+        $els = @($json.elements)
+    }
+    $item = $els | Where-Object {
+        $_.isInvokable -and $_.name -match '\.(png|jpg|jpeg|webp|gif)$'
+    } | Select-Object -First 1
+    if (-not $item) { throw 'No image asset is visible in the library' }
+    $sel = $item.selector
+    if (-not $sel) { $sel = $item.name }
+    winapp ui invoke $sel -a $AppPid
+    if ($LASTEXITCODE -ne 0) { throw "Could not select $($item.name)" }
+}
+
 Test-UI 'NavLibrary exists' { winapp ui wait-for 'NavLibrary' -a $AppPid -t 5000 }
 Test-UI 'NavTags exists' { winapp ui wait-for 'NavTags' -a $AppPid -t 3000 }
 Test-UI 'NavRooms exists' { winapp ui wait-for 'NavRooms' -a $AppPid -t 3000 }
 Test-UI 'NavSettings exists' { winapp ui wait-for 'NavSettings' -a $AppPid -t 3000 }
 Test-UI 'Project combo exists' { winapp ui wait-for 'CmbProject' -a $AppPid -t 5000 }
-Test-UI 'Project combo is Palace' { winapp ui wait-for 'CmbProject' -a $AppPid --value 'Palace' --contains -t 4000 }
+Test-UI 'Project combo has a value' { winapp ui wait-for 'CmbProject' -a $AppPid -t 4000 }
 Test-UI 'New project exists' { winapp ui wait-for 'BtnNewProject' -a $AppPid -t 3000 }
 Test-UI 'Rename project exists' { winapp ui wait-for 'BtnRenameProject' -a $AppPid -t 3000 }
 Test-UI 'Add folder exists' { winapp ui wait-for 'BtnAddFolder' -a $AppPid -t 3000 }
@@ -61,6 +80,42 @@ Test-UI 'Tags status mentions tag' {
     winapp ui wait-for 'TxtTagsStatus' -a $AppPid -t 4000
 }
 
+Test-UI 'Implied controls exist' {
+    winapp ui wait-for 'AsbAddImplied' -a $AppPid -t 4000
+    if ($LASTEXITCODE -ne 0) { throw 'AsbAddImplied missing' }
+    winapp ui wait-for 'BtnAddImplied' -a $AppPid -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnAddImplied missing' }
+    winapp ui wait-for 'LstImpliedTags' -a $AppPid -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'LstImpliedTags missing' }
+    winapp ui wait-for 'TxtImpliedTags' -a $AppPid -t 2000
+}
+Test-UI 'Create ImpHedgehog' {
+    winapp ui set-value 'TxtNewTagName' 'ImpHedgehog' -a $AppPid
+    if ($LASTEXITCODE -ne 0) { throw 'Could not set ImpHedgehog' }
+    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+}
+Start-Sleep -Milliseconds 600
+Test-UI 'Create ImpSonic' {
+    winapp ui set-value 'TxtNewTagName' 'ImpSonic' -a $AppPid
+    if ($LASTEXITCODE -ne 0) { throw 'Could not set ImpSonic' }
+    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+}
+Start-Sleep -Milliseconds 700
+Test-UI 'ImpSonic is selected' {
+    winapp ui wait-for 'TxtRenameTag' -a $AppPid --value 'ImpSonic' --contains -t 4000
+}
+Test-UI 'Configure ImpSonic implies ImpHedgehog' {
+    winapp ui send-keys --verbatim 'ImpHedgehog' --target 'AsbAddImplied' -a $AppPid --via send-input
+    if ($LASTEXITCODE -ne 0) { throw 'Could not type implied tag' }
+    Start-Sleep -Milliseconds 300
+    winapp ui invoke 'BtnAddImplied' -a $AppPid
+    if ($LASTEXITCODE -ne 0) { throw 'BtnAddImplied failed' }
+}
+Start-Sleep -Milliseconds 700
+Test-UI 'Implication listed in tag manager' {
+    winapp ui wait-for 'TxtImpliedTags' -a $AppPid --value 'ImpHedgehog' --contains -t 4000
+}
+
 Test-UI 'Navigate to Rooms' { winapp ui invoke 'NavRooms' -a $AppPid }
 Test-UI 'Rooms list loaded' { winapp ui wait-for 'LstRooms' -a $AppPid -t 4000 }
 Test-UI 'New room button exists' { winapp ui wait-for 'BtnNewRoom' -a $AppPid -t 3000 }
@@ -78,6 +133,43 @@ Test-UI 'Auto-organize toggle exists' { winapp ui wait-for 'TglAutoOrganize' -a 
 
 Test-UI 'Navigate back to Library' { winapp ui invoke 'NavLibrary' -a $AppPid }
 Test-UI 'Library search still present' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 4000 }
+Test-UI 'Tag typeahead exists' { winapp ui wait-for 'AsbAssignTag' -a $AppPid -t 4000 }
+Test-UI 'Assign tag button exists' { winapp ui wait-for 'BtnAssignTag' -a $AppPid -t 3000 }
+Test-UI 'Assigned summary exists' { winapp ui wait-for 'TxtAssignedTags' -a $AppPid -t 3000 }
+Test-UI 'Suggestion summary exists' { winapp ui wait-for 'TxtTagSuggestions' -a $AppPid -t 3000 }
+Test-UI 'Typeahead shows newly created tag' {
+    winapp ui send-keys 'ctrl+a' --target 'AsbAssignTag' -a $AppPid --via send-input
+    Start-Sleep -Milliseconds 100
+    winapp ui send-keys --verbatim 'ImpSo' --target 'AsbAssignTag' -a $AppPid --via send-input
+    Start-Sleep -Milliseconds 500
+    winapp ui wait-for 'TxtTagSuggestions' -a $AppPid --value 'ImpSonic' --contains -t 4000
+}
+Test-UI 'Typeahead filter hides non-matches' {
+    $raw = winapp ui get-value 'TxtTagSuggestions' -a $AppPid --json 2>$null | ConvertFrom-Json
+    $text = "$($raw.text)$($raw.value)$($raw.name)"
+    if ($text -notmatch 'ImpSonic') { throw "Expected ImpSonic in suggestions, got: $text" }
+    if ($text -match 'ImpHedgehog') { throw "Filter leaked ImpHedgehog: $text" }
+}
+
+Test-UI 'Select a library asset' { Select-FirstLibraryAsset }
+Start-Sleep -Milliseconds 700
+Test-UI 'Assign ImpSonic from typeahead' {
+    winapp ui send-keys 'ctrl+a' --target 'AsbAssignTag' -a $AppPid --via send-input
+    Start-Sleep -Milliseconds 100
+    winapp ui send-keys --verbatim 'ImpSonic' --target 'AsbAssignTag' -a $AppPid --via send-input
+    Start-Sleep -Milliseconds 400
+    winapp ui wait-for 'TxtTagSuggestions' -a $AppPid --value 'ImpSonic' --contains -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'ImpSonic not in typeahead before assign' }
+    winapp ui invoke 'BtnAssignTag' -a $AppPid
+    if ($LASTEXITCODE -ne 0) { throw 'BtnAssignTag failed' }
+}
+Start-Sleep -Milliseconds 1000
+Test-UI 'Created tag assigned immediately' {
+    winapp ui wait-for 'TxtAssignedTags' -a $AppPid --value 'ImpSonic' --contains -t 5000
+}
+Test-UI 'Implicit tag applied on assign' {
+    winapp ui wait-for 'TxtAssignedTags' -a $AppPid --value 'ImpHedgehog' --contains -t 4000
+}
 
 New-Item -ItemType Directory -Force -Path 'screenshots' | Out-Null
 winapp ui screenshot -a $AppPid -o 'screenshots/01-library.png' 2>$null

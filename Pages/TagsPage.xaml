@@ -123,6 +123,65 @@
                     Content="Add to group"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
 
+                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Implicit tags" />
+                <TextBlock
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="When this tag is assigned, these tags are applied too. Removing this tag does not remove an implied tag that was also assigned directly."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    AutomationProperties.AutomationId="TxtImpliedTags"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="{x:Bind ViewModel.ImpliedTagsSummary, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+                <ListView
+                    x:Name="LstImpliedTags"
+                    AutomationProperties.AutomationId="LstImpliedTags"
+                    Header="Also applied"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                    ItemsSource="{x:Bind ViewModel.ImpliedTags, Mode=OneWay}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagGroupPick">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Name, Mode=OneWay}" />
+                                <Button
+                                    Grid.Column="1"
+                                    AutomationProperties.Name="Remove implicit tag"
+                                    Command="{x:Bind pages:TagsPage.GetRemoveImpliedCommand()}"
+                                    CommandParameter="{x:Bind}"
+                                    Content="Remove" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <AutoSuggestBox
+                    x:Name="AsbAddImplied"
+                    AutomationProperties.AutomationId="AsbAddImplied"
+                    Header="Add implicit tag"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                    ItemsSource="{x:Bind ViewModel.ImpliedSuggestions, Mode=OneWay}"
+                    PlaceholderText="Type a tag name"
+                    QuerySubmitted="AsbAddImplied_QuerySubmitted"
+                    SuggestionChosen="AsbAddImplied_SuggestionChosen"
+                    TextChanged="AsbAddImplied_TextChanged"
+                    Text="{x:Bind ViewModel.ImpliedQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextMemberPath="Name"
+                    UpdateTextOnSelect="True">
+                    <AutoSuggestBox.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagGroupPick">
+                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                        </DataTemplate>
+                    </AutoSuggestBox.ItemTemplate>
+                </AutoSuggestBox>
+                <Button
+                    AutomationProperties.AutomationId="BtnAddImplied"
+                    Command="{x:Bind ViewModel.AddImpliedCommand}"
+                    Content="Add implicit tag"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+
                 <TextBlock
                     AutomationProperties.AutomationId="TxtTagAssetCount"
                     Style="{StaticResource BodyTextBlockStyle}"

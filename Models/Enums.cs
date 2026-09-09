@@ -13,7 +13,8 @@ public enum TagSource
     Manual,
     Prompt,
     AiLocal,
-    AiCloud
+    AiCloud,
+    Implied
 }
 
 public enum DestinationPolicy

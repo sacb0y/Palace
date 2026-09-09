@@ -18,6 +18,7 @@ public partial class LibraryViewModel : ObservableObject
     private readonly ThumbnailService _thumbs;
     private readonly WatcherService _watchers;
     private IReadOnlyList<Asset> _allAssets = [];
+    private List<TagPickItem> _tagPicks = [];
     private List<AssetItem> _selection = [];
     private AssetItem? _selectionAnchor;
     private bool _suppressFilter;
@@ -52,6 +53,7 @@ public partial class LibraryViewModel : ObservableObject
     public ObservableCollection<AssignedTagItem> AssignedTags { get; } = [];
     public ObservableCollection<PromptSuggestion> Suggestions { get; } = [];
     public ObservableCollection<TagPickItem> AllTags { get; } = [];
+    public ObservableCollection<TagPickItem> TagSuggestions { get; } = [];
     public ObservableCollection<OrganizePreviewItem> OrganizePreview { get; } = [];
 
     [ObservableProperty]
@@ -112,7 +114,16 @@ public partial class LibraryViewModel : ObservableObject
     public partial string? NewTagName { get; set; }
 
     [ObservableProperty]
+    public partial string TagQuery { get; set; } = "";
+
+    [ObservableProperty]
     public partial TagPickItem? SelectedPickTag { get; set; }
+
+    [ObservableProperty]
+    public partial string AssignedTagsSummary { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string TagSuggestionsSummary { get; set; } = "";
 
     [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }
@@ -280,11 +291,7 @@ public partial class LibraryViewModel : ObservableObject
             _suppressFilter = true;
             RebuildTree(sources, assets);
             TagTreeBuilder.Replace(TagTree, tags, memberships);
-            AllTags.Clear();
-            foreach (var pick in pickItems)
-            {
-                AllTags.Add(pick);
-            }
+            ReplaceTagPicks(pickItems);
 
             if (IsTagBrowse)
             {
@@ -360,16 +367,33 @@ public partial class LibraryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task AssignPickedTagAsync()
+    private async Task AssignFromQueryAsync()
     {
-        if (SelectedAsset is null || SelectedPickTag is null)
+        if (SelectedAsset is null || string.IsNullOrWhiteSpace(TagQuery))
         {
             return;
         }
 
-        await _catalog.AssignTagAsync(SelectedAsset.Id, SelectedPickTag.TagId, TagSource.Manual);
+        var query = TagQuery.Trim();
+        var match = FindTagPick(query);
+        if (match is null)
+        {
+            var existing = await _catalog.FindTagByNameAsync(query);
+            var created = existing ?? await _catalog.CreateTagAsync(query);
+            await _catalog.AssignTagAsync(SelectedAsset.Id, created.Id, TagSource.Manual);
+        }
+        else
+        {
+            await _catalog.AssignTagAsync(SelectedAsset.Id, match.TagId, TagSource.Manual);
+        }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            TagQuery = "";
+            SelectedPickTag = null;
+        });
         await LoadPreviewAsync(SelectedAsset);
-        await ReloadTagPicksAsync();
+        await ReloadTagCatalogAsync();
     }
 
     [RelayCommand]
@@ -383,9 +407,9 @@ public partial class LibraryViewModel : ObservableObject
         var existing = await _catalog.FindTagByNameAsync(NewTagName);
         var tag = existing ?? await _catalog.CreateTagAsync(NewTagName.Trim());
         await _catalog.AssignTagAsync(SelectedAsset.Id, tag.Id, TagSource.Manual);
-        NewTagName = "";
+        await UiDispatch.RunAsync(() => NewTagName = "");
         await LoadPreviewAsync(SelectedAsset);
-        await ReloadTagPicksAsync();
+        await ReloadTagCatalogAsync();
     }
 
     [RelayCommand]
@@ -421,7 +445,7 @@ public partial class LibraryViewModel : ObservableObject
 
         await _catalog.AssignTagAsync(SelectedAsset.Id, tagId, TagSource.Prompt);
         await LoadPreviewAsync(SelectedAsset);
-        await ReloadTagPicksAsync();
+        await ReloadTagCatalogAsync();
     }
 
     [RelayCommand]
@@ -632,19 +656,9 @@ public partial class LibraryViewModel : ObservableObject
 
     private async Task LoadPreviewAsync(AssetItem? item)
     {
-        AssignedTags.Clear();
-        Suggestions.Clear();
         if (item is null)
         {
-            IsImagePreview = false;
-            IsVideoPreview = false;
-            PreviewPath = null;
-            PreviewPrompt = null;
-            PreviewNegative = null;
-            PreviewModel = null;
-            PreviewSeed = null;
-            PreviewNotes = null;
-            PreviewRating = 0;
+            await UiDispatch.RunAsync(ClearPreview);
             return;
         }
 
@@ -654,53 +668,153 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        PreviewPath = asset.IsOrphan ? null : asset.Path;
-        IsVideoPreview = asset.Kind == AssetKind.Video && PreviewPath is not null;
-        IsImagePreview = asset.Kind is AssetKind.Image or AssetKind.Gif && PreviewPath is not null;
-        PreviewPrompt = asset.Prompt;
-        PreviewNegative = asset.NegativePrompt;
-        PreviewModel = asset.Model;
-        PreviewSeed = asset.Seed;
-        PreviewNotes = asset.Notes;
-        PreviewRating = asset.Rating ?? 0;
-
-        foreach (var tag in await _catalog.GetAssignedTagsAsync(asset.Id))
-        {
-            var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
-            AssignedTags.Add(new AssignedTagItem
-            {
-                TagId = tag.TagId,
-                TagName = tag.TagName,
-                Display = tag.TagName + groups,
-                Source = tag.Source,
-                SourceLabel = tag.Source.ToString()
-            });
-        }
-
+        var assigned = await _catalog.GetAssignedTagsAsync(asset.Id);
         var existing = await _catalog.GetTagsAsync();
-        Suggestions.Clear();
-        foreach (var suggestion in PromptTagSuggester.Suggest(asset.Prompt, existing))
-        {
-            if (AssignedTags.Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
-            {
-                continue;
-            }
-
-            Suggestions.Add(suggestion);
-        }
-    }
-
-    private async Task ReloadTagPicksAsync()
-    {
-        var picks = BuildTagPicks(await _catalog.GetTagsAsync(), await _catalog.GetMembershipsAsync());
+        var suggestions = PromptTagSuggester.Suggest(asset.Prompt, existing);
+        var previewPath = asset.IsOrphan ? null : asset.Path;
         await UiDispatch.RunAsync(() =>
         {
-            AllTags.Clear();
-            foreach (var pick in picks)
+            PreviewPath = previewPath;
+            IsVideoPreview = asset.Kind == AssetKind.Video && previewPath is not null;
+            IsImagePreview = asset.Kind is AssetKind.Image or AssetKind.Gif && previewPath is not null;
+            PreviewPrompt = asset.Prompt;
+            PreviewNegative = asset.NegativePrompt;
+            PreviewModel = asset.Model;
+            PreviewSeed = asset.Seed;
+            PreviewNotes = asset.Notes;
+            PreviewRating = asset.Rating ?? 0;
+
+            AssignedTags.Clear();
+            foreach (var tag in assigned)
             {
-                AllTags.Add(pick);
+                var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
+                AssignedTags.Add(new AssignedTagItem
+                {
+                    TagId = tag.TagId,
+                    TagName = tag.TagName,
+                    Display = tag.TagName + groups,
+                    Source = tag.Source,
+                    SourceLabel = tag.Source == TagSource.Implied ? "Implied" : tag.Source.ToString()
+                });
+            }
+
+            AssignedTagsSummary = AssignedTags.Count == 0
+                ? "No tags assigned"
+                : string.Join(", ", AssignedTags.Select(t => t.TagName));
+
+            Suggestions.Clear();
+            foreach (var suggestion in suggestions)
+            {
+                if (AssignedTags.Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                Suggestions.Add(suggestion);
             }
         });
+    }
+
+    private void ClearPreview()
+    {
+        AssignedTags.Clear();
+        Suggestions.Clear();
+        AssignedTagsSummary = "";
+        IsImagePreview = false;
+        IsVideoPreview = false;
+        PreviewPath = null;
+        PreviewPrompt = null;
+        PreviewNegative = null;
+        PreviewModel = null;
+        PreviewSeed = null;
+        PreviewNotes = null;
+        PreviewRating = 0;
+    }
+
+    public async Task ReloadTagCatalogAsync()
+    {
+        var tags = await _catalog.GetTagsAsync();
+        var memberships = await _catalog.GetMembershipsAsync();
+        var pickItems = BuildTagPicks(tags, memberships);
+        var selectedTagId = SelectedTag?.TagId;
+        await UiDispatch.RunAsync(() =>
+        {
+            TagTreeBuilder.Replace(TagTree, tags, memberships);
+            if (IsTagBrowse)
+            {
+                SelectedTag = selectedTagId is null ? null : TagTreeBuilder.Find(TagTree, selectedTagId);
+            }
+
+            ReplaceTagPicks(pickItems);
+        });
+    }
+
+    partial void OnTagQueryChanged(string value) => ApplyTagSuggestionFilter(value);
+
+    private void ReplaceTagPicks(List<TagPickItem> pickItems)
+    {
+        _tagPicks = pickItems;
+        AllTags.Clear();
+        foreach (var pick in pickItems)
+        {
+            AllTags.Add(pick);
+        }
+
+        ApplyTagSuggestionFilter(TagQuery);
+    }
+
+    private void ApplyTagSuggestionFilter(string? query)
+    {
+        var q = (query ?? "").Trim();
+        IEnumerable<TagPickItem> source = _tagPicks;
+        if (q.Length > 0)
+        {
+            source = _tagPicks
+                .Select(t => (Item: t, Score: ScoreTagPick(t, q)))
+                .Where(x => x.Score > 0)
+                .OrderBy(x => x.Score)
+                .ThenBy(x => x.Item.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(x => x.Item);
+        }
+
+        var items = source.Take(40).ToList();
+        TagSuggestions.Clear();
+        foreach (var item in items)
+        {
+            TagSuggestions.Add(item);
+        }
+
+        TagSuggestionsSummary = items.Count == 0
+            ? "No matching tags"
+            : string.Join(", ", items.Select(t => t.Name));
+    }
+
+    private static int ScoreTagPick(TagPickItem tag, string query)
+    {
+        if (tag.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        if (tag.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        return tag.Display.Contains(query, StringComparison.OrdinalIgnoreCase) ? 3 : 0;
+    }
+
+    private TagPickItem? FindTagPick(string query)
+    {
+        if (SelectedPickTag is not null &&
+            (SelectedPickTag.Name.Equals(query, StringComparison.OrdinalIgnoreCase) ||
+             SelectedPickTag.Display.Equals(query, StringComparison.OrdinalIgnoreCase)))
+        {
+            return SelectedPickTag;
+        }
+
+        return _tagPicks.FirstOrDefault(t => t.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
+            ?? _tagPicks.FirstOrDefault(t => t.Display.Equals(query, StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<TagPickItem> BuildTagPicks(IReadOnlyList<Tag> tags, IReadOnlyList<TagMembership> memberships)
@@ -714,7 +828,7 @@ public partial class LibraryViewModel : ObservableObject
                 .Select(m => byId[m.ParentId].Name)
                 .ToList();
             var extra = parents.Count > 0 ? $" ({string.Join(", ", parents)})" : "";
-            picks.Add(new TagPickItem { TagId = tag.Id, Display = tag.Name + extra });
+            picks.Add(new TagPickItem { TagId = tag.Id, Name = tag.Name, Display = tag.Name + extra });
         }
 
         return picks;

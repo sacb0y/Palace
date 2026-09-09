@@ -53,6 +53,12 @@ public sealed class TagMembership
     public string ChildId { get; set; } = "";
 }
 
+public sealed class TagImplication
+{
+    public string TagId { get; set; } = "";
+    public string ImpliedTagId { get; set; } = "";
+}
+
 public sealed class TagPath
 {
     public IReadOnlyList<Tag> Nodes { get; init; } = [];

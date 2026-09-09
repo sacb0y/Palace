@@ -165,6 +165,14 @@ public sealed class PalaceDb : IDisposable
                 FOREIGN KEY (TagId) REFERENCES Tag(Id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS TagImplication (
+                TagId TEXT NOT NULL,
+                ImpliedTagId TEXT NOT NULL,
+                PRIMARY KEY (TagId, ImpliedTagId),
+                FOREIGN KEY (TagId) REFERENCES Tag(Id) ON DELETE CASCADE,
+                FOREIGN KEY (ImpliedTagId) REFERENCES Tag(Id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS OrganizeRule (
                 Id TEXT PRIMARY KEY,
                 Name TEXT NOT NULL,
@@ -232,6 +240,8 @@ public sealed class PalaceDb : IDisposable
             CREATE INDEX IF NOT EXISTS IX_Asset_Hash ON Asset(ContentHash);
             CREATE INDEX IF NOT EXISTS IX_TagMembership_Parent ON TagMembership(ParentId);
             CREATE INDEX IF NOT EXISTS IX_TagMembership_Child ON TagMembership(ChildId);
+            CREATE INDEX IF NOT EXISTS IX_TagImplication_Tag ON TagImplication(TagId);
+            CREATE INDEX IF NOT EXISTS IX_TagImplication_Implied ON TagImplication(ImpliedTagId);
             CREATE INDEX IF NOT EXISTS IX_SourceFolder_Project ON SourceFolder(ProjectId);
             """;
         cmd.ExecuteNonQuery();

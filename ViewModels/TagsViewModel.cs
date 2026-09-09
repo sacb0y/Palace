@@ -14,6 +14,7 @@ public partial class TagsViewModel : ObservableObject
     private readonly AccessService _access;
     private List<Tag> _tags = [];
     private List<TagMembership> _memberships = [];
+    private List<TagImplication> _implications = [];
 
     public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access)
     {
@@ -25,6 +26,8 @@ public partial class TagsViewModel : ObservableObject
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
     public ObservableCollection<TagGroupPick> ParentGroups { get; } = [];
     public ObservableCollection<TagGroupPick> AvailableGroups { get; } = [];
+    public ObservableCollection<TagGroupPick> ImpliedTags { get; } = [];
+    public ObservableCollection<TagGroupPick> ImpliedSuggestions { get; } = [];
     public ObservableCollection<OrganizePreviewItem> OrganizePreview { get; } = [];
 
     [ObservableProperty]
@@ -41,6 +44,12 @@ public partial class TagsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial TagGroupPick? SelectedAvailableGroup { get; set; }
+
+    [ObservableProperty]
+    public partial string ImpliedQuery { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string ImpliedTagsSummary { get; set; } = "";
 
     [ObservableProperty]
     public partial int AssetCount { get; set; }
@@ -71,8 +80,13 @@ public partial class TagsViewModel : ObservableObject
     {
         _tags = (await _catalog.GetTagsAsync()).ToList();
         _memberships = (await _catalog.GetMembershipsAsync()).ToList();
-        RebuildTree();
+        _implications = (await _catalog.GetImplicationsAsync()).ToList();
+        await UiDispatch.RunAsync(RebuildTree);
         await LoadSelectionAsync();
+        if (AppServices.Library is { } library)
+        {
+            await library.ReloadTagCatalogAsync();
+        }
     }
 
     public void SelectNode(TagTreeNode? node)
@@ -90,13 +104,10 @@ public partial class TagsViewModel : ObservableObject
         }
 
         var existing = await _catalog.FindTagByNameAsync(NewTagName);
-        if (existing is null)
-        {
-            await _catalog.CreateTagAsync(NewTagName.Trim());
-        }
-
+        var tag = existing ?? await _catalog.CreateTagAsync(NewTagName.Trim());
         NewTagName = "";
         await RefreshAsync();
+        SelectCreated(tag.Id);
         StatusText = existing is null ? "Created an ungrouped tag." : "That tag already exists.";
     }
 
@@ -109,9 +120,10 @@ public partial class TagsViewModel : ObservableObject
         }
 
         var existing = await _catalog.FindTagByNameAsync(NewTagName);
+        Tag tag;
         if (existing is null)
         {
-            await _catalog.CreateChildTagAsync(SelectedNode.TagId, NewTagName.Trim());
+            tag = await _catalog.CreateChildTagAsync(SelectedNode.TagId, NewTagName.Trim());
         }
         else
         {
@@ -121,10 +133,13 @@ public partial class TagsViewModel : ObservableObject
                 StatusText = "That membership would create a cycle.";
                 return;
             }
+
+            tag = existing;
         }
 
         NewTagName = "";
         await RefreshAsync();
+        SelectCreated(tag.Id);
         StatusText = "Nested tag under the selected group.";
     }
 
@@ -166,6 +181,38 @@ public partial class TagsViewModel : ObservableObject
         await _catalog.RemoveMembershipAsync(group.TagId, SelectedNode.TagId);
         await RefreshAsync();
         StatusText = $"Removed from {group.Name}.";
+    }
+
+    [RelayCommand]
+    private async Task AddImpliedAsync()
+    {
+        if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(ImpliedQuery))
+        {
+            return;
+        }
+
+        var name = ImpliedQuery.Trim();
+        var existing = await _catalog.FindTagByNameAsync(name);
+        var target = existing ?? await _catalog.CreateTagAsync(name);
+        var ok = await _catalog.AddImplicationAsync(SelectedNode.TagId, target.Id);
+        await UiDispatch.RunAsync(() => ImpliedQuery = "");
+        await RefreshAsync();
+        StatusText = ok
+            ? $"Assigning this tag will also apply {target.Name}."
+            : "That implicit tag would create a cycle.";
+    }
+
+    [RelayCommand]
+    private async Task RemoveImpliedAsync(TagGroupPick? item)
+    {
+        if (SelectedNode?.TagId is null || item is null)
+        {
+            return;
+        }
+
+        await _catalog.RemoveImplicationAsync(SelectedNode.TagId, item.TagId);
+        await RefreshAsync();
+        StatusText = $"{item.Name} is no longer implied.";
     }
 
     [RelayCommand]
@@ -240,17 +287,34 @@ public partial class TagsViewModel : ObservableObject
 
     partial void OnIncludeNestedChanged(bool value) => _ = LoadSelectionAsync();
 
+    partial void OnImpliedQueryChanged(string value) => ApplyImpliedSuggestionFilter(value);
+
+    private void SelectCreated(string tagId)
+    {
+        var node = TagTreeBuilder.Find(TagTree, tagId);
+        if (node is not null)
+        {
+            SelectNode(node);
+        }
+    }
+
     private async Task LoadSelectionAsync()
     {
-        ParentGroups.Clear();
-        AvailableGroups.Clear();
         HasSelection = SelectedNode?.TagId is not null;
         if (SelectedNode?.TagId is null)
         {
-            SelectedName = "";
-            SelectedPriority = 0;
-            AssetCount = 0;
-            AssetCountLabel = "Select a tag";
+            await UiDispatch.RunAsync(() =>
+            {
+                SelectedName = "";
+                SelectedPriority = 0;
+                AssetCount = 0;
+                AssetCountLabel = "Select a tag";
+                ImpliedTagsSummary = "";
+                ParentGroups.Clear();
+                AvailableGroups.Clear();
+                ImpliedTags.Clear();
+                ImpliedSuggestions.Clear();
+            });
             return;
         }
 
@@ -260,31 +324,75 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        SelectedName = tag.Name;
-        SelectedPriority = tag.Priority;
         var ids = new List<string> { tag.Id };
         if (IncludeNested)
         {
             ids.AddRange(await _catalog.GetDescendantTagIdsAsync(tag.Id));
         }
 
-        AssetCount = await _catalog.CountAssetsForTagsAsync(ids);
-        AssetCountLabel = $"{AssetCount} images with this tag";
-
+        var count = await _catalog.CountAssetsForTagsAsync(ids);
         var parentIds = _memberships.Where(m => m.ChildId == tag.Id).Select(m => m.ParentId).ToHashSet();
-        foreach (var parent in _tags.Where(t => parentIds.Contains(t.Id)).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+        var parents = _tags.Where(t => parentIds.Contains(t.Id)).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var available = _tags
+            .Where(t => t.Id != tag.Id && !parentIds.Contains(t.Id))
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var impliedIds = _implications.Where(i => i.TagId == tag.Id).Select(i => i.ImpliedTagId).ToHashSet();
+        var implied = _tags.Where(t => impliedIds.Contains(t.Id)).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        await UiDispatch.RunAsync(() =>
         {
-            ParentGroups.Add(new TagGroupPick { TagId = parent.Id, Name = parent.Name });
-        }
-
-        foreach (var candidate in _tags.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
-        {
-            if (candidate.Id == tag.Id || parentIds.Contains(candidate.Id))
+            SelectedName = tag.Name;
+            SelectedPriority = tag.Priority;
+            AssetCount = count;
+            AssetCountLabel = $"{count} images with this tag";
+            ParentGroups.Clear();
+            foreach (var parent in parents)
             {
-                continue;
+                ParentGroups.Add(new TagGroupPick { TagId = parent.Id, Name = parent.Name });
             }
 
-            AvailableGroups.Add(new TagGroupPick { TagId = candidate.Id, Name = candidate.Name });
+            AvailableGroups.Clear();
+            foreach (var candidate in available)
+            {
+                AvailableGroups.Add(new TagGroupPick { TagId = candidate.Id, Name = candidate.Name });
+            }
+
+            ImpliedTags.Clear();
+            foreach (var item in implied)
+            {
+                ImpliedTags.Add(new TagGroupPick { TagId = item.Id, Name = item.Name });
+            }
+
+            ImpliedTagsSummary = implied.Count == 0
+                ? "No implicit tags"
+                : string.Join(", ", implied.Select(t => t.Name));
+            ApplyImpliedSuggestionFilter(ImpliedQuery);
+        });
+    }
+
+    private void ApplyImpliedSuggestionFilter(string? query)
+    {
+        var selectedId = SelectedNode?.TagId;
+        var impliedIds = new HashSet<string>(StringComparer.Ordinal);
+        if (selectedId is not null)
+        {
+            foreach (var id in _implications.Where(i => i.TagId == selectedId).Select(i => i.ImpliedTagId))
+            {
+                impliedIds.Add(id);
+            }
+        }
+        var q = (query ?? "").Trim();
+        IEnumerable<Tag> source = _tags.Where(t => t.Id != selectedId && !impliedIds.Contains(t.Id));
+        if (q.Length > 0)
+        {
+            source = source.Where(t => t.Name.Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var items = source.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).Take(40).ToList();
+        ImpliedSuggestions.Clear();
+        foreach (var tag in items)
+        {
+            ImpliedSuggestions.Add(new TagGroupPick { TagId = tag.Id, Name = tag.Name });
         }
     }
 
