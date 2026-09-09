@@ -10,7 +10,12 @@
     xmlns:pages="using:Palace.Pages"
     mc:Ignorable="d">
 
-    <Grid Padding="12,8,12,8" RowSpacing="8" ColumnSpacing="12">
+    <Grid>
+    <Grid
+        Padding="12,8,12,8"
+        ColumnSpacing="12"
+        IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
+        RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -158,7 +163,10 @@
                 Grid.Row="2"
                 AutomationProperties.AutomationId="GrdAssets"
                 AutomationProperties.Name="Assets"
+                DoubleTapped="GrdAssets_DoubleTapped"
+                IsTabStop="True"
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
+                PreviewKeyDown="GrdAssets_KeyDown"
                 SelectionChanged="GrdAssets_SelectionChanged"
                 SelectionMode="Extended">
                 <ItemsView.Layout>
@@ -172,13 +180,68 @@
                 </ItemsView.Layout>
                 <ItemsView.ItemTemplate>
                     <DataTemplate x:DataType="models:AssetItem">
-                        <ItemContainer AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}">
+                        <ItemContainer
+                            AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
+                            DoubleTapped="AssetItem_DoubleTapped"
+                            IsDoubleTapEnabled="True"
+                            ManipulationMode="None"
+                            PointerPressed="AssetItem_PointerPressed"
+                            RightTapped="AssetItem_RightTapped">
+                            <ItemContainer.ContextFlyout>
+                                <MenuFlyout Opening="AssetMenu_Opening">
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOpen"
+                                        Command="{x:Bind pages:LibraryPage.GetOpenOverlayCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Text="Open" />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOpenInNewWindow"
+                                        Command="{x:Bind pages:LibraryPage.GetOpenInNewWindowCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Text="Open in new window" />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuShowInExplorer"
+                                        Command="{x:Bind pages:LibraryPage.GetShowInExplorerCommand()}"
+                                        Text="Show in File Explorer" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuCopy"
+                                        Command="{x:Bind pages:LibraryPage.GetCopyFilesCommand()}"
+                                        Text="Copy" />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuCopyPath"
+                                        Command="{x:Bind pages:LibraryPage.GetCopyPathCommand()}"
+                                        Text="Copy path" />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuMoveToFolder"
+                                        Command="{x:Bind pages:LibraryPage.GetMoveToFolderCommand()}"
+                                        Text="Move to folder…" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuAddToRoom"
+                                        Command="{x:Bind pages:LibraryPage.GetAddSelectionToRoomCommand()}"
+                                        Text="Add to room" />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuAddTag"
+                                        Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
+                                        Text="Add tag…" />
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuDelete"
+                                        Command="{x:Bind pages:LibraryPage.GetDeleteFilesCommand()}"
+                                        Text="Delete" />
+                                </MenuFlyout>
+                            </ItemContainer.ContextFlyout>
                             <Grid
-                                Width="{x:Bind AspectHintWidth, Mode=OneWay}"
-                                Height="100"
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                DoubleTapped="AssetItem_DoubleTapped"
+                                IsDoubleTapEnabled="True"
+                                ManipulationMode="None">
                                 <Image
-                                    Stretch="Uniform"
+                                    DoubleTapped="AssetItem_DoubleTapped"
+                                    IsDoubleTapEnabled="True"
+                                    ManipulationMode="None"
+                                    Stretch="UniformToFill"
                                     Source="{x:Bind pages:LibraryPage.FileToImage(ThumbPath), Mode=OneWay}" />
                                 <TextBlock
                                     Margin="8"
@@ -188,15 +251,6 @@
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="Missing"
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsOrphan), Mode=OneWay}" />
-                                <Border
-                                    Padding="6,2"
-                                    VerticalAlignment="Bottom"
-                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                    <TextBlock
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind FileName, Mode=OneWay}"
-                                        TextTrimming="CharacterEllipsis" />
-                                </Border>
                             </Grid>
                         </ItemContainer>
                     </DataTemplate>
@@ -263,12 +317,14 @@
                 <RatingControl
                     AutomationProperties.AutomationId="RtgAsset"
                     Caption="Rating"
+                    IsEnabled="{x:Bind ViewModel.CanEditNotes, Mode=OneWay}"
                     PlaceholderValue="0"
                     Value="{x:Bind ViewModel.PreviewRating, Mode=TwoWay}" />
                 <TextBox
                     AutomationProperties.AutomationId="TxtNotes"
                     AcceptsReturn="True"
                     Header="Notes"
+                    IsEnabled="{x:Bind ViewModel.CanEditNotes, Mode=OneWay}"
                     Text="{x:Bind ViewModel.PreviewNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                     TextWrapping="Wrap" />
 
@@ -278,53 +334,100 @@
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.AssignedTagsSummary, Mode=OneWay}"
                     TextWrapping="Wrap" />
-                <ListView
-                    x:Name="LstTags"
-                    AutomationProperties.AutomationId="LstTags"
-                    Header="Assigned"
-                    ItemsSource="{x:Bind ViewModel.AssignedTags, Mode=OneWay}">
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="models:AssignedTagItem">
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock
-                                    Style="{StaticResource BodyTextBlockStyle}"
-                                    Text="{x:Bind Display, Mode=OneWay}"
-                                    TextTrimming="CharacterEllipsis" />
-                                <TextBlock
-                                    Grid.Column="1"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind SourceLabel, Mode=OneWay}" />
-                                <Button
-                                    Grid.Column="2"
-                                    AutomationProperties.Name="Remove tag"
-                                    Command="{x:Bind pages:LibraryPage.GetRemoveTagCommand()}"
-                                    CommandParameter="{x:Bind}"
-                                    Content="Remove" />
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
+                <ScrollViewer
+                    MaxHeight="220"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <ItemsControl
+                        x:Name="LstTags"
+                        AutomationProperties.AutomationId="LstTags"
+                        AutomationProperties.Name="Assigned"
+                        ItemsSource="{x:Bind ViewModel.AssignedTags, Mode=OneWay}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="8" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:AssignedTagItem">
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border
+                                        Padding="8,4"
+                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource ControlCornerRadius}"
+                                        Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock
+                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                Style="{StaticResource BodyTextBlockStyle}"
+                                                Text="{x:Bind Display, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind CountLabel, Mode=OneWay}"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
+                                            <TextBlock
+                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind SourceLabel, Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Button
+                                        Grid.Column="1"
+                                        MinWidth="88"
+                                        MinHeight="32"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
+                                        AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                        Command="{x:Bind pages:LibraryPage.GetRemoveTagCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Content="Remove" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Add tag" />
                 <AutoSuggestBox
                     x:Name="AsbAssignTag"
                     AutomationProperties.AutomationId="AsbAssignTag"
-                    Header="Add tag"
+                    AutomationProperties.Name="Tag to assign"
                     ItemsSource="{x:Bind ViewModel.TagSuggestions, Mode=OneWay}"
                     PlaceholderText="Type to find or create a tag"
                     QueryIcon="Find"
                     QuerySubmitted="AsbAssignTag_QuerySubmitted"
                     SuggestionChosen="AsbAssignTag_SuggestionChosen"
                     TextChanged="AsbAssignTag_TextChanged"
-                    Text="{x:Bind ViewModel.TagQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    Text="{x:Bind ViewModel.TagQuery, Mode=OneWay}"
                     TextMemberPath="Display"
                     UpdateTextOnSelect="True">
                     <AutoSuggestBox.ItemTemplate>
                         <DataTemplate x:DataType="models:TagPickItem">
-                            <TextBlock Text="{x:Bind Display, Mode=OneWay}" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border
+                                    Width="12"
+                                    Height="12"
+                                    VerticalAlignment="Center"
+                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="2" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Text="{x:Bind Display, Mode=OneWay}" />
+                            </Grid>
                         </DataTemplate>
                     </AutoSuggestBox.ItemTemplate>
                 </AutoSuggestBox>
@@ -335,7 +438,7 @@
                     TextWrapping="Wrap" />
                 <Button
                     AutomationProperties.AutomationId="BtnAssignTag"
-                    Command="{x:Bind ViewModel.AssignFromQueryCommand}"
+                    Click="BtnAssignTag_Click"
                     Content="Assign tag"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
                 <TextBox
@@ -446,5 +549,136 @@
             AutomationProperties.AutomationId="TxtStatus"
             Style="{StaticResource CaptionTextBlockStyle}"
             Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+    </Grid>
+
+        <Grid
+            x:Name="GrdGalleryOverlay"
+            AutomationProperties.AutomationId="GrdGalleryOverlay"
+            AutomationProperties.Name="Gallery overlay"
+            Background="{ThemeResource SmokeFillColorDefaultBrush}"
+            Canvas.ZIndex="1"
+            IsTabStop="True"
+            PointerPressed="GalleryOverlay_BackdropPressed"
+            PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
+            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
+            <Grid>
+                <Image
+                    Stretch="Uniform"
+                    Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.CurrentPath), Mode=OneWay, FallbackValue={x:Null}}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
+                <MediaPlayerElement
+                    x:Name="MpeOverlay"
+                    AreTransportControlsEnabled="True"
+                    AutoPlay="False"
+                    AutomationProperties.AutomationId="MpeGalleryOverlay"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="Missing"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
+
+                <Button
+                    x:Name="BtnGalleryPrev"
+                    MinWidth="48"
+                    MinHeight="48"
+                    Margin="16,0,0,0"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnGalleryPrev"
+                    AutomationProperties.Name="Previous"
+                    Command="{x:Bind ViewModel.OverlayGallery.GoPreviousCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                    IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoPrevious, Mode=OneWay, FallbackValue=False}"
+                    ToolTipService.ToolTip="Previous">
+                    <SymbolIcon Symbol="Back" />
+                </Button>
+                <Button
+                    x:Name="BtnGalleryNext"
+                    MinWidth="48"
+                    MinHeight="48"
+                    Margin="0,0,16,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnGalleryNext"
+                    AutomationProperties.Name="Next"
+                    Command="{x:Bind ViewModel.OverlayGallery.GoNextCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                    IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoNext, Mode=OneWay, FallbackValue=False}"
+                    ToolTipService.ToolTip="Next">
+                    <SymbolIcon Symbol="Forward" />
+                </Button>
+                <Button
+                    x:Name="BtnGalleryClose"
+                    MinWidth="48"
+                    MinHeight="48"
+                    Margin="0,16,16,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    AutomationProperties.AutomationId="BtnGalleryClose"
+                    AutomationProperties.Name="Close"
+                    Command="{x:Bind ViewModel.CloseOverlayCommand}"
+                    ToolTipService.ToolTip="Close">
+                    <SymbolIcon Symbol="Cancel" />
+                </Button>
+            </Grid>
+
+            <Border
+                Margin="24,0,24,24"
+                Padding="16,12"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Bottom"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource OverlayCornerRadius}">
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        AutomationProperties.AutomationId="TxtGalleryOverlayTitle"
+                        AutomationProperties.Name="Gallery title"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="{x:Bind ViewModel.OverlayGallery.Title, Mode=OneWay, FallbackValue=''}"
+                        TextTrimming="CharacterEllipsis" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="TxtGalleryOverlayPosition"
+                        AutomationProperties.Name="Gallery position"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.OverlayGallery.PositionLabel, Mode=OneWay, FallbackValue=''}" />
+                    <ItemsControl
+                        x:Name="LstGalleryOverlayTags"
+                        AutomationProperties.AutomationId="LstGalleryOverlayTags"
+                        AutomationProperties.Name="Tags"
+                        ItemsSource="{x:Bind ViewModel.OverlayGallery.Tags, Mode=OneWay, FallbackValue={x:Null}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:AssignedTagItem">
+                                <Border
+                                    Padding="8,4"
+                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{StaticResource ControlCornerRadius}"
+                                    Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock
+                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind TagName, Mode=OneWay}" />
+                                        <TextBlock
+                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind CountLabel, Mode=OneWay}"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

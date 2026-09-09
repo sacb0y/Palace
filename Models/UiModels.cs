@@ -86,6 +86,20 @@ public partial class AssignedTagItem : ObservableObject
 
     [ObservableProperty]
     public partial TagSource Source { get; set; }
+
+    [ObservableProperty]
+    public partial string? EffectiveColor { get; set; }
+
+    [ObservableProperty]
+    public partial string CountLabel { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool IsPartial { get; set; }
+
+    public string RemoveAutomationName => $"Remove {TagName}";
+
+    public string RemoveAutomationId =>
+        "BtnRemoveTag_" + string.Concat((TagName ?? "").Where(char.IsLetterOrDigit));
 }
 
 public partial class OrganizePreviewItem : ObservableObject
@@ -142,6 +156,7 @@ public sealed class TagPickItem
     public string TagId { get; set; } = "";
     public string Name { get; set; } = "";
     public string Display { get; set; } = "";
+    public string? EffectiveColor { get; set; }
 }
 
 public partial class TagTreeNode : ObservableObject
@@ -151,6 +166,15 @@ public partial class TagTreeNode : ObservableObject
 
     [ObservableProperty]
     public partial string Name { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string? EffectiveColor { get; set; }
+
+    [ObservableProperty]
+    public partial string ColorSourceLabel { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool ColorIsCustom { get; set; }
 
     public ObservableCollection<TagTreeNode> Children { get; } = [];
 }

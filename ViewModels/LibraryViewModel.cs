@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Palace.Data;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 
 namespace Palace.ViewModels;
@@ -20,6 +22,7 @@ public partial class LibraryViewModel : ObservableObject
     private IReadOnlyList<Asset> _allAssets = [];
     private List<TagPickItem> _tagPicks = [];
     private List<AssetItem> _selection = [];
+    private List<AssetItem> _previewTargets = [];
     private AssetItem? _selectionAnchor;
     private bool _suppressFilter;
     private int _filterEpoch;
@@ -43,6 +46,8 @@ public partial class LibraryViewModel : ObservableObject
     public Func<Task<OrganizeChoice?>>? RequestOrganizeChoice { get; set; }
     public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
     public Func<IReadOnlyList<Room>, Task<Room?>>? RequestPickRoom { get; set; }
+    public Action? RequestFocusAssignTag { get; set; }
+    public Action<GalleryViewModel>? RequestOpenGalleryWindow { get; set; }
 
     public ObservableCollection<FolderNode> FolderTree { get; } = [];
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
@@ -134,6 +139,15 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowInfo { get; set; }
 
+    [ObservableProperty]
+    public partial bool CanEditNotes { get; set; }
+
+    [ObservableProperty]
+    public partial GalleryViewModel? OverlayGallery { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsGalleryOverlayOpen { get; set; }
+
     public bool CanUndo => true;
 
     partial void OnSelectedFolderChanged(FolderNode? value)
@@ -190,7 +204,7 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnPreviewNotesChanged(string? value)
     {
-        if (SelectedAsset is null)
+        if (!CanEditNotes || SelectedAsset is null)
         {
             return;
         }
@@ -200,7 +214,7 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnPreviewRatingChanged(double value)
     {
-        if (SelectedAsset is null)
+        if (!CanEditNotes || SelectedAsset is null)
         {
             return;
         }
@@ -217,8 +231,17 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         HasSelection = _selection.Count > 0;
-        SelectedAsset = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
-        _selectionAnchor = SelectedAsset;
+        CanEditNotes = _selection.Count == 1;
+        var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
+        _selectionAnchor = next;
+        if (!ReferenceEquals(SelectedAsset, next))
+        {
+            SelectedAsset = next;
+        }
+        else
+        {
+            _ = LoadPreviewAsync(next);
+        }
     }
 
     public void SelectAsset(AssetItem item, bool toggle, bool range = false)
@@ -239,7 +262,16 @@ public partial class LibraryViewModel : ObservableObject
 
                 _selection = list.Where(a => a.IsSelected).ToList();
                 HasSelection = _selection.Count > 0;
-                SelectedAsset = item;
+                CanEditNotes = _selection.Count == 1;
+                if (!ReferenceEquals(SelectedAsset, item))
+                {
+                    SelectedAsset = item;
+                }
+                else
+                {
+                    _ = LoadPreviewAsync(item);
+                }
+
                 return;
             }
         }
@@ -265,7 +297,16 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         HasSelection = _selection.Count > 0;
-        SelectedAsset = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
+        CanEditNotes = _selection.Count == 1;
+        var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
+        if (!ReferenceEquals(SelectedAsset, next))
+        {
+            SelectedAsset = next;
+        }
+        else
+        {
+            _ = LoadPreviewAsync(next);
+        }
     }
 
     public async Task LoadAsync()
@@ -369,24 +410,30 @@ public partial class LibraryViewModel : ObservableObject
     [RelayCommand]
     private async Task AssignFromQueryAsync()
     {
-        if (SelectedAsset is null || string.IsNullOrWhiteSpace(TagQuery))
+        var targets = TagTargets();
+        if (targets.Count == 0 || string.IsNullOrWhiteSpace(TagQuery))
         {
             return;
         }
 
         var query = TagQuery.Trim();
         var match = FindTagPick(query);
+        string tagId;
+        string tagName;
         if (match is null)
         {
             var existing = await _catalog.FindTagByNameAsync(query);
             var created = existing ?? await _catalog.CreateTagAsync(query);
-            await _catalog.AssignTagAsync(SelectedAsset.Id, created.Id, TagSource.Manual);
+            tagId = created.Id;
+            tagName = created.Name;
         }
         else
         {
-            await _catalog.AssignTagAsync(SelectedAsset.Id, match.TagId, TagSource.Manual);
+            tagId = match.TagId;
+            tagName = match.Name;
         }
 
+        await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Manual);
         await UiDispatch.RunAsync(() =>
         {
             TagQuery = "";
@@ -399,14 +446,15 @@ public partial class LibraryViewModel : ObservableObject
     [RelayCommand]
     private async Task CreateAndAssignTagAsync()
     {
-        if (SelectedAsset is null || string.IsNullOrWhiteSpace(NewTagName))
+        var targets = TagTargets();
+        if (targets.Count == 0 || string.IsNullOrWhiteSpace(NewTagName))
         {
             return;
         }
 
         var existing = await _catalog.FindTagByNameAsync(NewTagName);
         var tag = existing ?? await _catalog.CreateTagAsync(NewTagName.Trim());
-        await _catalog.AssignTagAsync(SelectedAsset.Id, tag.Id, TagSource.Manual);
+        await AssignToSelectionAsync(targets, tag.Id, tag.Name, TagSource.Manual);
         await UiDispatch.RunAsync(() => NewTagName = "");
         await LoadPreviewAsync(SelectedAsset);
         await ReloadTagCatalogAsync();
@@ -415,35 +463,47 @@ public partial class LibraryViewModel : ObservableObject
     [RelayCommand]
     private async Task RemoveAssignedTagAsync(AssignedTagItem? item)
     {
-        if (SelectedAsset is null || item is null)
+        var targets = TagTargets();
+        if (targets.Count == 0 || item is null)
         {
             return;
         }
 
-        await _catalog.RemoveTagAsync(SelectedAsset.Id, item.TagId);
+        foreach (var asset in targets)
+        {
+            await _catalog.RemoveTagAsync(asset.Id, item.TagId);
+        }
+
+        StatusText = targets.Count == 1
+            ? $"Removed {item.TagName} from 1 image"
+            : $"Removed {item.TagName} from {targets.Count} images";
         await LoadPreviewAsync(SelectedAsset);
     }
 
     [RelayCommand]
     private async Task AcceptSuggestionAsync(PromptSuggestion? suggestion)
     {
-        if (SelectedAsset is null || suggestion is null)
+        var targets = TagTargets();
+        if (targets.Count == 0 || suggestion is null)
         {
             return;
         }
 
         string tagId;
+        string tagName = suggestion.Token;
         if (suggestion.ExistingTagId is not null)
         {
             tagId = suggestion.ExistingTagId;
+            tagName = suggestion.ExistingTagName ?? suggestion.Token;
         }
         else
         {
             var created = await _catalog.CreateTagAsync(suggestion.Token);
             tagId = created.Id;
+            tagName = created.Name;
         }
 
-        await _catalog.AssignTagAsync(SelectedAsset.Id, tagId, TagSource.Prompt);
+        await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Prompt);
         await LoadPreviewAsync(SelectedAsset);
         await ReloadTagCatalogAsync();
     }
@@ -549,6 +609,223 @@ public partial class LibraryViewModel : ObservableObject
 
         Notify($"Added {_selection.Count} to {room.Name}.");
         await AppServices.Rooms.RefreshAsync();
+    }
+
+    [RelayCommand]
+    private void OpenOverlay(AssetItem? item)
+    {
+        if (!TryCreateGallery(item, out var gallery))
+        {
+            return;
+        }
+
+        OverlayGallery = gallery;
+        IsGalleryOverlayOpen = true;
+    }
+
+    [RelayCommand]
+    private void CloseOverlay()
+    {
+        IsGalleryOverlayOpen = false;
+        OverlayGallery = null;
+    }
+
+    [RelayCommand]
+    private void OpenInNewWindow(AssetItem? item)
+    {
+        if (RequestOpenGalleryWindow is null || !TryCreateGallery(item, out var gallery))
+        {
+            return;
+        }
+
+        RequestOpenGalleryWindow(gallery);
+    }
+
+    [RelayCommand]
+    private async Task ShowInExplorerAsync()
+    {
+        var targets = await SelectedAssetsAsync();
+        if (targets.Count == 0)
+        {
+            Notify("Select assets first.");
+            return;
+        }
+
+        var opened = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var asset in targets)
+        {
+            var dir = Path.GetDirectoryName(asset.Path);
+            if (string.IsNullOrEmpty(dir) || !opened.Add(dir))
+            {
+                continue;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{asset.Path}\"",
+                UseShellExecute = true
+            });
+        }
+    }
+
+    [RelayCommand]
+    private async Task CopyFilesAsync()
+    {
+        var targets = await SelectedAssetsAsync();
+        var files = new List<IStorageItem>();
+        foreach (var asset in targets)
+        {
+            if (!File.Exists(asset.Path))
+            {
+                continue;
+            }
+
+            try
+            {
+                files.Add(await StorageFile.GetFileFromPathAsync(asset.Path));
+            }
+            catch
+            {
+                // Skip files the package cannot open.
+            }
+        }
+
+        if (files.Count == 0)
+        {
+            Notify("Nothing to copy.");
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetStorageItems(files);
+        Clipboard.SetContent(package);
+        Notify($"Copied {files.Count} file(s).");
+    }
+
+    [RelayCommand]
+    private async Task CopyPathAsync()
+    {
+        var targets = await SelectedAssetsAsync();
+        if (targets.Count == 0)
+        {
+            Notify("Select assets first.");
+            return;
+        }
+
+        var package = new DataPackage();
+        package.SetText(string.Join(Environment.NewLine, targets.Select(t => t.Path)));
+        Clipboard.SetContent(package);
+        Notify(targets.Count == 1 ? "Copied path." : $"Copied {targets.Count} paths.");
+    }
+
+    [RelayCommand]
+    private async Task MoveToFolderAsync()
+    {
+        var targets = await SelectedAssetsAsync();
+        if (targets.Count == 0)
+        {
+            Notify("Select assets first.");
+            return;
+        }
+
+        var folder = await _access.PickFolderAsync();
+        if (folder is null)
+        {
+            return;
+        }
+
+        var destRoot = folder.Path;
+        Directory.CreateDirectory(destRoot);
+        var moved = 0;
+        foreach (var asset in targets)
+        {
+            if (!File.Exists(asset.Path))
+            {
+                continue;
+            }
+
+            var dest = Path.Combine(destRoot, Path.GetFileName(asset.Path));
+            if (string.Equals(Path.GetFullPath(asset.Path), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            dest = PathSafe.UniquePath(dest);
+            try
+            {
+                File.Move(asset.Path, dest);
+                await _catalog.UpdateAssetPathAsync(asset.Id, dest);
+                moved++;
+            }
+            catch (Exception ex)
+            {
+                await _catalog.SetOrganizeErrorAsync(asset.Id, ex.Message);
+            }
+        }
+
+        CloseOverlay();
+        await RefreshQuietAsync();
+        StatusText = moved == 0 ? "No files moved." : $"Moved {moved} file(s).";
+    }
+
+    [RelayCommand]
+    private async Task DeleteFilesAsync()
+    {
+        var targets = await SelectedAssetsAsync();
+        if (targets.Count == 0 || RequestConfirm is null)
+        {
+            Notify("Select assets first.");
+            return;
+        }
+
+        var preview = targets.Count == 1
+            ? targets[0].FileName
+            : $"{targets.Count} files ({string.Join(", ", targets.Take(3).Select(t => t.FileName))}{(targets.Count > 3 ? ", …" : "")})";
+        if (!await RequestConfirm(
+                "Delete",
+                $"Send {preview} to the Recycle Bin? This also removes them from the catalog.",
+                "Delete"))
+        {
+            return;
+        }
+
+        var removed = new List<string>();
+        foreach (var asset in targets)
+        {
+            if (File.Exists(asset.Path))
+            {
+                try
+                {
+                    var file = await StorageFile.GetFileFromPathAsync(asset.Path);
+                    await file.DeleteAsync(StorageDeleteOption.Default);
+                }
+                catch (Exception ex)
+                {
+                    Notify($"Could not delete {asset.FileName}: {ex.Message}");
+                    continue;
+                }
+            }
+
+            _thumbs.TryDelete(asset.ContentHash);
+            removed.Add(asset.Id);
+        }
+
+        if (removed.Count > 0)
+        {
+            await _catalog.DeleteAssetsAsync(removed);
+        }
+
+        CloseOverlay();
+        await RefreshQuietAsync();
+        await AppServices.Rooms.RefreshAsync();
+        Notify(removed.Count == 0 ? "Nothing deleted." : $"Deleted {removed.Count} file(s).");
+    }
+
+    [RelayCommand]
+    private void FocusAssignTag()
+    {
+        RequestFocusAssignTag?.Invoke();
     }
 
     public void NavigateBreadcrumb(PathCrumb crumb)
@@ -668,12 +945,39 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        var assigned = await _catalog.GetAssignedTagsAsync(asset.Id);
+        var targets = _selection.Count > 0 ? _selection.ToList() : [item];
+        _previewTargets = targets;
+        var perAsset = new List<IReadOnlyList<AssignedTag>>();
+        foreach (var target in targets)
+        {
+            perAsset.Add(await _catalog.GetAssignedTagsAsync(target.Id));
+        }
+
+        var total = targets.Count;
+        var union = new Dictionary<string, (AssignedTag Sample, int Count, HashSet<TagSource> Sources)>(StringComparer.Ordinal);
+        foreach (var list in perAsset)
+        {
+            foreach (var tag in list)
+            {
+                if (!union.TryGetValue(tag.TagId, out var current))
+                {
+                    union[tag.TagId] = (tag, 1, [tag.Source]);
+                }
+                else
+                {
+                    current.Sources.Add(tag.Source);
+                    union[tag.TagId] = (current.Sample, current.Count + 1, current.Sources);
+                }
+            }
+        }
+
         var existing = await _catalog.GetTagsAsync();
         var suggestions = PromptTagSuggester.Suggest(asset.Prompt, existing);
         var previewPath = asset.IsOrphan ? null : asset.Path;
+        var canEdit = total == 1;
         await UiDispatch.RunAsync(() =>
         {
+            CanEditNotes = canEdit;
             PreviewPath = previewPath;
             IsVideoPreview = asset.Kind == AssetKind.Video && previewPath is not null;
             IsImagePreview = asset.Kind is AssetKind.Image or AssetKind.Gif && previewPath is not null;
@@ -685,16 +989,26 @@ public partial class LibraryViewModel : ObservableObject
             PreviewRating = asset.Rating ?? 0;
 
             AssignedTags.Clear();
-            foreach (var tag in assigned)
+            foreach (var entry in union.Values
+                .OrderByDescending(v => v.Sample.TagPriority)
+                .ThenBy(v => v.Sample.TagName, StringComparer.OrdinalIgnoreCase))
             {
+                var tag = entry.Sample;
                 var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
+                var isPartial = total > 1 && entry.Count < total;
+                var source = entry.Sources.Count == 1 ? entry.Sources.First() : tag.Source;
                 AssignedTags.Add(new AssignedTagItem
                 {
                     TagId = tag.TagId,
                     TagName = tag.TagName,
                     Display = tag.TagName + groups,
-                    Source = tag.Source,
-                    SourceLabel = tag.Source == TagSource.Implied ? "Implied" : tag.Source.ToString()
+                    Source = source,
+                    SourceLabel = entry.Sources.Count == 1
+                        ? (source == TagSource.Implied ? "Implied" : source.ToString())
+                        : "Mixed",
+                    EffectiveColor = tag.EffectiveColor,
+                    IsPartial = isPartial,
+                    CountLabel = isPartial ? $"{entry.Count}/{total}" : ""
                 });
             }
 
@@ -719,6 +1033,7 @@ public partial class LibraryViewModel : ObservableObject
     {
         AssignedTags.Clear();
         Suggestions.Clear();
+        _previewTargets = [];
         AssignedTagsSummary = "";
         IsImagePreview = false;
         IsVideoPreview = false;
@@ -730,6 +1045,8 @@ public partial class LibraryViewModel : ObservableObject
         PreviewNotes = null;
         PreviewRating = 0;
     }
+
+    public Task ReloadAssignedTagsAsync() => LoadPreviewAsync(SelectedAsset);
 
     public async Task ReloadTagCatalogAsync()
     {
@@ -777,16 +1094,18 @@ public partial class LibraryViewModel : ObservableObject
                 .Select(x => x.Item);
         }
 
-        var items = source.Take(40).ToList();
+        var items = q.Length == 0 ? new List<TagPickItem>() : source.Take(40).ToList();
         TagSuggestions.Clear();
         foreach (var item in items)
         {
             TagSuggestions.Add(item);
         }
 
-        TagSuggestionsSummary = items.Count == 0
-            ? "No matching tags"
-            : string.Join(", ", items.Select(t => t.Name));
+        TagSuggestionsSummary = q.Length == 0
+            ? "Type to find a tag"
+            : items.Count == 0
+                ? "No matching tags"
+                : string.Join(", ", items.Select(t => t.Name));
     }
 
     private static int ScoreTagPick(TagPickItem tag, string query)
@@ -820,6 +1139,7 @@ public partial class LibraryViewModel : ObservableObject
     private static List<TagPickItem> BuildTagPicks(IReadOnlyList<Tag> tags, IReadOnlyList<TagMembership> memberships)
     {
         var byId = tags.ToDictionary(t => t.Id);
+        var colors = CatalogService.MapEffectiveColors(tags, memberships);
         var picks = new List<TagPickItem>();
         foreach (var tag in tags.OrderByDescending(t => t.Priority).ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
         {
@@ -828,7 +1148,13 @@ public partial class LibraryViewModel : ObservableObject
                 .Select(m => byId[m.ParentId].Name)
                 .ToList();
             var extra = parents.Count > 0 ? $" ({string.Join(", ", parents)})" : "";
-            picks.Add(new TagPickItem { TagId = tag.Id, Name = tag.Name, Display = tag.Name + extra });
+            picks.Add(new TagPickItem
+            {
+                TagId = tag.Id,
+                Name = tag.Name,
+                Display = tag.Name + extra,
+                EffectiveColor = colors.GetValueOrDefault(tag.Id)
+            });
         }
 
         return picks;
@@ -881,7 +1207,35 @@ public partial class LibraryViewModel : ObservableObject
         _selection.Clear();
         _selectionAnchor = null;
         HasSelection = false;
+        CanEditNotes = false;
         SelectedAsset = null;
+    }
+
+    private IReadOnlyList<AssetItem> TagTargets()
+    {
+        if (_selection.Count > 0)
+        {
+            return _selection;
+        }
+
+        if (_previewTargets.Count > 0)
+        {
+            return _previewTargets;
+        }
+
+        return SelectedAsset is null ? [] : [SelectedAsset];
+    }
+
+    private async Task AssignToSelectionAsync(IReadOnlyList<AssetItem> targets, string tagId, string tagName, TagSource source)
+    {
+        foreach (var asset in targets)
+        {
+            await _catalog.AssignTagAsync(asset.Id, tagId, source);
+        }
+
+        StatusText = targets.Count == 1
+            ? $"Tagged 1 image with {tagName}"
+            : $"Tagged {targets.Count} images with {tagName}";
     }
 
     private AssetItem ToItem(Asset asset)
@@ -1066,5 +1420,21 @@ public partial class LibraryViewModel : ObservableObject
         InfoMessage = message;
         ShowInfo = true;
         StatusText = message;
+    }
+
+    private bool TryCreateGallery(AssetItem? item, out GalleryViewModel gallery)
+    {
+        gallery = null!;
+        var start = item ?? SelectedAsset ?? _selection.LastOrDefault();
+        if (start is null || Assets.Count == 0)
+        {
+            Notify("Select an asset first.");
+            return false;
+        }
+
+        var snapshot = Assets.ToList();
+        var index = snapshot.FindIndex(a => a.Id == start.Id);
+        gallery = new GalleryViewModel(snapshot, index < 0 ? 0 : index, _catalog);
+        return true;
     }
 }

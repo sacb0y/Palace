@@ -23,5 +23,6 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new SizeInt32((int)(1200 * scale), (int)(800 * scale)));
 
         RootFrame.Navigate(typeof(MainPage));
+        Closed += (_, _) => GalleryWindow.CloseAll();
     }
 }
