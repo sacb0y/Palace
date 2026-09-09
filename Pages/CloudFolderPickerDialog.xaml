@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:cloud="using:Palace.Services.Cloud"
+    xmlns:ic="using:FluentIcons.WinUI"
     Title="Pick a cloud folder"
     CloseButtonText="Cancel"
     DefaultButton="Primary"
@@ -25,8 +26,12 @@
             Grid.Row="1"
             AutomationProperties.AutomationId="BtnCloudFolderUp"
             Click="BtnCloudFolderUp_Click"
-            Content="Up one level"
-            IsEnabled="False" />
+            IsEnabled="False">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ic:FluentIcon Icon="ArrowUp" IconSize="Size16" IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Up one level" />
+            </StackPanel>
+        </Button>
         <ListView
             x:Name="LstCloudFolders"
             Grid.Row="2"

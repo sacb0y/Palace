@@ -826,7 +826,7 @@ public sealed class CatalogService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, Name, Kind, SortOrder, ProjectId
+                SELECT Id, Name, Kind, SortOrder, ProjectId, Icon
                 FROM Collection
                 WHERE Kind = 'Room' AND ($project IS NULL OR ProjectId = $project)
                 ORDER BY SortOrder, Name
@@ -842,14 +842,15 @@ public sealed class CatalogService
                     Name = reader.GetString(1),
                     Kind = reader.GetString(2),
                     SortOrder = reader.GetInt32(3),
-                    ProjectId = reader.IsDBNull(4) ? null : reader.GetString(4)
+                    ProjectId = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    Icon = RoomIcons.Normalize(reader.IsDBNull(5) ? null : reader.GetString(5))
                 });
             }
 
             return (IReadOnlyList<Room>)list;
         });
 
-    public Task<Room> CreateRoomAsync(string name, string projectId) =>
+    public Task<Room> CreateRoomAsync(string name, string projectId, string? icon = null) =>
         _db.WriteAsync(conn =>
         {
             var room = new Room
@@ -857,17 +858,29 @@ public sealed class CatalogService
                 Id = PalaceDb.NewId(),
                 Name = name.Trim(),
                 Kind = "Room",
+                Icon = RoomIcons.Normalize(icon),
                 SortOrder = 0,
                 ProjectId = projectId
             };
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO Collection (Id, Name, Kind, SortOrder, ProjectId) VALUES ($id, $name, 'Room', $sort, $project)";
+            cmd.CommandText = "INSERT INTO Collection (Id, Name, Kind, SortOrder, ProjectId, Icon) VALUES ($id, $name, 'Room', $sort, $project, $icon)";
             cmd.Parameters.AddWithValue("$id", room.Id);
             cmd.Parameters.AddWithValue("$name", room.Name);
             cmd.Parameters.AddWithValue("$sort", room.SortOrder);
             cmd.Parameters.AddWithValue("$project", projectId);
+            cmd.Parameters.AddWithValue("$icon", room.Icon);
             cmd.ExecuteNonQuery();
             return room;
+        });
+
+    public Task SetRoomIconAsync(string id, string? icon) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Collection SET Icon = $icon WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$icon", RoomIcons.Normalize(icon));
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
         });
 
     public Task RenameRoomAsync(string id, string name) =>
