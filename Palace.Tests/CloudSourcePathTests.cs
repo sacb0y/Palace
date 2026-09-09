@@ -17,7 +17,7 @@ public sealed class CloudSourcePathTests
     public void Build_RootFolder_IsRootSegment()
     {
         var path = CloudSourcePath.Build(CloudProvider.OneDrive, "me@example.com", null);
-        Assert.Equal(Path.Combine("cloud", "onedrive", "me_example.com", "Root"), path);
+        Assert.Equal(Path.Combine("cloud", "onedrive", "me_example_com", "Root"), path);
     }
 
     [Fact]
