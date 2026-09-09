@@ -20,9 +20,13 @@ public partial class RoomsViewModel : ObservableObject
 
     public ObservableCollection<Room> Rooms { get; } = [];
     public ObservableCollection<RoomSection> Sections { get; } = [];
+    public IReadOnlyList<RoomIconChoice> IconChoices => RoomIcons.All;
 
     [ObservableProperty]
     public partial Room? SelectedRoom { get; set; }
+
+    [ObservableProperty]
+    public partial RoomIconChoice? SelectedIcon { get; set; } = RoomIcons.Find(null);
 
     [ObservableProperty]
     public partial string NewRoomName { get; set; } = "";
@@ -48,16 +52,31 @@ public partial class RoomsViewModel : ObservableObject
         }
 
         SelectedRoom = Rooms.FirstOrDefault(r => r.Id == selectedId) ?? Rooms.FirstOrDefault();
+        SyncSelectedIcon(SelectedRoom);
         await LoadSelectedRoomAsync();
     }
 
-    partial void OnSelectedRoomChanged(Room? value) => _ = LoadSelectedRoomAsync();
+    partial void OnSelectedRoomChanged(Room? value)
+    {
+        SyncSelectedIcon(value);
+        _ = LoadSelectedRoomAsync();
+    }
+
+    partial void OnSelectedIconChanged(RoomIconChoice? value)
+    {
+        if (_suppressIconWrite || SelectedRoom is null || value is null)
+        {
+            return;
+        }
+
+        _ = PersistSelectedIconAsync(value.Id);
+    }
 
     [RelayCommand]
     private async Task CreateRoomAsync()
     {
         var name = string.IsNullOrWhiteSpace(NewRoomName) ? $"Room {Rooms.Count + 1}" : NewRoomName.Trim();
-        var room = await _catalog.CreateRoomAsync(name, AppServices.CurrentProject.Id);
+        var room = await _catalog.CreateRoomAsync(name, AppServices.CurrentProject.Id, SelectedIcon?.Id);
         NewRoomName = "";
         Rooms.Add(room);
         SelectedRoom = room;
@@ -184,5 +203,27 @@ public partial class RoomsViewModel : ObservableObject
         }
 
         StatusText = $"{SelectedRoom.Name}: {Sections.Sum(s => s.Items.Count)} pins.";
+    }
+
+    private bool _suppressIconWrite;
+
+    private void SyncSelectedIcon(Room? room)
+    {
+        _suppressIconWrite = true;
+        SelectedIcon = RoomIcons.Find(room?.Icon);
+        _suppressIconWrite = false;
+    }
+
+    private async Task PersistSelectedIconAsync(string iconId)
+    {
+        if (SelectedRoom is null)
+        {
+            return;
+        }
+
+        var icon = RoomIcons.Normalize(iconId);
+        await _catalog.SetRoomIconAsync(SelectedRoom.Id, icon);
+        SelectedRoom.Icon = icon;
+        await RefreshAsync();
     }
 }

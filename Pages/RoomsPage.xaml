@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:helpers="using:Palace.Helpers"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
     xmlns:pages="using:Palace.Pages"
@@ -33,28 +34,61 @@
                 x:Name="LstRooms"
                 AutomationProperties.AutomationId="LstRooms"
                 AutomationProperties.Name="Rooms"
-                DisplayMemberPath="Name"
+                ItemTemplate="{StaticResource RoomPickTemplate}"
                 ItemsSource="{x:Bind ViewModel.Rooms, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedRoom, Mode=TwoWay}" />
-            <TextBox
-                x:Name="TxtRoomName"
-                Grid.Row="1"
-                AutomationProperties.AutomationId="TxtRoomName"
-                Header="Room name"
-                Text="{x:Bind ViewModel.NewRoomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <StackPanel Grid.Row="1" Spacing="8">
+                <TextBox
+                    x:Name="TxtRoomName"
+                    AutomationProperties.AutomationId="TxtRoomName"
+                    Header="Room name"
+                    Text="{x:Bind ViewModel.NewRoomName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <GridView
+                    x:Name="GrdRoomIcons"
+                    MaxHeight="120"
+                    AutomationProperties.AutomationId="GrdRoomIcons"
+                    AutomationProperties.Name="Room icon"
+                    ItemsSource="{x:Bind ViewModel.IconChoices, Mode=OneWay}"
+                    SelectedItem="{x:Bind ViewModel.SelectedIcon, Mode=TwoWay}"
+                    SelectionMode="Single">
+                    <GridView.ItemTemplate>
+                        <DataTemplate x:DataType="helpers:RoomIconChoice">
+                            <ic:FluentIcon
+                                Width="24"
+                                Height="24"
+                                Icon="{x:Bind helpers:FluentGlyph.Parse(Id)}"
+                                IconSize="Size20"
+                                IconVariant="Regular"
+                                ToolTipService.ToolTip="{x:Bind Label}" />
+                        </DataTemplate>
+                    </GridView.ItemTemplate>
+                </GridView>
+            </StackPanel>
             <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnNewRoom"
-                    Command="{x:Bind ViewModel.CreateRoomCommand}"
-                    Content="New room" />
+                    Command="{x:Bind ViewModel.CreateRoomCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="New room" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnRenameRoom"
-                    Command="{x:Bind ViewModel.RenameRoomCommand}"
-                    Content="Rename" />
+                    Command="{x:Bind ViewModel.RenameRoomCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Rename" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Rename" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnDeleteRoom"
-                    Command="{x:Bind ViewModel.DeleteRoomCommand}"
-                    Content="Delete" />
+                    Command="{x:Bind ViewModel.DeleteRoomCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Delete" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
 
@@ -76,13 +110,21 @@
                 <Button
                     VerticalAlignment="Bottom"
                     AutomationProperties.AutomationId="BtnAddSection"
-                    Command="{x:Bind ViewModel.AddSectionCommand}"
-                    Content="Add section" />
+                    Command="{x:Bind ViewModel.AddSectionCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Add section" />
+                    </StackPanel>
+                </Button>
                 <Button
                     VerticalAlignment="Bottom"
                     AutomationProperties.AutomationId="BtnRemovePin"
-                    Command="{x:Bind ViewModel.RemovePinCommand}"
-                    Content="Remove pin" />
+                    Command="{x:Bind ViewModel.RemovePinCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="PinOff" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Remove pin" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
             <ListView
                 x:Name="LstRoomSections"

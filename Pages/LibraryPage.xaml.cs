@@ -832,7 +832,7 @@ public sealed partial class LibraryPage : Page
         var list = new ListView
         {
             ItemsSource = rooms,
-            DisplayMemberPath = "Name",
+            ItemTemplate = Application.Current.Resources["RoomPickTemplate"] as DataTemplate,
             SelectedIndex = 0,
             MaxHeight = 240
         };
