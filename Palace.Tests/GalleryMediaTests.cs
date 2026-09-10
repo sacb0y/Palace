@@ -83,6 +83,23 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void ShouldUpgradeThumb_SkipsWhenDecodedCacheExists()
+    {
+        Assert.False(GalleryMedia.ShouldUpgradeThumb(true, false, false, @"D:\a.jpg", "abc", true, @"C:\t.jpg"));
+        Assert.True(GalleryMedia.ShouldUpgradeThumb(true, false, false, @"D:\a.jpg", "abc", false, null));
+        Assert.True(GalleryMedia.ShouldUpgradeThumb(true, false, false, @"D:\a.jpg", "abc", false, @"C:\t.jpg"));
+    }
+
+    [Fact]
+    public void ShouldReplaceTileBitmap_OnlyWhenPathChangesOrMissing()
+    {
+        Assert.False(GalleryMedia.ShouldReplaceTileBitmap(@"C:\t.jpg", @"C:\t.jpg", true));
+        Assert.True(GalleryMedia.ShouldReplaceTileBitmap(@"C:\t.jpg", @"C:\t2.jpg", true));
+        Assert.True(GalleryMedia.ShouldReplaceTileBitmap(null, @"C:\t.jpg", false));
+        Assert.True(GalleryMedia.ShouldReplaceTileBitmap(@"C:\t.jpg", @"C:\t.jpg", false));
+    }
+
+    [Fact]
     public void FindAssetId_ReadsTagStringOrIdProperty()
     {
         Assert.Equal("tile-1", GalleryMedia.FindAssetId("tile-1", null));

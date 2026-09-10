@@ -91,12 +91,30 @@ public static class GalleryMedia
         bool isOnlineOnly,
         bool isOrphan,
         string? path,
-        string? contentHash) =>
-        mayUpgrade
-        && !isOnlineOnly
-        && !isOrphan
-        && !string.IsNullOrEmpty(path)
-        && !string.IsNullOrEmpty(contentHash);
+        string? contentHash,
+        bool hasDecodedImage = false,
+        string? thumbPath = null)
+    {
+        if (!mayUpgrade
+            || isOnlineOnly
+            || isOrphan
+            || string.IsNullOrEmpty(path)
+            || string.IsNullOrEmpty(contentHash))
+        {
+            return false;
+        }
+
+        // Already showing the cached JPEG — replacing BitmapImage flickers the tile.
+        return !hasDecodedImage || string.IsNullOrEmpty(thumbPath);
+    }
+
+    public static bool ShouldReplaceTileBitmap(
+        string? currentPath,
+        string? newPath,
+        bool hasImage) =>
+        !hasImage
+        || string.IsNullOrEmpty(currentPath)
+        || !string.Equals(currentPath, newPath, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsRemoteUri(string? path) =>
         !string.IsNullOrEmpty(path)
