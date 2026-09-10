@@ -60,6 +60,14 @@ public sealed class Tag
     public int Priority { get; set; }
     public string Slug { get; set; } = "";
     public string? Color { get; set; }
+    public bool IsStarred { get; set; }
+}
+
+public sealed class TagCreateBatchResult
+{
+    public int Created { get; init; }
+    public int Existed { get; init; }
+    public IReadOnlyList<Tag> Tags { get; init; } = [];
 }
 
 public sealed class TagMembership

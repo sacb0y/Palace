@@ -57,7 +57,12 @@ public static class TagTreeBuilder
             var bucket = new TagTreeNode { Name = "Ungrouped", IsUngroupedBucket = true };
             foreach (var tag in ungrouped)
             {
-                bucket.Children.Add(new TagTreeNode { TagId = tag.Id, Name = tag.Name });
+                bucket.Children.Add(new TagTreeNode
+                {
+                    TagId = tag.Id,
+                    Name = tag.Name,
+                    IsStarred = tag.IsStarred
+                });
             }
 
             roots.Add(bucket);
@@ -87,7 +92,7 @@ public static class TagTreeBuilder
 
     private static TagTreeNode BuildNode(Tag tag, Dictionary<string, List<Tag>> children, HashSet<string> trail)
     {
-        var node = new TagTreeNode { TagId = tag.Id, Name = tag.Name };
+        var node = new TagTreeNode { TagId = tag.Id, Name = tag.Name, IsStarred = tag.IsStarred };
         if (!trail.Add(tag.Id))
         {
             return node;
