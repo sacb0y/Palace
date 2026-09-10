@@ -21,7 +21,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 - Command buttons stay **icon + existing text**. Do not convert toolbars to icon-only. Skip repeated “Remove” chip buttons.
 - Room identity icons are a curated string id on `Collection.Icon` / `Room.Icon`, normalized by `Helpers/RoomIcons.cs` (default `BuildingBank`). Parse to the Fluent enum only in `Helpers/FluentGlyph.cs` — ViewModels stay pack-free.
 - Gallery for names: https://davidxuang.github.io/FluentIcons/ — if an enum is missing, pick the closest Regular sibling.
-- Keep existing `AutomationProperties.AutomationId` values; new pickers get stable ids (e.g. `GrdRoomIcons`).
+- Keep existing `AutomationProperties.AutomationId` values; new pickers get stable ids (e.g. `GrdRoomIcons`). Tag chips use `TagChipItem.AutomationId` (`BtnTagChip_` / `BtnTagFilter_` / `BtnAssignChip_`). Board and assign groups use `TagBoardGroup.AutomationId` (`BtnTagGroup_`).
 
 ## Product rules
 
@@ -30,6 +30,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 - Delete = Recycle Bin + catalog row (`DeleteAssetsAsync`).
 - Organize is on-disk, dry-run first, ask destination each run. Auto-organize is opt-in per source.
 - Tag organize asks which parent chain. Assigning a tag applies configured implicits (transitive, cycle-safe).
+- Tags page is an Eagle-style board (All / Ungrouped / Starred, grouped chips) plus an image mosaic; disk organize stays in the details column. Comma/newline batch-create uses `TagNameList`. Library tag browse toggles multiple tags with Any / All / None (`TagFilter`).
 - Library-first until the matching 0.x slice. Do not invent Wings, 3D, Unity packages, or LLM auto-tag unless that minor is the work (see Version).
 
 ## Layout
@@ -50,6 +51,11 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 | Overlay / mosaic media | `Helpers/GalleryMedia.cs` |
 | Cloud source paths | `Helpers/CloudSourcePath.cs` |
 | Room icon ids | `Helpers/RoomIcons.cs` |
+| Tag name lists | `Helpers/TagNameList.cs` |
+| Tag filter sets | `Helpers/TagFilter.cs` |
+| Tag board / assign panel | `Helpers/TagPanelBuilder.cs` |
+| Tag sibling order | `Helpers/TagSiblings.cs` |
+| Recent tags | `Helpers/RecentTags.cs` |
 | Fluent enum parse | `Helpers/FluentGlyph.cs` (XAML only) |
 | UI tests | `ui-tests.ps1` (`winapp ui`, AutomationIds) |
 | App version | `Helpers/AppVersion.cs` (identity + Debug/Release + milestone) |
@@ -66,14 +72,15 @@ Opening a project, Library, or a large folder must stay interactive.
 - Progress: `PrgStartup` until the main shell is shown, then `PrgLibrary` on Library and `PrgProjectLoad` under the project combo. Bind Library bars to `IsBusy`. A freeze with no bar is a bug.
 - Startup: activate the window **before** `InitializeAsync` / `LoadInitialDataAsync` (`App.OnLaunched` → `Window.Activate` → init → `ShowMain` → load). Do not await a full catalog load on a blank process.
 - Status: `Loading…` → `Showing 80 of 2400` → the final count line.
-- Project switch (`AppServices.SetCurrentProjectAsync`): bar first, Library, then Rooms/Settings.
+- Project switch (`AppServices.SetCurrentProjectAsync`): bar first, Library, then Tags/Rooms/Settings. Tags mosaic is project-scoped.
 - Folder browse: `GetAssetsAsync(folderPrefix:)` — do not load the whole project and filter in process.
 - Build `AssetItem`s off the UI thread. Chunk-append ~80 (`MosaicChunkSize`) on the dispatcher and `UiDispatch.YieldAsync`. Honor `_filterEpoch`.
 - Mutate `Assets` only on the UI thread (`UiDispatch`). After chunks, `LinedFlowLayout.InvalidateItemsInfo` (`MosaicChunkAppended`).
 - `ToItem` → `AssetItemMapper.FromAsset`. Never `File.Exists` or `ImageDimensions.TryRead` on the **original** while building the mosaic. Use stored Width/Height or a default aspect.
 - Lazy thumbs: bind `ThumbImage`, not a static `FileToImage` during measure. Decode only realized tiles; cap in-flight decodes.
 - `ItemsView` may not set `DataContext` on tiles and recycled containers do not re-fire `Loaded`. Stamp `Tag="{x:Bind Id, Mode=OneWay}"` on the `ItemContainer` **and** the tile `Image`. Track live `Image`s and re-resolve via `GalleryMedia.FindAssetId` on Tag / DataContext / chunk — do not untrack just because `DataContext` is not an `AssetItem`.
-- Overlay open is **double-click / Enter / context Open only**. Do not synthesize a second click from `PointerPressed` on both the tile and `GrdAssets` — the same press arrives twice and opens on a single click.
+- Overlay open is **double-click / Enter / context Open only** (Library and the Tags mosaic). Do not synthesize a second click from `PointerPressed` on both the tile and `GrdAssets` — the same press arrives twice and opens on a single click.
+- `LinedFlowLayout` aspect requests use `GalleryMedia.MosaicAspectCount` (requested range capped by remaining items). Wire both `MosaicReset` and `MosaicChunkAppended` to `InvalidateItemsInfo`.
 - `AssetItem.ContentHash` is required for lazy generate and viewport upgrade. Do not recover the hash from the JPEG file name.
 - Overlay image/video sources are applied in code-behind (`UpdateOverlayMedia`). Do not rely only on nested `x:Bind` of `OverlayGallery.CurrentPath` through a converter — that path is null until `LoadCurrentAsync` finishes and often never refreshes.
 - Overlay chrome: put title/tags in a **row below** the player (`GalleryWindow` already does this). A bottom-overlay details card covers `MediaPlayer` transport controls (settings / seek).
@@ -114,13 +121,13 @@ Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDriv
 
 Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from the original Palace plan (`winui_asset_library_a3139e5d.plan.md`, [Palace kickoff](a7dfd0c1-d504-4c43-a957-008d68e3898f)). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
 
-**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.1.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.1 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change.
+**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.2.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.2 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change.
 
 MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
 
 | Version | Slice | Original plan |
 |---|---|---|
-| **0.0.x** *(now 0.0.1)* | **Library core** | v1 DAM: watch folders, mosaic, hierarchical tags, FTS, Rooms, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred. |
+| **0.0.x** *(now 0.0.2)* | **Library core** | v1 DAM: watch folders, mosaic, hierarchical tags, FTS, Rooms, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred. |
 | **0.1.x** | **Cloud** | Added after v1 (plan said “out of scope unless you ask”). On-Demand + API sources; do not download originals. Current cloud work stays **0.0.x** until this slice is the one you ship. |
 | **0.2.x** | **Wings** | Unity/game overlay on the same catalog (multi-directory project organize). Schema already has `Project`. |
 | **0.3.x** | **3D** | Preview glTF/OBJ first; FBX/USD convert; `.blend` via Blender CLI. |
@@ -139,7 +146,7 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 .\ui-tests.ps1 -AppPid <pid>
 ```
 
-`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`), `RoomIcons.Normalize`, `ThumbFileName`, `GalleryMedia`, and `CloudSourcePath`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
+`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`), `RoomIcons.Normalize`, `ThumbFileName`, `GalleryMedia`, `CloudSourcePath`, `TagNameList`, `TagFilter` (Any/All/None + descendants), `TagPanelBuilder` (including Ungrouped group-name search), `TagSiblings` (root groups are siblings), and `RecentTags`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
 
 ## Cursor Cloud specific instructions
 

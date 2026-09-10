@@ -10,8 +10,14 @@
     <Compile Include="..\Helpers\CloudFile.cs" Link="CloudFile.cs" />
     <Compile Include="..\Helpers\CloudSourcePath.cs" Link="CloudSourcePath.cs" />
     <Compile Include="..\Helpers\GalleryMedia.cs" Link="GalleryMedia.cs" />
+    <Compile Include="..\Helpers\RecentTags.cs" Link="RecentTags.cs" />
     <Compile Include="..\Helpers\RoomIcons.cs" Link="RoomIcons.cs" />
+    <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
+    <Compile Include="..\Helpers\TagNameList.cs" Link="TagNameList.cs" />
+    <Compile Include="..\Helpers\TagPanelBuilder.cs" Link="TagPanelBuilder.cs" />
+    <Compile Include="..\Helpers\TagSiblings.cs" Link="TagSiblings.cs" />
     <Compile Include="..\Helpers\ThumbFileName.cs" Link="ThumbFileName.cs" />
+    <Compile Include="..\Models\Entities.cs" Link="Entities.cs" />
     <Compile Include="..\Models\Enums.cs" Link="Enums.cs" />
   </ItemGroup>
 

@@ -452,7 +452,7 @@ public sealed class CatalogService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, Name, Priority, Slug, Color FROM Tag
+                SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag
                 WHERE Name = $name COLLATE NOCASE
                 LIMIT 1
                 """;
@@ -470,6 +470,99 @@ public sealed class CatalogService
             var tag = InsertTag(conn, name, priority);
             TryAddMembership(conn, parentId, tag.Id);
             return tag;
+        });
+
+    public Task<TagCreateBatchResult> CreateTagsAsync(IEnumerable<string> names, string? parentId = null) =>
+        _db.WriteAsync(conn =>
+        {
+            var created = 0;
+            var existed = 0;
+            var rejected = 0;
+            var tags = new List<Tag>();
+            foreach (var raw in TagNameList.Split(string.Join('\n', names)))
+            {
+                var existing = FindTagByName(conn, raw);
+                Tag tag;
+                if (existing is null)
+                {
+                    tag = InsertTag(conn, raw);
+                    created++;
+                }
+                else
+                {
+                    tag = existing;
+                    existed++;
+                }
+
+                if (parentId is not null && !TryAddMembership(conn, parentId, tag.Id))
+                {
+                    rejected++;
+                }
+
+                tags.Add(tag);
+            }
+
+            return new TagCreateBatchResult
+            {
+                Created = created,
+                Existed = existed,
+                MembershipRejected = rejected,
+                Tags = tags
+            };
+        });
+
+    public Task SetTagStarredAsync(string id, bool starred) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Tag SET IsStarred = $s WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$s", starred ? 1 : 0);
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        });
+
+    public Task DeleteTagAsync(string id) =>
+        _db.WriteAsync(conn =>
+        {
+            var assetIds = AssetsHavingAnyTag(conn, [id]);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM Tag WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+            foreach (var assetId in assetIds)
+            {
+                SweepUnjustifiedImplied(conn, assetId);
+                RefreshFts(conn, assetId);
+            }
+        });
+
+    public Task<bool> MoveTagAmongSiblingsAsync(string tagId, string? parentId, int delta) =>
+        _db.WriteAsync(conn =>
+        {
+            var tags = LoadTags(conn);
+            var memberships = LoadMemberships(conn);
+            var siblings = TagSiblings.Of(tags, memberships, parentId)
+                .OrderByDescending(t => t.Priority)
+                .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var from = siblings.FindIndex(t => t.Id == tagId);
+            var to = from + delta;
+            if (from < 0 || to < 0 || to >= siblings.Count)
+            {
+                return false;
+            }
+
+            (siblings[from], siblings[to]) = (siblings[to], siblings[from]);
+            for (var i = 0; i < siblings.Count; i++)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "UPDATE Tag SET Priority = $p WHERE Id = $id";
+                cmd.Parameters.AddWithValue("$p", siblings.Count - i);
+                cmd.Parameters.AddWithValue("$id", siblings[i].Id);
+                cmd.ExecuteNonQuery();
+            }
+
+            return true;
         });
 
     public Task RenameTagAsync(string id, string name) =>
@@ -628,7 +721,7 @@ public sealed class CatalogService
     public Task<IReadOnlyList<string>> GetDescendantTagIdsAsync(string tagId) =>
         _db.ReadAsync(conn => (IReadOnlyList<string>)DescendantsOf(conn, tagId));
 
-    public Task<int> CountAssetsForTagsAsync(IEnumerable<string> tagIds) =>
+    public Task<int> CountAssetsForTagsAsync(IEnumerable<string> tagIds, string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
             var ids = tagIds.Distinct().ToList();
@@ -646,7 +739,12 @@ public sealed class CatalogService
                 cmd.Parameters.AddWithValue(p, ids[i]);
             }
 
-            cmd.CommandText = $"SELECT COUNT(DISTINCT AssetId) FROM AssetTag WHERE TagId IN ({string.Join(",", names)})";
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
+            cmd.CommandText = $"""
+                SELECT COUNT(*) FROM Asset
+                 WHERE Id IN (SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({string.Join(",", names)}))
+                   AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
+                """;
             return Convert.ToInt32(cmd.ExecuteScalar());
         });
 
@@ -672,6 +770,85 @@ public sealed class CatalogService
             cmd.CommandText = SelectAssetSql + $"""
                  WHERE Id IN (SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({string.Join(",", names)}))
                    AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
+                 ORDER BY FileName COLLATE NOCASE
+                """;
+            return ReadAssets(cmd);
+        });
+
+    public Task<IReadOnlyList<Asset>> GetAssetsForTagFilterAsync(
+        IReadOnlyList<IReadOnlyCollection<string>> expandedIdSets,
+        TagFilterMode mode,
+        string? projectId = null) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
+            var projectClause =
+                "($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))";
+
+            if (expandedIdSets.Count == 0 || expandedIdSets.All(set => set.Count == 0))
+            {
+                cmd.CommandText = SelectAssetSql + $"""
+                     WHERE {projectClause}
+                     ORDER BY FileName COLLATE NOCASE
+                    """;
+                return ReadAssets(cmd);
+            }
+
+            var param = 0;
+            string InClause(IReadOnlyCollection<string> ids)
+            {
+                var names = new List<string>();
+                foreach (var id in ids.Distinct(StringComparer.Ordinal))
+                {
+                    var p = $"$tf{param++}";
+                    names.Add(p);
+                    cmd.Parameters.AddWithValue(p, id);
+                }
+
+                return names.Count == 0 ? "NULL" : string.Join(",", names);
+            }
+
+            string Subquery(IReadOnlyCollection<string> ids) =>
+                $"SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({InClause(ids)})";
+
+            if (mode == TagFilterMode.All)
+            {
+                var parts = expandedIdSets
+                    .Where(set => set.Count > 0)
+                    .Select(Subquery)
+                    .ToList();
+                if (parts.Count == 0)
+                {
+                    cmd.CommandText = SelectAssetSql + $"""
+                         WHERE {projectClause}
+                         ORDER BY FileName COLLATE NOCASE
+                        """;
+                    return ReadAssets(cmd);
+                }
+
+                cmd.CommandText = SelectAssetSql + $"""
+                     WHERE Id IN ({string.Join(" INTERSECT ", parts)})
+                       AND {projectClause}
+                     ORDER BY FileName COLLATE NOCASE
+                    """;
+                return ReadAssets(cmd);
+            }
+
+            var union = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var set in expandedIdSets)
+            {
+                foreach (var id in set)
+                {
+                    union.Add(id);
+                }
+            }
+
+            var unionSql = Subquery(union);
+            var op = mode == TagFilterMode.None ? "NOT IN" : "IN";
+            cmd.CommandText = SelectAssetSql + $"""
+                 WHERE Id {op} ({unionSql})
+                   AND {projectClause}
                  ORDER BY FileName COLLATE NOCASE
                 """;
             return ReadAssets(cmd);
@@ -1272,17 +1449,31 @@ public sealed class CatalogService
                 Name = reader.GetString(1),
                 Priority = reader.GetInt32(2),
                 Slug = reader.GetString(3),
-                Color = reader.FieldCount > 4 && !reader.IsDBNull(4) ? reader.GetString(4) : null
+                Color = reader.FieldCount > 4 && !reader.IsDBNull(4) ? reader.GetString(4) : null,
+                IsStarred = reader.FieldCount > 5 && !reader.IsDBNull(5) && reader.GetInt32(5) != 0
             });
         }
 
         return list;
     }
 
+    private static Tag? FindTagByName(SqliteConnection conn, string name)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag
+            WHERE Name = $name COLLATE NOCASE
+            LIMIT 1
+            """;
+        cmd.Parameters.AddWithValue("$name", name);
+        var list = ReadTags(cmd);
+        return list.Count > 0 ? list[0] : null;
+    }
+
     private static List<Tag> LoadTags(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color FROM Tag ORDER BY Priority DESC, Name COLLATE NOCASE";
+        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag ORDER BY Priority DESC, Name COLLATE NOCASE";
         return ReadTags(cmd);
     }
 

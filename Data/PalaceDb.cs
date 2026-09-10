@@ -160,7 +160,8 @@ public sealed class PalaceDb : IDisposable
                 Name TEXT NOT NULL,
                 Priority INTEGER NOT NULL DEFAULT 0,
                 Slug TEXT NOT NULL,
-                Color TEXT
+                Color TEXT,
+                IsStarred INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS TagMembership (
@@ -264,6 +265,7 @@ public sealed class PalaceDb : IDisposable
         cmd.ExecuteNonQuery();
         MigrateLegacyFacets();
         EnsureTagColorColumn();
+        EnsureColumn("Tag", "IsStarred", "INTEGER NOT NULL DEFAULT 0");
         EnsureCloudColumns();
         EnsureColumn("Collection", "Icon", "TEXT");
         SeedDefaults();

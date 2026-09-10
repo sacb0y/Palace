@@ -17,6 +17,20 @@ public enum TagSource
     Implied
 }
 
+public enum TagFilterMode
+{
+    Any,
+    All,
+    None
+}
+
+public enum TagScope
+{
+    All,
+    Ungrouped,
+    Starred
+}
+
 public enum DestinationPolicy
 {
     InSource,

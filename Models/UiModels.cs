@@ -191,6 +191,57 @@ public sealed class TagPickItem
     public string? EffectiveColor { get; set; }
 }
 
+public partial class TagChipItem : ObservableObject
+{
+    public string TagId { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string Name { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string? EffectiveColor { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsStarred { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsAssigned { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsPartial { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsFilterSelected { get; set; }
+
+    public string? ParentGroupId { get; set; }
+
+    public string AutomationPrefix { get; set; } = "BtnTagChip_";
+
+    public string AutomationId =>
+        AutomationPrefix + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
+}
+
+public partial class TagBoardGroup : ObservableObject
+{
+    public string? GroupId { get; set; }
+
+    [ObservableProperty]
+    public partial string Name { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string? Color { get; set; }
+
+    public bool IsUngrouped { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; } = true;
+
+    public string AutomationId =>
+        "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
+
+    public ObservableCollection<TagChipItem> Chips { get; } = [];
+}
+
 public partial class TagTreeNode : ObservableObject
 {
     public string? TagId { get; set; }
@@ -207,6 +258,12 @@ public partial class TagTreeNode : ObservableObject
 
     [ObservableProperty]
     public partial bool ColorIsCustom { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsFilterSelected { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsStarred { get; set; }
 
     public ObservableCollection<TagTreeNode> Children { get; } = [];
 }

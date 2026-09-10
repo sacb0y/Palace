@@ -64,6 +64,15 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void MosaicAspectCount_CapsRequestedRangeToAvailable()
+    {
+        Assert.Equal(8, GalleryMedia.MosaicAspectCount(8, 2400));
+        Assert.Equal(3, GalleryMedia.MosaicAspectCount(80, 3));
+        Assert.Equal(0, GalleryMedia.MosaicAspectCount(8, 0));
+        Assert.Equal(0, GalleryMedia.MosaicAspectCount(0, 12));
+    }
+
+    [Fact]
     public void ShouldLoadTileThumb_AllowsMissingJpegWhenHashExists()
     {
         Assert.True(GalleryMedia.ShouldLoadTileThumb(false, false, false, null, "abc"));
