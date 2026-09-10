@@ -12,6 +12,7 @@ Keep this file current. When you change a convention (scan, thumbs, UI thread, c
 - Official skills: `C:\Users\iadag\.cursor\skills\winui-*` — load `winui-dev-workflow`, `winui-design`, `winui-packaging`, `winui-code-review`, `winui-ui-testing` as needed.
 - Domain-reload-disabled is a Unity habit. It does not apply here.
 - `Palace.Tests` is a separate `net10.0` project (`Palace.csproj` excludes `Palace.Tests\**`). Keep tests off WinUI / WinRT.
+- Debug vs Release of the **same source** share one version number. Debug is not an older tree — it is untrimmed. Release is trimmed and currently crashes on `ItemsSource` COM wrappers; daily run is Debug (`.\BuildAndRun.ps1 . --arch x64`).
 
 ## Product rules
 
@@ -20,7 +21,7 @@ Keep this file current. When you change a convention (scan, thumbs, UI thread, c
 - Delete = Recycle Bin + catalog row (`DeleteAssetsAsync`).
 - Organize is on-disk, dry-run first, ask destination each run. Auto-organize is opt-in per source.
 - Tag organize asks which parent chain. Assigning a tag applies configured implicits (transitive, cycle-safe).
-- Library-first. Do not invent Wings or LLM auto-tag unless asked.
+- Library-first until the matching 0.x slice. Do not invent Wings, 3D, Unity packages, or LLM auto-tag unless that minor is the work (see Version).
 
 ## Layout
 
@@ -37,6 +38,7 @@ Keep this file current. When you change a convention (scan, thumbs, UI thread, c
 | UI thread hops | `Helpers/UiDispatch.cs` |
 | On-Demand detect | `Helpers/CloudFile.cs` |
 | UI tests | `ui-tests.ps1` (`winapp ui`, AutomationIds) |
+| App version | `Helpers/AppVersion.cs` (identity + Debug/Release + milestone) |
 
 `SourceFolder.AccessToken` is the **FutureAccessList** token. Do not store OAuth there. Cloud OAuth lives in `PasswordVault` via `CloudTokenStore`. App IDs (`OneDriveClientId`, `DropboxAppKey`) live in LocalSettings — no hardcoded secrets.
 
@@ -86,7 +88,27 @@ if (skipped > 0) Notify(AccessService.OnlineOnlyCopyWarning);
 
 `File.Move` of a placeholder usually stays a placeholder — organize may keep working.
 
-Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDrive`, `BtnConnectDropbox`, `BtnAddOneDriveFolder`, `BtnAddDropboxFolder`, `TxtCloudRedirectUri`. Capability: `internetClient`.
+Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDrive`, `BtnConnectDropbox`, `BtnAddOneDriveFolder`, `BtnAddDropboxFolder`, `TxtCloudRedirectUri`. About: `TxtAppVersion`. Capability: `internetClient`.
+
+## Version
+
+Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from the original Palace plan (`winui_asset_library_a3139e5d.plan.md`, [Palace kickoff](a7dfd0c1-d504-4c43-a957-008d68e3898f)). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
+
+**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.1.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.1 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change.
+
+MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
+
+| Version | Slice | Original plan |
+|---|---|---|
+| **0.0.x** *(now 0.0.1)* | **Library core** | v1 DAM: watch folders, mosaic, hierarchical tags, FTS, Rooms, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred. |
+| **0.1.x** | **Cloud** | Added after v1 (plan said “out of scope unless you ask”). On-Demand + API sources; do not download originals. Current cloud work stays **0.0.x** until this slice is the one you ship. |
+| **0.2.x** | **Wings** | Unity/game overlay on the same catalog (multi-directory project organize). Schema already has `Project`. |
+| **0.3.x** | **3D** | Preview glTF/OBJ first; FBX/USD convert; `.blend` via Blender CLI. |
+| **0.4.x** | **Unity packages** | Preview `.unitypackage`; import via batchmode or copy. |
+| **0.5.x** | **LLM tags** | Ollama / LM Studio, then Grok; assignment `Source=AiLocal` / `AiCloud`. Not the same as prompt-token suggestions. |
+| **1.0.0** | **Ship** | Release/trim fixed, Magick formats if packaging is clean, `winui-packaging` / Store. |
+
+Leave Revision at `0` unless you need a same-patch rebuild identity. Debug and Release of one commit share the number; the suffix is which binary you launched.
 
 ## Tests
 

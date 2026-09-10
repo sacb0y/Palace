@@ -158,6 +158,14 @@
                 AutomationProperties.AutomationId="TxtSettingsStatus"
                 Style="{StaticResource CaptionTextBlockStyle}"
                 Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="About" />
+            <TextBlock
+                x:Name="TxtAppVersion"
+                AutomationProperties.AutomationId="TxtAppVersion"
+                AutomationProperties.Name="App version"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.AppVersionText, Mode=OneWay}" />
         </StackPanel>
     </ScrollViewer>
 </Page>

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Palace.Data;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.Services.Cloud;
@@ -38,6 +39,7 @@ public partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<SourceFolderItem> Sources { get; } = [];
     public IReadOnlyList<string> ThemeOptions { get; } = ["System", "Light", "Dark"];
+    public string AppVersionText { get; } = AppVersion.Display;
 
     public Func<ICloudLibrary, Task<CloudEntry?>>? RequestPickCloudFolder { get; set; }
 

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Palace.Helpers;
 using Windows.Graphics;
 
 namespace Palace;
@@ -16,6 +17,7 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        AppTitleBar.Subtitle = AppVersion.TitleBar;
         AppWindow.SetIcon("Assets/AppIcon.ico");
 
         var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
