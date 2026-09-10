@@ -20,7 +20,10 @@ public partial class LibraryViewModel : ObservableObject
     private readonly ThumbnailService _thumbs;
     private readonly WatcherService _watchers;
     private IReadOnlyList<Asset> _allAssets = [];
+    private List<Tag> _tags = [];
+    private List<TagMembership> _memberships = [];
     private List<TagPickItem> _tagPicks = [];
+    private List<string> _recentTagIds = [];
     private List<AssetItem> _selection = [];
     private List<AssetItem> _previewTargets = [];
     private AssetItem? _selectionAnchor;
@@ -49,6 +52,7 @@ public partial class LibraryViewModel : ObservableObject
     public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
     public Func<IReadOnlyList<Room>, Task<Room?>>? RequestPickRoom { get; set; }
     public Action? RequestFocusAssignTag { get; set; }
+    public Action? RequestOpenAssignPanel { get; set; }
     public Action<GalleryViewModel>? RequestOpenGalleryWindow { get; set; }
     public Action? MosaicReset { get; set; }
     public Action? MosaicChunkAppended { get; set; }
@@ -62,6 +66,11 @@ public partial class LibraryViewModel : ObservableObject
     public ObservableCollection<PromptSuggestion> Suggestions { get; } = [];
     public ObservableCollection<TagPickItem> AllTags { get; } = [];
     public ObservableCollection<TagPickItem> TagSuggestions { get; } = [];
+    public ObservableCollection<TagChipItem> SelectedFilterTags { get; } = [];
+    public ObservableCollection<TagChipItem> StarredAssignTags { get; } = [];
+    public ObservableCollection<TagChipItem> RecentAssignTags { get; } = [];
+    public ObservableCollection<TagChipItem> RecommendedAssignTags { get; } = [];
+    public ObservableCollection<TagBoardGroup> AssignGroups { get; } = [];
     public ObservableCollection<OrganizePreviewItem> OrganizePreview { get; } = [];
 
     [ObservableProperty]
@@ -72,6 +81,15 @@ public partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsTagBrowse { get; set; }
+
+    [ObservableProperty]
+    public partial TagFilterMode TagFilterMode { get; set; } = TagFilterMode.All;
+
+    [ObservableProperty]
+    public partial bool HasTagFilters { get; set; }
+
+    [ObservableProperty]
+    public partial string TagFilterSummary { get; set; } = "";
 
     [ObservableProperty]
     public partial double MosaicRowHeight { get; set; } = 140;
@@ -165,7 +183,11 @@ public partial class LibraryViewModel : ObservableObject
     partial void OnSelectedTagChanged(TagTreeNode? value)
     {
         RebuildBreadcrumbs();
-        if (!_suppressFilter)
+    }
+
+    partial void OnTagFilterModeChanged(TagFilterMode value)
+    {
+        if (!_suppressFilter && IsTagBrowse)
         {
             _ = ApplyFilterAsync();
         }
@@ -318,6 +340,7 @@ public partial class LibraryViewModel : ObservableObject
         try
         {
             LoadRowHeight();
+            LoadRecentTags();
             await RefreshQuietAsync();
         }
         finally
@@ -338,15 +361,20 @@ public partial class LibraryViewModel : ObservableObject
             var memberships = await _catalog.GetMembershipsAsync();
             var selectedPath = preferredFolderPath ?? SelectedFolder?.Path;
             var selectedTagId = SelectedTag?.TagId;
+            var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
             var pickItems = BuildTagPicks(tags, memberships);
             var tree = BuildFolderNodes(sources, assets);
 
             await UiDispatch.RunAsync(() =>
             {
                 _allAssets = assets;
+                _tags = tags.ToList();
+                _memberships = memberships.ToList();
                 _suppressFilter = true;
                 ReplaceFolderTree(tree);
                 TagTreeBuilder.Replace(TagTree, tags, memberships);
+                ApplyLibraryTreeColors();
+                RestoreFilterSelection(filterIds);
                 ReplaceTagPicks(pickItems);
 
                 if (IsTagBrowse)
@@ -455,28 +483,45 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        var query = TagQuery.Trim();
-        var match = FindTagPick(query);
-        string tagId;
-        string tagName;
-        if (match is null)
+        var names = TagNameList.Split(TagQuery);
+        if (names.Count == 0)
         {
-            var existing = await _catalog.FindTagByNameAsync(query);
-            var created = existing ?? await _catalog.CreateTagAsync(query);
-            tagId = created.Id;
-            tagName = created.Name;
-        }
-        else
-        {
-            tagId = match.TagId;
-            tagName = match.Name;
+            return;
         }
 
-        await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Manual);
+        var assigned = new List<string>();
+        foreach (var query in names)
+        {
+            var match = FindTagPick(query);
+            string tagId;
+            string tagName;
+            if (match is null)
+            {
+                var existing = await _catalog.FindTagByNameAsync(query);
+                var created = existing ?? await _catalog.CreateTagAsync(query);
+                tagId = created.Id;
+                tagName = created.Name;
+            }
+            else
+            {
+                tagId = match.TagId;
+                tagName = match.Name;
+            }
+
+            await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Manual);
+            assigned.Add(tagName);
+        }
+
         await UiDispatch.RunAsync(() =>
         {
             TagQuery = "";
             SelectedPickTag = null;
+            if (assigned.Count > 1)
+            {
+                StatusText = targets.Count == 1
+                    ? $"Tagged 1 image with {string.Join(", ", assigned)}"
+                    : $"Tagged {targets.Count} images with {string.Join(", ", assigned)}";
+            }
         });
         await LoadPreviewAsync(SelectedAsset);
         await ReloadTagCatalogAsync();
@@ -491,9 +536,19 @@ public partial class LibraryViewModel : ObservableObject
             return;
         }
 
-        var existing = await _catalog.FindTagByNameAsync(NewTagName);
-        var tag = existing ?? await _catalog.CreateTagAsync(NewTagName.Trim());
-        await AssignToSelectionAsync(targets, tag.Id, tag.Name, TagSource.Manual);
+        var names = TagNameList.Split(NewTagName);
+        if (names.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var name in names)
+        {
+            var existing = await _catalog.FindTagByNameAsync(name);
+            var tag = existing ?? await _catalog.CreateTagAsync(name);
+            await AssignToSelectionAsync(targets, tag.Id, tag.Name, TagSource.Manual);
+        }
+
         await UiDispatch.RunAsync(() => NewTagName = "");
         await LoadPreviewAsync(SelectedAsset);
         await ReloadTagCatalogAsync();
@@ -877,13 +932,108 @@ public partial class LibraryViewModel : ObservableObject
     private void FocusAssignTag()
     {
         RequestFocusAssignTag?.Invoke();
+        RequestOpenAssignPanel?.Invoke();
+        RebuildAssignPanel();
+    }
+
+    public void ToggleFilterTag(TagTreeNode? node)
+    {
+        if (node?.TagId is null)
+        {
+            return;
+        }
+
+        var existing = SelectedFilterTags.FirstOrDefault(t => t.TagId == node.TagId);
+        if (existing is not null)
+        {
+            SelectedFilterTags.Remove(existing);
+            node.IsFilterSelected = false;
+        }
+        else
+        {
+            SelectedFilterTags.Add(ToFilterChip(node));
+            node.IsFilterSelected = true;
+            SelectedTag = node;
+        }
+
+        SyncFilterFlags();
+        RebuildBreadcrumbs();
+        if (!_suppressFilter)
+        {
+            _ = ApplyFilterAsync();
+        }
+    }
+
+    [RelayCommand]
+    private void RemoveFilterTag(TagChipItem? chip)
+    {
+        if (chip is null)
+        {
+            return;
+        }
+
+        SelectedFilterTags.Remove(chip);
+        var node = TagTreeBuilder.Find(TagTree, chip.TagId);
+        if (node is not null)
+        {
+            node.IsFilterSelected = false;
+        }
+
+        if (SelectedTag?.TagId == chip.TagId)
+        {
+            SelectedTag = SelectedFilterTags.Count == 0
+                ? null
+                : TagTreeBuilder.Find(TagTree, SelectedFilterTags[^1].TagId);
+        }
+
+        SyncFilterFlags();
+        RebuildBreadcrumbs();
+        _ = ApplyFilterAsync();
+    }
+
+    [RelayCommand]
+    private async Task ToggleAssignChipAsync(TagChipItem? chip)
+    {
+        var targets = TagTargets();
+        if (chip is null || targets.Count == 0)
+        {
+            return;
+        }
+
+        if (chip.IsAssigned && !chip.IsPartial)
+        {
+            await RemoveAssignedTagAsync(new AssignedTagItem { TagId = chip.TagId, TagName = chip.Name });
+            return;
+        }
+
+        await AssignToSelectionAsync(targets, chip.TagId, chip.Name, TagSource.Manual);
+        await LoadPreviewAsync(SelectedAsset);
+        RebuildAssignPanel();
     }
 
     public void NavigateBreadcrumb(PathCrumb crumb)
     {
         if (IsTagBrowse)
         {
-            SelectedTag = crumb.Path.Length == 0 ? null : TagTreeBuilder.Find(TagTree, crumb.Path);
+            SelectedFilterTags.Clear();
+            if (crumb.Path.Length > 0)
+            {
+                var node = TagTreeBuilder.Find(TagTree, crumb.Path);
+                if (node?.TagId is not null)
+                {
+                    SelectedFilterTags.Add(ToFilterChip(node));
+                    SelectedTag = node;
+                }
+            }
+            else
+            {
+                SelectedTag = null;
+            }
+
+            RestoreFilterSelection(SelectedFilterTags.Select(t => t.TagId).ToList());
+            SyncFilterFlags();
+            RebuildBreadcrumbs();
+            _ = ApplyFilterAsync();
             return;
         }
 
@@ -923,18 +1073,19 @@ public partial class LibraryViewModel : ObservableObject
         {
             var projectId = AppServices.CurrentProject.Id;
             var search = SearchQuery;
-            var tagName = SelectedTag?.Name;
             var folderName = SelectedFolder?.Name;
-            var tagBrowse = IsTagBrowse && SelectedTag?.TagId is not null;
+            var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
+            var filterNames = SelectedFilterTags.Select(t => t.Name).ToList();
+            var tagBrowse = IsTagBrowse && filterIds.Count > 0;
             var folderPath = !IsTagBrowse ? SelectedFolder?.Path : null;
-            var tagId = IsTagBrowse ? SelectedTag?.TagId : null;
+            var matchMode = TagFilterMode;
 
             IReadOnlyList<Asset> assets;
-            if (tagId is not null)
+            if (IsTagBrowse && filterIds.Count > 0)
             {
-                var ids = new List<string> { tagId };
-                ids.AddRange(await _catalog.GetDescendantTagIdsAsync(tagId));
-                assets = await _catalog.GetAssetsForTagsAsync(ids, projectId);
+                var memberships = _memberships.Count > 0 ? _memberships : (await _catalog.GetMembershipsAsync()).ToList();
+                var sets = TagFilter.ExpandEach(filterIds, memberships);
+                assets = await _catalog.GetAssetsForTagFilterAsync(sets, matchMode, projectId);
             }
             else if (folderPath is not null)
             {
@@ -965,10 +1116,13 @@ public partial class LibraryViewModel : ObservableObject
                 return;
             }
 
+            var joiner = matchMode == TagFilterMode.All
+                ? " + "
+                : matchMode == TagFilterMode.None ? " except " : " or ";
             var doneStatus = !string.IsNullOrWhiteSpace(search)
                 ? $"{items.Count} search results"
                 : tagBrowse
-                    ? $"{items.Count} tagged {tagName}"
+                    ? $"{items.Count} tagged {string.Join(joiner, filterNames)}"
                     : folderPath is not null
                         ? $"{items.Count} in {folderName}"
                         : items.Count == 0
@@ -1140,6 +1294,8 @@ public partial class LibraryViewModel : ObservableObject
 
                 Suggestions.Add(suggestion);
             }
+
+            RebuildAssignPanel();
         });
     }
 
@@ -1168,19 +1324,29 @@ public partial class LibraryViewModel : ObservableObject
         var memberships = await _catalog.GetMembershipsAsync();
         var pickItems = BuildTagPicks(tags, memberships);
         var selectedTagId = SelectedTag?.TagId;
+        var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
         await UiDispatch.RunAsync(() =>
         {
+            _tags = tags.ToList();
+            _memberships = memberships.ToList();
             TagTreeBuilder.Replace(TagTree, tags, memberships);
+            ApplyLibraryTreeColors();
+            RestoreFilterSelection(filterIds);
             if (IsTagBrowse)
             {
                 SelectedTag = selectedTagId is null ? null : TagTreeBuilder.Find(TagTree, selectedTagId);
             }
 
             ReplaceTagPicks(pickItems);
+            RebuildAssignPanel();
         });
     }
 
-    partial void OnTagQueryChanged(string value) => ApplyTagSuggestionFilter(value);
+    partial void OnTagQueryChanged(string value)
+    {
+        ApplyTagSuggestionFilter(value);
+        RebuildAssignPanel();
+    }
 
     private void ReplaceTagPicks(List<TagPickItem> pickItems)
     {
@@ -1333,9 +1499,178 @@ public partial class LibraryViewModel : ObservableObject
             await _catalog.AssignTagAsync(asset.Id, tagId, source);
         }
 
+        if (source == TagSource.Manual)
+        {
+            RememberRecent(tagId);
+        }
+
         StatusText = targets.Count == 1
             ? $"Tagged 1 image with {tagName}"
             : $"Tagged {targets.Count} images with {tagName}";
+    }
+
+    private void LoadRecentTags()
+    {
+        _recentTagIds = RecentTags.Parse(
+            ApplicationData.Current.LocalSettings.Values[RecentTags.SettingsKey] as string).ToList();
+    }
+
+    private void RememberRecent(string tagId)
+    {
+        _recentTagIds = RecentTags.Remember(_recentTagIds, tagId).ToList();
+        ApplicationData.Current.LocalSettings.Values[RecentTags.SettingsKey] = RecentTags.Serialize(_recentTagIds);
+    }
+
+    private void SyncFilterFlags()
+    {
+        HasTagFilters = SelectedFilterTags.Count > 0;
+        TagFilterSummary = SelectedFilterTags.Count == 0
+            ? ""
+            : string.Join(TagFilterMode == TagFilterMode.All ? " + " : TagFilterMode == TagFilterMode.None ? " except " : " or ",
+                SelectedFilterTags.Select(t => t.Name));
+    }
+
+    private static TagChipItem ToFilterChip(TagTreeNode node) => new()
+    {
+        TagId = node.TagId ?? "",
+        Name = node.Name,
+        EffectiveColor = node.EffectiveColor,
+        IsStarred = node.IsStarred,
+        IsFilterSelected = true,
+        AutomationPrefix = "BtnTagFilter_"
+    };
+
+    private TagChipItem ToAssignChip(TagPanelChip chip)
+    {
+        var assigned = AssignedTags.FirstOrDefault(t => t.TagId == chip.TagId);
+        return new TagChipItem
+        {
+            TagId = chip.TagId,
+            Name = chip.Name,
+            EffectiveColor = chip.EffectiveColor,
+            IsStarred = chip.IsStarred,
+            IsAssigned = assigned is not null,
+            IsPartial = assigned?.IsPartial == true,
+            AutomationPrefix = "BtnAssignChip_"
+        };
+    }
+
+    public void RebuildAssignPanelPublic() => RebuildAssignPanel();
+
+    private void RebuildAssignPanel()
+    {
+        var recommended = new List<string>();
+        foreach (var suggestion in Suggestions)
+        {
+            if (suggestion.ExistingTagId is { } id)
+            {
+                recommended.Add(id);
+            }
+        }
+
+        foreach (var tag in AssignedTags.Where(t => t.IsPartial))
+        {
+            recommended.Add(tag.TagId);
+        }
+
+        var query = TagNameList.Split(TagQuery);
+        var panelQuery = query.Count == 1 ? query[0] : query.Count == 0 ? TagQuery : "";
+        var colors = _tags.Count == 0
+            ? null
+            : CatalogService.MapEffectiveColors(_tags, _memberships);
+        var model = TagPanelBuilder.Build(
+            _tags,
+            _memberships,
+            _recentTagIds,
+            recommended,
+            panelQuery,
+            colors);
+
+        ReplaceChips(StarredAssignTags, model.Starred);
+        ReplaceChips(RecentAssignTags, model.Recent);
+        ReplaceChips(RecommendedAssignTags, model.Recommended);
+        AssignGroups.Clear();
+        foreach (var group in model.Groups)
+        {
+            var item = new TagBoardGroup
+            {
+                GroupId = group.GroupId,
+                Name = group.Name,
+                Color = group.Color,
+                IsUngrouped = group.IsUngrouped,
+                IsExpanded = true
+            };
+            foreach (var chip in group.Chips)
+            {
+                item.Chips.Add(ToAssignChip(chip));
+            }
+
+            AssignGroups.Add(item);
+        }
+    }
+
+    private void ReplaceChips(ObservableCollection<TagChipItem> target, IReadOnlyList<TagPanelChip> source)
+    {
+        target.Clear();
+        foreach (var chip in source)
+        {
+            target.Add(ToAssignChip(chip));
+        }
+    }
+
+    private void ApplyLibraryTreeColors()
+    {
+        if (_tags.Count == 0)
+        {
+            return;
+        }
+
+        var colors = CatalogService.MapEffectiveColors(_tags, _memberships);
+        ApplyLibraryTreeColors(TagTree, colors);
+    }
+
+    private static void ApplyLibraryTreeColors(
+        IEnumerable<TagTreeNode> nodes,
+        IReadOnlyDictionary<string, string?> colors)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.TagId is { } id)
+            {
+                node.EffectiveColor = colors.GetValueOrDefault(id);
+            }
+
+            ApplyLibraryTreeColors(node.Children, colors);
+        }
+    }
+
+    private void RestoreFilterSelection(IReadOnlyList<string> filterIds)
+    {
+        var keep = filterIds.ToList();
+        SelectedFilterTags.Clear();
+        foreach (var id in keep)
+        {
+            var node = TagTreeBuilder.Find(TagTree, id);
+            if (node?.TagId is null)
+            {
+                continue;
+            }
+
+            node.IsFilterSelected = true;
+            SelectedFilterTags.Add(ToFilterChip(node));
+        }
+
+        StampFilterSelected(TagTree, keep.ToHashSet(StringComparer.Ordinal));
+        SyncFilterFlags();
+    }
+
+    private static void StampFilterSelected(IEnumerable<TagTreeNode> nodes, HashSet<string> selected)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsFilterSelected = node.TagId is { } id && selected.Contains(id);
+            StampFilterSelected(node.Children, selected);
+        }
     }
 
     private AssetItem ToItem(Asset asset) => AssetItemMapper.FromAsset(asset, _thumbs);
@@ -1411,9 +1746,9 @@ public partial class LibraryViewModel : ObservableObject
         Breadcrumbs.Add(new PathCrumb { Name = "Library", Path = "" });
         if (IsTagBrowse)
         {
-            if (SelectedTag?.TagId is { } tagId)
+            foreach (var chip in SelectedFilterTags)
             {
-                Breadcrumbs.Add(new PathCrumb { Name = SelectedTag.Name, Path = tagId });
+                Breadcrumbs.Add(new PathCrumb { Name = chip.Name, Path = chip.TagId });
             }
 
             return;

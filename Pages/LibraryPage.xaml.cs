@@ -38,6 +38,8 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestPickRoom = AskRoomAsync;
         ViewModel.RequestFocusAssignTag = () =>
             DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
+        ViewModel.RequestOpenAssignPanel = () =>
+            DispatcherQueue.TryEnqueue(() => BtnBrowseTags.Flyout?.ShowAt(BtnBrowseTags));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
@@ -116,6 +118,10 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand GetAddSelectionToRoomCommand() => AppServices.Library.AddSelectionToRoomCommand;
 
     public static IRelayCommand GetFocusAssignTagCommand() => AppServices.Library.FocusAssignTagCommand;
+
+    public static IRelayCommand<TagChipItem> GetRemoveFilterTagCommand() => AppServices.Library.RemoveFilterTagCommand;
+
+    public static IRelayCommand<TagChipItem> GetToggleAssignChipCommand() => AppServices.Library.ToggleAssignChipCommand;
 
     public static IRelayCommand GetDeleteFilesCommand() => AppServices.Library.DeleteFilesCommand;
 
@@ -219,13 +225,32 @@ public sealed partial class LibraryPage : Page
     {
         if (args.InvokedItem is TagTreeNode node)
         {
-            ViewModel.SelectedTag = node;
+            ViewModel.ToggleFilterTag(node);
         }
     }
 
     private void SelBrowseMode_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
         ViewModel.IsTagBrowse = sender.SelectedItem == SelTags;
+    }
+
+    private void SelTagMatch_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        ViewModel.TagFilterMode = sender.SelectedItem == SelTagMatchAny
+            ? TagFilterMode.Any
+            : sender.SelectedItem == SelTagMatchNone
+                ? TagFilterMode.None
+                : TagFilterMode.All;
+    }
+
+    private void BtnBrowseTags_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.RebuildAssignPanelPublic();
+    }
+
+    private void FlyAssignTags_Opening(object sender, object e)
+    {
+        ViewModel.RebuildAssignPanelPublic();
     }
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)

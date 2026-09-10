@@ -48,7 +48,7 @@ public static class AppServices
         Scan = new ScanService(Catalog, Metadata, Thumbnails, Organize, CloudLibraries);
         Watchers = new WatcherService(Catalog, Scan);
         Library = new LibraryViewModel(Catalog, Access, Scan, Organize, Thumbnails, Watchers);
-        Tags = new TagsViewModel(Catalog, Organize, Access);
+        Tags = new TagsViewModel(Catalog, Organize, Access, Thumbnails);
         Rooms = new RoomsViewModel(Catalog, Thumbnails);
         Settings = new SettingsViewModel(Catalog, Access, Scan, Watchers, CloudAccounts, CloudLibraries);
         Watchers.SetCallback(_ =>

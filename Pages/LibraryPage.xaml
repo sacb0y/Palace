@@ -94,6 +94,8 @@
         <Grid Grid.Row="1" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <SelectorBar
@@ -111,9 +113,68 @@
                     AutomationProperties.AutomationId="SelTags"
                     Text="Tags" />
             </SelectorBar>
+            <SelectorBar
+                x:Name="SelTagMatch"
+                Grid.Row="1"
+                AutomationProperties.AutomationId="SelTagMatch"
+                AutomationProperties.Name="Tag match"
+                SelectionChanged="SelTagMatch_SelectionChanged"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
+                <SelectorBarItem
+                    x:Name="SelTagMatchAll"
+                    AutomationProperties.AutomationId="SelTagMatchAll"
+                    IsSelected="True"
+                    Text="All" />
+                <SelectorBarItem
+                    x:Name="SelTagMatchAny"
+                    AutomationProperties.AutomationId="SelTagMatchAny"
+                    Text="Any" />
+                <SelectorBarItem
+                    x:Name="SelTagMatchNone"
+                    AutomationProperties.AutomationId="SelTagMatchNone"
+                    Text="None" />
+            </SelectorBar>
+            <ItemsControl
+                x:Name="LstTagFilters"
+                Grid.Row="2"
+                AutomationProperties.AutomationId="LstTagFilters"
+                AutomationProperties.Name="Selected tags"
+                ItemsSource="{x:Bind ViewModel.SelectedFilterTags, Mode=OneWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasTagFilters), Mode=OneWay}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="4" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:TagChipItem">
+                        <Button
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                            Command="{x:Bind pages:LibraryPage.GetRemoveFilterTagCommand()}"
+                            CommandParameter="{x:Bind}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border
+                                    Width="10"
+                                    Height="10"
+                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="2" />
+                                <TextBlock VerticalAlignment="Center" Text="{x:Bind Name, Mode=OneWay}" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="Remove" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <TreeView
                 x:Name="TreFolders"
-                Grid.Row="1"
+                Grid.Row="3"
                 AutomationProperties.AutomationId="TreFolders"
                 AutomationProperties.Name="Source folders"
                 ItemInvoked="TreFolders_ItemInvoked"
@@ -130,7 +191,7 @@
             </TreeView>
             <TreeView
                 x:Name="TreTagsBrowse"
-                Grid.Row="1"
+                Grid.Row="3"
                 AutomationProperties.AutomationId="TreTagsBrowse"
                 AutomationProperties.Name="Tags"
                 ItemInvoked="TreTagsBrowse_ItemInvoked"
@@ -138,10 +199,36 @@
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="models:TagTreeNode">
-                        <TreeViewItem
-                            Content="{x:Bind Name, Mode=OneWay}"
-                            IsExpanded="True"
-                            ItemsSource="{x:Bind Children, Mode=OneWay}" />
+                        <TreeViewItem IsExpanded="True" ItemsSource="{x:Bind Children, Mode=OneWay}">
+                            <TreeViewItem.Content>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border
+                                        Width="10"
+                                        Height="10"
+                                        VerticalAlignment="Center"
+                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="2" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Text="{x:Bind Name, Mode=OneWay}" />
+                                    <TextBlock
+                                        Grid.Column="2"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="On"
+                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
+                                </Grid>
+                            </TreeViewItem.Content>
+                        </TreeViewItem>
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
@@ -488,12 +575,174 @@
                     </ItemsControl>
                 </ScrollViewer>
                 <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Add tag" />
+                <Button
+                    x:Name="BtnBrowseTags"
+                    AutomationProperties.AutomationId="BtnBrowseTags"
+                    Click="BtnBrowseTags_Click"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Browse tags" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <Flyout
+                            x:Name="FlyAssignTags"
+                            AutomationProperties.AutomationId="FlyAssignTags"
+                            Opening="FlyAssignTags_Opening">
+                            <ScrollViewer
+                                MaxWidth="420"
+                                MaxHeight="480"
+                                HorizontalScrollBarVisibility="Disabled"
+                                VerticalScrollBarVisibility="Auto">
+                                <StackPanel Spacing="12" Width="400">
+                                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Starred" />
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.StarredAssignTags, Mode=OneWay}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Spacing="4" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:TagChipItem">
+                                                <Button
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left"
+                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
+                                                    CommandParameter="{x:Bind}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Border
+                                                            Width="12"
+                                                            Height="12"
+                                                            Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="2" />
+                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                                                        <TextBlock
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="On"
+                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAssigned), Mode=OneWay}" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Recent" />
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.RecentAssignTags, Mode=OneWay}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Spacing="4" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:TagChipItem">
+                                                <Button
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left"
+                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
+                                                    CommandParameter="{x:Bind}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Border
+                                                            Width="12"
+                                                            Height="12"
+                                                            Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="2" />
+                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                                                        <TextBlock
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="On"
+                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAssigned), Mode=OneWay}" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Recommended" />
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.RecommendedAssignTags, Mode=OneWay}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Spacing="4" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:TagChipItem">
+                                                <Button
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Left"
+                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
+                                                    CommandParameter="{x:Bind}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <Border
+                                                            Width="12"
+                                                            Height="12"
+                                                            Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                            BorderThickness="1"
+                                                            CornerRadius="2" />
+                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <ItemsControl ItemsSource="{x:Bind ViewModel.AssignGroups, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:TagBoardGroup">
+                                                <Expander
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Header="{x:Bind Name, Mode=OneWay}"
+                                                    IsExpanded="{x:Bind IsExpanded, Mode=OneWay}">
+                                                    <ItemsControl ItemsSource="{x:Bind Chips, Mode=OneWay}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Spacing="4" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate x:DataType="models:TagChipItem">
+                                                                <Button
+                                                                    HorizontalAlignment="Stretch"
+                                                                    HorizontalContentAlignment="Left"
+                                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
+                                                                    CommandParameter="{x:Bind}">
+                                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                        <Border
+                                                                            Width="12"
+                                                                            Height="12"
+                                                                            Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                                            BorderThickness="1"
+                                                                            CornerRadius="2" />
+                                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                                                                        <TextBlock
+                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                            Text="On"
+                                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAssigned), Mode=OneWay}" />
+                                                                    </StackPanel>
+                                                                </Button>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </Expander>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
                 <AutoSuggestBox
                     x:Name="AsbAssignTag"
                     AutomationProperties.AutomationId="AsbAssignTag"
                     AutomationProperties.Name="Tag to assign"
                     ItemsSource="{x:Bind ViewModel.TagSuggestions, Mode=OneWay}"
-                    PlaceholderText="Type to find or create a tag"
+                    PlaceholderText="Name, or several, comma-separated"
                     QueryIcon="Find"
                     QuerySubmitted="AsbAssignTag_QuerySubmitted"
                     SuggestionChosen="AsbAssignTag_SuggestionChosen"

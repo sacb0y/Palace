@@ -12,18 +12,25 @@ public partial class TagsViewModel : ObservableObject
     private readonly CatalogService _catalog;
     private readonly OrganizeService _organize;
     private readonly AccessService _access;
+    private readonly ThumbnailService _thumbs;
     private List<Tag> _tags = [];
     private List<TagMembership> _memberships = [];
     private List<TagImplication> _implications = [];
+    private int _mosaicEpoch;
+    private int _busyDepth;
+    private const int MosaicChunkSize = 80;
 
-    public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access)
+    public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access, ThumbnailService thumbs)
     {
         _catalog = catalog;
         _organize = organize;
         _access = access;
+        _thumbs = thumbs;
     }
 
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
+    public ObservableCollection<TagBoardGroup> Board { get; } = [];
+    public ObservableCollection<AssetItem> Assets { get; } = [];
     public ObservableCollection<TagGroupPick> ParentGroups { get; } = [];
     public ObservableCollection<TagGroupPick> AvailableGroups { get; } = [];
     public ObservableCollection<TagGroupPick> ImpliedTags { get; } = [];
@@ -85,6 +92,22 @@ public partial class TagsViewModel : ObservableObject
     public partial string BackfillStatus { get; set; } = "";
 
     public Func<IReadOnlyList<TagPath>, Task<OrganizeChoice?>>? RequestOrganizeChoice { get; set; }
+    public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
+    public Action<GalleryViewModel>? RequestOpenGallery { get; set; }
+    public Action? MosaicReset { get; set; }
+    public Action? MosaicChunkAppended { get; set; }
+
+    [ObservableProperty]
+    public partial string SearchQuery { get; set; } = "";
+
+    [ObservableProperty]
+    public partial TagScope Scope { get; set; } = TagScope.All;
+
+    [ObservableProperty]
+    public partial bool SelectedIsStarred { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowDetails { get; set; }
 
     private int _backfillEpoch;
 
@@ -97,6 +120,7 @@ public partial class TagsViewModel : ObservableObject
         _implications = (await _catalog.GetImplicationsAsync()).ToList();
         await UiDispatch.RunAsync(RebuildTree);
         await LoadSelectionAsync();
+        await LoadMosaicAsync();
         if (AppServices.Library is { } library)
         {
             await library.ReloadTagCatalogAsync();
@@ -107,8 +131,14 @@ public partial class TagsViewModel : ObservableObject
     public void SelectNode(TagTreeNode? node)
     {
         SelectedNode = node;
+        ShowDetails = node?.TagId is not null;
         _ = LoadSelectionAsync();
+        _ = LoadMosaicAsync();
     }
+
+    partial void OnSearchQueryChanged(string value) => RebuildBoard();
+
+    partial void OnScopeChanged(TagScope value) => RebuildBoard();
 
     [RelayCommand]
     private async Task CreateUngroupedAsync()
@@ -118,12 +148,17 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        var existing = await _catalog.FindTagByNameAsync(NewTagName);
-        var tag = existing ?? await _catalog.CreateTagAsync(NewTagName.Trim());
+        var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName));
         NewTagName = "";
         await RefreshAsync();
-        SelectCreated(tag.Id);
-        StatusText = existing is null ? "Created an ungrouped tag." : "That tag already exists.";
+        if (result.Tags.Count > 0)
+        {
+            SelectCreated(result.Tags[^1].Id);
+        }
+
+        StatusText = result.Created == 0 && result.Existed == 0
+            ? "Enter one or more tag names."
+            : $"Created {result.Created}, already existed {result.Existed}.";
     }
 
     [RelayCommand]
@@ -134,28 +169,112 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        var existing = await _catalog.FindTagByNameAsync(NewTagName);
-        Tag tag;
-        if (existing is null)
-        {
-            tag = await _catalog.CreateChildTagAsync(SelectedNode.TagId, NewTagName.Trim());
-        }
-        else
-        {
-            var ok = await _catalog.AddMembershipAsync(SelectedNode.TagId, existing.Id);
-            if (!ok)
-            {
-                StatusText = "That membership would create a cycle.";
-                return;
-            }
-
-            tag = existing;
-        }
-
+        var parentId = SelectedNode.TagId;
+        var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName), parentId);
         NewTagName = "";
         await RefreshAsync();
-        SelectCreated(tag.Id);
-        StatusText = "Nested tag under the selected group.";
+        if (result.Tags.Count > 0)
+        {
+            SelectCreated(result.Tags[^1].Id);
+        }
+
+        StatusText = result.Created == 0 && result.Existed == 0
+            ? "Enter one or more tag names."
+            : $"Created {result.Created}, already existed {result.Existed} under the selected group.";
+    }
+
+    [RelayCommand]
+    private async Task ToggleStarAsync()
+    {
+        if (SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        var next = !SelectedIsStarred;
+        await _catalog.SetTagStarredAsync(SelectedNode.TagId, next);
+        await RefreshAsync();
+        StatusText = next ? "Starred this tag." : "Removed star.";
+    }
+
+    [RelayCommand]
+    private async Task MoveUpAsync()
+    {
+        if (SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        var parentId = ParentGroups.FirstOrDefault()?.TagId;
+        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, parentId, -1);
+        await RefreshAsync();
+        StatusText = ok ? "Moved tag up." : "Already first among siblings.";
+    }
+
+    [RelayCommand]
+    private async Task MoveDownAsync()
+    {
+        if (SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        var parentId = ParentGroups.FirstOrDefault()?.TagId;
+        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, parentId, 1);
+        await RefreshAsync();
+        StatusText = ok ? "Moved tag down." : "Already last among siblings.";
+    }
+
+    [RelayCommand]
+    private async Task DeleteTagAsync()
+    {
+        if (SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        var name = SelectedNode.Name;
+        var ok = RequestConfirm is null
+            || await RequestConfirm("Delete tag", $"Delete “{name}”? Assignments and group links are removed.", "Delete");
+        if (!ok)
+        {
+            return;
+        }
+
+        await _catalog.DeleteTagAsync(SelectedNode.TagId);
+        SelectedNode = null;
+        await RefreshAsync();
+        StatusText = $"Deleted {name}.";
+    }
+
+    public void SelectChip(TagChipItem? chip)
+    {
+        if (chip?.TagId is null)
+        {
+            return;
+        }
+
+        var node = TagTreeBuilder.Find(TagTree, chip.TagId)
+            ?? new TagTreeNode { TagId = chip.TagId, Name = chip.Name, EffectiveColor = chip.EffectiveColor, IsStarred = chip.IsStarred };
+        SelectNode(node);
+    }
+
+    [RelayCommand]
+    private void OpenAsset(AssetItem? item)
+    {
+        if (item is null || Assets.Count == 0)
+        {
+            return;
+        }
+
+        var snapshot = Assets.ToList();
+        var index = GalleryMedia.StartIndex(snapshot.Select(a => a.Id).ToList(), item.Id);
+        var gallery = new GalleryViewModel(snapshot, index < 0 ? 0 : index, _catalog);
+        RequestOpenGallery?.Invoke(gallery);
+        if (AccessService.WouldHydrateOnOpen(item.Path))
+        {
+            _ = AppServices.Hydration.HydrateAfterOpenAsync(item.Id);
+        }
     }
 
     [RelayCommand]
@@ -332,7 +451,24 @@ public partial class TagsViewModel : ObservableObject
 
     partial void OnSelectedNodeChanged(TagTreeNode? value) => HasSelection = value?.TagId is not null;
 
-    partial void OnIncludeNestedChanged(bool value) => _ = LoadSelectionAsync();
+    partial void OnIncludeNestedChanged(bool value)
+    {
+        _ = LoadSelectionAsync();
+        _ = LoadMosaicAsync();
+    }
+
+    [RelayCommand]
+    private void SelectGroup(TagBoardGroup? group)
+    {
+        if (group?.GroupId is null)
+        {
+            return;
+        }
+
+        var node = TagTreeBuilder.Find(TagTree, group.GroupId)
+            ?? new TagTreeNode { TagId = group.GroupId, Name = group.Name, EffectiveColor = group.Color };
+        SelectNode(node);
+    }
 
     partial void OnImpliedQueryChanged(string value) => ApplyImpliedSuggestionFilter(value);
 
@@ -364,6 +500,8 @@ public partial class TagsViewModel : ObservableObject
                 AvailableGroups.Clear();
                 ImpliedTags.Clear();
                 ImpliedSuggestions.Clear();
+                SelectedIsStarred = false;
+                ShowDetails = false;
             });
             return;
         }
@@ -421,6 +559,8 @@ public partial class TagsViewModel : ObservableObject
                 ? "No implicit tags"
                 : string.Join(", ", implied.Select(t => t.Name));
             ApplyImpliedSuggestionFilter(ImpliedQuery);
+            SelectedIsStarred = tag.IsStarred;
+            ShowDetails = true;
         });
     }
 
@@ -455,10 +595,149 @@ public partial class TagsViewModel : ObservableObject
         var keepId = SelectedNode?.TagId;
         TagTreeBuilder.Replace(TagTree, _tags, _memberships);
         ApplyTreeColors(TagTree);
+        RebuildBoard();
         if (keepId is not null)
         {
             SelectedNode = TagTreeBuilder.Find(TagTree, keepId);
             HasSelection = SelectedNode?.TagId is not null;
+            ShowDetails = HasSelection;
+        }
+    }
+
+    private void RebuildBoard()
+    {
+        var colors = _tags.Count == 0 ? null : CatalogService.MapEffectiveColors(_tags, _memberships);
+        var model = TagPanelBuilder.Build(_tags, _memberships, query: SearchQuery, colors: colors, scope: Scope);
+        Board.Clear();
+        IReadOnlyList<TagPanelGroup> groups = Scope == TagScope.Starred
+            ? [new TagPanelGroup { Name = "Starred", Chips = model.Starred }]
+            : model.Groups;
+        foreach (var group in groups)
+        {
+            var item = new TagBoardGroup
+            {
+                GroupId = group.GroupId,
+                Name = group.Name,
+                Color = group.Color,
+                IsUngrouped = group.IsUngrouped,
+                IsExpanded = true
+            };
+            foreach (var chip in group.Chips)
+            {
+                item.Chips.Add(new TagChipItem
+                {
+                    TagId = chip.TagId,
+                    Name = chip.Name,
+                    EffectiveColor = chip.EffectiveColor,
+                    IsStarred = chip.IsStarred,
+                    IsFilterSelected = chip.TagId == SelectedNode?.TagId
+                });
+            }
+
+            Board.Add(item);
+        }
+    }
+
+    private async Task LoadMosaicAsync()
+    {
+        var epoch = Interlocked.Increment(ref _mosaicEpoch);
+        if (SelectedNode?.TagId is null)
+        {
+            await UiDispatch.RunAsync(() =>
+            {
+                if (epoch != _mosaicEpoch)
+                {
+                    return;
+                }
+
+                Assets.Clear();
+                MosaicReset?.Invoke();
+            });
+            return;
+        }
+
+        BeginBusy("Loading…");
+        try
+        {
+            var tagId = SelectedNode.TagId;
+            var sets = TagFilter.ExpandEach([tagId], _memberships);
+            if (!IncludeNested)
+            {
+                sets = [new HashSet<string>(StringComparer.Ordinal) { tagId }];
+            }
+
+            var projectId = AppServices.CurrentProject?.Id;
+            var assets = await _catalog.GetAssetsForTagFilterAsync(sets, TagFilterMode.Any, projectId);
+            if (epoch != _mosaicEpoch)
+            {
+                return;
+            }
+
+            var items = await Task.Run(() => assets.Select(a => AssetItemMapper.FromAsset(a, _thumbs)).ToList());
+            if (epoch != _mosaicEpoch)
+            {
+                return;
+            }
+
+            await UiDispatch.RunAsync(() =>
+            {
+                if (epoch != _mosaicEpoch)
+                {
+                    return;
+                }
+
+                Assets.Clear();
+                MosaicReset?.Invoke();
+            });
+
+            for (var i = 0; i < items.Count; i += MosaicChunkSize)
+            {
+                if (epoch != _mosaicEpoch)
+                {
+                    return;
+                }
+
+                var end = Math.Min(i + MosaicChunkSize, items.Count);
+                await UiDispatch.RunAsync(() =>
+                {
+                    if (epoch != _mosaicEpoch)
+                    {
+                        return;
+                    }
+
+                    for (var n = i; n < end; n++)
+                    {
+                        Assets.Add(items[n]);
+                    }
+
+                    MosaicChunkAppended?.Invoke();
+                });
+                await UiDispatch.YieldAsync();
+            }
+        }
+        finally
+        {
+            EndBusy();
+        }
+    }
+
+    private void BeginBusy(string? status = null)
+    {
+        if (status is not null)
+        {
+            StatusText = status;
+        }
+
+        Interlocked.Increment(ref _busyDepth);
+        IsBusy = true;
+    }
+
+    private void EndBusy()
+    {
+        if (Interlocked.Decrement(ref _busyDepth) <= 0)
+        {
+            Interlocked.Exchange(ref _busyDepth, 0);
+            IsBusy = false;
         }
     }
 

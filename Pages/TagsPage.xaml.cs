@@ -22,6 +22,9 @@ public sealed partial class TagsPage : Page
     {
         InitializeComponent();
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
+        ViewModel.RequestConfirm = AskConfirmAsync;
+        ViewModel.RequestOpenGallery = GalleryWindow.Show;
+        ViewModel.MosaicChunkAppended = () => TagMosaicLayout.InvalidateItemsInfo();
         Loaded += async (_, _) => await ViewModel.RefreshAsync();
     }
 
@@ -100,12 +103,109 @@ public sealed partial class TagsPage : Page
 
     public static IRelayCommand<TagGroupPick> GetRemoveImpliedCommand() => AppServices.Tags.RemoveImpliedCommand;
 
-    private void TreTags_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    private void SelTagScope_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
-        if (args.InvokedItem is TagTreeNode node)
+        ViewModel.Scope = sender.SelectedItem == SelTagScopeUngrouped
+            ? TagScope.Ungrouped
+            : sender.SelectedItem == SelTagScopeStarred
+                ? TagScope.Starred
+                : TagScope.All;
+    }
+
+    private void TagChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: TagChipItem chip })
         {
-            ViewModel.SelectNode(node);
+            ViewModel.SelectChip(chip);
         }
+    }
+
+    private void TagGroupHeader_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: TagBoardGroup group })
+        {
+            ViewModel.SelectGroupCommand.Execute(group);
+        }
+    }
+
+    private async void TglStarTag_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SelectedIsStarred == TglStarTag.IsOn)
+        {
+            return;
+        }
+
+        await ViewModel.ToggleStarCommand.ExecuteAsync(null);
+    }
+
+    private void TagMosaicLayout_ItemsInfoRequested(LinedFlowLayout sender, LinedFlowLayoutItemsInfoRequestedEventArgs args)
+    {
+        var assets = ViewModel.Assets;
+        var start = Math.Max(0, args.ItemsRangeStartIndex);
+        if (start >= assets.Count)
+        {
+            return;
+        }
+
+        var available = assets.Count - start;
+        var length = Math.Max(args.ItemsRangeRequestedLength, available);
+        if (length <= 0)
+        {
+            return;
+        }
+
+        var ratios = new double[length];
+        for (var i = 0; i < length; i++)
+        {
+            ratios[i] = i < available ? assets[start + i].AspectRatio : 1.0;
+        }
+
+        args.SetDesiredAspectRatios(ratios);
+    }
+
+    private void TagTileImage_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Image image)
+        {
+            return;
+        }
+
+        var id = GalleryMedia.FindAssetId(image.Tag, image.DataContext);
+        var item = id is null ? null : ViewModel.Assets.FirstOrDefault(a => a.Id == id);
+        if (item is null || item.ThumbImage is not null || string.IsNullOrEmpty(item.ThumbPath))
+        {
+            return;
+        }
+
+        item.ThumbImage = LibraryPage.FileToImage(item.ThumbPath);
+    }
+
+    private void TagAsset_DoubleTapped(object sender, Microsoft.UI.Xaml.Input.DoubleTappedRoutedEventArgs e)
+    {
+        e.Handled = true;
+        AssetItem? item = null;
+        if (sender is FrameworkElement fe)
+        {
+            var id = GalleryMedia.FindAssetId(fe.Tag, fe.DataContext);
+            item = id is null ? null : ViewModel.Assets.FirstOrDefault(a => a.Id == id);
+        }
+
+        ViewModel.OpenAssetCommand.Execute(item ?? GrdTagAssets.SelectedItem as AssetItem);
+    }
+
+    private async Task<bool> AskConfirmAsync(string title, string message, string primary)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = message,
+            PrimaryButtonText = primary,
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     private void AsbAddImplied_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)

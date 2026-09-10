@@ -202,7 +202,10 @@ function Get-BoundingHeight {
 
 function Find-TreeTag {
     param([string]$Name)
-    $els = Get-UiElements -Selector 'TreTags' -Depth 20
+    $els = Get-UiElements -Selector 'RepTagBoard' -Depth 20
+    if (-not $els -or $els.Count -eq 0) {
+        $els = Get-UiElements -Selector 'TreTags' -Depth 20
+    }
     $exact = @($els | Where-Object { $_.name -eq $Name })
     if ($exact.Count -gt 0) { return $exact[0] }
     $prefixed = @($els | Where-Object { $_.name -like "$Name *" })
@@ -214,7 +217,10 @@ function Find-TreeTag {
 
 function Invoke-TagTree {
     param([string]$Name)
-    winapp ui wait-for 'TreTags' @(WinArgs) -t 4000 | Out-Null
+    winapp ui wait-for 'RepTagBoard' @(WinArgs) -t 4000 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        winapp ui wait-for 'TreTags' @(WinArgs) -t 4000 | Out-Null
+    }
     $current = Get-UiText 'TxtRenameTag'
     if ($current -match [regex]::Escape($Name)) {
         Start-Sleep -Milliseconds 200
@@ -442,12 +448,16 @@ Test-UI 'Select Folders browse' { winapp ui invoke 'SelFolders' -a $AppPid }
 Test-UI 'Folder tree exists' { winapp ui wait-for 'TreFolders' -a $AppPid -t 4000 }
 Test-UI 'Switch to Tags browse' { winapp ui invoke 'SelTags' -a $AppPid }
 Test-UI 'Tag browse tree exists' { winapp ui wait-for 'TreTagsBrowse' -a $AppPid -t 4000 }
+Test-UI 'Tag match selector exists' { winapp ui wait-for 'SelTagMatch' -a $AppPid -t 3000 }
 Test-UI 'Switch to Folders browse' { winapp ui invoke 'SelFolders' -a $AppPid }
 Test-UI 'Folder tree after switch' { winapp ui wait-for 'TreFolders' -a $AppPid -t 4000 }
 Test-UI 'Status exists' { winapp ui wait-for 'TxtStatus' -a $AppPid -t 3000 }
 
 Test-UI 'Navigate to Tags' { winapp ui invoke 'NavTags' -a $AppPid }
-Test-UI 'Tags tree loaded' { winapp ui wait-for 'TreTags' -a $AppPid -t 8000 }
+Test-UI 'Tags tree loaded' { winapp ui wait-for 'RepTagBoard' -a $AppPid -t 8000 }
+Test-UI 'Tag scope exists' { winapp ui wait-for 'SelTagScope' -a $AppPid -t 4000 }
+Test-UI 'Tag search exists' { winapp ui wait-for 'AsbTagSearch' -a $AppPid -t 4000 }
+Test-UI 'Tag mosaic exists' { winapp ui wait-for 'GrdTagAssets' -a $AppPid -t 4000 }
 Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000 }
 Test-UI 'Set tag name' { winapp ui set-value 'TxtNewTagName' 'Sonic' -a $AppPid }
 Test-UI 'Create ungrouped tag' {
@@ -458,6 +468,14 @@ Test-UI 'Create ungrouped tag' {
 Start-Sleep -Milliseconds 500
 Test-UI 'Tags status mentions tag' {
     winapp ui wait-for 'TxtTagsStatus' -a $AppPid -t 4000
+}
+Test-UI 'Star toggle exists' { winapp ui wait-for 'TglStarTag' -a $AppPid -t 4000 }
+Test-UI 'Batch-create comma tags' {
+    winapp ui set-value 'TxtNewTagName' 'BatchOne, BatchTwo' -a $AppPid
+    if ($LASTEXITCODE -ne 0) { throw 'Could not set batch tag names' }
+    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    Start-Sleep -Milliseconds 600
+    winapp ui wait-for 'TxtTagsStatus' -a $AppPid --value 'Created' --contains -t 4000
 }
 
 Test-UI 'Implied controls exist' {
@@ -509,7 +527,7 @@ Test-UI 'Rooms status mentions room' {
 
 Test-UI 'Navigate to Settings' { winapp ui invoke 'NavSettings' -a $AppPid }
 Test-UI 'Theme combo exists' { winapp ui wait-for 'CmbTheme' -a $AppPid -t 4000 }
-Test-UI 'App version is shown' { winapp ui wait-for 'TxtAppVersion' -a $AppPid --value '0.0.1' --contains -t 4000 }
+Test-UI 'App version is shown' { winapp ui wait-for 'TxtAppVersion' -a $AppPid --value '0.0.2' --contains -t 4000 }
 Test-UI 'Sources list exists' { winapp ui wait-for 'LstSources' -a $AppPid -t 3000 }
 Test-UI 'Auto-organize toggle exists' { winapp ui wait-for 'TglAutoOrganize' -a $AppPid -t 3000 }
 Test-UI 'Connect OneDrive exists' { winapp ui wait-for 'BtnConnectOneDrive' -a $AppPid -t 4000 }
@@ -522,6 +540,7 @@ Test-UI 'Navigate back to Library' {
 Test-UI 'Library search still present' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 4000 }
 Test-UI 'Tag typeahead exists' { winapp ui wait-for 'AsbAssignTag' -a $AppPid -t 4000 }
 Test-UI 'Assign tag button exists' { winapp ui wait-for 'BtnAssignTag' -a $AppPid -t 3000 }
+Test-UI 'Browse tags exists' { winapp ui wait-for 'BtnBrowseTags' -a $AppPid -t 3000 }
 Test-UI 'Assigned summary exists' { winapp ui wait-for 'TxtAssignedTags' -a $AppPid -t 3000 }
 Test-UI 'Suggestion summary exists' { winapp ui wait-for 'TxtTagSuggestions' -a $AppPid -t 3000 }
 Test-UI 'Typeahead shows newly created tag' {
