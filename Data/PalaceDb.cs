@@ -220,6 +220,7 @@ public sealed class PalaceDb : IDisposable
                 Kind TEXT NOT NULL DEFAULT 'Room',
                 SortOrder INTEGER NOT NULL DEFAULT 0,
                 ProjectId TEXT,
+                Icon TEXT,
                 FOREIGN KEY (ProjectId) REFERENCES Project(Id)
             );
 
@@ -264,6 +265,7 @@ public sealed class PalaceDb : IDisposable
         MigrateLegacyFacets();
         EnsureTagColorColumn();
         EnsureCloudColumns();
+        EnsureColumn("Collection", "Icon", "TEXT");
         SeedDefaults();
         EnsureDefaultProject();
     }

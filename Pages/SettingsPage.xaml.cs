@@ -22,7 +22,7 @@ public sealed partial class SettingsPage : Page
 
     private async Task<CloudEntry?> PickCloudFolderAsync(ICloudLibrary library)
     {
-        var dialog = new CloudFolderPickerDialog(library)
+        var dialog = new CloudFolderPickerDialog(library, AppServices.CurrentProject.Name)
         {
             XamlRoot = XamlRoot
         };

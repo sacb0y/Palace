@@ -498,6 +498,7 @@ Test-UI 'Implication listed in tag manager' {
 
 Test-UI 'Navigate to Rooms' { winapp ui invoke 'NavRooms' -a $AppPid }
 Test-UI 'Rooms list loaded' { winapp ui wait-for 'LstRooms' -a $AppPid -t 4000 }
+Test-UI 'Room icon picker exists' { winapp ui wait-for 'GrdRoomIcons' -a $AppPid -t 3000 }
 Test-UI 'New room button exists' { winapp ui wait-for 'BtnNewRoom' -a $AppPid -t 3000 }
 Test-UI 'Set room name' { winapp ui set-value 'TxtRoomName' 'Moodboard' -a $AppPid }
 Test-UI 'Create room' { winapp ui invoke 'BtnNewRoom' -a $AppPid }

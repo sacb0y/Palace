@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.ViewModels;
 using Windows.Graphics;
 using Windows.Media.Core;
+using Windows.Media.Playback;
 using Windows.Storage;
 using Windows.System;
 
@@ -118,18 +119,34 @@ public sealed partial class GalleryWindow : Window
         }
     }
 
+    private int _mediaEpoch;
+
     private async void UpdateMedia()
     {
+        var epoch = Interlocked.Increment(ref _mediaEpoch);
         if (Gallery.IsVideo && Gallery.CurrentPath is not null)
         {
             try
             {
+                if (MpeGallery.MediaPlayer is null)
+                {
+                    MpeGallery.SetMediaPlayer(new MediaPlayer());
+                }
+
                 var file = await StorageFile.GetFileFromPathAsync(Gallery.CurrentPath);
+                if (epoch != _mediaEpoch)
+                {
+                    return;
+                }
+
                 MpeGallery.Source = MediaSource.CreateFromStorageFile(file);
             }
             catch
             {
-                MpeGallery.Source = null;
+                if (epoch == _mediaEpoch)
+                {
+                    MpeGallery.Source = null;
+                }
             }
         }
         else

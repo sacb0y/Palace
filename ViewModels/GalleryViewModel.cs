@@ -207,6 +207,16 @@ public partial class GalleryViewModel : ObservableObject
             return;
         }
 
+        var playableVideo = GalleryMedia.IsPlayableLocalVideo(
+            item.Kind, apiOnly, item.IsOnlineOnly, localExists, item.Path);
+        var stillPath = GalleryMedia.OverlayStillPath(
+            item.IsOrphan,
+            item.IsOnlineOnly,
+            localExists,
+            item.Path,
+            item.ThumbPath,
+            previewCache);
+
         await UiDispatch.RunAsync(() =>
         {
             if (epoch != _loadEpoch)
@@ -215,12 +225,8 @@ public partial class GalleryViewModel : ObservableObject
             }
 
             Current = item;
-            CurrentPath = apiOnly
-                ? previewCache
-                : item.IsOrphan || !localExists
-                    ? null
-                    : item.Path;
-            PreviewImageUri = previewUrl ?? CurrentPath;
+            CurrentPath = playableVideo ? item.Path : stillPath;
+            PreviewImageUri = previewUrl ?? stillPath;
             Title = item.FileName;
             PositionLabel = $"{CurrentIndex + 1} / {_items.Count}";
             IsCloudPreview = apiOnly && (previewUrl is not null || previewCache is not null);
@@ -229,11 +235,9 @@ public partial class GalleryViewModel : ObservableObject
                 : item.IsOnlineOnly && localExists
                     ? "Online-only file. Opening downloads it."
                     : "";
-            IsVideo = item.Kind == AssetKind.Video && CurrentPath is not null && !apiOnly;
-            IsImage = (item.Kind is AssetKind.Image or AssetKind.Gif && CurrentPath is not null)
-                || IsCloudPreview
-                || (!string.IsNullOrEmpty(PreviewImageUri) && item.Kind is AssetKind.Image or AssetKind.Gif);
-            IsMissing = CurrentPath is null && string.IsNullOrEmpty(PreviewImageUri);
+            IsVideo = playableVideo;
+            IsImage = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
+            IsMissing = !IsVideo && CurrentPath is null && string.IsNullOrEmpty(PreviewImageUri);
             CanDownloadOriginal = apiOnly && !string.IsNullOrEmpty(item.CloudItemId);
             CanOpenInExplorer = localExists && !apiOnly;
             CanGoPrevious = CurrentIndex > 0;
@@ -254,10 +258,46 @@ public partial class GalleryViewModel : ObservableObject
             }
         });
 
-        if (!apiOnly && localExists)
+        if (!apiOnly && localExists && item.IsOnlineOnly)
         {
-            _ = AppServices.Hydration.HydrateAfterOpenAsync(item.Id);
+            _ = HydrateThenReloadAsync(item.Id, epoch);
         }
+    }
+
+    private async Task HydrateThenReloadAsync(string assetId, int epoch)
+    {
+        try
+        {
+            await AppServices.Hydration.HydrateAfterOpenAsync(assetId);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (epoch != _loadEpoch)
+        {
+            return;
+        }
+
+        var current = _items.ElementAtOrDefault(CurrentIndex);
+        if (current is null)
+        {
+            return;
+        }
+
+        var refreshed = await _catalog.GetAssetByIdAsync(assetId);
+        if (refreshed is null || refreshed.IsOnlineOnly)
+        {
+            return;
+        }
+
+        current.IsOnlineOnly = refreshed.IsOnlineOnly;
+        current.ContentHash = refreshed.ContentHash;
+        current.ThumbPath = AppServices.Thumbnails.ExistingPathForHash(refreshed.ContentHash) ?? current.ThumbPath;
+        current.Width = refreshed.Width ?? current.Width;
+        current.Height = refreshed.Height ?? current.Height;
+        await LoadCurrentAsync();
     }
 
     private async Task<(string? Url, string? CachedPath)> LoadCloudPreviewAsync(AssetItem item)

@@ -5,6 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:helpers="using:Palace.Helpers"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
     xmlns:pages="using:Palace.Pages"
@@ -37,27 +38,47 @@
                 <Button
                     AutomationProperties.AutomationId="BtnAddFolder"
                     AutomationProperties.Name="Add folder"
-                    Command="{x:Bind ViewModel.AddFolderCommand}"
-                    Content="Add folder" />
+                    Command="{x:Bind ViewModel.AddFolderCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Add folder" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnScan"
                     Command="{x:Bind ViewModel.ScanCommand}"
-                    Content="Scan"
-                    IsEnabled="{x:Bind helpers:BindHelpers.Not(ViewModel.IsBusy), Mode=OneWay}" />
+                    IsEnabled="{x:Bind helpers:BindHelpers.Not(ViewModel.IsBusy), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowSync" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Scan" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnOrganize"
                     Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
-                    Content="Organize"
-                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Organize" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnUndoOrganize"
-                    Command="{x:Bind ViewModel.UndoOrganizeCommand}"
-                    Content="Undo last organize" />
+                    Command="{x:Bind ViewModel.UndoOrganizeCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Undo last organize" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnAddToRoom"
                     Command="{x:Bind ViewModel.AddSelectionToRoomCommand}"
-                    Content="Add to room"
-                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Door" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Add to room" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
             <ProgressBar
                 x:Name="PrgLibrary"
@@ -196,6 +217,7 @@
                             AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
+                            Tag="{x:Bind Id, Mode=OneWay}"
                             ManipulationMode="None"
                             PointerPressed="AssetItem_PointerPressed"
                             RightTapped="AssetItem_RightTapped">
@@ -205,43 +227,79 @@
                                         AutomationProperties.AutomationId="MnuOpen"
                                         Command="{x:Bind pages:LibraryPage.GetOpenOverlayCommand()}"
                                         CommandParameter="{x:Bind}"
-                                        Text="Open" />
+                                        Text="Open">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuOpenInNewWindow"
                                         Command="{x:Bind pages:LibraryPage.GetOpenInNewWindowCommand()}"
                                         CommandParameter="{x:Bind}"
-                                        Text="Open in new window" />
+                                        Text="Open in new window">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="WindowNew" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuShowInExplorer"
                                         Command="{x:Bind pages:LibraryPage.GetShowInExplorerCommand()}"
-                                        Text="Show in File Explorer" />
+                                        Text="Show in File Explorer">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuCopy"
                                         Command="{x:Bind pages:LibraryPage.GetCopyFilesCommand()}"
-                                        Text="Copy" />
+                                        Text="Copy">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuCopyPath"
                                         Command="{x:Bind pages:LibraryPage.GetCopyPathCommand()}"
-                                        Text="Copy path" />
+                                        Text="Copy path">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="DocumentCopy" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuMoveToFolder"
                                         Command="{x:Bind pages:LibraryPage.GetMoveToFolderCommand()}"
-                                        Text="Move to folder…" />
+                                        Text="Move to folder…">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuAddToRoom"
                                         Command="{x:Bind pages:LibraryPage.GetAddSelectionToRoomCommand()}"
-                                        Text="Add to room" />
+                                        Text="Add to room">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Door" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuAddTag"
                                         Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
-                                        Text="Add tag…" />
+                                        Text="Add tag…">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                     <MenuFlyoutSeparator />
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuDelete"
                                         Command="{x:Bind pages:LibraryPage.GetDeleteFilesCommand()}"
-                                        Text="Delete" />
+                                        Text="Delete">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
                                 </MenuFlyout>
                             </ItemContainer.ContextFlyout>
                             <Grid
@@ -274,10 +332,12 @@
                                     IsHitTestVisible="False"
                                     Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
-                                    <FontIcon
+                                    <ic:FluentIcon
                                         FontSize="16"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Glyph="&#xE724;" />
+                                        Icon="Cloud"
+                                        IconSize="Size16"
+                                        IconVariant="Regular" />
                                     <TextBlock
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         Style="{StaticResource CaptionTextBlockStyle}"
@@ -595,8 +655,9 @@
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
             <Grid>
                 <Image
+                    x:Name="ImgOverlay"
                     Stretch="Uniform"
-                    Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.CurrentPath), Mode=OneWay, FallbackValue={x:Null}}"
+                    Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.PreviewImageUri), Mode=OneWay, FallbackValue={x:Null}}"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
                 <MediaPlayerElement
                     x:Name="MpeOverlay"
@@ -604,6 +665,19 @@
                     AutoPlay="False"
                     AutomationProperties.AutomationId="MpeGalleryOverlay"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
+                <Button
+                    x:Name="BtnGalleryPlay"
+                    MinWidth="72"
+                    MinHeight="72"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnGalleryPlay"
+                    AutomationProperties.Name="Play"
+                    Click="BtnGalleryPlay_Click"
+                    ToolTipService.ToolTip="Play"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
+                    <ic:FluentIcon Icon="Play" IconSize="Size32" IconVariant="Regular" />
+                </Button>
                 <TextBlock
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
@@ -623,7 +697,7 @@
                     Command="{x:Bind ViewModel.OverlayGallery.GoPreviousCommand, Mode=OneWay, FallbackValue={x:Null}}"
                     IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoPrevious, Mode=OneWay, FallbackValue=False}"
                     ToolTipService.ToolTip="Previous">
-                    <SymbolIcon Symbol="Back" />
+                    <ic:FluentIcon Icon="ChevronLeft" IconSize="Size20" IconVariant="Regular" />
                 </Button>
                 <Button
                     x:Name="BtnGalleryNext"
@@ -637,7 +711,7 @@
                     Command="{x:Bind ViewModel.OverlayGallery.GoNextCommand, Mode=OneWay, FallbackValue={x:Null}}"
                     IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoNext, Mode=OneWay, FallbackValue=False}"
                     ToolTipService.ToolTip="Next">
-                    <SymbolIcon Symbol="Forward" />
+                    <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
                 </Button>
                 <Button
                     x:Name="BtnGalleryClose"
@@ -650,7 +724,7 @@
                     AutomationProperties.Name="Close"
                     Command="{x:Bind ViewModel.CloseOverlayCommand}"
                     ToolTipService.ToolTip="Close">
-                    <SymbolIcon Symbol="Cancel" />
+                    <ic:FluentIcon Icon="Dismiss" IconSize="Size20" IconVariant="Regular" />
                 </Button>
             </Grid>
 

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Palace.Data;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services.Cloud;
 using Windows.Storage;
@@ -152,13 +153,8 @@ public sealed class CloudAccountService
         return tokens.AccessToken;
     }
 
-    public static string BuildSourcePath(CloudProvider provider, string accountLabel, string folderDisplay)
-    {
-        var safeAccount = new string(accountLabel.Select(ch =>
-            char.IsLetterOrDigit(ch) || ch is '-' or '_' ? ch : '_').ToArray());
-        var folder = folderDisplay.Replace('/', Path.DirectorySeparatorChar).Trim(Path.DirectorySeparatorChar);
-        return Path.Combine("cloud", provider.ToString().ToLowerInvariant(), safeAccount, folder);
-    }
+    public static string BuildSourcePath(CloudProvider provider, string accountLabel, string folderDisplay) =>
+        CloudSourcePath.Build(provider, accountLabel, folderDisplay);
 
     private async Task<CloudConnectResult> PersistAsync(
         CloudProvider provider,

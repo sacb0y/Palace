@@ -188,7 +188,9 @@ public partial class SettingsViewModel : ObservableObject
             StatusText = "Connecting to OneDrive…";
             var result = await _cloud.ConnectOneDriveAsync();
             await RefreshCloudStatusAsync();
-            StatusText = "Connected OneDrive as " + result.DisplayName + ".";
+            StatusText = "Connected OneDrive as " + result.DisplayName
+                + ". Pick a folder for " + AppServices.CurrentProject.Name + ".";
+            await AddCloudFolderAsync(CloudProvider.OneDrive);
         }
         catch (CloudAuthException ex)
         {
@@ -208,7 +210,9 @@ public partial class SettingsViewModel : ObservableObject
             StatusText = "Connecting to Dropbox…";
             var result = await _cloud.ConnectDropboxAsync();
             await RefreshCloudStatusAsync();
-            StatusText = "Connected Dropbox as " + result.DisplayName + ".";
+            StatusText = "Connected Dropbox as " + result.DisplayName
+                + ". Pick a folder for " + AppServices.CurrentProject.Name + ".";
+            await AddCloudFolderAsync(CloudProvider.Dropbox);
         }
         catch (CloudAuthException ex)
         {
@@ -292,23 +296,51 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         var label = account.DisplayName ?? account.AccountId;
-        var path = CloudAccountService.BuildSourcePath(provider, label, picked.DisplayPath);
+        var display = CloudSourcePath.FolderDisplay(picked.DisplayPath);
+        var path = CloudSourcePath.Build(provider, label, display);
+        var rootId = CloudSourcePath.NormalizeRootItemId(picked.Id);
+        var existing = await _catalog.GetSourceFoldersAsync();
+        var taken = existing.FirstOrDefault(s => CloudSourcePath.PathTaken(path, [s.Path]));
+        if (taken is null)
+        {
+            taken = existing.FirstOrDefault(s =>
+                !string.IsNullOrEmpty(s.CloudAccountId)
+                && CloudSourcePath.SameCloudFolder(account.Id, rootId, s.CloudAccountId, s.CloudRootItemId));
+        }
+
+        if (taken is not null)
+        {
+            StatusText = taken.ProjectId == AppServices.CurrentProject.Id
+                ? "That cloud folder is already in this project."
+                : "That cloud folder already belongs to another project.";
+            return;
+        }
+
         var folder = new SourceFolder
         {
             Id = PalaceDb.NewId(),
             Path = path,
             Kind = provider == CloudProvider.Dropbox ? SourceKind.Dropbox : SourceKind.OneDrive,
             CloudAccountId = account.Id,
-            CloudRootItemId = picked.Id,
+            CloudRootItemId = rootId,
             ProjectId = AppServices.CurrentProject.Id
         };
-        await _catalog.UpsertSourceFolderAsync(folder);
+        try
+        {
+            await _catalog.UpsertSourceFolderAsync(folder);
+        }
+        catch (Exception)
+        {
+            StatusText = "That cloud folder path is already used by another project.";
+            return;
+        }
+
         StatusText = "Scanning " + picked.Name + "…";
         await _scan.ScanSourceAsync(folder);
         await _watchers.RestartAsync();
         await LoadAsync();
         await AppServices.Library.LoadAsync();
-        StatusText = "Added cloud folder " + picked.Name + ".";
+        StatusText = "Added " + display + " to " + AppServices.CurrentProject.Name + ".";
     }
 
     private async Task RefreshCloudStatusAsync()

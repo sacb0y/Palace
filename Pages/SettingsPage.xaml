@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
     mc:Ignorable="d">
@@ -26,7 +27,7 @@
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Cloud accounts" />
             <TextBlock
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Public-client app IDs stay on this device. Register the redirect URI below on the provider app and enable public client flows." />
+                Text="Public-client app IDs stay on this device. Register the redirect URI below on the provider app and enable public client flows. Connecting OneDrive or Dropbox asks which cloud folder belongs to the current project." />
             <TextBox
                 x:Name="TxtCloudRedirectUri"
                 AutomationProperties.AutomationId="TxtCloudRedirectUri"
@@ -35,8 +36,12 @@
                 Text="{x:Bind ViewModel.RedirectUri, Mode=OneWay}" />
             <Button
                 AutomationProperties.AutomationId="BtnCopyRedirectUri"
-                Command="{x:Bind ViewModel.CopyRedirectUriCommand}"
-                Content="Copy redirect URI" />
+                Command="{x:Bind ViewModel.CopyRedirectUriCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                    <TextBlock VerticalAlignment="Center" Text="Copy redirect URI" />
+                </StackPanel>
+            </Button>
 
             <TextBox
                 x:Name="TxtOneDriveClientId"
@@ -51,18 +56,30 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnConnectOneDrive"
-                    Command="{x:Bind ViewModel.ConnectOneDriveCommand}"
-                    Content="Connect OneDrive" />
+                    Command="{x:Bind ViewModel.ConnectOneDriveCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Cloud" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Connect OneDrive" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnDisconnectOneDrive"
                     Command="{x:Bind ViewModel.DisconnectOneDriveCommand}"
-                    Content="Disconnect"
-                    IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}" />
+                    IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="PlugDisconnected" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Disconnect" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnAddOneDriveFolder"
                     Command="{x:Bind ViewModel.AddOneDriveFolderCommand}"
-                    Content="Add OneDrive folder"
-                    IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}" />
+                    IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Add OneDrive folder" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
 
             <TextBox
@@ -78,18 +95,30 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnConnectDropbox"
-                    Command="{x:Bind ViewModel.ConnectDropboxCommand}"
-                    Content="Connect Dropbox" />
+                    Command="{x:Bind ViewModel.ConnectDropboxCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Cloud" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Connect Dropbox" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnDisconnectDropbox"
                     Command="{x:Bind ViewModel.DisconnectDropboxCommand}"
-                    Content="Disconnect"
-                    IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}" />
+                    IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="PlugDisconnected" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Disconnect" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnAddDropboxFolder"
                     Command="{x:Bind ViewModel.AddDropboxFolderCommand}"
-                    Content="Add Dropbox folder"
-                    IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}" />
+                    IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Add Dropbox folder" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
 
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Watched folders" />
@@ -108,12 +137,20 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnAddSource"
-                    Command="{x:Bind ViewModel.AddSourceCommand}"
-                    Content="Add folder" />
+                    Command="{x:Bind ViewModel.AddSourceCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Add folder" />
+                    </StackPanel>
+                </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnRemoveSource"
-                    Command="{x:Bind ViewModel.RemoveSourceCommand}"
-                    Content="Remove folder" />
+                    Command="{x:Bind ViewModel.RemoveSourceCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderArrowLeft" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Remove folder" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
 
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Selected folder" />
@@ -151,8 +188,12 @@
                 Text="{x:Bind ViewModel.SelectedSource.DestinationPath, Mode=OneWay, FallbackValue=''}" />
             <Button
                 AutomationProperties.AutomationId="BtnPickSourceDestination"
-                Command="{x:Bind ViewModel.PickDestinationCommand}"
-                Content="Pick auto-organize destination" />
+                Command="{x:Bind ViewModel.PickDestinationCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                    <TextBlock VerticalAlignment="Center" Text="Pick auto-organize destination" />
+                </StackPanel>
+            </Button>
 
             <TextBlock
                 AutomationProperties.AutomationId="TxtSettingsStatus"
