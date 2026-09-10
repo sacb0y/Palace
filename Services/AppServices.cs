@@ -96,6 +96,7 @@ public static class AppServices
         try
         {
             await Library.LoadAsync();
+            await Tags.RefreshAsync();
             await Rooms.RefreshAsync();
             await Settings.LoadAsync();
         }

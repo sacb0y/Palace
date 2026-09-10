@@ -64,6 +64,18 @@ public sealed class TagPanelBuilderTests
     }
 
     [Fact]
+    public void Build_SearchUngroupedGroupName_ReturnsLooseTags()
+    {
+        var (tags, edges) = Sample();
+        var model = TagPanelBuilder.Build(tags, edges, query: "ungroup");
+
+        var bucket = Assert.Single(model.Groups);
+        Assert.True(bucket.IsUngrouped);
+        Assert.Equal(["Loose"], bucket.Chips.Select(c => c.Name).ToArray());
+        Assert.DoesNotContain(model.Groups, g => g.Name == "Character");
+    }
+
+    [Fact]
     public void Build_StarredScope_HidesGroups()
     {
         var (tags, edges) = Sample();

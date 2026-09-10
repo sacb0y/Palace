@@ -71,6 +71,16 @@ public static class GalleryMedia
         && localExists
         && !string.IsNullOrEmpty(path);
 
+    public static int MosaicAspectCount(int requestedLength, int available)
+    {
+        if (requestedLength <= 0 || available <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Min(requestedLength, available);
+    }
+
     public static bool ShouldLoadTileThumb(
         bool isOrphan,
         bool alreadyStarted,

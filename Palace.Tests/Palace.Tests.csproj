@@ -15,6 +15,7 @@
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
     <Compile Include="..\Helpers\TagNameList.cs" Link="TagNameList.cs" />
     <Compile Include="..\Helpers\TagPanelBuilder.cs" Link="TagPanelBuilder.cs" />
+    <Compile Include="..\Helpers\TagSiblings.cs" Link="TagSiblings.cs" />
     <Compile Include="..\Helpers\ThumbFileName.cs" Link="ThumbFileName.cs" />
     <Compile Include="..\Models\Entities.cs" Link="Entities.cs" />
     <Compile Include="..\Models\Enums.cs" Link="Enums.cs" />

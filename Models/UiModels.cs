@@ -213,6 +213,8 @@ public partial class TagChipItem : ObservableObject
     [ObservableProperty]
     public partial bool IsFilterSelected { get; set; }
 
+    public string? ParentGroupId { get; set; }
+
     public string AutomationPrefix { get; set; } = "BtnTagChip_";
 
     public string AutomationId =>
@@ -233,6 +235,9 @@ public partial class TagBoardGroup : ObservableObject
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; } = true;
+
+    public string AutomationId =>
+        "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
 
     public ObservableCollection<TagChipItem> Chips { get; } = [];
 }

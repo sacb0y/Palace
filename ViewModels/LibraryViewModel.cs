@@ -89,6 +89,9 @@ public partial class LibraryViewModel : ObservableObject
     public partial bool HasTagFilters { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowTagFilterChips { get; set; }
+
+    [ObservableProperty]
     public partial string TagFilterSummary { get; set; } = "";
 
     [ObservableProperty]
@@ -206,6 +209,7 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         _suppressFilter = false;
+        SyncFilterFlags();
         RebuildBreadcrumbs();
         _ = ApplyFilterAsync();
     }
@@ -1524,6 +1528,7 @@ public partial class LibraryViewModel : ObservableObject
     private void SyncFilterFlags()
     {
         HasTagFilters = SelectedFilterTags.Count > 0;
+        ShowTagFilterChips = HasTagFilters && IsTagBrowse;
         TagFilterSummary = SelectedFilterTags.Count == 0
             ? ""
             : string.Join(TagFilterMode == TagFilterMode.All ? " + " : TagFilterMode == TagFilterMode.None ? " except " : " or ",
@@ -1586,6 +1591,10 @@ public partial class LibraryViewModel : ObservableObject
             panelQuery,
             colors);
 
+        var collapsed = AssignGroups
+            .Where(g => !g.IsExpanded)
+            .Select(g => g.GroupId ?? g.Name)
+            .ToHashSet(StringComparer.Ordinal);
         ReplaceChips(StarredAssignTags, model.Starred);
         ReplaceChips(RecentAssignTags, model.Recent);
         ReplaceChips(RecommendedAssignTags, model.Recommended);
@@ -1598,7 +1607,7 @@ public partial class LibraryViewModel : ObservableObject
                 Name = group.Name,
                 Color = group.Color,
                 IsUngrouped = group.IsUngrouped,
-                IsExpanded = true
+                IsExpanded = !collapsed.Contains(group.GroupId ?? group.Name)
             };
             foreach (var chip in group.Chips)
             {

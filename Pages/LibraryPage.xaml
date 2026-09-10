@@ -140,7 +140,7 @@
                 AutomationProperties.AutomationId="LstTagFilters"
                 AutomationProperties.Name="Selected tags"
                 ItemsSource="{x:Bind ViewModel.SelectedFilterTags, Mode=OneWay}"
-                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasTagFilters), Mode=OneWay}">
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowTagFilterChips), Mode=OneWay}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Spacing="4" />
@@ -640,6 +640,7 @@
                                                 <Button
                                                     HorizontalAlignment="Stretch"
                                                     HorizontalContentAlignment="Left"
+                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                     Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
                                                     CommandParameter="{x:Bind}">
                                                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -672,6 +673,7 @@
                                                 <Button
                                                     HorizontalAlignment="Stretch"
                                                     HorizontalContentAlignment="Left"
+                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                     Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
                                                     CommandParameter="{x:Bind}">
                                                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -694,8 +696,10 @@
                                                 <Expander
                                                     HorizontalAlignment="Stretch"
                                                     HorizontalContentAlignment="Stretch"
+                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
                                                     Header="{x:Bind Name, Mode=OneWay}"
-                                                    IsExpanded="{x:Bind IsExpanded, Mode=OneWay}">
+                                                    IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
                                                     <ItemsControl ItemsSource="{x:Bind Chips, Mode=OneWay}">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
@@ -785,8 +789,11 @@
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
                 <TextBox
                     AutomationProperties.AutomationId="TxtNewTag"
+                    AcceptsReturn="True"
                     Header="Quick new tag (ungrouped)"
-                    Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    PlaceholderText="Name, or several, comma or newline"
+                    Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="Wrap" />
                 <Button
                     AutomationProperties.AutomationId="BtnCreateTag"
                     Command="{x:Bind ViewModel.CreateAndAssignTagCommand}"

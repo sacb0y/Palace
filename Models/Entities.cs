@@ -67,6 +67,7 @@ public sealed class TagCreateBatchResult
 {
     public int Created { get; init; }
     public int Existed { get; init; }
+    public int MembershipRejected { get; init; }
     public IReadOnlyList<Tag> Tags { get; init; } = [];
 }
 

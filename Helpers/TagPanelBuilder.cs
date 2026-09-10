@@ -162,8 +162,9 @@ public static class TagPanelBuilder
                 .Where(t => !childIds.Contains(t.Id) && !children.ContainsKey(t.Id) && InScope(t))
                 .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            var ungroupedGroupMatches = NameMatches("Ungrouped");
             var ungroupedChips = ungrouped
-                .Where(t => NameMatches(t.Name))
+                .Where(t => ungroupedGroupMatches || NameMatches(t.Name))
                 .Select(Chip)
                 .ToList();
             if (ungroupedChips.Count > 0 || (q.Length == 0 && scope == TagScope.Ungrouped))

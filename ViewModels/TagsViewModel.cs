@@ -18,6 +18,7 @@ public partial class TagsViewModel : ObservableObject
     private List<TagImplication> _implications = [];
     private int _mosaicEpoch;
     private int _busyDepth;
+    private string? _reorderParentId;
     private const int MosaicChunkSize = 80;
 
     public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access, ThumbnailService thumbs)
@@ -115,16 +116,24 @@ public partial class TagsViewModel : ObservableObject
 
     public async Task RefreshAsync()
     {
-        _tags = (await _catalog.GetTagsAsync()).ToList();
-        _memberships = (await _catalog.GetMembershipsAsync()).ToList();
-        _implications = (await _catalog.GetImplicationsAsync()).ToList();
-        await UiDispatch.RunAsync(RebuildTree);
-        await LoadSelectionAsync();
-        await LoadMosaicAsync();
-        if (AppServices.Library is { } library)
+        BeginBusy("Loading…");
+        try
         {
-            await library.ReloadTagCatalogAsync();
-            await library.ReloadAssignedTagsAsync();
+            _tags = (await _catalog.GetTagsAsync()).ToList();
+            _memberships = (await _catalog.GetMembershipsAsync()).ToList();
+            _implications = (await _catalog.GetImplicationsAsync()).ToList();
+            await UiDispatch.RunAsync(RebuildTree);
+            await LoadSelectionAsync();
+            await LoadMosaicAsync();
+            if (AppServices.Library is { } library)
+            {
+                await library.ReloadTagCatalogAsync();
+                await library.ReloadAssignedTagsAsync();
+            }
+        }
+        finally
+        {
+            EndBusy();
         }
     }
 
@@ -132,6 +141,7 @@ public partial class TagsViewModel : ObservableObject
     {
         SelectedNode = node;
         ShowDetails = node?.TagId is not null;
+        StampBoardSelection();
         _ = LoadSelectionAsync();
         _ = LoadMosaicAsync();
     }
@@ -150,15 +160,14 @@ public partial class TagsViewModel : ObservableObject
 
         var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName));
         NewTagName = "";
+        _reorderParentId = null;
         await RefreshAsync();
         if (result.Tags.Count > 0)
         {
             SelectCreated(result.Tags[^1].Id);
         }
 
-        StatusText = result.Created == 0 && result.Existed == 0
-            ? "Enter one or more tag names."
-            : $"Created {result.Created}, already existed {result.Existed}.";
+        StatusText = DescribeBatch(result);
     }
 
     [RelayCommand]
@@ -172,15 +181,14 @@ public partial class TagsViewModel : ObservableObject
         var parentId = SelectedNode.TagId;
         var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName), parentId);
         NewTagName = "";
+        _reorderParentId = parentId;
         await RefreshAsync();
         if (result.Tags.Count > 0)
         {
             SelectCreated(result.Tags[^1].Id);
         }
 
-        StatusText = result.Created == 0 && result.Existed == 0
-            ? "Enter one or more tag names."
-            : $"Created {result.Created}, already existed {result.Existed} under the selected group.";
+        StatusText = DescribeBatch(result, " under the selected group");
     }
 
     [RelayCommand]
@@ -205,8 +213,7 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        var parentId = ParentGroups.FirstOrDefault()?.TagId;
-        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, parentId, -1);
+        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, _reorderParentId, -1);
         await RefreshAsync();
         StatusText = ok ? "Moved tag up." : "Already first among siblings.";
     }
@@ -219,8 +226,7 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        var parentId = ParentGroups.FirstOrDefault()?.TagId;
-        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, parentId, 1);
+        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, _reorderParentId, 1);
         await RefreshAsync();
         StatusText = ok ? "Moved tag down." : "Already last among siblings.";
     }
@@ -254,6 +260,7 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
+        _reorderParentId = string.IsNullOrEmpty(chip.ParentGroupId) ? null : chip.ParentGroupId;
         var node = TagTreeBuilder.Find(TagTree, chip.TagId)
             ?? new TagTreeNode { TagId = chip.TagId, Name = chip.Name, EffectiveColor = chip.EffectiveColor, IsStarred = chip.IsStarred };
         SelectNode(node);
@@ -326,6 +333,11 @@ public partial class TagsViewModel : ObservableObject
 
         var ok = await _catalog.AddMembershipAsync(SelectedAvailableGroup.TagId, SelectedNode.TagId);
         StatusText = ok ? $"Also grouped under {SelectedAvailableGroup.Name}." : "That membership would create a cycle.";
+        if (ok)
+        {
+            _reorderParentId = SelectedAvailableGroup.TagId;
+        }
+
         await RefreshAsync();
     }
 
@@ -338,6 +350,11 @@ public partial class TagsViewModel : ObservableObject
         }
 
         await _catalog.RemoveMembershipAsync(group.TagId, SelectedNode.TagId);
+        if (string.Equals(_reorderParentId, group.TagId, StringComparison.Ordinal))
+        {
+            _reorderParentId = ParentGroups.FirstOrDefault(g => g.TagId != group.TagId)?.TagId;
+        }
+
         await RefreshAsync();
         StatusText = $"Removed from {group.Name}.";
     }
@@ -465,6 +482,7 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
+        _reorderParentId = null;
         var node = TagTreeBuilder.Find(TagTree, group.GroupId)
             ?? new TagTreeNode { TagId = group.GroupId, Name = group.Name, EffectiveColor = group.Color };
         SelectNode(node);
@@ -518,7 +536,7 @@ public partial class TagsViewModel : ObservableObject
             ids.AddRange(await _catalog.GetDescendantTagIdsAsync(tag.Id));
         }
 
-        var count = await _catalog.CountAssetsForTagsAsync(ids);
+        var count = await _catalog.CountAssetsForTagsAsync(ids, AppServices.CurrentProject?.Id);
         var parentIds = _memberships.Where(m => m.ChildId == tag.Id).Select(m => m.ParentId).ToHashSet();
         var parents = _tags.Where(t => parentIds.Contains(t.Id)).OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase).ToList();
         var available = _tags
@@ -630,7 +648,8 @@ public partial class TagsViewModel : ObservableObject
                     Name = chip.Name,
                     EffectiveColor = chip.EffectiveColor,
                     IsStarred = chip.IsStarred,
-                    IsFilterSelected = chip.TagId == SelectedNode?.TagId
+                    IsFilterSelected = chip.TagId == SelectedNode?.TagId,
+                    ParentGroupId = group.GroupId
                 });
             }
 
@@ -719,6 +738,34 @@ public partial class TagsViewModel : ObservableObject
         {
             EndBusy();
         }
+    }
+
+    private void StampBoardSelection()
+    {
+        var id = SelectedNode?.TagId;
+        foreach (var group in Board)
+        {
+            foreach (var chip in group.Chips)
+            {
+                chip.IsFilterSelected = chip.TagId == id;
+            }
+        }
+    }
+
+    private static string DescribeBatch(TagCreateBatchResult result, string? suffix = null)
+    {
+        if (result.Created == 0 && result.Existed == 0)
+        {
+            return "Enter one or more tag names.";
+        }
+
+        var text = $"Created {result.Created}, already existed {result.Existed}{suffix}";
+        if (result.MembershipRejected > 0)
+        {
+            text += $", could not nest {result.MembershipRejected}";
+        }
+
+        return text + ".";
     }
 
     private void BeginBusy(string? status = null)

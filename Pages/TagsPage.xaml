@@ -81,6 +81,7 @@
                                 <Button
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Left"
+                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
                                     Click="TagGroupHeader_Click"
                                     Tag="{x:Bind}">
@@ -193,7 +194,9 @@
                 AutomationProperties.AutomationId="GrdTagAssets"
                 AutomationProperties.Name="Tagged images"
                 IsItemInvokedEnabled="False"
+                IsTabStop="True"
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
+                PreviewKeyDown="GrdTagAssets_KeyDown"
                 SelectionMode="Single">
                 <ItemsView.Layout>
                     <LinedFlowLayout
@@ -210,15 +213,31 @@
                             AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
                             DoubleTapped="TagAsset_DoubleTapped"
                             IsDoubleTapEnabled="True"
+                            RightTapped="TagAsset_RightTapped"
                             Tag="{x:Bind Id, Mode=OneWay}">
+                            <ItemContainer.ContextFlyout>
+                                <MenuFlyout Opening="TagAssetMenu_Opening">
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuTagOpen"
+                                        Command="{x:Bind pages:TagsPage.GetOpenAssetCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Text="Open">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </ItemContainer.ContextFlyout>
                             <Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
                                 <Image
+                                    DataContextChanged="TagTileImage_DataContextChanged"
                                     DoubleTapped="TagAsset_DoubleTapped"
                                     IsDoubleTapEnabled="True"
                                     Loaded="TagTileImage_Loaded"
                                     Source="{x:Bind ThumbImage, Mode=OneWay}"
                                     Stretch="UniformToFill"
-                                    Tag="{x:Bind Id, Mode=OneWay}" />
+                                    Tag="{x:Bind Id, Mode=OneWay}"
+                                    Unloaded="TagTileImage_Unloaded" />
                                 <StackPanel
                                     Margin="8"
                                     HorizontalAlignment="Center"

@@ -477,6 +477,7 @@ public sealed class CatalogService
         {
             var created = 0;
             var existed = 0;
+            var rejected = 0;
             var tags = new List<Tag>();
             foreach (var raw in TagNameList.Split(string.Join('\n', names)))
             {
@@ -493,9 +494,9 @@ public sealed class CatalogService
                     existed++;
                 }
 
-                if (parentId is not null)
+                if (parentId is not null && !TryAddMembership(conn, parentId, tag.Id))
                 {
-                    TryAddMembership(conn, parentId, tag.Id);
+                    rejected++;
                 }
 
                 tags.Add(tag);
@@ -505,6 +506,7 @@ public sealed class CatalogService
             {
                 Created = created,
                 Existed = existed,
+                MembershipRejected = rejected,
                 Tags = tags
             };
         });
@@ -539,25 +541,7 @@ public sealed class CatalogService
         {
             var tags = LoadTags(conn);
             var memberships = LoadMemberships(conn);
-            var childIds = memberships.Select(m => m.ChildId).ToHashSet(StringComparer.Ordinal);
-            var parentIds = memberships.Select(m => m.ParentId).ToHashSet(StringComparer.Ordinal);
-            List<Tag> siblings;
-            if (parentId is not null)
-            {
-                var siblingIds = memberships
-                    .Where(m => m.ParentId == parentId)
-                    .Select(m => m.ChildId)
-                    .ToHashSet(StringComparer.Ordinal);
-                siblings = tags.Where(t => siblingIds.Contains(t.Id)).ToList();
-            }
-            else
-            {
-                siblings = tags
-                    .Where(t => !childIds.Contains(t.Id) && !parentIds.Contains(t.Id))
-                    .ToList();
-            }
-
-            siblings = siblings
+            var siblings = TagSiblings.Of(tags, memberships, parentId)
                 .OrderByDescending(t => t.Priority)
                 .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -737,7 +721,7 @@ public sealed class CatalogService
     public Task<IReadOnlyList<string>> GetDescendantTagIdsAsync(string tagId) =>
         _db.ReadAsync(conn => (IReadOnlyList<string>)DescendantsOf(conn, tagId));
 
-    public Task<int> CountAssetsForTagsAsync(IEnumerable<string> tagIds) =>
+    public Task<int> CountAssetsForTagsAsync(IEnumerable<string> tagIds, string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
             var ids = tagIds.Distinct().ToList();
@@ -755,7 +739,12 @@ public sealed class CatalogService
                 cmd.Parameters.AddWithValue(p, ids[i]);
             }
 
-            cmd.CommandText = $"SELECT COUNT(DISTINCT AssetId) FROM AssetTag WHERE TagId IN ({string.Join(",", names)})";
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
+            cmd.CommandText = $"""
+                SELECT COUNT(*) FROM Asset
+                 WHERE Id IN (SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({string.Join(",", names)}))
+                   AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
+                """;
             return Convert.ToInt32(cmd.ExecuteScalar());
         });
 

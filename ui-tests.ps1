@@ -466,6 +466,7 @@ Test-UI 'Create ungrouped tag' {
     winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
 }
 Start-Sleep -Milliseconds 500
+Test-UI 'Ungrouped board group exists' { winapp ui wait-for 'BtnTagGroup_Ungrouped' -a $AppPid -t 4000 }
 Test-UI 'Tags status mentions tag' {
     winapp ui wait-for 'TxtTagsStatus' -a $AppPid -t 4000
 }

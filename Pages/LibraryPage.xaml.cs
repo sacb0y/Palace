@@ -198,7 +198,7 @@ public sealed partial class LibraryPage : Page
         }
 
         var available = assets.Count - start;
-        var length = Math.Max(args.ItemsRangeRequestedLength, available);
+        var length = GalleryMedia.MosaicAspectCount(args.ItemsRangeRequestedLength, available);
         if (length <= 0)
         {
             return;
