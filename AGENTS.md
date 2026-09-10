@@ -70,11 +70,13 @@ Opening a project, Library, or a large folder must stay interactive.
 - Mutate `Assets` only on the UI thread (`UiDispatch`). After chunks, `LinedFlowLayout.InvalidateItemsInfo` (`MosaicChunkAppended`).
 - `ToItem` → `AssetItemMapper.FromAsset`. Never `File.Exists` or `ImageDimensions.TryRead` on the **original** while building the mosaic. Use stored Width/Height or a default aspect.
 - Lazy thumbs: bind `ThumbImage`, not a static `FileToImage` during measure. Decode only realized tiles; cap in-flight decodes.
-- `ItemsView` may not set `DataContext` on tiles. Stamp `Tag="{x:Bind Id, Mode=OneWay}"` and resolve via `GalleryMedia.FindAssetId` so double-click / lazy decode still find the `AssetItem`.
+- `ItemsView` may not set `DataContext` on tiles and recycled containers do not re-fire `Loaded`. Stamp `Tag="{x:Bind Id, Mode=OneWay}"` on the `ItemContainer` **and** the tile `Image`. Track live `Image`s and re-resolve via `GalleryMedia.FindAssetId` on Tag / DataContext / chunk — do not untrack just because `DataContext` is not an `AssetItem`.
+- Overlay open is **double-click / Enter / context Open only**. Do not synthesize a second click from `PointerPressed` on both the tile and `GrdAssets` — the same press arrives twice and opens on a single click.
 - `AssetItem.ContentHash` is required for lazy generate and viewport upgrade. Do not recover the hash from the JPEG file name.
 - Overlay image/video sources are applied in code-behind (`UpdateOverlayMedia`). Do not rely only on nested `x:Bind` of `OverlayGallery.CurrentPath` through a converter — that path is null until `LoadCurrentAsync` finishes and often never refreshes.
+- Overlay chrome: put title/tags in a **row below** the player (`GalleryWindow` already does this). A bottom-overlay details card covers `MediaPlayer` transport controls (settings / seek).
 - Video posters use `StorageFile.GetThumbnailAsync` (shell/provider stream), not `BitmapDecoder` on the original. Overlay play uses `MediaPlayer.Play()` (`BtnGalleryPlay`).
-- `UpgradeThumbsAsync`: viewport only, never on first paint, skip `IsOnlineOnly`.
+- `UpgradeThumbsAsync`: viewport only, never on first paint, skip `IsOnlineOnly`. Do not replace `ThumbImage` when the cached JPEG is already decoded (folder-switch flicker). Reuse decoded `BitmapImage`s by thumb path.
 
 ## Cloud files — do not download the original
 

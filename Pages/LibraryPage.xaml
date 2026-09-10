@@ -197,6 +197,7 @@
                 AutomationProperties.AutomationId="GrdAssets"
                 AutomationProperties.Name="Assets"
                 DoubleTapped="GrdAssets_DoubleTapped"
+                IsItemInvokedEnabled="False"
                 IsTabStop="True"
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
                 PreviewKeyDown="GrdAssets_KeyDown"
@@ -217,10 +218,9 @@
                             AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
-                            Tag="{x:Bind Id, Mode=OneWay}"
                             ManipulationMode="None"
-                            PointerPressed="AssetItem_PointerPressed"
-                            RightTapped="AssetItem_RightTapped">
+                            RightTapped="AssetItem_RightTapped"
+                            Tag="{x:Bind Id, Mode=OneWay}">
                             <ItemContainer.ContextFlyout>
                                 <MenuFlyout Opening="AssetMenu_Opening">
                                     <MenuFlyoutItem
@@ -313,8 +313,9 @@
                                     IsDoubleTapEnabled="True"
                                     Loaded="TileImage_Loaded"
                                     ManipulationMode="None"
-                                    Stretch="UniformToFill"
                                     Source="{x:Bind ThumbImage, Mode=OneWay}"
+                                    Stretch="UniformToFill"
+                                    Tag="{x:Bind Id, Mode=OneWay}"
                                     Unloaded="TileImage_Unloaded" />
                                 <TextBlock
                                     Margin="8"
@@ -654,89 +655,94 @@
             PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
             <Grid>
-                <Image
-                    x:Name="ImgOverlay"
-                    Stretch="Uniform"
-                    Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.PreviewImageUri), Mode=OneWay, FallbackValue={x:Null}}"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
-                <MediaPlayerElement
-                    x:Name="MpeOverlay"
-                    AreTransportControlsEnabled="True"
-                    AutoPlay="False"
-                    AutomationProperties.AutomationId="MpeGalleryOverlay"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
-                <Button
-                    x:Name="BtnGalleryPlay"
-                    MinWidth="72"
-                    MinHeight="72"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="BtnGalleryPlay"
-                    AutomationProperties.Name="Play"
-                    Click="BtnGalleryPlay_Click"
-                    ToolTipService.ToolTip="Play"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
-                    <ic:FluentIcon Icon="Play" IconSize="Size32" IconVariant="Regular" />
-                </Button>
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Style="{StaticResource BodyTextBlockStyle}"
-                    Text="Missing"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid>
+                    <Image
+                        x:Name="ImgOverlay"
+                        Stretch="Uniform"
+                        Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.PreviewImageUri), Mode=OneWay, FallbackValue={x:Null}}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
+                    <MediaPlayerElement
+                        x:Name="MpeOverlay"
+                        AreTransportControlsEnabled="True"
+                        AutoPlay="False"
+                        AutomationProperties.AutomationId="MpeGalleryOverlay"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
+                    <Button
+                        x:Name="BtnGalleryPlay"
+                        MinWidth="72"
+                        MinHeight="72"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="BtnGalleryPlay"
+                        AutomationProperties.Name="Play"
+                        Click="BtnGalleryPlay_Click"
+                        ToolTipService.ToolTip="Play"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
+                        <ic:FluentIcon Icon="Play" IconSize="Size32" IconVariant="Regular" />
+                    </Button>
+                    <TextBlock
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        Text="Missing"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
 
-                <Button
-                    x:Name="BtnGalleryPrev"
-                    MinWidth="48"
-                    MinHeight="48"
-                    Margin="16,0,0,0"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="BtnGalleryPrev"
-                    AutomationProperties.Name="Previous"
-                    Command="{x:Bind ViewModel.OverlayGallery.GoPreviousCommand, Mode=OneWay, FallbackValue={x:Null}}"
-                    IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoPrevious, Mode=OneWay, FallbackValue=False}"
-                    ToolTipService.ToolTip="Previous">
-                    <ic:FluentIcon Icon="ChevronLeft" IconSize="Size20" IconVariant="Regular" />
-                </Button>
-                <Button
-                    x:Name="BtnGalleryNext"
-                    MinWidth="48"
-                    MinHeight="48"
-                    Margin="0,0,16,0"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="BtnGalleryNext"
-                    AutomationProperties.Name="Next"
-                    Command="{x:Bind ViewModel.OverlayGallery.GoNextCommand, Mode=OneWay, FallbackValue={x:Null}}"
-                    IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoNext, Mode=OneWay, FallbackValue=False}"
-                    ToolTipService.ToolTip="Next">
-                    <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
-                </Button>
-                <Button
-                    x:Name="BtnGalleryClose"
-                    MinWidth="48"
-                    MinHeight="48"
-                    Margin="0,16,16,0"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    AutomationProperties.AutomationId="BtnGalleryClose"
-                    AutomationProperties.Name="Close"
-                    Command="{x:Bind ViewModel.CloseOverlayCommand}"
-                    ToolTipService.ToolTip="Close">
-                    <ic:FluentIcon Icon="Dismiss" IconSize="Size20" IconVariant="Regular" />
-                </Button>
-            </Grid>
+                    <Button
+                        x:Name="BtnGalleryPrev"
+                        MinWidth="48"
+                        MinHeight="48"
+                        Margin="16,0,0,0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="BtnGalleryPrev"
+                        AutomationProperties.Name="Previous"
+                        Command="{x:Bind ViewModel.OverlayGallery.GoPreviousCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                        IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoPrevious, Mode=OneWay, FallbackValue=False}"
+                        ToolTipService.ToolTip="Previous">
+                        <ic:FluentIcon Icon="ChevronLeft" IconSize="Size20" IconVariant="Regular" />
+                    </Button>
+                    <Button
+                        x:Name="BtnGalleryNext"
+                        MinWidth="48"
+                        MinHeight="48"
+                        Margin="0,0,16,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="BtnGalleryNext"
+                        AutomationProperties.Name="Next"
+                        Command="{x:Bind ViewModel.OverlayGallery.GoNextCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                        IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoNext, Mode=OneWay, FallbackValue=False}"
+                        ToolTipService.ToolTip="Next">
+                        <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
+                    </Button>
+                    <Button
+                        x:Name="BtnGalleryClose"
+                        MinWidth="48"
+                        MinHeight="48"
+                        Margin="0,16,16,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        AutomationProperties.AutomationId="BtnGalleryClose"
+                        AutomationProperties.Name="Close"
+                        Command="{x:Bind ViewModel.CloseOverlayCommand}"
+                        ToolTipService.ToolTip="Close">
+                        <ic:FluentIcon Icon="Dismiss" IconSize="Size20" IconVariant="Regular" />
+                    </Button>
+                </Grid>
 
-            <Border
-                Margin="24,0,24,24"
-                Padding="16,12"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Bottom"
-                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="{StaticResource OverlayCornerRadius}">
+                <Border
+                    Grid.Row="1"
+                    Margin="24,0,24,24"
+                    Padding="16,12"
+                    HorizontalAlignment="Stretch"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource OverlayCornerRadius}">
                 <StackPanel Spacing="8">
                     <TextBlock
                         AutomationProperties.AutomationId="TxtGalleryOverlayTitle"
@@ -784,7 +790,8 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
-            </Border>
+                </Border>
+            </Grid>
         </Grid>
     </Grid>
 </Page>

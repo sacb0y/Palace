@@ -1,5 +1,4 @@
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -24,10 +23,10 @@ public sealed partial class LibraryPage : Page
     private int _mosaicGeneration;
     private int _upgradeScheduled;
     private bool _thumbsMayUpgrade;
-    private string? _lastPointerAssetId;
-    private DateTime _lastPointerUtc;
     private static readonly SemaphoreSlim TileDecodeGate = new(4);
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
+    private readonly Dictionary<Image, long> _tileTagCallbacks = [];
+    private readonly Dictionary<string, WeakReference<BitmapImage>> _tileBitmapCache = new(StringComparer.OrdinalIgnoreCase);
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
@@ -71,8 +70,8 @@ public sealed partial class LibraryPage : Page
             MosaicLayout.InvalidateItemsInfo();
             HookOverlayGallery();
             GrdAssets.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(GrdAssets_DoubleTapped), true);
-            GrdAssets.AddHandler(PointerPressedEvent, new PointerEventHandler(AssetItem_PointerPressed), true);
             GrdAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdAssets_KeyDown), true);
+            RefreshRealizedTiles();
             if (ViewModel.Assets.Count > 0)
             {
                 DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -336,38 +335,6 @@ public sealed partial class LibraryPage : Page
         e.Handled = true;
     }
 
-    private void AssetItem_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint((UIElement)sender);
-        var kind = point.PointerDeviceType;
-        if (!point.Properties.IsLeftButtonPressed &&
-            kind != PointerDeviceType.Touch &&
-            kind != PointerDeviceType.Pen)
-        {
-            return;
-        }
-
-        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is null)
-        {
-            return;
-        }
-
-        var now = DateTime.UtcNow;
-        if (string.Equals(_lastPointerAssetId, item.Id, StringComparison.Ordinal) &&
-            now - _lastPointerUtc < TimeSpan.FromMilliseconds(600))
-        {
-            OpenOverlayFor(item);
-            e.Handled = true;
-            _lastPointerAssetId = null;
-            _lastPointerUtc = DateTime.MinValue;
-            return;
-        }
-
-        _lastPointerAssetId = item.Id;
-        _lastPointerUtc = now;
-    }
-
     private void OpenOverlayFor(AssetItem item)
     {
         EnsureSelectedForContext(item);
@@ -499,6 +466,7 @@ public sealed partial class LibraryPage : Page
         }
 
         MosaicLayout.InvalidateItemsInfo();
+        RefreshRealizedTiles();
         if (ViewModel.Assets.Count == 0)
         {
             return;
@@ -512,6 +480,7 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
+            RefreshRealizedTiles();
             _thumbsMayUpgrade = true;
             ScheduleViewportUpgrade();
         });
@@ -521,7 +490,8 @@ public sealed partial class LibraryPage : Page
     {
         if (sender is Image image)
         {
-            TrackTile(image, FindAssetItem(image) ?? image.DataContext as AssetItem);
+            EnsureTileTagCallback(image);
+            BindTileImage(image);
         }
     }
 
@@ -529,7 +499,8 @@ public sealed partial class LibraryPage : Page
     {
         if (sender is Image image)
         {
-            TrackTile(image, args.NewValue as AssetItem);
+            EnsureTileTagCallback(image);
+            BindTileImage(image, args.NewValue as AssetItem);
         }
     }
 
@@ -537,12 +508,46 @@ public sealed partial class LibraryPage : Page
     {
         if (sender is Image image)
         {
+            if (_tileTagCallbacks.TryGetValue(image, out var token))
+            {
+                image.UnregisterPropertyChangedCallback(FrameworkElement.TagProperty, token);
+                _tileTagCallbacks.Remove(image);
+            }
+
             _realizedTiles.Remove(image);
         }
     }
 
-    private void TrackTile(Image image, AssetItem? item)
+    private void OnTileTagChanged(DependencyObject sender, DependencyProperty dp)
     {
+        if (sender is Image image)
+        {
+            BindTileImage(image);
+        }
+    }
+
+    private void EnsureTileTagCallback(Image image)
+    {
+        if (_tileTagCallbacks.ContainsKey(image))
+        {
+            return;
+        }
+
+        var token = image.RegisterPropertyChangedCallback(FrameworkElement.TagProperty, OnTileTagChanged);
+        _tileTagCallbacks[image] = token;
+    }
+
+    private void RefreshRealizedTiles()
+    {
+        foreach (var image in _tileTagCallbacks.Keys.ToList())
+        {
+            BindTileImage(image);
+        }
+    }
+
+    private void BindTileImage(Image image, AssetItem? hinted = null)
+    {
+        var item = FindAssetItem(image) ?? hinted ?? image.DataContext as AssetItem;
         if (item is null)
         {
             _realizedTiles.Remove(image);
@@ -550,6 +555,16 @@ public sealed partial class LibraryPage : Page
         }
 
         _realizedTiles[image] = item;
+        if (item.ThumbImage is null
+            && !string.IsNullOrEmpty(item.ThumbPath)
+            && TryGetCachedTileBitmap(item.ThumbPath, out var cached))
+        {
+            item.ThumbImage = cached;
+            item.ThumbLoadStarted = true;
+            ScheduleViewportUpgrade();
+            return;
+        }
+
         _ = LoadTileThumbAsync(item);
         ScheduleViewportUpgrade();
     }
@@ -610,6 +625,7 @@ public sealed partial class LibraryPage : Page
 
             if (string.IsNullOrEmpty(path))
             {
+                item.ThumbLoadStarted = false;
                 return;
             }
 
@@ -623,10 +639,26 @@ public sealed partial class LibraryPage : Page
                 item.ThumbImage = CreateTileBitmap(path);
             });
         }
+        catch
+        {
+            item.ThumbLoadStarted = false;
+        }
         finally
         {
             TileDecodeGate.Release();
         }
+    }
+
+    private bool TryGetCachedTileBitmap(string path, out BitmapImage? bitmap)
+    {
+        if (_tileBitmapCache.TryGetValue(path, out var weak) && weak.TryGetTarget(out var cached))
+        {
+            bitmap = cached;
+            return true;
+        }
+
+        bitmap = null;
+        return false;
     }
 
     private BitmapImage? CreateTileBitmap(string? path)
@@ -634,6 +666,11 @@ public sealed partial class LibraryPage : Page
         if (string.IsNullOrEmpty(path))
         {
             return null;
+        }
+
+        if (TryGetCachedTileBitmap(path, out var cached))
+        {
+            return cached;
         }
 
         try
@@ -650,11 +687,13 @@ public sealed partial class LibraryPage : Page
             }
 
             var decode = (int)Math.Clamp(Math.Round(rowHeight * Math.Min(Math.Max(scale, 1.0), 2.0)), 96, 560);
-            return new BitmapImage
+            var created = new BitmapImage
             {
                 DecodePixelHeight = decode,
                 UriSource = new Uri(path, UriKind.Absolute)
             };
+            _tileBitmapCache[path] = new WeakReference<BitmapImage>(created);
+            return created;
         }
         catch
         {
@@ -682,7 +721,9 @@ public sealed partial class LibraryPage : Page
                     item.IsOnlineOnly,
                     item.IsOrphan,
                     item.Path,
-                    item.ContentHash))
+                    item.ContentHash,
+                    item.ThumbImage is not null,
+                    item.ThumbPath))
             {
                 continue;
             }
@@ -701,8 +742,17 @@ public sealed partial class LibraryPage : Page
                     return;
                 }
 
+                if (!GalleryMedia.ShouldReplaceTileBitmap(item.ThumbPath, path, item.ThumbImage is not null))
+                {
+                    if (string.IsNullOrEmpty(item.ThumbPath))
+                    {
+                        item.ThumbPath = path;
+                    }
+
+                    return;
+                }
+
                 item.ThumbPath = path;
-                item.ThumbLoadStarted = false;
                 item.ThumbImage = CreateTileBitmap(path);
             });
         }
