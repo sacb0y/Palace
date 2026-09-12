@@ -287,7 +287,7 @@
                 IsItemInvokedEnabled="False"
                 IsTabStop="True"
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
-                PreviewKeyDown="GrdAssets_KeyDown"
+                PreviewKeyDown="GrdAssets_PreviewKeyDown"
                 SelectionChanged="GrdAssets_SelectionChanged"
                 SelectionMode="Extended">
                 <ItemsView.Layout>

@@ -381,6 +381,7 @@ public sealed partial class LibraryPage : Page
 
     private void FolderGroupHeader_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        _mosaicArrow = VirtualKey.None;
         e.Handled = true;
     }
 
@@ -479,13 +480,16 @@ public sealed partial class LibraryPage : Page
         e.Handled = true;
     }
 
-    private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
+    private void GrdAssets_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down)
         {
             _mosaicArrow = e.Key;
         }
+    }
 
+    private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
         if (e.Key != VirtualKey.Enter || ViewModel.IsGalleryOverlayOpen)
         {
             return;
