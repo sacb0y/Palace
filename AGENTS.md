@@ -134,7 +134,7 @@ MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once
 
 | Version | Slice | Isiac sequence |
 |---|---|---|
-| **0.0.x** *(now 0.0.3)* | **Library + tagging** | **Now.** Image and video viewing must be solid. Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred until packaging is clean. |
+| **0.0.x** *(now 0.0.3)* | **Library + tagging** | **Now.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred until packaging is clean. See `docs/hdr-skiv.md`. |
 | **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. |
 | **bonus** | **Cloud** | **Not a numbered main slice** and not the next increment. View and manage Dropbox / OneDrive via OAuth. On-Demand + API sources already exist in 0.0.x; do not download originals. Further cloud work can land inside the current identity. |
 | **0.2.x** | **Gamedev** | **Then.** Markdown reading, audio (with loops), 3D viewing, assign a Unity folder to the Palace **project** for asset management (**not** the Library catalog), parse `.unitypackage` and extract needed assets. |

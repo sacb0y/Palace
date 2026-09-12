@@ -6,7 +6,7 @@ https://github.com/sacb0y/palace
 
 ## Goals
 
-**Now — 0.0 Library and tagging.** Image and video viewing must be solid. The tagging system must be good. Watch folders, browse a mosaic, tag and search, organize on disk when asked.
+**Now — 0.0 Library and tagging.** Image and video viewing must be solid (HDR overlay work is this slice, not a later one). The tagging system must be good. Watch folders, browse a mosaic, tag and search, organize on disk when asked.
 
 **Next — 0.1 Rooms.** Moodboard (a board of images to look at) plus mindmap (lines, diagrams, notes). Support current and later formats. [Kanvaz](https://github.com/p4inz-code/kanvaz) is a UX reference only — not a port.
 
