@@ -83,14 +83,39 @@ public partial class AssetItem : ObservableObject
     [ObservableProperty]
     public partial string? CloudItemId { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsCloudBacked { get; set; }
+
     public bool HasThumbnail => !string.IsNullOrEmpty(ThumbPath);
 
     public bool ShowCloudTile =>
         GalleryMedia.ShowPlaceholderTile(IsOnlineOnly, IsOrphan, ThumbImage is not null);
 
-    partial void OnIsOnlineOnlyChanged(bool value) => OnPropertyChanged(nameof(ShowCloudTile));
+    public bool ShowCloudBadge =>
+        GalleryMedia.ShowCloudBadge(
+            IsFolderHeader,
+            IsOrphan,
+            IsOnlineOnly,
+            !string.IsNullOrEmpty(CloudItemId),
+            IsCloudBacked);
 
-    partial void OnIsOrphanChanged(bool value) => OnPropertyChanged(nameof(ShowCloudTile));
+    public string CloudBadgeAutomationId => GalleryMedia.CloudBadgeAutomationId(Id);
+
+    partial void OnIsOnlineOnlyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowCloudTile));
+        OnPropertyChanged(nameof(ShowCloudBadge));
+    }
+
+    partial void OnCloudItemIdChanged(string? value) => OnPropertyChanged(nameof(ShowCloudBadge));
+
+    partial void OnIsCloudBackedChanged(bool value) => OnPropertyChanged(nameof(ShowCloudBadge));
+
+    partial void OnIsOrphanChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowCloudTile));
+        OnPropertyChanged(nameof(ShowCloudBadge));
+    }
 
     partial void OnThumbImageChanged(ImageSource? value) => OnPropertyChanged(nameof(ShowCloudTile));
 

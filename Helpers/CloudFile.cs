@@ -65,9 +65,12 @@ public static class CloudFile
 
     /// <summary>
     /// On-Demand / placeholder that is not fully present locally.
-    /// Recall flags always win. Pinned files are local. Hydrated cloud files keep
-    /// <see cref="FileAttributes.ReparsePoint"/> and may still show leftover
-    /// <see cref="Offline"/> — those must be read normally. Bare Offline
+    /// Recall flags always win. Pinned files are local. Dropbox online-only
+    /// files are <see cref="FileAttributes.SparseFile"/> +
+    /// <see cref="FileAttributes.ReparsePoint"/> and often omit Recall bits —
+    /// those must stay online-only so scan never opens the original.
+    /// Hydrated OneDrive files keep ReparsePoint and leftover
+    /// <see cref="Offline"/> without Sparse — those are local. Bare Offline
     /// (legacy HSM or tests) is online-only.
     /// </summary>
     public static bool IsOnlineOnly(FileAttributes attributes)
@@ -87,6 +90,16 @@ public static class CloudFile
             return false;
         }
 
+        // Dropbox Files On-Demand placeholders: Sparse + Reparse, usually no
+        // RecallOnDataAccess. Treating any ReparsePoint as local (leftover
+        // Offline on hydrated OneDrive) made scan HashFileAsync / Extract
+        // the original and recall every placeholder.
+        if ((attributes & FileAttributes.SparseFile) != 0
+            && (attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            return true;
+        }
+
         // Hydrated OneDrive/Dropbox files stay reparse points. Treating leftover
         // Offline on those as online-only skipped hash/thumbs on local files.
         if ((attributes & FileAttributes.ReparsePoint) != 0)
@@ -95,6 +108,27 @@ public static class CloudFile
         }
 
         return (attributes & Offline) != 0;
+    }
+
+    /// <summary>
+    /// File lives on OneDrive / Dropbox (On-Demand placeholder, pinned /
+    /// unpinned sync copy, leftover Offline, or Cloud Filter reparse).
+    /// Attributes only — never opens a stream. API display paths that are
+    /// not on disk return false; callers also check <c>CloudItemId</c>.
+    /// </summary>
+    public static bool IsCloudBacked(string? path) =>
+        TryGetAttributes(path, out var attributes) && IsCloudBacked(attributes);
+
+    public static bool IsCloudBacked(FileAttributes attributes)
+    {
+        if ((attributes & FileAttributes.Directory) != 0)
+        {
+            return false;
+        }
+
+        const FileAttributes cloudSignals =
+            RecallMask | Pinned | Unpinned | Offline | FileAttributes.ReparsePoint | FileAttributes.SparseFile;
+        return (attributes & cloudSignals) != 0;
     }
 
     public static IReadOnlyList<string> FilterLocalPaths(IEnumerable<string> paths, out int skippedOnlineOnly)

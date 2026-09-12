@@ -40,6 +40,10 @@ public static class AssetItemMapper
     {
         item.IsOnlineOnly = asset.IsOnlineOnly;
         item.CloudItemId = asset.CloudItemId;
+        // GetAttributes only — never File.Exists or a stream on the original.
+        item.IsCloudBacked = asset.IsOnlineOnly
+            || !string.IsNullOrEmpty(asset.CloudItemId)
+            || CloudFile.IsCloudBacked(asset.Path);
     }
 
     public static bool IsApiOnly(Asset asset) =>

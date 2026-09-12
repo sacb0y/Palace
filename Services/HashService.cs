@@ -46,6 +46,10 @@ public static class HashService
         }
     }
 
+    /// <summary>
+    /// Opens the original. Scan must not call this when
+    /// <see cref="Helpers.CloudFile.IsOnlineOnly(string)"/> is true.
+    /// </summary>
     public static async Task<string> HashFileAsync(string path, long fileSize, CancellationToken ct = default)
     {
         await using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

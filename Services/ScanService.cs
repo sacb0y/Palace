@@ -145,15 +145,12 @@ public sealed class ScanService
         asset.FileSize = info.Length;
         asset.IsOnlineOnly = onlineOnly;
 
-        if (onlineOnly)
+        if (!ScanContent.MayReadOriginal(attrs))
         {
             asset.ContentHash = KeepOrStubHash(existing, file, info.Length, info.LastWriteTimeUtc);
-            var thumb = await _thumbs.EnsureThumbnailAsync(file, asset.ContentHash, kind).ConfigureAwait(false);
-            if (thumb is { Width: > 0, Height: > 0 } onlineThumb && asset.Width is not > 0)
-            {
-                asset.Width = onlineThumb.Width;
-                asset.Height = onlineThumb.Height;
-            }
+            // No HashFileAsync, Extract, BitmapDecoder, ImageDimensions, or
+            // GetThumbnailAsync — Dropbox/OneDrive provider thumbs can still
+            // recall the original. Mosaic shows ShowCloudTile until Open.
         }
         else
         {
@@ -165,16 +162,19 @@ public sealed class ScanService
             asset.Prompt = meta.Prompt;
             asset.NegativePrompt = meta.NegativePrompt;
             asset.MetadataJson = meta.RawJson;
-            var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind).ConfigureAwait(false);
-            if (thumb is { Width: > 0, Height: > 0 } localThumb)
+            if (ScanContent.MayGenerateScanThumbnail(attrs))
             {
-                asset.Width = localThumb.Width;
-                asset.Height = localThumb.Height;
-            }
-            else if (ImageDimensions.TryRead(file) is { } size)
-            {
-                asset.Width = size.Width;
-                asset.Height = size.Height;
+                var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind).ConfigureAwait(false);
+                if (thumb is { Width: > 0, Height: > 0 } localThumb)
+                {
+                    asset.Width = localThumb.Width;
+                    asset.Height = localThumb.Height;
+                }
+                else if (ImageDimensions.TryRead(file) is { } size)
+                {
+                    asset.Width = size.Width;
+                    asset.Height = size.Height;
+                }
             }
         }
 
