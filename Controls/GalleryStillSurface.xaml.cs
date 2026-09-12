@@ -21,6 +21,7 @@ public sealed partial class GalleryStillSurface : UserControl
         InitializeComponent();
         Unloaded += (_, _) =>
         {
+            CancelInFlight();
             ClearHdrCache();
             _presenter?.Dispose();
             _presenter = null;
@@ -29,11 +30,18 @@ public sealed partial class GalleryStillSurface : UserControl
 
     public void Bind(GalleryViewModel? gallery)
     {
+        if (ReferenceEquals(_gallery, gallery))
+        {
+            return;
+        }
+
         if (_gallery is not null)
         {
             _gallery.PropertyChanged -= Gallery_PropertyChanged;
         }
 
+        CancelInFlight();
+        ClearHdrCache();
         _gallery = gallery;
         if (_gallery is not null)
         {
@@ -42,10 +50,11 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        ClearHdrCache();
         HideHdr();
         ImgStill.Source = null;
     }
+
+    private void CancelInFlight() => Interlocked.Increment(ref _epoch);
 
     private void Gallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -56,11 +65,7 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (e.PropertyName is nameof(GalleryViewModel.PreviewImageUri)
-            or nameof(GalleryViewModel.CurrentPath)
-            or nameof(GalleryViewModel.IsImage)
-            or nameof(GalleryViewModel.IsVideo)
-            or nameof(GalleryViewModel.CurrentProbe))
+        if (e.PropertyName is nameof(GalleryViewModel.StillRevision))
         {
             _ = RefreshAsync();
         }
@@ -132,14 +137,14 @@ public sealed partial class GalleryStillSurface : UserControl
             }
         }
 
-        if (epoch != _epoch)
+        if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
         {
             return;
         }
 
         await UiDispatch.RunAsync(() =>
         {
-            if (epoch != _epoch)
+            if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
             {
                 return;
             }
@@ -291,15 +296,11 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private (int Width, int Height) StillPixelSize()
     {
+        // Oriented WIC / BitmapImage size. Catalog Width/Height are unoriented
+        // headers — 90°/270° EXIF would get the wrong 1:1 aspect.
         if (_hdrFrame is { Width: > 0, Height: > 0 } frame)
         {
             return (frame.Width, frame.Height);
-        }
-
-        var item = _gallery?.Current;
-        if (item is { Width: > 0, Height: > 0 })
-        {
-            return (item.Width.Value, item.Height.Value);
         }
 
         return (0, 0);

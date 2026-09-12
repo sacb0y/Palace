@@ -1006,8 +1006,7 @@ public sealed partial class LibraryPage : Page
 
     private void OverlayGallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-            if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
-            or nameof(GalleryViewModel.PreviewImageUri)
+            if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
             or nameof(GalleryViewModel.IsVideo)
             or nameof(GalleryViewModel.IsImage))
         {
@@ -1051,7 +1050,7 @@ public sealed partial class LibraryPage : Page
     {
         var epoch = Interlocked.Increment(ref _overlayMediaEpoch);
         var gallery = ViewModel.OverlayGallery;
-        SrfOverlayStill.Bind(gallery is { IsImage: true } ? gallery : null);
+        SrfOverlayStill.Bind(ViewModel.IsGalleryOverlayOpen && gallery is { IsImage: true } ? gallery : null);
 
         if (gallery is { IsVideo: true, CurrentPath: not null } video
             && !AccessService.WouldHydrateOnOpen(video.CurrentPath))

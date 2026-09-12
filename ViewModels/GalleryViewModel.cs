@@ -95,6 +95,13 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial HdrProbe CurrentProbe { get; set; } = HdrProbe.None;
 
+    /// <summary>
+    /// Bumped once after Current / probe / path / preview / IsImage are all
+    /// written so the still surface starts one refresh, not one per field.
+    /// </summary>
+    [ObservableProperty]
+    public partial int StillRevision { get; set; }
+
     public bool HdrPresented { get; private set; }
 
     public bool DisplayIsHdr { get; private set; }
@@ -251,6 +258,7 @@ public partial class GalleryViewModel : ObservableObject
                 HdrStatus = "";
                 HdrPresented = false;
                 Tags.Clear();
+                StillRevision++;
             });
             return;
         }
@@ -341,6 +349,8 @@ public partial class GalleryViewModel : ObservableObject
                     EffectiveColor = tag.EffectiveColor
                 });
             }
+
+            StillRevision++;
         });
 
         if (!apiOnly && onDisk && onlineOnly)

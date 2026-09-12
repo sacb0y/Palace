@@ -37,8 +37,7 @@ public sealed partial class GalleryWindow : Window
 
         Gallery.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
-                or nameof(GalleryViewModel.PreviewImageUri)
+            if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
                 or nameof(GalleryViewModel.IsVideo)
                 or nameof(GalleryViewModel.IsImage))
             {
@@ -50,6 +49,7 @@ public sealed partial class GalleryWindow : Window
         Closed += (_, _) =>
         {
             OpenWindows.Remove(this);
+            SrfWindowStill.Bind(null);
             MpeGallery.Source = null;
         };
 
