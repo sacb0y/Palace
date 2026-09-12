@@ -97,6 +97,15 @@ public sealed class TagMosaicGroupsTests
     }
 
     [Fact]
+    public void PathFor_ShorterSecondParent_StillUsesDeepestDescendant()
+    {
+        var (tags, edges) = Sonic();
+        edges.Add(new TagMembership { ParentId = "sonic", ChildId = "female" });
+        var path = TagMosaicGroups.LabelFor("sonic", ["character", "female"], tags, edges);
+        Assert.Equal("Sonic the Hedgehog / Character / Female", path);
+    }
+
+    [Fact]
     public void PathFor_MultipleParents_UsesHighestPriorityUnderRoot()
     {
         var (tags, edges) = Sonic();

@@ -51,7 +51,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 | Overlay / mosaic media | `Helpers/GalleryMedia.cs` |
 | Cloud source paths | `Helpers/CloudSourcePath.cs` |
 | Room icon ids | `Helpers/RoomIcons.cs` |
-| Tags mosaic groups | `Helpers/TagMosaicGroups.cs` (selected group + child path; Priority then name) |
+| Tags mosaic groups | `Helpers/TagMosaicGroups.cs` (longest path under the selected root, then Priority then name) |
 | Tag name lists | `Helpers/TagNameList.cs` |
 | Tag filter sets | `Helpers/TagFilter.cs` |
 | Tag board / assign panel | `Helpers/TagPanelBuilder.cs` (`BuildBoard` for All / Uncategorized / Starred + groups; Uncategorized keeps `BtnTagGroup_Ungrouped`) |
@@ -151,7 +151,7 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 .\ui-tests.ps1 -AppPid <pid>
 ```
 
-`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (Recall / Pinned / hydrated `ReparsePoint`+`Offline` / stamped `FILE_ATTRIBUTE_OFFLINE`), `CloudFile.Exists` / `FilterLocalPaths`, `ImageDimensions` refusing online-only paths, `HashService` local hash + cloud stub, `GalleryMedia` provider-thumb / placeholder-tile / live-online-only preview rules, `RoomIcons.Normalize`, `ThumbFileName`, `CloudSourcePath`, `TagNameList`, `TagFilter` (Any/All/None + descendants), `TagPanelBuilder` (including Ungrouped group-name search, stable `BtnTagGroup_Ungrouped`, search All chips without `ParentId`), `TagBoardExpand` (create/select opens the row that shows the tag), `TagSiblings` (root groups are siblings), `TagGroups` (Add/Move destinations, cycle-safe), `TagSelection` (rename baseline: new tag applies, same-tag edits/clears stay), `TagAlphaIndex` (A–Z letter buckets), `TagMosaicGroups` (selected group + child path, Priority then name), and `RecentTags`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
+`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (Recall / Pinned / hydrated `ReparsePoint`+`Offline` / stamped `FILE_ATTRIBUTE_OFFLINE`), `CloudFile.Exists` / `FilterLocalPaths`, `ImageDimensions` refusing online-only paths, `HashService` local hash + cloud stub, `GalleryMedia` provider-thumb / placeholder-tile / live-online-only preview rules, `RoomIcons.Normalize`, `ThumbFileName`, `CloudSourcePath`, `TagNameList`, `TagFilter` (Any/All/None + descendants), `TagPanelBuilder` (including Ungrouped group-name search, stable `BtnTagGroup_Ungrouped`, search All chips without `ParentId`), `TagBoardExpand` (create/select opens the row that shows the tag), `TagSiblings` (root groups are siblings), `TagGroups` (Add/Move destinations, cycle-safe), `TagSelection` (rename baseline: new tag applies, same-tag edits/clears stay), `TagAlphaIndex` (A–Z letter buckets), `TagMosaicGroups` (longest path under the selected root, then Priority then name), and `RecentTags`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
 
 ## Cursor Cloud specific instructions
 

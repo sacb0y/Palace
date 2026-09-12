@@ -42,7 +42,7 @@ public static class TagMosaicGroups
             .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(t => t.Name, StringComparer.Ordinal)
             .First();
-        return WalkPath(selectedId, leaf.Id, memberships, byId, under);
+        return WalkPath(selectedId, leaf.Id, memberships, byId, under, depth);
     }
 
     public static string LabelFor(
@@ -98,7 +98,8 @@ public static class TagMosaicGroups
         string leafId,
         IReadOnlyList<TagMembership> memberships,
         IReadOnlyDictionary<string, Tag> byId,
-        HashSet<string> underRoot)
+        HashSet<string> underRoot,
+        IReadOnlyDictionary<string, int> depth)
     {
         var chain = new List<Tag>();
         var current = leafId;
@@ -118,7 +119,8 @@ public static class TagMosaicGroups
             var next = memberships
                 .Where(m => m.ChildId == current && underRoot.Contains(m.ParentId) && byId.ContainsKey(m.ParentId))
                 .Select(m => byId[m.ParentId])
-                .OrderByDescending(t => t.Priority)
+                .OrderByDescending(t => depth.GetValueOrDefault(t.Id))
+                .ThenByDescending(t => t.Priority)
                 .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
                 .FirstOrDefault();
             current = next?.Id;
@@ -147,30 +149,40 @@ public static class TagMosaicGroups
             list.Add(edge.ChildId);
         }
 
-        var depth = new Dictionary<string, int>(StringComparer.Ordinal) { [rootId] = 0 };
-        var queue = new Queue<string>();
-        queue.Enqueue(rootId);
-        while (queue.Count > 0)
-        {
-            var current = queue.Dequeue();
-            if (!children.TryGetValue(current, out var kids))
-            {
-                continue;
-            }
+        var depth = new Dictionary<string, int>(StringComparer.Ordinal);
+        var stack = new HashSet<string>(StringComparer.Ordinal);
+        WalkMaxDepth(rootId, 0, children, depth, stack);
+        return depth;
+    }
 
+    private static void WalkMaxDepth(
+        string current,
+        int currentDepth,
+        Dictionary<string, List<string>> children,
+        Dictionary<string, int> depth,
+        HashSet<string> stack)
+    {
+        if (!stack.Add(current))
+        {
+            return;
+        }
+
+        if (depth.TryGetValue(current, out var existing) && currentDepth <= existing)
+        {
+            stack.Remove(current);
+            return;
+        }
+
+        depth[current] = currentDepth;
+        if (children.TryGetValue(current, out var kids))
+        {
             foreach (var kid in kids)
             {
-                if (depth.ContainsKey(kid))
-                {
-                    continue;
-                }
-
-                depth[kid] = depth[current] + 1;
-                queue.Enqueue(kid);
+                WalkMaxDepth(kid, currentDepth + 1, children, depth, stack);
             }
         }
 
-        return depth;
+        stack.Remove(current);
     }
 
     private sealed class PathComparer : IComparer<IReadOnlyList<Tag>>
