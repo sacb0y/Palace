@@ -177,35 +177,6 @@
                             <TextBlock VerticalAlignment="Center" Text="Fill" />
                         </StackPanel>
                     </Button>
-                    <ToggleButton
-                        x:Name="BtnGalleryWindowPeakOverride"
-                        AutomationProperties.AutomationId="BtnGalleryWindowPeakOverride"
-                        AutomationProperties.Name="Override peak brightness"
-                        IsChecked="{x:Bind Gallery.PeakOverrideEnabled, Mode=TwoWay, FallbackValue=False}"
-                        ToolTipService.ToolTip="Override display peak nits (auto is often wrong)"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowPeakOverride), Mode=OneWay}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ic:FluentIcon Icon="BrightnessHigh" IconSize="Size16" IconVariant="Regular" />
-                            <TextBlock VerticalAlignment="Center" Text="Peak" />
-                        </StackPanel>
-                    </ToggleButton>
-                    <Slider
-                        x:Name="SldGalleryWindowPeakNits"
-                        Width="160"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="SldGalleryWindowPeakNits"
-                        AutomationProperties.Name="Peak nits"
-                        Maximum="4000"
-                        Minimum="80"
-                        StepFrequency="10"
-                        Value="{x:Bind Gallery.PeakOverrideNits, Mode=TwoWay}"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowPeakSlider), Mode=OneWay}" />
-                    <TextBlock
-                        AutomationProperties.AutomationId="TxtGalleryWindowPeakNits"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="{x:Bind Gallery.PeakOverrideLabel, Mode=OneWay}"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowPeakSlider), Mode=OneWay}" />
                 </StackPanel>
                 <StackPanel
                     Margin="16"

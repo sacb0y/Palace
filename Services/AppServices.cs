@@ -1,4 +1,5 @@
 using Palace.Data;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services.Cloud;
 using Palace.ViewModels;
@@ -31,6 +32,7 @@ public static class AppServices
     public static async Task InitializeAsync()
     {
         LocalRoot = ApplicationData.Current.LocalFolder.Path;
+        LoadPeakOverride();
         var dbPath = Path.Combine(LocalRoot, "palace.db");
         var thumbs = Path.Combine(LocalRoot, "thumbs");
         Directory.CreateDirectory(thumbs);
@@ -104,6 +106,14 @@ public static class AppServices
         {
             Library.EndBusy();
         }
+    }
+
+    private static void LoadPeakOverride()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        GalleryPeak.Apply(
+            GalleryPeak.ParseEnabled(values[GalleryPeak.EnabledKey]),
+            GalleryPeak.ParseNits(values[GalleryPeak.NitsKey]));
     }
 
     private static async Task RestoreCurrentProjectAsync()

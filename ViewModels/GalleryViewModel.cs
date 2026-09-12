@@ -93,21 +93,6 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool IsScaleFill { get; set; }
 
     [ObservableProperty]
-    public partial bool PeakOverrideEnabled { get; set; }
-
-    [ObservableProperty]
-    public partial double PeakOverrideNits { get; set; } = GalleryPresent.SdrReferenceNits;
-
-    [ObservableProperty]
-    public partial bool ShowPeakOverride { get; set; }
-
-    [ObservableProperty]
-    public partial bool ShowPeakSlider { get; set; }
-
-    [ObservableProperty]
-    public partial string PeakOverrideLabel { get; set; } = GalleryPresent.PeakNitsLabel(GalleryPresent.SdrReferenceNits);
-
-    [ObservableProperty]
     public partial HdrProbe CurrentProbe { get; set; } = HdrProbe.None;
 
     /// <summary>
@@ -271,30 +256,14 @@ public partial class GalleryViewModel : ObservableObject
         RefreshImageInfo();
     }
 
-    partial void OnPeakOverrideEnabledChanged(bool value)
-    {
-        ShowPeakSlider = ShowPeakOverride && value;
-        PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)PeakOverrideNits);
-        RefreshHdrStatus();
-    }
-
-    partial void OnPeakOverrideNitsChanged(double value)
-    {
-        PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)value);
-        if (PeakOverrideEnabled)
-        {
-            RefreshHdrStatus();
-        }
-    }
-
     private void RefreshHdrStatus()
     {
         HdrStatus = GalleryPresent.StatusLine(
             CurrentProbe,
             HdrPresented,
             DisplayIsHdr,
-            PeakOverrideEnabled,
-            (float)PeakOverrideNits) ?? "";
+            GalleryPeak.Enabled,
+            GalleryPeak.Nits) ?? "";
         RefreshImageInfo();
     }
 
@@ -320,13 +289,6 @@ public partial class GalleryViewModel : ObservableObject
             HdrPresented && ContentMaxNits > 0 ? ContentMinNits : null,
             HdrPresented && DisplayPeakNits > 0 ? DisplayPeakNits : null,
             HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null));
-    }
-
-    private void UpdatePeakOverrideVisibility(bool canPresentHdr)
-    {
-        ShowPeakOverride = canPresentHdr;
-        ShowPeakSlider = canPresentHdr && PeakOverrideEnabled;
-        PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)PeakOverrideNits);
     }
 
     [RelayCommand]
@@ -456,7 +418,6 @@ public partial class GalleryViewModel : ObservableObject
                 DetailsText = "";
                 HdrStatus = "";
                 HdrPresented = false;
-                UpdatePeakOverrideVisibility(false);
                 RefreshImageInfo();
                 ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
                 Tags.Clear();
@@ -563,8 +524,7 @@ public partial class GalleryViewModel : ObservableObject
                 null, null, _headerPixelWidth, _headerPixelHeight, item.Width, item.Height);
             DetailsText = GalleryPresent.DetailsLine(
                 item.FileName, detailsPixels?.Width, detailsPixels?.Height, item.Kind, item.FileSize);
-            UpdatePeakOverrideVisibility(probe.CanPresentHdr);
-            HdrStatus = GalleryPresent.StatusLine(probe, false, false, PeakOverrideEnabled, (float)PeakOverrideNits) ?? "";
+            HdrStatus = GalleryPresent.StatusLine(probe, false, false, GalleryPeak.Enabled, GalleryPeak.Nits) ?? "";
             RefreshImageInfo();
             ApplyGenerationPreview(generation);
 

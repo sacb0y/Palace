@@ -1270,39 +1270,6 @@
                             Text="{x:Bind ViewModel.OverlayGallery.HdrStatus, Mode=OneWay, FallbackValue=''}"
                             TextTrimming="CharacterEllipsis"
                             Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.OverlayGallery.HdrStatus), Mode=OneWay, FallbackValue=Collapsed}" />
-                        <ToggleButton
-                            x:Name="BtnGalleryPeakOverride"
-                            Padding="8,4"
-                            AutomationProperties.AutomationId="BtnGalleryPeakOverride"
-                            AutomationProperties.Name="Override peak brightness"
-                            IsChecked="{x:Bind ViewModel.OverlayGallery.PeakOverrideEnabled, Mode=TwoWay, FallbackValue=False}"
-                            ToolTipService.ToolTip="Override display peak nits (auto is often wrong)"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowPeakOverride), Mode=OneWay, FallbackValue=Collapsed}">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <ic:FluentIcon Icon="BrightnessHigh" IconSize="Size16" IconVariant="Regular" />
-                                <TextBlock VerticalAlignment="Center" Text="Peak" />
-                            </StackPanel>
-                        </ToggleButton>
-                        <Slider
-                            x:Name="SldGalleryPeakNits"
-                            Width="140"
-                            VerticalAlignment="Center"
-                            AutomationProperties.AutomationId="SldGalleryPeakNits"
-                            AutomationProperties.Name="Peak nits"
-                            Maximum="4000"
-                            Minimum="80"
-                            StepFrequency="10"
-                            TickFrequency="400"
-                            TickPlacement="None"
-                            Value="{x:Bind ViewModel.OverlayGallery.PeakOverrideNits, Mode=TwoWay, FallbackValue=203}"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowPeakSlider), Mode=OneWay, FallbackValue=Collapsed}" />
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtGalleryPeakNits"
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.OverlayGallery.PeakOverrideLabel, Mode=OneWay, FallbackValue=''}"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowPeakSlider), Mode=OneWay, FallbackValue=Collapsed}" />
                     </StackPanel>
                     <StackPanel
                         AutomationProperties.AutomationId="PnlOverlayGeneration"
