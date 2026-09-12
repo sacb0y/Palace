@@ -148,6 +148,7 @@ public partial class TagsViewModel : ObservableObject
         ShowDetails = node?.TagId is not null;
         StampSelectionName(node);
         StampBoardSelection();
+        RevealSelectedBoardRow();
         _ = LoadSelectionAsync();
         _ = LoadMosaicAsync();
     }
@@ -431,6 +432,11 @@ public partial class TagsViewModel : ObservableObject
         if (chip?.TagId is null)
         {
             return;
+        }
+
+        if (!string.IsNullOrEmpty(chip.BoardKey))
+        {
+            _boardSelectionKey = chip.BoardKey;
         }
 
         _reorderParentId = string.IsNullOrEmpty(chip.ParentGroupId) ? null : chip.ParentGroupId;
@@ -849,15 +855,10 @@ public partial class TagsViewModel : ObservableObject
                 Color = group.Color,
                 IsUngrouped = group.IsUngrouped,
                 ScopeKind = group.ScopeKind,
-                AutomationIdOverride = group.ScopeKind switch
-                {
-                    TagScope.All => "SelTagScopeAll",
-                    TagScope.Ungrouped => "BtnTagGroup_Ungrouped",
-                    TagScope.Starred => "SelTagScopeStarred",
-                    _ => null
-                },
+                AutomationIdOverride = group.AutomationIdOverride,
                 IsExpanded = false
             };
+            var key = BoardKey(item);
             foreach (var chip in group.Chips)
             {
                 item.Chips.Add(new TagChipItem
@@ -868,7 +869,8 @@ public partial class TagsViewModel : ObservableObject
                     IsStarred = chip.IsStarred,
                     IsFilterSelected = chip.TagId == SelectedNode?.TagId,
                     ParentGroupId = group.GroupId,
-                    ImmediateParentId = chip.ParentId
+                    ImmediateParentId = chip.ParentId,
+                    BoardKey = key
                 });
             }
 
@@ -884,6 +886,22 @@ public partial class TagsViewModel : ObservableObject
             }
 
             Board.Add(item);
+        }
+
+        ApplyBoardExpansion();
+    }
+
+    private void RevealSelectedBoardRow()
+    {
+        if (SelectedNode?.TagId is { } id)
+        {
+            _boardSelectionKey = TagBoardExpand.RevealKey(
+                _boardSelectionKey,
+                id,
+                Board.Select(group => new TagBoardExpand.Row(
+                    BoardKey(group),
+                    group.GroupId,
+                    group.Chips.Select(chip => chip.TagId).ToList())).ToList());
         }
 
         ApplyBoardExpansion();

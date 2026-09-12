@@ -18,6 +18,7 @@ public sealed class TagPanelGroup
     public string? Color { get; init; }
     public bool IsUngrouped { get; init; }
     public TagScope? ScopeKind { get; init; }
+    public string? AutomationIdOverride { get; init; }
     public IReadOnlyList<TagPanelChip> Chips { get; init; } = [];
 }
 
@@ -179,6 +180,7 @@ public static class TagPanelBuilder
                     Name = "Uncategorized",
                     IsUngrouped = true,
                     ScopeKind = TagScope.Ungrouped,
+                    AutomationIdOverride = "BtnTagGroup_Ungrouped",
                     Chips = ungroupedChips
                 });
             }
@@ -240,7 +242,7 @@ public static class TagPanelBuilder
             {
                 foreach (var chip in group.Chips)
                 {
-                    Add(chip);
+                    Add(WithoutParent(chip));
                 }
 
                 if (group.GroupId is { } id && NameMatches(group.Name) && byId.TryGetValue(id, out var root))
@@ -267,6 +269,7 @@ public static class TagPanelBuilder
             {
                 Name = "All",
                 ScopeKind = TagScope.All,
+                AutomationIdOverride = "SelTagScopeAll",
                 Chips = all
             },
             new()
@@ -274,18 +277,28 @@ public static class TagPanelBuilder
                 Name = "Uncategorized",
                 IsUngrouped = true,
                 ScopeKind = TagScope.Ungrouped,
+                AutomationIdOverride = uncategorized?.AutomationIdOverride ?? "BtnTagGroup_Ungrouped",
                 Chips = uncategorized?.Chips ?? []
             },
             new()
             {
                 Name = "Starred",
                 ScopeKind = TagScope.Starred,
+                AutomationIdOverride = "SelTagScopeStarred",
                 Chips = model.Starred
             }
         };
         sections.AddRange(model.Groups.Where(g => !g.IsUngrouped));
         return sections;
     }
+
+    private static TagPanelChip WithoutParent(TagPanelChip chip) => new()
+    {
+        TagId = chip.TagId,
+        Name = chip.Name,
+        EffectiveColor = chip.EffectiveColor,
+        IsStarred = chip.IsStarred
+    };
 
     private static IEnumerable<(Tag Tag, string ParentId)> FlattenDescendants(
         string rootId,
