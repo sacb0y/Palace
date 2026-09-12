@@ -407,6 +407,9 @@ public partial class TagsViewModel : ObservableObject
         _reorderParentId = string.IsNullOrEmpty(chip.ParentGroupId) ? null : chip.ParentGroupId;
         var node = TagTreeBuilder.Find(TagTree, chip.TagId)
             ?? new TagTreeNode { TagId = chip.TagId, Name = chip.Name, EffectiveColor = chip.EffectiveColor, IsStarred = chip.IsStarred };
+        SelectedName = chip.Name;
+        HasSelection = true;
+        ShowDetails = true;
         SelectNode(node);
     }
 
@@ -674,6 +677,14 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
+        var loadedName = tag.Name;
+        if (TagSelection.ShouldApplyLoadedName(SelectedName, loadedName))
+        {
+            SelectedName = loadedName;
+            SelectedPriority = tag.Priority;
+            SelectedIsStarred = tag.IsStarred;
+        }
+
         var ids = new List<string> { tag.Id };
         if (IncludeNested)
         {
@@ -692,7 +703,16 @@ public partial class TagsViewModel : ObservableObject
         var colors = CatalogService.MapEffectiveColors(_tags, _memberships);
         await UiDispatch.RunAsync(() =>
         {
-            SelectedName = tag.Name;
+            if (SelectedNode?.TagId != tag.Id)
+            {
+                return;
+            }
+
+            if (TagSelection.ShouldApplyLoadedName(SelectedName, loadedName))
+            {
+                SelectedName = loadedName;
+            }
+
             SelectedPriority = tag.Priority;
             SelectedEffectiveColor = colors.GetValueOrDefault(tag.Id);
             HasCustomColor = TagColor.Normalize(tag.Color) is not null;
