@@ -1,0 +1,57 @@
+name: Sync issue labels
+on:
+  push:
+    paths:
+      - .github/labels.yml
+      - .github/workflows/sync-issue-labels.yml
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create missing labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r name && IFS= read -r color && IFS= read -r desc; do
+            if gh label list --limit 200 --json name --jq '.[].name' | grep -Fxq "$name"; then
+              echo "exists: $name"
+            else
+              gh label create "$name" --color "$color" --description "$desc"
+              echo "created: $name"
+            fi
+          done < <(python3 - <<'PY'
+          from pathlib import Path
+
+          def unquote(value):
+              value = value.strip()
+              if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                  return value[1:-1]
+              return value
+
+          items = []
+          current = {}
+          for raw in Path(".github/labels.yml").read_text().splitlines():
+              line = raw.strip()
+              if not line or line.startswith("#"):
+                  continue
+              if line.startswith("- "):
+                  if current:
+                      items.append(current)
+                  current = {}
+                  line = line[2:]
+              key, _, value = line.partition(":")
+              current[key.strip()] = unquote(value)
+          if current:
+              items.append(current)
+          for item in items:
+              print(item["name"])
+              print(item["color"])
+              print(item["description"])
+          PY
+          )
