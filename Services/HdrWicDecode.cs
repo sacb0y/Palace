@@ -10,6 +10,10 @@ internal sealed class HdrFrame
     public required int Width { get; init; }
     public required int Height { get; init; }
     public required float MaxNits { get; init; }
+
+    public required float AvgNits { get; init; }
+
+    public required float MinNits { get; init; }
 }
 
 /// <summary>
@@ -96,6 +100,8 @@ internal static class HdrWicDecode
 
         var rgba = new float[count * 4];
         var maxNits = 0f;
+        var minNits = float.MaxValue;
+        var sumNits = 0.0;
         var transfer = probe.Transfer;
         var bt2020 = probe.CicpPrimaries == 9;
 
@@ -111,7 +117,10 @@ internal static class HdrWicDecode
                 GalleryPresent.Bt2020ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
             }
 
-            maxNits = Math.Max(maxNits, Math.Max(nitsR, Math.Max(nitsG, nitsB)));
+            var pixelNits = Math.Max(nitsR, Math.Max(nitsG, nitsB));
+            maxNits = Math.Max(maxNits, pixelNits);
+            minNits = Math.Min(minNits, pixelNits);
+            sumNits += pixelNits;
             var oOut = i * 4;
             rgba[oOut] = GalleryPresent.NitsToScrgb(nitsR);
             rgba[oOut + 1] = GalleryPresent.NitsToScrgb(nitsG);
@@ -119,14 +128,14 @@ internal static class HdrWicDecode
             rgba[oOut + 3] = a;
         }
 
-        if (probe.MaxCllNits is > 0)
-        {
-            maxNits = Math.Max(maxNits, probe.MaxCllNits.Value);
-        }
-
         if (maxNits <= 0)
         {
             maxNits = GalleryPresent.SdrReferenceNits;
+            minNits = 0;
+        }
+        else if (minNits == float.MaxValue)
+        {
+            minNits = 0;
         }
 
         return new HdrFrame
@@ -134,7 +143,9 @@ internal static class HdrWicDecode
             ScrgbRgba = rgba,
             Width = width,
             Height = height,
-            MaxNits = maxNits
+            MaxNits = maxNits,
+            AvgNits = (float)(sumNits / count),
+            MinNits = minNits
         };
     }
 }

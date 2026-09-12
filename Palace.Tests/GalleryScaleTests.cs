@@ -23,6 +23,7 @@ public sealed class GalleryScaleTests
         Assert.Equal(ImageScaling.Fit, GalleryScale.FromKeyCode(GalleryScale.KeyNumber0));
         Assert.Equal(ImageScaling.Fill, GalleryScale.FromKeyCode(GalleryScale.KeyNumberPad3));
         Assert.Null(GalleryScale.FromKeyCode(65));
+        Assert.Equal(68, GalleryScale.KeyLetterD);
     }
 
     [Fact]

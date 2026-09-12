@@ -1026,6 +1026,41 @@
                         Text="Missing"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
 
+                    <StackPanel
+                        Margin="16,16,0,0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Spacing="8">
+                        <ToggleButton
+                            x:Name="BtnGalleryImageInfo"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryImageInfo"
+                            AutomationProperties.Name="Image information"
+                            IsChecked="{x:Bind ViewModel.OverlayGallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
+                            ToolTipService.ToolTip="Image information (Ctrl+D)">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Info" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <Border
+                            x:Name="BrdGalleryImageInfo"
+                            MaxWidth="360"
+                            Padding="10,6"
+                            AutomationProperties.AutomationId="BrdGalleryImageInfo"
+                            Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource OverlayCornerRadius}"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowImageInfo), Mode=OneWay, FallbackValue=Collapsed}">
+                            <TextBlock
+                                AutomationProperties.AutomationId="TxtGalleryImageInfo"
+                                AutomationProperties.Name="Image information"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.OverlayGallery.ImageInfoText, Mode=OneWay, FallbackValue=''}"
+                                TextWrapping="Wrap" />
+                        </Border>
+                    </StackPanel>
                     <Button
                         x:Name="BtnGalleryPrev"
                         MinWidth="48"

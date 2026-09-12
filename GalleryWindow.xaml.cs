@@ -77,7 +77,7 @@ public sealed partial class GalleryWindow : Window
     {
         var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(CoreVirtualKeyStates.Down);
-        if (Gallery.TryHandleScaleShortcut(control, (int)e.Key))
+        if (Gallery.TryHandleViewerShortcut(control, (int)e.Key))
         {
             e.Handled = true;
             return;

@@ -192,6 +192,40 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void ImageInfoText_MatchesSkivStatsNotToolbar()
+    {
+        var probe = new HdrProbe(HdrKind.HdrPng, 9, 16, 1000);
+        Assert.Equal("BT.2020 · PQ", GalleryPresent.ColorLabel(probe));
+        var text = GalleryPresent.ImageInfoText(new GalleryImageInfo(
+            "shot.png",
+            1_572_864,
+            3840,
+            2160,
+            probe,
+            "HDR PNG · tonemapped to the display (clip peak)",
+            842,
+            48.2f,
+            0.1f,
+            203));
+        Assert.Contains("Image: shot.png", text);
+        Assert.Contains("File size: 1.5 MB", text);
+        Assert.Contains("Resolution: 3840×2160", text);
+        Assert.Contains("Color: BT.2020 · PQ", text);
+        Assert.Contains("HDR: HDR PNG · tonemapped to the display (clip peak)", text);
+        Assert.Contains("MaxCLL: 1000 nits", text);
+        Assert.Contains("Max luminance: 842 nits", text);
+        Assert.Contains("Avg luminance: 48.2 nits", text);
+        Assert.Contains("Min luminance: 0.1 nits", text);
+        Assert.Contains("Display peak: 203 nits", text);
+        Assert.DoesNotContain("Save As", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Export", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Clipboard", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("heatmap", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("", GalleryPresent.ImageInfoText(new GalleryImageInfo(
+            null, null, null, null, HdrProbe.None, null, null, null, null, null)));
+    }
+
+    [Fact]
     public void PqEotf_ZeroAndPeak()
     {
         Assert.Equal(0f, GalleryPresent.PqEotf(0), 3);

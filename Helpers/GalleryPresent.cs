@@ -106,6 +106,101 @@ public static class GalleryPresent
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
 
+    /// <summary>
+    /// SKIV-style info box: file / size / resolution / color / luminance.
+    /// No Save As, Export, Copy, gamut triangle, or output-format radios.
+    /// </summary>
+    public static string ImageInfoText(GalleryImageInfo info)
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrWhiteSpace(info.FileName))
+        {
+            lines.Add($"Image: {info.FileName.Trim()}");
+        }
+
+        if (info.FileSize is >= 0)
+        {
+            lines.Add($"File size: {FormatSize(info.FileSize)}");
+        }
+
+        if (info.Width is > 0 && info.Height is > 0)
+        {
+            lines.Add($"Resolution: {info.Width}×{info.Height}");
+        }
+
+        var color = ColorLabel(info.Probe);
+        if (color is not null)
+        {
+            lines.Add($"Color: {color}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.HdrStatus))
+        {
+            lines.Add($"HDR: {info.HdrStatus.Trim()}");
+        }
+
+        if (info.Probe.MaxCllNits is > 0)
+        {
+            lines.Add($"MaxCLL: {FormatNits(info.Probe.MaxCllNits.Value)}");
+        }
+
+        if (info.MaxLuminanceNits is > 0)
+        {
+            lines.Add($"Max luminance: {FormatNits(info.MaxLuminanceNits.Value)}");
+        }
+
+        if (info.AvgLuminanceNits is >= 0 && info.MaxLuminanceNits is > 0)
+        {
+            lines.Add($"Avg luminance: {FormatNits(info.AvgLuminanceNits.Value)}");
+        }
+
+        if (info.MinLuminanceNits is >= 0 && info.MaxLuminanceNits is > 0)
+        {
+            lines.Add($"Min luminance: {FormatNits(info.MinLuminanceNits.Value)}");
+        }
+
+        if (info.DisplayPeakNits is > 0)
+        {
+            lines.Add($"Display peak: {FormatNits(info.DisplayPeakNits.Value)}");
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    public static string? ColorLabel(HdrProbe probe)
+    {
+        var primaries = probe.CicpPrimaries switch
+        {
+            9 => "BT.2020",
+            12 => "Display P3",
+            1 or 6 => "BT.709",
+            _ => null
+        };
+        var transfer = probe.Transfer switch
+        {
+            HdrTransfer.Pq => "PQ",
+            HdrTransfer.Hlg => "HLG",
+            HdrTransfer.Linear => "linear",
+            _ when probe.CicpTransfer is 13 => "sRGB",
+            _ when probe.IsHdr => "sRGB",
+            _ => null
+        };
+        if (primaries is null && transfer is null)
+        {
+            return null;
+        }
+
+        if (primaries is null)
+        {
+            return transfer;
+        }
+
+        return transfer is null ? primaries : $"{primaries} · {transfer}";
+    }
+
+    public static string FormatNits(float nits) =>
+        $"{nits:0.#} nits";
+
     public static float TonemapScale(float contentMaxNits, float displayPeakNits)
     {
         if (contentMaxNits <= 0 || displayPeakNits <= 0 || contentMaxNits <= displayPeakNits)
@@ -287,3 +382,15 @@ public static class GalleryPresent
         return (ushort)(sign | (unbiased << 10) | (mant >> 13));
     }
 }
+
+public readonly record struct GalleryImageInfo(
+    string? FileName,
+    long? FileSize,
+    int? Width,
+    int? Height,
+    HdrProbe Probe,
+    string? HdrStatus,
+    float? MaxLuminanceNits,
+    float? AvgLuminanceNits,
+    float? MinLuminanceNits,
+    float? DisplayPeakNits);

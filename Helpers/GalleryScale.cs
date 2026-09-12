@@ -20,6 +20,7 @@ public static class GalleryScale
     public const int KeyNumberPad1 = 97;
     public const int KeyNumberPad2 = 98;
     public const int KeyNumberPad3 = 99;
+    public const int KeyLetterD = 68;
 
     public static ImageScaling Cycle(ImageScaling current) =>
         current switch

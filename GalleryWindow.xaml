@@ -55,6 +55,41 @@
                 Text="Missing"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsMissing), Mode=OneWay}" />
 
+            <StackPanel
+                Margin="16,16,0,0"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Spacing="8">
+                <ToggleButton
+                    x:Name="BtnGalleryWindowImageInfo"
+                    Padding="8,4"
+                    AutomationProperties.AutomationId="BtnGalleryWindowImageInfo"
+                    AutomationProperties.Name="Image information"
+                    IsChecked="{x:Bind Gallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
+                    ToolTipService.ToolTip="Image information (Ctrl+D)">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Info" />
+                    </StackPanel>
+                </ToggleButton>
+                <Border
+                    x:Name="BrdGalleryWindowImageInfo"
+                    MaxWidth="360"
+                    Padding="10,6"
+                    AutomationProperties.AutomationId="BrdGalleryWindowImageInfo"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowImageInfo), Mode=OneWay}">
+                    <TextBlock
+                        AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
+                        AutomationProperties.Name="Image information"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
             <Button
                 x:Name="BtnGalleryWindowPrev"
                 MinWidth="48"

@@ -211,7 +211,13 @@ public sealed partial class GalleryStillSurface : UserControl
         if (presented)
         {
             ImgStill.Visibility = Visibility.Collapsed;
-            gallery.SetHdrPresentResult(true, _presenter.DisplayIsHdr);
+            gallery.SetHdrPresentResult(
+                true,
+                _presenter.DisplayIsHdr,
+                _presenter.DisplayPeakNits,
+                frame.MaxNits,
+                frame.AvgNits,
+                frame.MinNits);
             return;
         }
 
