@@ -71,6 +71,19 @@ public sealed class FolderGroupsTests
     }
 
     [Fact]
+    public void CombineUnder_DriveRoot_KeepsTrailingSeparator()
+    {
+        Assert.True(FolderGroups.IsWindowsDriveRoot(@"D:\"));
+        Assert.True(FolderGroups.IsWindowsDriveRoot("D:"));
+        Assert.False(FolderGroups.IsWindowsDriveRoot(@"D:\Photos"));
+        Assert.Equal(@"D:\", FolderGroups.CombineUnder(@"D:\", []));
+        Assert.Equal(@"D:\Vacation", FolderGroups.CombineUnder(@"D:\", ["Vacation"]));
+        Assert.Equal(@"D:\Vacation\2024", FolderGroups.CombineUnder(@"D:\", ["Vacation", "2024"]));
+        Assert.Equal(@"D:\Vacation", FolderGroups.CombineUnder("D:", ["Vacation"]));
+        Assert.Equal(@"C:\Photos\Vacation", FolderGroups.CombineUnder(@"C:\Photos", ["Vacation"]));
+    }
+
+    [Fact]
     public void GroupByTopFolders_CapsAtTwoSubsAndKeepsFileOrder()
     {
         var root = Path.Combine("library", "Photos");

@@ -130,14 +130,62 @@ public static class FolderGroups
         IReadOnlyList<string> relativeSegments,
         int maxSubFolders = MaxSubFolders)
     {
-        var path = (selectedPath ?? "").TrimEnd('\\', '/');
+        var selected = selectedPath ?? "";
         var take = TakenCount(relativeSegments.Count, maxSubFolders);
+        if (take == 0)
+        {
+            return selected;
+        }
+
+        // Path.Combine("D:", "Vacation") is "D:Vacation" (drive-relative). Keep
+        // a trailing separator on a Windows drive root so FindNode can match.
+        var sep = PreferredSeparator(selected);
+        var path = KeepRoot(selected, sep);
         for (var i = 0; i < take; i++)
         {
-            path = Path.Combine(path, relativeSegments[i]);
+            if (!EndsWithSeparator(path))
+            {
+                path += sep;
+            }
+
+            path += relativeSegments[i];
         }
 
         return path;
+    }
+
+    public static bool IsWindowsDriveRoot(string? path)
+    {
+        var spec = (path ?? "").TrimEnd('\\', '/');
+        return spec.Length == 2 && char.IsAsciiLetter(spec[0]) && spec[1] == ':';
+    }
+
+    private static string KeepRoot(string selected, char sep)
+    {
+        if (IsWindowsDriveRoot(selected))
+        {
+            return selected.TrimEnd('\\', '/') + sep;
+        }
+
+        return selected.TrimEnd('\\', '/');
+    }
+
+    private static bool EndsWithSeparator(string path) =>
+        path.Length > 0 && path[^1] is '\\' or '/';
+
+    private static char PreferredSeparator(string path)
+    {
+        if (path.Contains('\\'))
+        {
+            return '\\';
+        }
+
+        if (path.Contains('/'))
+        {
+            return '/';
+        }
+
+        return IsWindowsDriveRoot(path) ? '\\' : Path.DirectorySeparatorChar;
     }
 
     public static string DirectoryOf(string? assetPath)
