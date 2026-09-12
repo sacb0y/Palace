@@ -263,6 +263,7 @@ public static class TagPanelBuilder
         }
 
         var uncategorized = model.Groups.FirstOrDefault(g => g.IsUngrouped);
+        // All / Uncategorized / Starred stay pinned at the top of the group column.
         var sections = new List<TagPanelGroup>
         {
             new()
@@ -291,6 +292,18 @@ public static class TagPanelBuilder
         sections.AddRange(model.Groups.Where(g => !g.IsUngrouped));
         return sections;
     }
+
+    public static string Key(TagPanelGroup group) =>
+        group.ScopeKind switch
+        {
+            TagScope.All => "all",
+            TagScope.Ungrouped => "ungrouped",
+            TagScope.Starred => "starred",
+            _ => group.GroupId ?? "ungrouped"
+        };
+
+    public static TagPanelGroup? GroupByKey(IReadOnlyList<TagPanelGroup> board, string key) =>
+        board.FirstOrDefault(group => string.Equals(Key(group), key, StringComparison.Ordinal));
 
     private static TagPanelChip WithoutParent(TagPanelChip chip) => new()
     {
