@@ -3,6 +3,7 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Palace.Helpers;
 using Palace.ViewModels;
 using Windows.Graphics;
 using Windows.Media.Core;
