@@ -21,6 +21,13 @@ public static class GalleryScale
     public const int KeyNumberPad2 = 98;
     public const int KeyNumberPad3 = 99;
     public const int KeyLetterD = 68;
+    public const int KeyLetterI = 73;
+
+    public static bool TogglesImageInfo(bool controlDown, int keyCode) =>
+        controlDown && keyCode == KeyLetterD;
+
+    public static bool TogglesDetails(bool controlDown, int keyCode) =>
+        controlDown && keyCode == KeyLetterI;
 
     public static ImageScaling Cycle(ImageScaling current) =>
         current switch

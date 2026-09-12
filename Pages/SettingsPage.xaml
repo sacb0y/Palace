@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:helpers="using:Palace.Helpers"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
@@ -23,6 +24,44 @@
                 Header="Theme"
                 ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}" />
+
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="HDR" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ic:FluentIcon Icon="BrightnessHigh" IconSize="Size16" IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Peak brightness" />
+            </StackPanel>
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="One app-wide clip for HDR present. Auto uses the monitor luminance when it looks real. 203 nits is paper white, not display peak."
+                TextWrapping="Wrap" />
+            <ToggleSwitch
+                x:Name="TglHdrPeakOverride"
+                AutomationProperties.AutomationId="TglHdrPeakOverride"
+                AutomationProperties.Name="Override HDR peak brightness"
+                Header="Override HDR peak brightness"
+                IsOn="{x:Bind ViewModel.PeakOverrideEnabled, Mode=TwoWay}"
+                OffContent="Off"
+                OnContent="On" />
+            <Slider
+                x:Name="SldHdrPeakNits"
+                AutomationProperties.AutomationId="SldHdrPeakNits"
+                AutomationProperties.Name="Peak nits"
+                Header="Peak nits"
+                Maximum="4000"
+                Minimum="80"
+                StepFrequency="10"
+                TickFrequency="400"
+                TickPlacement="None"
+                Value="{x:Bind ViewModel.PeakOverrideNits, Mode=TwoWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}" />
+            <TextBlock
+                x:Name="TxtHdrPeakNits"
+                AutomationProperties.AutomationId="TxtHdrPeakNits"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.PeakOverrideLabel, Mode=OneWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}" />
 
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Cloud accounts" />
             <TextBlock

@@ -73,6 +73,15 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsDropboxConnected { get; set; }
 
+    [ObservableProperty]
+    public partial bool PeakOverrideEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial double PeakOverrideNits { get; set; } = GalleryPresent.SdrReferenceNits;
+
+    [ObservableProperty]
+    public partial string PeakOverrideLabel { get; set; } = GalleryPresent.PeakNitsLabel(GalleryPresent.SdrReferenceNits);
+
     public async Task LoadAsync()
     {
         _loading = true;
@@ -99,6 +108,7 @@ public partial class SettingsViewModel : ObservableObject
         var stored = ApplicationData.Current.LocalSettings.Values["Theme"] as string;
         SelectedTheme = stored is "Light" or "Dark" or "System" ? stored : "System";
         ApplyTheme(SelectedTheme);
+        LoadPeakOverride();
         OneDriveClientId = _cloud.OneDriveClientId;
         DropboxAppKey = _cloud.DropboxAppKey;
         RedirectUri = _cloud.RedirectUriDisplay;
@@ -116,6 +126,43 @@ public partial class SettingsViewModel : ObservableObject
 
         ApplicationData.Current.LocalSettings.Values["Theme"] = value;
         ApplyTheme(value);
+    }
+
+    partial void OnPeakOverrideEnabledChanged(bool value)
+    {
+        if (!_loading)
+        {
+            PersistPeakOverride();
+        }
+    }
+
+    partial void OnPeakOverrideNitsChanged(double value)
+    {
+        PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)value);
+        if (!_loading)
+        {
+            PersistPeakOverride();
+        }
+    }
+
+    private void LoadPeakOverride()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        GalleryPeak.Apply(
+            GalleryPeak.ParseEnabled(values[GalleryPeak.EnabledKey]),
+            GalleryPeak.ParseNits(values[GalleryPeak.NitsKey]));
+        PeakOverrideEnabled = GalleryPeak.Enabled;
+        PeakOverrideNits = GalleryPeak.Nits;
+        PeakOverrideLabel = GalleryPresent.PeakNitsLabel(GalleryPeak.Nits);
+    }
+
+    private void PersistPeakOverride()
+    {
+        GalleryPeak.Apply(PeakOverrideEnabled, (float)PeakOverrideNits);
+        var values = ApplicationData.Current.LocalSettings.Values;
+        values[GalleryPeak.EnabledKey] = PeakOverrideEnabled;
+        values[GalleryPeak.NitsKey] = PeakOverrideNits;
+        PeakOverrideLabel = GalleryPresent.PeakNitsLabel(GalleryPeak.Nits);
     }
 
     partial void OnOneDriveClientIdChanged(string value)

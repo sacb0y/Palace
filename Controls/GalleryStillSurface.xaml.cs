@@ -27,12 +27,14 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _scrollContentH;
     private double _scrollViewW;
     private double _scrollViewH;
+    private bool _peakHooked;
 
     public GalleryStillSurface()
     {
         InitializeComponent();
         Unloaded += (_, _) =>
         {
+            UnhookPeak();
             CancelInFlight();
             ClearHdrCache();
             _presenter?.Dispose();
@@ -58,14 +60,40 @@ public sealed partial class GalleryStillSurface : UserControl
         _gallery = gallery;
         if (_gallery is not null)
         {
+            HookPeak();
             _gallery.PropertyChanged += Gallery_PropertyChanged;
             _ = RefreshAsync();
             return;
         }
 
+        UnhookPeak();
         HideHdr();
         ImgStill.Source = null;
     }
+
+    private void HookPeak()
+    {
+        if (_peakHooked)
+        {
+            return;
+        }
+
+        GalleryPeak.Changed += GalleryPeak_Changed;
+        _peakHooked = true;
+    }
+
+    private void UnhookPeak()
+    {
+        if (!_peakHooked)
+        {
+            return;
+        }
+
+        GalleryPeak.Changed -= GalleryPeak_Changed;
+        _peakHooked = false;
+    }
+
+    private void GalleryPeak_Changed(object? sender, EventArgs e) => PresentCached();
 
     private void CancelInFlight()
     {
@@ -75,29 +103,24 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void Gallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(GalleryViewModel.Scaling)
-            or nameof(GalleryViewModel.PeakOverrideEnabled)
-            or nameof(GalleryViewModel.PeakOverrideNits))
+        if (e.PropertyName is nameof(GalleryViewModel.Scaling))
         {
-            if (e.PropertyName is nameof(GalleryViewModel.Scaling))
+            ApplyScaleLayout();
+            if (_hdrFrame is not null && _gallery is { } g)
             {
-                ApplyScaleLayout();
-                if (_hdrFrame is not null && _gallery is { } g)
+                var raster = XamlRoot?.RasterizationScale ?? 1.0;
+                var (dipW, dipH) = HdrPanelDips();
+                var want = GalleryPresent.PresentDecodeSize(
+                    _hdrFrame.NativeWidth,
+                    _hdrFrame.NativeHeight,
+                    (int)Math.Round(Math.Max(dipW, 0) * raster),
+                    (int)Math.Round(Math.Max(dipH, 0) * raster),
+                    g.Scaling);
+                if (GalleryPresent.NeedsBetterDecode(
+                        _hdrFrame.Width, _hdrFrame.Height, want.Width, want.Height))
                 {
-                    var raster = XamlRoot?.RasterizationScale ?? 1.0;
-                    var (dipW, dipH) = HdrPanelDips();
-                    var want = GalleryPresent.PresentDecodeSize(
-                        _hdrFrame.NativeWidth,
-                        _hdrFrame.NativeHeight,
-                        (int)Math.Round(Math.Max(dipW, 0) * raster),
-                        (int)Math.Round(Math.Max(dipH, 0) * raster),
-                        g.Scaling);
-                    if (GalleryPresent.NeedsBetterDecode(
-                            _hdrFrame.Width, _hdrFrame.Height, want.Width, want.Height))
-                    {
-                        _ = RefreshAsync();
-                        return;
-                    }
+                    _ = RefreshAsync();
+                    return;
                 }
             }
 
@@ -311,9 +334,7 @@ public sealed partial class GalleryStillSurface : UserControl
         ImgStill.Visibility = Visibility.Visible;
         var (dipW, dipH) = HdrPanelDips();
         var scale = XamlRoot?.RasterizationScale ?? 1.0;
-        float? peakOverride = gallery.PeakOverrideEnabled
-            ? (float)gallery.PeakOverrideNits
-            : null;
+        float? peakOverride = GalleryPeak.PresentOverrideNits;
         var presented = _presenter.TryPresent(
             frame, gallery.Scaling, (float)scale, dipW, dipH, peakOverride);
         if (presented)
