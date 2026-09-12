@@ -129,6 +129,14 @@ public partial class GalleryViewModel : ObservableObject
 
     public float ContentMinNits { get; private set; }
 
+    public float ContentMaxScrgb { get; private set; }
+
+    private int _headerPixelWidth;
+    private int _headerPixelHeight;
+    private int _nativePixelWidth;
+    private int _nativePixelHeight;
+    private bool _nativeHdrStats;
+
     [ObservableProperty]
     public partial string? PreviewModel { get; set; }
 
@@ -210,15 +218,45 @@ public partial class GalleryViewModel : ObservableObject
         float displayPeakNits = 0,
         float maxNits = 0,
         float avgNits = 0,
-        float minNits = 0)
+        float minNits = 0,
+        float maxScrgb = 0,
+        int pixelWidth = 0,
+        int pixelHeight = 0,
+        bool statsAreNative = false)
     {
         HdrPresented = presented;
         DisplayIsHdr = displayHdr;
         DisplayPeakNits = displayPeakNits;
+        if (GalleryPresent.ReplaceHdrStats(_nativeHdrStats, statsAreNative))
+        {
+            ContentMaxNits = maxNits;
+            ContentAvgNits = avgNits;
+            ContentMinNits = minNits;
+            if (maxScrgb > 0 || statsAreNative)
+            {
+                ContentMaxScrgb = maxScrgb;
+            }
+
+            _nativeHdrStats = statsAreNative && (maxNits > 0 || maxScrgb > 0);
+        }
+
+        if (pixelWidth > 0 && pixelHeight > 0)
+        {
+            _nativePixelWidth = pixelWidth;
+            _nativePixelHeight = pixelHeight;
+        }
+
+        RefreshHdrStatus();
+    }
+
+    public void SetHdrStats(float maxNits, float avgNits, float minNits, float maxScrgb)
+    {
         ContentMaxNits = maxNits;
         ContentAvgNits = avgNits;
         ContentMinNits = minNits;
-        RefreshHdrStatus();
+        ContentMaxScrgb = maxScrgb;
+        _nativeHdrStats = maxNits > 0 || maxScrgb > 0;
+        RefreshImageInfo();
     }
 
     partial void OnPeakOverrideEnabledChanged(bool value)
@@ -251,17 +289,25 @@ public partial class GalleryViewModel : ObservableObject
     private void RefreshImageInfo()
     {
         var item = Current;
+        var pixels = GalleryPresent.FilePixelSize(
+            _nativePixelWidth,
+            _nativePixelHeight,
+            _headerPixelWidth,
+            _headerPixelHeight,
+            item?.Width,
+            item?.Height);
         ImageInfoText = GalleryPresent.ImageInfoText(new GalleryImageInfo(
             item?.FileName,
             item?.FileSize,
-            item?.Width,
-            item?.Height,
+            pixels?.Width,
+            pixels?.Height,
             CurrentProbe,
             HdrStatus,
             HdrPresented && ContentMaxNits > 0 ? ContentMaxNits : null,
             HdrPresented && ContentMaxNits > 0 ? ContentAvgNits : null,
             HdrPresented && ContentMaxNits > 0 ? ContentMinNits : null,
-            HdrPresented && DisplayPeakNits > 0 ? DisplayPeakNits : null));
+            HdrPresented && DisplayPeakNits > 0 ? DisplayPeakNits : null,
+            HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null));
     }
 
     private void UpdatePeakOverrideVisibility(bool canPresentHdr)
@@ -375,6 +421,12 @@ public partial class GalleryViewModel : ObservableObject
 
                 Current = null;
                 CurrentProbe = HdrProbe.None;
+                _headerPixelWidth = 0;
+                _headerPixelHeight = 0;
+                _nativePixelWidth = 0;
+                _nativePixelHeight = 0;
+                _nativeHdrStats = false;
+                ContentMaxScrgb = 0;
                 CurrentPath = null;
                 PreviewImageUri = null;
                 Title = "";
@@ -440,9 +492,11 @@ public partial class GalleryViewModel : ObservableObject
         }
 
         var probe = HdrProbe.None;
+        (int Width, int Height)? headerPixels = null;
         if (item.Kind == AssetKind.Image && onDisk && !onlineOnly && !apiOnly && !item.IsOrphan)
         {
             probe = HdrFile.ProbePath(item.Path);
+            headerPixels = ImageDimensions.TryRead(item.Path);
         }
 
         var playableVideo = GalleryMedia.IsPlayableLocalVideo(
@@ -464,6 +518,16 @@ public partial class GalleryViewModel : ObservableObject
 
             Current = item;
             CurrentProbe = probe;
+            _headerPixelWidth = headerPixels?.Width ?? 0;
+            _headerPixelHeight = headerPixels?.Height ?? 0;
+            _nativePixelWidth = 0;
+            _nativePixelHeight = 0;
+            _nativeHdrStats = false;
+            ContentMaxNits = 0;
+            ContentAvgNits = 0;
+            ContentMinNits = 0;
+            ContentMaxScrgb = 0;
+            DisplayPeakNits = 0;
             CurrentPath = playableVideo ? item.Path : stillPath;
             PreviewImageUri = previewUrl ?? stillPath;
             Title = item.FileName;
@@ -483,7 +547,10 @@ public partial class GalleryViewModel : ObservableObject
             CanGoNext = CurrentIndex < _items.Count - 1;
             CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
             HdrPresented = false;
-            DetailsText = GalleryPresent.DetailsLine(item.FileName, item.Width, item.Height, item.Kind, item.FileSize);
+            var detailsPixels = GalleryPresent.FilePixelSize(
+                null, null, _headerPixelWidth, _headerPixelHeight, item.Width, item.Height);
+            DetailsText = GalleryPresent.DetailsLine(
+                item.FileName, detailsPixels?.Width, detailsPixels?.Height, item.Kind, item.FileSize);
             UpdatePeakOverrideVisibility(probe.CanPresentHdr);
             HdrStatus = GalleryPresent.StatusLine(probe, false, false, PeakOverrideEnabled, (float)PeakOverrideNits) ?? "";
             RefreshImageInfo();

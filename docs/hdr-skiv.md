@@ -67,7 +67,7 @@ The original plan said preview is **WIC** for jpg/png/webp/bmp/tif, GIF, video; 
 
 **Already true (keep):**
 
-- Catalog extensions: `.jpg` `.jpeg` `.png` `.webp` `.bmp` `.tif` `.tiff`, `.gif`, `.mp4` `.mov` `.mkv` `.webm` `.avi` (`Helpers/PathSafe.cs`)
+- Catalog extensions: `.jpg` `.jpeg` `.png` `.webp` `.bmp` `.tif` `.tiff` `.avif`, `.gif`, `.mp4` `.mov` `.mkv` `.webm` `.avi` (`Helpers/PathSafe.cs`)
 - Mosaic and overlay never `File.Exists` / `ImageDimensions.TryRead` on the original while building tiles
 - Thumbs: WIC `BitmapDecoder` → JPEG, `ColorManagementMode.ColorManageToSRgb` (`ThumbnailService`)
 - Overlay + `GalleryWindow`: `BitmapImage` / `MediaPlayerElement`, `Stretch="Uniform"`, title/tags **below** the player
@@ -76,8 +76,9 @@ The original plan said preview is **WIC** for jpg/png/webp/bmp/tif, GIF, video; 
 
 **Why HDR files “are not supported”:**
 
-- `.hdr` `.exr` `.tga` `.psd` `.jxl` `.avif` `.jxr` are not catalog extensions, so scan skips them
-- `ImageDimensions` only understands PNG / JPEG / GIF / BMP / WebP headers
+- `.hdr` `.exr` `.tga` `.psd` `.jxl` `.jxr` are not catalog extensions, so scan skips them
+- `.avif` is catalogued; WIC decodes it when the HEIF/AV1 codecs are present. Header size / CICP come from `AvifFile` (`ispe` / `colr` `nclx`)
+- `ImageDimensions` understands PNG / JPEG / GIF / BMP / WebP / AVIF headers
 - Overlay is `BitmapImage`. That path color-manages toward sRGB. It cannot present scRGB / HDR10
 - Thumbs are 8-bit JPEG. That is correct for the mosaic; it is not an HDR preview
 - Ultra HDR JPEGs that *are* already in the catalog (`.jpg`) show the SDR base layer, with no badge and no gain-map path
@@ -107,7 +108,7 @@ The original plan already gated TGA/EXR/HDR/PSD on **native deps packaging clean
 - SKIV proves the *product* need (EXR, Radiance, Ultra HDR, JXL, AVIF) but solves it with a **different** native pile (OpenEXR, libjxl, libavif). Vendoring that into Palace is not simpler than Magick.
 - WIC already covers Palace’s current catalog. Built-in WIC also has JPEG XR; AVIF/HEIF/JXL only if the user has the Store codecs. Radiance `.hdr` and OpenEXR are **not** WIC.
 
-A packaging spike (Magick **or** DirectXTex+OpenEXR) is allowed later. The spike’s pass condition is: packaged Debug register/launch, those DLLs load, Release trim does not regress further, `Palace.Tests` stay off WinRT. Until that spike is green, do not add the formats to `PathSafe.ImageExt`.
+A packaging spike (Magick **or** DirectXTex+OpenEXR) is allowed later. The spike’s pass condition is: packaged Debug register/launch, those DLLs load, Release trim does not regress further, `Palace.Tests` stay off WinRT. Until that spike is green, do not add EXR / Radiance / TGA / PSD / JXL to `PathSafe.ImageExt`. AVIF is already in via WIC.
 
 ### Phase A — honest catalog + overlay chrome (no new native decoder)
 
@@ -146,7 +147,7 @@ Then, and only then:
 - Header-only `ImageDimensions` where cheap (Radiance, EXR); otherwise store dims after a **local** Open/scan decode
 - Scan: if online-only, same cloud rules — stub hash, no decode, provider thumb or a dedicated “HDR / cloud” tile
 - PSD/TGA are catalog-nice; they are not the HDR present problem. Do not block Phase B on them
-- JXL / AVIF: prefer inbox WIC codecs when present; do not vendor libjxl/libavif unless the spike says Magick/DirectXTex still cannot read them
+- JXL: prefer inbox WIC codecs when present; do not vendor libjxl. AVIF already uses inbox WIC (`PathSafe` + `AvifFile`); do not vendor libavif
 
 ### Explicitly later or never (unless asked)
 
@@ -172,7 +173,7 @@ Isiac’s sequence. HDR present on files we can already decode is **Library now*
 6. **Then — Gamedev.** Markdown, audio with loops, 3D, Unity folder on the Palace **project** (not the Library catalog), `.unitypackage`.
 7. **Later — AI.** Tagging, organization, and similar.
 
-Until Magick / Phase C lands, treat those extra extensions as **out of the catalog on purpose**. WIC overlay / HDR PNG present stays current Library work ([Palace #12](https://github.com/sacb0y/Palace/pull/12)).
+Until Magick / Phase C lands, treat EXR / Radiance / TGA / PSD / JXL as **out of the catalog on purpose**. AVIF is in via inbox WIC (no libavif). WIC overlay / HDR PNG + HDR AVIF present stays current Library work.
 
 ---
 
@@ -183,5 +184,7 @@ PR: [Palace #12](https://github.com/sacb0y/Palace/pull/12) on `cursor/gallery-hd
 - Phase A chrome is in overlay + `GalleryWindow` (1:1 / Fit / Fill, details, honest HDR line). Overlay info is a compact opaque bar below the player (`BrdGalleryOverlayInfo`), not a transparent full-width card.
 - Phase B present is Magick-free and **HDR PNG only** (`SwapChainPanel` + WIC). Ultra HDR JPEG stays the SDR base + label
 - Bugbot on #12: `CurrentProbe` before path, DXGI vtable 24/27, scRGB color space 1, `ScpHdr` inside `ScrStill` so 1:1 can pan, cached `HdrFrame` on resize/scale, `HdrPixels` Rgba8 vs Bgra8, present uses layout DIPs (not Collapsed 0), hide HDR when the still is not `item.Path`, oriented WIC size, window-monitor peak, `StillRevision` one refresh per item, `Bind(null)` cancels epoch, Actual 1:1 ignores unoriented catalog size
-- Follow-up (same-scene SDR vs dark HDR PNG): PQ/HLG only when cICP says so; SDR present **clips peak** instead of mapping MaxCLL (that crushed `KalanLiraDuo` vs `_SDR`). 1:1 is one device pixel per image pixel. Fill covers and pans overflow. 1:1 / Fill also left-click-drag pan like touch. Prompt/negative scroll instead of growing the overlay. Optional Peak toggle + nits slider (auto DXGI peak is often wrong; default stays auto so HDR PNG matches the SDR twin). Optional top-left Info toggle (Ctrl+D, on to match the SKIV shot) shows file / size / resolution / color / luminance — not Save As / Export / Copy.
-- Magick / TGA / EXR / Radiance / PSD still deferred. No SKIV port. Rebased past Library #17. Not merged.
+- Follow-up (same-scene SDR vs dark HDR PNG): PQ/HLG only when cICP says so; present **clips to a real display peak**, not MaxCLL (that crushed `KalanLiraDuo` vs `_SDR`) and not 203 paper white. 1:1 is one device pixel per image pixel. Fill covers and pans overflow. 1:1 / Fill also left-click-drag pan like touch. Prompt/negative scroll instead of growing the overlay. Optional Peak toggle + nits slider. Optional top-left Info toggle (Ctrl+D, on to match the SKIV shot) shows file / size / **file** resolution / color / CIE-Y luminance / MaxCLL scRGB / display luminance — not Save As / Export / Copy, and not catalog 512×512 or “Display peak: 203”.
+- Open speed: first HDR paint is a **viewport** WIC decode (no second `BitmapImage` of the original). Native min/avg/max / MaxCLL scRGB refine after first present. DXGI probe is cached. 203 is never the auto clip.
+- `.avif` is in the catalog. SDR AVIF opens through WIC/`BitmapImage`. HDR AVIF (cICP 16/18) uses the same scRGB present as HDR PNG. No libavif / Magick.
+- Magick / TGA / EXR / Radiance / PSD / JXL still deferred. No SKIV port.

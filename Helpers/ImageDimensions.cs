@@ -68,6 +68,11 @@ internal static class ImageDimensions
             return TryReadJpeg(stream);
         }
 
+        if (AvifFile.IsAvif(buf[..n]))
+        {
+            return AvifFile.TryReadSize(stream);
+        }
+
         return null;
     }
 

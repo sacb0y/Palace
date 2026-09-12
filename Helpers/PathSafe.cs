@@ -67,7 +67,7 @@ public static class PathSafe
     }
 
     public static readonly HashSet<string> ImageExt =
-        new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff" };
+        new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".avif" };
 
     public static readonly HashSet<string> GifExt =
         new(StringComparer.OrdinalIgnoreCase) { ".gif" };

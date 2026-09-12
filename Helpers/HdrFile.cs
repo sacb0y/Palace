@@ -7,7 +7,9 @@ public enum HdrKind
     None,
     UltraHdrJpeg,
     HdrPng,
-    WideGamutPng
+    WideGamutPng,
+    HdrAvif,
+    WideGamutAvif
 }
 
 public readonly record struct HdrProbe(
@@ -18,13 +20,13 @@ public readonly record struct HdrProbe(
 {
     public static HdrProbe None { get; } = new(HdrKind.None, null, null, null);
 
-    public bool IsHdr => Kind is HdrKind.UltraHdrJpeg or HdrKind.HdrPng;
+    public bool IsHdr => Kind is HdrKind.UltraHdrJpeg or HdrKind.HdrPng or HdrKind.HdrAvif;
 
     /// <summary>
-    /// HDR PNG can be presented from WIC 16-bit pixels + cICP. Ultra HDR JPEG
+    /// HDR PNG / AVIF can be presented from WIC pixels + cICP. Ultra HDR JPEG
     /// needs a gain-map decoder we do not ship (no libultrahdr / Magick).
     /// </summary>
-    public bool CanPresentHdr => Kind == HdrKind.HdrPng;
+    public bool CanPresentHdr => Kind is HdrKind.HdrPng or HdrKind.HdrAvif;
 
     public bool IsPq => CicpTransfer == 16;
 
@@ -97,6 +99,18 @@ public static class HdrFile
             return HdrProbe.None;
         }
 
+        if (stream.CanSeek)
+        {
+            stream.Position = 0;
+            Span<byte> head = stackalloc byte[32];
+            var headN = stream.Read(head);
+            stream.Position = 0;
+            if (headN >= 16 && AvifFile.IsAvif(head[..headN]))
+            {
+                return AvifFile.ToHdrProbe(AvifFile.Probe(stream));
+            }
+        }
+
         var buf = new byte[take];
         var n = stream.Read(buf, 0, take);
         return n > 0 ? Probe(buf.AsSpan(0, n)) : HdrProbe.None;
@@ -116,6 +130,11 @@ public static class HdrFile
         if (data.Length >= 4 && data[0] == 0xFF && data[1] == 0xD8)
         {
             return ProbeJpeg(data);
+        }
+
+        if (AvifFile.IsAvif(data))
+        {
+            return AvifFile.ToHdrProbe(AvifFile.Probe(data));
         }
 
         return HdrProbe.None;

@@ -70,28 +70,42 @@ public static class GalleryPresent
         bool peakOverride = false,
         float peakNits = 0)
     {
-        if (probe.Kind == HdrKind.HdrPng && presented && peakOverride)
+        _ = displayHdr;
+        if (probe.CanPresentHdr && presented && peakOverride)
         {
-            return $"HDR PNG · clip {ClampPeakNits(peakNits):0} nits (override)";
+            return $"{HdrKindLabel(probe.Kind)} · clip {ClampPeakNits(peakNits):0} nits (override)";
         }
 
         return probe.Kind switch
         {
             HdrKind.UltraHdrJpeg => "Ultra HDR JPEG — showing the SDR base",
-            HdrKind.HdrPng when presented && displayHdr => "HDR PNG · presenting scRGB",
-            HdrKind.HdrPng when presented => "HDR PNG · tonemapped to the display (clip peak)",
-            HdrKind.HdrPng => "HDR PNG — SDR preview",
+            HdrKind.HdrPng or HdrKind.HdrAvif when presented =>
+                $"{HdrKindLabel(probe.Kind)} · presenting scRGB",
+            HdrKind.HdrPng or HdrKind.HdrAvif => $"{HdrKindLabel(probe.Kind)} — SDR preview",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
+            HdrKind.WideGamutAvif => "Wide-gamut AVIF",
             _ => null
         };
     }
+
+    public static string HdrKindLabel(HdrKind kind) =>
+        kind switch
+        {
+            HdrKind.HdrPng => "HDR PNG",
+            HdrKind.HdrAvif => "HDR AVIF",
+            HdrKind.WideGamutPng => "Wide-gamut PNG",
+            HdrKind.WideGamutAvif => "Wide-gamut AVIF",
+            HdrKind.UltraHdrJpeg => "Ultra HDR JPEG",
+            _ => "HDR"
+        };
 
     public static float ClampPeakNits(float nits) =>
         Math.Clamp(nits, MinPeakNits, MaxPeakNits);
 
     /// <summary>
-    /// DXGI MaxLuminance is often wrong. Override is opt-in; auto stays the
-    /// clip-peak path that matches the SDR twin.
+    /// 203 nits is BT.2408 reference white, not a display peak. Auto uses
+    /// the DXGI luminance when we have one; 0 means do not clip to 203.
+    /// Override is opt-in.
     /// </summary>
     public static float EffectivePeakNits(float autoPeakNits, bool overrideEnabled, float overrideNits)
     {
@@ -100,8 +114,33 @@ public static class GalleryPresent
             return ClampPeakNits(overrideNits);
         }
 
-        return autoPeakNits > 0 ? autoPeakNits : SdrReferenceNits;
+        return autoPeakNits > 0 ? autoPeakNits : 0;
     }
+
+    /// <summary>
+    /// Prefer DXGI full-frame luminance (SKIV “display luminance”) when it
+    /// looks like a real HDR peak. Never substitute 203 paper white.
+    /// </summary>
+    public static float ProbedDisplayLuminance(float maxLuminance, float maxFullFrameLuminance)
+    {
+        if (IsHdrDisplay(maxFullFrameLuminance) && maxFullFrameLuminance <= 10000)
+        {
+            return maxFullFrameLuminance;
+        }
+
+        if (IsHdrDisplay(maxLuminance) && maxLuminance <= 10000)
+        {
+            return maxLuminance;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// 203 nits is BT.2408 reference / paper white, not a display peak.
+    /// </summary>
+    public static bool IsHdrDisplay(float displayLuminance) =>
+        displayLuminance > 220;
 
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
@@ -139,9 +178,9 @@ public static class GalleryPresent
             lines.Add($"HDR: {info.HdrStatus.Trim()}");
         }
 
-        if (info.Probe.MaxCllNits is > 0)
+        if (info.MaxScrgb is > 0)
         {
-            lines.Add($"MaxCLL: {FormatNits(info.Probe.MaxCllNits.Value)}");
+            lines.Add($"MaxCLL (scRGB): {info.MaxScrgb.Value:0.###}");
         }
 
         if (info.MaxLuminanceNits is > 0)
@@ -159,9 +198,9 @@ public static class GalleryPresent
             lines.Add($"Min luminance: {FormatNits(info.MinLuminanceNits.Value)}");
         }
 
-        if (info.DisplayPeakNits is > 0)
+        if (info.DisplayLuminanceNits is > 0)
         {
-            lines.Add($"Display peak: {FormatNits(info.DisplayPeakNits.Value)}");
+            lines.Add($"Display luminance: {FormatNits(info.DisplayLuminanceNits.Value)}");
         }
 
         return string.Join('\n', lines);
@@ -201,6 +240,45 @@ public static class GalleryPresent
     public static string FormatNits(float nits) =>
         $"{nits:0.#} nits";
 
+    /// <summary>
+    /// CIE Y in the source primaries. Do not use max(RGB) after 2020→709 —
+    /// that inflates “max luminance” (2572 vs SKIV ~1682 on the same file).
+    /// </summary>
+    public static float LuminanceY(float rNits, float gNits, float bNits, bool bt2020) =>
+        bt2020
+            ? (0.2627f * rNits) + (0.6780f * gNits) + (0.0593f * bNits)
+            : (0.2126f * rNits) + (0.7152f * gNits) + (0.0722f * bNits);
+
+    /// <summary>
+    /// File pixels: oriented decode, then header, then catalog. Never a
+    /// 512 thumb when the header is 3840×2160.
+    /// </summary>
+    public static (int Width, int Height)? FilePixelSize(
+        int? decodedWidth,
+        int? decodedHeight,
+        int? headerWidth,
+        int? headerHeight,
+        int? catalogWidth,
+        int? catalogHeight)
+    {
+        if (decodedWidth is > 0 && decodedHeight is > 0)
+        {
+            return (decodedWidth.Value, decodedHeight.Value);
+        }
+
+        if (headerWidth is > 0 && headerHeight is > 0)
+        {
+            return (headerWidth.Value, headerHeight.Value);
+        }
+
+        if (catalogWidth is > 0 && catalogHeight is > 0)
+        {
+            return (catalogWidth.Value, catalogHeight.Value);
+        }
+
+        return null;
+    }
+
     public static float TonemapScale(float contentMaxNits, float displayPeakNits)
     {
         if (contentMaxNits <= 0 || displayPeakNits <= 0 || contentMaxNits <= displayPeakNits)
@@ -234,7 +312,98 @@ public static class GalleryPresent
             return 0;
         }
 
+        if (displayPeakNits <= 0)
+        {
+            return linearNits;
+        }
+
         return linearNits > displayPeakNits ? displayPeakNits : linearNits;
+    }
+
+    /// <summary>
+    /// scRGB clip for rasterize. Unknown display peak (0) means do not clip
+    /// to paper white — use 10 000 nits (PQ range).
+    /// </summary>
+    public static float RasterizeClipScrgb(float displayPeakNits)
+    {
+        var peak = displayPeakNits > 0 ? displayPeakNits : 10000f;
+        return peak / ScrgbNits;
+    }
+
+    public const int FastPresentLongEdge = 2048;
+
+    /// <summary>
+    /// WIC decode size for first paint. Fit/Fill use the viewport, not the
+    /// full 4K buffer. Actual is 1:1 native. Unknown layout caps the long
+    /// edge so PQ convert does not block Open.
+    /// </summary>
+    public static (int Width, int Height) PresentDecodeSize(
+        int imageW,
+        int imageH,
+        int viewportW,
+        int viewportH,
+        ImageScaling scaling)
+    {
+        if (imageW <= 0 || imageH <= 0)
+        {
+            return (0, 0);
+        }
+
+        if (scaling == ImageScaling.Actual)
+        {
+            return (imageW, imageH);
+        }
+
+        int destW;
+        int destH;
+        if (viewportW >= 2 && viewportH >= 2)
+        {
+            var (_, _, dw, dh) = DestRect(scaling, imageW, imageH, viewportW, viewportH);
+            destW = Math.Max(1, (int)Math.Ceiling(dw));
+            destH = Math.Max(1, (int)Math.Ceiling(dh));
+        }
+        else
+        {
+            var longEdge = Math.Max(imageW, imageH);
+            if (longEdge <= FastPresentLongEdge)
+            {
+                return (imageW, imageH);
+            }
+
+            var scale = FastPresentLongEdge / (double)longEdge;
+            destW = Math.Max(1, (int)Math.Round(imageW * scale));
+            destH = Math.Max(1, (int)Math.Round(imageH * scale));
+        }
+
+        return (Math.Min(destW, imageW), Math.Min(destH, imageH));
+    }
+
+    public static bool NeedsBetterDecode(int haveW, int haveH, int wantW, int wantH) =>
+        wantW > 0 && wantH > 0 && (haveW < wantW || haveH < wantH);
+
+    public static bool IsNativeDecode(int decodedW, int decodedH, int nativeW, int nativeH) =>
+        nativeW > 0 && nativeH > 0 && decodedW >= nativeW && decodedH >= nativeH;
+
+    /// <summary>
+    /// Native CIE Y / MaxCLL from a full-res measure must survive Fit/peak
+    /// re-present of a viewport <c>HdrFrame</c>.
+    /// </summary>
+    public static bool ReplaceHdrStats(bool haveNative, bool incomingNative) =>
+        !haveNative || incomingNative;
+
+    /// <summary>
+    /// Do not reuse a cancelled CTS. RefreshAsync cancels the previous
+    /// source, then a cache-hit measure must mint a live one.
+    /// </summary>
+    public static CancellationTokenSource LiveTokenSource(CancellationTokenSource? current)
+    {
+        if (current is { IsCancellationRequested: false })
+        {
+            return current;
+        }
+
+        current?.Dispose();
+        return new CancellationTokenSource();
     }
 
     public static float EncodedToNits(float encoded, HdrTransfer transfer) =>
@@ -393,4 +562,5 @@ public readonly record struct GalleryImageInfo(
     float? MaxLuminanceNits,
     float? AvgLuminanceNits,
     float? MinLuminanceNits,
-    float? DisplayPeakNits);
+    float? DisplayLuminanceNits,
+    float? MaxScrgb = null);

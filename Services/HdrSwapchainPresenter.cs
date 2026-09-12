@@ -18,6 +18,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private int _bufferW;
     private int _bufferH;
     private bool _attached;
+    private float _autoDisplayNits;
 
     public HdrSwapchainPresenter(SwapChainPanel panel)
     {
@@ -26,7 +27,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public bool DisplayIsHdr { get; private set; }
 
-    public float DisplayPeakNits { get; private set; } = GalleryPresent.SdrReferenceNits;
+    public float DisplayPeakNits { get; private set; }
 
     public bool TryPresent(
         HdrFrame frame,
@@ -66,7 +67,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             EnsureDevice();
             ProbeDisplay();
             DisplayPeakNits = GalleryPresent.EffectivePeakNits(
-                DisplayPeakNits,
+                _autoDisplayNits,
                 peakOverrideNits is > 0,
                 peakOverrideNits ?? 0);
             EnsureSwapChain(vw, vh);
@@ -131,7 +132,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private void ProbeDisplay()
     {
         DisplayIsHdr = false;
-        DisplayPeakNits = GalleryPresent.SdrReferenceNits;
+        _autoDisplayNits = 0;
+        DisplayPeakNits = 0;
         try
         {
             var dxgiDevice = Query(_device, IidDxgiDevice);
@@ -153,10 +155,16 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                             {
                                 var desc = new DxgiOutputDesc1();
                                 var hr = CallGetDesc1(output6, ref desc);
-                                if (hr >= 0 && desc.MaxLuminance > 160)
+                                if (hr >= 0)
                                 {
-                                    DisplayIsHdr = true;
-                                    DisplayPeakNits = Math.Clamp(desc.MaxLuminance, 300, 4000);
+                                    var peak = GalleryPresent.ProbedDisplayLuminance(
+                                        desc.MaxLuminance, desc.MaxFullFrameLuminance);
+                                    if (peak > 0)
+                                    {
+                                        _autoDisplayNits = peak;
+                                        DisplayPeakNits = peak;
+                                        DisplayIsHdr = GalleryPresent.IsHdrDisplay(peak);
+                                    }
                                 }
                             }
                             finally
@@ -182,7 +190,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         catch
         {
             DisplayIsHdr = false;
-            DisplayPeakNits = GalleryPresent.SdrReferenceNits;
+            _autoDisplayNits = 0;
+            DisplayPeakNits = 0;
         }
     }
 
@@ -351,10 +360,25 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     {
         var dest = new ushort[vw * vh * 4];
         var (dx, dy, dw, dh) = GalleryPresent.DestRect(scaling, frame.Width, frame.Height, vw, vh);
-        var clip = DisplayPeakNits / GalleryPresent.ScrgbNits;
+        var clip = GalleryPresent.RasterizeClipScrgb(DisplayPeakNits);
         var src = frame.ScrgbRgba;
         var sw = frame.Width;
         var sh = frame.Height;
+        if (sw == vw && sh == vh && Math.Abs(dx) < 0.5f && Math.Abs(dy) < 0.5f
+            && Math.Abs(dw - vw) < 0.5f && Math.Abs(dh - vh) < 0.5f)
+        {
+            var count = sw * sh;
+            for (var i = 0; i < count; i++)
+            {
+                var si = i * 4;
+                dest[si] = GalleryPresent.FloatToHalf(Math.Clamp(src[si], 0, clip));
+                dest[si + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1], 0, clip));
+                dest[si + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2], 0, clip));
+                dest[si + 3] = GalleryPresent.FloatToHalf(src[si + 3]);
+            }
+
+            return dest;
+        }
         for (var y = 0; y < vh; y++)
         {
             for (var x = 0; x < vw; x++)
