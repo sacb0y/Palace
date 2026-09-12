@@ -270,13 +270,29 @@ public partial class TagsViewModel : ObservableObject
     [RelayCommand]
     private async Task RemoveChipFromGroupAsync(TagChipItem? chip)
     {
-        if (chip?.TagId is null || string.IsNullOrEmpty(chip.ImmediateParentId))
+        if (chip?.TagId is null)
         {
             return;
         }
 
-        await _catalog.RemoveMembershipAsync(chip.ImmediateParentId, chip.TagId);
-        _reorderParentId = chip.ImmediateParentId;
+        var rootId = chip.ParentGroupId ?? chip.ImmediateParentId;
+        if (string.IsNullOrEmpty(rootId))
+        {
+            return;
+        }
+
+        var parents = TagSiblings.ParentsUnderRoot(_memberships, chip.TagId, rootId);
+        if (parents.Count == 0 && !string.IsNullOrEmpty(chip.ImmediateParentId))
+        {
+            parents = [chip.ImmediateParentId];
+        }
+
+        foreach (var parentId in parents)
+        {
+            await _catalog.RemoveMembershipAsync(parentId, chip.TagId);
+        }
+
+        _reorderParentId = rootId;
         await RefreshAsync();
         StatusText = "Removed from group.";
     }

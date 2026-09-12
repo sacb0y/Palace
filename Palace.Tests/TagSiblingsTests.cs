@@ -48,4 +48,22 @@ public sealed class TagSiblingsTests
 
         Assert.Equal(["Sonic", "Tails"], kids);
     }
+
+    [Fact]
+    public void ParentsUnderRoot_IncludesEveryPathIntoTheGroup()
+    {
+        var edges = new List<TagMembership>
+        {
+            new() { ParentId = "character", ChildId = "sonic" },
+            new() { ParentId = "character", ChildId = "hedgehog" },
+            new() { ParentId = "hedgehog", ChildId = "sonic" },
+            new() { ParentId = "shot", ChildId = "sonic" }
+        };
+
+        var parents = TagSiblings.ParentsUnderRoot(edges, "sonic", "character")
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["character", "hedgehog"], parents);
+    }
 }

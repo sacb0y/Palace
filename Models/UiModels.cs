@@ -224,7 +224,8 @@ public partial class TagChipItem : ObservableObject
 
     public string? ImmediateParentId { get; set; }
 
-    public bool CanRemoveFromGroup => !string.IsNullOrEmpty(ImmediateParentId);
+    public bool CanRemoveFromGroup =>
+        !string.IsNullOrEmpty(ImmediateParentId) || !string.IsNullOrEmpty(ParentGroupId);
 
     public string AutomationPrefix { get; set; } = "BtnTagChip_";
 
