@@ -37,7 +37,7 @@ public static class PathSafe
 
     public static string UniquePath(string desiredPath)
     {
-        if (!File.Exists(desiredPath) && !Directory.Exists(desiredPath))
+        if (!CloudFile.Exists(desiredPath) && !Directory.Exists(desiredPath))
         {
             return desiredPath;
         }
@@ -49,7 +49,7 @@ public static class PathSafe
         while (true)
         {
             var candidate = System.IO.Path.Combine(dir, $"{name} ({n}){ext}");
-            if (!File.Exists(candidate) && !Directory.Exists(candidate))
+            if (!CloudFile.Exists(candidate) && !Directory.Exists(candidate))
             {
                 return candidate;
             }

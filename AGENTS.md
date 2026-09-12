@@ -97,7 +97,7 @@ Two source kinds:
 1. **Local + Files On-Demand** (OneDrive/Dropbox sync folders added with the normal folder picker).
 2. **API sources** (`SourceKind.OneDrive` / `Dropbox`) after Settings → Connect. Connect opens the cloud-folder picker for the **current project**. Index via Graph / Dropbox `list_folder`. Store `CloudItemId` (`SourceFolder.CloudRootItemId`) + display path (`CloudSourcePath.Build`). Path stays UNIQUE across projects.
 
-Detect On-Demand with `CloudFile.IsOnlineOnly` (`File.GetAttributes` only): `RecallOnDataAccess` (`0x00400000`), `RecallOnOpen`, `Offline`. **Never open a stream** to test this.
+Detect On-Demand with `CloudFile.IsOnlineOnly` (`File.GetAttributes` only — not `File.Exists`, never a stream): `RecallOnDataAccess` (`0x00400000`) and `RecallOnOpen` mean hydrate-on-read. `FILE_ATTRIBUTE_PINNED` is local. Hydrated OneDrive/Dropbox files keep `ReparsePoint` and may still show leftover `Offline` — those are local and must be hashed/thumbnailed normally. Bare `Offline` (legacy HSM, or tests that stamp `FILE_ATTRIBUTE_OFFLINE`) is online-only. Use `CloudFile.Exists` / `TryGetAttributes` on user asset paths so placeholders are visible. `ImageDimensions.TryRead` refuses online-only paths. `HashService.HashFileAsync` is scan/local and explicit Open hydration only — never a cloud-vs-local probe.
 
 On scan, if online-only:
 
@@ -149,7 +149,7 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 .\ui-tests.ps1 -AppPid <pid>
 ```
 
-`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`), `RoomIcons.Normalize`, `ThumbFileName`, `GalleryMedia`, `CloudSourcePath`, `TagNameList`, `TagFilter` (Any/All/None + descendants), `TagPanelBuilder` (including Ungrouped group-name search), `TagSiblings` (root groups are siblings), `TagGroups` (Add/Move destinations, cycle-safe), `TagSelection` (rename baseline: new tag applies, same-tag edits/clears stay), `TagAlphaIndex` (A–Z letter buckets), and `RecentTags`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
+`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (Recall / Pinned / hydrated `ReparsePoint`+`Offline` / stamped `FILE_ATTRIBUTE_OFFLINE`), `CloudFile.Exists` / `FilterLocalPaths`, `ImageDimensions` refusing online-only paths, `HashService` local hash + cloud stub, `RoomIcons.Normalize`, `ThumbFileName`, `GalleryMedia`, `CloudSourcePath`, `TagNameList`, `TagFilter` (Any/All/None + descendants), `TagPanelBuilder` (including Ungrouped group-name search), `TagSiblings` (root groups are siblings), `TagGroups` (Add/Move destinations, cycle-safe), `TagSelection` (rename baseline: new tag applies, same-tag edits/clears stay), `TagAlphaIndex` (A–Z letter buckets), and `RecentTags`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
 
 ## Cursor Cloud specific instructions
 

@@ -70,12 +70,12 @@ public sealed class ThumbnailService
             return null;
         }
 
-        if (!File.Exists(filePath))
+        if (!CloudFile.TryGetAttributes(filePath, out var attrs))
         {
             return ReadCached(hash);
         }
 
-        if (CloudFile.IsOnlineOnly(filePath))
+        if (CloudFile.IsOnlineOnly(attrs))
         {
             return await EnsureOnlineOnlyThumbnailAsync(filePath, hash, kind).ConfigureAwait(false);
         }

@@ -141,7 +141,7 @@ public sealed partial class LibraryPage : Page
 
     public static BitmapImage? FileToImage(string? path)
     {
-        if (string.IsNullOrEmpty(path) || !File.Exists(path) || CloudFile.IsOnlineOnly(path))
+        if (string.IsNullOrEmpty(path) || !CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
             return null;
         }
@@ -186,7 +186,7 @@ public sealed partial class LibraryPage : Page
                 return new BitmapImage { UriSource = new Uri(path, UriKind.Absolute) };
             }
 
-            if (!File.Exists(path) || CloudFile.IsOnlineOnly(path))
+            if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
             {
                 return null;
             }
@@ -672,7 +672,7 @@ public sealed partial class LibraryPage : Page
             var path = item.ThumbPath;
             if (string.IsNullOrEmpty(path)
                 && !string.IsNullOrEmpty(item.ContentHash)
-                && !item.IsOnlineOnly
+                && !CloudFile.IsOnlineOnly(item.Path)
                 && !string.IsNullOrEmpty(item.Path))
             {
                 var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
@@ -778,7 +778,7 @@ public sealed partial class LibraryPage : Page
 
             if (!GalleryMedia.ShouldUpgradeThumb(
                     _thumbsMayUpgrade,
-                    item.IsOnlineOnly,
+                    CloudFile.IsOnlineOnly(item.Path),
                     item.IsOrphan,
                     item.Path,
                     item.ContentHash,

@@ -780,7 +780,7 @@ public partial class LibraryViewModel : ObservableObject
         var files = new List<IStorageItem>();
         foreach (var path in paths)
         {
-            if (!File.Exists(path))
+            if (!CloudFile.Exists(path))
             {
                 continue;
             }
@@ -853,7 +853,7 @@ public partial class LibraryViewModel : ObservableObject
         var moved = 0;
         foreach (var asset in targets)
         {
-            if (!File.Exists(asset.Path))
+            if (!CloudFile.Exists(asset.Path))
             {
                 continue;
             }
@@ -906,7 +906,7 @@ public partial class LibraryViewModel : ObservableObject
         var removed = new List<string>();
         foreach (var asset in targets)
         {
-            if (File.Exists(asset.Path))
+            if (CloudFile.Exists(asset.Path))
             {
                 try
                 {

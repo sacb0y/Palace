@@ -4,23 +4,46 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Detects Windows Files On-Demand / cloud placeholders without opening a stream.
-/// Uses <c>GetFileAttributes</c> flags only — never reads file bytes.
+/// Uses <c>GetFileAttributes</c> flags only — never <c>File.Exists</c> and never file bytes.
 /// </summary>
 public static class CloudFile
 {
-    /// <summary>FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS — OneDrive online-only placeholders.</summary>
+    /// <summary>FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS — not fully present locally.</summary>
     public const FileAttributes RecallOnDataAccess = (FileAttributes)0x00400000;
 
     /// <summary>FILE_ATTRIBUTE_RECALL_ON_OPEN</summary>
     public const FileAttributes RecallOnOpen = (FileAttributes)0x00040000;
 
+    /// <summary>FILE_ATTRIBUTE_PINNED — "Always keep on this device."</summary>
+    public const FileAttributes Pinned = (FileAttributes)0x00080000;
+
+    /// <summary>FILE_ATTRIBUTE_UNPINNED — "Free up space."</summary>
+    public const FileAttributes Unpinned = (FileAttributes)0x00100000;
+
     /// <summary>FILE_ATTRIBUTE_OFFLINE</summary>
     public const FileAttributes Offline = FileAttributes.Offline;
 
-    public const FileAttributes OnlineOnlyMask = RecallOnDataAccess | RecallOnOpen | Offline;
+    /// <summary>
+    /// Flags that mean a read will hydrate. <see cref="Offline"/> is not in this
+    /// mask by itself — leftover Offline on a hydrated reparse point is local.
+    /// </summary>
+    public const FileAttributes RecallMask = RecallOnDataAccess | RecallOnOpen;
 
-    public static bool IsOnlineOnly(string? path)
+    public const FileAttributes OnlineOnlyMask = RecallMask | Offline;
+
+    /// <summary>
+    /// True when the path names a file (including an On-Demand placeholder).
+    /// Uses <see cref="File.GetAttributes(string)"/> only — does not open a stream.
+    /// </summary>
+    public static bool Exists(string? path) => TryGetAttributes(path, out _);
+
+    /// <summary>
+    /// Reads file attributes without opening a stream. Returns false for missing
+    /// paths, directories, and attribute errors. Placeholders still succeed.
+    /// </summary>
+    public static bool TryGetAttributes(string? path, out FileAttributes attributes)
     {
+        attributes = default;
         if (string.IsNullOrWhiteSpace(path))
         {
             return false;
@@ -28,12 +51,8 @@ public static class CloudFile
 
         try
         {
-            if (!File.Exists(path))
-            {
-                return false;
-            }
-
-            return IsOnlineOnly(File.GetAttributes(path));
+            attributes = File.GetAttributes(path);
+            return (attributes & FileAttributes.Directory) == 0;
         }
         catch
         {
@@ -41,6 +60,59 @@ public static class CloudFile
         }
     }
 
-    public static bool IsOnlineOnly(FileAttributes attributes) =>
-        (attributes & OnlineOnlyMask) != 0;
+    public static bool IsOnlineOnly(string? path) =>
+        TryGetAttributes(path, out var attributes) && IsOnlineOnly(attributes);
+
+    /// <summary>
+    /// On-Demand / placeholder that is not fully present locally.
+    /// Recall flags always win. Pinned files are local. Hydrated cloud files keep
+    /// <see cref="FileAttributes.ReparsePoint"/> and may still show leftover
+    /// <see cref="Offline"/> — those must be read normally. Bare Offline
+    /// (legacy HSM or tests) is online-only.
+    /// </summary>
+    public static bool IsOnlineOnly(FileAttributes attributes)
+    {
+        if ((attributes & FileAttributes.Directory) != 0)
+        {
+            return false;
+        }
+
+        if ((attributes & RecallMask) != 0)
+        {
+            return true;
+        }
+
+        if ((attributes & Pinned) != 0)
+        {
+            return false;
+        }
+
+        // Hydrated OneDrive/Dropbox files stay reparse points. Treating leftover
+        // Offline on those as online-only skipped hash/thumbs on local files.
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+        {
+            return false;
+        }
+
+        return (attributes & Offline) != 0;
+    }
+
+    public static IReadOnlyList<string> FilterLocalPaths(IEnumerable<string> paths, out int skippedOnlineOnly)
+    {
+        var kept = new List<string>();
+        var skipped = 0;
+        foreach (var path in paths)
+        {
+            if (IsOnlineOnly(path))
+            {
+                skipped++;
+                continue;
+            }
+
+            kept.Add(path);
+        }
+
+        skippedOnlineOnly = skipped;
+        return kept;
+    }
 }

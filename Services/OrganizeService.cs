@@ -41,7 +41,7 @@ public sealed class OrganizeService
                 OldPath = asset.Path
             };
 
-            if (asset.IsOrphan || !File.Exists(asset.Path))
+            if (asset.IsOrphan || !CloudFile.Exists(asset.Path))
             {
                 preview.Status = "Skip";
                 preview.Note = "File is missing";
@@ -120,7 +120,7 @@ public sealed class OrganizeService
                     Directory.CreateDirectory(destDir);
                 }
 
-                if (File.Exists(item.NewPath))
+                if (CloudFile.Exists(item.NewPath))
                 {
                     item.NewPath = PathSafe.UniquePath(item.NewPath);
                 }
@@ -167,7 +167,7 @@ public sealed class OrganizeService
         {
             try
             {
-                if (File.Exists(item.NewPath))
+                if (CloudFile.Exists(item.NewPath))
                 {
                     var destDir = Path.GetDirectoryName(item.OldPath);
                     if (!string.IsNullOrEmpty(destDir))
@@ -175,7 +175,7 @@ public sealed class OrganizeService
                         Directory.CreateDirectory(destDir);
                     }
 
-                    var restore = File.Exists(item.OldPath) ? PathSafe.UniquePath(item.OldPath) : item.OldPath;
+                    var restore = CloudFile.Exists(item.OldPath) ? PathSafe.UniquePath(item.OldPath) : item.OldPath;
                     File.Move(item.NewPath, restore);
                     await _catalog.UpdateAssetPathAsync(item.AssetId, restore);
                 }
@@ -355,7 +355,7 @@ public sealed class OrganizeService
         var name = Path.GetFileNameWithoutExtension(desired);
         var ext = Path.GetExtension(desired);
         var n = 2;
-        while ((File.Exists(candidate) && !string.Equals(candidate, currentPath, StringComparison.OrdinalIgnoreCase))
+        while ((CloudFile.Exists(candidate) && !string.Equals(candidate, currentPath, StringComparison.OrdinalIgnoreCase))
                || used.Contains(candidate))
         {
             candidate = Path.Combine(dir, $"{name} ({n}){ext}");

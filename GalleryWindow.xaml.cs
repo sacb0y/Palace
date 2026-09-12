@@ -85,7 +85,7 @@ public sealed partial class GalleryWindow : Window
                 return new BitmapImage { UriSource = new Uri(uri, UriKind.Absolute) };
             }
 
-            if (!File.Exists(uri))
+            if (!CloudFile.Exists(uri) || CloudFile.IsOnlineOnly(uri))
             {
                 return null;
             }

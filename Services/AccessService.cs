@@ -15,24 +15,8 @@ public sealed class AccessService
 
     public static bool WouldHydrateOnOpen(string? path) => CloudFile.IsOnlineOnly(path);
 
-    public static IReadOnlyList<string> FilterCopyPaths(IEnumerable<string> paths, out int skippedOnlineOnly)
-    {
-        var kept = new List<string>();
-        var skipped = 0;
-        foreach (var path in paths)
-        {
-            if (ShouldSkipClipboardCopy(path))
-            {
-                skipped++;
-                continue;
-            }
-
-            kept.Add(path);
-        }
-
-        skippedOnlineOnly = skipped;
-        return kept;
-    }
+    public static IReadOnlyList<string> FilterCopyPaths(IEnumerable<string> paths, out int skippedOnlineOnly) =>
+        CloudFile.FilterLocalPaths(paths, out skippedOnlineOnly);
 
     public async Task<StorageFolder?> PickFolderAsync()
     {

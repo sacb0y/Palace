@@ -23,6 +23,11 @@ public sealed class MetadataExtractorService
 {
     public GenerationMetadata Extract(string path)
     {
+        if (Helpers.CloudFile.IsOnlineOnly(path))
+        {
+            return new GenerationMetadata();
+        }
+
         var meta = new GenerationMetadata();
         var ext = Path.GetExtension(path);
         try
