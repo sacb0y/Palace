@@ -35,6 +35,7 @@ public partial class TagsViewModel : ObservableObject
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
     public ObservableCollection<TagBoardGroup> Board { get; } = [];
     public ObservableCollection<AssetItem> Assets { get; } = [];
+    public ObservableCollection<TagMosaicSection> MosaicGroups { get; } = [];
     public ObservableCollection<TagGroupPick> ParentGroups { get; } = [];
     public ObservableCollection<TagGroupPick> AvailableGroups { get; } = [];
     public ObservableCollection<TagGroupPick> ImpliedTags { get; } = [];
@@ -953,6 +954,7 @@ public partial class TagsViewModel : ObservableObject
                 }
 
                 Assets.Clear();
+                MosaicGroups.Clear();
                 MosaicReset?.Invoke();
             });
             return;
@@ -975,12 +977,27 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
+            var assigned = await _catalog.GetAssignedTagIdsByAssetAsync(assets.Select(a => a.Id));
+            if (epoch != _mosaicEpoch)
+            {
+                return;
+            }
+
+            var tags = _tags;
+            var memberships = _memberships;
             var items = await Task.Run(() => assets.Select(a => AssetItemMapper.FromAsset(a, _thumbs)).ToList());
             if (epoch != _mosaicEpoch)
             {
                 return;
             }
 
+            var buckets = await Task.Run(() => TagMosaicGroups.Group(
+                tagId,
+                items,
+                item => item.Id,
+                assigned,
+                tags,
+                memberships));
             await UiDispatch.RunAsync(() =>
             {
                 if (epoch != _mosaicEpoch)
@@ -989,32 +1006,45 @@ public partial class TagsViewModel : ObservableObject
                 }
 
                 Assets.Clear();
+                MosaicGroups.Clear();
                 MosaicReset?.Invoke();
             });
 
-            for (var i = 0; i < items.Count; i += MosaicChunkSize)
+            foreach (var bucket in buckets)
             {
-                if (epoch != _mosaicEpoch)
-                {
-                    return;
-                }
-
-                var end = Math.Min(i + MosaicChunkSize, items.Count);
-                await UiDispatch.RunAsync(() =>
+                TagMosaicSection? section = null;
+                for (var i = 0; i < bucket.Items.Count; i += MosaicChunkSize)
                 {
                     if (epoch != _mosaicEpoch)
                     {
                         return;
                     }
 
-                    for (var n = i; n < end; n++)
+                    var end = Math.Min(i + MosaicChunkSize, bucket.Items.Count);
+                    await UiDispatch.RunAsync(() =>
                     {
-                        Assets.Add(items[n]);
-                    }
+                        if (epoch != _mosaicEpoch)
+                        {
+                            return;
+                        }
 
-                    MosaicChunkAppended?.Invoke();
-                });
-                await UiDispatch.YieldAsync();
+                        section ??= new TagMosaicSection { Header = bucket.Header };
+                        if (i == 0)
+                        {
+                            MosaicGroups.Add(section);
+                        }
+
+                        for (var n = i; n < end; n++)
+                        {
+                            section.Assets.Add(bucket.Items[n]);
+                            Assets.Add(bucket.Items[n]);
+                        }
+
+                        section.NotifyCount();
+                        MosaicChunkAppended?.Invoke();
+                    });
+                    await UiDispatch.YieldAsync();
+                }
             }
         }
         finally

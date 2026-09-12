@@ -278,78 +278,104 @@
                 AutomationProperties.AutomationId="TxtTagAssetCount"
                 Style="{StaticResource BodyTextBlockStyle}"
                 Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}" />
-            <ItemsView
+            <ScrollViewer
                 x:Name="GrdTagAssets"
                 Grid.Row="1"
                 AutomationProperties.AutomationId="GrdTagAssets"
                 AutomationProperties.Name="Tagged images"
-                IsItemInvokedEnabled="False"
                 IsTabStop="True"
-                ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
                 PreviewKeyDown="GrdTagAssets_KeyDown"
-                SelectionMode="Single">
-                <ItemsView.Layout>
-                    <LinedFlowLayout
-                        x:Name="TagMosaicLayout"
-                        ItemsInfoRequested="TagMosaicLayout_ItemsInfoRequested"
-                        ItemsStretch="Fill"
-                        LineHeight="140"
-                        LineSpacing="8"
-                        MinItemSpacing="8" />
-                </ItemsView.Layout>
-                <ItemsView.ItemTemplate>
-                    <DataTemplate x:DataType="models:AssetItem">
-                        <ItemContainer
-                            AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
-                            DoubleTapped="TagAsset_DoubleTapped"
-                            IsDoubleTapEnabled="True"
-                            RightTapped="TagAsset_RightTapped"
-                            Tag="{x:Bind Id, Mode=OneWay}">
-                            <ItemContainer.ContextFlyout>
-                                <MenuFlyout Opening="TagAssetMenu_Opening">
-                                    <MenuFlyoutItem
-                                        AutomationProperties.AutomationId="MnuTagOpen"
-                                        Command="{x:Bind pages:TagsPage.GetOpenAssetCommand()}"
-                                        CommandParameter="{x:Bind}"
-                                        Text="Open">
-                                        <MenuFlyoutItem.Icon>
-                                            <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
-                                        </MenuFlyoutItem.Icon>
-                                    </MenuFlyoutItem>
-                                </MenuFlyout>
-                            </ItemContainer.ContextFlyout>
-                            <Grid Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                                <Image
-                                    DataContextChanged="TagTileImage_DataContextChanged"
-                                    DoubleTapped="TagAsset_DoubleTapped"
-                                    IsDoubleTapEnabled="True"
-                                    Loaded="TagTileImage_Loaded"
-                                    Source="{x:Bind ThumbImage, Mode=OneWay}"
-                                    Stretch="UniformToFill"
-                                    Tag="{x:Bind Id, Mode=OneWay}"
-                                    Unloaded="TagTileImage_Unloaded" />
-                                <StackPanel
-                                    Margin="8"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    IsHitTestVisible="False"
-                                    Spacing="4"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
-                                    <ic:FluentIcon
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Icon="{x:Bind helpers:FluentGlyph.Placeholder(Kind), Mode=OneWay}"
-                                        IconSize="Size32"
-                                        IconVariant="Regular" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="Online" />
-                                </StackPanel>
-                            </Grid>
-                        </ItemContainer>
-                    </DataTemplate>
-                </ItemsView.ItemTemplate>
-            </ItemsView>
+                VerticalScrollBarVisibility="Auto">
+                <ItemsControl
+                    x:Name="RepTagMosaic"
+                    AutomationProperties.AutomationId="RepTagMosaic"
+                    AutomationProperties.Name="Tag path groups"
+                    ItemsSource="{x:Bind ViewModel.MosaicGroups, Mode=OneWay}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagMosaicSection">
+                            <StackPanel Margin="0,0,0,16" Spacing="8">
+                                <TextBlock
+                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                    Text="{x:Bind CountLabel, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                                <ItemsRepeater ItemsSource="{x:Bind Assets, Mode=OneWay}">
+                                    <ItemsRepeater.Layout>
+                                        <UniformGridLayout
+                                            ItemsStretch="Fill"
+                                            MinColumnSpacing="8"
+                                            MinItemHeight="140"
+                                            MinItemWidth="148"
+                                            MinRowSpacing="8" />
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
+                                        <DataTemplate x:DataType="models:AssetItem">
+                                            <Grid
+                                                Width="148"
+                                                Height="140"
+                                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                                AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
+                                                DoubleTapped="TagAsset_DoubleTapped"
+                                                GotFocus="TagAsset_GotFocus"
+                                                IsDoubleTapEnabled="True"
+                                                IsTabStop="True"
+                                                RightTapped="TagAsset_RightTapped"
+                                                Tag="{x:Bind Id, Mode=OneWay}"
+                                                Tapped="TagAsset_Tapped"
+                                                UseSystemFocusVisuals="True">
+                                                <Grid.ContextFlyout>
+                                                    <MenuFlyout Opening="TagAssetMenu_Opening">
+                                                        <MenuFlyoutItem
+                                                            AutomationProperties.AutomationId="MnuTagOpen"
+                                                            Command="{x:Bind pages:TagsPage.GetOpenAssetCommand()}"
+                                                            CommandParameter="{x:Bind}"
+                                                            Text="Open">
+                                                            <MenuFlyoutItem.Icon>
+                                                                <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                                            </MenuFlyoutItem.Icon>
+                                                        </MenuFlyoutItem>
+                                                    </MenuFlyout>
+                                                </Grid.ContextFlyout>
+                                                <Image
+                                                    DataContextChanged="TagTileImage_DataContextChanged"
+                                                    DoubleTapped="TagAsset_DoubleTapped"
+                                                    IsDoubleTapEnabled="True"
+                                                    Loaded="TagTileImage_Loaded"
+                                                    Source="{x:Bind ThumbImage, Mode=OneWay}"
+                                                    Stretch="UniformToFill"
+                                                    Tag="{x:Bind Id, Mode=OneWay}"
+                                                    Unloaded="TagTileImage_Unloaded" />
+                                                <StackPanel
+                                                    Margin="8"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    IsHitTestVisible="False"
+                                                    Spacing="4"
+                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
+                                                    <ic:FluentIcon
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Icon="{x:Bind helpers:FluentGlyph.Placeholder(Kind), Mode=OneWay}"
+                                                        IconSize="Size32"
+                                                        IconVariant="Regular" />
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                                        Text="Online" />
+                                                </StackPanel>
+                                                <Border
+                                                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    BorderThickness="2"
+                                                    IsHitTestVisible="False"
+                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
         </Grid>
 
         <ScrollViewer

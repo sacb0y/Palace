@@ -18,6 +18,7 @@
     <Compile Include="..\Helpers\TagAlphaIndex.cs" Link="TagAlphaIndex.cs" />
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
     <Compile Include="..\Helpers\TagGroups.cs" Link="TagGroups.cs" />
+    <Compile Include="..\Helpers\TagMosaicGroups.cs" Link="TagMosaicGroups.cs" />
     <Compile Include="..\Helpers\TagNameList.cs" Link="TagNameList.cs" />
     <Compile Include="..\Helpers\TagPanelBuilder.cs" Link="TagPanelBuilder.cs" />
     <Compile Include="..\Helpers\TagSelection.cs" Link="TagSelection.cs" />
