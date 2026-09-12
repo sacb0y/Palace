@@ -1048,18 +1048,32 @@
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
                         Spacing="8">
-                        <ToggleButton
-                            x:Name="BtnGalleryImageInfo"
-                            Padding="8,4"
-                            AutomationProperties.AutomationId="BtnGalleryImageInfo"
-                            AutomationProperties.Name="Image information"
-                            IsChecked="{x:Bind ViewModel.OverlayGallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
-                            ToolTipService.ToolTip="Image information (Ctrl+D)">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
-                                <TextBlock VerticalAlignment="Center" Text="Info" />
-                            </StackPanel>
-                        </ToggleButton>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ToggleButton
+                                x:Name="BtnGalleryImageInfo"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryImageInfo"
+                                AutomationProperties.Name="Image information"
+                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
+                                ToolTipService.ToolTip="Image information (Ctrl+D)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Info" />
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton
+                                x:Name="BtnGalleryDetails"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryDetails"
+                                AutomationProperties.Name="Details"
+                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
+                                ToolTipService.ToolTip="Details (Ctrl+I)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="TextDescription" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Details" />
+                                </StackPanel>
+                            </ToggleButton>
+                        </StackPanel>
                         <Border
                             x:Name="BrdGalleryImageInfo"
                             MaxWidth="360"
@@ -1133,7 +1147,8 @@
                     Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    CornerRadius="{StaticResource OverlayCornerRadius}">
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowDetails), Mode=OneWay, FallbackValue=Collapsed}">
                     <StackPanel Spacing="4">
                     <Grid ColumnSpacing="10">
                         <Grid.ColumnDefinitions>

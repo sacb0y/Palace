@@ -24,6 +24,12 @@ public sealed class GalleryScaleTests
         Assert.Equal(ImageScaling.Fill, GalleryScale.FromKeyCode(GalleryScale.KeyNumberPad3));
         Assert.Null(GalleryScale.FromKeyCode(65));
         Assert.Equal(68, GalleryScale.KeyLetterD);
+        Assert.Equal(73, GalleryScale.KeyLetterI);
+        Assert.True(GalleryScale.TogglesImageInfo(true, GalleryScale.KeyLetterD));
+        Assert.False(GalleryScale.TogglesImageInfo(false, GalleryScale.KeyLetterD));
+        Assert.True(GalleryScale.TogglesDetails(true, GalleryScale.KeyLetterI));
+        Assert.False(GalleryScale.TogglesDetails(true, GalleryScale.KeyLetterD));
+        Assert.False(GalleryScale.TogglesDetails(false, GalleryScale.KeyLetterI));
     }
 
     [Fact]

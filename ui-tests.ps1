@@ -713,6 +713,10 @@ Test-UI 'Double-click opens gallery overlay' {
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleFit missing' }
     winapp ui wait-for 'BtnGalleryImageInfo' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryImageInfo missing' }
+    winapp ui wait-for 'BtnGalleryDetails' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryDetails missing' }
+    winapp ui wait-for 'BrdGalleryOverlayInfo' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'BrdGalleryOverlayInfo missing' }
     winapp ui wait-for 'TxtGalleryOverlayDetails' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'TxtGalleryOverlayDetails missing' }
 }
@@ -776,6 +780,10 @@ Test-UI 'Open in new window then close' {
     if ($LASTEXITCODE -ne 0) { throw 'GrdGalleryWindow did not open' }
     winapp ui wait-for 'BtnGalleryWindowClose' -a $AppPid -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowClose missing' }
+    winapp ui wait-for 'BtnGalleryWindowDetails' -a $AppPid -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowDetails missing' }
+    winapp ui wait-for 'ScrGalleryWindowDetails' -a $AppPid -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'ScrGalleryWindowDetails missing' }
     winapp ui wait-for 'LstGalleryWindowTags' -a $AppPid -t 3000
     winapp ui screenshot -a $AppPid -o 'screenshots/08-gallery-window.png' 2>$null
     winapp ui invoke 'BtnGalleryWindowClose' -a $AppPid

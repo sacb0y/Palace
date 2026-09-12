@@ -26,7 +26,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <TitleBar
@@ -39,122 +38,109 @@
         </TitleBar>
 
         <Grid Grid.Row="1">
-            <controls:GalleryStillSurface
-                x:Name="SrfWindowStill"
-                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />
-            <MediaPlayerElement
-                x:Name="MpeGallery"
-                AreTransportControlsEnabled="True"
-                AutoPlay="False"
-                AutomationProperties.AutomationId="MpeGalleryWindow"
-                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}" />
-            <TextBlock
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center"
-                Style="{StaticResource BodyTextBlockStyle}"
-                Text="Missing"
-                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsMissing), Mode=OneWay}" />
-
-            <StackPanel
-                Margin="16,16,0,0"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
-                Spacing="8">
-                <ToggleButton
-                    x:Name="BtnGalleryWindowImageInfo"
-                    Padding="8,4"
-                    AutomationProperties.AutomationId="BtnGalleryWindowImageInfo"
-                    AutomationProperties.Name="Image information"
-                    IsChecked="{x:Bind Gallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
-                    ToolTipService.ToolTip="Image information (Ctrl+D)">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Info" />
-                    </StackPanel>
-                </ToggleButton>
-                <Border
-                    x:Name="BrdGalleryWindowImageInfo"
-                    MaxWidth="360"
-                    Padding="10,6"
-                    AutomationProperties.AutomationId="BrdGalleryWindowImageInfo"
-                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource OverlayCornerRadius}"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowImageInfo), Mode=OneWay}">
-                    <TextBlock
-                        AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
-                        AutomationProperties.Name="Image information"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
-                        TextWrapping="Wrap" />
-                </Border>
-            </StackPanel>
-            <Button
-                x:Name="BtnGalleryWindowPrev"
-                MinWidth="48"
-                MinHeight="48"
-                Margin="16,0,0,0"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Center"
-                AutomationProperties.AutomationId="BtnGalleryWindowPrev"
-                AutomationProperties.Name="Previous"
-                Command="{x:Bind Gallery.GoPreviousCommand}"
-                IsEnabled="{x:Bind Gallery.CanGoPrevious, Mode=OneWay}"
-                ToolTipService.ToolTip="Previous">
-                <ic:FluentIcon Icon="ChevronLeft" IconSize="Size20" IconVariant="Regular" />
-            </Button>
-            <Button
-                x:Name="BtnGalleryWindowNext"
-                MinWidth="48"
-                MinHeight="48"
-                Margin="0,0,16,0"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Center"
-                AutomationProperties.AutomationId="BtnGalleryWindowNext"
-                AutomationProperties.Name="Next"
-                Command="{x:Bind Gallery.GoNextCommand}"
-                IsEnabled="{x:Bind Gallery.CanGoNext, Mode=OneWay}"
-                ToolTipService.ToolTip="Next">
-                <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
-            </Button>
-        </Grid>
-
-        <Grid
-            Grid.Row="2"
-            Padding="16,12"
-            Background="{ThemeResource LayerFillColorDefaultBrush}"
-            ColumnSpacing="12"
-            RowSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Spacing="8">
+
+            <Grid Grid.Column="0">
+                <controls:GalleryStillSurface
+                    x:Name="SrfWindowStill"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />
+                <MediaPlayerElement
+                    x:Name="MpeGallery"
+                    AreTransportControlsEnabled="True"
+                    AutoPlay="False"
+                    AutomationProperties.AutomationId="MpeGalleryWindow"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}" />
                 <TextBlock
-                    Style="{StaticResource BodyStrongTextBlockStyle}"
-                    Text="{x:Bind Gallery.Title, Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis" />
-                <TextBlock
-                    AutomationProperties.AutomationId="TxtGalleryWindowDetails"
-                    AutomationProperties.Name="Image details"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="{x:Bind Gallery.DetailsText, Mode=OneWay}"
-                    TextWrapping="Wrap"
-                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.DetailsText), Mode=OneWay}" />
-                <TextBlock
-                    AutomationProperties.AutomationId="TxtGalleryWindowHdr"
-                    AutomationProperties.Name="HDR status"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="{x:Bind Gallery.HdrStatus, Mode=OneWay}"
-                    TextWrapping="Wrap"
-                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.HdrStatus), Mode=OneWay}" />
-                <TextBlock
-                    AutomationProperties.AutomationId="TxtGalleryPreviewStatus"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="{x:Bind Gallery.PreviewStatus, Mode=OneWay}"
-                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.PreviewStatus), Mode=OneWay}" />
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="Missing"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsMissing), Mode=OneWay}" />
+
                 <StackPanel
+                    Margin="16,16,0,0"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ToggleButton
+                            x:Name="BtnGalleryWindowImageInfo"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowImageInfo"
+                            AutomationProperties.Name="Image information"
+                            IsChecked="{x:Bind Gallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
+                            ToolTipService.ToolTip="Image information (Ctrl+D)">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Info" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ToggleButton
+                            x:Name="BtnGalleryWindowDetails"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowDetails"
+                            AutomationProperties.Name="Details"
+                            IsChecked="{x:Bind Gallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
+                            ToolTipService.ToolTip="Details (Ctrl+I)">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="PanelRight" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Details" />
+                            </StackPanel>
+                        </ToggleButton>
+                    </StackPanel>
+                    <Border
+                        x:Name="BrdGalleryWindowImageInfo"
+                        MaxWidth="360"
+                        Padding="10,6"
+                        AutomationProperties.AutomationId="BrdGalleryWindowImageInfo"
+                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource OverlayCornerRadius}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowImageInfo), Mode=OneWay}">
+                        <TextBlock
+                            AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
+                            AutomationProperties.Name="Image information"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+                <Button
+                    x:Name="BtnGalleryWindowPrev"
+                    MinWidth="48"
+                    MinHeight="48"
+                    Margin="16,0,0,0"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnGalleryWindowPrev"
+                    AutomationProperties.Name="Previous"
+                    Command="{x:Bind Gallery.GoPreviousCommand}"
+                    IsEnabled="{x:Bind Gallery.CanGoPrevious, Mode=OneWay}"
+                    ToolTipService.ToolTip="Previous">
+                    <ic:FluentIcon Icon="ChevronLeft" IconSize="Size20" IconVariant="Regular" />
+                </Button>
+                <Button
+                    x:Name="BtnGalleryWindowNext"
+                    MinWidth="48"
+                    MinHeight="48"
+                    Margin="0,0,16,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnGalleryWindowNext"
+                    AutomationProperties.Name="Next"
+                    Command="{x:Bind Gallery.GoNextCommand}"
+                    IsEnabled="{x:Bind Gallery.CanGoNext, Mode=OneWay}"
+                    ToolTipService.ToolTip="Next">
+                    <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
+                </Button>
+                <StackPanel
+                    Margin="16"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
                     Orientation="Horizontal"
                     Spacing="8"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanScale), Mode=OneWay}">
@@ -221,117 +207,167 @@
                         Text="{x:Bind Gallery.PeakOverrideLabel, Mode=OneWay}"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowPeakSlider), Mode=OneWay}" />
                 </StackPanel>
-                <ItemsControl
-                    x:Name="LstGalleryWindowTags"
-                    AutomationProperties.AutomationId="LstGalleryWindowTags"
-                    AutomationProperties.Name="Tags"
-                    ItemsSource="{x:Bind Gallery.Tags, Mode=OneWay}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <StackPanel Orientation="Horizontal" Spacing="8" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="models:AssignedTagItem">
-                            <Border
-                                Padding="8,4"
-                                Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                BorderThickness="1"
-                                CornerRadius="{StaticResource ControlCornerRadius}"
-                                Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock
-                                        Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind TagName, Mode=OneWay}" />
-                                    <TextBlock
-                                        Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind CountLabel, Mode=OneWay}"
-                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
                 <StackPanel
-                    AutomationProperties.AutomationId="PnlGalleryWindowGeneration"
-                    Spacing="8"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowGeneration), Mode=OneWay}">
-                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Generation" />
-                    <TextBlock
-                        AutomationProperties.AutomationId="TxtGalleryWindowModel"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewModel), Mode=OneWay}"
-                        TextWrapping="Wrap" />
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Prompt" />
-                    <ScrollViewer
-                        AutomationProperties.AutomationId="ScrGalleryWindowPrompt"
-                        MaxHeight="160"
-                        HorizontalScrollBarVisibility="Disabled"
-                        VerticalScrollBarVisibility="Auto">
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtGalleryWindowPrompt"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewPrompt), Mode=OneWay}"
-                            TextWrapping="Wrap" />
-                    </ScrollViewer>
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Negative" />
-                    <ScrollViewer
-                        AutomationProperties.AutomationId="ScrGalleryWindowNegative"
-                        MaxHeight="100"
-                        HorizontalScrollBarVisibility="Disabled"
-                        VerticalScrollBarVisibility="Auto">
-                        <TextBlock
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewNegative), Mode=OneWay}"
-                            TextWrapping="Wrap" />
-                    </ScrollViewer>
-                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Seed" />
-                    <TextBlock
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewSeed), Mode=OneWay}" />
+                    Margin="16"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Button
+                        x:Name="BtnGalleryDownload"
+                        AutomationProperties.AutomationId="BtnGalleryDownload"
+                        AutomationProperties.Name="Download original"
+                        Command="{x:Bind Gallery.DownloadOriginalCommand}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanDownloadOriginal), Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="ArrowDownload" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Download" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="BtnGalleryOpenExplorer"
+                        AutomationProperties.AutomationId="BtnGalleryOpenExplorer"
+                        AutomationProperties.Name="Open in Explorer"
+                        Command="{x:Bind Gallery.OpenInExplorerCommand}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanOpenInExplorer), Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Open in Explorer" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="BtnGalleryWindowClose"
+                        AutomationProperties.AutomationId="BtnGalleryWindowClose"
+                        AutomationProperties.Name="Close"
+                        Click="BtnGalleryWindowClose_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Close" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
-            </StackPanel>
-            <StackPanel
+            </Grid>
+
+            <Border
+                x:Name="BrdGalleryWindowDetails"
                 Grid.Column="1"
-                VerticalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="8">
-                <Button
-                    x:Name="BtnGalleryDownload"
-                    AutomationProperties.AutomationId="BtnGalleryDownload"
-                    AutomationProperties.Name="Download original"
-                    Command="{x:Bind Gallery.DownloadOriginalCommand}"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanDownloadOriginal), Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="ArrowDownload" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Download" />
+                Width="360"
+                AutomationProperties.AutomationId="BrdGalleryWindowDetails"
+                AutomationProperties.Name="Details"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1,0,0,0"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowDetails), Mode=OneWay}">
+                <ScrollViewer
+                    x:Name="ScrGalleryWindowDetails"
+                    Padding="16,12"
+                    AutomationProperties.AutomationId="ScrGalleryWindowDetails"
+                    AutomationProperties.Name="Details"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="{x:Bind Gallery.Title, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="TxtGalleryWindowDetails"
+                            AutomationProperties.Name="Image details"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Gallery.DetailsText, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.DetailsText), Mode=OneWay}" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="TxtGalleryWindowHdr"
+                            AutomationProperties.Name="HDR status"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Gallery.HdrStatus, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.HdrStatus), Mode=OneWay}" />
+                        <TextBlock
+                            AutomationProperties.AutomationId="TxtGalleryPreviewStatus"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Gallery.PreviewStatus, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.PreviewStatus), Mode=OneWay}" />
+                        <ItemsControl
+                            x:Name="LstGalleryWindowTags"
+                            AutomationProperties.AutomationId="LstGalleryWindowTags"
+                            AutomationProperties.Name="Tags"
+                            ItemsSource="{x:Bind Gallery.Tags, Mode=OneWay}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <VariableSizedWrapGrid
+                                        ItemHeight="32"
+                                        MaximumRowsOrColumns="0"
+                                        Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:AssignedTagItem">
+                                    <Border
+                                        Padding="8,4"
+                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="{StaticResource ControlCornerRadius}"
+                                        Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock
+                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind TagName, Mode=OneWay}" />
+                                            <TextBlock
+                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind CountLabel, Mode=OneWay}"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <StackPanel
+                            AutomationProperties.AutomationId="PnlGalleryWindowGeneration"
+                            Spacing="8"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowGeneration), Mode=OneWay}">
+                            <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Generation" />
+                            <TextBlock
+                                AutomationProperties.AutomationId="TxtGalleryWindowModel"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewModel), Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Prompt" />
+                            <ScrollViewer
+                                AutomationProperties.AutomationId="ScrGalleryWindowPrompt"
+                                MaxHeight="160"
+                                HorizontalScrollBarVisibility="Disabled"
+                                VerticalScrollBarVisibility="Auto">
+                                <TextBlock
+                                    AutomationProperties.AutomationId="TxtGalleryWindowPrompt"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewPrompt), Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                            </ScrollViewer>
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Negative" />
+                            <ScrollViewer
+                                AutomationProperties.AutomationId="ScrGalleryWindowNegative"
+                                MaxHeight="100"
+                                HorizontalScrollBarVisibility="Disabled"
+                                VerticalScrollBarVisibility="Auto">
+                                <TextBlock
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewNegative), Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                            </ScrollViewer>
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Seed" />
+                            <TextBlock
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewSeed), Mode=OneWay}" />
+                        </StackPanel>
                     </StackPanel>
-                </Button>
-                <Button
-                    x:Name="BtnGalleryOpenExplorer"
-                    AutomationProperties.AutomationId="BtnGalleryOpenExplorer"
-                    AutomationProperties.Name="Open in Explorer"
-                    Command="{x:Bind Gallery.OpenInExplorerCommand}"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanOpenInExplorer), Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Open in Explorer" />
-                    </StackPanel>
-                </Button>
-                <Button
-                    x:Name="BtnGalleryWindowClose"
-                    AutomationProperties.AutomationId="BtnGalleryWindowClose"
-                    AutomationProperties.Name="Close"
-                    Click="BtnGalleryWindowClose_Click">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Close" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
+                </ScrollViewer>
+            </Border>
         </Grid>
     </Grid>
 </Window>

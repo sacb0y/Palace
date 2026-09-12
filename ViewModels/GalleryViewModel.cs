@@ -156,6 +156,9 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool ShowImageInfo { get; set; } = true;
 
     [ObservableProperty]
+    public partial bool ShowDetails { get; set; } = true;
+
+    [ObservableProperty]
     public partial string ImageInfoText { get; set; } = "";
 
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
@@ -200,17 +203,26 @@ public partial class GalleryViewModel : ObservableObject
             return true;
         }
 
-        if (!controlDown || keyCode != GalleryScale.KeyLetterD)
+        if (GalleryScale.TogglesImageInfo(controlDown, keyCode))
         {
-            return false;
+            ShowImageInfo = !ShowImageInfo;
+            return true;
         }
 
-        ShowImageInfo = !ShowImageInfo;
-        return true;
+        if (GalleryScale.TogglesDetails(controlDown, keyCode))
+        {
+            ShowDetails = !ShowDetails;
+            return true;
+        }
+
+        return false;
     }
 
     [RelayCommand]
     private void ToggleImageInfo() => ShowImageInfo = !ShowImageInfo;
+
+    [RelayCommand]
+    private void ToggleDetails() => ShowDetails = !ShowDetails;
 
     public void SetHdrPresentResult(
         bool presented,
