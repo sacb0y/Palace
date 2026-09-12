@@ -22,7 +22,10 @@ public static class BindHelpers
     public static Stretch ImageStretch(ImageScaling scaling) =>
         scaling switch
         {
-            ImageScaling.Actual => Stretch.None,
+            // Actual sizes the Image to pixels/raster DIPs; Uniform scales
+            // the bitmap into that box. None would paint PixelWidth DIPs and
+            // clip at >100% DPI.
+            ImageScaling.Actual => Stretch.Uniform,
             ImageScaling.Fill => Stretch.UniformToFill,
             _ => Stretch.Uniform
         };

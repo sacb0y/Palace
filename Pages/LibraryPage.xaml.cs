@@ -618,7 +618,7 @@ public sealed partial class LibraryPage : Page
 
         var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(CoreVirtualKeyStates.Down);
-        if (ViewModel.OverlayGallery.TryHandleScaleShortcut(control, (int)e.Key))
+        if (ViewModel.OverlayGallery.TryHandleViewerShortcut(control, (int)e.Key))
         {
             e.Handled = true;
             return;

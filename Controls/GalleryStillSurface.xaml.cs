@@ -1,5 +1,7 @@
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.Helpers;
 using Palace.Services;
@@ -15,6 +17,15 @@ public sealed partial class GalleryStillSurface : UserControl
     private string? _hdrFramePath;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
+    private bool _panning;
+    private double _panLastX;
+    private double _panLastY;
+    private ImageScaling _scrollScaling;
+    private int _scrollRevision = int.MinValue;
+    private double _scrollContentW;
+    private double _scrollContentH;
+    private double _scrollViewW;
+    private double _scrollViewH;
 
     public GalleryStillSurface()
     {
@@ -42,6 +53,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         CancelInFlight();
         ClearHdrCache();
+        ResetScrollTracking();
         _gallery = gallery;
         if (_gallery is not null)
         {
@@ -58,9 +70,15 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void Gallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(GalleryViewModel.Scaling))
+        if (e.PropertyName is nameof(GalleryViewModel.Scaling)
+            or nameof(GalleryViewModel.PeakOverrideEnabled)
+            or nameof(GalleryViewModel.PeakOverrideNits))
         {
-            ApplyScaleLayout();
+            if (e.PropertyName is nameof(GalleryViewModel.Scaling))
+            {
+                ApplyScaleLayout();
+            }
+
             PresentCached();
             return;
         }
@@ -192,11 +210,21 @@ public sealed partial class GalleryStillSurface : UserControl
         ImgStill.Visibility = Visibility.Visible;
         var (dipW, dipH) = HdrPanelDips();
         var scale = XamlRoot?.RasterizationScale ?? 1.0;
-        var presented = _presenter.TryPresent(frame, gallery.Scaling, (float)scale, dipW, dipH);
+        float? peakOverride = gallery.PeakOverrideEnabled
+            ? (float)gallery.PeakOverrideNits
+            : null;
+        var presented = _presenter.TryPresent(
+            frame, gallery.Scaling, (float)scale, dipW, dipH, peakOverride);
         if (presented)
         {
             ImgStill.Visibility = Visibility.Collapsed;
-            gallery.SetHdrPresentResult(true, _presenter.DisplayIsHdr);
+            gallery.SetHdrPresentResult(
+                true,
+                _presenter.DisplayIsHdr,
+                _presenter.DisplayPeakNits,
+                frame.MaxNits,
+                frame.AvgNits,
+                frame.MinNits);
             return;
         }
 
@@ -261,24 +289,23 @@ public sealed partial class GalleryStillSurface : UserControl
 
         double width;
         double height;
-        if (scrolls)
+        var viewW = ScrStill.ActualWidth;
+        var viewH = ScrStill.ActualHeight;
+        if (scaling == ImageScaling.Actual)
         {
             var (iw, ih) = StillPixelSize();
-            if (iw > 0 && ih > 0)
-            {
-                width = iw;
-                height = ih;
-            }
-            else
-            {
-                width = double.NaN;
-                height = double.NaN;
-            }
+            var raster = XamlRoot?.RasterizationScale ?? 1.0;
+            (width, height) = GalleryScale.ActualDipSize(iw, ih, raster);
+        }
+        else if (scaling == ImageScaling.Fill)
+        {
+            var (iw, ih) = StillPixelSize();
+            (width, height) = GalleryScale.FillCoverDipSize(iw, ih, viewW, viewH);
         }
         else
         {
-            width = ScrStill.ActualWidth;
-            height = ScrStill.ActualHeight;
+            width = viewW;
+            height = viewH;
             if (width <= 1 || height <= 1)
             {
                 width = double.NaN;
@@ -292,7 +319,57 @@ public sealed partial class GalleryStillSurface : UserControl
         ImgStill.Height = height;
         ScpHdr.Width = width;
         ScpHdr.Height = height;
+        SyncScrollOffset(scaling, width, height, viewW, viewH);
     }
+
+    private void SyncScrollOffset(
+        ImageScaling scaling,
+        double contentW,
+        double contentH,
+        double viewW,
+        double viewH)
+    {
+        if (double.IsNaN(contentW) || double.IsNaN(contentH) || contentW <= 1 || contentH <= 1
+            || viewW <= 1 || viewH <= 1)
+        {
+            return;
+        }
+
+        var revision = _gallery?.StillRevision ?? 0;
+        if (scaling == _scrollScaling
+            && revision == _scrollRevision
+            && NearlyEqual(contentW, _scrollContentW)
+            && NearlyEqual(contentH, _scrollContentH)
+            && NearlyEqual(viewW, _scrollViewW)
+            && NearlyEqual(viewH, _scrollViewH))
+        {
+            return;
+        }
+
+        _scrollScaling = scaling;
+        _scrollRevision = revision;
+        _scrollContentW = contentW;
+        _scrollContentH = contentH;
+        _scrollViewW = viewW;
+        _scrollViewH = viewH;
+
+        var (horizontal, vertical) = GalleryScale.InitialScrollOffset(
+            scaling, contentW, contentH, viewW, viewH);
+        ScrStill.UpdateLayout();
+        ScrStill.ChangeView(horizontal, vertical, null, true);
+    }
+
+    private void ResetScrollTracking()
+    {
+        _scrollRevision = int.MinValue;
+        _scrollContentW = 0;
+        _scrollContentH = 0;
+        _scrollViewW = 0;
+        _scrollViewH = 0;
+    }
+
+    private static bool NearlyEqual(double a, double b) =>
+        Math.Abs(a - b) < 0.5;
 
     private (int Width, int Height) StillPixelSize()
     {
@@ -303,7 +380,85 @@ public sealed partial class GalleryStillSurface : UserControl
             return (frame.Width, frame.Height);
         }
 
+        if (ImgStill.Source is BitmapImage bmp && bmp.PixelWidth > 0 && bmp.PixelHeight > 0)
+        {
+            return (bmp.PixelWidth, bmp.PixelHeight);
+        }
+
         return (0, 0);
+    }
+
+    private void ImgStill_ImageOpened(object sender, RoutedEventArgs e)
+    {
+        if (_gallery?.Scaling is ImageScaling.Actual or ImageScaling.Fill)
+        {
+            ApplyScaleLayout();
+        }
+    }
+
+    private void ScrStill_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit)
+            || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(ScrStill);
+        if (!point.Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _panning = true;
+        _panLastX = point.Position.X;
+        _panLastY = point.Position.Y;
+        ScrStill.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void ScrStill_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_panning)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(ScrStill);
+        if (!point.Properties.IsLeftButtonPressed)
+        {
+            EndPan(e.Pointer);
+            return;
+        }
+
+        var (horizontal, vertical) = GalleryScale.DragPan(
+            ScrStill.HorizontalOffset,
+            ScrStill.VerticalOffset,
+            point.Position.X - _panLastX,
+            point.Position.Y - _panLastY,
+            ScrStill.ScrollableWidth,
+            ScrStill.ScrollableHeight);
+        _panLastX = point.Position.X;
+        _panLastY = point.Position.Y;
+        ScrStill.ChangeView(horizontal, vertical, null, true);
+        e.Handled = true;
+    }
+
+    private void ScrStill_PointerReleased(object sender, PointerRoutedEventArgs e) =>
+        EndPan(e.Pointer);
+
+    private void ScrStill_PointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
+        _panning = false;
+
+    private void EndPan(Pointer pointer)
+    {
+        if (!_panning)
+        {
+            return;
+        }
+
+        _panning = false;
+        ScrStill.ReleasePointerCapture(pointer);
     }
 
     private static BitmapImage? ToStillImage(string? path)

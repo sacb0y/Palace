@@ -711,6 +711,8 @@ Test-UI 'Double-click opens gallery overlay' {
     winapp ui wait-for 'LstGalleryOverlayTags' @(WinArgs) -t 2000
     winapp ui wait-for 'BtnGalleryScaleFit' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleFit missing' }
+    winapp ui wait-for 'BtnGalleryImageInfo' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryImageInfo missing' }
     winapp ui wait-for 'TxtGalleryOverlayDetails' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'TxtGalleryOverlayDetails missing' }
 }

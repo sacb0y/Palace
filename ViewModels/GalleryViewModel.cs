@@ -93,6 +93,21 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool IsScaleFill { get; set; }
 
     [ObservableProperty]
+    public partial bool PeakOverrideEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial double PeakOverrideNits { get; set; } = GalleryPresent.SdrReferenceNits;
+
+    [ObservableProperty]
+    public partial bool ShowPeakOverride { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowPeakSlider { get; set; }
+
+    [ObservableProperty]
+    public partial string PeakOverrideLabel { get; set; } = GalleryPresent.PeakNitsLabel(GalleryPresent.SdrReferenceNits);
+
+    [ObservableProperty]
     public partial HdrProbe CurrentProbe { get; set; } = HdrProbe.None;
 
     /// <summary>
@@ -105,6 +120,14 @@ public partial class GalleryViewModel : ObservableObject
     public bool HdrPresented { get; private set; }
 
     public bool DisplayIsHdr { get; private set; }
+
+    public float DisplayPeakNits { get; private set; }
+
+    public float ContentMaxNits { get; private set; }
+
+    public float ContentAvgNits { get; private set; }
+
+    public float ContentMinNits { get; private set; }
 
     [ObservableProperty]
     public partial string? PreviewModel { get; set; }
@@ -120,6 +143,12 @@ public partial class GalleryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool ShowGeneration { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowImageInfo { get; set; } = true;
+
+    [ObservableProperty]
+    public partial string ImageInfoText { get; set; } = "";
 
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
 
@@ -156,11 +185,90 @@ public partial class GalleryViewModel : ObservableObject
         return true;
     }
 
-    public void SetHdrPresentResult(bool presented, bool displayHdr)
+    public bool TryHandleViewerShortcut(bool controlDown, int keyCode)
+    {
+        if (TryHandleScaleShortcut(controlDown, keyCode))
+        {
+            return true;
+        }
+
+        if (!controlDown || keyCode != GalleryScale.KeyLetterD)
+        {
+            return false;
+        }
+
+        ShowImageInfo = !ShowImageInfo;
+        return true;
+    }
+
+    [RelayCommand]
+    private void ToggleImageInfo() => ShowImageInfo = !ShowImageInfo;
+
+    public void SetHdrPresentResult(
+        bool presented,
+        bool displayHdr,
+        float displayPeakNits = 0,
+        float maxNits = 0,
+        float avgNits = 0,
+        float minNits = 0)
     {
         HdrPresented = presented;
         DisplayIsHdr = displayHdr;
-        HdrStatus = GalleryPresent.StatusLine(CurrentProbe, presented, displayHdr) ?? "";
+        DisplayPeakNits = displayPeakNits;
+        ContentMaxNits = maxNits;
+        ContentAvgNits = avgNits;
+        ContentMinNits = minNits;
+        RefreshHdrStatus();
+    }
+
+    partial void OnPeakOverrideEnabledChanged(bool value)
+    {
+        ShowPeakSlider = ShowPeakOverride && value;
+        PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)PeakOverrideNits);
+        RefreshHdrStatus();
+    }
+
+    partial void OnPeakOverrideNitsChanged(double value)
+    {
+        PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)value);
+        if (PeakOverrideEnabled)
+        {
+            RefreshHdrStatus();
+        }
+    }
+
+    private void RefreshHdrStatus()
+    {
+        HdrStatus = GalleryPresent.StatusLine(
+            CurrentProbe,
+            HdrPresented,
+            DisplayIsHdr,
+            PeakOverrideEnabled,
+            (float)PeakOverrideNits) ?? "";
+        RefreshImageInfo();
+    }
+
+    private void RefreshImageInfo()
+    {
+        var item = Current;
+        ImageInfoText = GalleryPresent.ImageInfoText(new GalleryImageInfo(
+            item?.FileName,
+            item?.FileSize,
+            item?.Width,
+            item?.Height,
+            CurrentProbe,
+            HdrStatus,
+            HdrPresented && ContentMaxNits > 0 ? ContentMaxNits : null,
+            HdrPresented && ContentMaxNits > 0 ? ContentAvgNits : null,
+            HdrPresented && ContentMaxNits > 0 ? ContentMinNits : null,
+            HdrPresented && DisplayPeakNits > 0 ? DisplayPeakNits : null));
+    }
+
+    private void UpdatePeakOverrideVisibility(bool canPresentHdr)
+    {
+        ShowPeakOverride = canPresentHdr;
+        ShowPeakSlider = canPresentHdr && PeakOverrideEnabled;
+        PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)PeakOverrideNits);
     }
 
     [RelayCommand]
@@ -284,6 +392,8 @@ public partial class GalleryViewModel : ObservableObject
                 DetailsText = "";
                 HdrStatus = "";
                 HdrPresented = false;
+                UpdatePeakOverrideVisibility(false);
+                RefreshImageInfo();
                 ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
                 Tags.Clear();
                 StillRevision++;
@@ -374,7 +484,9 @@ public partial class GalleryViewModel : ObservableObject
             CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
             HdrPresented = false;
             DetailsText = GalleryPresent.DetailsLine(item.FileName, item.Width, item.Height, item.Kind, item.FileSize);
-            HdrStatus = GalleryPresent.StatusLine(probe, false, false) ?? "";
+            UpdatePeakOverrideVisibility(probe.CanPresentHdr);
+            HdrStatus = GalleryPresent.StatusLine(probe, false, false, PeakOverrideEnabled, (float)PeakOverrideNits) ?? "";
+            RefreshImageInfo();
             ApplyGenerationPreview(generation);
 
             Tags.Clear();
