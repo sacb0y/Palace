@@ -709,6 +709,10 @@ Test-UI 'Double-click opens gallery overlay' {
     winapp ui wait-for 'BtnGalleryClose' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryClose missing' }
     winapp ui wait-for 'LstGalleryOverlayTags' @(WinArgs) -t 2000
+    winapp ui wait-for 'BtnGalleryScaleFit' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleFit missing' }
+    winapp ui wait-for 'TxtGalleryOverlayDetails' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'TxtGalleryOverlayDetails missing' }
 }
 
 New-Item -ItemType Directory -Force -Path 'screenshots' | Out-Null

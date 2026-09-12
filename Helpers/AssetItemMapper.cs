@@ -32,6 +32,7 @@ public static class AssetItemMapper
         item.OrganizeError = asset.OrganizeError;
         item.Width = asset.Width;
         item.Height = asset.Height;
+        item.FileSize = asset.FileSize;
         ApplyCloud(item, asset);
     }
 

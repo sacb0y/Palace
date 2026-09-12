@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:controls="using:Palace.Controls"
     xmlns:helpers="using:Palace.Helpers"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:local="using:Palace"
@@ -38,9 +39,8 @@
         </TitleBar>
 
         <Grid Grid.Row="1">
-            <Image
-                Stretch="Uniform"
-                Source="{x:Bind local:GalleryWindow.ToImage(Gallery.PreviewImageUri), Mode=OneWay}"
+            <controls:GalleryStillSurface
+                x:Name="SrfWindowStill"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />
             <MediaPlayerElement
                 x:Name="MpeGallery"
@@ -101,10 +101,62 @@
                     Text="{x:Bind Gallery.Title, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
                 <TextBlock
+                    AutomationProperties.AutomationId="TxtGalleryWindowDetails"
+                    AutomationProperties.Name="Image details"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Gallery.DetailsText, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.DetailsText), Mode=OneWay}" />
+                <TextBlock
+                    AutomationProperties.AutomationId="TxtGalleryWindowHdr"
+                    AutomationProperties.Name="HDR status"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Gallery.HdrStatus, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.HdrStatus), Mode=OneWay}" />
+                <TextBlock
                     AutomationProperties.AutomationId="TxtGalleryPreviewStatus"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind Gallery.PreviewStatus, Mode=OneWay}"
                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.PreviewStatus), Mode=OneWay}" />
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanScale), Mode=OneWay}">
+                    <Button
+                        x:Name="BtnGalleryWindowScaleActual"
+                        AutomationProperties.AutomationId="BtnGalleryWindowScaleActual"
+                        AutomationProperties.Name="Actual size"
+                        Command="{x:Bind Gallery.SetScaleActualCommand}"
+                        ToolTipService.ToolTip="1:1 (Ctrl+1)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="1:1" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="BtnGalleryWindowScaleFit"
+                        AutomationProperties.AutomationId="BtnGalleryWindowScaleFit"
+                        AutomationProperties.Name="Fit"
+                        Command="{x:Bind Gallery.SetScaleFitCommand}"
+                        ToolTipService.ToolTip="Fit (Ctrl+2)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="ArrowFit" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Fit" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="BtnGalleryWindowScaleFill"
+                        AutomationProperties.AutomationId="BtnGalleryWindowScaleFill"
+                        AutomationProperties.Name="Fill"
+                        Command="{x:Bind Gallery.SetScaleFillCommand}"
+                        ToolTipService.ToolTip="Fill (Ctrl+3)">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="ArrowMaximize" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Fill" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
                 <ItemsControl
                     x:Name="LstGalleryWindowTags"
                     AutomationProperties.AutomationId="LstGalleryWindowTags"

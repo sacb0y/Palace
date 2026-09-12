@@ -11,6 +11,10 @@
     <Compile Include="..\Helpers\CloudSourcePath.cs" Link="CloudSourcePath.cs" />
     <Compile Include="..\Helpers\FolderGroups.cs" Link="FolderGroups.cs" />
     <Compile Include="..\Helpers\GalleryMedia.cs" Link="GalleryMedia.cs" />
+    <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />
+    <Compile Include="..\Helpers\GalleryScale.cs" Link="GalleryScale.cs" />
+    <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />
+    <Compile Include="..\Helpers\HdrPixels.cs" Link="HdrPixels.cs" />
     <Compile Include="..\Helpers\ImageDimensions.cs" Link="ImageDimensions.cs" />
     <Compile Include="..\Services\HashService.cs" Link="HashService.cs" />
     <Compile Include="..\Helpers\RecentTags.cs" Link="RecentTags.cs" />

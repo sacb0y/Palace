@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Palace.Controls.GalleryStillSurface"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <Grid x:Name="GrdStillHost" SizeChanged="GrdStillHost_SizeChanged">
+        <ScrollViewer
+            x:Name="ScrStill"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Disabled"
+            ZoomMode="Disabled">
+            <Grid x:Name="GrdStillContent">
+                <Image
+                    x:Name="ImgStill"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Stretch="Uniform" />
+                <SwapChainPanel
+                    x:Name="ScpHdr"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Visibility="Collapsed" />
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

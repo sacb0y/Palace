@@ -71,7 +71,82 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanOpenInExplorer { get; set; }
 
+    [ObservableProperty]
+    public partial ImageScaling Scaling { get; set; } = ImageScaling.Fit;
+
+    [ObservableProperty]
+    public partial string DetailsText { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string HdrStatus { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool CanScale { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsScaleFit { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsScaleActual { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsScaleFill { get; set; }
+
+    [ObservableProperty]
+    public partial HdrProbe CurrentProbe { get; set; } = HdrProbe.None;
+
+    /// <summary>
+    /// Bumped once after Current / probe / path / preview / IsImage are all
+    /// written so the still surface starts one refresh, not one per field.
+    /// </summary>
+    [ObservableProperty]
+    public partial int StillRevision { get; set; }
+
+    public bool HdrPresented { get; private set; }
+
+    public bool DisplayIsHdr { get; private set; }
+
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
+
+    partial void OnScalingChanged(ImageScaling value)
+    {
+        IsScaleFit = value == ImageScaling.Fit;
+        IsScaleActual = value == ImageScaling.Actual;
+        IsScaleFill = value == ImageScaling.Fill;
+    }
+
+    [RelayCommand]
+    private void SetScaleActual() => Scaling = ImageScaling.Actual;
+
+    [RelayCommand]
+    private void SetScaleFit() => Scaling = ImageScaling.Fit;
+
+    [RelayCommand]
+    private void SetScaleFill() => Scaling = ImageScaling.Fill;
+
+    public bool TryHandleScaleShortcut(bool controlDown, int keyCode)
+    {
+        if (!controlDown || !CanScale)
+        {
+            return false;
+        }
+
+        var next = GalleryScale.FromKeyCode(keyCode);
+        if (next is null)
+        {
+            return false;
+        }
+
+        Scaling = next.Value;
+        return true;
+    }
+
+    public void SetHdrPresentResult(bool presented, bool displayHdr)
+    {
+        HdrPresented = presented;
+        DisplayIsHdr = displayHdr;
+        HdrStatus = GalleryPresent.StatusLine(CurrentProbe, presented, displayHdr) ?? "";
+    }
 
     [RelayCommand]
     private void GoPrevious()
@@ -164,6 +239,7 @@ public partial class GalleryViewModel : ObservableObject
                 }
 
                 Current = null;
+                CurrentProbe = HdrProbe.None;
                 CurrentPath = null;
                 PreviewImageUri = null;
                 Title = "";
@@ -177,7 +253,12 @@ public partial class GalleryViewModel : ObservableObject
                 CanOpenInExplorer = false;
                 CanGoPrevious = false;
                 CanGoNext = false;
+                CanScale = false;
+                DetailsText = "";
+                HdrStatus = "";
+                HdrPresented = false;
                 Tags.Clear();
+                StillRevision++;
             });
             return;
         }
@@ -208,6 +289,12 @@ public partial class GalleryViewModel : ObservableObject
             return;
         }
 
+        var probe = HdrProbe.None;
+        if (item.Kind == AssetKind.Image && onDisk && !onlineOnly && !apiOnly && !item.IsOrphan)
+        {
+            probe = HdrFile.ProbePath(item.Path);
+        }
+
         var playableVideo = GalleryMedia.IsPlayableLocalVideo(
             item.Kind, apiOnly, onlineOnly, onDisk, item.Path);
         var stillPath = GalleryMedia.OverlayStillPath(
@@ -226,6 +313,7 @@ public partial class GalleryViewModel : ObservableObject
             }
 
             Current = item;
+            CurrentProbe = probe;
             CurrentPath = playableVideo ? item.Path : stillPath;
             PreviewImageUri = previewUrl ?? stillPath;
             Title = item.FileName;
@@ -243,6 +331,10 @@ public partial class GalleryViewModel : ObservableObject
             CanOpenInExplorer = onDisk && !apiOnly;
             CanGoPrevious = CurrentIndex > 0;
             CanGoNext = CurrentIndex < _items.Count - 1;
+            CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
+            HdrPresented = false;
+            DetailsText = GalleryPresent.DetailsLine(item.FileName, item.Width, item.Height, item.Kind, item.FileSize);
+            HdrStatus = GalleryPresent.StatusLine(probe, false, false) ?? "";
 
             Tags.Clear();
             foreach (var tag in assigned)
@@ -257,6 +349,8 @@ public partial class GalleryViewModel : ObservableObject
                     EffectiveColor = tag.EffectiveColor
                 });
             }
+
+            StillRevision++;
         });
 
         if (!apiOnly && onDisk && onlineOnly)

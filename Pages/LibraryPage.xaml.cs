@@ -1,10 +1,12 @@
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.UI.Core;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -614,6 +616,14 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (ViewModel.OverlayGallery.TryHandleScaleShortcut(control, (int)e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Escape:
@@ -996,8 +1006,7 @@ public sealed partial class LibraryPage : Page
 
     private void OverlayGallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-            if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
-            or nameof(GalleryViewModel.PreviewImageUri)
+            if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
             or nameof(GalleryViewModel.IsVideo)
             or nameof(GalleryViewModel.IsImage))
         {
@@ -1041,10 +1050,7 @@ public sealed partial class LibraryPage : Page
     {
         var epoch = Interlocked.Increment(ref _overlayMediaEpoch);
         var gallery = ViewModel.OverlayGallery;
-        var still = gallery is { IsImage: true }
-            ? gallery.PreviewImageUri ?? gallery.CurrentPath
-            : null;
-        ImgOverlay.Source = FileToFullImage(still);
+        SrfOverlayStill.Bind(ViewModel.IsGalleryOverlayOpen && gallery is { IsImage: true } ? gallery : null);
 
         if (gallery is { IsVideo: true, CurrentPath: not null } video
             && !AccessService.WouldHydrateOnOpen(video.CurrentPath))
