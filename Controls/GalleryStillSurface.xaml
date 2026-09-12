@@ -10,6 +10,10 @@
         <ScrollViewer
             x:Name="ScrStill"
             HorizontalScrollBarVisibility="Disabled"
+            PointerCaptureLost="ScrStill_PointerCaptureLost"
+            PointerMoved="ScrStill_PointerMoved"
+            PointerPressed="ScrStill_PointerPressed"
+            PointerReleased="ScrStill_PointerReleased"
             VerticalScrollBarVisibility="Disabled"
             ZoomMode="Disabled">
             <Grid x:Name="GrdStillContent">
@@ -17,6 +21,7 @@
                     x:Name="ImgStill"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
+                    ImageOpened="ImgStill_ImageOpened"
                     Stretch="Uniform" />
                 <SwapChainPanel
                     x:Name="ScpHdr"

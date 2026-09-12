@@ -96,34 +96,15 @@ internal static class HdrWicDecode
 
         var rgba = new float[count * 4];
         var maxNits = 0f;
-        var pq = probe.IsPq || (probe.Kind == HdrKind.HdrPng && probe.CicpTransfer is null);
-        var hlg = probe.IsHlg;
+        var transfer = probe.Transfer;
         var bt2020 = probe.CicpPrimaries == 9;
 
         for (var i = 0; i < count; i++)
         {
             HdrPixels.Read(data, i, format, out var r, out var g, out var b, out var a);
-            float nitsR;
-            float nitsG;
-            float nitsB;
-            if (pq)
-            {
-                nitsR = GalleryPresent.PqEotf(r) * 10000f;
-                nitsG = GalleryPresent.PqEotf(g) * 10000f;
-                nitsB = GalleryPresent.PqEotf(b) * 10000f;
-            }
-            else if (hlg)
-            {
-                nitsR = GalleryPresent.HlgEotf(r) * 1000f;
-                nitsG = GalleryPresent.HlgEotf(g) * 1000f;
-                nitsB = GalleryPresent.HlgEotf(b) * 1000f;
-            }
-            else
-            {
-                nitsR = r * GalleryPresent.SdrReferenceNits;
-                nitsG = g * GalleryPresent.SdrReferenceNits;
-                nitsB = b * GalleryPresent.SdrReferenceNits;
-            }
+            var nitsR = GalleryPresent.EncodedToNits(r, transfer);
+            var nitsG = GalleryPresent.EncodedToNits(g, transfer);
+            var nitsB = GalleryPresent.EncodedToNits(b, transfer);
 
             if (bt2020)
             {

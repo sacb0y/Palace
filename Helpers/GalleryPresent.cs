@@ -9,6 +9,8 @@ public static class GalleryPresent
 {
     public const float SdrReferenceNits = 203f;
     public const float ScrgbNits = 80f;
+    public const float MinPeakNits = 80f;
+    public const float MaxPeakNits = 4000f;
 
     public static bool ShouldAttemptHdrPresent(
         AssetKind kind,
@@ -61,16 +63,48 @@ public static class GalleryPresent
         return $"{bytes.Value / (1024.0 * 1024.0 * 1024.0):0.#} GB";
     }
 
-    public static string? StatusLine(HdrProbe probe, bool presented, bool displayHdr) =>
-        probe.Kind switch
+    public static string? StatusLine(
+        HdrProbe probe,
+        bool presented,
+        bool displayHdr,
+        bool peakOverride = false,
+        float peakNits = 0)
+    {
+        if (probe.Kind == HdrKind.HdrPng && presented && peakOverride)
+        {
+            return $"HDR PNG · clip {ClampPeakNits(peakNits):0} nits (override)";
+        }
+
+        return probe.Kind switch
         {
             HdrKind.UltraHdrJpeg => "Ultra HDR JPEG — showing the SDR base",
             HdrKind.HdrPng when presented && displayHdr => "HDR PNG · presenting scRGB",
-            HdrKind.HdrPng when presented => "HDR PNG · tonemapped to the display (map CLL)",
+            HdrKind.HdrPng when presented => "HDR PNG · tonemapped to the display (clip peak)",
             HdrKind.HdrPng => "HDR PNG — SDR preview",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             _ => null
         };
+    }
+
+    public static float ClampPeakNits(float nits) =>
+        Math.Clamp(nits, MinPeakNits, MaxPeakNits);
+
+    /// <summary>
+    /// DXGI MaxLuminance is often wrong. Override is opt-in; auto stays the
+    /// clip-peak path that matches the SDR twin.
+    /// </summary>
+    public static float EffectivePeakNits(float autoPeakNits, bool overrideEnabled, float overrideNits)
+    {
+        if (overrideEnabled)
+        {
+            return ClampPeakNits(overrideNits);
+        }
+
+        return autoPeakNits > 0 ? autoPeakNits : SdrReferenceNits;
+    }
+
+    public static string PeakNitsLabel(float nits) =>
+        $"{ClampPeakNits(nits):0} nits";
 
     public static float TonemapScale(float contentMaxNits, float displayPeakNits)
     {
@@ -91,6 +125,41 @@ public static class GalleryPresent
         }
 
         return scaled > displayPeakNits ? displayPeakNits : scaled;
+    }
+
+    /// <summary>
+    /// Overlay present clips highlights to the display peak. Do not scale
+    /// midtones by MaxCLL — that crushes SDR-reference white (203 nits)
+    /// versus the BitmapImage / SDR export of the same scene.
+    /// </summary>
+    public static float ClipToPeak(float linearNits, float displayPeakNits)
+    {
+        if (linearNits < 0)
+        {
+            return 0;
+        }
+
+        return linearNits > displayPeakNits ? displayPeakNits : linearNits;
+    }
+
+    public static float EncodedToNits(float encoded, HdrTransfer transfer) =>
+        transfer switch
+        {
+            HdrTransfer.Pq => PqEotf(encoded) * 10000f,
+            HdrTransfer.Hlg => HlgEotf(encoded) * 1000f,
+            HdrTransfer.Linear => encoded * SdrReferenceNits,
+            _ => SrgbEotf(encoded) * SdrReferenceNits
+        };
+
+    public static float SrgbEotf(float v)
+    {
+        v = Math.Clamp(v, 0f, 1f);
+        if (v <= 0.04045f)
+        {
+            return v / 12.92f;
+        }
+
+        return (float)Math.Pow((v + 0.055) / 1.055, 2.4);
     }
 
     public static float PqEotf(float v)
@@ -146,11 +215,12 @@ public static class GalleryPresent
             return (0, 0, Math.Max(viewportW, 0), Math.Max(viewportH, 0));
         }
 
-        // Actual sizes the swapchain to the image (DIPs) so 1:1 can pan.
-        // Dest therefore fills the buffer — including high-DPI rasters.
+        // Actual is 1 device pixel per image pixel. The swapchain is sized
+        // to that (DIPs = pixels / raster). Do not stretch-fill a leftover
+        // viewport-sized buffer — that is what made 1:1 look stretched.
         if (scaling == ImageScaling.Actual)
         {
-            return (0, 0, viewportW, viewportH);
+            return (0, 0, imageW, imageH);
         }
 
         var imageAspect = imageW / imageH;

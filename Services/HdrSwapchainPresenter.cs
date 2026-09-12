@@ -28,7 +28,13 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public float DisplayPeakNits { get; private set; } = GalleryPresent.SdrReferenceNits;
 
-    public bool TryPresent(HdrFrame frame, ImageScaling scaling, float rasterScale, double dipW = 0, double dipH = 0)
+    public bool TryPresent(
+        HdrFrame frame,
+        ImageScaling scaling,
+        float rasterScale,
+        double dipW = 0,
+        double dipH = 0,
+        float? peakOverrideNits = null)
     {
         if (dipW < 2 || dipH < 2)
         {
@@ -59,6 +65,10 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         {
             EnsureDevice();
             ProbeDisplay();
+            DisplayPeakNits = GalleryPresent.EffectivePeakNits(
+                DisplayPeakNits,
+                peakOverrideNits is > 0,
+                peakOverrideNits ?? 0);
             EnsureSwapChain(vw, vh);
             var half = Rasterize(frame, scaling, vw, vh);
             Upload(half, vw, vh);
@@ -341,7 +351,6 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     {
         var dest = new ushort[vw * vh * 4];
         var (dx, dy, dw, dh) = GalleryPresent.DestRect(scaling, frame.Width, frame.Height, vw, vh);
-        var scale = GalleryPresent.TonemapScale(frame.MaxNits, DisplayPeakNits);
         var clip = DisplayPeakNits / GalleryPresent.ScrgbNits;
         var src = frame.ScrgbRgba;
         var sw = frame.Width;
@@ -361,9 +370,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 var sy = Math.Clamp((int)(v * sh), 0, sh - 1);
                 var si = (sy * sw + sx) * 4;
                 var di = (y * vw + x) * 4;
-                dest[di] = GalleryPresent.FloatToHalf(Math.Clamp(src[si] * scale, 0, clip));
-                dest[di + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1] * scale, 0, clip));
-                dest[di + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2] * scale, 0, clip));
+                dest[di] = GalleryPresent.FloatToHalf(Math.Clamp(src[si], 0, clip));
+                dest[di + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1], 0, clip));
+                dest[di + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2], 0, clip));
                 dest[di + 3] = GalleryPresent.FloatToHalf(src[si + 3]);
             }
         }

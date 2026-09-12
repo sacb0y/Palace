@@ -29,6 +29,26 @@ public readonly record struct HdrProbe(
     public bool IsPq => CicpTransfer == 16;
 
     public bool IsHlg => CicpTransfer == 18;
+
+    /// <summary>
+    /// PQ/HLG only when cICP says so. cLLi/mDCv without transfer is sRGB
+    /// (or linear if transfer 8) — treating that as PQ crushes the image.
+    /// </summary>
+    public HdrTransfer Transfer => CicpTransfer switch
+    {
+        16 => HdrTransfer.Pq,
+        18 => HdrTransfer.Hlg,
+        8 => HdrTransfer.Linear,
+        _ => HdrTransfer.Srgb
+    };
+}
+
+public enum HdrTransfer
+{
+    Srgb,
+    Linear,
+    Pq,
+    Hlg
 }
 
 /// <summary>
