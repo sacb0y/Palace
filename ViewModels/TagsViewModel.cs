@@ -253,6 +253,46 @@ public partial class TagsViewModel : ObservableObject
         StatusText = $"Deleted {name}.";
     }
 
+    [RelayCommand]
+    private async Task StarChipAsync(TagChipItem? chip)
+    {
+        if (chip?.TagId is null)
+        {
+            return;
+        }
+
+        var next = !chip.IsStarred;
+        await _catalog.SetTagStarredAsync(chip.TagId, next);
+        await RefreshAsync();
+        StatusText = next ? "Starred this tag." : "Removed star.";
+    }
+
+    [RelayCommand]
+    private async Task RemoveChipFromGroupAsync(TagChipItem? chip)
+    {
+        if (chip?.TagId is null || string.IsNullOrEmpty(chip.ParentGroupId))
+        {
+            return;
+        }
+
+        await _catalog.RemoveMembershipAsync(chip.ParentGroupId, chip.TagId);
+        _reorderParentId = chip.ParentGroupId;
+        await RefreshAsync();
+        StatusText = $"Removed from group.";
+    }
+
+    [RelayCommand]
+    private async Task DeleteChipAsync(TagChipItem? chip)
+    {
+        if (chip is null)
+        {
+            return;
+        }
+
+        SelectChip(chip);
+        await DeleteTagAsync();
+    }
+
     public void SelectChip(TagChipItem? chip)
     {
         if (chip?.TagId is null)
@@ -651,6 +691,17 @@ public partial class TagsViewModel : ObservableObject
                     IsFilterSelected = chip.TagId == SelectedNode?.TagId,
                     ParentGroupId = group.GroupId
                 });
+            }
+
+            foreach (var letter in TagAlphaIndex.GroupByLetter(item.Chips, chip => chip.Name))
+            {
+                var section = new TagLetterSection { Letter = letter.Letter };
+                foreach (var chip in letter.Items)
+                {
+                    section.Chips.Add(chip);
+                }
+
+                item.Letters.Add(section);
             }
 
             Board.Add(item);

@@ -82,8 +82,8 @@ public static class TagPanelBuilder
 
         var starred = tags
             .Where(t => t.IsStarred && InScope(t) && NameMatches(t.Name))
-            .OrderByDescending(t => t.Priority)
-            .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.Name, StringComparer.Ordinal)
             .Select(Chip)
             .ToList();
 
@@ -116,8 +116,8 @@ public static class TagPanelBuilder
         {
             foreach (var root in tags
                          .Where(t => !childIds.Contains(t.Id) && children.ContainsKey(t.Id))
-                         .OrderByDescending(t => t.Priority)
-                         .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+                         .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(t => t.Name, StringComparer.Ordinal))
             {
                 if (scope == TagScope.Ungrouped)
                 {
@@ -126,8 +126,8 @@ public static class TagPanelBuilder
 
                 var descendants = FlattenDescendants(root.Id, children)
                     .Where(InScope)
-                    .OrderByDescending(t => t.Priority)
-                    .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(t => t.Name, StringComparer.Ordinal)
                     .ToList();
                 var groupMatches = NameMatches(root.Name);
                 var chips = descendants

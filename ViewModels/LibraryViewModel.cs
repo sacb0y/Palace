@@ -131,6 +131,9 @@ public partial class LibraryViewModel : ObservableObject
     public partial string? PreviewModel { get; set; }
 
     [ObservableProperty]
+    public partial string? PreviewFileName { get; set; }
+
+    [ObservableProperty]
     public partial string? PreviewSeed { get; set; }
 
     [ObservableProperty]
@@ -1256,14 +1259,15 @@ public partial class LibraryViewModel : ObservableObject
             PreviewPrompt = asset.Prompt;
             PreviewNegative = asset.NegativePrompt;
             PreviewModel = asset.Model;
+            PreviewFileName = asset.FileName;
             PreviewSeed = asset.Seed;
             PreviewNotes = asset.Notes;
             PreviewRating = asset.Rating ?? 0;
 
             AssignedTags.Clear();
             foreach (var entry in union.Values
-                .OrderByDescending(v => v.Sample.TagPriority)
-                .ThenBy(v => v.Sample.TagName, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(v => v.Sample.TagName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(v => v.Sample.TagName, StringComparer.Ordinal))
             {
                 var tag = entry.Sample;
                 var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
@@ -1315,6 +1319,7 @@ public partial class LibraryViewModel : ObservableObject
         PreviewPrompt = null;
         PreviewNegative = null;
         PreviewModel = null;
+        PreviewFileName = null;
         PreviewSeed = null;
         PreviewNotes = null;
         PreviewRating = 0;

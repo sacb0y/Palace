@@ -49,6 +49,12 @@ public sealed partial class TagsPage : Page
 
     public static IRelayCommand<AssetItem?> GetOpenAssetCommand() => AppServices.Tags.OpenAssetCommand;
 
+    public static IRelayCommand<TagChipItem?> GetStarChipCommand() => AppServices.Tags.StarChipCommand;
+
+    public static IRelayCommand<TagChipItem?> GetRemoveChipFromGroupCommand() => AppServices.Tags.RemoveChipFromGroupCommand;
+
+    public static IRelayCommand<TagChipItem?> GetDeleteChipCommand() => AppServices.Tags.DeleteChipCommand;
+
     private void TagColorFlyout_Opening(object sender, object e)
     {
         _ignoreColorChanges = true;

@@ -30,7 +30,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 - Delete = Recycle Bin + catalog row (`DeleteAssetsAsync`).
 - Organize is on-disk, dry-run first, ask destination each run. Auto-organize is opt-in per source.
 - Tag organize asks which parent chain. Assigning a tag applies configured implicits (transitive, cycle-safe).
-- Tags page is an Eagle-style board (All / Ungrouped / Starred, grouped chips) plus an image mosaic; disk organize stays in the details column. Comma/newline batch-create uses `TagNameList`. Library tag browse toggles multiple tags with Any / All / None (`TagFilter`).
+- Tags page is an Eagle-style board (All / Ungrouped / Starred). Tags inside each group are **A–Z with letter headers** (`TagAlphaIndex`). Disk organize stays in the details column. Comma/newline batch-create uses `TagNameList`. Library tag browse toggles multiple tags with Any / All / None (`TagFilter`). Preview tags are wrap chips with × (keep `LstTags` / `BtnRemoveTag_*`); `BtnBrowseTags` is the + Add tag flyout.
 - Library-first until the matching 0.x slice. Do not invent Wings, 3D, Unity packages, or LLM auto-tag unless that minor is the work (see Version).
 
 ## Layout
@@ -55,6 +55,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 | Tag filter sets | `Helpers/TagFilter.cs` |
 | Tag board / assign panel | `Helpers/TagPanelBuilder.cs` |
 | Tag sibling order | `Helpers/TagSiblings.cs` |
+| Tag A–Z index | `Helpers/TagAlphaIndex.cs` |
 | Recent tags | `Helpers/RecentTags.cs` |
 | Fluent enum parse | `Helpers/FluentGlyph.cs` (XAML only) |
 | UI tests | `ui-tests.ps1` (`winapp ui`, AutomationIds) |
@@ -121,13 +122,13 @@ Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDriv
 
 Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from the original Palace plan (`winui_asset_library_a3139e5d.plan.md`, [Palace kickoff](a7dfd0c1-d504-4c43-a957-008d68e3898f)). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
 
-**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.2.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.2 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change.
+**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.3.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.3 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change.
 
 MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
 
 | Version | Slice | Original plan |
 |---|---|---|
-| **0.0.x** *(now 0.0.2)* | **Library core** | v1 DAM: watch folders, mosaic, hierarchical tags, FTS, Rooms, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred. |
+| **0.0.x** *(now 0.0.3)* | **Library core** | v1 DAM: watch folders, mosaic, hierarchical tags, FTS, Rooms, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred. |
 | **0.1.x** | **Cloud** | Added after v1 (plan said “out of scope unless you ask”). On-Demand + API sources; do not download originals. Current cloud work stays **0.0.x** until this slice is the one you ship. |
 | **0.2.x** | **Wings** | Unity/game overlay on the same catalog (multi-directory project organize). Schema already has `Project`. |
 | **0.3.x** | **3D** | Preview glTF/OBJ first; FBX/USD convert; `.blend` via Blender CLI. |
@@ -146,7 +147,7 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 .\ui-tests.ps1 -AppPid <pid>
 ```
 
-`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`), `RoomIcons.Normalize`, `ThumbFileName`, `GalleryMedia`, `CloudSourcePath`, `TagNameList`, `TagFilter` (Any/All/None + descendants), `TagPanelBuilder` (including Ungrouped group-name search), `TagSiblings` (root groups are siblings), and `RecentTags`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
+`Palace.Tests` covers `CloudFile.IsOnlineOnly` attribute flags (including stamped `FILE_ATTRIBUTE_OFFLINE`), `RoomIcons.Normalize`, `ThumbFileName`, `GalleryMedia`, `CloudSourcePath`, `TagNameList`, `TagFilter` (Any/All/None + descendants), `TagPanelBuilder` (including Ungrouped group-name search), `TagSiblings` (root groups are siblings), `TagAlphaIndex` (A–Z letter buckets), and `RecentTags`. Do not add live OAuth to `ui-tests.ps1`. Recycle-delete and scan-size UI fixtures need a watched `PalaceUiTest`/`Temp` folder; without it those tests skip or fail. Magick.NET / TGA / EXR / HDR / PSD are out of scope until packaging is solved.
 
 ## Cursor Cloud specific instructions
 

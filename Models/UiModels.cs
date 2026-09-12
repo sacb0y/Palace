@@ -215,6 +215,8 @@ public partial class TagChipItem : ObservableObject
 
     public string? ParentGroupId { get; set; }
 
+    public bool CanRemoveFromGroup => !string.IsNullOrEmpty(ParentGroupId);
+
     public string AutomationPrefix { get; set; } = "BtnTagChip_";
 
     public string AutomationId =>
@@ -239,7 +241,20 @@ public partial class TagBoardGroup : ObservableObject
     public string AutomationId =>
         "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
 
+    public string CountLabel => $"{Name} ({Chips.Count})";
+
     public ObservableCollection<TagChipItem> Chips { get; } = [];
+
+    public ObservableCollection<TagLetterSection> Letters { get; } = [];
+}
+
+public partial class TagLetterSection : ObservableObject
+{
+    public string Letter { get; set; } = "";
+
+    public ObservableCollection<TagChipItem> Chips { get; } = [];
+
+    public string Header => $"{Letter} ({Chips.Count})";
 }
 
 public partial class TagTreeNode : ObservableObject
