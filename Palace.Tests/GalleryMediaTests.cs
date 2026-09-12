@@ -73,6 +73,13 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void MosaicAspect_HeadersUseFullLineRatio()
+    {
+        Assert.Equal(GalleryMedia.FolderHeaderAspect, GalleryMedia.MosaicAspect(true, 1.5));
+        Assert.Equal(1.5, GalleryMedia.MosaicAspect(false, 1.5));
+    }
+
+    [Fact]
     public void ShouldLoadTileThumb_AllowsMissingJpegWhenHashExists()
     {
         Assert.True(GalleryMedia.ShouldLoadTileThumb(false, false, false, null, "abc"));

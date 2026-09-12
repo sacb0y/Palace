@@ -81,6 +81,14 @@ public static class GalleryMedia
         return Math.Min(requestedLength, available);
     }
 
+    /// <summary>
+    /// Folder headers take a full mosaic line so tiles do not sit beside the title.
+    /// </summary>
+    public const double FolderHeaderAspect = 32.0;
+
+    public static double MosaicAspect(bool isFolderHeader, double assetAspect) =>
+        isFolderHeader ? FolderHeaderAspect : assetAspect;
+
     public static bool ShouldLoadTileThumb(
         bool isOrphan,
         bool alreadyStarted,

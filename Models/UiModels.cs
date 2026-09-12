@@ -23,6 +23,17 @@ public partial class AssetItem : ObservableObject
 {
     public string Id { get; set; } = "";
     public string SourceFolderId { get; set; } = "";
+    public bool IsFolderHeader { get; set; }
+    public string FolderGroupTitle { get; set; } = "";
+    public string FolderGroupPath { get; set; } = "";
+
+    public string FolderGroupAutomationId =>
+        "TxtFolderGroup_" + string.Concat((FolderGroupTitle ?? "").Where(char.IsLetterOrDigit));
+
+    public string MosaicItemName =>
+        IsFolderHeader
+            ? (string.IsNullOrEmpty(FolderGroupTitle) ? FileName : FolderGroupTitle)
+            : FileName;
 
     [ObservableProperty]
     public partial string FileName { get; set; } = "";

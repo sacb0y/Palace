@@ -221,7 +221,14 @@ public sealed partial class LibraryPage : Page
         var ratios = new double[length];
         for (var i = 0; i < length; i++)
         {
-            ratios[i] = i < available ? assets[start + i].AspectRatio : 1.0;
+            if (i >= available)
+            {
+                ratios[i] = 1.0;
+                continue;
+            }
+
+            var item = assets[start + i];
+            ratios[i] = GalleryMedia.MosaicAspect(item.IsFolderHeader, item.AspectRatio);
         }
 
         args.SetDesiredAspectRatios(ratios);
@@ -290,7 +297,32 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)
     {
-        ViewModel.SetSelection(sender.SelectedItems.OfType<AssetItem>());
+        var selected = sender.SelectedItems.OfType<AssetItem>().ToList();
+        for (var i = 0; i < ViewModel.Assets.Count; i++)
+        {
+            if (ViewModel.Assets[i].IsFolderHeader && sender.IsSelected(i))
+            {
+                sender.Deselect(i);
+            }
+        }
+
+        var header = selected.FirstOrDefault(item => item.IsFolderHeader);
+        if (header is not null && selected.Count == 1)
+        {
+            ViewModel.SelectFolderGroup(header);
+            return;
+        }
+
+        ViewModel.SetSelection(selected.Where(item => !item.IsFolderHeader));
+    }
+
+    private void FolderGroupHeader_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (FindAssetItem(sender) is { IsFolderHeader: true } header)
+        {
+            ViewModel.SelectFolderGroup(header);
+            e.Handled = true;
+        }
     }
 
     private void BcrPath_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
@@ -385,7 +417,7 @@ public sealed partial class LibraryPage : Page
 
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset
-            ?? ViewModel.Assets.FirstOrDefault();
+            ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
         if (item is null)
         {
             return;
@@ -397,6 +429,12 @@ public sealed partial class LibraryPage : Page
 
     private void OpenOverlayFor(AssetItem item)
     {
+        if (item.IsFolderHeader)
+        {
+            ViewModel.SelectFolderGroup(item);
+            return;
+        }
+
         EnsureSelectedForContext(item);
         ViewModel.OpenOverlayCommand.Execute(item);
     }
@@ -441,7 +479,7 @@ public sealed partial class LibraryPage : Page
         if (sender is MenuFlyout { Target: FrameworkElement target })
         {
             var item = FindAssetItem(target);
-            if (item is not null)
+            if (item is not null && !item.IsFolderHeader)
             {
                 EnsureSelectedForContext(item);
             }
@@ -608,7 +646,7 @@ public sealed partial class LibraryPage : Page
     private void BindTileImage(Image image, AssetItem? hinted = null)
     {
         var item = FindAssetItem(image) ?? hinted ?? image.DataContext as AssetItem;
-        if (item is null)
+        if (item is null || item.IsFolderHeader)
         {
             _realizedTiles.Remove(image);
             return;
@@ -773,7 +811,8 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
-            if (!GalleryMedia.ShouldUpgradeThumb(
+            if (item.IsFolderHeader
+                || !GalleryMedia.ShouldUpgradeThumb(
                     _thumbsMayUpgrade,
                     CloudFile.IsOnlineOnly(item.Path),
                     item.IsOrphan,

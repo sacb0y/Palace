@@ -262,7 +262,7 @@ public partial class LibraryViewModel : ObservableObject
 
     public void SetSelection(IEnumerable<AssetItem> items)
     {
-        _selection = items.ToList();
+        _selection = items.Where(item => !item.IsFolderHeader).ToList();
         foreach (var asset in Assets)
         {
             asset.IsSelected = _selection.Contains(asset);
@@ -284,6 +284,12 @@ public partial class LibraryViewModel : ObservableObject
 
     public void SelectAsset(AssetItem item, bool toggle, bool range = false)
     {
+        if (item.IsFolderHeader)
+        {
+            SelectFolderGroup(item);
+            return;
+        }
+
         if (range && _selectionAnchor is not null)
         {
             var list = Assets.ToList();
@@ -295,7 +301,7 @@ public partial class LibraryViewModel : ObservableObject
                 var hi = Math.Max(from, to);
                 for (var i = 0; i < list.Count; i++)
                 {
-                    list[i].IsSelected = i >= lo && i <= hi;
+                    list[i].IsSelected = i >= lo && i <= hi && !list[i].IsFolderHeader;
                 }
 
                 _selection = list.Where(a => a.IsSelected).ToList();
@@ -728,7 +734,7 @@ public partial class LibraryViewModel : ObservableObject
 
         OverlayGallery = gallery;
         IsGalleryOverlayOpen = true;
-        HydrateAfterLibraryOpen(item ?? gallery.Current);
+        HydrateAfterLibraryOpen(item is { IsFolderHeader: true } ? gallery.Current : item ?? gallery.Current);
     }
 
     [RelayCommand]
@@ -747,7 +753,7 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         RequestOpenGalleryWindow(gallery);
-        HydrateAfterLibraryOpen(item ?? gallery.Current);
+        HydrateAfterLibraryOpen(item is { IsFolderHeader: true } ? gallery.Current : item ?? gallery.Current);
     }
 
     [RelayCommand]
@@ -1135,6 +1141,8 @@ public partial class LibraryViewModel : ObservableObject
             var tagBrowse = IsTagBrowse && filterIds.Count > 0;
             var folderPath = !IsTagBrowse ? SelectedFolder?.Path : null;
             var matchMode = TagFilterMode;
+            var rootPaths = FolderTree.Select(node => node.Path).ToList();
+            var isTopLevel = FolderGroups.IsTopLevelFolder(rootPaths, folderPath);
 
             IReadOnlyList<Asset> assets;
             if (IsTagBrowse && filterIds.Count > 0)
@@ -1166,24 +1174,29 @@ public partial class LibraryViewModel : ObservableObject
                 return;
             }
 
-            var items = await Task.Run(() => assets.Select(ToItem).ToList());
+            var items = await Task.Run(() => BuildMosaicItems(
+                assets,
+                FolderGroups.ShouldGroup(tagBrowse, !string.IsNullOrWhiteSpace(search), isTopLevel),
+                folderName ?? "",
+                folderPath ?? ""));
             if (epoch != _filterEpoch)
             {
                 return;
             }
 
+            var assetCount = items.Count(item => !item.IsFolderHeader);
             var joiner = matchMode == TagFilterMode.All
                 ? " + "
                 : matchMode == TagFilterMode.None ? " except " : " or ";
             var doneStatus = !string.IsNullOrWhiteSpace(search)
-                ? $"{items.Count} search results"
+                ? $"{assetCount} search results"
                 : tagBrowse
-                    ? $"{items.Count} tagged {string.Join(joiner, filterNames)}"
+                    ? $"{assetCount} tagged {string.Join(joiner, filterNames)}"
                     : folderPath is not null
-                        ? $"{items.Count} in {folderName}"
-                        : items.Count == 0
+                        ? $"{assetCount} in {folderName}"
+                        : assetCount == 0
                             ? "Add a folder to start your library."
-                            : $"{items.Count} assets";
+                            : $"{assetCount} assets";
 
             await PopulateMosaicAsync(items, epoch, doneStatus);
         }
@@ -1208,6 +1221,16 @@ public partial class LibraryViewModel : ObservableObject
         });
 
         var total = items.Count;
+        var assetTotal = 0;
+        for (var n = 0; n < total; n++)
+        {
+            if (!items[n].IsFolderHeader)
+            {
+                assetTotal++;
+            }
+        }
+
+        var shown = 0;
         for (var i = 0; i < total; i += MosaicChunkSize)
         {
             if (epoch != _filterEpoch)
@@ -1226,9 +1249,13 @@ public partial class LibraryViewModel : ObservableObject
                 for (var n = i; n < end; n++)
                 {
                     Assets.Add(items[n]);
+                    if (!items[n].IsFolderHeader)
+                    {
+                        shown++;
+                    }
                 }
 
-                StatusText = $"Showing {end} of {total}";
+                StatusText = $"Showing {shown} of {assetTotal}";
                 MosaicChunkAppended?.Invoke();
             });
 
@@ -1514,7 +1541,8 @@ public partial class LibraryViewModel : ObservableObject
     {
         if (_selection.Count > 0)
         {
-            return await _catalog.GetAssetsByIdsAsync(_selection.Select(s => s.Id));
+            return await _catalog.GetAssetsByIdsAsync(
+                _selection.Where(s => !s.IsFolderHeader && !string.IsNullOrEmpty(s.Id)).Select(s => s.Id));
         }
 
         if (SelectedAsset is not null)
@@ -1748,6 +1776,50 @@ public partial class LibraryViewModel : ObservableObject
         }
     }
 
+    public void SelectFolderGroup(AssetItem header)
+    {
+        if (!header.IsFolderHeader || string.IsNullOrEmpty(header.FolderGroupPath))
+        {
+            return;
+        }
+
+        var node = FindNode(FolderTree, header.FolderGroupPath);
+        if (node is not null)
+        {
+            SelectedFolder = node;
+        }
+    }
+
+    private List<AssetItem> BuildMosaicItems(
+        IReadOnlyList<Asset> assets,
+        bool groupFolders,
+        string folderName,
+        string folderPath)
+    {
+        var mapped = assets.Select(ToItem).ToList();
+        if (!groupFolders)
+        {
+            return mapped;
+        }
+
+        var groups = FolderGroups.GroupByTopFolders(mapped, folderName, folderPath, item => item.Path);
+        if (!FolderGroups.NeedsHeaders(groups))
+        {
+            return mapped;
+        }
+
+        return FolderGroups.InterleaveHeaders(groups, group => ToFolderHeader(group, folderPath));
+    }
+
+    private static AssetItem ToFolderHeader(FolderGroup<AssetItem> group, string selectedPath) =>
+        new()
+        {
+            IsFolderHeader = true,
+            FolderGroupTitle = group.Title,
+            FolderGroupPath = FolderGroups.CombineUnder(selectedPath, group.RelativeSegments),
+            FileName = group.Title
+        };
+
     private AssetItem ToItem(Asset asset) => AssetItemMapper.FromAsset(asset, _thumbs);
 
     private void ReplaceFolderTree(IReadOnlyList<FolderNode> roots)
@@ -1913,14 +1985,16 @@ public partial class LibraryViewModel : ObservableObject
     private bool TryCreateGallery(AssetItem? item, out GalleryViewModel gallery)
     {
         gallery = null!;
-        var start = item ?? SelectedAsset ?? _selection.LastOrDefault();
-        if (!GalleryMedia.CanOpen(Assets.Count, start is not null))
+        var start = item is { IsFolderHeader: false } ? item
+            : SelectedAsset is { IsFolderHeader: false } ? SelectedAsset
+            : _selection.LastOrDefault(asset => !asset.IsFolderHeader);
+        var snapshot = Assets.Where(asset => !asset.IsFolderHeader).ToList();
+        if (!GalleryMedia.CanOpen(snapshot.Count, start is not null))
         {
             Notify("Select an asset first.");
             return false;
         }
 
-        var snapshot = Assets.ToList();
         var index = GalleryMedia.StartIndex(snapshot.Select(a => a.Id).ToList(), start!.Id);
         gallery = new GalleryViewModel(snapshot, index < 0 ? 0 : index, _catalog);
         return true;
