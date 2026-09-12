@@ -95,7 +95,7 @@ public sealed class StillFormatTests
     [Fact]
     public void Jxl_CodestreamPq10Bit_IsPresentableHdr()
     {
-        var jxl = JxlCodestreamHdr(transfer: 16, bitDepth10: true);
+        var jxl = JxlCodestream(transfer: 16, primaries: 9, bitDepth10: true);
         var probe = HdrFile.Probe(jxl);
         Assert.Equal(HdrKind.HdrJxl, probe.Kind);
         Assert.True(probe.CanPresentHdr);
@@ -116,6 +116,32 @@ public sealed class StillFormatTests
         Assert.Equal(9, probe.CicpPrimaries);
         Assert.True(probe.FullRange);
         Assert.Equal((8, 8), StillFormats.TryReadJxlSize(jxl));
+    }
+
+    [Fact]
+    public void Jxl_10BitSrgb_IsNotHdr()
+    {
+        var jxl = JxlCodestream(transfer: 13, primaries: 1, bitDepth10: true);
+        var probe = HdrFile.Probe(jxl);
+        Assert.Equal(HdrKind.None, probe.Kind);
+        Assert.False(probe.CanPresentHdr);
+        Assert.Equal(HdrTransfer.Srgb, probe.Transfer);
+        Assert.Equal((8, 8), StillFormats.TryReadJxlSize(jxl));
+    }
+
+    [Fact]
+    public void Jxl_P3_IsWideGamut()
+    {
+        var stream = JxlCodestream(transfer: 13, primaries: 11, bitDepth10: false);
+        var fromStream = HdrFile.Probe(stream);
+        Assert.Equal(HdrKind.WideGamutJxl, fromStream.Kind);
+        Assert.False(fromStream.CanPresentHdr);
+        Assert.Equal(11, fromStream.CicpPrimaries);
+
+        var colr = JxlContainerWithColr(primaries: 11, transfer: 13, matrix: 0, fullRange: true);
+        var fromColr = HdrFile.Probe(colr);
+        Assert.Equal(HdrKind.WideGamutJxl, fromColr.Kind);
+        Assert.Equal(11, fromColr.CicpPrimaries);
     }
 
     [Fact]
@@ -219,7 +245,7 @@ public sealed class StillFormatTests
         data[offset + 3] = (byte)value;
     }
 
-    private static byte[] JxlCodestreamHdr(int transfer, bool bitDepth10)
+    private static byte[] JxlCodestream(int transfer, int primaries, bool bitDepth10)
     {
         var bits = new JxlLsbWriter();
         bits.Write(1, 1);
@@ -236,7 +262,7 @@ public sealed class StillFormatTests
         bits.Write(1, 0);
         bits.WriteEnum(0);
         bits.WriteEnum(1);
-        bits.WriteEnum(9);
+        bits.WriteEnum(primaries);
         bits.Write(1, 0);
         bits.WriteEnum(transfer);
         bits.WriteEnum(1);

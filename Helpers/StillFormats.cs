@@ -201,8 +201,10 @@ public static class StillFormats
         }
 
         var info = TryReadJxlBasic(data);
-        var hdrTransfer = info.Transfer is 16 or 18;
-        if (hdrTransfer || info.BitDepth is > 8)
+        // PQ/HLG CICP only. 10-/16-bit JXL is usually lossless SDR;
+        // bit depth alone must not take the scRGB path. ICC-only HDR
+        // stays BitmapImage — Transfer would be sRGB.
+        if (info.Transfer is 16 or 18)
         {
             return new HdrProbe(
                 HdrKind.HdrJxl,
@@ -214,7 +216,8 @@ public static class StillFormats
                 info.BitDepth);
         }
 
-        if (info.Primaries is 9 or 12)
+        // JXL kP3 is 11 (DCI-P3 / Display P3). CICP 12 is Display P3 on colr.
+        if (info.Primaries is 9 or 11 or 12)
         {
             return new HdrProbe(
                 HdrKind.WideGamutJxl,
