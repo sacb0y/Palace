@@ -42,8 +42,8 @@ public static class AssetItemMapper
     }
 
     public static bool IsApiOnly(Asset asset) =>
-        !string.IsNullOrEmpty(asset.CloudItemId) && !File.Exists(asset.Path);
+        !string.IsNullOrEmpty(asset.CloudItemId) && !CloudFile.Exists(asset.Path);
 
     public static bool IsApiOnly(AssetItem item) =>
-        !string.IsNullOrEmpty(item.CloudItemId) && !File.Exists(item.Path);
+        !string.IsNullOrEmpty(item.CloudItemId) && !CloudFile.Exists(item.Path);
 }

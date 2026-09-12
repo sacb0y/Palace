@@ -120,15 +120,15 @@ public sealed class ScanService
 
     public async Task<bool> IndexFileAsync(SourceFolder source, string file, bool autoOrganize, CancellationToken ct = default)
     {
-        var info = new FileInfo(file);
-        if (!info.Exists)
+        if (!CloudFile.TryGetAttributes(file, out var attrs))
         {
             return false;
         }
 
+        var info = new FileInfo(file);
         var existing = await _catalog.GetAssetByPathAsync(file);
         var isNew = existing is null;
-        var onlineOnly = CloudFile.IsOnlineOnly(file);
+        var onlineOnly = CloudFile.IsOnlineOnly(attrs);
         var kind = PathSafe.KindFromExt(info.Extension);
         var asset = existing ?? new Asset
         {

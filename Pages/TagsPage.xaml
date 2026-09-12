@@ -346,8 +346,8 @@
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
                                     <ic:FluentIcon
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Icon="Cloud"
-                                        IconSize="Size16"
+                                        Icon="{x:Bind helpers:FluentGlyph.Placeholder(Kind), Mode=OneWay}"
+                                        IconSize="Size32"
                                         IconVariant="Regular" />
                                     <TextBlock
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"

@@ -138,7 +138,7 @@ public partial class GalleryViewModel : ObservableObject
     private void OpenInExplorer()
     {
         var path = Current?.Path;
-        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+        if (string.IsNullOrEmpty(path) || !CloudFile.Exists(path))
         {
             return;
         }
@@ -193,7 +193,8 @@ public partial class GalleryViewModel : ObservableObject
             assigned = [];
         }
 
-        var localExists = !string.IsNullOrEmpty(item.Path) && File.Exists(item.Path);
+        var onDisk = CloudFile.TryGetAttributes(item.Path, out var diskAttrs);
+        var onlineOnly = onDisk && CloudFile.IsOnlineOnly(diskAttrs);
         var apiOnly = AssetItemMapper.IsApiOnly(item);
         string? previewUrl = null;
         string? previewCache = null;
@@ -208,11 +209,11 @@ public partial class GalleryViewModel : ObservableObject
         }
 
         var playableVideo = GalleryMedia.IsPlayableLocalVideo(
-            item.Kind, apiOnly, item.IsOnlineOnly, localExists, item.Path);
+            item.Kind, apiOnly, onlineOnly, onDisk, item.Path);
         var stillPath = GalleryMedia.OverlayStillPath(
             item.IsOrphan,
-            item.IsOnlineOnly,
-            localExists,
+            onlineOnly,
+            onDisk,
             item.Path,
             item.ThumbPath,
             previewCache);
@@ -232,14 +233,14 @@ public partial class GalleryViewModel : ObservableObject
             IsCloudPreview = apiOnly && (previewUrl is not null || previewCache is not null);
             PreviewStatus = IsCloudPreview
                 ? "Online preview — the original stays in the cloud."
-                : item.IsOnlineOnly && localExists
+                : onlineOnly
                     ? "Online-only file. Opening downloads it."
                     : "";
             IsVideo = playableVideo;
             IsImage = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
             IsMissing = !IsVideo && CurrentPath is null && string.IsNullOrEmpty(PreviewImageUri);
             CanDownloadOriginal = apiOnly && !string.IsNullOrEmpty(item.CloudItemId);
-            CanOpenInExplorer = localExists && !apiOnly;
+            CanOpenInExplorer = onDisk && !apiOnly;
             CanGoPrevious = CurrentIndex > 0;
             CanGoNext = CurrentIndex < _items.Count - 1;
 
@@ -258,7 +259,7 @@ public partial class GalleryViewModel : ObservableObject
             }
         });
 
-        if (!apiOnly && localExists && item.IsOnlineOnly)
+        if (!apiOnly && onDisk && onlineOnly)
         {
             _ = HydrateThenReloadAsync(item.Id, epoch);
         }

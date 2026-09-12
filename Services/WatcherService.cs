@@ -104,7 +104,7 @@ public sealed class WatcherService : IDisposable
         }
 
         var asset = await _catalog.GetAssetByPathAsync(path);
-        if (!File.Exists(path))
+        if (!Helpers.CloudFile.Exists(path))
         {
             if (asset is not null)
             {

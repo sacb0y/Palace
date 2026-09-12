@@ -3,6 +3,7 @@ using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Palace.Helpers;
 using Palace.ViewModels;
 using Windows.Graphics;
 using Windows.Media.Core;
@@ -85,7 +86,7 @@ public sealed partial class GalleryWindow : Window
                 return new BitmapImage { UriSource = new Uri(uri, UriKind.Absolute) };
             }
 
-            if (!File.Exists(uri))
+            if (!CloudFile.Exists(uri) || CloudFile.IsOnlineOnly(uri))
             {
                 return null;
             }

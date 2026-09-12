@@ -6,6 +6,7 @@ namespace Palace.Services;
 /// <summary>
 /// After an explicit Open of a local Files On-Demand placeholder, re-hash,
 /// extract metadata, and replace the stub thumbnail. Never called from scan.
+/// Reading the original here is what recalls the placeholder.
 /// </summary>
 public sealed class HydrationService
 {
@@ -26,12 +27,7 @@ public sealed class HydrationService
     public async Task<Asset?> HydrateAfterOpenAsync(string assetId, CancellationToken ct = default)
     {
         var asset = await _catalog.GetAssetByIdAsync(assetId).ConfigureAwait(false);
-        if (asset is null || string.IsNullOrEmpty(asset.Path) || !File.Exists(asset.Path))
-        {
-            return asset;
-        }
-
-        if (!await WaitUntilLocalAsync(asset.Path, ct).ConfigureAwait(false))
+        if (asset is null || string.IsNullOrEmpty(asset.Path) || !CloudFile.Exists(asset.Path))
         {
             return asset;
         }
@@ -41,7 +37,7 @@ public sealed class HydrationService
         var hash = await HashService.HashFileAsync(asset.Path, info.Length, ct).ConfigureAwait(false);
         var meta = _metadata.Extract(asset.Path);
         asset.ContentHash = hash;
-        asset.IsOnlineOnly = false;
+        asset.IsOnlineOnly = CloudFile.IsOnlineOnly(asset.Path);
         asset.Kind = PathSafe.KindFromExt(info.Extension);
         asset.Model = meta.Model;
         asset.Seed = meta.Seed;
@@ -70,21 +66,5 @@ public sealed class HydrationService
         }
 
         return asset;
-    }
-
-    private static async Task<bool> WaitUntilLocalAsync(string path, CancellationToken ct)
-    {
-        for (var i = 0; i < 40; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (!CloudFile.IsOnlineOnly(path))
-            {
-                return File.Exists(path);
-            }
-
-            await Task.Delay(250, ct).ConfigureAwait(false);
-        }
-
-        return !CloudFile.IsOnlineOnly(path);
     }
 }

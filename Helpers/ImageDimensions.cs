@@ -4,7 +4,7 @@ internal static class ImageDimensions
 {
     public static (int Width, int Height)? TryRead(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        if (string.IsNullOrWhiteSpace(path) || !CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
             return null;
         }

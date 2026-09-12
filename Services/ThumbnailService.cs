@@ -70,12 +70,12 @@ public sealed class ThumbnailService
             return null;
         }
 
-        if (!File.Exists(filePath))
+        if (!CloudFile.TryGetAttributes(filePath, out var attrs))
         {
             return ReadCached(hash);
         }
 
-        if (CloudFile.IsOnlineOnly(filePath))
+        if (CloudFile.IsOnlineOnly(attrs))
         {
             return await EnsureOnlineOnlyThumbnailAsync(filePath, hash, kind).ConfigureAwait(false);
         }
@@ -140,11 +140,6 @@ public sealed class ThumbnailService
             return cached;
         }
 
-        if (kind == Models.AssetKind.Other)
-        {
-            return null;
-        }
-
         return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
     }
 
@@ -164,7 +159,7 @@ public sealed class ThumbnailService
         {
             var file = await StorageFile.GetFileFromPathAsync(filePath);
             using var thumb = await file.GetThumbnailAsync(ThumbnailMode.PicturesView, MaxSide);
-            if (thumb is null)
+            if (thumb is null || !GalleryMedia.AcceptsProviderThumbnail(thumb.Type == ThumbnailType.Image))
             {
                 return null;
             }

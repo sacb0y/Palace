@@ -83,6 +83,40 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void ShouldRequestMosaicThumb_AllowsOnlineOnlyPlaceholders()
+    {
+        Assert.True(GalleryMedia.ShouldRequestMosaicThumb(false, @"D:\cloud\a.jpg", "abc", null));
+        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(true, @"D:\cloud\a.jpg", "abc", null));
+        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(false, @"D:\cloud\a.jpg", "abc", @"C:\t.jpg"));
+        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(false, null, "abc", null));
+    }
+
+    [Fact]
+    public void ShowPlaceholderTile_WhenOnlineOnlyAndNoDecodedPreview()
+    {
+        Assert.True(GalleryMedia.ShowPlaceholderTile(true, false, false));
+        Assert.False(GalleryMedia.ShowPlaceholderTile(true, false, true));
+        Assert.False(GalleryMedia.ShowPlaceholderTile(true, true, false));
+        Assert.False(GalleryMedia.ShowPlaceholderTile(false, false, false));
+    }
+
+    [Fact]
+    public void AcceptsProviderThumbnail_OnlyImageType()
+    {
+        Assert.True(GalleryMedia.AcceptsProviderThumbnail(true));
+        Assert.False(GalleryMedia.AcceptsProviderThumbnail(false));
+    }
+
+    [Fact]
+    public void PlaceholderIcon_UsesKindName()
+    {
+        Assert.Equal("Image", GalleryMedia.PlaceholderIcon(AssetKind.Image));
+        Assert.Equal("Video", GalleryMedia.PlaceholderIcon(AssetKind.Video));
+        Assert.Equal("Gif", GalleryMedia.PlaceholderIcon(AssetKind.Gif));
+        Assert.Equal("Document", GalleryMedia.PlaceholderIcon(AssetKind.Other));
+    }
+
+    [Fact]
     public void ShouldUpgradeThumb_SkipsOnlineOnlyAndMissingHash()
     {
         Assert.True(GalleryMedia.ShouldUpgradeThumb(true, false, false, @"D:\a.jpg", "abc"));

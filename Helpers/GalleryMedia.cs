@@ -96,6 +96,37 @@ public static class GalleryMedia
         return !string.IsNullOrEmpty(thumbPath) || !string.IsNullOrEmpty(contentHash);
     }
 
+    /// <summary>
+    /// Mosaic may ask for a provider / shell JPEG even when the original is
+    /// online-only. <c>ThumbnailService</c> must use GetThumbnailAsync, not Open.
+    /// </summary>
+    public static bool ShouldRequestMosaicThumb(
+        bool isOrphan,
+        string? path,
+        string? contentHash,
+        string? thumbPath) =>
+        !isOrphan
+        && !string.IsNullOrEmpty(path)
+        && !string.IsNullOrEmpty(contentHash)
+        && string.IsNullOrEmpty(thumbPath);
+
+    /// <summary>
+    /// Cloud / On-Demand tile with no decoded preview — show a kind icon, not a blank.
+    /// </summary>
+    public static bool ShowPlaceholderTile(bool isOnlineOnly, bool isOrphan, bool hasDecodedImage) =>
+        isOnlineOnly && !isOrphan && !hasDecodedImage;
+
+    /// <summary>Provider stream is a real picture; a generic file icon is not.</summary>
+    public static bool AcceptsProviderThumbnail(bool isImageType) => isImageType;
+
+    public static string PlaceholderIcon(AssetKind kind) => kind switch
+    {
+        AssetKind.Video => "Video",
+        AssetKind.Gif => "Gif",
+        AssetKind.Image => "Image",
+        _ => "Document"
+    };
+
     public static bool ShouldUpgradeThumb(
         bool mayUpgrade,
         bool isOnlineOnly,
