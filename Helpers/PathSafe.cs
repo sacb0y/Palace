@@ -75,6 +75,19 @@ public static class PathSafe
     public static readonly HashSet<string> VideoExt =
         new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mov", ".mkv", ".webm", ".avi" };
 
+    public static bool IsAvif(string? pathOrExt)
+    {
+        if (string.IsNullOrWhiteSpace(pathOrExt))
+        {
+            return false;
+        }
+
+        var ext = pathOrExt.StartsWith('.') && pathOrExt.IndexOfAny(['/', '\\']) < 0
+            ? pathOrExt
+            : System.IO.Path.GetExtension(pathOrExt);
+        return string.Equals(ext, ".avif", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool IsCatalogExt(string ext) =>
         ImageExt.Contains(ext) || GifExt.Contains(ext) || VideoExt.Contains(ext);
 

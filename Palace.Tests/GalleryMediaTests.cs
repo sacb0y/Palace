@@ -108,12 +108,30 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
-    public void ShouldRequestMosaicThumb_AllowsOnlineOnlyPlaceholders()
+    public void ShouldRequestMosaicThumb_SkipsOnlineOnlyPlaceholders()
     {
-        Assert.True(GalleryMedia.ShouldRequestMosaicThumb(false, @"D:\cloud\a.jpg", "abc", null));
-        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(true, @"D:\cloud\a.jpg", "abc", null));
-        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(false, @"D:\cloud\a.jpg", "abc", @"C:\t.jpg"));
-        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(false, null, "abc", null));
+        Assert.True(GalleryMedia.ShouldRequestMosaicThumb(false, @"D:\cloud\a.jpg", "abc", null, false));
+        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(false, @"D:\cloud\a.avif", "abc", null, true));
+        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(true, @"D:\cloud\a.jpg", "abc", null, false));
+        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(false, @"D:\cloud\a.jpg", "abc", @"C:\t.jpg", false));
+        Assert.False(GalleryMedia.ShouldRequestMosaicThumb(false, null, "abc", null, false));
+    }
+
+    [Fact]
+    public void AvifThumbs_UseShellAndNeverOpenOriginal()
+    {
+        Assert.True(PathSafe.IsAvif(@"D:\cloud\shot.avif"));
+        Assert.True(PathSafe.IsAvif(".avif"));
+        Assert.False(PathSafe.IsAvif(".jpg"));
+        Assert.True(GalleryMedia.UsesShellThumbnail(AssetKind.Image, @"D:\a.avif"));
+        Assert.True(GalleryMedia.UsesShellThumbnail(AssetKind.Video, @"D:\a.mp4"));
+        Assert.False(GalleryMedia.UsesShellThumbnail(AssetKind.Image, @"D:\a.jpg"));
+        Assert.False(GalleryMedia.MayOpenOriginalForThumb(true, AssetKind.Image, @"D:\a.jpg"));
+        Assert.False(GalleryMedia.MayOpenOriginalForThumb(false, AssetKind.Image, @"D:\a.avif"));
+        Assert.True(GalleryMedia.MayOpenOriginalForThumb(false, AssetKind.Image, @"D:\a.jpg"));
+        Assert.True(GalleryMedia.ShouldRegenerateCachedThumb(null, 512));
+        Assert.False(GalleryMedia.ShouldRegenerateCachedThumb((256, 256), 512));
+        Assert.False(GalleryMedia.ShouldUpgradeThumb(true, false, false, @"D:\a.avif", "abc"));
     }
 
     [Fact]

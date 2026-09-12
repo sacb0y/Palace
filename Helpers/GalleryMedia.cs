@@ -131,18 +131,43 @@ public static class GalleryMedia
     }
 
     /// <summary>
-    /// Mosaic may ask for a provider / shell JPEG even when the original is
-    /// online-only. <c>ThumbnailService</c> must use GetThumbnailAsync, not Open.
+    /// Mosaic may generate a JPEG only for a local original. Online-only
+    /// placeholders stay on <see cref="ShowPlaceholderTile"/> — AVIF
+    /// <c>GetThumbnailAsync</c> / WIC still opens the Dropbox file.
     /// </summary>
     public static bool ShouldRequestMosaicThumb(
         bool isOrphan,
         string? path,
         string? contentHash,
-        string? thumbPath) =>
+        string? thumbPath,
+        bool isOnlineOnly) =>
         !isOrphan
+        && !isOnlineOnly
         && !string.IsNullOrEmpty(path)
         && !string.IsNullOrEmpty(contentHash)
         && string.IsNullOrEmpty(thumbPath);
+
+    /// <summary>
+    /// Video and AVIF must not <c>Open</c> + <c>BitmapDecoder</c> the original.
+    /// Shell / provider <c>GetThumbnailAsync</c> only; if that fails, no JPEG.
+    /// </summary>
+    public static bool UsesShellThumbnail(AssetKind kind, string? path) =>
+        kind == AssetKind.Video || PathSafe.IsAvif(path);
+
+    /// <summary>WIC decode of the original — never online-only, never AVIF.</summary>
+    public static bool MayOpenOriginalForThumb(bool isOnlineOnly, AssetKind kind, string? path) =>
+        !isOnlineOnly && !UsesShellThumbnail(kind, path) && kind != AssetKind.Other;
+
+    /// <summary>
+    /// Never <c>ImageDimensions.TryRead</c> / <c>AvifFile</c> the original to
+    /// decide regenerate. A readable cache JPEG is kept; missing / unreadable
+    /// cache may rebuild without comparing source pixels.
+    /// </summary>
+    public static bool ShouldRegenerateCachedThumb((int Width, int Height)? cachedJpeg, int maxSide)
+    {
+        _ = maxSide;
+        return cachedJpeg is null;
+    }
 
     /// <summary>
     /// Cloud / On-Demand tile with no decoded preview — show a kind icon, not a blank.
@@ -212,7 +237,8 @@ public static class GalleryMedia
             || isOnlineOnly
             || isOrphan
             || string.IsNullOrEmpty(path)
-            || string.IsNullOrEmpty(contentHash))
+            || string.IsNullOrEmpty(contentHash)
+            || PathSafe.IsAvif(path))
         {
             return false;
         }
