@@ -6,7 +6,8 @@ namespace Palace.Services;
 /// <summary>
 /// After an explicit Open of a local Files On-Demand placeholder, re-hash,
 /// extract metadata, and replace the stub thumbnail. Never called from scan.
-/// Reading the original here is what recalls the placeholder.
+/// Large files are prefix-hashed; this type fully reads the original first
+/// so recall flags can clear before Extract and catalog update.
 /// </summary>
 public sealed class HydrationService
 {
@@ -33,19 +34,30 @@ public sealed class HydrationService
         }
 
         var info = new FileInfo(asset.Path);
+        if (HashService.NeedsFullRecall(CloudFile.IsOnlineOnly(asset.Path), info.Length))
+        {
+            await HashService.RecallFullyAsync(asset.Path, ct).ConfigureAwait(false);
+            info.Refresh();
+        }
+
         var previousHash = asset.ContentHash;
         var hash = await HashService.HashFileAsync(asset.Path, info.Length, ct).ConfigureAwait(false);
-        var meta = _metadata.Extract(asset.Path);
+        var stillOnline = CloudFile.IsOnlineOnly(asset.Path);
         asset.ContentHash = hash;
-        asset.IsOnlineOnly = CloudFile.IsOnlineOnly(asset.Path);
+        asset.IsOnlineOnly = stillOnline;
         asset.Kind = PathSafe.KindFromExt(info.Extension);
-        asset.Model = meta.Model;
-        asset.Seed = meta.Seed;
-        asset.Prompt = meta.Prompt;
-        asset.NegativePrompt = meta.NegativePrompt;
-        asset.MetadataJson = meta.RawJson;
         asset.DateModified = info.LastWriteTimeUtc.ToString("O");
         asset.FileSize = info.Length;
+
+        if (HashService.ApplyExtractedMetadata(stillOnline))
+        {
+            var meta = _metadata.Extract(asset.Path);
+            asset.Model = meta.Model;
+            asset.Seed = meta.Seed;
+            asset.Prompt = meta.Prompt;
+            asset.NegativePrompt = meta.NegativePrompt;
+            asset.MetadataJson = meta.RawJson;
+        }
 
         var thumb = await _thumbs.EnsureThumbnailAsync(asset.Path, hash, asset.Kind).ConfigureAwait(false);
         if (thumb is { Width: > 0, Height: > 0 } sized)
@@ -53,7 +65,7 @@ public sealed class HydrationService
             asset.Width = sized.Width;
             asset.Height = sized.Height;
         }
-        else if (ImageDimensions.TryRead(asset.Path) is { } size)
+        else if (!stillOnline && ImageDimensions.TryRead(asset.Path) is { } size)
         {
             asset.Width = size.Width;
             asset.Height = size.Height;

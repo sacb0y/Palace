@@ -107,7 +107,7 @@ On scan, if online-only:
 - Thumb: `StorageFile.GetThumbnailAsync` (provider stream). Never `Open` / decode the original. If that fails, or the shell only has a generic file icon, leave no JPEG — mosaic and preview show a kind **icon tile** (`ShowCloudTile` / `ShowPlaceholderTile`), not a blank image. Mosaic still requests that provider JPEG for online-only items (`ShouldRequestMosaicThumb`).
 - Watchers skip non-`Local` sources.
 
-Hydrate **only** on explicit Open (Library overlay / new window / Gallery). `HydrationService.HydrateAfterOpenAsync` waits until the placeholder is local, then re-hashes, extracts, replaces the stub thumb. API-only items use a provider large preview URL, not the original, unless the user chooses Download or Open in Explorer.
+Hydrate **only** on explicit Open (Library overlay / new window / Gallery). `HydrationService.HydrateAfterOpenAsync` fully reads the original first when it is still online-only **and** larger than 32MB (`HashService.RecallFullyAsync`) — prefix-hash only reads 8MB and would leave recall flags set. Then re-hash, extract, replace the stub thumb. Do not apply empty Extract over existing Prompt/Model while still online-only. Preview uses `GalleryMedia.CanShowPreview` (local hydrated file or remote URL), not a non-empty catalog Path. API-only items use a provider large preview URL, not the original, unless the user chooses Download or Open in Explorer.
 
 Clipboard copy must not recall files:
 

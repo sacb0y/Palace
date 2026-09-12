@@ -101,6 +101,31 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void CanShowPreview_RequiresHydratedLocalOrRemote()
+    {
+        Assert.True(GalleryMedia.CanShowPreview("https://example.com/p.jpg"));
+        Assert.False(GalleryMedia.CanShowPreview(null));
+        Assert.False(GalleryMedia.CanShowPreview("OneDrive / me / Photos/a.jpg"));
+        Assert.False(GalleryMedia.CanShowPreview(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".jpg")));
+
+        var path = Path.Combine(Path.GetTempPath(), "palace-preview-" + Guid.NewGuid().ToString("N") + ".bin");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        try
+        {
+            Assert.True(GalleryMedia.CanShowPreview(path));
+            if (CloudFileTests.TryStampOnlineOnly(path))
+            {
+                Assert.False(GalleryMedia.CanShowPreview(path));
+            }
+        }
+        finally
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void AcceptsProviderThumbnail_OnlyImageType()
     {
         Assert.True(GalleryMedia.AcceptsProviderThumbnail(true));

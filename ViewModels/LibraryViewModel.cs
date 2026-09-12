@@ -1294,19 +1294,26 @@ public partial class LibraryViewModel : ObservableObject
         var existing = await _catalog.GetTagsAsync();
         var suggestions = PromptTagSuggester.Suggest(asset.Prompt, existing);
         var hydrateOnOpen = AccessService.WouldHydrateOnOpen(asset.Path);
-        var previewPath = asset.IsOrphan
-            ? null
-            : hydrateOnOpen ? item.ThumbPath : asset.Path;
+        var apiOnly = AssetItemMapper.IsApiOnly(asset);
+        var cloudish = hydrateOnOpen || asset.IsOnlineOnly || apiOnly;
+        var originalOk = GalleryMedia.CanShowPreview(asset.Path);
+        var previewPath = GalleryMedia.OverlayStillPath(
+            asset.IsOrphan, cloudish, originalOk, asset.Path, item.ThumbPath, null);
+        if (!GalleryMedia.CanShowPreview(previewPath))
+        {
+            previewPath = null;
+        }
+
         var canEdit = total == 1;
         await UiDispatch.RunAsync(() =>
         {
             CanEditNotes = canEdit;
             PreviewPath = previewPath;
-            IsVideoPreview = !hydrateOnOpen && asset.Kind == AssetKind.Video && previewPath is not null;
+            IsVideoPreview = !cloudish && asset.Kind == AssetKind.Video && previewPath is not null;
             IsImagePreview = previewPath is not null &&
-                (hydrateOnOpen || asset.Kind is AssetKind.Image or AssetKind.Gif);
+                (cloudish || asset.Kind is AssetKind.Image or AssetKind.Gif);
             ShowPreviewPlaceholder = GalleryMedia.ShowPlaceholderTile(
-                hydrateOnOpen || asset.IsOnlineOnly, asset.IsOrphan, !string.IsNullOrEmpty(previewPath));
+                cloudish, asset.IsOrphan, previewPath is not null);
             PreviewPlaceholderKind = asset.Kind;
             PreviewPrompt = asset.Prompt;
             PreviewNegative = asset.NegativePrompt;

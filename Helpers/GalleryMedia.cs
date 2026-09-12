@@ -116,6 +116,15 @@ public static class GalleryMedia
     public static bool ShowPlaceholderTile(bool isOnlineOnly, bool isOrphan, bool hasDecodedImage) =>
         isOnlineOnly && !isOrphan && !hasDecodedImage;
 
+    /// <summary>
+    /// True when <paramref name="path"/> can be shown without opening an
+    /// On-Demand original (remote URL or a local, already-hydrated file).
+    /// A catalog / API display path is not enough.
+    /// </summary>
+    public static bool CanShowPreview(string? path) =>
+        IsRemoteUri(path)
+        || (!string.IsNullOrEmpty(path) && CloudFile.Exists(path) && !CloudFile.IsOnlineOnly(path));
+
     /// <summary>Provider stream is a real picture; a generic file icon is not.</summary>
     public static bool AcceptsProviderThumbnail(bool isImageType) => isImageType;
 
