@@ -56,6 +56,11 @@ public static class GalleryMedia
             return thumbPath;
         }
 
+        if (PrefersCachedThumbStill(originalPath) && !string.IsNullOrEmpty(thumbPath))
+        {
+            return thumbPath;
+        }
+
         return originalPath;
     }
 
@@ -148,11 +153,18 @@ public static class GalleryMedia
         && string.IsNullOrEmpty(thumbPath);
 
     /// <summary>
-    /// Video and AVIF must not <c>Open</c> + <c>BitmapDecoder</c> the original.
-    /// Shell / provider <c>GetThumbnailAsync</c> only; if that fails, no JPEG.
+    /// PSD has no WIC overlay decode; show the shell mosaic JPEG.
+    /// </summary>
+    public static bool PrefersCachedThumbStill(string? path) =>
+        PathSafe.IsPsd(path);
+
+    /// <summary>
+    /// Video / AVIF / HEIC / PSD must not <c>Open</c> + <c>BitmapDecoder</c>
+    /// the original. Shell / provider <c>GetThumbnailAsync</c> only; if that
+    /// fails, no JPEG. Never call this for online-only placeholders.
     /// </summary>
     public static bool UsesShellThumbnail(AssetKind kind, string? path) =>
-        kind == AssetKind.Video || PathSafe.IsAvif(path);
+        kind == AssetKind.Video || PathSafe.UsesShellStillThumb(path);
 
     /// <summary>WIC decode of the original — never online-only, never AVIF.</summary>
     public static bool MayOpenOriginalForThumb(bool isOnlineOnly, AssetKind kind, string? path) =>
@@ -238,7 +250,7 @@ public static class GalleryMedia
             || isOrphan
             || string.IsNullOrEmpty(path)
             || string.IsNullOrEmpty(contentHash)
-            || PathSafe.IsAvif(path))
+            || PathSafe.UsesShellStillThumb(path))
         {
             return false;
         }

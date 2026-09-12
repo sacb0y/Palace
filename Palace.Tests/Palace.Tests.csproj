@@ -18,6 +18,9 @@
     <Compile Include="..\Helpers\PreviewPersist.cs" Link="PreviewPersist.cs" />
     <Compile Include="..\Helpers\AvifFile.cs" Link="AvifFile.cs" />
     <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />
+    <Compile Include="..\Helpers\HdrColor.cs" Link="HdrColor.cs" />
+    <Compile Include="..\Helpers\RadianceFile.cs" Link="RadianceFile.cs" />
+    <Compile Include="..\Helpers\StillFormats.cs" Link="StillFormats.cs" />
     <Compile Include="..\Helpers\PathSafe.cs" Link="PathSafe.cs" />
     <Compile Include="..\Helpers\HdrPixels.cs" Link="HdrPixels.cs" />
     <Compile Include="..\Helpers\ImageDimensions.cs" Link="ImageDimensions.cs" />

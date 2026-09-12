@@ -9,7 +9,11 @@ public readonly record struct AvifInfo(
     int? CicpPrimaries,
     int? CicpTransfer,
     int? MaxCllNits,
-    bool HasMastering);
+    bool HasMastering,
+    int? CicpMatrix = null,
+    bool? FullRange = null,
+    int? BitDepth = null,
+    bool IsAvif = true);
 
 public static class AvifFile
 {
@@ -29,8 +33,18 @@ public static class AvifFile
     private const uint Clli = 0x636C6C69;
     private const uint Mdcv = 0x6D646376;
     private const uint Mdat = 0x6D646174;
+    private const uint Av1C = 0x61763143;
+    private const uint Heic = 0x68656963;
+    private const uint Heix = 0x68656978;
+    private const uint Mif1 = 0x6D696631;
 
-    public static bool IsAvif(ReadOnlySpan<byte> data)
+    public static bool IsAvif(ReadOnlySpan<byte> data) =>
+        HasBrand(data, Avif) || HasBrand(data, Avis);
+
+    public static bool IsHeif(ReadOnlySpan<byte> data) =>
+        IsAvif(data) || HasBrand(data, Heic) || HasBrand(data, Heix) || HasBrand(data, Mif1);
+
+    private static bool HasBrand(ReadOnlySpan<byte> data, uint brand)
     {
         if (data.Length < 16 || TypeAt(data, 4) != Ftyp)
         {
@@ -44,14 +58,14 @@ public static class AvifFile
         }
 
         var boxEnd = Math.Min(size, data.Length);
-        if (IsAvifBrand(TypeAt(data, 8)))
+        if (TypeAt(data, 8) == brand)
         {
             return true;
         }
 
         for (var i = 16; i + 4 <= boxEnd; i += 4)
         {
-            if (IsAvifBrand(TypeAt(data, i)))
+            if (TypeAt(data, i) == brand)
             {
                 return true;
             }
@@ -63,14 +77,17 @@ public static class AvifFile
     public static AvifInfo Probe(ReadOnlySpan<byte> data)
     {
         var info = default(AvifInfo);
-        if (!IsAvif(data))
+        if (!IsHeif(data))
         {
             return info;
         }
 
         var parse = new AvifParse();
         Walk(data, 0, data.Length, 0, parse);
-        return Apply(parse);
+        return Apply(parse) with
+        {
+            IsAvif = IsAvif(data) || (!HasBrand(data, Heic) && !HasBrand(data, Heix))
+        };
     }
 
     public static AvifInfo Probe(Stream stream) => Probe(stream, sizeOnly: false);
@@ -100,6 +117,7 @@ public static class AvifFile
         var length = stream.Length;
         var header = new byte[16];
         var sawAvif = false;
+        var isAvifBrand = false;
         var parse = new AvifParse();
         long pos = 0;
         while (pos + 8 <= length)
@@ -149,15 +167,22 @@ public static class AvifFile
                     return default;
                 }
 
-                sawAvif = IsAvifBrand(ReadBe32(ftyp, 0));
+                var major = (uint)ReadBe32(ftyp, 0);
+                sawAvif = IsHeifBrand(major);
+                isAvifBrand = IsAvifOnlyBrand(major);
                 if (!sawAvif)
                 {
                     for (var i = 8; i + 4 <= ftyp.Length; i += 4)
                     {
-                        if (IsAvifBrand(ReadBe32(ftyp, i)))
+                        var brand = (uint)ReadBe32(ftyp, i);
+                        if (IsHeifBrand(brand))
                         {
                             sawAvif = true;
-                            break;
+                        }
+
+                        if (IsAvifOnlyBrand(brand))
+                        {
+                            isAvifBrand = true;
                         }
                     }
                 }
@@ -195,9 +220,8 @@ public static class AvifFile
                 }
             }
 
-            info = Apply(parse);
-            if (sawAvif && info.Width is > 0 && info.Height is > 0
-                && (sizeOnly || info.CicpTransfer is 16 or 18 || info.HasMastering))
+            info = Apply(parse) with { IsAvif = isAvifBrand };
+            if (sizeOnly && sawAvif && info.Width is > 0 && info.Height is > 0)
             {
                 break;
             }
@@ -205,7 +229,7 @@ public static class AvifFile
             pos = next;
         }
 
-        return sawAvif ? info : default;
+        return sawAvif ? info with { IsAvif = isAvifBrand } : default;
     }
 
     public static (int Width, int Height)? TryReadSize(ReadOnlySpan<byte> data)
@@ -223,14 +247,31 @@ public static class AvifFile
     public static HdrProbe ToHdrProbe(AvifInfo info)
     {
         var hdrTransfer = info.CicpTransfer is 16 or 18;
-        if (hdrTransfer || info.HasMastering)
+        var tenBit = info.BitDepth is > 8;
+        var hdrKind = info.IsAvif ? HdrKind.HdrAvif : HdrKind.HdrHeif;
+        var wideKind = info.IsAvif ? HdrKind.WideGamutAvif : HdrKind.WideGamutHeif;
+        if (hdrTransfer || info.HasMastering || tenBit)
         {
-            return new HdrProbe(HdrKind.HdrAvif, info.CicpPrimaries, info.CicpTransfer, info.MaxCllNits);
+            return new HdrProbe(
+                hdrKind,
+                info.CicpPrimaries,
+                info.CicpTransfer,
+                info.MaxCllNits,
+                info.CicpMatrix,
+                info.FullRange,
+                info.BitDepth);
         }
 
         if (info.CicpPrimaries is 9 or 12)
         {
-            return new HdrProbe(HdrKind.WideGamutAvif, info.CicpPrimaries, info.CicpTransfer, info.MaxCllNits);
+            return new HdrProbe(
+                wideKind,
+                info.CicpPrimaries,
+                info.CicpTransfer,
+                info.MaxCllNits,
+                info.CicpMatrix,
+                info.FullRange,
+                info.BitDepth);
         }
 
         return HdrProbe.None;
@@ -328,6 +369,7 @@ public static class AvifFile
 
         ApplyFirst(parse.Properties, Ispe, ref info);
         ApplyFirst(parse.Properties, Colr, ref info);
+        ApplyFirst(parse.Properties, Av1C, ref info);
         ApplyFirst(parse.Properties, Clli, ref info);
         ApplyFirst(parse.Properties, Mdcv, ref info);
         return info;
@@ -453,8 +495,16 @@ public static class AvifFile
             info = info with
             {
                 CicpPrimaries = ReadBe16(payload, 4),
-                CicpTransfer = ReadBe16(payload, 6)
+                CicpTransfer = ReadBe16(payload, 6),
+                CicpMatrix = payload.Length >= 10 ? ReadBe16(payload, 8) : info.CicpMatrix,
+                FullRange = payload.Length >= 11 && (payload[10] & 0x80) != 0
             };
+            return;
+        }
+
+        if (type == Av1C && payload.Length >= 4)
+        {
+            ParseAv1C(payload, ref info);
             return;
         }
 
@@ -531,11 +581,320 @@ public static class AvifFile
         return payloadStart <= payloadEnd;
     }
 
-    private static bool IsAvifBrand(int brand) =>
-        (uint)brand is Avif or Avis;
+    private static void ParseAv1C(ReadOnlySpan<byte> payload, ref AvifInfo info)
+    {
+        var flags = payload[2];
+        var highBitdepth = (flags & 0x40) != 0;
+        var twelveBit = (flags & 0x20) != 0;
+        var bitDepth = highBitdepth ? (twelveBit ? 12 : 10) : 8;
+        if (info.BitDepth is null or 0)
+        {
+            info = info with { BitDepth = bitDepth };
+        }
 
-    private static bool IsAvifBrand(uint brand) =>
+        if (payload.Length <= 4)
+        {
+            return;
+        }
+
+        var profile = payload[1] >> 5;
+        TryParseAv1SequenceColor(payload[4..], profile, ref info);
+    }
+
+    private static void TryParseAv1SequenceColor(ReadOnlySpan<byte> obu, int av1cProfile, ref AvifInfo info)
+    {
+        try
+        {
+            var bits = new Av1Bits(obu);
+            if (bits.Read(1) != 0)
+            {
+                return;
+            }
+
+            var type = bits.Read(4);
+            var extension = bits.Read(1) != 0;
+            var hasSize = bits.Read(1) != 0;
+            bits.Read(1);
+            if (extension)
+            {
+                bits.Read(8);
+            }
+
+            if (hasSize)
+            {
+                bits.ReadLeb128();
+            }
+
+            if (type != 1)
+            {
+                return;
+            }
+
+            var profile = bits.Read(3);
+            var still = bits.Read(1) != 0;
+            var reduced = bits.Read(1) != 0;
+            _ = still;
+            if (reduced)
+            {
+                bits.Read(5);
+            }
+            else
+            {
+                var timing = bits.Read(1) != 0;
+                var decoderModel = false;
+                if (timing)
+                {
+                    bits.Read(32);
+                    bits.Read(32);
+                    var equal = bits.Read(1) != 0;
+                    if (equal)
+                    {
+                        bits.ReadUvlc();
+                    }
+                    else
+                    {
+                        var ticks = bits.ReadUvlc();
+                        for (var i = 0; i < ticks; i++)
+                        {
+                            bits.ReadUvlc();
+                        }
+                    }
+
+                    decoderModel = bits.Read(1) != 0;
+                    if (decoderModel)
+                    {
+                        bits.Read(5);
+                        bits.Read(32);
+                        bits.Read(5);
+                    }
+                }
+
+                var initialDelay = bits.Read(1) != 0;
+                var opCount = bits.Read(5);
+                for (var i = 0; i <= opCount; i++)
+                {
+                    bits.Read(12);
+                    var level = bits.Read(5);
+                    if (level > 7)
+                    {
+                        bits.Read(1);
+                    }
+
+                    if (decoderModel)
+                    {
+                        var present = bits.Read(1) != 0;
+                        if (present)
+                        {
+                            bits.Read(4);
+                            bits.Read(4);
+                            bits.ReadUvlc();
+                        }
+                    }
+
+                    if (initialDelay)
+                    {
+                        var present = bits.Read(1) != 0;
+                        if (present)
+                        {
+                            bits.Read(4);
+                        }
+                    }
+                }
+            }
+
+            var widthBits = bits.Read(4) + 1;
+            var heightBits = bits.Read(4) + 1;
+            bits.Read(widthBits);
+            bits.Read(heightBits);
+            if (!reduced)
+            {
+                var frameId = bits.Read(1) != 0;
+                if (frameId)
+                {
+                    bits.Read(4);
+                    bits.Read(3);
+                }
+            }
+
+            bits.Read(1);
+            bits.Read(1);
+            bits.Read(1);
+            if (!reduced)
+            {
+                bits.Read(1);
+                bits.Read(1);
+                bits.Read(1);
+                bits.Read(1);
+                var orderHint = bits.Read(1) != 0;
+                if (orderHint)
+                {
+                    bits.Read(1);
+                    bits.Read(1);
+                }
+
+                var chooseScreen = bits.Read(1) != 0;
+                var forceScreen = 0;
+                if (chooseScreen)
+                {
+                    forceScreen = 2;
+                }
+                else
+                {
+                    forceScreen = bits.Read(1);
+                }
+
+                var chooseInteger = 0;
+                if (forceScreen > 0)
+                {
+                    chooseInteger = bits.Read(1);
+                    if (chooseInteger == 0)
+                    {
+                        bits.Read(1);
+                    }
+                }
+
+                if (orderHint)
+                {
+                    bits.Read(3);
+                }
+            }
+
+            bits.Read(1);
+            bits.Read(1);
+            bits.Read(1);
+
+            var highBitdepth = bits.Read(1) != 0;
+            if (profile == 2 && highBitdepth)
+            {
+                bits.Read(1);
+            }
+
+            var mono = false;
+            if (profile != 1)
+            {
+                mono = bits.Read(1) != 0;
+            }
+
+            var colorPresent = bits.Read(1) != 0;
+            var primaries = 2;
+            var transfer = 2;
+            var matrix = 2;
+            if (colorPresent)
+            {
+                primaries = bits.Read(8);
+                transfer = bits.Read(8);
+                matrix = bits.Read(8);
+                if (info.CicpPrimaries is null)
+                {
+                    info = info with { CicpPrimaries = primaries };
+                }
+
+                if (info.CicpTransfer is null)
+                {
+                    info = info with { CicpTransfer = transfer };
+                }
+
+                if (info.CicpMatrix is null)
+                {
+                    info = info with { CicpMatrix = matrix };
+                }
+            }
+
+            // color_config: identity sRGB forces full range and omits the
+            // bit. Everything else — including unspecified CICP — carries
+            // color_range (0 limited, 1 full).
+            bool fullRange;
+            if (mono)
+            {
+                fullRange = bits.Read(1) != 0;
+            }
+            else if (primaries == 1 && transfer == 13 && matrix == 0)
+            {
+                fullRange = true;
+            }
+            else
+            {
+                fullRange = bits.Read(1) != 0;
+            }
+
+            if (info.FullRange is null)
+            {
+                info = info with { FullRange = fullRange };
+            }
+        }
+        catch
+        {
+            _ = av1cProfile;
+        }
+    }
+
+    private struct Av1Bits
+    {
+        private readonly ReadOnlyMemory<byte> _data;
+        private int _bit;
+
+        public Av1Bits(ReadOnlySpan<byte> data)
+        {
+            _data = data.ToArray();
+            _bit = 0;
+        }
+
+        public int Read(int count)
+        {
+            var value = 0;
+            for (var i = 0; i < count; i++)
+            {
+                var byteIndex = _bit / 8;
+                if (byteIndex >= _data.Length)
+                {
+                    throw new InvalidOperationException("AV1 bits");
+                }
+
+                var bit = (_data.Span[byteIndex] >> (7 - (_bit % 8))) & 1;
+                value = (value << 1) | bit;
+                _bit++;
+            }
+
+            return value;
+        }
+
+        public int ReadLeb128()
+        {
+            var value = 0;
+            for (var i = 0; i < 8; i++)
+            {
+                var b = Read(8);
+                value |= (b & 0x7F) << (7 * i);
+                if ((b & 0x80) == 0)
+                {
+                    return value;
+                }
+            }
+
+            return value;
+        }
+
+        public int ReadUvlc()
+        {
+            var zeros = 0;
+            while (Read(1) == 0)
+            {
+                zeros++;
+                if (zeros > 31)
+                {
+                    throw new InvalidOperationException("AV1 uvlc");
+                }
+            }
+
+            return zeros == 0 ? 0 : ((1 << zeros) - 1) + Read(zeros);
+        }
+    }
+
+    private static bool IsAvifOnlyBrand(uint brand) =>
         brand is Avif or Avis;
+
+    private static bool IsHeifBrand(uint brand) =>
+        brand is Avif or Avis or Heic or Heix or Mif1;
 
     private static byte[]? ReadExact(Stream stream, long count)
     {
