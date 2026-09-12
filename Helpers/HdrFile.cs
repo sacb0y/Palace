@@ -9,38 +9,53 @@ public enum HdrKind
     HdrPng,
     WideGamutPng,
     HdrAvif,
-    WideGamutAvif
+    WideGamutAvif,
+    HdrHeif,
+    WideGamutHeif,
+    HdrJxr,
+    HdrJxl,
+    WideGamutJxl,
+    HdrRadiance
 }
 
 public readonly record struct HdrProbe(
     HdrKind Kind,
     int? CicpPrimaries,
     int? CicpTransfer,
-    int? MaxCllNits)
+    int? MaxCllNits,
+    int? CicpMatrix = null,
+    bool? FullRange = null,
+    int? BitDepth = null)
 {
     public static HdrProbe None { get; } = new(HdrKind.None, null, null, null);
 
-    public bool IsHdr => Kind is HdrKind.UltraHdrJpeg or HdrKind.HdrPng or HdrKind.HdrAvif;
+    public bool IsHdr => Kind is HdrKind.UltraHdrJpeg or HdrKind.HdrPng or HdrKind.HdrAvif
+        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance;
 
     /// <summary>
-    /// HDR PNG / AVIF can be presented from WIC pixels + cICP. Ultra HDR JPEG
-    /// needs a gain-map decoder we do not ship (no libultrahdr / Magick).
+    /// WIC stills + Radiance RGBE (no Magick). Ultra HDR JPEG stays SDR base.
+    /// JPEG XR HDR is often already float scRGB; WinRT WIC has no float
+    /// pixel format, so those stay BitmapImage (IsHdr, not presentable).
     /// </summary>
-    public bool CanPresentHdr => Kind is HdrKind.HdrPng or HdrKind.HdrAvif;
+    public bool CanPresentHdr => Kind is HdrKind.HdrPng or HdrKind.HdrAvif
+        or HdrKind.HdrHeif or HdrKind.HdrJxl or HdrKind.HdrRadiance;
 
     public bool IsPq => CicpTransfer == 16;
 
     public bool IsHlg => CicpTransfer == 18;
 
     /// <summary>
-    /// PQ/HLG only when cICP says so. cLLi/mDCv without transfer is sRGB
-    /// (or linear if transfer 8) — treating that as PQ crushes the image.
+    /// SKIV AVIF: PQ when cICP 16, or when HDR AVIF has no transfer (libavif
+    /// still runs <c>PQToLinear</c> on the 2020 path). HLG is cICP 18.
+    /// Radiance / JPEG XR HDR are already linear / scRGB.
     /// </summary>
     public HdrTransfer Transfer => CicpTransfer switch
     {
         16 => HdrTransfer.Pq,
         18 => HdrTransfer.Hlg,
         8 => HdrTransfer.Linear,
+        _ when Kind == HdrKind.HdrRadiance || Kind == HdrKind.HdrJxr => HdrTransfer.Scrgb,
+        _ when (Kind is HdrKind.HdrAvif or HdrKind.HdrHeif) && CicpTransfer is null or 2 => HdrTransfer.Pq,
         _ => HdrTransfer.Srgb
     };
 }
@@ -50,7 +65,8 @@ public enum HdrTransfer
     Srgb,
     Linear,
     Pq,
-    Hlg
+    Hlg,
+    Scrgb
 }
 
 /// <summary>
@@ -105,7 +121,7 @@ public static class HdrFile
             Span<byte> head = stackalloc byte[32];
             var headN = stream.Read(head);
             stream.Position = 0;
-            if (headN >= 16 && AvifFile.IsAvif(head[..headN]))
+            if (headN >= 16 && AvifFile.IsHeif(head[..headN]))
             {
                 return AvifFile.ToHdrProbe(AvifFile.Probe(stream));
             }
@@ -132,9 +148,26 @@ public static class HdrFile
             return ProbeJpeg(data);
         }
 
-        if (AvifFile.IsAvif(data))
+        if (AvifFile.IsHeif(data))
         {
             return AvifFile.ToHdrProbe(AvifFile.Probe(data));
+        }
+
+        if (RadianceFile.IsRadiance(data))
+        {
+            return new HdrProbe(HdrKind.HdrRadiance, 1, null, null);
+        }
+
+        if (StillFormats.IsJxl(data))
+        {
+            return StillFormats.ProbeJxl(data);
+        }
+
+        if (StillFormats.IsJxr(data))
+        {
+            return StillFormats.JxrLooksHdr(data)
+                ? new HdrProbe(HdrKind.HdrJxr, 1, null, null)
+                : HdrProbe.None;
         }
 
         return HdrProbe.None;

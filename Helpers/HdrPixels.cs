@@ -8,13 +8,88 @@ public enum HdrPackedFormat
 {
     Rgba16,
     Rgba8,
-    Bgra8
+    Bgra8,
+    P010,
+    Nv12
 }
 
 public static class HdrPixels
 {
     public static int BytesPerPixel(HdrPackedFormat format) =>
-        format == HdrPackedFormat.Rgba16 ? 8 : 4;
+        format switch
+        {
+            HdrPackedFormat.Rgba16 => 8,
+            HdrPackedFormat.P010 => 0,
+            HdrPackedFormat.Nv12 => 0,
+            _ => 4
+        };
+
+    public static bool IsYuv(HdrPackedFormat format) =>
+        format is HdrPackedFormat.P010 or HdrPackedFormat.Nv12;
+
+    public static bool HasPackedData(ReadOnlySpan<byte> data, HdrPackedFormat format, int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            return false;
+        }
+
+        if (format == HdrPackedFormat.P010)
+        {
+            return data.Length >= width * height * 3;
+        }
+
+        if (format == HdrPackedFormat.Nv12)
+        {
+            return data.Length >= width * height * 3 / 2;
+        }
+
+        var bpp = BytesPerPixel(format);
+        return bpp > 0 && data.Length >= width * height * bpp;
+    }
+
+    /// <summary>
+    /// Tight-packed P010 / NV12: Y plane then interleaved UV (4:2:0).
+    /// P010 samples are MSB-aligned 10-bit in 16-bit words.
+    /// </summary>
+    public static void ReadYuv(
+        ReadOnlySpan<byte> data,
+        int width,
+        int height,
+        int x,
+        int y,
+        HdrPackedFormat format,
+        out float luma,
+        out float u,
+        out float v)
+    {
+        luma = u = v = 0;
+        if (x < 0 || y < 0 || x >= width || y >= height || !HasPackedData(data, format, width, height))
+        {
+            return;
+        }
+
+        if (format == HdrPackedFormat.P010)
+        {
+            var yStride = width * 2;
+            var uvStride = width * 2;
+            var yOff = (y * yStride) + (x * 2);
+            var uvOff = (yStride * height) + ((y / 2) * uvStride) + ((x / 2) * 4);
+            luma = (ReadU16(data, yOff) >> 6) / 1023f;
+            u = (ReadU16(data, uvOff) >> 6) / 1023f;
+            v = (ReadU16(data, uvOff + 2) >> 6) / 1023f;
+            return;
+        }
+
+        if (format == HdrPackedFormat.Nv12)
+        {
+            var yOff = (y * width) + x;
+            var uvOff = (width * height) + ((y / 2) * width) + ((x / 2) * 2);
+            luma = data[yOff] / 255f;
+            u = data[uvOff] / 255f;
+            v = data[uvOff + 1] / 255f;
+        }
+    }
 
     /// <summary>
     /// EXIF orientations 5–8 are 90°/270° (and mirrors of those), so the

@@ -79,11 +79,16 @@ public static class GalleryPresent
         return probe.Kind switch
         {
             HdrKind.UltraHdrJpeg => "Ultra HDR JPEG — showing the SDR base",
-            HdrKind.HdrPng or HdrKind.HdrAvif when presented =>
+            HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance when presented =>
                 $"{HdrKindLabel(probe.Kind)} · presenting scRGB",
-            HdrKind.HdrPng or HdrKind.HdrAvif => $"{HdrKindLabel(probe.Kind)} — SDR preview",
+            HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance =>
+                $"{HdrKindLabel(probe.Kind)} — SDR preview",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
+            HdrKind.WideGamutHeif => "Wide-gamut HEIF",
+            HdrKind.WideGamutJxl => "Wide-gamut JPEG XL",
             _ => null
         };
     }
@@ -93,8 +98,14 @@ public static class GalleryPresent
         {
             HdrKind.HdrPng => "HDR PNG",
             HdrKind.HdrAvif => "HDR AVIF",
+            HdrKind.HdrHeif => "HDR HEIF",
+            HdrKind.HdrJxr => "HDR JPEG XR",
+            HdrKind.HdrJxl => "HDR JPEG XL",
+            HdrKind.HdrRadiance => "Radiance HDR",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
+            HdrKind.WideGamutHeif => "Wide-gamut HEIF",
+            HdrKind.WideGamutJxl => "Wide-gamut JPEG XL",
             HdrKind.UltraHdrJpeg => "Ultra HDR JPEG",
             _ => "HDR"
         };
@@ -211,8 +222,11 @@ public static class GalleryPresent
         var primaries = probe.CicpPrimaries switch
         {
             9 => "BT.2020",
+            11 => "DCI-P3",
             12 => "Display P3",
-            1 or 6 => "BT.709",
+            10 => "XYZ",
+            5 or 6 => "BT.601",
+            1 or 2 => "BT.709",
             _ => null
         };
         var transfer = probe.Transfer switch
@@ -220,6 +234,7 @@ public static class GalleryPresent
             HdrTransfer.Pq => "PQ",
             HdrTransfer.Hlg => "HLG",
             HdrTransfer.Linear => "linear",
+            HdrTransfer.Scrgb => "scRGB",
             _ when probe.CicpTransfer is 13 => "sRGB",
             _ when probe.IsHdr => "sRGB",
             _ => null
@@ -406,11 +421,21 @@ public static class GalleryPresent
         return new CancellationTokenSource();
     }
 
+    public static float TransferToLinear01(float encoded, HdrTransfer transfer) =>
+        transfer switch
+        {
+            HdrTransfer.Pq => PqEotf(encoded),
+            HdrTransfer.Hlg => HlgEotf(encoded),
+            HdrTransfer.Linear or HdrTransfer.Scrgb => encoded,
+            _ => SrgbEotf(encoded)
+        };
+
     public static float EncodedToNits(float encoded, HdrTransfer transfer) =>
         transfer switch
         {
             HdrTransfer.Pq => PqEotf(encoded) * 10000f,
             HdrTransfer.Hlg => HlgEotf(encoded) * 1000f,
+            HdrTransfer.Scrgb => encoded * ScrgbNits,
             HdrTransfer.Linear => encoded * SdrReferenceNits,
             _ => SrgbEotf(encoded) * SdrReferenceNits
         };
