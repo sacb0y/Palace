@@ -6,9 +6,16 @@ https://github.com/sacb0y/palace
 
 ## Goals
 
-Library first: watch folders, browse a mosaic, tag and search, organize on disk when asked.
+**Now — 0.0 Library core.** Watch folders, browse a mosaic, tag and search, organize on disk when asked.
 
-After Library, in this order: **Cloud** (On-Demand / API sources without downloading originals until Open), **Rooms** (moodboards), **HDR** preview.
+**Later** (planned slices; not current work):
+
+- **0.1 Cloud** — On-Demand and API sources; do not download originals until Open
+- **0.2 Wings** — Unity / game overlay on the same catalog
+- **0.3 3D** — glTF / OBJ preview first
+- **0.4 Unity packages** — preview `.unitypackage`
+- **0.5 LLM tags** — Ollama / LM Studio, then Grok
+- **1.0 Ship** — Release / trim, packaging / Store
 
 ## What works today
 
