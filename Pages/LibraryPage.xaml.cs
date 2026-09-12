@@ -28,6 +28,9 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private readonly Dictionary<string, WeakReference<BitmapImage>> _tileBitmapCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _suppressBrowseChrome;
+    private bool _suppressMosaicSelection;
+    private VirtualKey _mosaicArrow;
+    private long _headerGestureAtMs = -1;
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
@@ -116,6 +119,8 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand<AssignedTagItem> GetRemoveTagCommand() => AppServices.Library.RemoveAssignedTagCommand;
 
     public static IRelayCommand<PromptSuggestion> GetAcceptSuggestionCommand() => AppServices.Library.AcceptSuggestionCommand;
+
+    public static IRelayCommand<AssetItem?> GetActivateFolderHeaderCommand() => AppServices.Library.ActivateFolderHeaderCommand;
 
     public static IRelayCommand<AssetItem?> GetOpenOverlayCommand() => AppServices.Library.OpenOverlayCommand;
 
@@ -221,7 +226,14 @@ public sealed partial class LibraryPage : Page
         var ratios = new double[length];
         for (var i = 0; i < length; i++)
         {
-            ratios[i] = i < available ? assets[start + i].AspectRatio : 1.0;
+            if (i >= available)
+            {
+                ratios[i] = 1.0;
+                continue;
+            }
+
+            var item = assets[start + i];
+            ratios[i] = GalleryMedia.MosaicAspect(item.IsFolderHeader, item.AspectRatio);
         }
 
         args.SetDesiredAspectRatios(ratios);
@@ -290,8 +302,108 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)
     {
-        ViewModel.SetSelection(sender.SelectedItems.OfType<AssetItem>());
+        if (_suppressMosaicSelection)
+        {
+            return;
+        }
+
+        var assets = ViewModel.Assets;
+        var keep = new List<AssetItem>();
+        var headerIndexes = new List<int>();
+        for (var i = 0; i < assets.Count; i++)
+        {
+            if (!sender.IsSelected(i))
+            {
+                continue;
+            }
+
+            if (assets[i].IsFolderHeader)
+            {
+                headerIndexes.Add(i);
+            }
+            else
+            {
+                keep.Add(assets[i]);
+            }
+        }
+
+        var arrow = _mosaicArrow;
+        _mosaicArrow = VirtualKey.None;
+        if (headerIndexes.Count == 0)
+        {
+            ViewModel.SetSelection(keep);
+            return;
+        }
+
+        _suppressMosaicSelection = true;
+        try
+        {
+            foreach (var index in headerIndexes)
+            {
+                sender.Deselect(index);
+            }
+
+            if (keep.Count == 0 && arrow is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down)
+            {
+                var step = arrow is VirtualKey.Left or VirtualKey.Up ? -1 : 1;
+                var flags = assets.Select(item => item.IsFolderHeader).ToList();
+                var next = FolderGroups.NextNonHeaderIndex(flags, headerIndexes[0], step);
+                if (next >= 0)
+                {
+                    sender.Select(next);
+                    keep.Add(assets[next]);
+                }
+            }
+
+            if (keep.Count == 0)
+            {
+                for (var i = 0; i < assets.Count; i++)
+                {
+                    if (assets[i].IsFolderHeader || !assets[i].IsSelected)
+                    {
+                        continue;
+                    }
+
+                    sender.Select(i);
+                    keep.Add(assets[i]);
+                }
+            }
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+
+        if (keep.Count > 0)
+        {
+            ViewModel.SetSelection(keep);
+        }
     }
+
+    private void FolderGroupHeader_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _mosaicArrow = VirtualKey.None;
+        NoteHeaderGesture();
+        e.Handled = true;
+    }
+
+    private void FolderGroupHeader_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        var header = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (header is not { IsFolderHeader: true })
+        {
+            return;
+        }
+
+        NoteHeaderGesture();
+        ViewModel.SelectFolderGroup(header);
+        e.Handled = true;
+    }
+
+    private void NoteHeaderGesture() => _headerGestureAtMs = Environment.TickCount64;
+
+    private long MillisecondsSinceHeaderGesture() =>
+        _headerGestureAtMs < 0 ? -1 : Environment.TickCount64 - _headerGestureAtMs;
 
     private void BcrPath_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
     {
@@ -352,9 +464,23 @@ public sealed partial class LibraryPage : Page
         ViewModel.AssignFromQueryCommand.Execute(null);
     }
 
-    private void GrdAssets_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void GrdAssets_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        TryOpenOverlayFromDoubleTap(e.OriginalSource, e);
+
+    private void AssetItem_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        TryOpenOverlayFromDoubleTap(sender, e);
+
+    private void TryOpenOverlayFromDoubleTap(object? source, DoubleTappedRoutedEventArgs e)
     {
-        var item = FindAssetItem(e.OriginalSource);
+        var item = FindAssetItem(source) ?? FindAssetItem(e.OriginalSource);
+        if (!GalleryMedia.ShouldOpenOverlayFromDoubleTap(
+                item?.IsFolderHeader == true,
+                MillisecondsSinceHeaderGesture()))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (item is null)
         {
             return;
@@ -364,16 +490,12 @@ public sealed partial class LibraryPage : Page
         e.Handled = true;
     }
 
-    private void AssetItem_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void GrdAssets_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is null)
+        if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down)
         {
-            return;
+            _mosaicArrow = e.Key;
         }
-
-        OpenOverlayFor(item);
-        e.Handled = true;
     }
 
     private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -385,9 +507,16 @@ public sealed partial class LibraryPage : Page
 
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset
-            ?? ViewModel.Assets.FirstOrDefault();
+            ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
         if (item is null)
         {
+            return;
+        }
+
+        if (item.IsFolderHeader)
+        {
+            ViewModel.SelectFolderGroup(item);
+            e.Handled = true;
             return;
         }
 
@@ -397,6 +526,11 @@ public sealed partial class LibraryPage : Page
 
     private void OpenOverlayFor(AssetItem item)
     {
+        if (item.IsFolderHeader)
+        {
+            return;
+        }
+
         EnsureSelectedForContext(item);
         ViewModel.OpenOverlayCommand.Execute(item);
     }
@@ -405,22 +539,27 @@ public sealed partial class LibraryPage : Page
     {
         for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            if (current is FrameworkElement element)
+            if (current is not FrameworkElement element)
             {
-                if (element.DataContext is AssetItem bound)
-                {
-                    return bound;
-                }
+                continue;
+            }
 
-                var id = GalleryMedia.FindAssetId(element.Tag, element.DataContext);
-                if (!string.IsNullOrEmpty(id))
-                {
-                    var match = ViewModel.Assets.FirstOrDefault(a => a.Id == id);
-                    if (match is not null)
-                    {
-                        return match;
-                    }
-                }
+            if (element.DataContext is AssetItem bound)
+            {
+                return bound;
+            }
+
+            var key = GalleryMedia.FindAssetId(element.Tag, element.DataContext);
+            if (string.IsNullOrEmpty(key))
+            {
+                continue;
+            }
+
+            var match = ViewModel.Assets.FirstOrDefault(item =>
+                GalleryMedia.MatchesMosaicKey(item.Id, item.MosaicTag, key));
+            if (match is not null)
+            {
+                return match;
             }
         }
 
@@ -430,22 +569,42 @@ public sealed partial class LibraryPage : Page
     private void AssetItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is not null)
+        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
         {
-            EnsureSelectedForContext(item);
+            e.Handled = true;
+            return;
         }
+
+        EnsureSelectedForContext(item);
+    }
+
+    private void AssetItem_ContextRequested(object sender, ContextRequestedEventArgs e)
+    {
+        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        EnsureSelectedForContext(item);
     }
 
     private void AssetMenu_Opening(object sender, object e)
     {
-        if (sender is MenuFlyout { Target: FrameworkElement target })
+        if (sender is not MenuFlyout flyout)
         {
-            var item = FindAssetItem(target);
-            if (item is not null)
-            {
-                EnsureSelectedForContext(item);
-            }
+            return;
         }
+
+        var item = flyout.Target is FrameworkElement target ? FindAssetItem(target) : null;
+        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        {
+            flyout.Hide();
+            return;
+        }
+
+        EnsureSelectedForContext(item);
     }
 
     private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -482,6 +641,11 @@ public sealed partial class LibraryPage : Page
 
     private void EnsureSelectedForContext(AssetItem item)
     {
+        if (item.IsFolderHeader || string.IsNullOrEmpty(item.Id))
+        {
+            return;
+        }
+
         if (GrdAssets.SelectedItems.OfType<AssetItem>().Any(a => a.Id == item.Id))
         {
             return;
@@ -608,7 +772,7 @@ public sealed partial class LibraryPage : Page
     private void BindTileImage(Image image, AssetItem? hinted = null)
     {
         var item = FindAssetItem(image) ?? hinted ?? image.DataContext as AssetItem;
-        if (item is null)
+        if (item is null || item.IsFolderHeader)
         {
             _realizedTiles.Remove(image);
             return;
@@ -773,7 +937,8 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
-            if (!GalleryMedia.ShouldUpgradeThumb(
+            if (item.IsFolderHeader
+                || !GalleryMedia.ShouldUpgradeThumb(
                     _thumbsMayUpgrade,
                     CloudFile.IsOnlineOnly(item.Path),
                     item.IsOrphan,

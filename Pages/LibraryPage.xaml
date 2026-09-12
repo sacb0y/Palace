@@ -287,7 +287,7 @@
                 IsItemInvokedEnabled="False"
                 IsTabStop="True"
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
-                PreviewKeyDown="GrdAssets_KeyDown"
+                PreviewKeyDown="GrdAssets_PreviewKeyDown"
                 SelectionChanged="GrdAssets_SelectionChanged"
                 SelectionMode="Extended">
                 <ItemsView.Layout>
@@ -302,12 +302,13 @@
                 <ItemsView.ItemTemplate>
                     <DataTemplate x:DataType="models:AssetItem">
                         <ItemContainer
-                            AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
+                            AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
+                            ContextRequested="AssetItem_ContextRequested"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
+                            IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                             ManipulationMode="None"
-                            RightTapped="AssetItem_RightTapped"
-                            Tag="{x:Bind Id, Mode=OneWay}">
+                            Tag="{x:Bind MosaicTag, Mode=OneWay}">
                             <ItemContainer.ContextFlyout>
                                 <MenuFlyout Opening="AssetMenu_Opening">
                                     <MenuFlyoutItem
@@ -389,47 +390,81 @@
                                     </MenuFlyoutItem>
                                 </MenuFlyout>
                             </ItemContainer.ContextFlyout>
-                            <Grid
-                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                DoubleTapped="AssetItem_DoubleTapped"
-                                IsDoubleTapEnabled="True"
-                                ManipulationMode="None">
-                                <Image
-                                    DataContextChanged="TileImage_DataContextChanged"
+                            <Grid>
+                                <Button
+                                    Padding="4,0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
+                                    VerticalAlignment="Stretch"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                    CommandParameter="{x:Bind}"
+                                    IsTabStop="False"
+                                    PointerPressed="FolderGroupHeader_PointerPressed"
+                                    Tag="{x:Bind MosaicTag, Mode=OneWay}"
+                                    Tapped="FolderGroupHeader_Tapped"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFolderHeader), Mode=OneWay}">
+                                    <StackPanel
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="8">
+                                        <ic:FluentIcon
+                                            Icon="Folder"
+                                            IconSize="Size16"
+                                            IconVariant="Regular" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.AutomationId="{x:Bind FolderGroupAutomationId, Mode=OneWay}"
+                                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                                            Tag="{x:Bind MosaicTag, Mode=OneWay}"
+                                            Text="{x:Bind FolderGroupTitle, Mode=OneWay}" />
+                                    </StackPanel>
+                                </Button>
+                                <Grid
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"
                                     IsDoubleTapEnabled="True"
-                                    Loaded="TileImage_Loaded"
                                     ManipulationMode="None"
-                                    Source="{x:Bind ThumbImage, Mode=OneWay}"
-                                    Stretch="UniformToFill"
-                                    Tag="{x:Bind Id, Mode=OneWay}"
-                                    Unloaded="TileImage_Unloaded" />
-                                <TextBlock
-                                    Margin="8"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    IsHitTestVisible="False"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="Missing"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsOrphan), Mode=OneWay}" />
-                                <StackPanel
-                                    Margin="8"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    IsHitTestVisible="False"
-                                    Spacing="4"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
-                                    <ic:FluentIcon
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Icon="{x:Bind helpers:FluentGlyph.Placeholder(Kind), Mode=OneWay}"
-                                        IconSize="Size32"
-                                        IconVariant="Regular" />
+                                    RightTapped="AssetItem_RightTapped"
+                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsFolderHeader), Mode=OneWay}">
+                                    <Image
+                                        DataContextChanged="TileImage_DataContextChanged"
+                                        DoubleTapped="AssetItem_DoubleTapped"
+                                        IsDoubleTapEnabled="True"
+                                        Loaded="TileImage_Loaded"
+                                        ManipulationMode="None"
+                                        Source="{x:Bind ThumbImage, Mode=OneWay}"
+                                        Stretch="UniformToFill"
+                                        Tag="{x:Bind Id, Mode=OneWay}"
+                                        Unloaded="TileImage_Unloaded" />
                                     <TextBlock
+                                        Margin="8"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        IsHitTestVisible="False"
                                         Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="Online" />
-                                </StackPanel>
+                                        Text="Missing"
+                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsOrphan), Mode=OneWay}" />
+                                    <StackPanel
+                                        Margin="8"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        IsHitTestVisible="False"
+                                        Spacing="4"
+                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
+                                        <ic:FluentIcon
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Icon="{x:Bind helpers:FluentGlyph.Placeholder(Kind), Mode=OneWay}"
+                                            IconSize="Size32"
+                                            IconVariant="Regular" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="Online" />
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
                         </ItemContainer>
                     </DataTemplate>

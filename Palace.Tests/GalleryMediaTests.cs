@@ -73,6 +73,31 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void MosaicAspect_HeadersUseFullLineRatio()
+    {
+        Assert.Equal(GalleryMedia.FolderHeaderAspect, GalleryMedia.MosaicAspect(true, 1.5));
+        Assert.Equal(1.5, GalleryMedia.MosaicAspect(false, 1.5));
+    }
+
+    [Fact]
+    public void ShouldShowAssetContextFlyout_TilesOnly()
+    {
+        Assert.True(GalleryMedia.ShouldShowAssetContextFlyout(false));
+        Assert.False(GalleryMedia.ShouldShowAssetContextFlyout(true));
+    }
+
+    [Fact]
+    public void ShouldOpenOverlayFromDoubleTap_IgnoresHeadersAndHeaderGesture()
+    {
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(true, -1));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(true, 0));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, 0));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, GalleryMedia.MosaicDoubleClickMs - 1));
+        Assert.True(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, -1));
+        Assert.True(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, GalleryMedia.MosaicDoubleClickMs));
+    }
+
+    [Fact]
     public void ShouldLoadTileThumb_AllowsMissingJpegWhenHashExists()
     {
         Assert.True(GalleryMedia.ShouldLoadTileThumb(false, false, false, null, "abc"));
@@ -195,6 +220,16 @@ public sealed class GalleryMediaTests
         Assert.Equal("tile-1", GalleryMedia.FindAssetId("tile-1", null));
         Assert.Equal("from-ctx", GalleryMedia.FindAssetId("ignored", new { Id = "from-ctx" }));
         Assert.Null(GalleryMedia.FindAssetId(null, null));
+    }
+
+    [Fact]
+    public void FindAssetId_ReadsMosaicTagWhenIdIsEmpty()
+    {
+        Assert.Equal(
+            "folder-group:Photos/Vacation",
+            GalleryMedia.FindAssetId(null, new { Id = "", MosaicTag = "folder-group:Photos/Vacation" }));
+        Assert.True(GalleryMedia.MatchesMosaicKey("", "folder-group:Photos/Vacation", "folder-group:Photos/Vacation"));
+        Assert.False(GalleryMedia.MatchesMosaicKey("asset-1", null, "folder-group:Photos/Vacation"));
     }
 
     [Fact]

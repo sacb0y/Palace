@@ -81,6 +81,40 @@ public static class GalleryMedia
         return Math.Min(requestedLength, available);
     }
 
+    /// <summary>
+    /// Folder headers take a full mosaic line so tiles do not sit beside the title.
+    /// </summary>
+    public const double FolderHeaderAspect = 32.0;
+
+    public static double MosaicAspect(bool isFolderHeader, double assetAspect) =>
+        isFolderHeader ? FolderHeaderAspect : assetAspect;
+
+    /// <summary>
+    /// Asset commands stay on tiles. Headers cancel <c>ContextRequested</c>
+    /// so the ItemContainer flyout never opens there.
+    /// </summary>
+    public static bool ShouldShowAssetContextFlyout(bool isFolderHeader) => !isFolderHeader;
+
+    /// <summary>
+    /// Windows default double-click window. A header tap already navigates;
+    /// a second click inside this window can land on a new tile after the
+    /// async mosaic reload and must not open overlay.
+    /// </summary>
+    public const int MosaicDoubleClickMs = 500;
+
+    public static bool ShouldOpenOverlayFromDoubleTap(
+        bool isFolderHeader,
+        long millisecondsSinceHeaderGesture)
+    {
+        if (isFolderHeader)
+        {
+            return false;
+        }
+
+        return millisecondsSinceHeaderGesture < 0
+            || millisecondsSinceHeaderGesture >= MosaicDoubleClickMs;
+    }
+
     public static bool ShouldLoadTileThumb(
         bool isOrphan,
         bool alreadyStarted,
@@ -191,6 +225,12 @@ public static class GalleryMedia
             {
                 return id;
             }
+
+            var mosaic = ReadString(ctx, "MosaicTag");
+            if (!string.IsNullOrEmpty(mosaic))
+            {
+                return mosaic;
+            }
         }
 
         if (tag is string tagId && tagId.Length > 0)
@@ -198,17 +238,31 @@ public static class GalleryMedia
             return tagId;
         }
 
-        return ReadId(tag);
+        return ReadId(tag) ?? ReadString(tag, "MosaicTag");
     }
 
-    private static string? ReadId(object? value)
+    public static bool MatchesMosaicKey(string? id, string? mosaicTag, string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        return string.Equals(id, key, StringComparison.Ordinal)
+            || (!string.IsNullOrEmpty(mosaicTag)
+                && string.Equals(mosaicTag, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? ReadId(object? value) => ReadString(value, "Id");
+
+    private static string? ReadString(object? value, string property)
     {
         if (value is null)
         {
             return null;
         }
 
-        var prop = value.GetType().GetProperty("Id");
+        var prop = value.GetType().GetProperty(property);
         return prop?.GetValue(value) as string;
     }
 }
