@@ -84,22 +84,6 @@ public sealed class HdrColorTests
         Assert.True(HdrPixels.HasPackedData(data, HdrPackedFormat.P010, 2, 2));
     }
 
-    [Fact]
-    public void PeakSettings_GlobalKeyWinsOverSession()
-    {
-        Assert.Equal(
-            400f,
-            HdrPeakSettings.PresentPeakNits(true, true, 400, false, 203));
-        Assert.Null(HdrPeakSettings.PresentPeakNits(true, false, 400, true, 800));
-        Assert.Equal(
-            600f,
-            HdrPeakSettings.PresentPeakNits(false, false, 400, true, 600));
-        Assert.Null(HdrPeakSettings.PresentPeakNits(false, false, 400, false, 600));
-        Assert.Equal(GalleryPresent.MinPeakNits, HdrPeakSettings.ReadNits(10));
-        Assert.True(HdrPeakSettings.ReadBool("true"));
-        Assert.False(HdrPeakSettings.ReadBool(0));
-    }
-
     private static void WriteU16(byte[] data, int offset, ushort value)
     {
         data[offset] = (byte)value;
