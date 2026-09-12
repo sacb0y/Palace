@@ -17,6 +17,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private string? _hdrFramePath;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
+    private CancellationTokenSource? _hdrLoadCts;
     private bool _panning;
     private double _panLastX;
     private double _panLastY;
@@ -66,7 +67,11 @@ public sealed partial class GalleryStillSurface : UserControl
         ImgStill.Source = null;
     }
 
-    private void CancelInFlight() => Interlocked.Increment(ref _epoch);
+    private void CancelInFlight()
+    {
+        Interlocked.Increment(ref _epoch);
+        _hdrLoadCts?.Cancel();
+    }
 
     private void Gallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -77,6 +82,23 @@ public sealed partial class GalleryStillSurface : UserControl
             if (e.PropertyName is nameof(GalleryViewModel.Scaling))
             {
                 ApplyScaleLayout();
+                if (_hdrFrame is not null && _gallery is { } g)
+                {
+                    var raster = XamlRoot?.RasterizationScale ?? 1.0;
+                    var (dipW, dipH) = HdrPanelDips();
+                    var want = GalleryPresent.PresentDecodeSize(
+                        _hdrFrame.NativeWidth,
+                        _hdrFrame.NativeHeight,
+                        (int)Math.Round(Math.Max(dipW, 0) * raster),
+                        (int)Math.Round(Math.Max(dipH, 0) * raster),
+                        g.Scaling);
+                    if (GalleryPresent.NeedsBetterDecode(
+                            _hdrFrame.Width, _hdrFrame.Height, want.Width, want.Height))
+                    {
+                        _ = RefreshAsync();
+                        return;
+                    }
+                }
             }
 
             PresentCached();
@@ -92,14 +114,30 @@ public sealed partial class GalleryStillSurface : UserControl
     private void GrdStillHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         ApplyScaleLayout();
-        if (_gallery is { IsImage: true } && _hdrFrame is not null)
+        if (_gallery is { IsImage: true } gallery && _hdrFrame is not null)
         {
+            var raster = XamlRoot?.RasterizationScale ?? 1.0;
+            var (dipW, dipH) = HdrPanelDips();
+            var want = GalleryPresent.PresentDecodeSize(
+                _hdrFrame.NativeWidth,
+                _hdrFrame.NativeHeight,
+                (int)Math.Round(Math.Max(dipW, 0) * raster),
+                (int)Math.Round(Math.Max(dipH, 0) * raster),
+                gallery.Scaling);
+            if (GalleryPresent.NeedsBetterDecode(
+                    _hdrFrame.Width, _hdrFrame.Height, want.Width, want.Height))
+            {
+                _ = RefreshAsync();
+                return;
+            }
+
             PresentCached();
         }
     }
 
     private async Task RefreshAsync()
     {
+        _hdrLoadCts?.Cancel();
         var epoch = Interlocked.Increment(ref _epoch);
         var gallery = _gallery;
         ApplyScaleLayout();
@@ -112,12 +150,23 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         var still = gallery.PreviewImageUri ?? gallery.CurrentPath;
-        ImgStill.Source = ToStillImage(still);
-
         var item = gallery.Current;
         var pathMatches = still is not null
             && item is not null
             && string.Equals(still, item.Path, StringComparison.OrdinalIgnoreCase);
+        var attempt = pathMatches
+            && GalleryPresent.ShouldAttemptHdrPresent(
+                item!.Kind,
+                item.IsOrphan,
+                item.IsOnlineOnly,
+                AssetItemMapper.IsApiOnly(item),
+                CloudFile.Exists(item.Path) && !CloudFile.IsOnlineOnly(item.Path),
+                gallery.CurrentProbe);
+
+        // Do not BitmapImage the original HDR file — that is a second full
+        // WIC decode. Show the mosaic thumb until scRGB present wins.
+        ImgStill.Source = ToStillImage(attempt ? item?.ThumbPath : still);
+
         if (!pathMatches)
         {
             ClearHdrCache();
@@ -125,14 +174,6 @@ public sealed partial class GalleryStillSurface : UserControl
             gallery.SetHdrPresentResult(false, false);
             return;
         }
-
-        var attempt = GalleryPresent.ShouldAttemptHdrPresent(
-            item.Kind,
-            item.IsOrphan,
-            item.IsOnlineOnly,
-            AssetItemMapper.IsApiOnly(item),
-            CloudFile.Exists(item.Path) && !CloudFile.IsOnlineOnly(item.Path),
-            gallery.CurrentProbe);
 
         if (!attempt || still is null)
         {
@@ -142,12 +183,35 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
+        var raster = XamlRoot?.RasterizationScale ?? 1.0;
+        var (dipW, dipH) = HdrPanelDips();
+        var viewPxW = (int)Math.Round(Math.Max(dipW, 0) * raster);
+        var viewPxH = (int)Math.Round(Math.Max(dipH, 0) * raster);
         HdrFrame? frame = CachedFrame(still, gallery.CurrentProbe);
+        if (frame is not null)
+        {
+            var want = GalleryPresent.PresentDecodeSize(
+                frame.NativeWidth, frame.NativeHeight, viewPxW, viewPxH, gallery.Scaling);
+            if (GalleryPresent.NeedsBetterDecode(frame.Width, frame.Height, want.Width, want.Height))
+            {
+                frame = null;
+            }
+        }
+
         if (frame is null)
         {
+            _hdrLoadCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _hdrLoadCts = cts;
             try
             {
-                frame = await HdrWicDecode.TryLoadAsync(still, gallery.CurrentProbe, CancellationToken.None);
+                frame = await HdrWicDecode.TryLoadAsync(
+                    still,
+                    gallery.CurrentProbe,
+                    viewPxW,
+                    viewPxH,
+                    gallery.Scaling,
+                    cts.Token);
             }
             catch
             {
@@ -171,6 +235,7 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ClearHdrCache();
                 HideHdr();
+                ImgStill.Source = ToStillImage(still);
                 gallery.SetHdrPresentResult(false, false);
                 return;
             }
@@ -180,6 +245,42 @@ public sealed partial class GalleryStillSurface : UserControl
             _hdrFrameProbe = gallery.CurrentProbe;
             ApplyScaleLayout();
             PresentFrame(gallery, frame);
+            if (!GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight))
+            {
+                _ = MeasureStatsAsync(gallery, still, gallery.CurrentProbe, epoch);
+            }
+        });
+    }
+
+    private async Task MeasureStatsAsync(
+        GalleryViewModel gallery,
+        string path,
+        HdrProbe probe,
+        int epoch)
+    {
+        HdrStats? stats = null;
+        try
+        {
+            stats = await HdrWicDecode.TryMeasureAsync(path, probe, CancellationToken.None);
+        }
+        catch
+        {
+            stats = null;
+        }
+
+        if (epoch != _epoch || !ReferenceEquals(_gallery, gallery) || stats is null)
+        {
+            return;
+        }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
+            {
+                return;
+            }
+
+            gallery.SetHdrStats(stats.Value.MaxNits, stats.Value.AvgNits, stats.Value.MinNits, stats.Value.MaxScrgb);
         });
     }
 
@@ -224,7 +325,10 @@ public sealed partial class GalleryStillSurface : UserControl
                 _presenter.DisplayPeakNits,
                 frame.MaxNits,
                 frame.AvgNits,
-                frame.MinNits);
+                frame.MinNits,
+                frame.MaxScrgb,
+                frame.NativeWidth,
+                frame.NativeHeight);
             return;
         }
 
@@ -375,9 +479,9 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         // Oriented WIC / BitmapImage size. Catalog Width/Height are unoriented
         // headers — 90°/270° EXIF would get the wrong 1:1 aspect.
-        if (_hdrFrame is { Width: > 0, Height: > 0 } frame)
+        if (_hdrFrame is { NativeWidth: > 0, NativeHeight: > 0 } frame)
         {
-            return (frame.Width, frame.Height);
+            return (frame.NativeWidth, frame.NativeHeight);
         }
 
         if (ImgStill.Source is BitmapImage bmp && bmp.PixelWidth > 0 && bmp.PixelHeight > 0)

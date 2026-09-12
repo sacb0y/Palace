@@ -1,7 +1,7 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// Packed WIC pixel layouts used when converting a local HDR PNG to scRGB.
+/// Packed WIC pixel layouts used when converting a local HDR still to scRGB.
 /// Stays off WinUI so tests can lock channel order.
 /// </summary>
 public enum HdrPackedFormat
