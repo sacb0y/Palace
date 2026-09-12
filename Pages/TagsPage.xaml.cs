@@ -375,9 +375,8 @@ public sealed partial class TagsPage : Page
             }
 
             var path = item.ThumbPath;
-            if (string.IsNullOrEmpty(path)
-                && !string.IsNullOrEmpty(item.ContentHash)
-                && !string.IsNullOrEmpty(item.Path))
+            if (GalleryMedia.ShouldRequestMosaicThumb(
+                    item.IsOrphan, item.Path, item.ContentHash, path))
             {
                 var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
                 path = generated?.Path;
@@ -389,7 +388,6 @@ public sealed partial class TagsPage : Page
 
             if (string.IsNullOrEmpty(path))
             {
-                item.ThumbLoadStarted = false;
                 return;
             }
 

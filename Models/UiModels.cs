@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml.Media;
+using Palace.Helpers;
 
 namespace Palace.Models;
 
@@ -69,9 +70,14 @@ public partial class AssetItem : ObservableObject
 
     public bool HasThumbnail => !string.IsNullOrEmpty(ThumbPath);
 
-    public bool ShowCloudTile => IsOnlineOnly && !HasThumbnail;
+    public bool ShowCloudTile =>
+        GalleryMedia.ShowPlaceholderTile(IsOnlineOnly, IsOrphan, ThumbImage is not null);
 
     partial void OnIsOnlineOnlyChanged(bool value) => OnPropertyChanged(nameof(ShowCloudTile));
+
+    partial void OnIsOrphanChanged(bool value) => OnPropertyChanged(nameof(ShowCloudTile));
+
+    partial void OnThumbImageChanged(ImageSource? value) => OnPropertyChanged(nameof(ShowCloudTile));
 
     partial void OnThumbPathChanged(string? value)
     {

@@ -421,10 +421,9 @@
                                     Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudTile), Mode=OneWay}">
                                     <ic:FluentIcon
-                                        FontSize="16"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Icon="Cloud"
-                                        IconSize="Size16"
+                                        Icon="{x:Bind helpers:FluentGlyph.Placeholder(Kind), Mode=OneWay}"
+                                        IconSize="Size32"
                                         IconVariant="Regular" />
                                     <TextBlock
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -468,7 +467,22 @@
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="Select an asset"
                             Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.HasSelection), Mode=OneWay}" />
-                        </Grid>
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowPreviewPlaceholder), Mode=OneWay}">
+                            <ic:FluentIcon
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Icon="{x:Bind helpers:FluentGlyph.Placeholder(ViewModel.PreviewPlaceholderKind), Mode=OneWay}"
+                                IconSize="Size32"
+                                IconVariant="Regular" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="Online" />
+                        </StackPanel>
+                    </Grid>
                 </Border>
                 <TextBlock
                     Style="{StaticResource BodyTextBlockStyle}"

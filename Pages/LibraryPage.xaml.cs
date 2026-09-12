@@ -670,10 +670,8 @@ public sealed partial class LibraryPage : Page
             }
 
             var path = item.ThumbPath;
-            if (string.IsNullOrEmpty(path)
-                && !string.IsNullOrEmpty(item.ContentHash)
-                && !CloudFile.IsOnlineOnly(item.Path)
-                && !string.IsNullOrEmpty(item.Path))
+            if (GalleryMedia.ShouldRequestMosaicThumb(
+                    item.IsOrphan, item.Path, item.ContentHash, path))
             {
                 var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
                 path = generated?.Path;
@@ -685,7 +683,6 @@ public sealed partial class LibraryPage : Page
 
             if (string.IsNullOrEmpty(path))
             {
-                item.ThumbLoadStarted = false;
                 return;
             }
 

@@ -119,6 +119,12 @@ public partial class LibraryViewModel : ObservableObject
     public partial bool HasSelection { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowPreviewPlaceholder { get; set; }
+
+    [ObservableProperty]
+    public partial AssetKind PreviewPlaceholderKind { get; set; }
+
+    [ObservableProperty]
     public partial string? PreviewPath { get; set; }
 
     [ObservableProperty]
@@ -1299,6 +1305,9 @@ public partial class LibraryViewModel : ObservableObject
             IsVideoPreview = !hydrateOnOpen && asset.Kind == AssetKind.Video && previewPath is not null;
             IsImagePreview = previewPath is not null &&
                 (hydrateOnOpen || asset.Kind is AssetKind.Image or AssetKind.Gif);
+            ShowPreviewPlaceholder = GalleryMedia.ShowPlaceholderTile(
+                hydrateOnOpen || asset.IsOnlineOnly, asset.IsOrphan, !string.IsNullOrEmpty(previewPath));
+            PreviewPlaceholderKind = asset.Kind;
             PreviewPrompt = asset.Prompt;
             PreviewNegative = asset.NegativePrompt;
             PreviewModel = asset.Model;
@@ -1358,6 +1367,7 @@ public partial class LibraryViewModel : ObservableObject
         AssignedTagsSummary = "";
         IsImagePreview = false;
         IsVideoPreview = false;
+        ShowPreviewPlaceholder = false;
         PreviewPath = null;
         PreviewPrompt = null;
         PreviewNegative = null;
