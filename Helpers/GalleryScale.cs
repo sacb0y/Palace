@@ -65,7 +65,7 @@ public static class GalleryScale
     public static string StretchName(ImageScaling scaling) =>
         scaling switch
         {
-            ImageScaling.Actual => "None",
+            ImageScaling.Actual => "Uniform",
             ImageScaling.Fill => "UniformToFill",
             _ => "Uniform"
         };
@@ -135,6 +135,35 @@ public static class GalleryScale
         (
             ClampOffset(horizontalOffset - pointerDeltaX, scrollableWidth),
             ClampOffset(verticalOffset - pointerDeltaY, scrollableHeight));
+
+    /// <summary>
+    /// Fill starts centered (cover crop). 1:1 starts at the origin.
+    /// </summary>
+    public static (double Horizontal, double Vertical) InitialScrollOffset(
+        ImageScaling scaling,
+        double contentWidth,
+        double contentHeight,
+        double viewportWidth,
+        double viewportHeight) =>
+        scaling == ImageScaling.Fill
+            ? CoverCenterOffset(contentWidth, contentHeight, viewportWidth, viewportHeight)
+            : (0, 0);
+
+    public static (double Horizontal, double Vertical) CoverCenterOffset(
+        double contentWidth,
+        double contentHeight,
+        double viewportWidth,
+        double viewportHeight)
+    {
+        if (contentWidth <= 0 || contentHeight <= 0 || viewportWidth <= 0 || viewportHeight <= 0)
+        {
+            return (0, 0);
+        }
+
+        return (
+            Math.Max(0, (contentWidth - viewportWidth) / 2.0),
+            Math.Max(0, (contentHeight - viewportHeight) / 2.0));
+    }
 
     private static double ClampOffset(double offset, double scrollable)
     {

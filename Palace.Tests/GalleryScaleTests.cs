@@ -38,7 +38,7 @@ public sealed class GalleryScaleTests
     public void StretchName_AndScroll_MatchModes()
     {
         Assert.Equal("Uniform", GalleryScale.StretchName(ImageScaling.Fit));
-        Assert.Equal("None", GalleryScale.StretchName(ImageScaling.Actual));
+        Assert.Equal("Uniform", GalleryScale.StretchName(ImageScaling.Actual));
         Assert.Equal("UniformToFill", GalleryScale.StretchName(ImageScaling.Fill));
         Assert.True(GalleryScale.Scrolls(ImageScaling.Actual));
         Assert.True(GalleryScale.Scrolls(ImageScaling.Fill));
@@ -92,5 +92,21 @@ public sealed class GalleryScaleTests
         var none = GalleryScale.DragPan(4, 4, 1, 1, 0, 0);
         Assert.Equal(0, none.Horizontal, 3);
         Assert.Equal(0, none.Vertical, 3);
+    }
+
+    [Fact]
+    public void CoverCenterOffset_CentersFillOverflow()
+    {
+        var wide = GalleryScale.CoverCenterOffset(200, 100, 100, 100);
+        Assert.Equal(50, wide.Horizontal, 3);
+        Assert.Equal(0, wide.Vertical, 3);
+        var tall = GalleryScale.CoverCenterOffset(100, 200, 100, 100);
+        Assert.Equal(0, tall.Horizontal, 3);
+        Assert.Equal(50, tall.Vertical, 3);
+        var fit = GalleryScale.CoverCenterOffset(100, 100, 100, 100);
+        Assert.Equal(0, fit.Horizontal, 3);
+        Assert.Equal(0, fit.Vertical, 3);
+        Assert.Equal((50.0, 0.0), GalleryScale.InitialScrollOffset(ImageScaling.Fill, 200, 100, 100, 100));
+        Assert.Equal((0.0, 0.0), GalleryScale.InitialScrollOffset(ImageScaling.Actual, 200, 100, 100, 100));
     }
 }

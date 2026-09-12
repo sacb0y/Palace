@@ -20,6 +20,12 @@ public sealed partial class GalleryStillSurface : UserControl
     private bool _panning;
     private double _panLastX;
     private double _panLastY;
+    private ImageScaling _scrollScaling;
+    private int _scrollRevision = int.MinValue;
+    private double _scrollContentW;
+    private double _scrollContentH;
+    private double _scrollViewW;
+    private double _scrollViewH;
 
     public GalleryStillSurface()
     {
@@ -47,6 +53,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         CancelInFlight();
         ClearHdrCache();
+        ResetScrollTracking();
         _gallery = gallery;
         if (_gallery is not null)
         {
@@ -312,7 +319,57 @@ public sealed partial class GalleryStillSurface : UserControl
         ImgStill.Height = height;
         ScpHdr.Width = width;
         ScpHdr.Height = height;
+        SyncScrollOffset(scaling, width, height, viewW, viewH);
     }
+
+    private void SyncScrollOffset(
+        ImageScaling scaling,
+        double contentW,
+        double contentH,
+        double viewW,
+        double viewH)
+    {
+        if (double.IsNaN(contentW) || double.IsNaN(contentH) || contentW <= 1 || contentH <= 1
+            || viewW <= 1 || viewH <= 1)
+        {
+            return;
+        }
+
+        var revision = _gallery?.StillRevision ?? 0;
+        if (scaling == _scrollScaling
+            && revision == _scrollRevision
+            && NearlyEqual(contentW, _scrollContentW)
+            && NearlyEqual(contentH, _scrollContentH)
+            && NearlyEqual(viewW, _scrollViewW)
+            && NearlyEqual(viewH, _scrollViewH))
+        {
+            return;
+        }
+
+        _scrollScaling = scaling;
+        _scrollRevision = revision;
+        _scrollContentW = contentW;
+        _scrollContentH = contentH;
+        _scrollViewW = viewW;
+        _scrollViewH = viewH;
+
+        var (horizontal, vertical) = GalleryScale.InitialScrollOffset(
+            scaling, contentW, contentH, viewW, viewH);
+        ScrStill.UpdateLayout();
+        ScrStill.ChangeView(horizontal, vertical, null, true);
+    }
+
+    private void ResetScrollTracking()
+    {
+        _scrollRevision = int.MinValue;
+        _scrollContentW = 0;
+        _scrollContentH = 0;
+        _scrollViewW = 0;
+        _scrollViewH = 0;
+    }
+
+    private static bool NearlyEqual(double a, double b) =>
+        Math.Abs(a - b) < 0.5;
 
     private (int Width, int Height) StillPixelSize()
     {
