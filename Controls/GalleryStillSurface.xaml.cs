@@ -247,7 +247,8 @@ public sealed partial class GalleryStillSurface : UserControl
             PresentFrame(gallery, frame);
             if (!GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight))
             {
-                _ = MeasureStatsAsync(gallery, still, gallery.CurrentProbe, epoch);
+                _hdrLoadCts ??= new CancellationTokenSource();
+                _ = MeasureStatsAsync(gallery, still, gallery.CurrentProbe, epoch, _hdrLoadCts.Token);
             }
         });
     }
@@ -256,12 +257,13 @@ public sealed partial class GalleryStillSurface : UserControl
         GalleryViewModel gallery,
         string path,
         HdrProbe probe,
-        int epoch)
+        int epoch,
+        CancellationToken cancellation)
     {
         HdrStats? stats = null;
         try
         {
-            stats = await HdrWicDecode.TryMeasureAsync(path, probe, CancellationToken.None);
+            stats = await HdrWicDecode.TryMeasureAsync(path, probe, cancellation);
         }
         catch
         {
@@ -328,7 +330,8 @@ public sealed partial class GalleryStillSurface : UserControl
                 frame.MinNits,
                 frame.MaxScrgb,
                 frame.NativeWidth,
-                frame.NativeHeight);
+                frame.NativeHeight,
+                GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight));
             return;
         }
 

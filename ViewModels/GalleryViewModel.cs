@@ -135,6 +135,7 @@ public partial class GalleryViewModel : ObservableObject
     private int _headerPixelHeight;
     private int _nativePixelWidth;
     private int _nativePixelHeight;
+    private bool _nativeHdrStats;
 
     [ObservableProperty]
     public partial string? PreviewModel { get; set; }
@@ -220,17 +221,23 @@ public partial class GalleryViewModel : ObservableObject
         float minNits = 0,
         float maxScrgb = 0,
         int pixelWidth = 0,
-        int pixelHeight = 0)
+        int pixelHeight = 0,
+        bool statsAreNative = false)
     {
         HdrPresented = presented;
         DisplayIsHdr = displayHdr;
         DisplayPeakNits = displayPeakNits;
-        ContentMaxNits = maxNits;
-        ContentAvgNits = avgNits;
-        ContentMinNits = minNits;
-        if (maxScrgb > 0)
+        if (GalleryPresent.ReplaceHdrStats(_nativeHdrStats, statsAreNative))
         {
-            ContentMaxScrgb = maxScrgb;
+            ContentMaxNits = maxNits;
+            ContentAvgNits = avgNits;
+            ContentMinNits = minNits;
+            if (maxScrgb > 0 || statsAreNative)
+            {
+                ContentMaxScrgb = maxScrgb;
+            }
+
+            _nativeHdrStats = statsAreNative && (maxNits > 0 || maxScrgb > 0);
         }
 
         if (pixelWidth > 0 && pixelHeight > 0)
@@ -248,6 +255,7 @@ public partial class GalleryViewModel : ObservableObject
         ContentAvgNits = avgNits;
         ContentMinNits = minNits;
         ContentMaxScrgb = maxScrgb;
+        _nativeHdrStats = maxNits > 0 || maxScrgb > 0;
         RefreshImageInfo();
     }
 
@@ -417,6 +425,7 @@ public partial class GalleryViewModel : ObservableObject
                 _headerPixelHeight = 0;
                 _nativePixelWidth = 0;
                 _nativePixelHeight = 0;
+                _nativeHdrStats = false;
                 ContentMaxScrgb = 0;
                 CurrentPath = null;
                 PreviewImageUri = null;
@@ -513,6 +522,7 @@ public partial class GalleryViewModel : ObservableObject
             _headerPixelHeight = headerPixels?.Height ?? 0;
             _nativePixelWidth = 0;
             _nativePixelHeight = 0;
+            _nativeHdrStats = false;
             ContentMaxNits = 0;
             ContentAvgNits = 0;
             ContentMinNits = 0;

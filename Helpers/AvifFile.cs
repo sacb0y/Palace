@@ -21,6 +21,8 @@ public static class AvifFile
     private const uint Meta = 0x6D657461;
     private const uint Iprp = 0x69707270;
     private const uint Ipco = 0x6970636F;
+    private const uint Ipma = 0x69706D61;
+    private const uint Pitm = 0x7069746D;
     private const uint Ispe = 0x69737065;
     private const uint Colr = 0x636F6C72;
     private const uint Nclx = 0x6E636C78;
@@ -66,8 +68,9 @@ public static class AvifFile
             return info;
         }
 
-        Walk(data, 0, data.Length, 0, ref info);
-        return info;
+        var parse = new AvifParse();
+        Walk(data, 0, data.Length, 0, parse);
+        return Apply(parse);
     }
 
     public static AvifInfo Probe(Stream stream)
@@ -95,6 +98,7 @@ public static class AvifFile
         var length = stream.Length;
         var header = new byte[16];
         var sawAvif = false;
+        var parse = new AvifParse();
         long pos = 0;
         while (pos + 8 <= length)
         {
@@ -172,19 +176,24 @@ public static class AvifFile
                 {
                     if (type == Meta)
                     {
-                        Walk(payload, 4, payload.Length, 1, ref info);
+                        Walk(payload, 4, payload.Length, 1, parse);
                     }
                     else if (type is Iprp or Ipco)
                     {
-                        Walk(payload, 0, payload.Length, 1, ref info);
+                        Walk(payload, 0, payload.Length, 1, parse);
                     }
-                    else
+                    else if (type == Pitm)
                     {
-                        ParseProperty(type, payload, ref info);
+                        parse.PrimaryItemId ??= ReadPitm(payload);
+                    }
+                    else if (type == Ipma)
+                    {
+                        ReadIpma(payload, parse.Associations);
                     }
                 }
             }
 
+            info = Apply(parse);
             if (sawAvif && info.Width is > 0 && (info.CicpTransfer is 16 or 18 || info.HasMastering))
             {
                 break;
@@ -224,7 +233,14 @@ public static class AvifFile
         return HdrProbe.None;
     }
 
-    private static void Walk(ReadOnlySpan<byte> data, int start, int end, int depth, ref AvifInfo info)
+    private sealed class AvifParse
+    {
+        public int? PrimaryItemId;
+        public List<(uint Type, byte[] Payload)> Properties { get; } = [];
+        public Dictionary<int, List<int>> Associations { get; } = [];
+    }
+
+    private static void Walk(ReadOnlySpan<byte> data, int start, int end, int depth, AvifParse parse)
     {
         if (depth > 8)
         {
@@ -241,18 +257,177 @@ public static class AvifFile
 
             if (type == Meta && payloadEnd - payloadStart >= 4)
             {
-                Walk(data, payloadStart + 4, payloadEnd, depth + 1, ref info);
+                Walk(data, payloadStart + 4, payloadEnd, depth + 1, parse);
             }
-            else if (type is Iprp or Ipco)
+            else if (type == Iprp)
             {
-                Walk(data, payloadStart, payloadEnd, depth + 1, ref info);
+                Walk(data, payloadStart, payloadEnd, depth + 1, parse);
             }
-            else
+            else if (type == Ipco)
             {
-                ParseProperty(type, data[payloadStart..payloadEnd], ref info);
+                CollectProperties(data, payloadStart, payloadEnd, parse.Properties);
+            }
+            else if (type == Pitm)
+            {
+                parse.PrimaryItemId ??= ReadPitm(data[payloadStart..payloadEnd]);
+            }
+            else if (type == Ipma)
+            {
+                ReadIpma(data[payloadStart..payloadEnd], parse.Associations);
             }
 
             i = next;
+        }
+    }
+
+    private static void CollectProperties(
+        ReadOnlySpan<byte> data,
+        int start,
+        int end,
+        List<(uint Type, byte[] Payload)> properties)
+    {
+        var i = start;
+        while (i + 8 <= end)
+        {
+            if (!TryBox(data, i, end, out var type, out var payloadStart, out var payloadEnd, out var next))
+            {
+                break;
+            }
+
+            properties.Add((type, data[payloadStart..payloadEnd].ToArray()));
+            i = next;
+        }
+    }
+
+    private static AvifInfo Apply(AvifParse parse)
+    {
+        var info = default(AvifInfo);
+        if (parse.Properties.Count == 0)
+        {
+            return info;
+        }
+
+        if (parse.PrimaryItemId is int id
+            && parse.Associations.TryGetValue(id, out var indices)
+            && indices.Count > 0)
+        {
+            foreach (var index in indices)
+            {
+                if (index is >= 1 && index <= parse.Properties.Count)
+                {
+                    var (type, payload) = parse.Properties[index - 1];
+                    ParseProperty(type, payload, ref info);
+                }
+            }
+
+            return info;
+        }
+
+        ApplyFirst(parse.Properties, Ispe, ref info);
+        ApplyFirst(parse.Properties, Colr, ref info);
+        ApplyFirst(parse.Properties, Clli, ref info);
+        ApplyFirst(parse.Properties, Mdcv, ref info);
+        return info;
+    }
+
+    private static void ApplyFirst(
+        List<(uint Type, byte[] Payload)> properties,
+        uint type,
+        ref AvifInfo info)
+    {
+        foreach (var property in properties)
+        {
+            if (property.Type == type)
+            {
+                ParseProperty(property.Type, property.Payload, ref info);
+                return;
+            }
+        }
+    }
+
+    private static int? ReadPitm(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 6)
+        {
+            return null;
+        }
+
+        var version = payload[0];
+        if (version == 0)
+        {
+            return ReadBe16(payload, 4);
+        }
+
+        return payload.Length >= 8 ? ReadBe32(payload, 4) : null;
+    }
+
+    private static void ReadIpma(ReadOnlySpan<byte> payload, Dictionary<int, List<int>> associations)
+    {
+        if (payload.Length < 8)
+        {
+            return;
+        }
+
+        var version = payload[0];
+        var flags = (payload[1] << 16) | (payload[2] << 8) | payload[3];
+        var longIndex = (flags & 1) != 0;
+        var count = ReadBe32(payload, 4);
+        var i = 8;
+        for (var entry = 0; entry < count && i < payload.Length; entry++)
+        {
+            int itemId;
+            if (version < 1)
+            {
+                if (i + 2 > payload.Length)
+                {
+                    return;
+                }
+
+                itemId = ReadBe16(payload, i);
+                i += 2;
+            }
+            else
+            {
+                if (i + 4 > payload.Length)
+                {
+                    return;
+                }
+
+                itemId = ReadBe32(payload, i);
+                i += 4;
+            }
+
+            if (i >= payload.Length)
+            {
+                return;
+            }
+
+            var assocCount = payload[i++];
+            var list = new List<int>(assocCount);
+            for (var a = 0; a < assocCount; a++)
+            {
+                if (longIndex)
+                {
+                    if (i + 2 > payload.Length)
+                    {
+                        return;
+                    }
+
+                    list.Add(ReadBe16(payload, i) & 0x7FFF);
+                    i += 2;
+                }
+                else
+                {
+                    if (i >= payload.Length)
+                    {
+                        return;
+                    }
+
+                    list.Add(payload[i++] & 0x7F);
+                }
+            }
+
+            associations[itemId] = list;
         }
     }
 

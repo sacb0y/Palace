@@ -32,6 +32,29 @@ public static class HdrPixels
             : (pixelWidth, pixelHeight);
     }
 
+    /// <summary>
+    /// WIC <c>BitmapTransform</c> scales in source (unoriented) space, then
+    /// <c>RespectExifOrientation</c> swaps 90/270. Dest is the oriented size.
+    /// </summary>
+    public static (int Width, int Height) SourceScaleSize(
+        int sourceWidth,
+        int sourceHeight,
+        int orientedWidth,
+        int orientedHeight,
+        int destWidth,
+        int destHeight)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 || destWidth <= 0 || destHeight <= 0)
+        {
+            return (destWidth, destHeight);
+        }
+
+        var swap = orientedWidth == sourceHeight
+            && orientedHeight == sourceWidth
+            && sourceWidth != sourceHeight;
+        return swap ? (destHeight, destWidth) : (destWidth, destHeight);
+    }
+
     public static void Read(
         ReadOnlySpan<byte> data,
         int pixelIndex,

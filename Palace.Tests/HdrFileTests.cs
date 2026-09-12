@@ -284,6 +284,9 @@ public sealed class HdrFileTests
         Assert.False(GalleryPresent.NeedsBetterDecode(3840, 2160, 1280, 720));
         Assert.True(GalleryPresent.IsNativeDecode(3840, 2160, 3840, 2160));
         Assert.False(GalleryPresent.IsNativeDecode(1280, 720, 3840, 2160));
+        Assert.True(GalleryPresent.ReplaceHdrStats(false, false));
+        Assert.False(GalleryPresent.ReplaceHdrStats(true, false));
+        Assert.True(GalleryPresent.ReplaceHdrStats(true, true));
     }
 
     [Fact]
@@ -308,6 +311,21 @@ public sealed class HdrFileTests
         Assert.Equal(HdrKind.WideGamutAvif, probe.Kind);
         Assert.False(probe.CanPresentHdr);
         Assert.Equal("Wide-gamut AVIF", GalleryPresent.StatusLine(probe, false, false));
+    }
+
+    [Fact]
+    public void Probe_AvifPrimaryItem_IgnoresThumbIspeAndNclx()
+    {
+        var avif = AvifWithPrimaryAndThumb();
+        var info = AvifFile.Probe(avif);
+        Assert.Equal(3840, info.Width);
+        Assert.Equal(2160, info.Height);
+        Assert.Equal(9, info.CicpPrimaries);
+        Assert.Equal(16, info.CicpTransfer);
+        var probe = HdrFile.Probe(avif);
+        Assert.Equal(HdrKind.HdrAvif, probe.Kind);
+        Assert.True(probe.IsPq);
+        Assert.Equal((3840, 2160), AvifFile.TryReadSize(avif));
     }
 
     [Fact]
@@ -389,6 +407,9 @@ public sealed class HdrFileTests
         Assert.Equal((100, 200), HdrPixels.OrientedSize(200, 100, 6));
         Assert.Equal((100, 200), HdrPixels.OrientedSize(200, 100, 8));
         Assert.Equal((0, 0), HdrPixels.OrientedSize(0, 100, 6));
+        Assert.Equal((40, 80), HdrPixels.SourceScaleSize(100, 200, 200, 100, 80, 40));
+        Assert.Equal((80, 40), HdrPixels.SourceScaleSize(200, 100, 200, 100, 80, 40));
+        Assert.Equal((80, 80), HdrPixels.SourceScaleSize(100, 100, 100, 100, 80, 80));
     }
 
     [Fact]
@@ -434,15 +455,7 @@ public sealed class HdrFileTests
     {
         using var ipco = new MemoryStream();
         WriteBox(ipco, "ispe", [.. Be32(width), .. Be32(height)], fullBox: true);
-        var nclx = new byte[11];
-        Encoding.ASCII.GetBytes("nclx").CopyTo(nclx, 0);
-        nclx[4] = (byte)(primaries >> 8);
-        nclx[5] = (byte)primaries;
-        nclx[6] = (byte)(transfer >> 8);
-        nclx[7] = (byte)transfer;
-        nclx[9] = 9;
-        nclx[10] = 0x80;
-        WriteBox(ipco, "colr", nclx);
+        WriteBox(ipco, "colr", Nclx(primaries, transfer));
         if (maxCll is int cll)
         {
             WriteBox(ipco, "clli", [(byte)(cll >> 8), (byte)cll, 0, 0]);
@@ -457,6 +470,59 @@ public sealed class HdrFileTests
         WriteBox(ms, "meta", meta.ToArray(), fullBox: true);
         return ms.ToArray();
     }
+
+    private static byte[] AvifWithPrimaryAndThumb()
+    {
+        using var ipco = new MemoryStream();
+        WriteBox(ipco, "ispe", [.. Be32(512), .. Be32(512)], fullBox: true);
+        WriteBox(ipco, "colr", Nclx(1, 13));
+        WriteBox(ipco, "ispe", [.. Be32(3840), .. Be32(2160)], fullBox: true);
+        WriteBox(ipco, "colr", Nclx(9, 16));
+
+        using var ipma = new MemoryStream();
+        WriteBe32(ipma, 2);
+        WriteBe16(ipma, 1);
+        ipma.WriteByte(2);
+        ipma.WriteByte(3);
+        ipma.WriteByte(4);
+        WriteBe16(ipma, 2);
+        ipma.WriteByte(2);
+        ipma.WriteByte(1);
+        ipma.WriteByte(2);
+
+        using var iprp = new MemoryStream();
+        WriteBox(iprp, "ipco", ipco.ToArray());
+        WriteBox(iprp, "ipma", ipma.ToArray(), fullBox: true);
+        using var meta = new MemoryStream();
+        WriteBox(meta, "pitm", Be16(1), fullBox: true);
+        WriteBox(meta, "iprp", iprp.ToArray());
+        using var ms = new MemoryStream();
+        WriteBox(ms, "ftyp", [.. Encoding.ASCII.GetBytes("avif"), 0, 0, 0, 0, .. Encoding.ASCII.GetBytes("avif"), .. Encoding.ASCII.GetBytes("mif1")]);
+        WriteBox(ms, "meta", meta.ToArray(), fullBox: true);
+        return ms.ToArray();
+    }
+
+    private static byte[] Nclx(int primaries, int transfer)
+    {
+        var nclx = new byte[11];
+        Encoding.ASCII.GetBytes("nclx").CopyTo(nclx, 0);
+        nclx[4] = (byte)(primaries >> 8);
+        nclx[5] = (byte)primaries;
+        nclx[6] = (byte)(transfer >> 8);
+        nclx[7] = (byte)transfer;
+        nclx[9] = 9;
+        nclx[10] = 0x80;
+        return nclx;
+    }
+
+    private static void WriteBe16(Stream stream, int value)
+    {
+        stream.WriteByte((byte)(value >> 8));
+        stream.WriteByte((byte)value);
+    }
+
+    private static byte[] Be16(int value) =>
+        [(byte)(value >> 8), (byte)value];
 
     private static void WriteBox(Stream stream, string type, byte[] payload, bool fullBox = false)
     {

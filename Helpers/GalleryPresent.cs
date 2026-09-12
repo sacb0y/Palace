@@ -384,6 +384,13 @@ public static class GalleryPresent
     public static bool IsNativeDecode(int decodedW, int decodedH, int nativeW, int nativeH) =>
         nativeW > 0 && nativeH > 0 && decodedW >= nativeW && decodedH >= nativeH;
 
+    /// <summary>
+    /// Native CIE Y / MaxCLL from a full-res measure must survive Fit/peak
+    /// re-present of a viewport <c>HdrFrame</c>.
+    /// </summary>
+    public static bool ReplaceHdrStats(bool haveNative, bool incomingNative) =>
+        !haveNative || incomingNative;
+
     public static float EncodedToNits(float encoded, HdrTransfer transfer) =>
         transfer switch
         {

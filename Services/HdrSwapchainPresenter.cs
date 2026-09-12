@@ -18,7 +18,6 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private int _bufferW;
     private int _bufferH;
     private bool _attached;
-    private bool _displayProbed;
     private float _autoDisplayNits;
 
     public HdrSwapchainPresenter(SwapChainPanel panel)
@@ -132,12 +131,6 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     private void ProbeDisplay()
     {
-        if (_displayProbed)
-        {
-            return;
-        }
-
-        _displayProbed = true;
         DisplayIsHdr = false;
         _autoDisplayNits = 0;
         DisplayPeakNits = 0;

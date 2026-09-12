@@ -75,7 +75,7 @@ internal static class HdrWicDecode
                 decodeH = nativeH;
             }
 
-            var pixels = await TryPixelsAsync(decoder, decodeW, decodeH).ConfigureAwait(false);
+            var pixels = await TryPixelsAsync(decoder, decodeW, decodeH, cancellation).ConfigureAwait(false);
             if (pixels is null)
             {
                 return null;
@@ -118,7 +118,7 @@ internal static class HdrWicDecode
                 return null;
             }
 
-            var pixels = await TryPixelsAsync(decoder, nativeW, nativeH).ConfigureAwait(false);
+            var pixels = await TryPixelsAsync(decoder, nativeW, nativeH, cancellation).ConfigureAwait(false);
             if (pixels is null)
             {
                 return null;
@@ -127,7 +127,7 @@ internal static class HdrWicDecode
             cancellation.ThrowIfCancellationRequested();
             var packed = pixels.Value;
             return await Task.Run(
-                () => Measure(packed.Data, packed.Format, nativeW, nativeH, probe),
+                () => Measure(packed.Data, packed.Format, nativeW, nativeH, probe, cancellation),
                 cancellation).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -143,15 +143,20 @@ internal static class HdrWicDecode
     private static async Task<(byte[] Data, HdrPackedFormat Format)?> TryPixelsAsync(
         BitmapDecoder decoder,
         int width,
-        int height)
+        int height,
+        CancellationToken cancellation)
     {
         var transform = new BitmapTransform();
+        var sourceW = (int)decoder.PixelWidth;
+        var sourceH = (int)decoder.PixelHeight;
         var orientedW = (int)decoder.OrientedPixelWidth;
         var orientedH = (int)decoder.OrientedPixelHeight;
-        if (width > 0 && height > 0 && (width < orientedW || height < orientedH))
+        var (scaleW, scaleH) = HdrPixels.SourceScaleSize(
+            sourceW, sourceH, orientedW, orientedH, width, height);
+        if (scaleW > 0 && scaleH > 0 && (scaleW < sourceW || scaleH < sourceH))
         {
-            transform.ScaledWidth = (uint)width;
-            transform.ScaledHeight = (uint)height;
+            transform.ScaledWidth = (uint)scaleW;
+            transform.ScaledHeight = (uint)scaleH;
             transform.InterpolationMode = BitmapInterpolationMode.Linear;
         }
 
@@ -162,6 +167,7 @@ internal static class HdrWicDecode
             (BitmapPixelFormat.Bgra8, HdrPackedFormat.Bgra8)
         })
         {
+            cancellation.ThrowIfCancellationRequested();
             try
             {
                 var data = await decoder.GetPixelDataAsync(
@@ -258,7 +264,8 @@ internal static class HdrWicDecode
         HdrPackedFormat format,
         int width,
         int height,
-        HdrProbe probe)
+        HdrProbe probe,
+        CancellationToken cancellation)
     {
         var count = width * height;
         if (count <= 0 || data.Length < count * HdrPixels.BytesPerPixel(format))
@@ -274,6 +281,11 @@ internal static class HdrWicDecode
         var bt2020 = probe.CicpPrimaries == 9;
         for (var i = 0; i < count; i++)
         {
+            if ((i & 0x3FFF) == 0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+            }
+
             HdrPixels.Read(data, i, format, out var r, out var g, out var b, out _);
             var nitsR = GalleryPresent.EncodedToNits(r, transfer);
             var nitsG = GalleryPresent.EncodedToNits(g, transfer);
