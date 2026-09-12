@@ -68,9 +68,42 @@ internal static class ImageDimensions
             return TryReadJpeg(stream);
         }
 
-        if (AvifFile.IsAvif(buf[..n]))
+        if (AvifFile.IsHeif(buf[..n]))
         {
             return AvifFile.TryReadSize(stream);
+        }
+
+        if (RadianceFile.IsRadiance(buf[..n]))
+        {
+            return RadianceFile.TryReadSize(stream);
+        }
+
+        if (StillFormats.IsPsd(buf[..n]))
+        {
+            return StillFormats.TryReadPsdSize(buf[..n]);
+        }
+
+        if (StillFormats.IsDds(buf[..n]))
+        {
+            return StillFormats.TryReadDdsSize(buf[..n]);
+        }
+
+        if (StillFormats.IsJxr(buf[..n]))
+        {
+            stream.Position = 0;
+            var take = (int)Math.Min(stream.Length, 64 * 1024);
+            var jxr = new byte[take];
+            var read = stream.Read(jxr, 0, take);
+            return read > 0 ? StillFormats.TryReadJxrSize(jxr.AsSpan(0, read)) : null;
+        }
+
+        if (StillFormats.IsJxl(buf[..n]))
+        {
+            stream.Position = 0;
+            var take = (int)Math.Min(stream.Length, 64 * 1024);
+            var jxl = new byte[take];
+            var read = stream.Read(jxl, 0, take);
+            return read > 0 ? StillFormats.TryReadJxlSize(jxl.AsSpan(0, read)) : null;
         }
 
         return null;

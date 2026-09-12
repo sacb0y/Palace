@@ -63,8 +63,9 @@ public sealed class ThumbnailService
     /// beside the source. Online-only: cached JPEG only; do not
     /// <see cref="StorageFile.GetThumbnailAsync"/> or WIC-open the original
     /// (AVIF still recalls Dropbox). Local video / AVIF: provider thumb only.
-    /// Other local images may WIC-decode the original. Missing / API-only
-    /// paths return a cached JPEG if present.
+    /// Local video / AVIF / HEIC / PSD: provider thumb only. Other local
+    /// images may WIC-decode the original. Missing / API-only paths return
+    /// a cached JPEG if present.
     /// </summary>
     public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
     {
@@ -137,8 +138,8 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
-    /// Windows shell / provider poster. Local video and AVIF only — never
-    /// the online-only path (HEIF/AVIF handlers open the original).
+    /// Windows shell / provider poster. Local video / AVIF / HEIC / PSD
+    /// only — never the online-only path (HEIF/AVIF handlers open the original).
     /// </summary>
     private async Task<ThumbnailInfo?> EnsureShellThumbnailAsync(string filePath, string hash)
     {

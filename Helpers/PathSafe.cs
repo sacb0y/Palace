@@ -67,7 +67,13 @@ public static class PathSafe
     }
 
     public static readonly HashSet<string> ImageExt =
-        new(StringComparer.OrdinalIgnoreCase) { ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".avif" };
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff",
+            ".avif", ".heic", ".heif",
+            ".jxr", ".wdp", ".hdp",
+            ".jxl", ".hdr", ".psd", ".dds"
+        };
 
     public static readonly HashSet<string> GifExt =
         new(StringComparer.OrdinalIgnoreCase) { ".gif" };
@@ -75,18 +81,47 @@ public static class PathSafe
     public static readonly HashSet<string> VideoExt =
         new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mov", ".mkv", ".webm", ".avi" };
 
-    public static bool IsAvif(string? pathOrExt)
+    public static string Extension(string? pathOrExt)
     {
         if (string.IsNullOrWhiteSpace(pathOrExt))
         {
-            return false;
+            return "";
         }
 
-        var ext = pathOrExt.StartsWith('.') && pathOrExt.IndexOfAny(['/', '\\']) < 0
+        return pathOrExt.StartsWith('.') && pathOrExt.IndexOfAny(['/', '\\']) < 0
             ? pathOrExt
             : System.IO.Path.GetExtension(pathOrExt);
-        return string.Equals(ext, ".avif", StringComparison.OrdinalIgnoreCase);
     }
+
+    public static bool IsAvif(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".avif");
+
+    public static bool IsHeif(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".heic") || ExtensionEquals(pathOrExt, ".heif");
+
+    public static bool IsRadiance(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".hdr");
+
+    public static bool IsPsd(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".psd");
+
+    public static bool IsJxl(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".jxl");
+
+    public static bool IsJxr(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".jxr")
+        || ExtensionEquals(pathOrExt, ".wdp")
+        || ExtensionEquals(pathOrExt, ".hdp");
+
+    /// <summary>
+    /// Shell <c>GetThumbnailAsync</c> only — WIC-open of these originals
+    /// is either useless (PSD) or can recall On-Demand HEIF/AVIF.
+    /// </summary>
+    public static bool UsesShellStillThumb(string? pathOrExt) =>
+        IsAvif(pathOrExt) || IsHeif(pathOrExt) || IsPsd(pathOrExt);
+
+    private static bool ExtensionEquals(string? pathOrExt, string ext) =>
+        string.Equals(Extension(pathOrExt), ext, StringComparison.OrdinalIgnoreCase);
 
     public static bool IsCatalogExt(string ext) =>
         ImageExt.Contains(ext) || GifExt.Contains(ext) || VideoExt.Contains(ext);
