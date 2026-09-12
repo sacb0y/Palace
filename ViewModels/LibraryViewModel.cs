@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -29,6 +30,8 @@ public partial class LibraryViewModel : ObservableObject
     private AssetItem? _selectionAnchor;
     private bool _suppressFilter;
     private int _filterEpoch;
+    private int _previewEpoch;
+    private GalleryViewModel? _overlayPreviewHook;
     private int _busyDepth;
     private const int MosaicChunkSize = 80;
 
@@ -143,6 +146,9 @@ public partial class LibraryViewModel : ObservableObject
     public partial string? PreviewSeed { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowGeneration { get; set; }
+
+    [ObservableProperty]
     public partial string? PreviewNotes { get; set; }
 
     [ObservableProperty]
@@ -180,6 +186,33 @@ public partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsGalleryOverlayOpen { get; set; }
+
+    partial void OnOverlayGalleryChanged(GalleryViewModel? value)
+    {
+        if (_overlayPreviewHook is not null)
+        {
+            _overlayPreviewHook.PropertyChanged -= OverlayGallery_PropertyChanged;
+        }
+
+        _overlayPreviewHook = value;
+        if (value is null)
+        {
+            return;
+        }
+
+        value.PropertyChanged += OverlayGallery_PropertyChanged;
+        _ = LoadPreviewAsync(value.Current);
+    }
+
+    private void OverlayGallery_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(GalleryViewModel.Current) || sender is not GalleryViewModel gallery)
+        {
+            return;
+        }
+
+        _ = LoadPreviewAsync(gallery.Current);
+    }
 
     public bool CanUndo => true;
 
@@ -1291,24 +1324,53 @@ public partial class LibraryViewModel : ObservableObject
 
     private async Task LoadPreviewAsync(AssetItem? item)
     {
-        if (item is null)
+        var epoch = Interlocked.Increment(ref _previewEpoch);
+        await UiDispatch.RunAsync(() =>
         {
-            await UiDispatch.RunAsync(ClearPreview);
+            if (epoch != _previewEpoch)
+            {
+                return;
+            }
+
+            ClearGenerationPreview();
+            if (item is null || item.IsFolderHeader)
+            {
+                ClearPreview();
+            }
+        });
+        if (item is null || item.IsFolderHeader || epoch != _previewEpoch)
+        {
             return;
         }
 
         var asset = await _catalog.GetAssetByIdAsync(item.Id);
-        if (asset is null)
+        if (epoch != _previewEpoch)
         {
             return;
         }
 
+        if (asset is null)
+        {
+            await UiDispatch.RunAsync(() =>
+            {
+                if (epoch == _previewEpoch)
+                {
+                    ClearPreview();
+                }
+            });
+            return;
+        }
+
         var targets = _selection.Count > 0 ? _selection.ToList() : [item];
-        _previewTargets = targets;
         var perAsset = new List<IReadOnlyList<AssignedTag>>();
         foreach (var target in targets)
         {
             perAsset.Add(await _catalog.GetAssignedTagsAsync(target.Id));
+        }
+
+        if (epoch != _previewEpoch)
+        {
+            return;
         }
 
         var total = targets.Count;
@@ -1344,9 +1406,17 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         var canEdit = total == 1;
+        var generation = GenerationFields.ForPreview(
+            asset.Model, asset.Prompt, asset.NegativePrompt, asset.Seed);
         await UiDispatch.RunAsync(() =>
         {
+            if (epoch != _previewEpoch)
+            {
+                return;
+            }
+
             CanEditNotes = canEdit;
+            _previewTargets = targets;
             PreviewPath = previewPath;
             IsVideoPreview = !cloudish && asset.Kind == AssetKind.Video && previewPath is not null;
             IsImagePreview = previewPath is not null &&
@@ -1354,11 +1424,8 @@ public partial class LibraryViewModel : ObservableObject
             ShowPreviewPlaceholder = GalleryMedia.ShowPlaceholderTile(
                 cloudish, asset.IsOrphan, previewPath is not null);
             PreviewPlaceholderKind = asset.Kind;
-            PreviewPrompt = asset.Prompt;
-            PreviewNegative = asset.NegativePrompt;
-            PreviewModel = asset.Model;
+            ApplyGenerationPreview(generation);
             PreviewFileName = asset.FileName;
-            PreviewSeed = asset.Seed;
             PreviewNotes = asset.Notes;
             PreviewRating = asset.Rating ?? 0;
 
@@ -1405,6 +1472,17 @@ public partial class LibraryViewModel : ObservableObject
         });
     }
 
+    private void ApplyGenerationPreview(GenerationFields.Snapshot generation)
+    {
+        PreviewModel = generation.Model;
+        PreviewPrompt = generation.Prompt;
+        PreviewNegative = generation.Negative;
+        PreviewSeed = generation.Seed;
+        ShowGeneration = generation.HasAny;
+    }
+
+    private void ClearGenerationPreview() => ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
+
     private void ClearPreview()
     {
         AssignedTags.Clear();
@@ -1415,11 +1493,8 @@ public partial class LibraryViewModel : ObservableObject
         IsVideoPreview = false;
         ShowPreviewPlaceholder = false;
         PreviewPath = null;
-        PreviewPrompt = null;
-        PreviewNegative = null;
-        PreviewModel = null;
+        ClearGenerationPreview();
         PreviewFileName = null;
-        PreviewSeed = null;
         PreviewNotes = null;
         PreviewRating = 0;
     }

@@ -106,6 +106,21 @@ public partial class GalleryViewModel : ObservableObject
 
     public bool DisplayIsHdr { get; private set; }
 
+    [ObservableProperty]
+    public partial string? PreviewModel { get; set; }
+
+    [ObservableProperty]
+    public partial string? PreviewPrompt { get; set; }
+
+    [ObservableProperty]
+    public partial string? PreviewNegative { get; set; }
+
+    [ObservableProperty]
+    public partial string? PreviewSeed { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowGeneration { get; set; }
+
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
 
     partial void OnScalingChanged(ImageScaling value)
@@ -229,6 +244,18 @@ public partial class GalleryViewModel : ObservableObject
     private async Task LoadCurrentAsync()
     {
         var epoch = Interlocked.Increment(ref _loadEpoch);
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch == _loadEpoch)
+            {
+                ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
+            }
+        });
+        if (epoch != _loadEpoch)
+        {
+            return;
+        }
+
         if (_items.Count == 0)
         {
             await UiDispatch.RunAsync(() =>
@@ -257,6 +284,7 @@ public partial class GalleryViewModel : ObservableObject
                 DetailsText = "";
                 HdrStatus = "";
                 HdrPresented = false;
+                ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
                 Tags.Clear();
                 StillRevision++;
             });
@@ -265,6 +293,7 @@ public partial class GalleryViewModel : ObservableObject
 
         var item = _items[CurrentIndex];
         IReadOnlyList<AssignedTag> assigned = [];
+        GenerationFields.Snapshot generation = GenerationFields.ForPreview(null, null, null, null);
         try
         {
             assigned = await _catalog.GetAssignedTagsAsync(item.Id);
@@ -272,6 +301,17 @@ public partial class GalleryViewModel : ObservableObject
         catch
         {
             assigned = [];
+        }
+
+        try
+        {
+            var asset = await _catalog.GetAssetByIdAsync(item.Id);
+            generation = GenerationFields.ForPreview(
+                asset?.Model, asset?.Prompt, asset?.NegativePrompt, asset?.Seed);
+        }
+        catch
+        {
+            generation = GenerationFields.ForPreview(null, null, null, null);
         }
 
         var onDisk = CloudFile.TryGetAttributes(item.Path, out var diskAttrs);
@@ -335,6 +375,7 @@ public partial class GalleryViewModel : ObservableObject
             HdrPresented = false;
             DetailsText = GalleryPresent.DetailsLine(item.FileName, item.Width, item.Height, item.Kind, item.FileSize);
             HdrStatus = GalleryPresent.StatusLine(probe, false, false) ?? "";
+            ApplyGenerationPreview(generation);
 
             Tags.Clear();
             foreach (var tag in assigned)
@@ -439,6 +480,15 @@ public partial class GalleryViewModel : ObservableObject
         {
             return default;
         }
+    }
+
+    private void ApplyGenerationPreview(GenerationFields.Snapshot generation)
+    {
+        PreviewModel = generation.Model;
+        PreviewPrompt = generation.Prompt;
+        PreviewNegative = generation.Negative;
+        PreviewSeed = generation.Seed;
+        ShowGeneration = generation.HasAny;
     }
 
     private async Task<string?> ResolveOriginalUrlAsync(AssetItem item)
