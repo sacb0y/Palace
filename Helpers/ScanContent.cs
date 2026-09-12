@@ -22,8 +22,8 @@ public static class ScanContent
 
     /// <summary>
     /// Scan must not batch <c>GetThumbnailAsync</c> / decode for placeholders.
-    /// Leave no JPEG; the mosaic may later request a provider thumb for
-    /// realized tiles only.
+    /// Leave no JPEG. Mosaic also skips online-only thumbs — AVIF shell
+    /// thumbs still open the Dropbox original.
     /// </summary>
     public static bool MayGenerateScanThumbnail(FileAttributes attributes) =>
         MayReadOriginal(attributes);

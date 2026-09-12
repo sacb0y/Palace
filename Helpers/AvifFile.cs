@@ -73,7 +73,9 @@ public static class AvifFile
         return Apply(parse);
     }
 
-    public static AvifInfo Probe(Stream stream)
+    public static AvifInfo Probe(Stream stream) => Probe(stream, sizeOnly: false);
+
+    public static AvifInfo Probe(Stream stream, bool sizeOnly)
     {
         var info = default(AvifInfo);
         if (!stream.CanRead)
@@ -194,7 +196,8 @@ public static class AvifFile
             }
 
             info = Apply(parse);
-            if (sawAvif && info.Width is > 0 && (info.CicpTransfer is 16 or 18 || info.HasMastering))
+            if (sawAvif && info.Width is > 0 && info.Height is > 0
+                && (sizeOnly || info.CicpTransfer is 16 or 18 || info.HasMastering))
             {
                 break;
             }
@@ -213,7 +216,7 @@ public static class AvifFile
 
     public static (int Width, int Height)? TryReadSize(Stream stream)
     {
-        var info = Probe(stream);
+        var info = Probe(stream, sizeOnly: true);
         return info.Width is > 0 && info.Height is > 0 ? (info.Width.Value, info.Height.Value) : null;
     }
 

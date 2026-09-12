@@ -59,12 +59,12 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
-    /// Ensures a mosaic JPEG exists. Online-only placeholders use
-    /// <see cref="StorageFile.GetThumbnailAsync"/> and never decode the original.
-    /// Scan must not call this for online-only files — provider thumbs can
-    /// still recall Dropbox/OneDrive placeholders. Mosaic may request a
-    /// JPEG for realized tiles only. Missing local / API-only paths return
-    /// a cached JPEG if present.
+    /// Ensures a mosaic JPEG exists under the Palace thumb cache — never
+    /// beside the source. Online-only: cached JPEG only; do not
+    /// <see cref="StorageFile.GetThumbnailAsync"/> or WIC-open the original
+    /// (AVIF still recalls Dropbox). Local video / AVIF: provider thumb only.
+    /// Other local images may WIC-decode the original. Missing / API-only
+    /// paths return a cached JPEG if present.
     /// </summary>
     public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
     {
@@ -78,25 +78,26 @@ public sealed class ThumbnailService
             return ReadCached(hash);
         }
 
-        if (CloudFile.IsOnlineOnly(attrs))
-        {
-            return await EnsureOnlineOnlyThumbnailAsync(filePath, hash, kind).ConfigureAwait(false);
-        }
-
-        if (kind == Models.AssetKind.Other)
+        var onlineOnly = CloudFile.IsOnlineOnly(attrs);
+        if (onlineOnly || kind == Models.AssetKind.Other)
         {
             return ReadCached(hash);
-        }
-
-        if (kind == Models.AssetKind.Video)
-        {
-            return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
         }
 
         var dest = PathForHash(hash);
         if (File.Exists(dest) && !ShouldRegenerate(dest, filePath))
         {
             return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0);
+        }
+
+        if (GalleryMedia.UsesShellThumbnail(kind, filePath))
+        {
+            return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
+        }
+
+        if (!GalleryMedia.MayOpenOriginalForThumb(onlineOnly, kind, filePath))
+        {
+            return ReadCached(hash);
         }
 
         try
@@ -135,20 +136,9 @@ public sealed class ThumbnailService
         }
     }
 
-    private async Task<ThumbnailInfo?> EnsureOnlineOnlyThumbnailAsync(string filePath, string hash, Models.AssetKind kind)
-    {
-        var cached = ReadCached(hash);
-        if (cached is not null)
-        {
-            return cached;
-        }
-
-        return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
-    }
-
     /// <summary>
-    /// Windows shell / provider poster. Used for videos and online-only
-    /// placeholders — never opens a decode stream on the original file.
+    /// Windows shell / provider poster. Local video and AVIF only — never
+    /// the online-only path (HEIF/AVIF handlers open the original).
     /// </summary>
     private async Task<ThumbnailInfo?> EnsureShellThumbnailAsync(string filePath, string hash)
     {
@@ -236,26 +226,7 @@ public sealed class ThumbnailService
             return false;
         }
 
-        var thumb = ImageDimensions.TryRead(dest);
-        if (thumb is null)
-        {
-            return true;
-        }
-
-        var thumbMax = Math.Max(thumb.Value.Width, thumb.Value.Height);
-        if (thumbMax >= MaxSide)
-        {
-            return false;
-        }
-
-        var original = ImageDimensions.TryRead(originalPath);
-        if (original is null)
-        {
-            return false;
-        }
-
-        var originalMax = Math.Max(original.Value.Width, original.Value.Height);
-        return originalMax > thumbMax;
+        return GalleryMedia.ShouldRegenerateCachedThumb(ImageDimensions.TryRead(dest), MaxSide);
     }
 
     internal static string SanitizeHash(string hash) => ThumbFileName.Sanitize(hash);

@@ -358,9 +358,23 @@ public sealed class HdrFileTests
         Assert.Contains(".avif", PathSafe.ImageExt);
         Assert.True(PathSafe.IsCatalogExt(".avif"));
         Assert.True(PathSafe.IsCatalogExt(".AVIF"));
+        Assert.True(PathSafe.IsAvif(".avif"));
         Assert.Equal(AssetKind.Image, PathSafe.KindFromExt(".avif"));
         Assert.False(PathSafe.IsCatalogExt(".jxl"));
         Assert.False(PathSafe.IsCatalogExt(".exr"));
+    }
+
+    [Fact]
+    public void AvifTryReadSize_StopsAfterIspe_DoesNotReadTrailingBox()
+    {
+        var core = AvifWith(64, 48, primaries: 1, transfer: 13);
+        using var packed = new MemoryStream();
+        packed.Write(core);
+        WriteBox(packed, "free", new byte[48 * 1024]);
+        var bytes = packed.ToArray();
+        using var stream = new CountingStream(bytes);
+        Assert.Equal((64, 48), AvifFile.TryReadSize(stream));
+        Assert.True(stream.BytesRead < bytes.Length - 1024, $"read {stream.BytesRead} of {bytes.Length}");
     }
 
     [Fact]
@@ -571,5 +585,29 @@ public sealed class HdrFileTests
         ms.WriteByte(0xFF);
         ms.WriteByte(0xD9);
         return ms.ToArray();
+    }
+
+    private sealed class CountingStream : MemoryStream
+    {
+        public int BytesRead { get; private set; }
+
+        public CountingStream(byte[] data)
+            : base(data)
+        {
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            var n = base.Read(buffer, offset, count);
+            BytesRead += n;
+            return n;
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            var n = base.Read(buffer);
+            BytesRead += n;
+            return n;
+        }
     }
 }

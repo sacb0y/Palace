@@ -342,7 +342,11 @@ public sealed partial class TagsPage : Page
 
             var path = item.ThumbPath;
             if (GalleryMedia.ShouldRequestMosaicThumb(
-                    item.IsOrphan, item.Path, item.ContentHash, path))
+                    item.IsOrphan,
+                    item.Path,
+                    item.ContentHash,
+                    path,
+                    item.IsOnlineOnly || CloudFile.IsOnlineOnly(item.Path)))
             {
                 var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
                 path = generated?.Path;
