@@ -314,11 +314,15 @@
                                                 Width="148"
                                                 Height="140"
                                                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                                                DoubleTapped="TagAsset_DoubleTapped"
-                                                IsDoubleTapEnabled="True"
-                                                RightTapped="TagAsset_RightTapped"
                                                 AutomationProperties.Name="{x:Bind FileName, Mode=OneWay}"
-                                                Tag="{x:Bind Id, Mode=OneWay}">
+                                                DoubleTapped="TagAsset_DoubleTapped"
+                                                GotFocus="TagAsset_GotFocus"
+                                                IsDoubleTapEnabled="True"
+                                                IsTabStop="True"
+                                                RightTapped="TagAsset_RightTapped"
+                                                Tag="{x:Bind Id, Mode=OneWay}"
+                                                Tapped="TagAsset_Tapped"
+                                                UseSystemFocusVisuals="True">
                                                 <Grid.ContextFlyout>
                                                     <MenuFlyout Opening="TagAssetMenu_Opening">
                                                         <MenuFlyoutItem
@@ -358,6 +362,11 @@
                                                         Style="{StaticResource CaptionTextBlockStyle}"
                                                         Text="Online" />
                                                 </StackPanel>
+                                                <Border
+                                                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    BorderThickness="2"
+                                                    IsHitTestVisible="False"
+                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}" />
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>

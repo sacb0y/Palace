@@ -22,6 +22,7 @@ public sealed partial class TagsPage : Page
     private static readonly SemaphoreSlim TileDecodeGate = new(4);
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
+    private AssetItem? _selectedMosaicAsset;
 
     public TagsPage()
     {
@@ -233,6 +234,7 @@ public sealed partial class TagsPage : Page
         }
 
         _realizedTiles.Clear();
+        _selectedMosaicAsset = null;
     }
 
     private void OnMosaicChunkAppended()
@@ -375,6 +377,26 @@ public sealed partial class TagsPage : Page
         }
     }
 
+    private void TagAsset_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (item is null)
+        {
+            return;
+        }
+
+        EnsureSelectedForContext(item);
+    }
+
+    private void TagAsset_GotFocus(object sender, RoutedEventArgs e)
+    {
+        var item = FindAssetItem(sender);
+        if (item is not null)
+        {
+            StampMosaicSelection(item);
+        }
+    }
+
     private void TagAsset_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
@@ -394,8 +416,11 @@ public sealed partial class TagsPage : Page
             return;
         }
 
+        var focused = FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
         var item = FindAssetItem(e.OriginalSource)
-            ?? ViewModel.Assets.FirstOrDefault();
+            ?? FindAssetItem(focused)
+            ?? _selectedMosaicAsset
+            ?? ViewModel.Assets.FirstOrDefault(asset => asset.IsSelected);
         if (item is null)
         {
             return;
@@ -434,7 +459,41 @@ public sealed partial class TagsPage : Page
 
     private void EnsureSelectedForContext(AssetItem item)
     {
-        _ = item;
+        StampMosaicSelection(item);
+        FocusMosaicTile(item);
+    }
+
+    private void StampMosaicSelection(AssetItem item)
+    {
+        if (_selectedMosaicAsset?.Id == item.Id)
+        {
+            item.IsSelected = true;
+            _selectedMosaicAsset = item;
+            return;
+        }
+
+        foreach (var asset in ViewModel.Assets)
+        {
+            asset.IsSelected = asset.Id == item.Id;
+        }
+
+        _selectedMosaicAsset = ViewModel.Assets.FirstOrDefault(asset => asset.Id == item.Id) ?? item;
+        _selectedMosaicAsset.IsSelected = true;
+    }
+
+    private void FocusMosaicTile(AssetItem item)
+    {
+        foreach (var (image, bound) in _realizedTiles)
+        {
+            if (bound.Id != item.Id)
+            {
+                continue;
+            }
+
+            var tile = image.Parent as FrameworkElement ?? image;
+            tile.Focus(FocusState.Programmatic);
+            return;
+        }
     }
 
     private AssetItem? FindAssetItem(object? source)
