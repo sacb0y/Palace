@@ -230,6 +230,8 @@ public partial class TagChipItem : ObservableObject
 
     public string? ImmediateParentId { get; set; }
 
+    public string? BoardKey { get; set; }
+
     public bool CanRemoveFromGroup =>
         !string.IsNullOrEmpty(ImmediateParentId) || !string.IsNullOrEmpty(ParentGroupId);
 
@@ -251,11 +253,18 @@ public partial class TagBoardGroup : ObservableObject
 
     public bool IsUngrouped { get; set; }
 
+    public TagScope? ScopeKind { get; set; }
+
+    public string? AutomationIdOverride { get; set; }
+
     [ObservableProperty]
     public partial bool IsExpanded { get; set; } = true;
 
     public string AutomationId =>
-        "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
+        AutomationIdOverride
+        ?? (IsUngrouped
+            ? "BtnTagGroup_Ungrouped"
+            : "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit)));
 
     public string CountLabel => $"{Name} ({Chips.Count})";
 

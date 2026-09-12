@@ -135,15 +135,6 @@ public sealed partial class TagsPage : Page
 
     public static IRelayCommand<TagGroupPick> GetRemoveImpliedCommand() => AppServices.Tags.RemoveImpliedCommand;
 
-    private void SelTagScope_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
-    {
-        ViewModel.Scope = sender.SelectedItem == SelTagScopeUngrouped
-            ? TagScope.Ungrouped
-            : sender.SelectedItem == SelTagScopeStarred
-                ? TagScope.Starred
-                : TagScope.All;
-    }
-
     private void TagChip_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: TagChipItem chip })

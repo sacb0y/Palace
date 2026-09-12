@@ -21,6 +21,7 @@ public partial class TagsViewModel : ObservableObject
     private string? _reorderParentId;
     private string? _renameBaseline;
     private string? _renameBaselineTagId;
+    private string _boardSelectionKey = "all";
     private const int MosaicChunkSize = 80;
 
     public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access, ThumbnailService thumbs)
@@ -147,6 +148,7 @@ public partial class TagsViewModel : ObservableObject
         ShowDetails = node?.TagId is not null;
         StampSelectionName(node);
         StampBoardSelection();
+        RevealSelectedBoardRow();
         _ = LoadSelectionAsync();
         _ = LoadMosaicAsync();
     }
@@ -432,6 +434,11 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
+        if (!string.IsNullOrEmpty(chip.BoardKey))
+        {
+            _boardSelectionKey = chip.BoardKey;
+        }
+
         _reorderParentId = string.IsNullOrEmpty(chip.ParentGroupId) ? null : chip.ParentGroupId;
         var node = TagTreeBuilder.Find(TagTree, chip.TagId)
             ?? new TagTreeNode { TagId = chip.TagId, Name = chip.Name, EffectiveColor = chip.EffectiveColor, IsStarred = chip.IsStarred };
@@ -649,7 +656,22 @@ public partial class TagsViewModel : ObservableObject
     [RelayCommand]
     private void SelectGroup(TagBoardGroup? group)
     {
-        if (group?.GroupId is null)
+        if (group is null)
+        {
+            return;
+        }
+
+        _boardSelectionKey = BoardKey(group);
+        if (group.ScopeKind is { } scope && Scope != scope)
+        {
+            Scope = scope;
+        }
+        else
+        {
+            ApplyBoardExpansion();
+        }
+
+        if (group.GroupId is null)
         {
             return;
         }
@@ -822,11 +844,8 @@ public partial class TagsViewModel : ObservableObject
     private void RebuildBoard()
     {
         var colors = _tags.Count == 0 ? null : CatalogService.MapEffectiveColors(_tags, _memberships);
-        var model = TagPanelBuilder.Build(_tags, _memberships, query: SearchQuery, colors: colors, scope: Scope);
+        var groups = TagPanelBuilder.BuildBoard(_tags, _memberships, query: SearchQuery, colors: colors);
         Board.Clear();
-        IReadOnlyList<TagPanelGroup> groups = Scope == TagScope.Starred
-            ? [new TagPanelGroup { Name = "Starred", Chips = model.Starred }]
-            : model.Groups;
         foreach (var group in groups)
         {
             var item = new TagBoardGroup
@@ -835,8 +854,11 @@ public partial class TagsViewModel : ObservableObject
                 Name = group.Name,
                 Color = group.Color,
                 IsUngrouped = group.IsUngrouped,
-                IsExpanded = true
+                ScopeKind = group.ScopeKind,
+                AutomationIdOverride = group.AutomationIdOverride,
+                IsExpanded = false
             };
+            var key = BoardKey(item);
             foreach (var chip in group.Chips)
             {
                 item.Chips.Add(new TagChipItem
@@ -847,7 +869,8 @@ public partial class TagsViewModel : ObservableObject
                     IsStarred = chip.IsStarred,
                     IsFilterSelected = chip.TagId == SelectedNode?.TagId,
                     ParentGroupId = group.GroupId,
-                    ImmediateParentId = chip.ParentId
+                    ImmediateParentId = chip.ParentId,
+                    BoardKey = key
                 });
             }
 
@@ -864,7 +887,58 @@ public partial class TagsViewModel : ObservableObject
 
             Board.Add(item);
         }
+
+        ApplyBoardExpansion();
     }
+
+    private void RevealSelectedBoardRow()
+    {
+        if (SelectedNode?.TagId is { } id)
+        {
+            _boardSelectionKey = TagBoardExpand.RevealKey(
+                _boardSelectionKey,
+                id,
+                Board.Select(group => new TagBoardExpand.Row(
+                    BoardKey(group),
+                    group.GroupId,
+                    group.Chips.Select(chip => chip.TagId).ToList())).ToList());
+        }
+
+        ApplyBoardExpansion();
+    }
+
+    private void ApplyBoardExpansion()
+    {
+        if (Board.Count == 0)
+        {
+            return;
+        }
+
+        var matched = false;
+        foreach (var item in Board)
+        {
+            var expand = BoardKey(item) == _boardSelectionKey;
+            item.IsExpanded = expand;
+            matched |= expand;
+        }
+
+        if (!matched)
+        {
+            _boardSelectionKey = "all";
+            var all = Board.FirstOrDefault(g => g.ScopeKind == TagScope.All) ?? Board[0];
+            all.IsExpanded = true;
+            _boardSelectionKey = BoardKey(all);
+        }
+    }
+
+    private static string BoardKey(TagBoardGroup group) =>
+        group.ScopeKind switch
+        {
+            TagScope.All => "all",
+            TagScope.Ungrouped => "ungrouped",
+            TagScope.Starred => "starred",
+            _ => group.GroupId ?? "ungrouped"
+        };
 
     private async Task LoadMosaicAsync()
     {

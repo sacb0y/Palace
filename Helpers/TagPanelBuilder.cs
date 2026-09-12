@@ -17,6 +17,8 @@ public sealed class TagPanelGroup
     public string Name { get; init; } = "";
     public string? Color { get; init; }
     public bool IsUngrouped { get; init; }
+    public TagScope? ScopeKind { get; init; }
+    public string? AutomationIdOverride { get; init; }
     public IReadOnlyList<TagPanelChip> Chips { get; init; } = [];
 }
 
@@ -81,6 +83,8 @@ public static class TagPanelBuilder
         var q = (query ?? "").Trim();
         bool NameMatches(string name) =>
             q.Length == 0 || name.Contains(q, StringComparison.OrdinalIgnoreCase);
+        bool UncategorizedMatches() =>
+            NameMatches("Uncategorized") || NameMatches("Ungrouped");
 
         var starred = tags
             .Where(t => t.IsStarred && InScope(t) && NameMatches(t.Name))
@@ -164,7 +168,7 @@ public static class TagPanelBuilder
                 .Where(t => !childIds.Contains(t.Id) && !children.ContainsKey(t.Id) && InScope(t))
                 .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            var ungroupedGroupMatches = NameMatches("Ungrouped");
+            var ungroupedGroupMatches = UncategorizedMatches();
             var ungroupedChips = ungrouped
                 .Where(t => ungroupedGroupMatches || NameMatches(t.Name))
                 .Select(t => Chip(t))
@@ -173,8 +177,10 @@ public static class TagPanelBuilder
             {
                 groups.Add(new TagPanelGroup
                 {
-                    Name = "Ungrouped",
+                    Name = "Uncategorized",
                     IsUngrouped = true,
+                    ScopeKind = TagScope.Ungrouped,
+                    AutomationIdOverride = "BtnTagGroup_Ungrouped",
                     Chips = ungroupedChips
                 });
             }
@@ -188,6 +194,111 @@ public static class TagPanelBuilder
             Groups = groups
         };
     }
+
+    public static IReadOnlyList<TagPanelGroup> BuildBoard(
+        IReadOnlyList<Tag> tags,
+        IReadOnlyList<TagMembership> memberships,
+        string? query = null,
+        IReadOnlyDictionary<string, string?>? colors = null)
+    {
+        var model = Build(tags, memberships, query: query, colors: colors, scope: TagScope.All);
+        var q = (query ?? "").Trim();
+        bool NameMatches(string name) =>
+            q.Length == 0 || name.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+        var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
+        TagPanelChip Chip(Tag tag) => new()
+        {
+            TagId = tag.Id,
+            Name = tag.Name,
+            EffectiveColor = colors is not null && colors.TryGetValue(tag.Id, out var mapped)
+                ? mapped
+                : string.IsNullOrWhiteSpace(tag.Color) ? null : tag.Color,
+            IsStarred = tag.IsStarred
+        };
+
+        var all = new List<TagPanelChip>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        void Add(TagPanelChip chip)
+        {
+            if (seen.Add(chip.TagId))
+            {
+                all.Add(chip);
+            }
+        }
+
+        if (q.Length == 0)
+        {
+            foreach (var tag in tags
+                         .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(t => t.Name, StringComparer.Ordinal))
+            {
+                Add(Chip(tag));
+            }
+        }
+        else
+        {
+            foreach (var group in model.Groups)
+            {
+                foreach (var chip in group.Chips)
+                {
+                    Add(WithoutParent(chip));
+                }
+
+                if (group.GroupId is { } id && NameMatches(group.Name) && byId.TryGetValue(id, out var root))
+                {
+                    Add(Chip(root));
+                }
+            }
+
+            foreach (var tag in tags.Where(t => NameMatches(t.Name)))
+            {
+                Add(Chip(tag));
+            }
+
+            all = all
+                .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(c => c.Name, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        var uncategorized = model.Groups.FirstOrDefault(g => g.IsUngrouped);
+        var sections = new List<TagPanelGroup>
+        {
+            new()
+            {
+                Name = "All",
+                ScopeKind = TagScope.All,
+                AutomationIdOverride = "SelTagScopeAll",
+                Chips = all
+            },
+            new()
+            {
+                Name = "Uncategorized",
+                IsUngrouped = true,
+                ScopeKind = TagScope.Ungrouped,
+                AutomationIdOverride = uncategorized?.AutomationIdOverride ?? "BtnTagGroup_Ungrouped",
+                Chips = uncategorized?.Chips ?? []
+            },
+            new()
+            {
+                Name = "Starred",
+                ScopeKind = TagScope.Starred,
+                AutomationIdOverride = "SelTagScopeStarred",
+                Chips = model.Starred
+            }
+        };
+        sections.AddRange(model.Groups.Where(g => !g.IsUngrouped));
+        return sections;
+    }
+
+    private static TagPanelChip WithoutParent(TagPanelChip chip) => new()
+    {
+        TagId = chip.TagId,
+        Name = chip.Name,
+        EffectiveColor = chip.EffectiveColor,
+        IsStarred = chip.IsStarred
+    };
 
     private static IEnumerable<(Tag Tag, string ParentId)> FlattenDescendants(
         string rootId,
