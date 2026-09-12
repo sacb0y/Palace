@@ -101,6 +101,28 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void IsLiveOnlineOnly_StaleCatalogFlagYieldsToLocalPreview()
+    {
+        Assert.False(GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: true));
+        Assert.False(GalleryMedia.IsLiveOnlineOnly(true, true, true, canShowPreview: true));
+        Assert.True(GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: false));
+        Assert.True(GalleryMedia.IsLiveOnlineOnly(false, true, false, canShowPreview: false));
+        Assert.True(GalleryMedia.IsLiveOnlineOnly(false, false, true, canShowPreview: false));
+        Assert.False(GalleryMedia.IsLiveOnlineOnly(false, false, false, canShowPreview: false));
+    }
+
+    [Fact]
+    public void OverlayStillPath_UsesOriginalWhenStaleOnlineOnlyButLocalExists()
+    {
+        var staleOnline = GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: true);
+        Assert.Equal(
+            @"D:\photos\a.jpg",
+            GalleryMedia.OverlayStillPath(false, staleOnline, true, @"D:\photos\a.jpg", @"C:\thumbs\x.jpg", null));
+        Assert.False(GalleryMedia.ShowPlaceholderTile(staleOnline, false, false));
+        Assert.True(GalleryMedia.IsPlayableLocalVideo(AssetKind.Video, false, staleOnline, true, @"D:\clip.mp4"));
+    }
+
+    [Fact]
     public void CanShowPreview_RequiresHydratedLocalOrRemote()
     {
         Assert.True(GalleryMedia.CanShowPreview("https://example.com/p.jpg"));

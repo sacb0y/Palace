@@ -1295,8 +1295,9 @@ public partial class LibraryViewModel : ObservableObject
         var suggestions = PromptTagSuggester.Suggest(asset.Prompt, existing);
         var hydrateOnOpen = AccessService.WouldHydrateOnOpen(asset.Path);
         var apiOnly = AssetItemMapper.IsApiOnly(asset);
-        var cloudish = hydrateOnOpen || asset.IsOnlineOnly || apiOnly;
         var originalOk = GalleryMedia.CanShowPreview(asset.Path);
+        var cloudish = GalleryMedia.IsLiveOnlineOnly(
+            asset.IsOnlineOnly, hydrateOnOpen, apiOnly, originalOk);
         var previewPath = GalleryMedia.OverlayStillPath(
             asset.IsOrphan, cloudish, originalOk, asset.Path, item.ThumbPath, null);
         if (!GalleryMedia.CanShowPreview(previewPath))
