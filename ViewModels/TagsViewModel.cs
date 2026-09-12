@@ -270,15 +270,15 @@ public partial class TagsViewModel : ObservableObject
     [RelayCommand]
     private async Task RemoveChipFromGroupAsync(TagChipItem? chip)
     {
-        if (chip?.TagId is null || string.IsNullOrEmpty(chip.ParentGroupId))
+        if (chip?.TagId is null || string.IsNullOrEmpty(chip.ImmediateParentId))
         {
             return;
         }
 
-        await _catalog.RemoveMembershipAsync(chip.ParentGroupId, chip.TagId);
-        _reorderParentId = chip.ParentGroupId;
+        await _catalog.RemoveMembershipAsync(chip.ImmediateParentId, chip.TagId);
+        _reorderParentId = chip.ImmediateParentId;
         await RefreshAsync();
-        StatusText = $"Removed from group.";
+        StatusText = "Removed from group.";
     }
 
     [RelayCommand]
@@ -689,7 +689,8 @@ public partial class TagsViewModel : ObservableObject
                     EffectiveColor = chip.EffectiveColor,
                     IsStarred = chip.IsStarred,
                     IsFilterSelected = chip.TagId == SelectedNode?.TagId,
-                    ParentGroupId = group.GroupId
+                    ParentGroupId = group.GroupId,
+                    ImmediateParentId = chip.ParentId
                 });
             }
 

@@ -125,6 +125,13 @@ public partial class AssignedTagItem : ObservableObject
 
     public string RemoveAutomationId =>
         "BtnRemoveTag_" + string.Concat((TagName ?? "").Where(char.IsLetterOrDigit));
+
+    public string ChipAutomationName =>
+        string.IsNullOrWhiteSpace(SourceLabel) ? TagName : $"{TagName} {SourceLabel}";
+
+    partial void OnSourceLabelChanged(string value) => OnPropertyChanged(nameof(ChipAutomationName));
+
+    partial void OnTagNameChanged(string value) => OnPropertyChanged(nameof(ChipAutomationName));
 }
 
 public partial class OrganizePreviewItem : ObservableObject
@@ -215,7 +222,9 @@ public partial class TagChipItem : ObservableObject
 
     public string? ParentGroupId { get; set; }
 
-    public bool CanRemoveFromGroup => !string.IsNullOrEmpty(ParentGroupId);
+    public string? ImmediateParentId { get; set; }
+
+    public bool CanRemoveFromGroup => !string.IsNullOrEmpty(ImmediateParentId);
 
     public string AutomationPrefix { get; set; } = "BtnTagChip_";
 

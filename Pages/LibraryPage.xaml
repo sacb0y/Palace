@@ -500,6 +500,7 @@
                             <Border
                                 Margin="0,0,8,8"
                                 Padding="8,4"
+                                AutomationProperties.Name="{x:Bind ChipAutomationName, Mode=OneWay}"
                                 Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                 BorderThickness="1"
@@ -517,6 +518,12 @@
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind CountLabel, Mode=OneWay}"
                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind SourceLabel, Mode=OneWay}"
+                                        Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(SourceLabel), Mode=OneWay}" />
                                     <Button
                                         Width="24"
                                         Height="24"
