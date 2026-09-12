@@ -200,9 +200,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (frame is null)
         {
-            _hdrLoadCts?.Cancel();
-            var cts = new CancellationTokenSource();
-            _hdrLoadCts = cts;
+            _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
             try
             {
                 frame = await HdrWicDecode.TryLoadAsync(
@@ -211,7 +209,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     viewPxW,
                     viewPxH,
                     gallery.Scaling,
-                    cts.Token);
+                    _hdrLoadCts.Token);
             }
             catch
             {
@@ -247,7 +245,7 @@ public sealed partial class GalleryStillSurface : UserControl
             PresentFrame(gallery, frame);
             if (!GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight))
             {
-                _hdrLoadCts ??= new CancellationTokenSource();
+                _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
                 _ = MeasureStatsAsync(gallery, still, gallery.CurrentProbe, epoch, _hdrLoadCts.Token);
             }
         });

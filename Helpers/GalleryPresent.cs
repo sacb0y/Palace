@@ -391,6 +391,21 @@ public static class GalleryPresent
     public static bool ReplaceHdrStats(bool haveNative, bool incomingNative) =>
         !haveNative || incomingNative;
 
+    /// <summary>
+    /// Do not reuse a cancelled CTS. RefreshAsync cancels the previous
+    /// source, then a cache-hit measure must mint a live one.
+    /// </summary>
+    public static CancellationTokenSource LiveTokenSource(CancellationTokenSource? current)
+    {
+        if (current is { IsCancellationRequested: false })
+        {
+            return current;
+        }
+
+        current?.Dispose();
+        return new CancellationTokenSource();
+    }
+
     public static float EncodedToNits(float encoded, HdrTransfer transfer) =>
         transfer switch
         {

@@ -290,6 +290,22 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void LiveTokenSource_ReplacesCancelledCts()
+    {
+        using var live = new CancellationTokenSource();
+        Assert.Same(live, GalleryPresent.LiveTokenSource(live));
+
+        var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        using var replacement = GalleryPresent.LiveTokenSource(cancelled);
+        Assert.NotSame(cancelled, replacement);
+        Assert.False(replacement.IsCancellationRequested);
+
+        using var minted = GalleryPresent.LiveTokenSource(null);
+        Assert.False(minted.IsCancellationRequested);
+    }
+
+    [Fact]
     public void Probe_PqAvif_IsHdrAndPresentable()
     {
         var avif = AvifWith(3840, 2160, primaries: 9, transfer: 16);
