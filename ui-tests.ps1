@@ -528,7 +528,7 @@ Test-UI 'Rooms status mentions room' {
 
 Test-UI 'Navigate to Settings' { winapp ui invoke 'NavSettings' -a $AppPid }
 Test-UI 'Theme combo exists' { winapp ui wait-for 'CmbTheme' -a $AppPid -t 4000 }
-Test-UI 'App version is shown' { winapp ui wait-for 'TxtAppVersion' -a $AppPid --value '0.0.2' --contains -t 4000 }
+Test-UI 'App version is shown' { winapp ui wait-for 'TxtAppVersion' -a $AppPid --value '0.0.3' --contains -t 4000 }
 Test-UI 'Sources list exists' { winapp ui wait-for 'LstSources' -a $AppPid -t 3000 }
 Test-UI 'Auto-organize toggle exists' { winapp ui wait-for 'TglAutoOrganize' -a $AppPid -t 3000 }
 Test-UI 'Connect OneDrive exists' { winapp ui wait-for 'BtnConnectOneDrive' -a $AppPid -t 4000 }
@@ -541,7 +541,7 @@ Test-UI 'Navigate back to Library' {
 Test-UI 'Library search still present' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 4000 }
 Test-UI 'Tag typeahead exists' { winapp ui wait-for 'AsbAssignTag' -a $AppPid -t 4000 }
 Test-UI 'Assign tag button exists' { winapp ui wait-for 'BtnAssignTag' -a $AppPid -t 3000 }
-Test-UI 'Browse tags exists' { winapp ui wait-for 'BtnBrowseTags' -a $AppPid -t 3000 }
+Test-UI 'Add tag exists' { winapp ui wait-for 'BtnBrowseTags' -a $AppPid -t 3000 }
 Test-UI 'Assigned summary exists' { winapp ui wait-for 'TxtAssignedTags' -a $AppPid -t 3000 }
 Test-UI 'Suggestion summary exists' { winapp ui wait-for 'TxtTagSuggestions' -a $AppPid -t 3000 }
 Test-UI 'Typeahead shows newly created tag' {

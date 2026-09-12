@@ -41,6 +41,35 @@ public sealed class TagPanelBuilderTests
     }
 
     [Fact]
+    public void Build_SortsChipsAlphabetically_NotByPriority()
+    {
+        var (tags, edges) = Sample();
+        tags.Add(new Tag { Id = "amy", Name = "Amy", Priority = 0 });
+        edges.Add(new TagMembership { ParentId = "character", ChildId = "amy" });
+
+        var model = TagPanelBuilder.Build(tags, edges);
+        var character = model.Groups.Single(g => g.Name == "Character");
+        Assert.Equal(["Amy", "Sonic", "Tails"], character.Chips.Select(c => c.Name).ToArray());
+        Assert.Equal(["Character", "Shot"], model.Groups.Where(g => !g.IsUngrouped).Select(g => g.Name).ToArray());
+    }
+
+    [Fact]
+    public void Build_NestedChip_KeepsImmediateParent()
+    {
+        var (tags, edges) = Sample();
+        tags.Add(new Tag { Id = "hedgehog", Name = "Hedgehog", Priority = 3 });
+        edges.Add(new TagMembership { ParentId = "character", ChildId = "hedgehog" });
+        edges.Add(new TagMembership { ParentId = "hedgehog", ChildId = "sonic" });
+
+        var model = TagPanelBuilder.Build(tags, edges);
+        var character = model.Groups.Single(g => g.Name == "Character");
+        var sonic = Assert.Single(character.Chips, c => c.Name == "Sonic");
+        var hedgehog = Assert.Single(character.Chips, c => c.Name == "Hedgehog");
+        Assert.Equal("hedgehog", sonic.ParentId);
+        Assert.Equal("character", hedgehog.ParentId);
+    }
+
+    [Fact]
     public void Build_SearchByGroupName_ReturnsAllChips()
     {
         var (tags, edges) = Sample();

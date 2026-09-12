@@ -29,6 +29,7 @@ public sealed partial class TagsPage : Page
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestOpenGallery = GalleryWindow.Show;
+        ViewModel.RequestFocusRename = FocusRenameBox;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
         Loaded += async (_, _) =>
@@ -48,6 +49,16 @@ public sealed partial class TagsPage : Page
     }
 
     public static IRelayCommand<AssetItem?> GetOpenAssetCommand() => AppServices.Tags.OpenAssetCommand;
+
+    public static IRelayCommand<TagChipItem?> GetStarChipCommand() => AppServices.Tags.StarChipCommand;
+
+    public static IRelayCommand<TagChipItem?> GetFilterChipCommand() => AppServices.Tags.FilterChipCommand;
+
+    public static IRelayCommand<TagChipItem?> GetRenameChipCommand() => AppServices.Tags.RenameChipCommand;
+
+    public static IRelayCommand<TagChipItem?> GetRemoveChipFromGroupCommand() => AppServices.Tags.RemoveChipFromGroupCommand;
+
+    public static IRelayCommand<TagChipItem?> GetDeleteChipCommand() => AppServices.Tags.DeleteChipCommand;
 
     private void TagColorFlyout_Opening(object sender, object e)
     {
@@ -138,6 +149,70 @@ public sealed partial class TagsPage : Page
         if (sender is FrameworkElement { Tag: TagChipItem chip })
         {
             ViewModel.SelectChip(chip);
+        }
+    }
+
+    private void FocusRenameBox()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            TxtRenameTag.Focus(FocusState.Programmatic);
+            TxtRenameTag.SelectAll();
+        });
+    }
+
+    private void TagChipMenu_Opening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        var chip = flyout.Target is FrameworkElement { Tag: TagChipItem bound }
+            ? bound
+            : null;
+        if (chip is null)
+        {
+            return;
+        }
+
+        foreach (var item in flyout.Items)
+        {
+            if (item is not MenuFlyoutSubItem sub || sub.Tag is not string kind)
+            {
+                continue;
+            }
+
+            var add = kind == "add";
+            FillGroupSubmenu(sub, chip, add);
+        }
+    }
+
+    private void FillGroupSubmenu(MenuFlyoutSubItem sub, TagChipItem chip, bool add)
+    {
+        sub.Items.Clear();
+        var groups = ViewModel.GroupDestinations(chip, add);
+        sub.IsEnabled = groups.Count > 0;
+        var command = add ? ViewModel.AddChipToGroupCommand : ViewModel.MoveChipToGroupCommand;
+        var prefix = add ? "MnuAddToGroup_" : "MnuMoveToGroup_";
+        foreach (var group in groups)
+        {
+            var item = new MenuFlyoutItem
+            {
+                Text = group.Name,
+                Command = command,
+                CommandParameter = new TagChipGroupMove
+                {
+                    Chip = chip,
+                    GroupId = group.TagId,
+                    GroupName = group.Name
+                }
+            };
+            AutomationProperties.SetAutomationId(
+                item,
+                prefix + string.Concat((group.Name ?? "").Where(char.IsLetterOrDigit)));
+            AutomationProperties.SetName(item, group.Name);
+            sub.Items.Add(item);
         }
     }
 

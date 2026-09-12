@@ -13,7 +13,7 @@
 
     <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280" />
+            <ColumnDefinition Width="340" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="340" />
         </Grid.ColumnDefinitions>
@@ -77,7 +77,7 @@
                     ItemsSource="{x:Bind ViewModel.Board, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:TagBoardGroup">
-                            <StackPanel Margin="0,0,0,12" Spacing="8">
+                            <StackPanel Margin="0,0,0,16" Spacing="8">
                                 <Button
                                     HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Left"
@@ -95,51 +95,150 @@
                                             CornerRadius="2" />
                                         <TextBlock
                                             Style="{StaticResource BodyStrongTextBlockStyle}"
-                                            Text="{x:Bind Name, Mode=OneWay}" />
+                                            Text="{x:Bind CountLabel, Mode=OneWay}" />
                                     </StackPanel>
                                 </Button>
-                                <ItemsControl ItemsSource="{x:Bind Chips, Mode=OneWay}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <StackPanel Spacing="4" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
+                                <ItemsControl ItemsSource="{x:Bind Letters, Mode=OneWay}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="models:TagChipItem">
-                                            <Button
-                                                HorizontalAlignment="Stretch"
-                                                HorizontalContentAlignment="Left"
-                                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
-                                                Click="TagChip_Click"
-                                                Tag="{x:Bind}">
-                                                <Grid ColumnSpacing="8">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <Border
-                                                        Width="12"
-                                                        Height="12"
-                                                        VerticalAlignment="Center"
-                                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="2" />
-                                                    <TextBlock
-                                                        Grid.Column="1"
-                                                        VerticalAlignment="Center"
-                                                        Text="{x:Bind Name, Mode=OneWay}" />
-                                                    <TextBlock
-                                                        Grid.Column="2"
-                                                        VerticalAlignment="Center"
-                                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                                        Text="On"
-                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
-                                                </Grid>
-                                            </Button>
+                                        <DataTemplate x:DataType="models:TagLetterSection">
+                                            <StackPanel Margin="0,0,0,8" Spacing="6">
+                                                <TextBlock
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                    Text="{x:Bind Header, Mode=OneWay}" />
+                                                <ItemsControl ItemsSource="{x:Bind Chips, Mode=OneWay}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <VariableSizedWrapGrid
+                                                                ItemHeight="36"
+                                                                MaximumRowsOrColumns="0"
+                                                                Orientation="Horizontal" />
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="models:TagChipItem">
+                                                            <Button
+                                                                MinWidth="140"
+                                                                HorizontalAlignment="Stretch"
+                                                                HorizontalContentAlignment="Left"
+                                                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                                AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                                                Click="TagChip_Click"
+                                                                Tag="{x:Bind}">
+                                                                <Button.ContextFlyout>
+                                                                    <MenuFlyout Opening="TagChipMenu_Opening">
+                                                                        <MenuFlyoutItem
+                                                                            AutomationProperties.AutomationId="MnuFilterTag"
+                                                                            Command="{x:Bind pages:TagsPage.GetFilterChipCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Filter in Library">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Filter" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
+                                                                        <MenuFlyoutItem
+                                                                            Command="{x:Bind pages:TagsPage.GetStarChipCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Add to starred"
+                                                                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsStarred), Mode=OneWay}">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Star" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
+                                                                        <MenuFlyoutItem
+                                                                            Command="{x:Bind pages:TagsPage.GetStarChipCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Remove from starred"
+                                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Star" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
+                                                                        <MenuFlyoutItem
+                                                                            AutomationProperties.AutomationId="MnuRenameTag"
+                                                                            Command="{x:Bind pages:TagsPage.GetRenameChipCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Rename">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Rename" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
+                                                                        <MenuFlyoutSubItem
+                                                                            Tag="add"
+                                                                            Text="Add to group">
+                                                                            <MenuFlyoutSubItem.Icon>
+                                                                                <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutSubItem.Icon>
+                                                                            <MenuFlyoutItem IsEnabled="False" Text="No other groups" />
+                                                                        </MenuFlyoutSubItem>
+                                                                        <MenuFlyoutSubItem
+                                                                            Tag="move"
+                                                                            Text="Move to group"
+                                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(CanRemoveFromGroup), Mode=OneWay}">
+                                                                            <MenuFlyoutSubItem.Icon>
+                                                                                <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutSubItem.Icon>
+                                                                            <MenuFlyoutItem IsEnabled="False" Text="No other groups" />
+                                                                        </MenuFlyoutSubItem>
+                                                                        <MenuFlyoutItem
+                                                                            Command="{x:Bind pages:TagsPage.GetRemoveChipFromGroupCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Remove from this group"
+                                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(CanRemoveFromGroup), Mode=OneWay}">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Folder" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
+                                                                        <MenuFlyoutItem
+                                                                            Command="{x:Bind pages:TagsPage.GetDeleteChipCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Delete tag">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
+                                                                    </MenuFlyout>
+                                                                </Button.ContextFlyout>
+                                                                <Grid ColumnSpacing="8">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                        <ColumnDefinition Width="Auto" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Border
+                                                                        Width="10"
+                                                                        Height="10"
+                                                                        VerticalAlignment="Center"
+                                                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                                        BorderThickness="1"
+                                                                        CornerRadius="5" />
+                                                                    <TextBlock
+                                                                        Grid.Column="1"
+                                                                        VerticalAlignment="Center"
+                                                                        Text="{x:Bind Name, Mode=OneWay}"
+                                                                        TextTrimming="CharacterEllipsis" />
+                                                                    <ic:FluentIcon
+                                                                        Grid.Column="2"
+                                                                        VerticalAlignment="Center"
+                                                                        Icon="Star"
+                                                                        IconSize="Size12"
+                                                                        IconVariant="Regular"
+                                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}" />
+                                                                    <TextBlock
+                                                                        Grid.Column="3"
+                                                                        VerticalAlignment="Center"
+                                                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                                                        Text="On"
+                                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
+                                                                </Grid>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

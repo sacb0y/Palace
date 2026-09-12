@@ -131,6 +131,9 @@ public partial class LibraryViewModel : ObservableObject
     public partial string? PreviewModel { get; set; }
 
     [ObservableProperty]
+    public partial string? PreviewFileName { get; set; }
+
+    [ObservableProperty]
     public partial string? PreviewSeed { get; set; }
 
     [ObservableProperty]
@@ -940,6 +943,49 @@ public partial class LibraryViewModel : ObservableObject
         RebuildAssignPanel();
     }
 
+    public void ApplySingleTagFilter(string tagId, string name)
+    {
+        if (string.IsNullOrEmpty(tagId))
+        {
+            return;
+        }
+
+        _suppressFilter = true;
+        var needBrowse = !IsTagBrowse;
+        try
+        {
+            if (TagFilterMode == TagFilterMode.None)
+            {
+                TagFilterMode = TagFilterMode.Any;
+            }
+
+            var node = TagTreeBuilder.Find(TagTree, tagId)
+                ?? new TagTreeNode { TagId = tagId, Name = name };
+            SelectedTag = node;
+            RestoreFilterSelection([tagId]);
+            if (SelectedFilterTags.Count == 0)
+            {
+                SelectedFilterTags.Add(ToFilterChip(node));
+                StampFilterSelected(TagTree, [tagId]);
+            }
+
+            SyncFilterFlags();
+            RebuildBreadcrumbs();
+        }
+        finally
+        {
+            _suppressFilter = false;
+        }
+
+        if (needBrowse)
+        {
+            IsTagBrowse = true;
+            return;
+        }
+
+        _ = ApplyFilterAsync();
+    }
+
     public void ToggleFilterTag(TagTreeNode? node)
     {
         if (node?.TagId is null)
@@ -1256,14 +1302,15 @@ public partial class LibraryViewModel : ObservableObject
             PreviewPrompt = asset.Prompt;
             PreviewNegative = asset.NegativePrompt;
             PreviewModel = asset.Model;
+            PreviewFileName = asset.FileName;
             PreviewSeed = asset.Seed;
             PreviewNotes = asset.Notes;
             PreviewRating = asset.Rating ?? 0;
 
             AssignedTags.Clear();
             foreach (var entry in union.Values
-                .OrderByDescending(v => v.Sample.TagPriority)
-                .ThenBy(v => v.Sample.TagName, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(v => v.Sample.TagName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(v => v.Sample.TagName, StringComparer.Ordinal))
             {
                 var tag = entry.Sample;
                 var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
@@ -1315,6 +1362,7 @@ public partial class LibraryViewModel : ObservableObject
         PreviewPrompt = null;
         PreviewNegative = null;
         PreviewModel = null;
+        PreviewFileName = null;
         PreviewSeed = null;
         PreviewNotes = null;
         PreviewRating = 0;

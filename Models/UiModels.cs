@@ -125,6 +125,13 @@ public partial class AssignedTagItem : ObservableObject
 
     public string RemoveAutomationId =>
         "BtnRemoveTag_" + string.Concat((TagName ?? "").Where(char.IsLetterOrDigit));
+
+    public string ChipAutomationName =>
+        string.IsNullOrWhiteSpace(SourceLabel) ? TagName : $"{TagName} {SourceLabel}";
+
+    partial void OnSourceLabelChanged(string value) => OnPropertyChanged(nameof(ChipAutomationName));
+
+    partial void OnTagNameChanged(string value) => OnPropertyChanged(nameof(ChipAutomationName));
 }
 
 public partial class OrganizePreviewItem : ObservableObject
@@ -215,6 +222,11 @@ public partial class TagChipItem : ObservableObject
 
     public string? ParentGroupId { get; set; }
 
+    public string? ImmediateParentId { get; set; }
+
+    public bool CanRemoveFromGroup =>
+        !string.IsNullOrEmpty(ImmediateParentId) || !string.IsNullOrEmpty(ParentGroupId);
+
     public string AutomationPrefix { get; set; } = "BtnTagChip_";
 
     public string AutomationId =>
@@ -239,7 +251,20 @@ public partial class TagBoardGroup : ObservableObject
     public string AutomationId =>
         "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
 
+    public string CountLabel => $"{Name} ({Chips.Count})";
+
     public ObservableCollection<TagChipItem> Chips { get; } = [];
+
+    public ObservableCollection<TagLetterSection> Letters { get; } = [];
+}
+
+public partial class TagLetterSection : ObservableObject
+{
+    public string Letter { get; set; } = "";
+
+    public ObservableCollection<TagChipItem> Chips { get; } = [];
+
+    public string Header => $"{Letter} ({Chips.Count})";
 }
 
 public partial class TagTreeNode : ObservableObject
@@ -272,4 +297,11 @@ public sealed class TagGroupPick
 {
     public string TagId { get; set; } = "";
     public string Name { get; set; } = "";
+}
+
+public sealed class TagChipGroupMove
+{
+    public TagChipItem Chip { get; set; } = new();
+    public string GroupId { get; set; } = "";
+    public string GroupName { get; set; } = "";
 }

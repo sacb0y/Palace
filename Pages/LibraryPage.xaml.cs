@@ -27,12 +27,16 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private readonly Dictionary<string, WeakReference<BitmapImage>> _tileBitmapCache = new(StringComparer.OrdinalIgnoreCase);
+    private bool _suppressBrowseChrome;
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
     public LibraryPage()
     {
+        _suppressBrowseChrome = true;
         InitializeComponent();
+        SyncBrowseChromeFromViewModel();
+        _suppressBrowseChrome = false;
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestPickRoom = AskRoomAsync;
@@ -64,9 +68,19 @@ public sealed partial class LibraryPage : Page
                     GrdGalleryOverlay.Focus(FocusState.Programmatic);
                 }
             }
+
+            if (e.PropertyName is nameof(LibraryViewModel.IsTagBrowse) or nameof(LibraryViewModel.TagFilterMode))
+            {
+                _suppressBrowseChrome = true;
+                SyncBrowseChromeFromViewModel();
+                _suppressBrowseChrome = false;
+            }
         };
         Loaded += async (_, _) =>
         {
+            _suppressBrowseChrome = true;
+            SyncBrowseChromeFromViewModel();
+            _suppressBrowseChrome = false;
             await ViewModel.ReloadTagCatalogAsync();
             UpdatePreview();
             MosaicLayout.InvalidateItemsInfo();
@@ -231,16 +245,37 @@ public sealed partial class LibraryPage : Page
 
     private void SelBrowseMode_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
+        if (_suppressBrowseChrome)
+        {
+            return;
+        }
+
         ViewModel.IsTagBrowse = sender.SelectedItem == SelTags;
     }
 
     private void SelTagMatch_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
+        if (_suppressBrowseChrome)
+        {
+            return;
+        }
+
         ViewModel.TagFilterMode = sender.SelectedItem == SelTagMatchAny
             ? TagFilterMode.Any
             : sender.SelectedItem == SelTagMatchNone
                 ? TagFilterMode.None
                 : TagFilterMode.All;
+    }
+
+    private void SyncBrowseChromeFromViewModel()
+    {
+        SelBrowseMode.SelectedItem = ViewModel.IsTagBrowse ? SelTags : SelFolders;
+        SelTagMatch.SelectedItem = ViewModel.TagFilterMode switch
+        {
+            TagFilterMode.Any => SelTagMatchAny,
+            TagFilterMode.None => SelTagMatchNone,
+            _ => SelTagMatchAll
+        };
     }
 
     private void BtnBrowseTags_Click(object sender, RoutedEventArgs e)

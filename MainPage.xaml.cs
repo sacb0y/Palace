@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Palace.Pages;
+using Palace.Services;
 using Palace.ViewModels;
 
 namespace Palace;
@@ -14,6 +15,7 @@ public sealed partial class MainPage : Page
     {
         InitializeComponent();
         ViewModel.RequestProjectName = AskProjectNameAsync;
+        AppServices.Tags.RequestShowLibrary = () => NavMain.SelectedItem = NavLibrary;
         Loaded += async (_, _) =>
         {
             await ViewModel.LoadAsync();

@@ -8,6 +8,7 @@ public sealed class TagPanelChip
     public string Name { get; init; } = "";
     public string? EffectiveColor { get; init; }
     public bool IsStarred { get; init; }
+    public string? ParentId { get; init; }
 }
 
 public sealed class TagPanelGroup
@@ -58,14 +59,15 @@ public static class TagPanelBuilder
             list.Add(child);
         }
 
-        TagPanelChip Chip(Tag tag) => new()
+        TagPanelChip Chip(Tag tag, string? parentId = null) => new()
         {
             TagId = tag.Id,
             Name = tag.Name,
             EffectiveColor = colors is not null && colors.TryGetValue(tag.Id, out var mapped)
                 ? mapped
                 : string.IsNullOrWhiteSpace(tag.Color) ? null : tag.Color,
-            IsStarred = tag.IsStarred
+            IsStarred = tag.IsStarred,
+            ParentId = parentId
         };
 
         bool InScope(Tag tag) =>
@@ -82,9 +84,9 @@ public static class TagPanelBuilder
 
         var starred = tags
             .Where(t => t.IsStarred && InScope(t) && NameMatches(t.Name))
-            .OrderByDescending(t => t.Priority)
-            .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(Chip)
+            .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.Name, StringComparer.Ordinal)
+            .Select(t => Chip(t))
             .ToList();
 
         var recent = new List<TagPanelChip>();
@@ -116,8 +118,8 @@ public static class TagPanelBuilder
         {
             foreach (var root in tags
                          .Where(t => !childIds.Contains(t.Id) && children.ContainsKey(t.Id))
-                         .OrderByDescending(t => t.Priority)
-                         .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+                         .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                         .ThenBy(t => t.Name, StringComparer.Ordinal))
             {
                 if (scope == TagScope.Ungrouped)
                 {
@@ -125,14 +127,14 @@ public static class TagPanelBuilder
                 }
 
                 var descendants = FlattenDescendants(root.Id, children)
-                    .Where(InScope)
-                    .OrderByDescending(t => t.Priority)
-                    .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+                    .Where(d => InScope(d.Tag))
+                    .OrderBy(d => d.Tag.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(d => d.Tag.Name, StringComparer.Ordinal)
                     .ToList();
                 var groupMatches = NameMatches(root.Name);
                 var chips = descendants
-                    .Where(t => groupMatches || NameMatches(t.Name))
-                    .Select(Chip)
+                    .Where(d => groupMatches || NameMatches(d.Tag.Name))
+                    .Select(d => Chip(d.Tag, d.ParentId))
                     .ToList();
                 if (!groupMatches && chips.Count == 0 && q.Length > 0)
                 {
@@ -165,7 +167,7 @@ public static class TagPanelBuilder
             var ungroupedGroupMatches = NameMatches("Ungrouped");
             var ungroupedChips = ungrouped
                 .Where(t => ungroupedGroupMatches || NameMatches(t.Name))
-                .Select(Chip)
+                .Select(t => Chip(t))
                 .ToList();
             if (ungroupedChips.Count > 0 || (q.Length == 0 && scope == TagScope.Ungrouped))
             {
@@ -187,7 +189,9 @@ public static class TagPanelBuilder
         };
     }
 
-    private static IEnumerable<Tag> FlattenDescendants(string rootId, Dictionary<string, List<Tag>> children)
+    private static IEnumerable<(Tag Tag, string ParentId)> FlattenDescendants(
+        string rootId,
+        Dictionary<string, List<Tag>> children)
     {
         if (!children.TryGetValue(rootId, out var kids))
         {
@@ -195,16 +199,21 @@ public static class TagPanelBuilder
         }
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        var stack = new Stack<Tag>(kids);
+        var stack = new Stack<(Tag Tag, string ParentId)>();
+        foreach (var kid in kids)
+        {
+            stack.Push((kid, rootId));
+        }
+
         while (stack.Count > 0)
         {
-            var tag = stack.Pop();
+            var (tag, parentId) = stack.Pop();
             if (!seen.Add(tag.Id))
             {
                 continue;
             }
 
-            yield return tag;
+            yield return (tag, parentId);
             if (!children.TryGetValue(tag.Id, out var nested))
             {
                 continue;
@@ -212,7 +221,7 @@ public static class TagPanelBuilder
 
             foreach (var kid in nested)
             {
-                stack.Push(kid);
+                stack.Push((kid, tag.Id));
             }
         }
     }

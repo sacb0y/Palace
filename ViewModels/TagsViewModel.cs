@@ -19,6 +19,8 @@ public partial class TagsViewModel : ObservableObject
     private int _mosaicEpoch;
     private int _busyDepth;
     private string? _reorderParentId;
+    private string? _renameBaseline;
+    private string? _renameBaselineTagId;
     private const int MosaicChunkSize = 80;
 
     public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access, ThumbnailService thumbs)
@@ -95,6 +97,8 @@ public partial class TagsViewModel : ObservableObject
     public Func<IReadOnlyList<TagPath>, Task<OrganizeChoice?>>? RequestOrganizeChoice { get; set; }
     public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
     public Action<GalleryViewModel>? RequestOpenGallery { get; set; }
+    public Action? RequestShowLibrary { get; set; }
+    public Action? RequestFocusRename { get; set; }
     public Action? MosaicReset { get; set; }
     public Action? MosaicChunkAppended { get; set; }
 
@@ -141,9 +145,35 @@ public partial class TagsViewModel : ObservableObject
     {
         SelectedNode = node;
         ShowDetails = node?.TagId is not null;
+        StampSelectionName(node);
         StampBoardSelection();
         _ = LoadSelectionAsync();
         _ = LoadMosaicAsync();
+    }
+
+    private void StampSelectionName(TagTreeNode? node)
+    {
+        if (node?.TagId is null)
+        {
+            _renameBaseline = null;
+            _renameBaselineTagId = null;
+            return;
+        }
+
+        var tag = _tags.FirstOrDefault(t => t.Id == node.TagId);
+        var name = tag?.Name ?? node.Name;
+        SelectedName = name;
+        _renameBaseline = name;
+        _renameBaselineTagId = node.TagId;
+        HasSelection = true;
+        ShowDetails = true;
+        if (tag is null)
+        {
+            return;
+        }
+
+        SelectedPriority = tag.Priority;
+        SelectedIsStarred = tag.IsStarred;
     }
 
     partial void OnSearchQueryChanged(string value) => RebuildBoard();
@@ -251,6 +281,148 @@ public partial class TagsViewModel : ObservableObject
         SelectedNode = null;
         await RefreshAsync();
         StatusText = $"Deleted {name}.";
+    }
+
+    [RelayCommand]
+    private async Task StarChipAsync(TagChipItem? chip)
+    {
+        if (chip?.TagId is null)
+        {
+            return;
+        }
+
+        var next = !chip.IsStarred;
+        await _catalog.SetTagStarredAsync(chip.TagId, next);
+        await RefreshAsync();
+        StatusText = next ? "Starred this tag." : "Removed star.";
+    }
+
+    [RelayCommand]
+    private async Task RemoveChipFromGroupAsync(TagChipItem? chip)
+    {
+        if (chip?.TagId is null)
+        {
+            return;
+        }
+
+        var rootId = chip.ParentGroupId ?? chip.ImmediateParentId;
+        if (string.IsNullOrEmpty(rootId))
+        {
+            return;
+        }
+
+        var parents = TagSiblings.ParentsUnderRoot(_memberships, chip.TagId, rootId);
+        if (parents.Count == 0 && !string.IsNullOrEmpty(chip.ImmediateParentId))
+        {
+            parents = [chip.ImmediateParentId];
+        }
+
+        foreach (var parentId in parents)
+        {
+            await _catalog.RemoveMembershipAsync(parentId, chip.TagId);
+        }
+
+        _reorderParentId = rootId;
+        await RefreshAsync();
+        StatusText = "Removed from group.";
+    }
+
+    [RelayCommand]
+    private async Task DeleteChipAsync(TagChipItem? chip)
+    {
+        if (chip is null)
+        {
+            return;
+        }
+
+        SelectChip(chip);
+        await DeleteTagAsync();
+    }
+
+    [RelayCommand]
+    private void FilterChip(TagChipItem? chip)
+    {
+        if (chip?.TagId is null)
+        {
+            return;
+        }
+
+        AppServices.Library.ApplySingleTagFilter(chip.TagId, chip.Name);
+        RequestShowLibrary?.Invoke();
+    }
+
+    [RelayCommand]
+    private void RenameChip(TagChipItem? chip)
+    {
+        if (chip is null)
+        {
+            return;
+        }
+
+        SelectChip(chip);
+        RequestFocusRename?.Invoke();
+    }
+
+    [RelayCommand]
+    private async Task AddChipToGroupAsync(TagChipGroupMove? move)
+    {
+        if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
+        {
+            return;
+        }
+
+        var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+        StatusText = ok
+            ? $"Also grouped under {move.GroupName}."
+            : "That membership would create a cycle.";
+        if (ok)
+        {
+            _reorderParentId = move.GroupId;
+        }
+
+        await RefreshAsync();
+    }
+
+    [RelayCommand]
+    private async Task MoveChipToGroupAsync(TagChipGroupMove? move)
+    {
+        if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
+        {
+            return;
+        }
+
+        var rootId = move.Chip.ParentGroupId ?? move.Chip.ImmediateParentId;
+        if (!string.IsNullOrEmpty(rootId) && !string.Equals(rootId, move.GroupId, StringComparison.Ordinal))
+        {
+            var parents = TagSiblings.ParentsUnderRoot(_memberships, move.Chip.TagId, rootId);
+            if (parents.Count == 0 && !string.IsNullOrEmpty(move.Chip.ImmediateParentId))
+            {
+                parents = [move.Chip.ImmediateParentId];
+            }
+
+            foreach (var parentId in parents)
+            {
+                await _catalog.RemoveMembershipAsync(parentId, move.Chip.TagId);
+            }
+        }
+
+        var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+        StatusText = ok
+            ? $"Moved to {move.GroupName}."
+            : "Removed from this group, but that destination would create a cycle.";
+        if (ok)
+        {
+            _reorderParentId = move.GroupId;
+        }
+
+        await RefreshAsync();
+    }
+
+    public IReadOnlyList<TagGroupPick> GroupDestinations(TagChipItem chip, bool add)
+    {
+        return TagGroups.Destinations(_tags, _memberships, chip.TagId, chip.ParentGroupId, add)
+            .Select(tag => new TagGroupPick { TagId = tag.Id, Name = tag.Name })
+            .ToList();
     }
 
     public void SelectChip(TagChipItem? chip)
@@ -520,6 +692,8 @@ public partial class TagsViewModel : ObservableObject
                 ImpliedSuggestions.Clear();
                 SelectedIsStarred = false;
                 ShowDetails = false;
+                _renameBaseline = null;
+                _renameBaselineTagId = null;
             });
             return;
         }
@@ -528,6 +702,17 @@ public partial class TagsViewModel : ObservableObject
         if (tag is null)
         {
             return;
+        }
+
+        var loadedName = tag.Name;
+        if (TagSelection.ShouldApplyLoadedName(
+                SelectedName, loadedName, _renameBaseline, _renameBaselineTagId, tag.Id))
+        {
+            SelectedName = loadedName;
+            _renameBaseline = loadedName;
+            _renameBaselineTagId = tag.Id;
+            SelectedPriority = tag.Priority;
+            SelectedIsStarred = tag.IsStarred;
         }
 
         var ids = new List<string> { tag.Id };
@@ -548,7 +733,19 @@ public partial class TagsViewModel : ObservableObject
         var colors = CatalogService.MapEffectiveColors(_tags, _memberships);
         await UiDispatch.RunAsync(() =>
         {
-            SelectedName = tag.Name;
+            if (SelectedNode?.TagId != tag.Id)
+            {
+                return;
+            }
+
+            if (TagSelection.ShouldApplyLoadedName(
+                    SelectedName, loadedName, _renameBaseline, _renameBaselineTagId, tag.Id))
+            {
+                SelectedName = loadedName;
+                _renameBaseline = loadedName;
+                _renameBaselineTagId = tag.Id;
+            }
+
             SelectedPriority = tag.Priority;
             SelectedEffectiveColor = colors.GetValueOrDefault(tag.Id);
             HasCustomColor = TagColor.Normalize(tag.Color) is not null;
@@ -649,8 +846,20 @@ public partial class TagsViewModel : ObservableObject
                     EffectiveColor = chip.EffectiveColor,
                     IsStarred = chip.IsStarred,
                     IsFilterSelected = chip.TagId == SelectedNode?.TagId,
-                    ParentGroupId = group.GroupId
+                    ParentGroupId = group.GroupId,
+                    ImmediateParentId = chip.ParentId
                 });
+            }
+
+            foreach (var letter in TagAlphaIndex.GroupByLetter(item.Chips, chip => chip.Name))
+            {
+                var section = new TagLetterSection { Letter = letter.Letter };
+                foreach (var chip in letter.Items)
+                {
+                    section.Chips.Add(chip);
+                }
+
+                item.Letters.Add(section);
             }
 
             Board.Add(item);
