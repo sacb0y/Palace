@@ -116,4 +116,20 @@ public sealed class CloudReadGuardTests
         Assert.Equal(a, b);
         Assert.NotEqual(a, c);
     }
+
+    [Fact]
+    public void ScanContent_RefusesDropboxPlaceholderAndBareOffline()
+    {
+        var dropbox = FileAttributes.Archive | FileAttributes.SparseFile | FileAttributes.ReparsePoint | FileAttributes.Offline;
+        Assert.False(ScanContent.MayReadOriginal(dropbox));
+        Assert.False(ScanContent.MayGenerateScanThumbnail(dropbox));
+        Assert.False(ScanContent.MayReadOriginal(FileAttributes.Offline));
+        Assert.True(ScanContent.MayReadOriginal(FileAttributes.Archive));
+        Assert.True(ScanContent.MayReadOriginal(
+            FileAttributes.Archive | FileAttributes.ReparsePoint | FileAttributes.Offline));
+        Assert.True(ScanContent.MayGenerateScanThumbnail(
+            FileAttributes.Archive | FileAttributes.ReparsePoint | CloudFile.Pinned | FileAttributes.Offline));
+        Assert.False(ScanContent.MayReadOriginal((string?)null));
+        Assert.False(ScanContent.MayGenerateScanThumbnail(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));
+    }
 }

@@ -375,6 +375,23 @@
                                                         Text="Online" />
                                                 </StackPanel>
                                                 <Border
+                                                    Margin="6"
+                                                    Padding="4"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    AutomationProperties.AutomationId="{x:Bind CloudBadgeAutomationId, Mode=OneWay}"
+                                                    AutomationProperties.Name="Cloud"
+                                                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                                    CornerRadius="4"
+                                                    IsHitTestVisible="False"
+                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowCloudBadge), Mode=OneWay}">
+                                                    <ic:FluentIcon
+                                                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                        Icon="Cloud"
+                                                        IconSize="Size16"
+                                                        IconVariant="Regular" />
+                                                </Border>
+                                                <Border
                                                     BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
                                                     BorderThickness="2"
                                                     IsHitTestVisible="False"

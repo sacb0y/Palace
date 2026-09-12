@@ -126,6 +126,19 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void ShowCloudBadge_OnDemandApiAndHydratedThumbs()
+    {
+        Assert.True(GalleryMedia.ShowCloudBadge(false, false, true, false, false));
+        Assert.True(GalleryMedia.ShowCloudBadge(false, false, false, true, false));
+        Assert.True(GalleryMedia.ShowCloudBadge(false, false, false, false, true));
+        Assert.False(GalleryMedia.ShowCloudBadge(true, false, true, true, true));
+        Assert.False(GalleryMedia.ShowCloudBadge(false, true, true, true, true));
+        Assert.False(GalleryMedia.ShowCloudBadge(false, false, false, false, false));
+        Assert.Equal("IcnCloudBadge_abc123", GalleryMedia.CloudBadgeAutomationId("abc-123"));
+        Assert.Equal("IcnCloudBadge_", GalleryMedia.CloudBadgeAutomationId(null));
+    }
+
+    [Fact]
     public void IsLiveOnlineOnly_StaleCatalogFlagYieldsToLocalPreview()
     {
         Assert.False(GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: true));

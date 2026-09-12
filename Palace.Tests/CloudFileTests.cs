@@ -63,6 +63,45 @@ public sealed class CloudFileTests
     }
 
     [Fact]
+    public void IsOnlineOnly_DropboxSparseReparsePlaceholder_IsTrue()
+    {
+        // Dropbox Files On-Demand omits RecallOnDataAccess; Explorer uses Sparse + Reparse.
+        Assert.True(CloudFile.IsOnlineOnly(
+            FileAttributes.Archive | FileAttributes.SparseFile | FileAttributes.ReparsePoint));
+        Assert.True(CloudFile.IsOnlineOnly(
+            FileAttributes.Archive | FileAttributes.SparseFile | FileAttributes.ReparsePoint | CloudFile.Offline));
+        Assert.True(CloudFile.IsOnlineOnly(
+            FileAttributes.SparseFile | FileAttributes.ReparsePoint | CloudFile.Unpinned | CloudFile.Offline));
+        Assert.False(ScanContent.MayReadOriginal(
+            FileAttributes.Archive | FileAttributes.SparseFile | FileAttributes.ReparsePoint | CloudFile.Offline));
+        Assert.False(ScanContent.MayGenerateScanThumbnail(
+            FileAttributes.SparseFile | FileAttributes.ReparsePoint));
+    }
+
+    [Fact]
+    public void IsOnlineOnly_SparseWithoutReparse_IsLocal()
+    {
+        Assert.False(CloudFile.IsOnlineOnly(FileAttributes.Archive | FileAttributes.SparseFile));
+        Assert.True(ScanContent.MayReadOriginal(FileAttributes.Archive | FileAttributes.SparseFile));
+    }
+
+    [Fact]
+    public void IsCloudBacked_OnDemandAndPinned_IsTrue()
+    {
+        Assert.False(CloudFile.IsCloudBacked(FileAttributes.Normal));
+        Assert.False(CloudFile.IsCloudBacked(FileAttributes.Archive));
+        Assert.False(CloudFile.IsCloudBacked(FileAttributes.Directory | CloudFile.Offline));
+        Assert.True(CloudFile.IsCloudBacked(CloudFile.RecallOnDataAccess));
+        Assert.True(CloudFile.IsCloudBacked(CloudFile.Pinned));
+        Assert.True(CloudFile.IsCloudBacked(CloudFile.Unpinned));
+        Assert.True(CloudFile.IsCloudBacked(CloudFile.Offline));
+        Assert.True(CloudFile.IsCloudBacked(FileAttributes.ReparsePoint));
+        Assert.True(CloudFile.IsCloudBacked(FileAttributes.SparseFile | FileAttributes.ReparsePoint));
+        Assert.True(CloudFile.IsCloudBacked(
+            FileAttributes.Archive | FileAttributes.ReparsePoint | CloudFile.Offline));
+    }
+
+    [Fact]
     public void IsOnlineOnly_ReparsePointWithRecall_IsTrue()
     {
         Assert.True(CloudFile.IsOnlineOnly(

@@ -151,6 +151,24 @@ public static class GalleryMedia
         isOnlineOnly && !isOrphan && !hasDecodedImage;
 
     /// <summary>
+    /// Corner cloud glyph on Library / Tags tiles. Online-only placeholders,
+    /// API sources, and hydrated On-Demand copies all show it — including
+    /// when a local-looking JPEG is already on the tile.
+    /// </summary>
+    public static bool ShowCloudBadge(
+        bool isFolderHeader,
+        bool isOrphan,
+        bool isOnlineOnly,
+        bool hasCloudItemId,
+        bool isCloudBacked) =>
+        !isFolderHeader
+        && !isOrphan
+        && (isOnlineOnly || hasCloudItemId || isCloudBacked);
+
+    public static string CloudBadgeAutomationId(string? assetId) =>
+        "IcnCloudBadge_" + string.Concat((assetId ?? "").Where(char.IsLetterOrDigit));
+
+    /// <summary>
     /// True when <paramref name="path"/> can be shown without opening an
     /// On-Demand original (remote URL or a local, already-hydrated file).
     /// A catalog / API display path is not enough.

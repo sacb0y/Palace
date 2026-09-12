@@ -61,7 +61,10 @@ public sealed class ThumbnailService
     /// <summary>
     /// Ensures a mosaic JPEG exists. Online-only placeholders use
     /// <see cref="StorageFile.GetThumbnailAsync"/> and never decode the original.
-    /// Missing local / API-only paths return a cached JPEG if present.
+    /// Scan must not call this for online-only files — provider thumbs can
+    /// still recall Dropbox/OneDrive placeholders. Mosaic may request a
+    /// JPEG for realized tiles only. Missing local / API-only paths return
+    /// a cached JPEG if present.
     /// </summary>
     public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
     {
