@@ -286,7 +286,6 @@ public partial class LibraryViewModel : ObservableObject
     {
         if (item.IsFolderHeader)
         {
-            SelectFolderGroup(item);
             return;
         }
 
@@ -727,6 +726,12 @@ public partial class LibraryViewModel : ObservableObject
     [RelayCommand]
     private void OpenOverlay(AssetItem? item)
     {
+        if (item is { IsFolderHeader: true })
+        {
+            SelectFolderGroup(item);
+            return;
+        }
+
         if (!TryCreateGallery(item, out var gallery))
         {
             return;
@@ -747,6 +752,12 @@ public partial class LibraryViewModel : ObservableObject
     [RelayCommand]
     private void OpenInNewWindow(AssetItem? item)
     {
+        if (item is { IsFolderHeader: true })
+        {
+            SelectFolderGroup(item);
+            return;
+        }
+
         if (RequestOpenGalleryWindow is null || !TryCreateGallery(item, out var gallery))
         {
             return;

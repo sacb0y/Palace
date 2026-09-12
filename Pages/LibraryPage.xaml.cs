@@ -306,13 +306,6 @@ public sealed partial class LibraryPage : Page
             }
         }
 
-        var header = selected.FirstOrDefault(item => item.IsFolderHeader);
-        if (header is not null && selected.Count == 1)
-        {
-            ViewModel.SelectFolderGroup(header);
-            return;
-        }
-
         ViewModel.SetSelection(selected.Where(item => !item.IsFolderHeader));
     }
 
@@ -468,22 +461,30 @@ public sealed partial class LibraryPage : Page
     private void AssetItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is not null)
+        if (item is null || item.IsFolderHeader)
         {
-            EnsureSelectedForContext(item);
+            e.Handled = true;
+            return;
         }
+
+        EnsureSelectedForContext(item);
     }
 
     private void AssetMenu_Opening(object sender, object e)
     {
-        if (sender is MenuFlyout { Target: FrameworkElement target })
+        if (sender is not MenuFlyout flyout)
         {
-            var item = FindAssetItem(target);
-            if (item is not null && !item.IsFolderHeader)
-            {
-                EnsureSelectedForContext(item);
-            }
+            return;
         }
+
+        var item = flyout.Target is FrameworkElement target ? FindAssetItem(target) : null;
+        if (item is null || item.IsFolderHeader)
+        {
+            flyout.Hide();
+            return;
+        }
+
+        EnsureSelectedForContext(item);
     }
 
     private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -520,6 +521,11 @@ public sealed partial class LibraryPage : Page
 
     private void EnsureSelectedForContext(AssetItem item)
     {
+        if (item.IsFolderHeader || string.IsNullOrEmpty(item.Id))
+        {
+            return;
+        }
+
         if (GrdAssets.SelectedItems.OfType<AssetItem>().Any(a => a.Id == item.Id))
         {
             return;
