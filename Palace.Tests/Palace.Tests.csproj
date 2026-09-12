@@ -14,6 +14,7 @@
     <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />
     <Compile Include="..\Helpers\GalleryScale.cs" Link="GalleryScale.cs" />
     <Compile Include="..\Helpers\GenerationFields.cs" Link="GenerationFields.cs" />
+    <Compile Include="..\Helpers\PreviewPersist.cs" Link="PreviewPersist.cs" />
     <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />
     <Compile Include="..\Helpers\HdrPixels.cs" Link="HdrPixels.cs" />
     <Compile Include="..\Helpers\ImageDimensions.cs" Link="ImageDimensions.cs" />

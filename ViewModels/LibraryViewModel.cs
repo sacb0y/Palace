@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -31,7 +30,8 @@ public partial class LibraryViewModel : ObservableObject
     private bool _suppressFilter;
     private int _filterEpoch;
     private int _previewEpoch;
-    private GalleryViewModel? _overlayPreviewHook;
+    private bool _applyingPreview;
+    private string? _previewAssetId;
     private int _busyDepth;
     private const int MosaicChunkSize = 80;
 
@@ -187,33 +187,6 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsGalleryOverlayOpen { get; set; }
 
-    partial void OnOverlayGalleryChanged(GalleryViewModel? value)
-    {
-        if (_overlayPreviewHook is not null)
-        {
-            _overlayPreviewHook.PropertyChanged -= OverlayGallery_PropertyChanged;
-        }
-
-        _overlayPreviewHook = value;
-        if (value is null)
-        {
-            return;
-        }
-
-        value.PropertyChanged += OverlayGallery_PropertyChanged;
-        _ = LoadPreviewAsync(value.Current);
-    }
-
-    private void OverlayGallery_PropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(GalleryViewModel.Current) || sender is not GalleryViewModel gallery)
-        {
-            return;
-        }
-
-        _ = LoadPreviewAsync(gallery.Current);
-    }
-
     public bool CanUndo => true;
 
     partial void OnSelectedFolderChanged(FolderNode? value)
@@ -275,7 +248,8 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnPreviewNotesChanged(string? value)
     {
-        if (!CanEditNotes || SelectedAsset is null)
+        if (!PreviewPersist.ShouldWriteNotes(_applyingPreview, CanEditNotes, SelectedAsset?.Id, _previewAssetId)
+            || SelectedAsset is null)
         {
             return;
         }
@@ -285,7 +259,8 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnPreviewRatingChanged(double value)
     {
-        if (!CanEditNotes || SelectedAsset is null)
+        if (!PreviewPersist.ShouldWriteNotes(_applyingPreview, CanEditNotes, SelectedAsset?.Id, _previewAssetId)
+            || SelectedAsset is null)
         {
             return;
         }
@@ -1426,8 +1401,7 @@ public partial class LibraryViewModel : ObservableObject
             PreviewPlaceholderKind = asset.Kind;
             ApplyGenerationPreview(generation);
             PreviewFileName = asset.FileName;
-            PreviewNotes = asset.Notes;
-            PreviewRating = asset.Rating ?? 0;
+            SetPreviewNotes(asset.Notes, asset.Rating ?? 0, asset.Id);
 
             AssignedTags.Clear();
             foreach (var entry in union.Values
@@ -1483,6 +1457,21 @@ public partial class LibraryViewModel : ObservableObject
 
     private void ClearGenerationPreview() => ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
 
+    private void SetPreviewNotes(string? notes, double rating, string? previewAssetId)
+    {
+        _applyingPreview = true;
+        try
+        {
+            _previewAssetId = previewAssetId;
+            PreviewNotes = notes;
+            PreviewRating = rating;
+        }
+        finally
+        {
+            _applyingPreview = false;
+        }
+    }
+
     private void ClearPreview()
     {
         AssignedTags.Clear();
@@ -1495,8 +1484,7 @@ public partial class LibraryViewModel : ObservableObject
         PreviewPath = null;
         ClearGenerationPreview();
         PreviewFileName = null;
-        PreviewNotes = null;
-        PreviewRating = 0;
+        SetPreviewNotes(null, 0, null);
     }
 
     public Task ReloadAssignedTagsAsync() => LoadPreviewAsync(SelectedAsset);
