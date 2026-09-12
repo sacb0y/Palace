@@ -189,7 +189,7 @@
                                                                         VerticalAlignment="Center"
                                                                         Icon="Star"
                                                                         IconSize="Size12"
-                                                                        IconVariant="Filled"
+                                                                        IconVariant="Regular"
                                                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}" />
                                                                     <TextBlock
                                                                         Grid.Column="3"
