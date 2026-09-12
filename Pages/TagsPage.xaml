@@ -38,38 +38,21 @@
         <Grid Grid.Row="1" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <SelectorBar
-                x:Name="SelTagScope"
-                AutomationProperties.AutomationId="SelTagScope"
-                AutomationProperties.Name="Tag scope"
-                SelectionChanged="SelTagScope_SelectionChanged">
-                <SelectorBarItem
-                    x:Name="SelTagScopeAll"
-                    AutomationProperties.AutomationId="SelTagScopeAll"
-                    IsSelected="True"
-                    Text="All" />
-                <SelectorBarItem
-                    x:Name="SelTagScopeUngrouped"
-                    AutomationProperties.AutomationId="SelTagScopeUngrouped"
-                    Text="Ungrouped" />
-                <SelectorBarItem
-                    x:Name="SelTagScopeStarred"
-                    AutomationProperties.AutomationId="SelTagScopeStarred"
-                    Text="Starred" />
-            </SelectorBar>
             <AutoSuggestBox
                 x:Name="AsbTagSearch"
-                Grid.Row="1"
                 AutomationProperties.AutomationId="AsbTagSearch"
                 PlaceholderText="Search tags or groups"
                 QueryIcon="Find"
                 Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer
+                Grid.Row="1"
+                AutomationProperties.AutomationId="SelTagScope"
+                AutomationProperties.Name="Tag scope"
+                VerticalScrollBarVisibility="Auto">
                 <ItemsControl
                     x:Name="RepTagBoard"
                     AutomationProperties.AutomationId="RepTagBoard"
@@ -96,9 +79,17 @@
                                         <TextBlock
                                             Style="{StaticResource BodyStrongTextBlockStyle}"
                                             Text="{x:Bind CountLabel, Mode=OneWay}" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="On"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsExpanded), Mode=OneWay}" />
                                     </StackPanel>
                                 </Button>
-                                <ItemsControl ItemsSource="{x:Bind Letters, Mode=OneWay}">
+                                <ItemsControl
+                                    ItemsSource="{x:Bind Letters, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsExpanded), Mode=OneWay}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="models:TagLetterSection">
                                             <StackPanel Margin="0,0,0,8" Spacing="6">
@@ -249,14 +240,14 @@
             </ScrollViewer>
             <TextBox
                 x:Name="TxtNewTagName"
-                Grid.Row="3"
+                Grid.Row="2"
                 AcceptsReturn="True"
                 AutomationProperties.AutomationId="TxtNewTagName"
                 Header="New tag"
                 PlaceholderText="character, clothing, shot"
                 Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                 TextWrapping="Wrap" />
-            <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8">
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnCreateUngroupedTag"
                     Command="{x:Bind ViewModel.CreateUngroupedCommand}">

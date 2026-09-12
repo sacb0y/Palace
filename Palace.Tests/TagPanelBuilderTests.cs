@@ -100,8 +100,24 @@ public sealed class TagPanelBuilderTests
 
         var bucket = Assert.Single(model.Groups);
         Assert.True(bucket.IsUngrouped);
+        Assert.Equal("Uncategorized", bucket.Name);
         Assert.Equal(["Loose"], bucket.Chips.Select(c => c.Name).ToArray());
         Assert.DoesNotContain(model.Groups, g => g.Name == "Character");
+    }
+
+    [Fact]
+    public void BuildBoard_StartsWithAllUncategorizedStarred()
+    {
+        var (tags, edges) = Sample();
+        var board = TagPanelBuilder.BuildBoard(tags, edges);
+
+        Assert.Equal(["All", "Uncategorized", "Starred", "Character", "Shot"], board.Select(g => g.Name).ToArray());
+        Assert.Equal(TagScope.All, board[0].ScopeKind);
+        Assert.Equal(["Character", "Closeup", "Loose", "Shot", "Sonic", "Tails"], board[0].Chips.Select(c => c.Name).ToArray());
+        Assert.True(board[1].IsUngrouped);
+        Assert.Equal(["Loose"], board[1].Chips.Select(c => c.Name).ToArray());
+        Assert.Equal(["Sonic"], board[2].Chips.Select(c => c.Name).ToArray());
+        Assert.Equal(["Sonic", "Tails"], board.Single(g => g.Name == "Character").Chips.Select(c => c.Name).ToArray());
     }
 
     [Fact]

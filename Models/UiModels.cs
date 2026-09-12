@@ -251,11 +251,16 @@ public partial class TagBoardGroup : ObservableObject
 
     public bool IsUngrouped { get; set; }
 
+    public TagScope? ScopeKind { get; set; }
+
+    public string? AutomationIdOverride { get; set; }
+
     [ObservableProperty]
     public partial bool IsExpanded { get; set; } = true;
 
     public string AutomationId =>
-        "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
+        AutomationIdOverride
+        ?? "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
 
     public string CountLabel => $"{Name} ({Chips.Count})";
 
