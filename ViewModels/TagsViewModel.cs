@@ -19,6 +19,8 @@ public partial class TagsViewModel : ObservableObject
     private int _mosaicEpoch;
     private int _busyDepth;
     private string? _reorderParentId;
+    private string? _renameBaseline;
+    private string? _renameBaselineTagId;
     private const int MosaicChunkSize = 80;
 
     public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access, ThumbnailService thumbs)
@@ -143,9 +145,35 @@ public partial class TagsViewModel : ObservableObject
     {
         SelectedNode = node;
         ShowDetails = node?.TagId is not null;
+        StampSelectionName(node);
         StampBoardSelection();
         _ = LoadSelectionAsync();
         _ = LoadMosaicAsync();
+    }
+
+    private void StampSelectionName(TagTreeNode? node)
+    {
+        if (node?.TagId is null)
+        {
+            _renameBaseline = null;
+            _renameBaselineTagId = null;
+            return;
+        }
+
+        var tag = _tags.FirstOrDefault(t => t.Id == node.TagId);
+        var name = tag?.Name ?? node.Name;
+        SelectedName = name;
+        _renameBaseline = name;
+        _renameBaselineTagId = node.TagId;
+        HasSelection = true;
+        ShowDetails = true;
+        if (tag is null)
+        {
+            return;
+        }
+
+        SelectedPriority = tag.Priority;
+        SelectedIsStarred = tag.IsStarred;
     }
 
     partial void OnSearchQueryChanged(string value) => RebuildBoard();
@@ -407,9 +435,6 @@ public partial class TagsViewModel : ObservableObject
         _reorderParentId = string.IsNullOrEmpty(chip.ParentGroupId) ? null : chip.ParentGroupId;
         var node = TagTreeBuilder.Find(TagTree, chip.TagId)
             ?? new TagTreeNode { TagId = chip.TagId, Name = chip.Name, EffectiveColor = chip.EffectiveColor, IsStarred = chip.IsStarred };
-        SelectedName = chip.Name;
-        HasSelection = true;
-        ShowDetails = true;
         SelectNode(node);
     }
 
@@ -667,6 +692,8 @@ public partial class TagsViewModel : ObservableObject
                 ImpliedSuggestions.Clear();
                 SelectedIsStarred = false;
                 ShowDetails = false;
+                _renameBaseline = null;
+                _renameBaselineTagId = null;
             });
             return;
         }
@@ -678,9 +705,12 @@ public partial class TagsViewModel : ObservableObject
         }
 
         var loadedName = tag.Name;
-        if (TagSelection.ShouldApplyLoadedName(SelectedName, loadedName))
+        if (TagSelection.ShouldApplyLoadedName(
+                SelectedName, loadedName, _renameBaseline, _renameBaselineTagId, tag.Id))
         {
             SelectedName = loadedName;
+            _renameBaseline = loadedName;
+            _renameBaselineTagId = tag.Id;
             SelectedPriority = tag.Priority;
             SelectedIsStarred = tag.IsStarred;
         }
@@ -708,9 +738,12 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            if (TagSelection.ShouldApplyLoadedName(SelectedName, loadedName))
+            if (TagSelection.ShouldApplyLoadedName(
+                    SelectedName, loadedName, _renameBaseline, _renameBaselineTagId, tag.Id))
             {
                 SelectedName = loadedName;
+                _renameBaseline = loadedName;
+                _renameBaselineTagId = tag.Id;
             }
 
             SelectedPriority = tag.Priority;
