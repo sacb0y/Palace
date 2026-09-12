@@ -32,8 +32,9 @@ internal static class HdrWicDecode
             using var stream = await file.OpenAsync(FileAccessMode.Read);
             cancellation.ThrowIfCancellationRequested();
             var decoder = await BitmapDecoder.CreateAsync(stream);
-            var width = (int)decoder.PixelWidth;
-            var height = (int)decoder.PixelHeight;
+            // RespectExifOrientation rotates the buffer; size must match that.
+            var width = (int)decoder.OrientedPixelWidth;
+            var height = (int)decoder.OrientedPixelHeight;
             if (width <= 0 || height <= 0 || width > 16384 || height > 16384)
             {
                 return null;

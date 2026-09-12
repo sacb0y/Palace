@@ -69,7 +69,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private void GrdStillHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         ApplyScaleLayout();
-        if (_gallery is { IsImage: true } && ScpHdr.Visibility == Visibility.Visible)
+        if (_gallery is { IsImage: true } && _hdrFrame is not null)
         {
             PresentCached();
         }
@@ -97,6 +97,9 @@ public sealed partial class GalleryStillSurface : UserControl
             && string.Equals(still, item.Path, StringComparison.OrdinalIgnoreCase);
         if (!pathMatches)
         {
+            ClearHdrCache();
+            HideHdr();
+            gallery.SetHdrPresentResult(false, false);
             return;
         }
 
@@ -177,11 +180,16 @@ public sealed partial class GalleryStillSurface : UserControl
     private void PresentFrame(GalleryViewModel gallery, HdrFrame frame)
     {
         _presenter ??= new HdrSwapchainPresenter(ScpHdr);
+        ApplyScaleLayout();
+        // Collapsed panels report ActualWidth 0. Show the swapchain under the
+        // SDR image so layout/composition can run, then hide the image on success.
+        ScpHdr.Visibility = Visibility.Visible;
+        ImgStill.Visibility = Visibility.Visible;
+        var (dipW, dipH) = HdrPanelDips();
         var scale = XamlRoot?.RasterizationScale ?? 1.0;
-        var presented = _presenter.TryPresent(frame, gallery.Scaling, (float)scale);
+        var presented = _presenter.TryPresent(frame, gallery.Scaling, (float)scale, dipW, dipH);
         if (presented)
         {
-            ScpHdr.Visibility = Visibility.Visible;
             ImgStill.Visibility = Visibility.Collapsed;
             gallery.SetHdrPresentResult(true, _presenter.DisplayIsHdr);
             return;
@@ -189,6 +197,27 @@ public sealed partial class GalleryStillSurface : UserControl
 
         HideHdr();
         gallery.SetHdrPresentResult(false, _presenter.DisplayIsHdr);
+    }
+
+    private (double Width, double Height) HdrPanelDips()
+    {
+        if (ScpHdr.ActualWidth >= 2 && ScpHdr.ActualHeight >= 2)
+        {
+            return (ScpHdr.ActualWidth, ScpHdr.ActualHeight);
+        }
+
+        if (!double.IsNaN(ScpHdr.Width) && !double.IsNaN(ScpHdr.Height)
+            && ScpHdr.Width >= 2 && ScpHdr.Height >= 2)
+        {
+            return (ScpHdr.Width, ScpHdr.Height);
+        }
+
+        if (GrdStillContent.ActualWidth >= 2 && GrdStillContent.ActualHeight >= 2)
+        {
+            return (GrdStillContent.ActualWidth, GrdStillContent.ActualHeight);
+        }
+
+        return (ScrStill.ActualWidth, ScrStill.ActualHeight);
     }
 
     private void HideHdr()

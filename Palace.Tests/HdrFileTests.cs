@@ -193,6 +193,16 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void OrientedSize_SwapsOn90And270()
+    {
+        Assert.Equal((200, 100), HdrPixels.OrientedSize(200, 100, 1));
+        Assert.Equal((200, 100), HdrPixels.OrientedSize(200, 100, 3));
+        Assert.Equal((100, 200), HdrPixels.OrientedSize(200, 100, 6));
+        Assert.Equal((100, 200), HdrPixels.OrientedSize(200, 100, 8));
+        Assert.Equal((0, 0), HdrPixels.OrientedSize(0, 100, 6));
+    }
+
+    [Fact]
     public void FloatToHalf_RoundTripsCommonValues()
     {
         Assert.Equal(0, GalleryPresent.FloatToHalf(0));

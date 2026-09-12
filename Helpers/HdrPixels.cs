@@ -16,6 +16,22 @@ public static class HdrPixels
     public static int BytesPerPixel(HdrPackedFormat format) =>
         format == HdrPackedFormat.Rgba16 ? 8 : 4;
 
+    /// <summary>
+    /// EXIF orientations 5–8 are 90°/270° (and mirrors of those), so the
+    /// oriented buffer stride is the swapped stored size.
+    /// </summary>
+    public static (int Width, int Height) OrientedSize(int pixelWidth, int pixelHeight, uint orientation)
+    {
+        if (pixelWidth <= 0 || pixelHeight <= 0)
+        {
+            return (0, 0);
+        }
+
+        return orientation is 5 or 6 or 7 or 8
+            ? (pixelHeight, pixelWidth)
+            : (pixelWidth, pixelHeight);
+    }
+
     public static void Read(
         ReadOnlySpan<byte> data,
         int pixelIndex,

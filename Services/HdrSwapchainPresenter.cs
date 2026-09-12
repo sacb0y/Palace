@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.UI;
 using Microsoft.UI.Xaml.Controls;
 using Palace.Helpers;
 using WinRT;
@@ -27,10 +28,21 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public float DisplayPeakNits { get; private set; } = GalleryPresent.SdrReferenceNits;
 
-    public bool TryPresent(HdrFrame frame, ImageScaling scaling, float rasterScale)
+    public bool TryPresent(HdrFrame frame, ImageScaling scaling, float rasterScale, double dipW = 0, double dipH = 0)
     {
-        var dipW = _panel.ActualWidth;
-        var dipH = _panel.ActualHeight;
+        if (dipW < 2 || dipH < 2)
+        {
+            dipW = _panel.ActualWidth;
+            dipH = _panel.ActualHeight;
+        }
+
+        if ((dipW < 2 || dipH < 2)
+            && !double.IsNaN(_panel.Width) && !double.IsNaN(_panel.Height))
+        {
+            dipW = _panel.Width;
+            dipH = _panel.Height;
+        }
+
         if (dipW < 2 || dipH < 2 || rasterScale <= 0)
         {
             return false;
@@ -116,37 +128,37 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             try
             {
                 var adapter = CallGetAdapter(dxgiDevice);
-                try
-                {
-                    var output = CallEnumOutputs(adapter, 0);
-                    if (output == IntPtr.Zero)
-                    {
-                        return;
-                    }
-
                     try
                     {
-                        var output6 = Query(output, IidDxgiOutput6);
+                        var output = FindOutputForWindow(adapter);
+                        if (output == IntPtr.Zero)
+                        {
+                            return;
+                        }
+
                         try
                         {
-                            var desc = new DxgiOutputDesc1();
-                            var hr = CallGetDesc1(output6, ref desc);
-                            if (hr >= 0 && desc.MaxLuminance > 160)
+                            var output6 = Query(output, IidDxgiOutput6);
+                            try
                             {
-                                DisplayIsHdr = true;
-                                DisplayPeakNits = Math.Clamp(desc.MaxLuminance, 300, 4000);
+                                var desc = new DxgiOutputDesc1();
+                                var hr = CallGetDesc1(output6, ref desc);
+                                if (hr >= 0 && desc.MaxLuminance > 160)
+                                {
+                                    DisplayIsHdr = true;
+                                    DisplayPeakNits = Math.Clamp(desc.MaxLuminance, 300, 4000);
+                                }
+                            }
+                            finally
+                            {
+                                Release(ref output6);
                             }
                         }
                         finally
                         {
-                            Release(ref output6);
+                            Release(ref output);
                         }
                     }
-                    finally
-                    {
-                        Release(ref output);
-                    }
-                }
                 finally
                 {
                     Release(ref adapter);
@@ -161,6 +173,82 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         {
             DisplayIsHdr = false;
             DisplayPeakNits = GalleryPresent.SdrReferenceNits;
+        }
+    }
+
+    private IntPtr FindOutputForWindow(IntPtr adapter)
+    {
+        var want = TryWindowMonitor();
+        IntPtr chosen = IntPtr.Zero;
+        for (uint i = 0; ; i++)
+        {
+            var output = CallEnumOutputs(adapter, i);
+            if (output == IntPtr.Zero)
+            {
+                break;
+            }
+
+            if (chosen == IntPtr.Zero)
+            {
+                chosen = output;
+                if (want == IntPtr.Zero || OutputMatchesMonitor(output, want))
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (OutputMatchesMonitor(output, want))
+            {
+                Release(ref chosen);
+                chosen = output;
+                break;
+            }
+
+            Release(ref output);
+        }
+
+        return chosen;
+    }
+
+    private bool OutputMatchesMonitor(IntPtr output, IntPtr monitor)
+    {
+        try
+        {
+            var output6 = Query(output, IidDxgiOutput6);
+            try
+            {
+                var desc = new DxgiOutputDesc1();
+                return CallGetDesc1(output6, ref desc) >= 0 && desc.Monitor == monitor;
+            }
+            finally
+            {
+                Release(ref output6);
+            }
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private IntPtr TryWindowMonitor()
+    {
+        try
+        {
+            var root = _panel.XamlRoot;
+            if (root?.ContentIslandEnvironment is null)
+            {
+                return IntPtr.Zero;
+            }
+
+            var hwnd = Win32Interop.GetWindowFromWindowId(root.ContentIslandEnvironment.AppWindowId);
+            return hwnd == IntPtr.Zero ? IntPtr.Zero : MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        }
+        catch
+        {
+            return IntPtr.Zero;
         }
     }
 
@@ -477,12 +565,16 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private const int VtblGetDesc1 = 27;
     private const int VtblSetColorSpace1 = 38;
     private const int DxgiColorSpaceRgbFullG10NoneP709 = 1;
+    private const uint MonitorDefaultToNearest = 2;
 
     private static readonly Guid IidDxgiDevice = new("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
     private static readonly Guid IidDxgiFactory2 = new("50c83a1c-e072-4c48-87b0-3630fa36a6d0");
     private static readonly Guid IidDxgiSwapChain3 = new("94d99bdb-f1f8-4ab0-b236-7da0170edab1");
     private static readonly Guid IidDxgiOutput6 = new("068346e8-aaec-4b84-add5-13ff8c7033c8");
     private static readonly Guid IidTexture2D = new("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
 
     [DllImport("d3d11.dll")]
     private static extern int D3D11CreateDevice(
