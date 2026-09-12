@@ -149,6 +149,40 @@ public sealed class TagPanelBuilderTests
     }
 
     [Fact]
+    public void BuildBoard_PinsAllUncategorizedStarred_ThenUserGroups()
+    {
+        var (tags, edges) = Sample();
+        var board = TagPanelBuilder.BuildBoard(tags, edges);
+
+        Assert.Equal(["All", "Uncategorized", "Starred"], board.Take(3).Select(g => g.Name).ToArray());
+        Assert.Equal(["all", "ungrouped", "starred"], board.Take(3).Select(TagPanelBuilder.Key).ToArray());
+        Assert.All(board.Skip(3), group => Assert.Null(group.ScopeKind));
+        Assert.Equal(["Character", "Shot"], board.Skip(3).Select(g => g.Name).ToArray());
+    }
+
+    [Fact]
+    public void BuildBoard_GroupByKey_ReturnsPinnedAndUserGroups()
+    {
+        var (tags, edges) = Sample();
+        var board = TagPanelBuilder.BuildBoard(tags, edges);
+
+        Assert.Equal(TagScope.All, TagPanelBuilder.GroupByKey(board, "all")?.ScopeKind);
+        Assert.True(TagPanelBuilder.GroupByKey(board, "ungrouped")?.IsUngrouped);
+        Assert.Equal(["Sonic"], TagPanelBuilder.GroupByKey(board, "starred")!.Chips.Select(c => c.Name).ToArray());
+        Assert.Equal(["Sonic", "Tails"], TagPanelBuilder.GroupByKey(board, "character")!.Chips.Select(c => c.Name).ToArray());
+    }
+
+    [Fact]
+    public void BuildBoard_Search_KeepsPinnedGroupsFirst()
+    {
+        var (tags, edges) = Sample();
+        var board = TagPanelBuilder.BuildBoard(tags, edges, query: "sonic");
+
+        Assert.Equal(["All", "Uncategorized", "Starred"], board.Take(3).Select(g => g.Name).ToArray());
+        Assert.Equal("Character", Assert.Single(board.Skip(3)).Name);
+    }
+
+    [Fact]
     public void Build_StarredScope_HidesGroups()
     {
         var (tags, edges) = Sample();

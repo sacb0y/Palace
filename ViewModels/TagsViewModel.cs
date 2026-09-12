@@ -34,6 +34,11 @@ public partial class TagsViewModel : ObservableObject
 
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
     public ObservableCollection<TagBoardGroup> Board { get; } = [];
+
+    [ObservableProperty]
+    public partial TagBoardGroup? SelectedBoard { get; set; }
+
+    public string ChildrenHeader => SelectedBoard?.CountLabel ?? "Tags";
     public ObservableCollection<AssetItem> Assets { get; } = [];
     public ObservableCollection<TagMosaicSection> MosaicGroups { get; } = [];
     public ObservableCollection<TagGroupPick> ParentGroups { get; } = [];
@@ -930,7 +935,11 @@ public partial class TagsViewModel : ObservableObject
             all.IsExpanded = true;
             _boardSelectionKey = BoardKey(all);
         }
+
+        SelectedBoard = Board.FirstOrDefault(group => group.IsExpanded);
     }
+
+    partial void OnSelectedBoardChanged(TagBoardGroup? value) => OnPropertyChanged(nameof(ChildrenHeader));
 
     private static string BoardKey(TagBoardGroup group) =>
         group.ScopeKind switch
