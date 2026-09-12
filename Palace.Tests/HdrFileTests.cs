@@ -108,6 +108,8 @@ public sealed class HdrFileTests
         var avif = new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000);
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, false, true, hdr));
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, false, true, avif));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrRadiance, 1, null, null)));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, true, false, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, true, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Gif, false, false, false, true, hdr));
@@ -360,7 +362,7 @@ public sealed class HdrFileTests
         Assert.True(PathSafe.IsCatalogExt(".AVIF"));
         Assert.True(PathSafe.IsAvif(".avif"));
         Assert.Equal(AssetKind.Image, PathSafe.KindFromExt(".avif"));
-        Assert.False(PathSafe.IsCatalogExt(".jxl"));
+        Assert.True(PathSafe.IsCatalogExt(".jxl"));
         Assert.False(PathSafe.IsCatalogExt(".exr"));
     }
 
