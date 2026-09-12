@@ -113,6 +113,26 @@ public sealed class FolderGroupsTests
     }
 
     [Fact]
+    public void MosaicTag_UsesIdOrFolderPrefix()
+    {
+        var path = Path.Combine("library", "Photos", "Vacation");
+        Assert.Equal("asset-1", FolderGroups.MosaicTag(false, "asset-1", path));
+        Assert.Equal("folder-group:" + path, FolderGroups.MosaicTag(true, "", path));
+        Assert.Equal("", FolderGroups.MosaicTag(true, "", null));
+        Assert.Equal(path, FolderGroups.FolderPathFromMosaicTag("folder-group:" + path));
+        Assert.Null(FolderGroups.FolderPathFromMosaicTag("asset-1"));
+    }
+
+    [Fact]
+    public void NextNonHeaderIndex_SkipsHeaderRows()
+    {
+        var flags = new[] { false, true, true, false };
+        Assert.Equal(3, FolderGroups.NextNonHeaderIndex(flags, 0, 1));
+        Assert.Equal(0, FolderGroups.NextNonHeaderIndex(flags, 3, -1));
+        Assert.Equal(-1, FolderGroups.NextNonHeaderIndex(flags, 3, 1));
+    }
+
+    [Fact]
     public void InterleaveHeaders_InsertsOneHeaderPerGroup()
     {
         var groups = new List<FolderGroup<string>>

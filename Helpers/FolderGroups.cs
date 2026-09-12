@@ -17,6 +17,47 @@ public static class FolderGroups
 {
     public const int MaxSubFolders = 2;
     public const string TitleSeparator = " / ";
+    public const string MosaicHeaderPrefix = "folder-group:";
+
+    public static string MosaicTag(bool isFolderHeader, string? id, string? folderGroupPath)
+    {
+        if (!isFolderHeader)
+        {
+            return id ?? "";
+        }
+
+        return string.IsNullOrEmpty(folderGroupPath) ? "" : MosaicHeaderPrefix + folderGroupPath;
+    }
+
+    public static string? FolderPathFromMosaicTag(string? key)
+    {
+        if (string.IsNullOrEmpty(key)
+            || !key.StartsWith(MosaicHeaderPrefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var path = key[MosaicHeaderPrefix.Length..];
+        return path.Length == 0 ? null : path;
+    }
+
+    public static int NextNonHeaderIndex(IReadOnlyList<bool> isHeader, int from, int step)
+    {
+        if (step == 0 || isHeader.Count == 0)
+        {
+            return -1;
+        }
+
+        for (var i = from + step; i >= 0 && i < isHeader.Count; i += step)
+        {
+            if (!isHeader[i])
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     public static bool ShouldGroup(bool isTagBrowse, bool hasSearch, bool isTopLevelFolder) =>
         !isTagBrowse && !hasSearch && isTopLevelFolder;

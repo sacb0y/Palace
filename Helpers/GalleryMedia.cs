@@ -199,6 +199,12 @@ public static class GalleryMedia
             {
                 return id;
             }
+
+            var mosaic = ReadString(ctx, "MosaicTag");
+            if (!string.IsNullOrEmpty(mosaic))
+            {
+                return mosaic;
+            }
         }
 
         if (tag is string tagId && tagId.Length > 0)
@@ -206,17 +212,31 @@ public static class GalleryMedia
             return tagId;
         }
 
-        return ReadId(tag);
+        return ReadId(tag) ?? ReadString(tag, "MosaicTag");
     }
 
-    private static string? ReadId(object? value)
+    public static bool MatchesMosaicKey(string? id, string? mosaicTag, string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        return string.Equals(id, key, StringComparison.Ordinal)
+            || (!string.IsNullOrEmpty(mosaicTag)
+                && string.Equals(mosaicTag, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? ReadId(object? value) => ReadString(value, "Id");
+
+    private static string? ReadString(object? value, string property)
     {
         if (value is null)
         {
             return null;
         }
 
-        var prop = value.GetType().GetProperty("Id");
+        var prop = value.GetType().GetProperty(property);
         return prop?.GetValue(value) as string;
     }
 }

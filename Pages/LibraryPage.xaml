@@ -305,13 +305,22 @@
                             AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
+                            IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                             ManipulationMode="None"
-                            Tag="{x:Bind Id, Mode=OneWay}">
+                            Tag="{x:Bind MosaicTag, Mode=OneWay}">
                             <Grid>
-                                <Grid
+                                <Button
                                     Padding="4,0"
                                     HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Left"
                                     VerticalAlignment="Stretch"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                    CommandParameter="{x:Bind}"
+                                    IsTabStop="False"
+                                    PointerPressed="FolderGroupHeader_PointerPressed"
+                                    Tag="{x:Bind MosaicTag, Mode=OneWay}"
                                     Tapped="FolderGroupHeader_Tapped"
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFolderHeader), Mode=OneWay}">
                                     <StackPanel
@@ -326,9 +335,10 @@
                                             VerticalAlignment="Center"
                                             AutomationProperties.AutomationId="{x:Bind FolderGroupAutomationId, Mode=OneWay}"
                                             Style="{StaticResource BodyStrongTextBlockStyle}"
+                                            Tag="{x:Bind MosaicTag, Mode=OneWay}"
                                             Text="{x:Bind FolderGroupTitle, Mode=OneWay}" />
                                     </StackPanel>
-                                </Grid>
+                                </Button>
                                 <Grid
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"

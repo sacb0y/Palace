@@ -28,6 +28,8 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private readonly Dictionary<string, WeakReference<BitmapImage>> _tileBitmapCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _suppressBrowseChrome;
+    private bool _suppressMosaicSelection;
+    private VirtualKey _mosaicArrow;
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
@@ -116,6 +118,8 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand<AssignedTagItem> GetRemoveTagCommand() => AppServices.Library.RemoveAssignedTagCommand;
 
     public static IRelayCommand<PromptSuggestion> GetAcceptSuggestionCommand() => AppServices.Library.AcceptSuggestionCommand;
+
+    public static IRelayCommand<AssetItem?> GetActivateFolderHeaderCommand() => AppServices.Library.ActivateFolderHeaderCommand;
 
     public static IRelayCommand<AssetItem?> GetOpenOverlayCommand() => AppServices.Library.OpenOverlayCommand;
 
@@ -297,25 +301,99 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)
     {
-        var selected = sender.SelectedItems.OfType<AssetItem>().ToList();
-        for (var i = 0; i < ViewModel.Assets.Count; i++)
+        if (_suppressMosaicSelection)
         {
-            if (ViewModel.Assets[i].IsFolderHeader && sender.IsSelected(i))
+            return;
+        }
+
+        var assets = ViewModel.Assets;
+        var keep = new List<AssetItem>();
+        var headerIndexes = new List<int>();
+        for (var i = 0; i < assets.Count; i++)
+        {
+            if (!sender.IsSelected(i))
             {
-                sender.Deselect(i);
+                continue;
+            }
+
+            if (assets[i].IsFolderHeader)
+            {
+                headerIndexes.Add(i);
+            }
+            else
+            {
+                keep.Add(assets[i]);
             }
         }
 
-        ViewModel.SetSelection(selected.Where(item => !item.IsFolderHeader));
+        var arrow = _mosaicArrow;
+        _mosaicArrow = VirtualKey.None;
+        if (headerIndexes.Count == 0)
+        {
+            ViewModel.SetSelection(keep);
+            return;
+        }
+
+        _suppressMosaicSelection = true;
+        try
+        {
+            foreach (var index in headerIndexes)
+            {
+                sender.Deselect(index);
+            }
+
+            if (keep.Count == 0 && arrow is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down)
+            {
+                var step = arrow is VirtualKey.Left or VirtualKey.Up ? -1 : 1;
+                var flags = assets.Select(item => item.IsFolderHeader).ToList();
+                var next = FolderGroups.NextNonHeaderIndex(flags, headerIndexes[0], step);
+                if (next >= 0)
+                {
+                    sender.Select(next);
+                    keep.Add(assets[next]);
+                }
+            }
+
+            if (keep.Count == 0)
+            {
+                for (var i = 0; i < assets.Count; i++)
+                {
+                    if (assets[i].IsFolderHeader || !assets[i].IsSelected)
+                    {
+                        continue;
+                    }
+
+                    sender.Select(i);
+                    keep.Add(assets[i]);
+                }
+            }
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+
+        if (keep.Count > 0)
+        {
+            ViewModel.SetSelection(keep);
+        }
+    }
+
+    private void FolderGroupHeader_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
     }
 
     private void FolderGroupHeader_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (FindAssetItem(sender) is { IsFolderHeader: true } header)
+        var header = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (header is not { IsFolderHeader: true })
         {
-            ViewModel.SelectFolderGroup(header);
-            e.Handled = true;
+            return;
         }
+
+        ViewModel.SelectFolderGroup(header);
+        e.Handled = true;
     }
 
     private void BcrPath_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
@@ -403,6 +481,11 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (e.Key is VirtualKey.Left or VirtualKey.Right or VirtualKey.Up or VirtualKey.Down)
+        {
+            _mosaicArrow = e.Key;
+        }
+
         if (e.Key != VirtualKey.Enter || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -436,22 +519,27 @@ public sealed partial class LibraryPage : Page
     {
         for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            if (current is FrameworkElement element)
+            if (current is not FrameworkElement element)
             {
-                if (element.DataContext is AssetItem bound)
-                {
-                    return bound;
-                }
+                continue;
+            }
 
-                var id = GalleryMedia.FindAssetId(element.Tag, element.DataContext);
-                if (!string.IsNullOrEmpty(id))
-                {
-                    var match = ViewModel.Assets.FirstOrDefault(a => a.Id == id);
-                    if (match is not null)
-                    {
-                        return match;
-                    }
-                }
+            if (element.DataContext is AssetItem bound)
+            {
+                return bound;
+            }
+
+            var key = GalleryMedia.FindAssetId(element.Tag, element.DataContext);
+            if (string.IsNullOrEmpty(key))
+            {
+                continue;
+            }
+
+            var match = ViewModel.Assets.FirstOrDefault(item =>
+                GalleryMedia.MatchesMosaicKey(item.Id, item.MosaicTag, key));
+            if (match is not null)
+            {
+                return match;
             }
         }
 

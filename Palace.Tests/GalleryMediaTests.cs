@@ -205,6 +205,16 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void FindAssetId_ReadsMosaicTagWhenIdIsEmpty()
+    {
+        Assert.Equal(
+            "folder-group:Photos/Vacation",
+            GalleryMedia.FindAssetId(null, new { Id = "", MosaicTag = "folder-group:Photos/Vacation" }));
+        Assert.True(GalleryMedia.MatchesMosaicKey("", "folder-group:Photos/Vacation", "folder-group:Photos/Vacation"));
+        Assert.False(GalleryMedia.MatchesMosaicKey("asset-1", null, "folder-group:Photos/Vacation"));
+    }
+
+    [Fact]
     public void IsRemoteUri_DetectsHttp()
     {
         Assert.True(GalleryMedia.IsRemoteUri("https://example.com/p.jpg"));

@@ -1787,14 +1787,28 @@ public partial class LibraryViewModel : ObservableObject
         }
     }
 
-    public void SelectFolderGroup(AssetItem header)
+    [RelayCommand]
+    private void ActivateFolderHeader(AssetItem? header) => SelectFolderGroup(header);
+
+    public void SelectFolderGroup(AssetItem? header)
     {
-        if (!header.IsFolderHeader || string.IsNullOrEmpty(header.FolderGroupPath))
+        if (header is null)
         {
             return;
         }
 
-        var node = FindNode(FolderTree, header.FolderGroupPath);
+        var path = header.FolderGroupPath;
+        if (string.IsNullOrEmpty(path))
+        {
+            path = FolderGroups.FolderPathFromMosaicTag(header.MosaicTag);
+        }
+
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        var node = FindNode(FolderTree, path);
         if (node is not null)
         {
             SelectedFolder = node;

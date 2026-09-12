@@ -27,6 +27,8 @@ public partial class AssetItem : ObservableObject
     public string FolderGroupTitle { get; set; } = "";
     public string FolderGroupPath { get; set; } = "";
 
+    public string MosaicTag => FolderGroups.MosaicTag(IsFolderHeader, Id, FolderGroupPath);
+
     public string FolderGroupAutomationId =>
         "TxtFolderGroup_" + string.Concat((FolderGroupTitle ?? "").Where(char.IsLetterOrDigit));
 
