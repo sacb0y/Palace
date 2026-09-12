@@ -1,6 +1,6 @@
 # Palace — agent notes
 
-Palace is a packaged WinUI 3 / Windows App SDK digital asset manager (images, GIF, video; later 3D). The metaphor is a mind palace: **Library** (catalog), **Wing** (Unity, later), **Room** (moodboard). Files stay on disk. SQLite + FTS5 is the index.
+Palace is a packaged WinUI 3 / Windows App SDK digital asset manager (images, GIF, video; later more formats). The metaphor is a mind palace: **Library** (catalog), **Room** (moodboard / mindmap). Files stay on disk. SQLite + FTS5 is the index.
 
 Keep this file current. When you change a convention (scan, thumbs, UI thread, cloud, packaging, tests), update the matching section here in the same change.
 
@@ -32,7 +32,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 - Tag organize asks which parent chain. Assigning a tag applies configured implicits (transitive, cycle-safe).
 - Tags page is an Eagle-style board. **All / Uncategorized / Starred are pinned at the top of the left group column** (in that order), then user groups (`TagPanelBuilder.BuildBoard`). Selecting a group stays in that column; child / sub-tags of the selected group are color-dot rows in the next column (`RepTagChildren`, `TxtTagChildrenHeader`). Creating or selecting a tag opens the group that contains it (`TagBoardExpand`). Uncategorized display name stays **Uncategorized**; automation id stays `BtnTagGroup_Ungrouped` (`IsUngrouped` / `AutomationIdOverride`) so the Library assign flyout does not become `BtnTagGroup_Uncategorized`. Search All chips have no `ParentId`. Tags inside a group are **A–Z with letter headers** (`TagAlphaIndex`). The Tags mosaic groups by **selected tag / next child / next child** (`TagMosaicGroups`; Priority then name). Keep `GrdTagAssets` and `TxtTagMosaicGroup_*` headers. Grouped mosaic tiles are tab-stop; Enter opens the focused or clicked tile, not the first asset. Keep `SelTagScope` on the board scroller, `SelTagScopeAll` / `SelTagScopeStarred` / `BtnTagGroup_Ungrouped` on those rows, and `RepTagBoard`. Disk organize stays in the details column. Comma/newline batch-create uses `TagNameList`. Library tag browse toggles multiple tags with Any / All / None (`TagFilter`). Preview tags are wrap chips with × (keep `LstTags` / `BtnRemoveTag_*`); `BtnBrowseTags` is the + Add tag flyout. Chip context: Filter in Library (`ApplySingleTagFilter` + `NavLibrary`), star, rename (focus `TxtRenameTag`), Add/Move to group (root groups via `TagGroups`), remove from this group, delete. Keep `MnuFilterTag` / `MnuRenameTag` / `MnuAddToGroup_*` / `MnuMoveToGroup_*`. Library `SelBrowseMode` / `SelTagMatch` follow `IsTagBrowse` / `TagFilterMode` on construct and Loaded — do not write the Folders/All defaults back. `SelectNode` stamps `SelectedName` and a rename baseline for every path (chip, group, create). `LoadSelectionAsync` applies the catalog name only when the tag changed or the box still matches that baseline — a cleared or edited box on the same tag is kept (`TagSelection.ShouldApplyLoadedName`).
 - Library mosaic: viewing a **top-level** (source) folder groups tiles by the first 1–2 child folders. Header text is `Selected / Sub / Sub` (`FolderGroups`). Nested folder browse, search, tag browse, and the all-library view stay a flat mosaic. Headers are not assets — skip them for selection, gallery, thumbs, and organize. Navigate only on header tap (or Open on a header); do not navigate from mosaic selection, arrow keys, or right-click. Asset context flyout stays on the tab-stop `ItemContainer` so Menu / `ContextRequested` opens Open / Delete / Move / Copy; headers cancel `ContextRequested` (`ShouldShowAssetContextFlyout`) so those commands stay off headers.
-- Library-first until the matching 0.x slice. Do not invent Wings, 3D, Unity packages, or LLM auto-tag unless that minor is the work (see Version).
+- Library-first until the matching 0.x slice. Do not invent Rooms canvas, gamedev formats, or AI auto-tag unless that minor is the work (see Version). Cloud is a **bonus**, not a numbered main slice and not the next increment after Library.
 
 ## Layout
 
@@ -126,20 +126,19 @@ Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDriv
 
 ## Version
 
-Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from the original Palace plan (`winui_asset_library_a3139e5d.plan.md`, [Palace kickoff](a7dfd0c1-d504-4c43-a957-008d68e3898f)). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
+Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from Isiac’s sequence (table below). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
 
-**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.3.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.3 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change.
+**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.3.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.3 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays **0.0.3.0** / milestone **Library core** while this is still the Library + tagging slice.
 
 MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
 
-| Version | Slice | Original plan |
+| Version | Slice | Isiac sequence |
 |---|---|---|
-| **0.0.x** *(now 0.0.3)* | **Library core** | v1 DAM: watch folders, mosaic, hierarchical tags, FTS, Rooms, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred. |
-| **0.1.x** | **Cloud** | Added after v1 (plan said “out of scope unless you ask”). On-Demand + API sources; do not download originals. Current cloud work stays **0.0.x** until this slice is the one you ship. |
-| **0.2.x** | **Wings** | Unity/game overlay on the same catalog (multi-directory project organize). Schema already has `Project`. |
-| **0.3.x** | **3D** | Preview glTF/OBJ first; FBX/USD convert; `.blend` via Blender CLI. |
-| **0.4.x** | **Unity packages** | Preview `.unitypackage`; import via batchmode or copy. |
-| **0.5.x** | **LLM tags** | Ollama / LM Studio, then Grok; assignment `Source=AiLocal` / `AiCloud`. Not the same as prompt-token suggestions. |
+| **0.0.x** *(now 0.0.3)* | **Library + tagging** | **Now.** Image and video viewing must be solid. Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR/HDR/PSD still deferred until packaging is clean. |
+| **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. |
+| **bonus** | **Cloud** | **Not a numbered main slice** and not the next increment. View and manage Dropbox / OneDrive via OAuth. On-Demand + API sources already exist in 0.0.x; do not download originals. Further cloud work can land inside the current identity. |
+| **0.2.x** | **Gamedev** | **Then.** Markdown reading, audio (with loops), 3D viewing, assign a Unity folder to the Palace **project** for asset management (**not** the Library catalog), parse `.unitypackage` and extract needed assets. |
+| **0.3.x** | **AI** | **Later.** Expand asset management with AI (tagging, organization, etc.). Not the same as prompt-token suggestions. |
 | **1.0.0** | **Ship** | Release/trim fixed, Magick formats if packaging is clean, `winui-packaging` / Store. |
 
 Leave Revision at `0` unless you need a same-patch rebuild identity. Debug and Release of one commit share the number; the suffix is which binary you launched.
