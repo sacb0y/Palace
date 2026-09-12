@@ -40,8 +40,7 @@ public sealed partial class GalleryWindow : Window
             if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
                 or nameof(GalleryViewModel.PreviewImageUri)
                 or nameof(GalleryViewModel.IsVideo)
-                or nameof(GalleryViewModel.IsImage)
-                or nameof(GalleryViewModel.Scaling))
+                or nameof(GalleryViewModel.IsImage))
             {
                 UpdateMedia();
             }

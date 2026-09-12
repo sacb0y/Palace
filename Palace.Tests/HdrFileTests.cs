@@ -164,8 +164,32 @@ public sealed class HdrFileTests
         Assert.Equal(100f, fill.H, 2);
         Assert.Equal(-50f, fill.X, 2);
 
-        var actual = GalleryPresent.DestRect(ImageScaling.Actual, 200, 100, 100, 100);
+        var actual = GalleryPresent.DestRect(ImageScaling.Actual, 200, 100, 200, 100);
         Assert.Equal((0f, 0f, 200f, 100f), actual);
+        var actualHiDpi = GalleryPresent.DestRect(ImageScaling.Actual, 200, 100, 300, 150);
+        Assert.Equal((0f, 0f, 300f, 150f), actualHiDpi);
+    }
+
+    [Fact]
+    public void HdrPixels_Rgba8IsNotBgra()
+    {
+        HdrPixels.Read([255, 0, 0, 255], 0, HdrPackedFormat.Rgba8, out var rr, out var rg, out var rb, out var ra);
+        Assert.Equal(1f, rr);
+        Assert.Equal(0f, rg);
+        Assert.Equal(0f, rb);
+        Assert.Equal(1f, ra);
+
+        HdrPixels.Read([0, 0, 255, 255], 0, HdrPackedFormat.Bgra8, out var br, out var bg, out var bb, out var ba);
+        Assert.Equal(1f, br);
+        Assert.Equal(0f, bg);
+        Assert.Equal(0f, bb);
+        Assert.Equal(1f, ba);
+
+        HdrPixels.Read([0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x80], 0, HdrPackedFormat.Rgba16, out var hr, out var hg, out var hb, out var ha);
+        Assert.Equal(0f, hr);
+        Assert.Equal(1f, hg);
+        Assert.Equal(0f, hb);
+        Assert.InRange(ha, 0.49f, 0.51f);
     }
 
     [Fact]

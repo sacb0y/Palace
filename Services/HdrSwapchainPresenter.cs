@@ -213,13 +213,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 throw new InvalidOperationException("CreateSwapChainForComposition failed.");
             }
 
-            try
+            var hrColor = CallSetColorSpace1(_swapChain, DxgiColorSpaceRgbFullG10NoneP709);
+            if (hrColor < 0)
             {
-                CallSetColorSpace1(_swapChain, 16);
-            }
-            catch
-            {
-                // scRGB tag is best-effort; present still works.
+                Release(ref _swapChain);
+                throw new InvalidOperationException("SetColorSpace1 scRGB failed.");
             }
 
             AttachPanel();
@@ -390,7 +388,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     private static int CallGetDesc1(IntPtr output6, ref DxgiOutputDesc1 desc)
     {
-        var fn = Marshal.GetDelegateForFunctionPointer<GetDesc1Delegate>(Vtbl(output6, 22));
+        var fn = Marshal.GetDelegateForFunctionPointer<GetDesc1Delegate>(Vtbl(output6, VtblGetDesc1));
         return fn(output6, ref desc);
     }
 
@@ -413,17 +411,17 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         IntPtr output,
         out IntPtr swapChain)
     {
-        var fn = Marshal.GetDelegateForFunctionPointer<CreateSwapChainForCompositionDelegate>(Vtbl(factory, 26));
+        var fn = Marshal.GetDelegateForFunctionPointer<CreateSwapChainForCompositionDelegate>(Vtbl(factory, VtblCreateSwapChainForComposition));
         return fn(factory, device, ref desc, output, out swapChain);
     }
 
-    private static void CallSetColorSpace1(IntPtr swapChain, int colorSpace)
+    private static int CallSetColorSpace1(IntPtr swapChain, int colorSpace)
     {
         var swap3 = Query(swapChain, IidDxgiSwapChain3);
         try
         {
-            var fn = Marshal.GetDelegateForFunctionPointer<SetColorSpace1Delegate>(Vtbl(swap3, 38));
-            fn(swap3, colorSpace);
+            var fn = Marshal.GetDelegateForFunctionPointer<SetColorSpace1Delegate>(Vtbl(swap3, VtblSetColorSpace1));
+            return fn(swap3, colorSpace);
         }
         finally
         {
@@ -472,6 +470,13 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         var fn = Marshal.GetDelegateForFunctionPointer<PresentDelegate>(Vtbl(swap, 8));
         return fn(swap, sync, flags);
     }
+
+    // IDXGIFactory2::CreateSwapChainForComposition, IDXGIOutput6::GetDesc1,
+    // IDXGISwapChain3::SetColorSpace1. DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 is scRGB.
+    private const int VtblCreateSwapChainForComposition = 24;
+    private const int VtblGetDesc1 = 27;
+    private const int VtblSetColorSpace1 = 38;
+    private const int DxgiColorSpaceRgbFullG10NoneP709 = 1;
 
     private static readonly Guid IidDxgiDevice = new("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
     private static readonly Guid IidDxgiFactory2 = new("50c83a1c-e072-4c48-87b0-3630fa36a6d0");

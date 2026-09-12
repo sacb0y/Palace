@@ -12,16 +12,18 @@
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Disabled"
             ZoomMode="Disabled">
-            <Image
-                x:Name="ImgStill"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                Stretch="Uniform" />
+            <Grid x:Name="GrdStillContent">
+                <Image
+                    x:Name="ImgStill"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Stretch="Uniform" />
+                <SwapChainPanel
+                    x:Name="ScpHdr"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Visibility="Collapsed" />
+            </Grid>
         </ScrollViewer>
-        <SwapChainPanel
-            x:Name="ScpHdr"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch"
-            Visibility="Collapsed" />
     </Grid>
 </UserControl>

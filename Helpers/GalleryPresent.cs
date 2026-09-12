@@ -146,9 +146,11 @@ public static class GalleryPresent
             return (0, 0, Math.Max(viewportW, 0), Math.Max(viewportH, 0));
         }
 
+        // Actual sizes the swapchain to the image (DIPs) so 1:1 can pan.
+        // Dest therefore fills the buffer — including high-DPI rasters.
         if (scaling == ImageScaling.Actual)
         {
-            return (0, 0, imageW, imageH);
+            return (0, 0, viewportW, viewportH);
         }
 
         var imageAspect = imageW / imageH;

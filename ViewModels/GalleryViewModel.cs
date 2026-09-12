@@ -92,7 +92,8 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsScaleFill { get; set; }
 
-    public HdrProbe CurrentProbe { get; private set; } = HdrProbe.None;
+    [ObservableProperty]
+    public partial HdrProbe CurrentProbe { get; set; } = HdrProbe.None;
 
     public bool HdrPresented { get; private set; }
 
@@ -231,6 +232,7 @@ public partial class GalleryViewModel : ObservableObject
                 }
 
                 Current = null;
+                CurrentProbe = HdrProbe.None;
                 CurrentPath = null;
                 PreviewImageUri = null;
                 Title = "";
@@ -247,7 +249,6 @@ public partial class GalleryViewModel : ObservableObject
                 CanScale = false;
                 DetailsText = "";
                 HdrStatus = "";
-                CurrentProbe = HdrProbe.None;
                 HdrPresented = false;
                 Tags.Clear();
             });
@@ -304,6 +305,7 @@ public partial class GalleryViewModel : ObservableObject
             }
 
             Current = item;
+            CurrentProbe = probe;
             CurrentPath = playableVideo ? item.Path : stillPath;
             PreviewImageUri = previewUrl ?? stillPath;
             Title = item.FileName;
@@ -322,7 +324,6 @@ public partial class GalleryViewModel : ObservableObject
             CanGoPrevious = CurrentIndex > 0;
             CanGoNext = CurrentIndex < _items.Count - 1;
             CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
-            CurrentProbe = probe;
             HdrPresented = false;
             DetailsText = GalleryPresent.DetailsLine(item.FileName, item.Width, item.Height, item.Kind, item.FileSize);
             HdrStatus = GalleryPresent.StatusLine(probe, false, false) ?? "";

@@ -45,7 +45,7 @@ internal static class HdrWicDecode
                 return null;
             }
 
-            return ToScrgb(pixels.Value.Data, pixels.Value.Float16, width, height, probe);
+            return ToScrgb(pixels.Value.Data, pixels.Value.Format, width, height, probe);
         }
         catch (OperationCanceledException)
         {
@@ -57,19 +57,24 @@ internal static class HdrWicDecode
         }
     }
 
-    private static async Task<(byte[] Data, bool Float16)?> TryPixelsAsync(BitmapDecoder decoder)
+    private static async Task<(byte[] Data, HdrPackedFormat Format)?> TryPixelsAsync(BitmapDecoder decoder)
     {
-        foreach (var format in new[] { BitmapPixelFormat.Rgba16, BitmapPixelFormat.Rgba8, BitmapPixelFormat.Bgra8 })
+        foreach (var (wic, packed) in new[]
+        {
+            (BitmapPixelFormat.Rgba16, HdrPackedFormat.Rgba16),
+            (BitmapPixelFormat.Rgba8, HdrPackedFormat.Rgba8),
+            (BitmapPixelFormat.Bgra8, HdrPackedFormat.Bgra8)
+        })
         {
             try
             {
                 var data = await decoder.GetPixelDataAsync(
-                    format,
+                    wic,
                     BitmapAlphaMode.Premultiplied,
                     new BitmapTransform(),
                     ExifOrientationMode.RespectExifOrientation,
                     ColorManagementMode.DoNotColorManage);
-                return (data.DetachPixelData(), false);
+                return (data.DetachPixelData(), packed);
             }
             catch
             {
@@ -80,12 +85,15 @@ internal static class HdrWicDecode
         return null;
     }
 
-    private static HdrFrame ToScrgb(byte[] data, bool float16, int width, int height, HdrProbe probe)
+    private static HdrFrame? ToScrgb(byte[] data, HdrPackedFormat format, int width, int height, HdrProbe probe)
     {
         var count = width * height;
+        if (data.Length < count * HdrPixels.BytesPerPixel(format))
+        {
+            return null;
+        }
+
         var rgba = new float[count * 4];
-        var bpp = data.Length >= count * 8 ? 8 : 4;
-        var bgra = bpp == 4 && data.Length >= count * 4;
         var maxNits = 0f;
         var pq = probe.IsPq || (probe.Kind == HdrKind.HdrPng && probe.CicpTransfer is null);
         var hlg = probe.IsHlg;
@@ -93,38 +101,7 @@ internal static class HdrWicDecode
 
         for (var i = 0; i < count; i++)
         {
-            float r;
-            float g;
-            float b;
-            float a;
-            if (bpp == 8)
-            {
-                var o = i * 8;
-                r = ReadU16(data, o) / 65535f;
-                g = ReadU16(data, o + 2) / 65535f;
-                b = ReadU16(data, o + 4) / 65535f;
-                a = ReadU16(data, o + 6) / 65535f;
-            }
-            else
-            {
-                var o = i * 4;
-                if (bgra)
-                {
-                    b = data[o] / 255f;
-                    g = data[o + 1] / 255f;
-                    r = data[o + 2] / 255f;
-                    a = data[o + 3] / 255f;
-                }
-                else
-                {
-                    r = data[o] / 255f;
-                    g = data[o + 1] / 255f;
-                    b = data[o + 2] / 255f;
-                    a = data[o + 3] / 255f;
-                }
-            }
-
-            _ = float16;
+            HdrPixels.Read(data, i, format, out var r, out var g, out var b, out var a);
             float nitsR;
             float nitsG;
             float nitsB;
@@ -178,7 +155,4 @@ internal static class HdrWicDecode
             MaxNits = maxNits
         };
     }
-
-    private static int ReadU16(byte[] data, int offset) =>
-        data[offset] | (data[offset + 1] << 8);
 }
