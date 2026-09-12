@@ -89,6 +89,32 @@ public static class GalleryMedia
     public static double MosaicAspect(bool isFolderHeader, double assetAspect) =>
         isFolderHeader ? FolderHeaderAspect : assetAspect;
 
+    /// <summary>
+    /// Asset commands stay on tiles. Headers cancel <c>ContextRequested</c>
+    /// so the ItemContainer flyout never opens there.
+    /// </summary>
+    public static bool ShouldShowAssetContextFlyout(bool isFolderHeader) => !isFolderHeader;
+
+    /// <summary>
+    /// Windows default double-click window. A header tap already navigates;
+    /// a second click inside this window can land on a new tile after the
+    /// async mosaic reload and must not open overlay.
+    /// </summary>
+    public const int MosaicDoubleClickMs = 500;
+
+    public static bool ShouldOpenOverlayFromDoubleTap(
+        bool isFolderHeader,
+        long millisecondsSinceHeaderGesture)
+    {
+        if (isFolderHeader)
+        {
+            return false;
+        }
+
+        return millisecondsSinceHeaderGesture < 0
+            || millisecondsSinceHeaderGesture >= MosaicDoubleClickMs;
+    }
+
     public static bool ShouldLoadTileThumb(
         bool isOrphan,
         bool alreadyStarted,

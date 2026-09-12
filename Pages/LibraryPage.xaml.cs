@@ -30,6 +30,7 @@ public sealed partial class LibraryPage : Page
     private bool _suppressBrowseChrome;
     private bool _suppressMosaicSelection;
     private VirtualKey _mosaicArrow;
+    private long _headerGestureAtMs = -1;
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
@@ -382,6 +383,7 @@ public sealed partial class LibraryPage : Page
     private void FolderGroupHeader_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         _mosaicArrow = VirtualKey.None;
+        NoteHeaderGesture();
         e.Handled = true;
     }
 
@@ -393,9 +395,15 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        NoteHeaderGesture();
         ViewModel.SelectFolderGroup(header);
         e.Handled = true;
     }
+
+    private void NoteHeaderGesture() => _headerGestureAtMs = Environment.TickCount64;
+
+    private long MillisecondsSinceHeaderGesture() =>
+        _headerGestureAtMs < 0 ? -1 : Environment.TickCount64 - _headerGestureAtMs;
 
     private void BcrPath_ItemClicked(BreadcrumbBar sender, BreadcrumbBarItemClickedEventArgs args)
     {
@@ -456,21 +464,23 @@ public sealed partial class LibraryPage : Page
         ViewModel.AssignFromQueryCommand.Execute(null);
     }
 
-    private void GrdAssets_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void GrdAssets_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        TryOpenOverlayFromDoubleTap(e.OriginalSource, e);
+
+    private void AssetItem_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
+        TryOpenOverlayFromDoubleTap(sender, e);
+
+    private void TryOpenOverlayFromDoubleTap(object? source, DoubleTappedRoutedEventArgs e)
     {
-        var item = FindAssetItem(e.OriginalSource);
-        if (item is null)
+        var item = FindAssetItem(source) ?? FindAssetItem(e.OriginalSource);
+        if (!GalleryMedia.ShouldOpenOverlayFromDoubleTap(
+                item?.IsFolderHeader == true,
+                MillisecondsSinceHeaderGesture()))
         {
+            e.Handled = true;
             return;
         }
 
-        OpenOverlayFor(item);
-        e.Handled = true;
-    }
-
-    private void AssetItem_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
         if (item is null)
         {
             return;
@@ -503,6 +513,13 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        if (item.IsFolderHeader)
+        {
+            ViewModel.SelectFolderGroup(item);
+            e.Handled = true;
+            return;
+        }
+
         OpenOverlayFor(item);
         e.Handled = true;
     }
@@ -511,7 +528,6 @@ public sealed partial class LibraryPage : Page
     {
         if (item.IsFolderHeader)
         {
-            ViewModel.SelectFolderGroup(item);
             return;
         }
 
@@ -553,7 +569,19 @@ public sealed partial class LibraryPage : Page
     private void AssetItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is null || item.IsFolderHeader)
+        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        EnsureSelectedForContext(item);
+    }
+
+    private void AssetItem_ContextRequested(object sender, ContextRequestedEventArgs e)
+    {
+        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
         {
             e.Handled = true;
             return;
@@ -570,7 +598,7 @@ public sealed partial class LibraryPage : Page
         }
 
         var item = flyout.Target is FrameworkElement target ? FindAssetItem(target) : null;
-        if (item is null || item.IsFolderHeader)
+        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
         {
             flyout.Hide();
             return;

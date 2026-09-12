@@ -303,11 +303,93 @@
                     <DataTemplate x:DataType="models:AssetItem">
                         <ItemContainer
                             AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
+                            ContextRequested="AssetItem_ContextRequested"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
                             IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                             ManipulationMode="None"
                             Tag="{x:Bind MosaicTag, Mode=OneWay}">
+                            <ItemContainer.ContextFlyout>
+                                <MenuFlyout Opening="AssetMenu_Opening">
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOpen"
+                                        Command="{x:Bind pages:LibraryPage.GetOpenOverlayCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Text="Open">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOpenInNewWindow"
+                                        Command="{x:Bind pages:LibraryPage.GetOpenInNewWindowCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Text="Open in new window">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="WindowNew" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuShowInExplorer"
+                                        Command="{x:Bind pages:LibraryPage.GetShowInExplorerCommand()}"
+                                        Text="Show in File Explorer">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuCopy"
+                                        Command="{x:Bind pages:LibraryPage.GetCopyFilesCommand()}"
+                                        Text="Copy">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuCopyPath"
+                                        Command="{x:Bind pages:LibraryPage.GetCopyPathCommand()}"
+                                        Text="Copy path">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="DocumentCopy" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuMoveToFolder"
+                                        Command="{x:Bind pages:LibraryPage.GetMoveToFolderCommand()}"
+                                        Text="Move to folder…">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuAddToRoom"
+                                        Command="{x:Bind pages:LibraryPage.GetAddSelectionToRoomCommand()}"
+                                        Text="Add to room">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Door" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuAddTag"
+                                        Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
+                                        Text="Add tag…">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuDelete"
+                                        Command="{x:Bind pages:LibraryPage.GetDeleteFilesCommand()}"
+                                        Text="Delete">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </ItemContainer.ContextFlyout>
                             <Grid>
                                 <Button
                                     Padding="4,0"
@@ -346,87 +428,6 @@
                                     ManipulationMode="None"
                                     RightTapped="AssetItem_RightTapped"
                                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsFolderHeader), Mode=OneWay}">
-                                    <Grid.ContextFlyout>
-                                        <MenuFlyout Opening="AssetMenu_Opening">
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuOpen"
-                                                Command="{x:Bind pages:LibraryPage.GetOpenOverlayCommand()}"
-                                                CommandParameter="{x:Bind}"
-                                                Text="Open">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuOpenInNewWindow"
-                                                Command="{x:Bind pages:LibraryPage.GetOpenInNewWindowCommand()}"
-                                                CommandParameter="{x:Bind}"
-                                                Text="Open in new window">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="WindowNew" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuShowInExplorer"
-                                                Command="{x:Bind pages:LibraryPage.GetShowInExplorerCommand()}"
-                                                Text="Show in File Explorer">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutSeparator />
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuCopy"
-                                                Command="{x:Bind pages:LibraryPage.GetCopyFilesCommand()}"
-                                                Text="Copy">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuCopyPath"
-                                                Command="{x:Bind pages:LibraryPage.GetCopyPathCommand()}"
-                                                Text="Copy path">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="DocumentCopy" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuMoveToFolder"
-                                                Command="{x:Bind pages:LibraryPage.GetMoveToFolderCommand()}"
-                                                Text="Move to folder…">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutSeparator />
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuAddToRoom"
-                                                Command="{x:Bind pages:LibraryPage.GetAddSelectionToRoomCommand()}"
-                                                Text="Add to room">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="Door" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuAddTag"
-                                                Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
-                                                Text="Add tag…">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                            <MenuFlyoutSeparator />
-                                            <MenuFlyoutItem
-                                                AutomationProperties.AutomationId="MnuDelete"
-                                                Command="{x:Bind pages:LibraryPage.GetDeleteFilesCommand()}"
-                                                Text="Delete">
-                                                <MenuFlyoutItem.Icon>
-                                                    <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
-                                                </MenuFlyoutItem.Icon>
-                                            </MenuFlyoutItem>
-                                        </MenuFlyout>
-                                    </Grid.ContextFlyout>
                                     <Image
                                         DataContextChanged="TileImage_DataContextChanged"
                                         DoubleTapped="AssetItem_DoubleTapped"

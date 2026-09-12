@@ -80,6 +80,24 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void ShouldShowAssetContextFlyout_TilesOnly()
+    {
+        Assert.True(GalleryMedia.ShouldShowAssetContextFlyout(false));
+        Assert.False(GalleryMedia.ShouldShowAssetContextFlyout(true));
+    }
+
+    [Fact]
+    public void ShouldOpenOverlayFromDoubleTap_IgnoresHeadersAndHeaderGesture()
+    {
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(true, -1));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(true, 0));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, 0));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, GalleryMedia.MosaicDoubleClickMs - 1));
+        Assert.True(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, -1));
+        Assert.True(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, GalleryMedia.MosaicDoubleClickMs));
+    }
+
+    [Fact]
     public void ShouldLoadTileThumb_AllowsMissingJpegWhenHashExists()
     {
         Assert.True(GalleryMedia.ShouldLoadTileThumb(false, false, false, null, "abc"));
