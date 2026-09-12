@@ -1,0 +1,37 @@
+name: Sync issue labels
+on:
+  push:
+    paths:
+      - .github/labels.yml
+      - .github/workflows/sync-issue-labels.yml
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create missing labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          while IFS= read -r name && IFS= read -r color && IFS= read -r desc; do
+            if gh label list --limit 200 --json name --jq '.[].name' | grep -Fxq "$name"; then
+              echo "exists: $name"
+            else
+              gh label create "$name" --color "$color" --description "$desc"
+              echo "created: $name"
+            fi
+          done < <(python3 - <<'PY'
+          from pathlib import Path
+          import yaml
+          for item in yaml.safe_load(Path(".github/labels.yml").read_text()):
+              print(item["name"])
+              print(item["color"])
+              print(item["description"])
+          PY
+          )

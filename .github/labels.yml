@@ -1,0 +1,34 @@
+# Preferred Palace issue labels. Create on the repo with gh; do not add others.
+- name: "type: bug"
+  color: "d73a4a"
+  description: Something is broken
+- name: "type: enhancement"
+  color: "a2eeef"
+  description: New feature or request
+- name: "area: library"
+  color: "1d76db"
+  description: Library mosaic, scan, catalog
+- name: "area: cloud"
+  color: "0052cc"
+  description: On-Demand, OneDrive, Dropbox
+- name: "area: tags"
+  color: "5319e7"
+  description: Tags board, filter, assign
+- name: "area: rooms"
+  color: "b4a8d1"
+  description: Rooms / moodboard
+- name: "area: hdr"
+  color: "fbca04"
+  description: HDR / EXR / wide-gamut preview
+- name: "area: organize"
+  color: "0e8a16"
+  description: On-disk organize and rename
+- name: "priority: now"
+  color: "e11d48"
+  description: Handle on the next daily check
+- name: "priority: later"
+  color: "cfd3d7"
+  description: Not blocking; pick up after now
+- name: "needs-repro"
+  color: "e4e669"
+  description: Needs steps or a fixture before work

@@ -1,0 +1,107 @@
+name: Bug
+description: Something in Palace is broken
+title: "[Bug] "
+labels:
+  - "type: bug"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Isiac files bugs here. This Project checks issues daily.
+        Pick **one area** and **one priority**. Add **needs-repro** if you cannot write steps yet.
+        Version is Settings → About (`TxtAppVersion`).
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+      description: What you saw.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should have happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro
+      description: Steps, folder, and any fixture. If you cannot reproduce it yet, say so and check needs-repro.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build
+      description: Debug or Release. Daily run is Debug.
+      options:
+        - Debug
+        - Release
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Settings → About, e.g. Palace 0.0.3 (Debug) · Library core
+      placeholder: Palace 0.0.3 (Debug) · Library core
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source-kind
+    attributes:
+      label: File source
+      description: Where the files live for this bug.
+      options:
+        - Local disk
+        - OneDrive (synced / Files On-Demand)
+        - Dropbox (synced / Files On-Demand)
+        - Online-only (placeholder, not on disk)
+        - Not file-related
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Matching area label. Pick one.
+      options:
+        - "area: library"
+        - "area: cloud"
+        - "area: tags"
+        - "area: rooms"
+        - "area: hdr"
+        - "area: organize"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: "priority: now is the next daily check. priority: later waits."
+      options:
+        - "priority: now"
+        - "priority: later"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: extra
+    attributes:
+      label: Extra
+      options:
+        - label: needs-repro
