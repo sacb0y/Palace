@@ -75,6 +75,8 @@ public partial class AssetItem : ObservableObject
 
     public int? Height { get; set; }
 
+    public long? FileSize { get; set; }
+
     [ObservableProperty]
     public partial bool IsOnlineOnly { get; set; }
 

@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 
 namespace Palace.Helpers;
 
@@ -17,4 +18,12 @@ public static class BindHelpers
 
     public static Visibility StringToVisibility(string? value) =>
         string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+
+    public static Stretch ImageStretch(ImageScaling scaling) =>
+        scaling switch
+        {
+            ImageScaling.Actual => Stretch.None,
+            ImageScaling.Fill => Stretch.UniformToFill,
+            _ => Stretch.Uniform
+        };
 }

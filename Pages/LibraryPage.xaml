@@ -7,6 +7,7 @@
     xmlns:helpers="using:Palace.Helpers"
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:Palace.Controls"
     xmlns:models="using:Palace.Models"
     xmlns:pages="using:Palace.Pages"
     mc:Ignorable="d">
@@ -975,10 +976,8 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid>
-                    <Image
-                        x:Name="ImgOverlay"
-                        Stretch="Uniform"
-                        Source="{x:Bind pages:LibraryPage.FileToFullImage(ViewModel.OverlayGallery.PreviewImageUri), Mode=OneWay, FallbackValue={x:Null}}"
+                    <controls:GalleryStillSurface
+                        x:Name="SrfOverlayStill"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
                     <MediaPlayerElement
                         x:Name="MpeOverlay"
@@ -1070,6 +1069,58 @@
                         AutomationProperties.Name="Gallery position"
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="{x:Bind ViewModel.OverlayGallery.PositionLabel, Mode=OneWay, FallbackValue=''}" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="TxtGalleryOverlayDetails"
+                        AutomationProperties.Name="Image details"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.OverlayGallery.DetailsText, Mode=OneWay, FallbackValue=''}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.OverlayGallery.DetailsText), Mode=OneWay, FallbackValue=Collapsed}" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="TxtGalleryOverlayHdr"
+                        AutomationProperties.Name="HDR status"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.OverlayGallery.HdrStatus, Mode=OneWay, FallbackValue=''}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.OverlayGallery.HdrStatus), Mode=OneWay, FallbackValue=Collapsed}" />
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.CanScale), Mode=OneWay, FallbackValue=Collapsed}">
+                        <Button
+                            x:Name="BtnGalleryScaleActual"
+                            AutomationProperties.AutomationId="BtnGalleryScaleActual"
+                            AutomationProperties.Name="Actual size"
+                            Command="{x:Bind ViewModel.OverlayGallery.SetScaleActualCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            ToolTipService.ToolTip="1:1 (Ctrl+1)">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="1:1" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="BtnGalleryScaleFit"
+                            AutomationProperties.AutomationId="BtnGalleryScaleFit"
+                            AutomationProperties.Name="Fit"
+                            Command="{x:Bind ViewModel.OverlayGallery.SetScaleFitCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            ToolTipService.ToolTip="Fit (Ctrl+2)">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="ArrowFit" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Fit" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="BtnGalleryScaleFill"
+                            AutomationProperties.AutomationId="BtnGalleryScaleFill"
+                            AutomationProperties.Name="Fill"
+                            Command="{x:Bind ViewModel.OverlayGallery.SetScaleFillCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            ToolTipService.ToolTip="Fill (Ctrl+3)">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="ArrowMaximize" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Fill" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                     <ItemsControl
                         x:Name="LstGalleryOverlayTags"
                         AutomationProperties.AutomationId="LstGalleryOverlayTags"

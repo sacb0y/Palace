@@ -1,9 +1,9 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media.Imaging;
-using Palace.Helpers;
+using Windows.UI.Core;
 using Palace.ViewModels;
 using Windows.Graphics;
 using Windows.Media.Core;
@@ -40,7 +40,8 @@ public sealed partial class GalleryWindow : Window
             if (e.PropertyName is nameof(GalleryViewModel.CurrentPath)
                 or nameof(GalleryViewModel.PreviewImageUri)
                 or nameof(GalleryViewModel.IsVideo)
-                or nameof(GalleryViewModel.IsImage))
+                or nameof(GalleryViewModel.IsImage)
+                or nameof(GalleryViewModel.Scaling))
             {
                 UpdateMedia();
             }
@@ -71,38 +72,18 @@ public sealed partial class GalleryWindow : Window
         }
     }
 
-    public static BitmapImage? ToImage(string? uri)
-    {
-        if (string.IsNullOrWhiteSpace(uri))
-        {
-            return null;
-        }
-
-        try
-        {
-            if (uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
-                uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                return new BitmapImage { UriSource = new Uri(uri, UriKind.Absolute) };
-            }
-
-            if (!CloudFile.Exists(uri) || CloudFile.IsOnlineOnly(uri))
-            {
-                return null;
-            }
-
-            return new BitmapImage { UriSource = new Uri(uri, UriKind.Absolute) };
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private void BtnGalleryWindowClose_Click(object sender, RoutedEventArgs e) => Close();
 
     private void GalleryRoot_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (Gallery.TryHandleScaleShortcut(control, (int)e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Escape:
@@ -125,6 +106,7 @@ public sealed partial class GalleryWindow : Window
     private async void UpdateMedia()
     {
         var epoch = Interlocked.Increment(ref _mediaEpoch);
+        SrfWindowStill.Bind(Gallery.IsImage ? Gallery : null);
         if (Gallery.IsVideo && Gallery.CurrentPath is not null)
         {
             try

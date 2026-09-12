@@ -71,7 +71,74 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanOpenInExplorer { get; set; }
 
+    [ObservableProperty]
+    public partial ImageScaling Scaling { get; set; } = ImageScaling.Fit;
+
+    [ObservableProperty]
+    public partial string DetailsText { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string HdrStatus { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool CanScale { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsScaleFit { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsScaleActual { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsScaleFill { get; set; }
+
+    public HdrProbe CurrentProbe { get; private set; } = HdrProbe.None;
+
+    public bool HdrPresented { get; private set; }
+
+    public bool DisplayIsHdr { get; private set; }
+
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
+
+    partial void OnScalingChanged(ImageScaling value)
+    {
+        IsScaleFit = value == ImageScaling.Fit;
+        IsScaleActual = value == ImageScaling.Actual;
+        IsScaleFill = value == ImageScaling.Fill;
+    }
+
+    [RelayCommand]
+    private void SetScaleActual() => Scaling = ImageScaling.Actual;
+
+    [RelayCommand]
+    private void SetScaleFit() => Scaling = ImageScaling.Fit;
+
+    [RelayCommand]
+    private void SetScaleFill() => Scaling = ImageScaling.Fill;
+
+    public bool TryHandleScaleShortcut(bool controlDown, int keyCode)
+    {
+        if (!controlDown || !CanScale)
+        {
+            return false;
+        }
+
+        var next = GalleryScale.FromKeyCode(keyCode);
+        if (next is null)
+        {
+            return false;
+        }
+
+        Scaling = next.Value;
+        return true;
+    }
+
+    public void SetHdrPresentResult(bool presented, bool displayHdr)
+    {
+        HdrPresented = presented;
+        DisplayIsHdr = displayHdr;
+        HdrStatus = GalleryPresent.StatusLine(CurrentProbe, presented, displayHdr) ?? "";
+    }
 
     [RelayCommand]
     private void GoPrevious()
@@ -177,6 +244,11 @@ public partial class GalleryViewModel : ObservableObject
                 CanOpenInExplorer = false;
                 CanGoPrevious = false;
                 CanGoNext = false;
+                CanScale = false;
+                DetailsText = "";
+                HdrStatus = "";
+                CurrentProbe = HdrProbe.None;
+                HdrPresented = false;
                 Tags.Clear();
             });
             return;
@@ -206,6 +278,12 @@ public partial class GalleryViewModel : ObservableObject
         if (epoch != _loadEpoch)
         {
             return;
+        }
+
+        var probe = HdrProbe.None;
+        if (item.Kind == AssetKind.Image && onDisk && !onlineOnly && !apiOnly && !item.IsOrphan)
+        {
+            probe = HdrFile.ProbePath(item.Path);
         }
 
         var playableVideo = GalleryMedia.IsPlayableLocalVideo(
@@ -243,6 +321,11 @@ public partial class GalleryViewModel : ObservableObject
             CanOpenInExplorer = onDisk && !apiOnly;
             CanGoPrevious = CurrentIndex > 0;
             CanGoNext = CurrentIndex < _items.Count - 1;
+            CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
+            CurrentProbe = probe;
+            HdrPresented = false;
+            DetailsText = GalleryPresent.DetailsLine(item.FileName, item.Width, item.Height, item.Kind, item.FileSize);
+            HdrStatus = GalleryPresent.StatusLine(probe, false, false) ?? "";
 
             Tags.Clear();
             foreach (var tag in assigned)
