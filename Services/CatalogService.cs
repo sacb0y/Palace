@@ -485,7 +485,7 @@ public sealed class CatalogService
                 Tag tag;
                 if (existing is null)
                 {
-                    tag = InsertTag(conn, raw);
+                    tag = InsertTag(conn, raw, 0);
                     created++;
                 }
                 else
@@ -779,7 +779,7 @@ public sealed class CatalogService
         IReadOnlyList<IReadOnlyCollection<string>> expandedIdSets,
         TagFilterMode mode,
         string? projectId = null) =>
-        _db.ReadAsync(conn =>
+        _db.ReadAsync<IReadOnlyList<Asset>>(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);

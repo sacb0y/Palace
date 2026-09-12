@@ -1074,11 +1074,11 @@ public partial class LibraryViewModel : ObservableObject
             SelectedFilterTags.Clear();
             if (crumb.Path.Length > 0)
             {
-                var node = TagTreeBuilder.Find(TagTree, crumb.Path);
-                if (node?.TagId is not null)
+                var tagNode = TagTreeBuilder.Find(TagTree, crumb.Path);
+                if (tagNode?.TagId is not null)
                 {
-                    SelectedFilterTags.Add(ToFilterChip(node));
-                    SelectedTag = node;
+                    SelectedFilterTags.Add(ToFilterChip(tagNode));
+                    SelectedTag = tagNode;
                 }
             }
             else
