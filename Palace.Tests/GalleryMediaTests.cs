@@ -101,6 +101,53 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void IsLiveOnlineOnly_StaleCatalogFlagYieldsToLocalPreview()
+    {
+        Assert.False(GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: true));
+        Assert.False(GalleryMedia.IsLiveOnlineOnly(true, true, true, canShowPreview: true));
+        Assert.True(GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: false));
+        Assert.True(GalleryMedia.IsLiveOnlineOnly(false, true, false, canShowPreview: false));
+        Assert.True(GalleryMedia.IsLiveOnlineOnly(false, false, true, canShowPreview: false));
+        Assert.False(GalleryMedia.IsLiveOnlineOnly(false, false, false, canShowPreview: false));
+    }
+
+    [Fact]
+    public void OverlayStillPath_UsesOriginalWhenStaleOnlineOnlyButLocalExists()
+    {
+        var staleOnline = GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: true);
+        Assert.Equal(
+            @"D:\photos\a.jpg",
+            GalleryMedia.OverlayStillPath(false, staleOnline, true, @"D:\photos\a.jpg", @"C:\thumbs\x.jpg", null));
+        Assert.False(GalleryMedia.ShowPlaceholderTile(staleOnline, false, false));
+        Assert.True(GalleryMedia.IsPlayableLocalVideo(AssetKind.Video, false, staleOnline, true, @"D:\clip.mp4"));
+    }
+
+    [Fact]
+    public void CanShowPreview_RequiresHydratedLocalOrRemote()
+    {
+        Assert.True(GalleryMedia.CanShowPreview("https://example.com/p.jpg"));
+        Assert.False(GalleryMedia.CanShowPreview(null));
+        Assert.False(GalleryMedia.CanShowPreview("OneDrive / me / Photos/a.jpg"));
+        Assert.False(GalleryMedia.CanShowPreview(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".jpg")));
+
+        var path = Path.Combine(Path.GetTempPath(), "palace-preview-" + Guid.NewGuid().ToString("N") + ".bin");
+        File.WriteAllBytes(path, [1, 2, 3]);
+        try
+        {
+            Assert.True(GalleryMedia.CanShowPreview(path));
+            if (CloudFileTests.TryStampOnlineOnly(path))
+            {
+                Assert.False(GalleryMedia.CanShowPreview(path));
+            }
+        }
+        finally
+        {
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void AcceptsProviderThumbnail_OnlyImageType()
     {
         Assert.True(GalleryMedia.AcceptsProviderThumbnail(true));

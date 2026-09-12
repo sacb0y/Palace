@@ -76,6 +76,36 @@ public sealed class CloudReadGuardTests
     }
 
     [Fact]
+    public void PrefixHash_NeedsFullRecallOnlyWhenOnlineOnlyAndLarge()
+    {
+        Assert.True(HashService.UsesPrefixHash(HashService.PrefixHashThresholdBytes + 1));
+        Assert.False(HashService.UsesPrefixHash(HashService.PrefixHashThresholdBytes));
+        Assert.True(HashService.NeedsFullRecall(true, HashService.PrefixHashThresholdBytes + 1));
+        Assert.False(HashService.NeedsFullRecall(false, HashService.PrefixHashThresholdBytes + 1));
+        Assert.False(HashService.NeedsFullRecall(true, 1024));
+        Assert.True(HashService.ApplyExtractedMetadata(false));
+        Assert.False(HashService.ApplyExtractedMetadata(true));
+    }
+
+    [Fact]
+    public async Task RecallFully_ReadsEntireFile()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "palace-recall-" + Guid.NewGuid().ToString("N") + ".bin");
+        var payload = new byte[12 * 1024];
+        Random.Shared.NextBytes(payload);
+        File.WriteAllBytes(path, payload);
+        try
+        {
+            await HashService.RecallFullyAsync(path);
+            Assert.Equal(payload.Length, new FileInfo(path).Length);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
     public void CloudStubHash_IsStableAndPrefixed()
     {
         var when = new DateTimeOffset(2026, 9, 12, 0, 0, 0, TimeSpan.Zero);
