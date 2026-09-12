@@ -191,6 +191,32 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <StackPanel
+                    AutomationProperties.AutomationId="PnlGalleryWindowGeneration"
+                    Spacing="8"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowGeneration), Mode=OneWay}">
+                    <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Generation" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="TxtGalleryWindowModel"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewModel), Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Prompt" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="TxtGalleryWindowPrompt"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewPrompt), Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Negative" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewNegative), Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Seed" />
+                    <TextBlock
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewSeed), Mode=OneWay}" />
+                </StackPanel>
             </StackPanel>
             <StackPanel
                 Grid.Column="1"
