@@ -882,6 +882,54 @@ public sealed class CatalogService
     public Task<IReadOnlyList<AssignedTag>> GetAssignedTagsAsync(string assetId) =>
         _db.ReadAsync(conn => GetAssignedTags(conn, assetId));
 
+    public Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetAssignedTagIdsByAssetAsync(
+        IEnumerable<string> assetIds) =>
+        _db.ReadAsync(conn =>
+        {
+            var ids = assetIds
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var map = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            if (ids.Count == 0)
+            {
+                return (IReadOnlyDictionary<string, IReadOnlyList<string>>)
+                    new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            }
+
+            const int batchSize = 400;
+            for (var offset = 0; offset < ids.Count; offset += batchSize)
+            {
+                var take = Math.Min(batchSize, ids.Count - offset);
+                using var cmd = conn.CreateCommand();
+                var names = new List<string>(take);
+                for (var i = 0; i < take; i++)
+                {
+                    var id = ids[offset + i];
+                    var p = $"$a{i}";
+                    names.Add(p);
+                    cmd.Parameters.AddWithValue(p, id);
+                    map[id] = [];
+                }
+
+                cmd.CommandText = $"SELECT AssetId, TagId FROM AssetTag WHERE AssetId IN ({string.Join(",", names)})";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var assetId = reader.GetString(0);
+                    if (map.TryGetValue(assetId, out var list))
+                    {
+                        list.Add(reader.GetString(1));
+                    }
+                }
+            }
+
+            return map.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<string>)pair.Value,
+                StringComparer.Ordinal);
+        });
+
     public Task<OrganizeRule?> GetDefaultRuleAsync() =>
         _db.ReadAsync(conn =>
         {

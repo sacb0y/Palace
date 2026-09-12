@@ -282,6 +282,20 @@ public partial class TagLetterSection : ObservableObject
     public string Header => $"{Letter} ({Chips.Count})";
 }
 
+public partial class TagMosaicSection : ObservableObject
+{
+    public string Header { get; set; } = "";
+
+    public ObservableCollection<AssetItem> Assets { get; } = [];
+
+    public string AutomationId =>
+        "TxtTagMosaicGroup_" + string.Concat((Header ?? "").Where(char.IsLetterOrDigit));
+
+    public string CountLabel => $"{Header} ({Assets.Count})";
+
+    public void NotifyCount() => OnPropertyChanged(nameof(CountLabel));
+}
+
 public partial class TagTreeNode : ObservableObject
 {
     public string? TagId { get; set; }

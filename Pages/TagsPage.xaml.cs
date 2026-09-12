@@ -225,31 +225,6 @@ public sealed partial class TagsPage : Page
         await ViewModel.ToggleStarCommand.ExecuteAsync(null);
     }
 
-    private void TagMosaicLayout_ItemsInfoRequested(LinedFlowLayout sender, LinedFlowLayoutItemsInfoRequestedEventArgs args)
-    {
-        var assets = ViewModel.Assets;
-        var start = Math.Max(0, args.ItemsRangeStartIndex);
-        if (start >= assets.Count)
-        {
-            return;
-        }
-
-        var available = assets.Count - start;
-        var length = GalleryMedia.MosaicAspectCount(args.ItemsRangeRequestedLength, available);
-        if (length <= 0)
-        {
-            return;
-        }
-
-        var ratios = new double[length];
-        for (var i = 0; i < length; i++)
-        {
-            ratios[i] = assets[start + i].AspectRatio;
-        }
-
-        args.SetDesiredAspectRatios(ratios);
-    }
-
     private void OnMosaicReset()
     {
         if (!IsLoaded)
@@ -258,7 +233,6 @@ public sealed partial class TagsPage : Page
         }
 
         _realizedTiles.Clear();
-        TagMosaicLayout.InvalidateItemsInfo();
     }
 
     private void OnMosaicChunkAppended()
@@ -268,7 +242,6 @@ public sealed partial class TagsPage : Page
             return;
         }
 
-        TagMosaicLayout.InvalidateItemsInfo();
         RefreshRealizedTiles();
     }
 
@@ -422,7 +395,6 @@ public sealed partial class TagsPage : Page
         }
 
         var item = FindAssetItem(e.OriginalSource)
-            ?? GrdTagAssets.SelectedItem as AssetItem
             ?? ViewModel.Assets.FirstOrDefault();
         if (item is null)
         {
@@ -462,27 +434,7 @@ public sealed partial class TagsPage : Page
 
     private void EnsureSelectedForContext(AssetItem item)
     {
-        var index = -1;
-        for (var i = 0; i < ViewModel.Assets.Count; i++)
-        {
-            if (ReferenceEquals(ViewModel.Assets[i], item) || ViewModel.Assets[i].Id == item.Id)
-            {
-                index = i;
-                break;
-            }
-        }
-
-        if (index < 0)
-        {
-            return;
-        }
-
-        if (GrdTagAssets.IsSelected(index))
-        {
-            return;
-        }
-
-        GrdTagAssets.Select(index);
+        _ = item;
     }
 
     private AssetItem? FindAssetItem(object? source)
