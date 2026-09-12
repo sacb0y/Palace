@@ -126,7 +126,16 @@
                                                                 Click="TagChip_Click"
                                                                 Tag="{x:Bind}">
                                                                 <Button.ContextFlyout>
-                                                                    <MenuFlyout>
+                                                                    <MenuFlyout Opening="TagChipMenu_Opening">
+                                                                        <MenuFlyoutItem
+                                                                            AutomationProperties.AutomationId="MnuFilterTag"
+                                                                            Command="{x:Bind pages:TagsPage.GetFilterChipCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Filter in Library">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Filter" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
                                                                         <MenuFlyoutItem
                                                                             Command="{x:Bind pages:TagsPage.GetStarChipCommand()}"
                                                                             CommandParameter="{x:Bind}"
@@ -145,6 +154,30 @@
                                                                                 <ic:FluentIcon Icon="Star" IconSize="Size16" IconVariant="Regular" />
                                                                             </MenuFlyoutItem.Icon>
                                                                         </MenuFlyoutItem>
+                                                                        <MenuFlyoutItem
+                                                                            AutomationProperties.AutomationId="MnuRenameTag"
+                                                                            Command="{x:Bind pages:TagsPage.GetRenameChipCommand()}"
+                                                                            CommandParameter="{x:Bind}"
+                                                                            Text="Rename">
+                                                                            <MenuFlyoutItem.Icon>
+                                                                                <ic:FluentIcon Icon="Rename" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutItem.Icon>
+                                                                        </MenuFlyoutItem>
+                                                                        <MenuFlyoutSubItem
+                                                                            Tag="add"
+                                                                            Text="Add to group">
+                                                                            <MenuFlyoutSubItem.Icon>
+                                                                                <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutSubItem.Icon>
+                                                                        </MenuFlyoutSubItem>
+                                                                        <MenuFlyoutSubItem
+                                                                            Tag="move"
+                                                                            Text="Move to group"
+                                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(CanRemoveFromGroup), Mode=OneWay}">
+                                                                            <MenuFlyoutSubItem.Icon>
+                                                                                <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
+                                                                            </MenuFlyoutSubItem.Icon>
+                                                                        </MenuFlyoutSubItem>
                                                                         <MenuFlyoutItem
                                                                             Command="{x:Bind pages:TagsPage.GetRemoveChipFromGroupCommand()}"
                                                                             CommandParameter="{x:Bind}"

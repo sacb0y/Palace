@@ -298,3 +298,10 @@ public sealed class TagGroupPick
     public string TagId { get; set; } = "";
     public string Name { get; set; } = "";
 }
+
+public sealed class TagChipGroupMove
+{
+    public TagChipItem Chip { get; set; } = new();
+    public string GroupId { get; set; } = "";
+    public string GroupName { get; set; } = "";
+}

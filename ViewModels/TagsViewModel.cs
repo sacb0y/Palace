@@ -95,6 +95,8 @@ public partial class TagsViewModel : ObservableObject
     public Func<IReadOnlyList<TagPath>, Task<OrganizeChoice?>>? RequestOrganizeChoice { get; set; }
     public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
     public Action<GalleryViewModel>? RequestOpenGallery { get; set; }
+    public Action? RequestShowLibrary { get; set; }
+    public Action? RequestFocusRename { get; set; }
     public Action? MosaicReset { get; set; }
     public Action? MosaicChunkAppended { get; set; }
 
@@ -307,6 +309,92 @@ public partial class TagsViewModel : ObservableObject
 
         SelectChip(chip);
         await DeleteTagAsync();
+    }
+
+    [RelayCommand]
+    private void FilterChip(TagChipItem? chip)
+    {
+        if (chip?.TagId is null)
+        {
+            return;
+        }
+
+        AppServices.Library.ApplySingleTagFilter(chip.TagId, chip.Name);
+        RequestShowLibrary?.Invoke();
+    }
+
+    [RelayCommand]
+    private void RenameChip(TagChipItem? chip)
+    {
+        if (chip is null)
+        {
+            return;
+        }
+
+        SelectChip(chip);
+        RequestFocusRename?.Invoke();
+    }
+
+    [RelayCommand]
+    private async Task AddChipToGroupAsync(TagChipGroupMove? move)
+    {
+        if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
+        {
+            return;
+        }
+
+        var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+        StatusText = ok
+            ? $"Also grouped under {move.GroupName}."
+            : "That membership would create a cycle.";
+        if (ok)
+        {
+            _reorderParentId = move.GroupId;
+        }
+
+        await RefreshAsync();
+    }
+
+    [RelayCommand]
+    private async Task MoveChipToGroupAsync(TagChipGroupMove? move)
+    {
+        if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
+        {
+            return;
+        }
+
+        var rootId = move.Chip.ParentGroupId ?? move.Chip.ImmediateParentId;
+        if (!string.IsNullOrEmpty(rootId) && !string.Equals(rootId, move.GroupId, StringComparison.Ordinal))
+        {
+            var parents = TagSiblings.ParentsUnderRoot(_memberships, move.Chip.TagId, rootId);
+            if (parents.Count == 0 && !string.IsNullOrEmpty(move.Chip.ImmediateParentId))
+            {
+                parents = [move.Chip.ImmediateParentId];
+            }
+
+            foreach (var parentId in parents)
+            {
+                await _catalog.RemoveMembershipAsync(parentId, move.Chip.TagId);
+            }
+        }
+
+        var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+        StatusText = ok
+            ? $"Moved to {move.GroupName}."
+            : "Removed from this group, but that destination would create a cycle.";
+        if (ok)
+        {
+            _reorderParentId = move.GroupId;
+        }
+
+        await RefreshAsync();
+    }
+
+    public IReadOnlyList<TagGroupPick> GroupDestinations(TagChipItem chip, bool add)
+    {
+        return TagGroups.Destinations(_tags, _memberships, chip.TagId, chip.ParentGroupId, add)
+            .Select(tag => new TagGroupPick { TagId = tag.Id, Name = tag.Name })
+            .ToList();
     }
 
     public void SelectChip(TagChipItem? chip)

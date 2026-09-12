@@ -943,6 +943,49 @@ public partial class LibraryViewModel : ObservableObject
         RebuildAssignPanel();
     }
 
+    public void ApplySingleTagFilter(string tagId, string name)
+    {
+        if (string.IsNullOrEmpty(tagId))
+        {
+            return;
+        }
+
+        _suppressFilter = true;
+        var needBrowse = !IsTagBrowse;
+        try
+        {
+            if (TagFilterMode == TagFilterMode.None)
+            {
+                TagFilterMode = TagFilterMode.Any;
+            }
+
+            var node = TagTreeBuilder.Find(TagTree, tagId)
+                ?? new TagTreeNode { TagId = tagId, Name = name };
+            SelectedTag = node;
+            RestoreFilterSelection([tagId]);
+            if (SelectedFilterTags.Count == 0)
+            {
+                SelectedFilterTags.Add(ToFilterChip(node));
+                StampFilterSelected(TagTree, [tagId]);
+            }
+
+            SyncFilterFlags();
+            RebuildBreadcrumbs();
+        }
+        finally
+        {
+            _suppressFilter = false;
+        }
+
+        if (needBrowse)
+        {
+            IsTagBrowse = true;
+            return;
+        }
+
+        _ = ApplyFilterAsync();
+    }
+
     public void ToggleFilterTag(TagTreeNode? node)
     {
         if (node?.TagId is null)
