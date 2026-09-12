@@ -83,12 +83,39 @@ public sealed class StillFormatTests
         Assert.True(StillFormats.IsJxl(jxl));
         var size = StillFormats.TryReadJxlSize(jxl);
         Assert.Equal((48, 64), size);
+        Assert.Equal(HdrKind.None, HdrFile.Probe(jxl).Kind);
         Assert.True(StillFormats.IsJxl(StillFormats.JxlContainerSignature));
 
         var jxr = new byte[] { 0x49, 0x49, 0xBC, 0x01, 8, 0, 0, 0, 0, 0 };
         Assert.True(StillFormats.IsJxr(jxr));
         Assert.False(StillFormats.JxrLooksHdr(jxr));
         Assert.Equal(HdrKind.None, HdrFile.Probe(jxr).Kind);
+    }
+
+    [Fact]
+    public void Jxl_CodestreamPq10Bit_IsPresentableHdr()
+    {
+        var jxl = JxlCodestreamHdr(transfer: 16, bitDepth10: true);
+        var probe = HdrFile.Probe(jxl);
+        Assert.Equal(HdrKind.HdrJxl, probe.Kind);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Equal(16, probe.CicpTransfer);
+        Assert.Equal(9, probe.CicpPrimaries);
+        Assert.Equal(10, probe.BitDepth);
+        Assert.Equal((8, 8), StillFormats.TryReadJxlSize(jxl));
+    }
+
+    [Fact]
+    public void Jxl_ContainerColrPq_IsPresentableHdr()
+    {
+        var jxl = JxlContainerWithColr(primaries: 9, transfer: 16, matrix: 9, fullRange: true);
+        var probe = HdrFile.Probe(jxl);
+        Assert.Equal(HdrKind.HdrJxl, probe.Kind);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Equal(16, probe.CicpTransfer);
+        Assert.Equal(9, probe.CicpPrimaries);
+        Assert.True(probe.FullRange);
+        Assert.Equal((8, 8), StillFormats.TryReadJxlSize(jxl));
     }
 
     [Fact]
@@ -114,6 +141,27 @@ public sealed class StillFormatTests
         Assert.True(probe.CanPresentHdr);
         Assert.Equal(HdrTransfer.Pq, probe.Transfer);
         Assert.Equal(10, probe.BitDepth);
+    }
+
+    [Fact]
+    public void Avif_Av1CLimitedRange_IsNotFull()
+    {
+        var limited = AvifWithAv1CSequence(64, 48, fullRange: false);
+        var info = AvifFile.Probe(limited);
+        Assert.Equal(10, info.BitDepth);
+        Assert.Equal(9, info.CicpPrimaries);
+        Assert.Equal(16, info.CicpTransfer);
+        Assert.Equal(9, info.CicpMatrix);
+        Assert.False(info.FullRange);
+        var probe = AvifFile.ToHdrProbe(info);
+        Assert.False(probe.FullRange);
+        Assert.True(probe.CanPresentHdr);
+
+        var full = AvifWithAv1CSequence(64, 48, fullRange: true);
+        Assert.True(AvifFile.Probe(full).FullRange);
+
+        var colrWins = AvifWithColrAndAv1C(fullRangeColr: true, fullRangeAv1C: false);
+        Assert.True(AvifFile.Probe(colrWins).FullRange);
     }
 
     [Fact]
@@ -169,6 +217,193 @@ public sealed class StillFormatTests
         data[offset + 1] = (byte)(value >> 16);
         data[offset + 2] = (byte)(value >> 8);
         data[offset + 3] = (byte)value;
+    }
+
+    private static byte[] JxlCodestreamHdr(int transfer, bool bitDepth10)
+    {
+        var bits = new JxlLsbWriter();
+        bits.Write(1, 1);
+        bits.Write(5, 0);
+        bits.Write(3, 1);
+        bits.Write(1, 0);
+        bits.Write(1, 0);
+        bits.Write(1, 0);
+        bits.Write(2, bitDepth10 ? 1 : 0);
+        bits.Write(1, 1);
+        bits.Write(2, 0);
+        bits.Write(1, 0);
+        bits.Write(1, 0);
+        bits.Write(1, 0);
+        bits.WriteEnum(0);
+        bits.WriteEnum(1);
+        bits.WriteEnum(9);
+        bits.Write(1, 0);
+        bits.WriteEnum(transfer);
+        bits.WriteEnum(1);
+        var body = bits.ToArray();
+        var jxl = new byte[2 + body.Length];
+        jxl[0] = 0xFF;
+        jxl[1] = 0x0A;
+        body.CopyTo(jxl, 2);
+        return jxl;
+    }
+
+    private static byte[] JxlContainerWithColr(int primaries, int transfer, int matrix, bool fullRange)
+    {
+        var bits = new JxlLsbWriter();
+        bits.Write(1, 1);
+        bits.Write(5, 0);
+        bits.Write(3, 1);
+        bits.Write(1, 1);
+        var codestream = new byte[2 + bits.ToArray().Length];
+        codestream[0] = 0xFF;
+        codestream[1] = 0x0A;
+        bits.ToArray().CopyTo(codestream, 2);
+
+        using var ms = new MemoryStream();
+        ms.Write(StillFormats.JxlContainerSignature);
+        WriteBox(ms, "colr", Nclx(primaries, transfer, matrix, fullRange));
+        WriteBox(ms, "jxlc", codestream);
+        return ms.ToArray();
+    }
+
+    private sealed class JxlLsbWriter
+    {
+        private readonly List<byte> _bytes = [];
+        private int _bit;
+
+        public void Write(int count, int value)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var byteIndex = _bit / 8;
+                while (_bytes.Count <= byteIndex)
+                {
+                    _bytes.Add(0);
+                }
+
+                if (((value >> i) & 1) != 0)
+                {
+                    _bytes[byteIndex] |= (byte)(1 << (_bit % 8));
+                }
+
+                _bit++;
+            }
+        }
+
+        public void WriteEnum(int value)
+        {
+            if (value == 0)
+            {
+                Write(2, 0);
+            }
+            else if (value == 1)
+            {
+                Write(2, 1);
+            }
+            else if (value < 18)
+            {
+                Write(2, 2);
+                Write(4, value - 2);
+            }
+            else
+            {
+                Write(2, 3);
+                Write(6, value - 18);
+            }
+        }
+
+        public byte[] ToArray() => [.. _bytes];
+    }
+
+    private static byte[] AvifWithAv1CSequence(int width, int height, bool fullRange)
+    {
+        using var ipco = new MemoryStream();
+        WriteBox(ipco, "ispe", [.. Be32(width), .. Be32(height)], fullBox: true);
+        WriteBox(ipco, "av1C", Av1CWithSequence(fullRange));
+        using var iprp = new MemoryStream();
+        WriteBox(iprp, "ipco", ipco.ToArray());
+        using var meta = new MemoryStream();
+        WriteBox(meta, "iprp", iprp.ToArray());
+        using var ms = new MemoryStream();
+        WriteBox(ms, "ftyp", [.. Encoding.ASCII.GetBytes("avif"), 0, 0, 0, 0, .. Encoding.ASCII.GetBytes("avif"), .. Encoding.ASCII.GetBytes("mif1")]);
+        WriteBox(ms, "meta", meta.ToArray(), fullBox: true);
+        return ms.ToArray();
+    }
+
+    private static byte[] AvifWithColrAndAv1C(bool fullRangeColr, bool fullRangeAv1C)
+    {
+        using var ipco = new MemoryStream();
+        WriteBox(ipco, "ispe", [.. Be32(32), .. Be32(32)], fullBox: true);
+        WriteBox(ipco, "colr", Nclx(9, 16, 9, fullRangeColr));
+        WriteBox(ipco, "av1C", Av1CWithSequence(fullRangeAv1C));
+        using var iprp = new MemoryStream();
+        WriteBox(iprp, "ipco", ipco.ToArray());
+        using var meta = new MemoryStream();
+        WriteBox(meta, "iprp", iprp.ToArray());
+        using var ms = new MemoryStream();
+        WriteBox(ms, "ftyp", [.. Encoding.ASCII.GetBytes("avif"), 0, 0, 0, 0, .. Encoding.ASCII.GetBytes("avif")]);
+        WriteBox(ms, "meta", meta.ToArray(), fullBox: true);
+        return ms.ToArray();
+    }
+
+    private static byte[] Av1CWithSequence(bool fullRange)
+    {
+        var obu = new Av1MsbWriter();
+        obu.Write(1, 0);
+        obu.Write(4, 1);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(3, 0);
+        obu.Write(1, 1);
+        obu.Write(1, 1);
+        obu.Write(5, 0);
+        obu.Write(4, 0);
+        obu.Write(4, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 0);
+        obu.Write(1, 1);
+        obu.Write(1, 0);
+        obu.Write(1, 1);
+        obu.Write(8, 9);
+        obu.Write(8, 16);
+        obu.Write(8, 9);
+        obu.Write(1, fullRange ? 1 : 0);
+        return [0x81, 0x00, 0x40, 0x00, .. obu.ToArray()];
+    }
+
+    private sealed class Av1MsbWriter
+    {
+        private readonly List<byte> _bytes = [];
+        private int _bit;
+
+        public void Write(int count, int value)
+        {
+            for (var i = count - 1; i >= 0; i--)
+            {
+                var byteIndex = _bit / 8;
+                while (_bytes.Count <= byteIndex)
+                {
+                    _bytes.Add(0);
+                }
+
+                if (((value >> i) & 1) != 0)
+                {
+                    _bytes[byteIndex] |= (byte)(1 << (7 - (_bit % 8)));
+                }
+
+                _bit++;
+            }
+        }
+
+        public byte[] ToArray() => [.. _bytes];
     }
 
     private static byte[] AvifWithAv1C(int width, int height, bool highBitDepth)

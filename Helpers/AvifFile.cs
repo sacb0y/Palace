@@ -769,33 +769,57 @@ public static class AvifFile
                 bits.Read(1);
             }
 
+            var mono = false;
             if (profile != 1)
             {
-                bits.Read(1);
+                mono = bits.Read(1) != 0;
             }
 
             var colorPresent = bits.Read(1) != 0;
-            if (!colorPresent)
+            var primaries = 2;
+            var transfer = 2;
+            var matrix = 2;
+            if (colorPresent)
             {
-                return;
+                primaries = bits.Read(8);
+                transfer = bits.Read(8);
+                matrix = bits.Read(8);
+                if (info.CicpPrimaries is null)
+                {
+                    info = info with { CicpPrimaries = primaries };
+                }
+
+                if (info.CicpTransfer is null)
+                {
+                    info = info with { CicpTransfer = transfer };
+                }
+
+                if (info.CicpMatrix is null)
+                {
+                    info = info with { CicpMatrix = matrix };
+                }
             }
 
-            var primaries = bits.Read(8);
-            var transfer = bits.Read(8);
-            var matrix = bits.Read(8);
-            if (info.CicpPrimaries is null)
+            // color_config: identity sRGB forces full range and omits the
+            // bit. Everything else — including unspecified CICP — carries
+            // color_range (0 limited, 1 full).
+            bool fullRange;
+            if (mono)
             {
-                info = info with { CicpPrimaries = primaries };
+                fullRange = bits.Read(1) != 0;
+            }
+            else if (primaries == 1 && transfer == 13 && matrix == 0)
+            {
+                fullRange = true;
+            }
+            else
+            {
+                fullRange = bits.Read(1) != 0;
             }
 
-            if (info.CicpTransfer is null)
+            if (info.FullRange is null)
             {
-                info = info with { CicpTransfer = transfer };
-            }
-
-            if (info.CicpMatrix is null)
-            {
-                info = info with { CicpMatrix = matrix };
+                info = info with { FullRange = fullRange };
             }
         }
         catch

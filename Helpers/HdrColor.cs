@@ -205,6 +205,30 @@ public static class HdrColor
     }
 
     /// <summary>
+    /// Info CIE Y in the source primaries (PQ/HLG nits before 2020→709).
+    /// Do not measure scRGB after the primaries matrix — that is display
+    /// 709 and reads high versus SKIV when <c>LuminanceY</c> still uses
+    /// BT.2020 weights.
+    /// </summary>
+    public static float SourcePrimaryNitsY(
+        float encodedR,
+        float encodedG,
+        float encodedB,
+        HdrTransfer transfer,
+        int? primaries) =>
+        GalleryPresent.LuminanceY(
+            GalleryPresent.EncodedToNits(encodedR, transfer),
+            GalleryPresent.EncodedToNits(encodedG, transfer),
+            GalleryPresent.EncodedToNits(encodedB, transfer),
+            primaries == 9);
+
+    public static float YuvSourcePrimaryNitsY(float y, float u, float v, HdrProbe probe)
+    {
+        YuvToRgb(y, u, v, probe.CicpMatrix ?? 9, probe.FullRange ?? true, out var r, out var g, out var b);
+        return SourcePrimaryNitsY(r, g, b, probe.Transfer, probe.CicpPrimaries);
+    }
+
+    /// <summary>
     /// WIC <c>Rgba16</c> on HDR AVIF often writes luma in R and zeros G/B
     /// (DoNotColorManage skips libavif’s YUV→RGB). SKIV never presents that.
     /// </summary>

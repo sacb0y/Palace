@@ -65,6 +65,39 @@ public sealed class HdrColorTests
     }
 
     [Fact]
+    public void SourcePrimaryY_IsBefore2020To709()
+    {
+        var sourceY = HdrColor.SourcePrimaryNitsY(1f, 0f, 0f, HdrTransfer.Pq, 9);
+        Assert.InRange(sourceY, 2625f, 2630f);
+
+        HdrColor.EncodedRgbToScrgb(1f, 0f, 0f, HdrTransfer.Pq, 9, out var sr, out var sg, out var sb);
+        var afterPrimaries = GalleryPresent.LuminanceY(
+            sr * GalleryPresent.ScrgbNits,
+            sg * GalleryPresent.ScrgbNits,
+            sb * GalleryPresent.ScrgbNits,
+            true);
+        Assert.True(afterPrimaries > sourceY + 400f, $"post-matrix {afterPrimaries} vs source {sourceY}");
+
+        var probe = new HdrProbe(HdrKind.HdrAvif, 9, 16, null, 9, true, 10);
+        HdrColor.YuvToRgb(1f, 0.5f, 0.5f, 9, true, out var r, out var g, out var b);
+        Assert.InRange(HdrColor.YuvSourcePrimaryNitsY(1f, 0.5f, 0.5f, probe), 9990f, 10010f);
+        Assert.Equal(HdrColor.SourcePrimaryNitsY(r, g, b, HdrTransfer.Pq, 9), HdrColor.YuvSourcePrimaryNitsY(1f, 0.5f, 0.5f, probe), 2);
+    }
+
+    [Fact]
+    public void LimitedRangeYuv_ExpandsStudioBlack()
+    {
+        var y = 16f / 255f;
+        var c = 128f / 255f;
+        HdrColor.YuvToRgb(y, c, c, 9, true, out var fr, out _, out _);
+        HdrColor.YuvToRgb(y, c, c, 9, false, out var lr, out var lg, out var lb);
+        Assert.True(fr > 0.05f);
+        Assert.InRange(lr, -0.001f, 0.001f);
+        Assert.InRange(lg, -0.001f, 0.001f);
+        Assert.InRange(lb, -0.001f, 0.001f);
+    }
+
+    [Fact]
     public void P010_MsbAlignedPeakIsOne()
     {
         var y = (ushort)(1023 << 6);

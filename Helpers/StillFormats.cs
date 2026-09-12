@@ -260,6 +260,10 @@ public static class StillFormats
     private static JxlInfo TryReadJxlBasic(ReadOnlySpan<byte> data)
     {
         ReadOnlySpan<byte> codestream = default;
+        int? colrPrimaries = null;
+        int? colrTransfer = null;
+        int? colrMatrix = null;
+        bool? colrFullRange = null;
         if (data.Length >= 2 && data[0] == 0xFF && data[1] == 0x0A)
         {
             codestream = data[2..];
@@ -275,23 +279,46 @@ public static class StillFormats
                 long box = size;
                 if (size == 1)
                 {
-                    break;
-                }
+                    if (i + 16 > data.Length)
+                    {
+                        break;
+                    }
 
-                if (size == 0)
+                    box = ReadBe64(data, i + 8);
+                    header = 16;
+                }
+                else if (size == 0)
                 {
                     box = data.Length - i;
                 }
 
+                if (box < header)
+                {
+                    break;
+                }
+
                 var start = i + header;
                 var end = (int)Math.Min(i + box, data.Length);
-                if (type == "jxlc" && end > start)
+                if (type == "colr" && end - start >= 11 && Encoding.ASCII.GetString(data.Slice(start, 4)) == "nclx")
+                {
+                    colrPrimaries = (data[start + 4] << 8) | data[start + 5];
+                    colrTransfer = (data[start + 6] << 8) | data[start + 7];
+                    colrMatrix = (data[start + 8] << 8) | data[start + 9];
+                    colrFullRange = (data[start + 10] & 0x80) != 0;
+                }
+                else if (codestream.Length == 0 && type == "jxlc" && end > start)
                 {
                     var payload = data[start..end];
                     codestream = payload.Length >= 2 && payload[0] == 0xFF && payload[1] == 0x0A
                         ? payload[2..]
                         : payload;
-                    break;
+                }
+                else if (codestream.Length == 0 && type == "jxlp" && end - start > 4)
+                {
+                    var payload = data[(start + 4)..end];
+                    codestream = payload.Length >= 2 && payload[0] == 0xFF && payload[1] == 0x0A
+                        ? payload[2..]
+                        : payload;
                 }
 
                 i = end;
@@ -300,7 +327,9 @@ public static class StillFormats
 
         if (codestream.Length == 0)
         {
-            return default;
+            return colrTransfer is not null || colrPrimaries is not null
+                ? new JxlInfo(null, null, null, colrPrimaries, colrTransfer, colrMatrix, colrFullRange)
+                : default;
         }
 
         try
@@ -322,12 +351,274 @@ public static class StillFormats
                 width = ratio == 0 ? bits.ReadU32(9, 13, 18, 30) + 1 : AspectWidth(height, ratio);
             }
 
-            return new JxlInfo(width, height, null, null, null, null, null);
+            int? bitDepth = null;
+            int? primaries = null;
+            int? transfer = null;
+            int? matrix = null;
+            bool? fullRange = null;
+            try
+            {
+                ReadJxlImageMetadata(ref bits, out bitDepth, out primaries, out transfer);
+            }
+            catch
+            {
+                // Size is enough for dimensions; color may live in colr.
+            }
+
+            return new JxlInfo(
+                width,
+                height,
+                bitDepth,
+                colrPrimaries ?? primaries,
+                colrTransfer ?? transfer,
+                colrMatrix ?? matrix,
+                colrFullRange ?? fullRange);
         }
         catch
         {
             return default;
         }
+    }
+
+    /// <summary>
+    /// ISO 18181-1 / libjxl <c>ImageMetadata</c> after <c>SizeHeader</c>.
+    /// Bit depth, then extra channels, then <c>ColorEncoding</c> (CICP-like
+    /// primaries / transfer). No libjxl.
+    /// </summary>
+    private static void ReadJxlImageMetadata(
+        ref JxlBits bits,
+        out int? bitDepth,
+        out int? primaries,
+        out int? transfer)
+    {
+        bitDepth = 8;
+        primaries = null;
+        transfer = null;
+        var allDefault = bits.Read(1) != 0;
+        if (allDefault)
+        {
+            return;
+        }
+
+        var extraFields = bits.Read(1) != 0;
+        if (extraFields)
+        {
+            bits.Read(3);
+            if (bits.Read(1) != 0)
+            {
+                SkipJxlSizeHeader(ref bits);
+            }
+
+            if (bits.Read(1) != 0)
+            {
+                SkipJxlPreviewHeader(ref bits);
+            }
+
+            if (bits.Read(1) != 0)
+            {
+                SkipJxlAnimationHeader(ref bits);
+            }
+        }
+
+        bitDepth = ReadJxlBitDepth(ref bits);
+        bits.Read(1);
+        var extra = bits.ReadU32Four(0, 0, 0, 1, 4, 2, 12, 1);
+        if (extra is < 0 or > 16)
+        {
+            return;
+        }
+
+        for (var i = 0; i < extra; i++)
+        {
+            SkipJxlExtraChannel(ref bits);
+        }
+
+        bits.Read(1);
+        ReadJxlColorEncoding(ref bits, out primaries, out transfer);
+    }
+
+    private static void SkipJxlSizeHeader(ref JxlBits bits)
+    {
+        var div8 = bits.Read(1) != 0;
+        if (div8)
+        {
+            bits.Read(5);
+            var ratio = bits.Read(3);
+            if (ratio == 0)
+            {
+                bits.Read(5);
+            }
+
+            return;
+        }
+
+        bits.ReadU32(9, 13, 18, 30);
+        var r = bits.Read(3);
+        if (r == 0)
+        {
+            bits.ReadU32(9, 13, 18, 30);
+        }
+    }
+
+    private static void SkipJxlPreviewHeader(ref JxlBits bits)
+    {
+        var div8 = bits.Read(1) != 0;
+        if (div8)
+        {
+            bits.ReadU32Four(0, 16, 0, 32, 5, 1, 9, 33);
+        }
+        else
+        {
+            bits.ReadU32Four(6, 1, 8, 65, 10, 321, 12, 1345);
+        }
+
+        var ratio = bits.Read(3);
+        if (ratio != 0)
+        {
+            return;
+        }
+
+        if (div8)
+        {
+            bits.ReadU32Four(0, 16, 0, 32, 5, 1, 9, 33);
+        }
+        else
+        {
+            bits.ReadU32Four(6, 1, 8, 65, 10, 321, 12, 1345);
+        }
+    }
+
+    private static void SkipJxlAnimationHeader(ref JxlBits bits)
+    {
+        bits.ReadU32Four(0, 100, 0, 1000, 10, 1, 30, 1);
+        bits.ReadU32Four(0, 1, 0, 1001, 8, 1, 10, 1);
+        bits.ReadU32Four(0, 0, 3, 0, 16, 0, 32, 0);
+        bits.Read(1);
+    }
+
+    private static int ReadJxlBitDepth(ref JxlBits bits)
+    {
+        if (bits.Read(1) != 0)
+        {
+            var bitsPer = bits.ReadU32Four(0, 32, 0, 16, 0, 24, 6, 1);
+            bits.Read(4);
+            return bitsPer;
+        }
+
+        return bits.ReadU32Four(0, 8, 0, 10, 0, 12, 6, 1);
+    }
+
+    private static void SkipJxlExtraChannel(ref JxlBits bits)
+    {
+        if (bits.Read(1) != 0)
+        {
+            return;
+        }
+
+        var type = bits.ReadEnum();
+        ReadJxlBitDepth(ref bits);
+        bits.ReadU32Four(0, 0, 0, 3, 0, 4, 3, 1);
+        var nameLen = bits.ReadU32Four(0, 0, 4, 0, 5, 16, 10, 48);
+        if (nameLen is < 0 or > 256)
+        {
+            throw new InvalidOperationException("JXL extra name");
+        }
+
+        bits.Read(8 * nameLen);
+        if (type == 0)
+        {
+            bits.Read(1);
+        }
+
+        if (type == 2)
+        {
+            bits.Read(16);
+            bits.Read(16);
+            bits.Read(16);
+            bits.Read(16);
+        }
+
+        if (type == 5)
+        {
+            bits.ReadU32Four(0, 1, 2, 0, 4, 3, 8, 19);
+        }
+    }
+
+    private static void ReadJxlColorEncoding(ref JxlBits bits, out int? primaries, out int? transfer)
+    {
+        primaries = null;
+        transfer = null;
+        if (bits.Read(1) != 0)
+        {
+            primaries = 1;
+            transfer = 13;
+            return;
+        }
+
+        var wantIcc = bits.Read(1) != 0;
+        var colorSpace = bits.ReadEnum();
+        if (wantIcc)
+        {
+            return;
+        }
+
+        // XYB (2) has an implicit white point and no primaries / TF bits.
+        if (colorSpace != 2)
+        {
+            var white = bits.ReadEnum();
+            if (white == 2)
+            {
+                SkipJxlCustomXy(ref bits);
+            }
+        }
+
+        if (colorSpace == 0)
+        {
+            var p = bits.ReadEnum();
+            if (p == 2)
+            {
+                SkipJxlCustomXy(ref bits);
+                SkipJxlCustomXy(ref bits);
+                SkipJxlCustomXy(ref bits);
+            }
+            else
+            {
+                primaries = p;
+            }
+        }
+
+        if (colorSpace != 2)
+        {
+            if (bits.Read(1) != 0)
+            {
+                bits.Read(24);
+            }
+            else
+            {
+                transfer = bits.ReadEnum();
+            }
+        }
+
+        bits.ReadEnum();
+    }
+
+    private static void SkipJxlCustomXy(ref JxlBits bits)
+    {
+        SkipJxlCustomCoord(ref bits);
+        SkipJxlCustomCoord(ref bits);
+    }
+
+    private static void SkipJxlCustomCoord(ref JxlBits bits)
+    {
+        var sel = bits.Read(2);
+        var n = sel switch
+        {
+            0 => 19,
+            1 => 19,
+            2 => 20,
+            _ => 21
+        };
+        bits.Read(n);
     }
 
     private static (int Width, int Height)? TryReadJxlCodestreamSize(ReadOnlySpan<byte> data)
@@ -402,6 +693,46 @@ public static class StillFormats
                 _ => b3
             };
             return Read(bits);
+        }
+
+        public int ReadEnum()
+        {
+            var sel = Read(2);
+            return sel switch
+            {
+                0 => 0,
+                1 => 1,
+                2 => 2 + Read(4),
+                _ => 18 + Read(6)
+            };
+        }
+
+        public int ReadU32Four(
+            int bits0,
+            int off0,
+            int bits1,
+            int off1,
+            int bits2,
+            int off2,
+            int bits3,
+            int off3)
+        {
+            var sel = Read(2);
+            var bits = sel switch
+            {
+                0 => bits0,
+                1 => bits1,
+                2 => bits2,
+                _ => bits3
+            };
+            var off = sel switch
+            {
+                0 => off0,
+                1 => off1,
+                2 => off2,
+                _ => off3
+            };
+            return off + (bits == 0 ? 0 : Read(bits));
         }
     }
 

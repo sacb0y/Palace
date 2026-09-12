@@ -444,12 +444,18 @@ internal static class HdrWicDecode
                 var x = i % width;
                 var y = i / width;
                 HdrPixels.ReadYuv(data, width, height, x, y, format, out var luma, out var u, out var v);
-                HdrColor.YuvEncodedToScrgb(luma, u, v, probe, out sr, out sg, out sb);
+                HdrColor.YuvToRgb(
+                    luma,
+                    u,
+                    v,
+                    probe.CicpMatrix ?? 9,
+                    probe.FullRange ?? true,
+                    out var er,
+                    out var eg,
+                    out var eb);
+                HdrColor.EncodedRgbToScrgb(er, eg, eb, probe.Transfer, probe.CicpPrimaries, out sr, out sg, out sb);
                 a = 1f;
-                var nitsR = sr * GalleryPresent.ScrgbNits;
-                var nitsG = sg * GalleryPresent.ScrgbNits;
-                var nitsB = sb * GalleryPresent.ScrgbNits;
-                nitsY = GalleryPresent.LuminanceY(nitsR, nitsG, nitsB, probe.CicpPrimaries == 9);
+                nitsY = HdrColor.SourcePrimaryNitsY(er, eg, eb, probe.Transfer, probe.CicpPrimaries);
             }
             else
             {
@@ -518,11 +524,7 @@ internal static class HdrWicDecode
         }
 
         HdrColor.EncodedRgbToScrgb(r, g, b, transfer, probe.CicpPrimaries, out sr, out sg, out sb);
-        nitsY = GalleryPresent.LuminanceY(
-            GalleryPresent.EncodedToNits(r, transfer),
-            GalleryPresent.EncodedToNits(g, transfer),
-            GalleryPresent.EncodedToNits(b, transfer),
-            probe.CicpPrimaries == 9);
+        nitsY = HdrColor.SourcePrimaryNitsY(r, g, b, transfer, probe.CicpPrimaries);
     }
 
     private static bool IsRgbLumaOnly(byte[] data, HdrPackedFormat format, int count)
