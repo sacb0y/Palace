@@ -169,6 +169,7 @@
                                                                             <MenuFlyoutSubItem.Icon>
                                                                                 <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
                                                                             </MenuFlyoutSubItem.Icon>
+                                                                            <MenuFlyoutItem IsEnabled="False" Text="No other groups" />
                                                                         </MenuFlyoutSubItem>
                                                                         <MenuFlyoutSubItem
                                                                             Tag="move"
@@ -177,6 +178,7 @@
                                                                             <MenuFlyoutSubItem.Icon>
                                                                                 <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
                                                                             </MenuFlyoutSubItem.Icon>
+                                                                            <MenuFlyoutItem IsEnabled="False" Text="No other groups" />
                                                                         </MenuFlyoutSubItem>
                                                                         <MenuFlyoutItem
                                                                             Command="{x:Bind pages:TagsPage.GetRemoveChipFromGroupCommand()}"
