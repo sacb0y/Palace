@@ -77,27 +77,51 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
         try
         {
-            EnsureDevice();
-            ProbeDisplay();
-            DisplayPeakNits = GalleryPresent.EffectivePeakNits(
-                _autoDisplayNits,
-                peakOverrideNits is > 0,
-                peakOverrideNits ?? 0);
-            var clip = GalleryPresent.RasterizeClipScrgb(DisplayPeakNits);
-            var half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
+            // Device / DXGI probe / buffer acquire need the UI apartment.
+            float clip = 0;
+            ushort[]? half = null;
+            await UiDispatch.RunAsync(() =>
+            {
+                EnsureDevice();
+                ProbeDisplay();
+                DisplayPeakNits = GalleryPresent.EffectivePeakNits(
+                    _autoDisplayNits,
+                    peakOverrideNits is > 0,
+                    peakOverrideNits ?? 0);
+                clip = GalleryPresent.RasterizeClipScrgb(DisplayPeakNits);
+                half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
+            });
+            if (half is null)
+            {
+                return HdrPresentOutcome.Failed;
+            }
+
             await Task.Run(
                 () => HdrRasterize.Fill(frame.ScrgbRgba, frame.Width, frame.Height, scaling, vw, vh, clip, half, cancellation),
-                cancellation);
+                cancellation).ConfigureAwait(false);
 
             if (_disposed || cancellation.IsCancellationRequested || !stillCurrent())
             {
                 return HdrPresentOutcome.Cancelled;
             }
 
-            EnsureSwapChain(vw, vh);
-            Upload(half, vw, vh);
-            Present();
-            return HdrPresentOutcome.Presented;
+            // Upload / Present must run on the UI thread even when the await
+            // resume lost the WinUI SynchronizationContext (pool continuation).
+            var outcome = HdrPresentOutcome.Cancelled;
+            await UiDispatch.RunAsync(() =>
+            {
+                if (_disposed || cancellation.IsCancellationRequested || !stillCurrent())
+                {
+                    outcome = HdrPresentOutcome.Cancelled;
+                    return;
+                }
+
+                EnsureSwapChain(vw, vh);
+                Upload(half, vw, vh);
+                Present();
+                outcome = HdrPresentOutcome.Presented;
+            });
+            return outcome;
         }
         catch (OperationCanceledException)
         {

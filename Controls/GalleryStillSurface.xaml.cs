@@ -365,13 +365,23 @@ public sealed partial class GalleryStillSurface : UserControl
         var waited = 0;
         try
         {
-            while (_presentQueue.TryTake(out var delayMs))
+            while (true)
             {
+                var delayMs = 0;
+                var have = false;
+                await UiDispatch.RunAsync(() => have = _presentQueue.TryTake(out delayMs));
+                if (!have)
+                {
+                    return;
+                }
+
                 if (delayMs > 0)
                 {
-                    await Task.Delay(delayMs);
+                    await Task.Delay(delayMs).ConfigureAwait(false);
                     waited += delayMs;
-                    if (_presentQueue.ShouldRestartDebounce(waited))
+                    var restart = false;
+                    await UiDispatch.RunAsync(() => restart = _presentQueue.ShouldRestartDebounce(waited));
+                    if (restart)
                     {
                         continue;
                     }
@@ -383,48 +393,75 @@ public sealed partial class GalleryStillSurface : UserControl
         }
         catch
         {
-            _presentQueue.Abort();
+            await UiDispatch.RunAsync(() => _presentQueue.Abort());
         }
     }
 
     private async Task PresentOnceAsync()
     {
-        if (_gallery is not { IsImage: true } gallery || _hdrFrame is not { } frame)
+        GalleryViewModel? gallery = null;
+        HdrFrame? frame = null;
+        HdrSwapchainPresenter? presenter = null;
+        var epoch = 0;
+        var dipW = 0.0;
+        var dipH = 0.0;
+        var scale = 1.0;
+        float? peakOverride = null;
+        ImageScaling scaling = ImageScaling.Fit;
+        await UiDispatch.RunAsync(() =>
+        {
+            if (_gallery is not { IsImage: true } g || _hdrFrame is not { } f)
+            {
+                return;
+            }
+
+            gallery = g;
+            frame = f;
+            scaling = g.Scaling;
+            epoch = Volatile.Read(ref _epoch);
+            _presenter ??= new HdrSwapchainPresenter(ScpHdr);
+            presenter = _presenter;
+            ApplyScaleLayout();
+            // Collapsed panels report ActualWidth 0. Show the swapchain under the
+            // SDR image so layout/composition can run, then hide the image on success.
+            ScpHdr.Visibility = Visibility.Visible;
+            ImgStill.Visibility = Visibility.Visible;
+            (dipW, dipH) = HdrPanelDips();
+            scale = XamlRoot?.RasterizationScale ?? 1.0;
+            peakOverride = GalleryPeak.PresentOverrideNits;
+        });
+
+        if (gallery is null || frame is null || presenter is null)
         {
             return;
         }
 
-        var epoch = Volatile.Read(ref _epoch);
-        _presenter ??= new HdrSwapchainPresenter(ScpHdr);
-        var presenter = _presenter;
-        ApplyScaleLayout();
-        // Collapsed panels report ActualWidth 0. Show the swapchain under the
-        // SDR image so layout/composition can run, then hide the image on success.
-        ScpHdr.Visibility = Visibility.Visible;
-        ImgStill.Visibility = Visibility.Visible;
-        var (dipW, dipH) = HdrPanelDips();
-        var scale = XamlRoot?.RasterizationScale ?? 1.0;
-        float? peakOverride = GalleryPeak.PresentOverrideNits;
+        var galleryRef = gallery;
+        var frameRef = frame;
+        var presenterRef = presenter;
         bool StillCurrent() =>
             epoch == Volatile.Read(ref _epoch)
-            && ReferenceEquals(_gallery, gallery)
-            && ReferenceEquals(_hdrFrame, frame)
-            && ReferenceEquals(_presenter, presenter);
+            && ReferenceEquals(_gallery, galleryRef)
+            && ReferenceEquals(_hdrFrame, frameRef)
+            && ReferenceEquals(_presenter, presenterRef);
 
         using var cts = new CancellationTokenSource();
-        _presentCts = cts;
+        await UiDispatch.RunAsync(() => _presentCts = cts);
         HdrPresentOutcome outcome;
         try
         {
-            outcome = await presenter.TryPresentAsync(
-                frame, gallery.Scaling, (float)scale, dipW, dipH, peakOverride, StillCurrent, cts.Token);
+            outcome = await presenterRef.TryPresentAsync(
+                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, StillCurrent, cts.Token);
         }
         finally
         {
-            if (ReferenceEquals(_presentCts, cts))
+            await UiDispatch.RunAsync(() =>
             {
-                _presentCts = null;
-            }
+                if (ReferenceEquals(_presentCts, cts))
+                {
+                    _presentCts = null;
+                }
+            });
         }
 
         if (outcome == HdrPresentOutcome.Cancelled || !StillCurrent())
@@ -432,25 +469,34 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (outcome == HdrPresentOutcome.Presented)
+        await UiDispatch.RunAsync(() =>
         {
-            ImgStill.Visibility = Visibility.Collapsed;
-            gallery.SetHdrPresentResult(
-                true,
-                presenter.DisplayIsHdr,
-                presenter.DisplayPeakNits,
-                frame.MaxNits,
-                frame.AvgNits,
-                frame.MinNits,
-                frame.MaxScrgb,
-                frame.NativeWidth,
-                frame.NativeHeight,
-                GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight));
-            return;
-        }
+            if (!StillCurrent())
+            {
+                return;
+            }
 
-        HideHdr();
-        gallery.SetHdrPresentResult(false, presenter.DisplayIsHdr);
+            if (outcome == HdrPresentOutcome.Presented)
+            {
+                ImgStill.Visibility = Visibility.Collapsed;
+                galleryRef.SetHdrPresentResult(
+                    true,
+                    presenterRef.DisplayIsHdr,
+                    presenterRef.DisplayPeakNits,
+                    frameRef.MaxNits,
+                    frameRef.AvgNits,
+                    frameRef.MinNits,
+                    frameRef.MaxScrgb,
+                    frameRef.NativeWidth,
+                    frameRef.NativeHeight,
+                    GalleryPresent.IsNativeDecode(
+                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight));
+                return;
+            }
+
+            HideHdr();
+            galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
+        });
     }
     private (double Width, double Height) HdrPanelDips()
     {
