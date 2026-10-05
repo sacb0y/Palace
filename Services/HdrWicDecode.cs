@@ -104,7 +104,22 @@ internal static class HdrWicDecode
         }
     }
 
-    public static async Task<HdrStats?> TryMeasureAsync(string path, HdrProbe probe, CancellationToken cancellation)
+    public static Task<HdrStats?> TryMeasureAsync(
+        string path,
+        HdrProbe probe,
+        CancellationToken cancellation) =>
+        TryMeasureAsync(path, probe, 0, 0, cancellation);
+
+    /// <summary>
+    /// CIE Y / MaxCLL from a downscaled or viewport-sized frame — never a
+    /// native 16384² decode. File pixel size is still reported as native.
+    /// </summary>
+    public static async Task<HdrStats?> TryMeasureAsync(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        CancellationToken cancellation)
     {
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
@@ -144,7 +159,43 @@ internal static class HdrWicDecode
                 return null;
             }
 
-            return await MeasureStripsAsync(decoder, nativeW, nativeH, probe, cancellation).ConfigureAwait(false);
+            var (decodeW, decodeH) = GalleryPresent.MeasureDecodeSize(
+                nativeW, nativeH, viewportPixelWidth, viewportPixelHeight);
+            if (decodeW <= 0 || decodeH <= 0)
+            {
+                decodeW = nativeW;
+                decodeH = nativeH;
+            }
+
+            var pixels = await TryPixelsAsync(
+                decoder, decodeW, decodeH, HdrColor.NeedsYuvConvert(probe.Kind), cancellation).ConfigureAwait(false);
+            if (pixels is null)
+            {
+                return null;
+            }
+
+            cancellation.ThrowIfCancellationRequested();
+            var packed = pixels.Value;
+            return await Task.Run(
+                () =>
+                {
+                    var converted = Convert(
+                        packed.Data, packed.Format, decodeW, decodeH, probe,
+                        wantRgba: false, checkLumaOnly: true, cancellation);
+                    if (converted is null)
+                    {
+                        return (HdrStats?)null;
+                    }
+
+                    return new HdrStats(
+                        converted.Value.MaxNits,
+                        (float)(converted.Value.SumNits / (decodeW * decodeH)),
+                        converted.Value.MinNits,
+                        converted.Value.MaxScrgb,
+                        nativeW,
+                        nativeH);
+                },
+                cancellation).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -186,45 +237,28 @@ internal static class HdrWicDecode
         }
     }
 
-    /// <summary>
-    /// <paramref name="bounds"/> crops a native-resolution strip (source space,
-    /// <c>IgnoreExifOrientation</c>); otherwise the frame is scaled to
-    /// <paramref name="width"/>×<paramref name="height"/> with EXIF applied.
-    /// <paramref name="onlyFormat"/> pins later strips to the first strip's format.
-    /// </summary>
     private static async Task<(byte[] Data, HdrPackedFormat Format)?> TryPixelsAsync(
         BitmapDecoder decoder,
         int width,
         int height,
         bool preferYuv,
-        CancellationToken cancellation,
-        BitmapBounds? bounds = null,
-        HdrPackedFormat? onlyFormat = null)
+        CancellationToken cancellation)
     {
         var transform = new BitmapTransform();
-        var orientation = bounds is null
-            ? ExifOrientationMode.RespectExifOrientation
-            : ExifOrientationMode.IgnoreExifOrientation;
-        if (bounds is { } crop)
+        var sourceW = (int)decoder.PixelWidth;
+        var sourceH = (int)decoder.PixelHeight;
+        var orientedW = (int)decoder.OrientedPixelWidth;
+        var orientedH = (int)decoder.OrientedPixelHeight;
+        var (scaleW, scaleH) = HdrPixels.SourceScaleSize(
+            sourceW, sourceH, orientedW, orientedH, width, height);
+        if (scaleW > 0 && scaleH > 0 && (scaleW < sourceW || scaleH < sourceH))
         {
-            transform.Bounds = crop;
-        }
-        else
-        {
-            var sourceW = (int)decoder.PixelWidth;
-            var sourceH = (int)decoder.PixelHeight;
-            var orientedW = (int)decoder.OrientedPixelWidth;
-            var orientedH = (int)decoder.OrientedPixelHeight;
-            var (scaleW, scaleH) = HdrPixels.SourceScaleSize(
-                sourceW, sourceH, orientedW, orientedH, width, height);
-            if (scaleW > 0 && scaleH > 0 && (scaleW < sourceW || scaleH < sourceH))
-            {
-                transform.ScaledWidth = (uint)scaleW;
-                transform.ScaledHeight = (uint)scaleH;
-                transform.InterpolationMode = BitmapInterpolationMode.Linear;
-            }
+            transform.ScaledWidth = (uint)scaleW;
+            transform.ScaledHeight = (uint)scaleH;
+            transform.InterpolationMode = BitmapInterpolationMode.Linear;
         }
 
+        const ExifOrientationMode orientation = ExifOrientationMode.RespectExifOrientation;
         if (preferYuv)
         {
             foreach (var (wic, packed) in new[]
@@ -233,11 +267,6 @@ internal static class HdrWicDecode
                 (BitmapPixelFormat.Nv12, HdrPackedFormat.Nv12)
             })
             {
-                if (onlyFormat is { } pinned && pinned != packed)
-                {
-                    continue;
-                }
-
                 cancellation.ThrowIfCancellationRequested();
                 var yuv = await TryYuvAsync(decoder, wic, packed, transform, orientation, width, height).ConfigureAwait(false);
                 if (yuv is not null)
@@ -254,11 +283,6 @@ internal static class HdrWicDecode
             (BitmapPixelFormat.Bgra8, HdrPackedFormat.Bgra8)
         })
         {
-            if (onlyFormat is { } pinned && pinned != packed)
-            {
-                continue;
-            }
-
             cancellation.ThrowIfCancellationRequested();
             try
             {
@@ -396,93 +420,6 @@ internal static class HdrWicDecode
             MinNits = converted.Value.MinNits,
             MaxScrgb = converted.Value.MaxScrgb
         };
-    }
-
-    /// <summary>
-    /// Native-resolution stats in bounded memory: one frame when it fits
-    /// <see cref="HdrStatsTiling.MaxStripPixels"/>, else full-width strips
-    /// merged by <see cref="HdrStatsAccumulator"/>. Not downscaled — a mean-
-    /// filtered frame would lower Max luminance / MaxCLL.
-    /// </summary>
-    private static async Task<HdrStats?> MeasureStripsAsync(
-        BitmapDecoder decoder,
-        int nativeW,
-        int nativeH,
-        HdrProbe probe,
-        CancellationToken cancellation)
-    {
-        var sourceW = (int)decoder.PixelWidth;
-        var sourceH = (int)decoder.PixelHeight;
-        var strips = HdrStatsTiling.PlanStrips(sourceW, sourceH);
-        if (strips.Count == 0)
-        {
-            return null;
-        }
-
-        var whole = strips.Count == 1;
-        var preferYuv = HdrColor.NeedsYuvConvert(probe.Kind);
-        var accumulator = new HdrStatsAccumulator();
-        HdrPackedFormat? pinned = null;
-        var maxR = 0f;
-        var maxG = 0f;
-        var maxB = 0f;
-        foreach (var (y, h) in strips)
-        {
-            cancellation.ThrowIfCancellationRequested();
-            var stripW = whole ? nativeW : sourceW;
-            var stripH = whole ? nativeH : h;
-            BitmapBounds? bounds = whole
-                ? null
-                : new BitmapBounds { X = 0, Y = (uint)y, Width = (uint)sourceW, Height = (uint)h };
-            var pixels = await TryPixelsAsync(
-                decoder, stripW, stripH, preferYuv, cancellation, bounds, pinned).ConfigureAwait(false);
-            if (pixels is null)
-            {
-                return null;
-            }
-
-            cancellation.ThrowIfCancellationRequested();
-            var packed = pixels.Value;
-            pinned = packed.Format;
-            var part = await Task.Run(
-                () =>
-                {
-                    var converted = Convert(
-                        packed.Data, packed.Format, stripW, stripH, probe, wantRgba: false, checkLumaOnly: false, cancellation);
-                    if (converted is null)
-                    {
-                        return (StripPart?)null;
-                    }
-
-                    SampleMaxRgb(packed.Data, packed.Format, stripW * stripH, out var r, out var g, out var b);
-                    return new StripPart(converted.Value.MaxNits, converted.Value.MinNits, converted.Value.MaxScrgb, r, g, b, converted.Value.SumNits, (long)stripW * stripH);
-                },
-                cancellation).ConfigureAwait(false);
-            if (part is null)
-            {
-                return null;
-            }
-
-            var p = part.Value;
-            accumulator.Add(p.MaxNits, p.MinNits, p.SumNits, p.Count, p.MaxScrgb);
-            maxR = Math.Max(maxR, p.MaxR);
-            maxG = Math.Max(maxG, p.MaxG);
-            maxB = Math.Max(maxB, p.MaxB);
-        }
-
-        if (pinned is { } format
-            && !HdrPixels.IsYuv(format)
-            && preferYuv
-            && HdrColor.IsLumaInRedOnly([maxR], [maxG], [maxB]))
-        {
-            // Y in R, G=B=0 — chroma is gone.
-            return null;
-        }
-
-        var stats = accumulator.Result();
-        return stats is null
-            ? null
-            : new HdrStats(stats.Value.MaxNits, stats.Value.AvgNits, stats.Value.MinNits, stats.Value.MaxScrgb, nativeW, nativeH);
     }
 
     private static (float[]? Rgba, float MaxNits, double SumNits, float MinNits, float MaxScrgb)? Convert(
@@ -644,16 +581,6 @@ internal static class HdrWicDecode
             maxB = Math.Max(maxB, b);
         }
     }
-
-    private readonly record struct StripPart(
-        float MaxNits,
-        float MinNits,
-        float MaxScrgb,
-        float MaxR,
-        float MaxG,
-        float MaxB,
-        double SumNits,
-        long Count);
 
     [ComImport]
     [Guid("5b0d3235-4dba-4d44-865e-8f1d0e4fdd3d")]

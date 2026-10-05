@@ -186,77 +186,21 @@ public sealed class HdrPresentOffThreadTests
         Assert.True(q.Request(0));
     }
 
-    [Theory]
-    [InlineData(3840, 2160, 16 * 1024 * 1024)]
-    [InlineData(16384, 16384, 16 * 1024 * 1024)]
-    [InlineData(16384, 16383, 16 * 1024 * 1024)]
-    [InlineData(1001, 4001, 1_000_000)]
-    [InlineData(5, 7, 4)]
-    public void PlanStrips_CoversEveryRowOnceWithEvenAlignment(int w, int h, int budget)
-    {
-        var strips = HdrStatsTiling.PlanStrips(w, h, budget);
-        var next = 0;
-        for (var i = 0; i < strips.Count; i++)
-        {
-            var (y, rows) = strips[i];
-            Assert.Equal(next, y);
-            Assert.True(rows > 0);
-            Assert.Equal(0, y % HdrStatsTiling.RowAlign);
-            if (i < strips.Count - 1)
-            {
-                Assert.Equal(0, rows % HdrStatsTiling.RowAlign);
-            }
-
-            if (strips.Count > 1 && w * HdrStatsTiling.RowAlign <= budget)
-            {
-                Assert.True((long)rows * w <= budget);
-            }
-
-            next = y + rows;
-        }
-
-        Assert.Equal(h, next);
-    }
-
     [Fact]
-    public void PlanStrips_FitsInOneFrameWhenUnderBudget()
+    public void MeasureDecodeSize_UsesViewportOrFastCap_NeverNative16384()
     {
-        Assert.Equal([(0, 2160)], HdrStatsTiling.PlanStrips(3840, 2160));
-        Assert.Empty(HdrStatsTiling.PlanStrips(0, 10));
-        Assert.Equal(16, HdrStatsTiling.PlanStrips(16384, 16384).Count);
-    }
+        var view = GalleryPresent.MeasureDecodeSize(3840, 2160, 1280, 720);
+        Assert.Equal(GalleryPresent.PresentDecodeSize(3840, 2160, 1280, 720, ImageScaling.Fit), view);
+        Assert.True(view.Width <= 1280);
+        Assert.True(view.Height <= 720);
 
-    [Fact]
-    public void StatsAccumulator_MergedStripsEqualWhole()
-    {
-        var values = Enumerable.Range(1, 1000).Select(i => i * 0.5f).ToArray();
-        var whole = new HdrStatsAccumulator();
-        whole.Add(values.Max(), values.Min(), values.Sum(v => (double)v), values.Length, 9f);
+        var huge = GalleryPresent.MeasureDecodeSize(16384, 16384, 0, 0);
+        Assert.True(Math.Max(huge.Width, huge.Height) <= GalleryPresent.FastPresentLongEdge);
+        Assert.NotEqual((16384, 16384), huge);
 
-        var parts = new HdrStatsAccumulator();
-        foreach (var chunk in values.Chunk(333))
-        {
-            parts.Add(chunk.Max(), chunk.Min(), chunk.Sum(v => (double)v), chunk.Length, chunk.Max() / 80f);
-        }
-
-        var a = whole.Result()!.Value;
-        var b = parts.Result()!.Value;
-        Assert.Equal(a.MaxNits, b.MaxNits);
-        Assert.Equal(a.MinNits, b.MinNits);
-        Assert.Equal(a.AvgNits, b.AvgNits, 3);
-        Assert.Equal(500f / 80f, b.MaxScrgb);
-        Assert.Equal(1000, parts.Count);
-    }
-
-    [Fact]
-    public void StatsAccumulator_AllBlack_IsZeroNotFloatMax()
-    {
-        var acc = new HdrStatsAccumulator();
-        Assert.Null(acc.Result());
-        acc.Add(0, 0, 0, 100, 0);
-        var r = acc.Result()!.Value;
-        Assert.Equal(0, r.MaxNits);
-        Assert.Equal(0, r.MinNits);
-        Assert.Equal(0, r.AvgNits);
+        // Actual present is native; measure always Fit-caps.
+        Assert.Equal((3840, 2160), GalleryPresent.PresentDecodeSize(3840, 2160, 1280, 720, ImageScaling.Actual));
+        var measureActualViewport = GalleryPresent.MeasureDecodeSize(3840, 2160, 1280, 720);
+        Assert.True(measureActualViewport.Width < 3840);
     }
 }

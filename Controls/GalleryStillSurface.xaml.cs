@@ -272,8 +272,19 @@ public sealed partial class GalleryStillSurface : UserControl
             RequestPresent(HdrPresentCoalescer.ImmediateMs);
             if (!GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight))
             {
-                _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
-                _ = MeasureStatsAsync(gallery, still, gallery.CurrentProbe, epoch, _hdrLoadCts.Token);
+                // Prefer CIE Y / MaxCLL already on the viewport frame. A
+                // separate measure uses the same downscale caps — never native
+                // 16384².
+                if (frame.MaxNits > 0 || frame.MaxScrgb > 0)
+                {
+                    gallery.SetHdrStats(frame.MaxNits, frame.AvgNits, frame.MinNits, frame.MaxScrgb);
+                }
+                else
+                {
+                    _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
+                    _ = MeasureStatsAsync(
+                        gallery, still, gallery.CurrentProbe, viewPxW, viewPxH, epoch, _hdrLoadCts.Token);
+                }
             }
         });
     }
@@ -282,13 +293,16 @@ public sealed partial class GalleryStillSurface : UserControl
         GalleryViewModel gallery,
         string path,
         HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
         int epoch,
         CancellationToken cancellation)
     {
         HdrStats? stats = null;
         try
         {
-            stats = await HdrWicDecode.TryMeasureAsync(path, probe, cancellation);
+            stats = await HdrWicDecode.TryMeasureAsync(
+                path, probe, viewportPixelWidth, viewportPixelHeight, cancellation);
         }
         catch
         {

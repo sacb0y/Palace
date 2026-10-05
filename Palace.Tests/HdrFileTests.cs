@@ -282,6 +282,9 @@ public sealed class HdrFileTests
         var unknown = GalleryPresent.PresentDecodeSize(3840, 2160, 0, 0, ImageScaling.Fit);
         Assert.True(Math.Max(unknown.Width, unknown.Height) <= GalleryPresent.FastPresentLongEdge);
         Assert.Equal((3840, 2160), GalleryPresent.PresentDecodeSize(3840, 2160, 1280, 720, ImageScaling.Actual));
+        Assert.Equal(fit, GalleryPresent.MeasureDecodeSize(3840, 2160, 1280, 720));
+        var measureHuge = GalleryPresent.MeasureDecodeSize(16384, 16384, 0, 0);
+        Assert.True(Math.Max(measureHuge.Width, measureHuge.Height) <= GalleryPresent.FastPresentLongEdge);
         Assert.True(GalleryPresent.NeedsBetterDecode(1280, 720, 3840, 2160));
         Assert.False(GalleryPresent.NeedsBetterDecode(3840, 2160, 1280, 720));
         Assert.True(GalleryPresent.IsNativeDecode(3840, 2160, 3840, 2160));
