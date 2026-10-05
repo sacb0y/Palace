@@ -18,6 +18,8 @@ public sealed partial class GalleryStillSurface : UserControl
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
     private CancellationTokenSource? _hdrLoadCts;
+    private CancellationTokenSource? _presentCts;
+    private readonly HdrPresentCoalescer _presentQueue = new();
     private bool _panning;
     private double _panLastX;
     private double _panLastY;
@@ -93,12 +95,13 @@ public sealed partial class GalleryStillSurface : UserControl
         _peakHooked = false;
     }
 
-    private void GalleryPeak_Changed(object? sender, EventArgs e) => PresentCached();
+    private void GalleryPeak_Changed(object? sender, EventArgs e) => PresentCached(HdrPresentCoalescer.SettleMs);
 
     private void CancelInFlight()
     {
         Interlocked.Increment(ref _epoch);
         _hdrLoadCts?.Cancel();
+        _presentCts?.Cancel();
     }
 
     private void Gallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -124,7 +127,7 @@ public sealed partial class GalleryStillSurface : UserControl
                 }
             }
 
-            PresentCached();
+            PresentCached(HdrPresentCoalescer.ImmediateMs);
             return;
         }
 
@@ -154,13 +157,14 @@ public sealed partial class GalleryStillSurface : UserControl
                 return;
             }
 
-            PresentCached();
+            PresentCached(HdrPresentCoalescer.SettleMs);
         }
     }
 
     private async Task RefreshAsync()
     {
         _hdrLoadCts?.Cancel();
+        _presentCts?.Cancel();
         var epoch = Interlocked.Increment(ref _epoch);
         var gallery = _gallery;
         ApplyScaleLayout();
@@ -265,7 +269,7 @@ public sealed partial class GalleryStillSurface : UserControl
             _hdrFramePath = still;
             _hdrFrameProbe = gallery.CurrentProbe;
             ApplyScaleLayout();
-            PresentFrame(gallery, frame);
+            RequestPresent(HdrPresentCoalescer.ImmediateMs);
             if (!GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight))
             {
                 _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
@@ -314,19 +318,71 @@ public sealed partial class GalleryStillSurface : UserControl
             ? _hdrFrame
             : null;
 
-    private void PresentCached()
+    private void PresentCached(int delayMs) => RequestPresent(delayMs);
+
+    private void RequestPresent(int delayMs)
     {
-        if (_gallery is not { IsImage: true } gallery || _hdrFrame is null)
+        if (_gallery is not { IsImage: true } || _hdrFrame is null)
         {
             return;
         }
 
-        PresentFrame(gallery, _hdrFrame);
+        if (delayMs <= HdrPresentCoalescer.ImmediateMs)
+        {
+            // Discrete change (new still, scale mode): a raster for the old
+            // parameters is wasted work.
+            _presentCts?.Cancel();
+        }
+
+        if (_presentQueue.Request(delayMs))
+        {
+            _ = RunPresentLoopAsync();
+        }
     }
 
-    private void PresentFrame(GalleryViewModel gallery, HdrFrame frame)
+    /// <summary>
+    /// One loop at a time. Rasterize / half-float runs off the UI thread in
+    /// <see cref="HdrSwapchainPresenter"/>; resize / peak ticks settle first
+    /// (<see cref="HdrPresentCoalescer"/>), and a result for a stale epoch,
+    /// frame, or closed overlay is dropped before upload.
+    /// </summary>
+    private async Task RunPresentLoopAsync()
     {
+        var waited = 0;
+        try
+        {
+            while (_presentQueue.TryTake(out var delayMs))
+            {
+                if (delayMs > 0)
+                {
+                    await Task.Delay(delayMs);
+                    waited += delayMs;
+                    if (_presentQueue.ShouldRestartDebounce(waited))
+                    {
+                        continue;
+                    }
+                }
+
+                waited = 0;
+                await PresentOnceAsync();
+            }
+        }
+        catch
+        {
+            _presentQueue.Abort();
+        }
+    }
+
+    private async Task PresentOnceAsync()
+    {
+        if (_gallery is not { IsImage: true } gallery || _hdrFrame is not { } frame)
+        {
+            return;
+        }
+
+        var epoch = Volatile.Read(ref _epoch);
         _presenter ??= new HdrSwapchainPresenter(ScpHdr);
+        var presenter = _presenter;
         ApplyScaleLayout();
         // Collapsed panels report ActualWidth 0. Show the swapchain under the
         // SDR image so layout/composition can run, then hide the image on success.
@@ -335,15 +391,40 @@ public sealed partial class GalleryStillSurface : UserControl
         var (dipW, dipH) = HdrPanelDips();
         var scale = XamlRoot?.RasterizationScale ?? 1.0;
         float? peakOverride = GalleryPeak.PresentOverrideNits;
-        var presented = _presenter.TryPresent(
-            frame, gallery.Scaling, (float)scale, dipW, dipH, peakOverride);
-        if (presented)
+        bool StillCurrent() =>
+            epoch == Volatile.Read(ref _epoch)
+            && ReferenceEquals(_gallery, gallery)
+            && ReferenceEquals(_hdrFrame, frame)
+            && ReferenceEquals(_presenter, presenter);
+
+        using var cts = new CancellationTokenSource();
+        _presentCts = cts;
+        HdrPresentOutcome outcome;
+        try
+        {
+            outcome = await presenter.TryPresentAsync(
+                frame, gallery.Scaling, (float)scale, dipW, dipH, peakOverride, StillCurrent, cts.Token);
+        }
+        finally
+        {
+            if (ReferenceEquals(_presentCts, cts))
+            {
+                _presentCts = null;
+            }
+        }
+
+        if (outcome == HdrPresentOutcome.Cancelled || !StillCurrent())
+        {
+            return;
+        }
+
+        if (outcome == HdrPresentOutcome.Presented)
         {
             ImgStill.Visibility = Visibility.Collapsed;
             gallery.SetHdrPresentResult(
                 true,
-                _presenter.DisplayIsHdr,
-                _presenter.DisplayPeakNits,
+                presenter.DisplayIsHdr,
+                presenter.DisplayPeakNits,
                 frame.MaxNits,
                 frame.AvgNits,
                 frame.MinNits,
@@ -355,9 +436,8 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         HideHdr();
-        gallery.SetHdrPresentResult(false, _presenter.DisplayIsHdr);
+        gallery.SetHdrPresentResult(false, presenter.DisplayIsHdr);
     }
-
     private (double Width, double Height) HdrPanelDips()
     {
         if (ScpHdr.ActualWidth >= 2 && ScpHdr.ActualHeight >= 2)
