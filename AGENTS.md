@@ -71,7 +71,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 | Preview generation fields | `Helpers/GenerationFields.cs` (empty Extract/catalog replaces prior Prompt/Model; hide Generation when `HasAny` is false) |
 | Preview notes persist | `Helpers/PreviewPersist.cs` (`ClearPreview` / overlay apply must not write notes or rating onto `SelectedAsset`) |
 | Fluent enum parse | `Helpers/FluentGlyph.cs` (XAML only) |
-| UI tests | `ui-tests.ps1` (`winapp ui`, AutomationIds) |
+| UI tests | `ui-tests.ps1` (`winapp ui`, AutomationIds; assert `Txt*` / `Btn*` / `Grd*` elements — a plain `Border` such as `BrdGalleryOverlayInfo` / `BrdGalleryImageInfo` has no automation peer, so UIA cannot see it; assert the text inside instead) |
 | App version | `Helpers/AppVersion.cs` (identity + Debug/Release + milestone) |
 
 `SourceFolder.AccessToken` is the **FutureAccessList** token. Do not store OAuth there. Cloud OAuth lives in `PasswordVault` via `CloudTokenStore`. App IDs (`OneDriveClientId`, `DropboxAppKey`) live in LocalSettings — no hardcoded secrets.
