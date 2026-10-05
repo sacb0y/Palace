@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Data\PalaceDb.cs" Link="PalaceDb.cs" />
     <Compile Include="..\Helpers\CloudFile.cs" Link="CloudFile.cs" />
     <Compile Include="..\Helpers\CloudSourcePath.cs" Link="CloudSourcePath.cs" />
     <Compile Include="..\Helpers\FolderGroups.cs" Link="FolderGroups.cs" />
@@ -45,6 +46,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="Microsoft.NET.Test.Sdk">
       <Version>18.10.0</Version>
     </PackageReference>
