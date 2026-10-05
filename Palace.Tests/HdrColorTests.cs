@@ -182,8 +182,10 @@ public sealed class HdrColorTests
         Assert.InRange(u1, 15f / 255f, 17f / 255f);
         Assert.InRange(v1, 239f / 255f, 241f / 255f);
         Assert.True(HdrPixels.IsYuv(HdrPackedFormat.Yuy2));
-        Assert.True(HdrPixels.TreatAsYuv(HdrPackedFormat.Rgba16, true));
-        Assert.False(HdrPixels.TreatAsYuv(HdrPackedFormat.Rgba16, false));
+        Assert.True(HdrPixels.TreatAsYuv(HdrPackedFormat.Rgba16, true, identityMatrix: true));
+        Assert.False(HdrPixels.TreatAsYuv(HdrPackedFormat.Rgba16, true, identityMatrix: false));
+        Assert.False(HdrPixels.TreatAsYuv(HdrPackedFormat.Rgba16, false, identityMatrix: true));
+        Assert.True(HdrPixels.TreatAsYuv(HdrPackedFormat.Yuy2, true, identityMatrix: false));
     }
 
     [Fact]

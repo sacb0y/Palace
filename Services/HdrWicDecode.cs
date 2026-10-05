@@ -417,7 +417,8 @@ internal static class HdrWicDecode
             return null;
         }
 
-        var yuv = HdrPixels.TreatAsYuv(format, HdrColor.NeedsYuvConvert(probe.Kind));
+        var identity = HdrColor.IsIdentityMatrix(probe.CicpMatrix);
+        var yuv = HdrPixels.TreatAsYuv(format, HdrColor.NeedsYuvConvert(probe.Kind), identity);
         if (yuv && !HdrPixels.IsYuv(format) && IsRgbLumaOnly(data, format, count))
         {
             // Y in R, G=B=0 — WIC dropped chroma (common for matrix=0

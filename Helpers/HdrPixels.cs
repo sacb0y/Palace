@@ -30,11 +30,20 @@ public static class HdrPixels
         format is HdrPackedFormat.P010 or HdrPackedFormat.Nv12 or HdrPackedFormat.Yuy2;
 
     /// <summary>
-    /// AVIF/HEIF 4:4:4 often cannot copy as P010. WIC may hand back
-    /// <c>Rgba16</c>/<c>Yuy2</c> with Y/U/V still in the channels.
+    /// True YUV WIC buffers, or packed RGB that still holds YUV/GBR
+    /// planes. When <paramref name="identityMatrix"/> is false, WIC
+    /// <c>Rgba16</c> for HDR AVIF is usually already RGB — do not
+    /// run CICP YUV→RGB again (magenta / MaxCLL≈207 false present).
+    /// Identity (matrix 0) still needs GBR remap on packed RGB.
     /// </summary>
-    public static bool TreatAsYuv(HdrPackedFormat format, bool needsYuvConvert) =>
-        IsYuv(format) || (needsYuvConvert && format is HdrPackedFormat.Rgba16 or HdrPackedFormat.Rgba8 or HdrPackedFormat.Bgra8);
+    public static bool TreatAsYuv(
+        HdrPackedFormat format,
+        bool needsYuvConvert,
+        bool identityMatrix = false) =>
+        IsYuv(format)
+        || (needsYuvConvert
+            && identityMatrix
+            && format is HdrPackedFormat.Rgba16 or HdrPackedFormat.Rgba8 or HdrPackedFormat.Bgra8);
 
     public static bool HasPackedData(ReadOnlySpan<byte> data, HdrPackedFormat format, int width, int height)
     {
