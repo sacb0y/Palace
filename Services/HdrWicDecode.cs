@@ -418,13 +418,12 @@ internal static class HdrWicDecode
         }
 
         var yuv = HdrPixels.TreatAsYuv(format, HdrColor.NeedsYuvConvert(probe.Kind));
-        if (yuv
-            && !HdrPixels.IsYuv(format)
-            && !HdrColor.IsIdentityMatrix(probe.CicpMatrix)
-            && IsRgbLumaOnly(data, format, count))
+        if (yuv && !HdrPixels.IsYuv(format) && IsRgbLumaOnly(data, format, count))
         {
-            // Y in R, G=B=0 — 4:2:0 chroma was dropped. Do not present
-            // Isiac’s red tint. Identity 4:4:4 GBR can be G-only.
+            // Y in R, G=B=0 — WIC dropped chroma (common for matrix=0
+            // 4:4:4: P010/Yuy2 unavailable, Rgba16 is luma-only). Do not
+            // present Isiac’s red tint, or identity GBR’s green (Y→G).
+            // Fall back to SDR preview until a real 3-channel buffer exists.
             return null;
         }
 
