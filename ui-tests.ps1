@@ -1052,10 +1052,10 @@ Test-UI 'Library shows backfilled Implied tag' {
     Start-Sleep -Milliseconds 800
     winapp ui wait-for 'TxtAssignedTags' @(WinArgs) --value $script:BfImpliedName --contains -t 6000
     if ($LASTEXITCODE -ne 0) { throw "$($script:BfImpliedName) missing after backfill" }
+    # Source is automation/tooltip only (not chip face text); UIA Name still carries "Implied".
     $chips = (Get-UiElements -Selector 'LstTags' -Depth 12 | ForEach-Object { $_.name }) -join ' '
-    $summary = Get-UiText 'LstTags'
-    if ($chips -notmatch 'Implied' -and $summary -notmatch 'Implied') {
-        throw "$($script:BfImpliedName) is present but not labeled Implied (chips='$chips')"
+    if ($chips -notmatch 'Implied') {
+        throw "$($script:BfImpliedName) is present but Automation Name missing Implied (chips='$chips')"
     }
     Ok
 }

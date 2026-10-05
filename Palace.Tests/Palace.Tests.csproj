@@ -30,6 +30,7 @@
     <Compile Include="..\Helpers\ScanContent.cs" Link="ScanContent.cs" />
     <Compile Include="..\Helpers\SelectMode.cs" Link="SelectMode.cs" />
     <Compile Include="..\Helpers\TagBoardExpand.cs" Link="TagBoardExpand.cs" />
+    <Compile Include="..\Helpers\AssignedTagChrome.cs" Link="AssignedTagChrome.cs" />
     <Compile Include="..\Helpers\TagAlphaIndex.cs" Link="TagAlphaIndex.cs" />
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
     <Compile Include="..\Helpers\TagGroups.cs" Link="TagGroups.cs" />

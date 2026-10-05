@@ -152,6 +152,7 @@ public partial class AssignedTagItem : ObservableObject
     [ObservableProperty]
     public partial string Display { get; set; } = "";
 
+    /// <summary>Manual / Implied / Mixed / … — tooltip and automation only, not chip face text.</summary>
     [ObservableProperty]
     public partial string SourceLabel { get; set; } = "";
 
@@ -175,9 +176,24 @@ public partial class AssignedTagItem : ObservableObject
     public string ChipAutomationName =>
         string.IsNullOrWhiteSpace(SourceLabel) ? TagName : $"{TagName} {SourceLabel}";
 
-    partial void OnSourceLabelChanged(string value) => OnPropertyChanged(nameof(ChipAutomationName));
+    /// <summary>Source (and optional k/n) for ToolTipService — not shown as chip chrome text.</summary>
+    public string ChipTooltip => Helpers.AssignedTagChrome.Tooltip(SourceLabel, CountLabel);
+
+    public double ChromeOpacity => Helpers.AssignedTagChrome.Opacity(IsPartial, Source);
+
+    partial void OnSourceLabelChanged(string value)
+    {
+        OnPropertyChanged(nameof(ChipAutomationName));
+        OnPropertyChanged(nameof(ChipTooltip));
+    }
 
     partial void OnTagNameChanged(string value) => OnPropertyChanged(nameof(ChipAutomationName));
+
+    partial void OnCountLabelChanged(string value) => OnPropertyChanged(nameof(ChipTooltip));
+
+    partial void OnSourceChanged(TagSource value) => OnPropertyChanged(nameof(ChromeOpacity));
+
+    partial void OnIsPartialChanged(bool value) => OnPropertyChanged(nameof(ChromeOpacity));
 }
 
 public partial class OrganizePreviewItem : ObservableObject

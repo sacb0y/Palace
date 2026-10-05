@@ -599,7 +599,8 @@
                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                 BorderThickness="1"
                                 CornerRadius="12"
-                                Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
+                                Opacity="{x:Bind ChromeOpacity, Mode=OneWay}"
+                                ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <TextBlock
                                         VerticalAlignment="Center"
@@ -612,12 +613,6 @@
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind CountLabel, Mode=OneWay}"
                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind SourceLabel, Mode=OneWay}"
-                                        Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(SourceLabel), Mode=OneWay}" />
                                     <Button
                                         Width="24"
                                         Height="24"
@@ -1214,7 +1209,8 @@
                                         BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                         BorderThickness="1"
                                         CornerRadius="{StaticResource ControlCornerRadius}"
-                                        Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
+                                        Opacity="{x:Bind ChromeOpacity, Mode=OneWay}"
+                                        ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <TextBlock
                                                 Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"

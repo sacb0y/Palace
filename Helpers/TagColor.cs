@@ -56,7 +56,11 @@ public static class TagColor
             ? new SolidColorBrush(ContrastingInk(color))
             : ThemeBrush("TextFillColorPrimaryBrush");
 
-    public static double ChipOpacity(bool isPartial) => isPartial ? 0.75 : 1.0;
+    public static double ChipOpacity(bool isPartial) =>
+        AssignedTagChrome.Opacity(isPartial, Models.TagSource.Manual);
+
+    public static double ChipOpacity(bool isPartial, Models.TagSource source) =>
+        AssignedTagChrome.Opacity(isPartial, source);
 
     public static Color ContrastingInk(Color fill)
     {
