@@ -87,7 +87,7 @@ public sealed partial class LibraryPage : Page
             _suppressBrowseChrome = true;
             SyncBrowseChromeFromViewModel();
             _suppressBrowseChrome = false;
-            await ViewModel.ReloadTagCatalogAsync();
+            await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
             UpdatePreview();
             MosaicLayout.InvalidateItemsInfo();
             HookOverlayGallery();
@@ -1127,7 +1127,7 @@ public sealed partial class LibraryPage : Page
         var pick = new Button { Content = "Pick destination" };
         AutomationProperties.SetAutomationId(pick, "BtnPickOrganizeDestination");
         string? destPath = null;
-        pick.Click += async (_, _) =>
+        pick.Click += async (_, _) => await ErrorReporter.RunAsync("Pick destination", null, async () =>
         {
             var folder = await AppServices.Access.PickFolderAsync();
             if (folder is not null)
@@ -1136,7 +1136,7 @@ public sealed partial class LibraryPage : Page
                 folderBox.Text = folder.Path;
                 dest.IsChecked = true;
             }
-        };
+        });
 
         var folderTemplate = new TextBox
         {

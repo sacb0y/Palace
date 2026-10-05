@@ -49,6 +49,16 @@
                     AutomationProperties.AutomationId="TxtStartup"
                     Text="Loading…" />
             </StackPanel>
+            <InfoBar
+                x:Name="InfAppError"
+                Margin="16"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                AutomationProperties.AutomationId="InfAppError"
+                IsClosable="True"
+                IsOpen="False"
+                Severity="Error"
+                Title="Something went wrong" />
         </Grid>
     </Grid>
 </Window>

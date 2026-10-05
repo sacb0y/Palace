@@ -35,4 +35,27 @@ public sealed partial class MainWindow : Window
             RootFrame.Navigate(typeof(MainPage));
         }
     }
+
+    /// <summary>Non-fatal failure before the shell is ready — stop the spinner and keep the window alive.</summary>
+    public void ShowStartupFailure(string message)
+    {
+        PrgStartup.ShowPaused = true;
+        PrgStartup.IsIndeterminate = false;
+        TxtStartup.Text = message;
+        ShowError(message);
+    }
+
+    /// <summary>Safe global Notify for <see cref="Helpers.ErrorReporter"/> (InfoBar; never throws).</summary>
+    public void ShowError(string message)
+    {
+        try
+        {
+            InfAppError.Message = message;
+            InfAppError.IsOpen = true;
+        }
+        catch
+        {
+            // Presenter must never crash the app.
+        }
+    }
 }

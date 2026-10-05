@@ -58,48 +58,50 @@ public partial class MainPageViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task NewProjectAsync()
-    {
-        if (RequestProjectName is null)
+    private Task NewProjectAsync() =>
+        ErrorReporter.RunAsync("New project", null, async () =>
         {
-            return;
-        }
+            if (RequestProjectName is null)
+            {
+                return;
+            }
 
-        var name = await RequestProjectName("New project", "Create", "");
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
+            var name = await RequestProjectName("New project", "Create", "");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
 
-        var project = await AppServices.Catalog.CreateProjectAsync(name);
-        Projects.Add(project);
-        SelectedProject = project;
-    }
+            var project = await AppServices.Catalog.CreateProjectAsync(name);
+            Projects.Add(project);
+            SelectedProject = project;
+        });
 
     [RelayCommand]
-    private async Task RenameProjectAsync()
-    {
-        if (RequestProjectName is null || SelectedProject is null)
+    private Task RenameProjectAsync() =>
+        ErrorReporter.RunAsync("Rename project", null, async () =>
         {
-            return;
-        }
+            if (RequestProjectName is null || SelectedProject is null)
+            {
+                return;
+            }
 
-        var name = await RequestProjectName("Rename project", "Rename", SelectedProject.Name);
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
+            var name = await RequestProjectName("Rename project", "Rename", SelectedProject.Name);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
 
-        await AppServices.Catalog.RenameProjectAsync(SelectedProject.Id, name);
-        var id = SelectedProject.Id;
-        await LoadAsync();
-        var renamed = Projects.FirstOrDefault(p => p.Id == id);
-        if (renamed is not null)
-        {
-            AppServices.CurrentProject.Name = renamed.Name;
-            _loading = true;
-            SelectedProject = renamed;
-            _loading = false;
-        }
-    }
+            await AppServices.Catalog.RenameProjectAsync(SelectedProject.Id, name);
+            var id = SelectedProject.Id;
+            await LoadAsync();
+            var renamed = Projects.FirstOrDefault(p => p.Id == id);
+            if (renamed is not null)
+            {
+                AppServices.CurrentProject.Name = renamed.Name;
+                _loading = true;
+                SelectedProject = renamed;
+                _loading = false;
+            }
+        });
 }
