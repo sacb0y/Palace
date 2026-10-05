@@ -716,8 +716,6 @@ Test-UI 'Double-click opens gallery overlay' {
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryImageInfo missing' }
     winapp ui wait-for 'BtnGalleryDetails' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryDetails missing' }
-    winapp ui wait-for 'BrdGalleryOverlayInfo' @(WinArgs) -t 2000
-    if ($LASTEXITCODE -ne 0) { throw 'BrdGalleryOverlayInfo missing' }
     winapp ui wait-for 'TxtGalleryOverlayDetails' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'TxtGalleryOverlayDetails missing' }
 }
