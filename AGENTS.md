@@ -8,7 +8,7 @@ Keep this file current. When you change a convention (scan, thumbs, UI thread, c
 
 - Packaged `winui-mvvm` only. CommunityToolkit.Mvvm, `{x:Bind}` with explicit `Mode`, `AutomationProperties.AutomationId` on interactive controls, `ThemeResource` (not hardcoded brushes).
 - Never run the unpackaged `.exe`. Never set `WindowsPackageType=None`.
-- Run: `.\BuildAndRun.ps1 . --arch x64` (or `winapp run`). Invoke attached runs asynchronously; the command stays attached while the app is open.
+- Run: `.\BuildAndRun.ps1 . --arch x64` (or `winapp run . --arch x64`; the script forwards to the winui-dev-workflow skill script when present, else runs `winapp run`). Invoke attached runs asynchronously; the command stays attached while the app is open.
 - Official skills: `C:\Users\iadag\.cursor\skills\winui-*` — load `winui-dev-workflow`, `winui-design`, `winui-packaging`, `winui-code-review`, `winui-ui-testing` as needed.
 - Domain-reload-disabled is a Unity habit. It does not apply here.
 - `Palace.Tests` is a separate `net10.0` project (`Palace.csproj` excludes `Palace.Tests\**`). Keep tests off WinUI / WinRT. Do not reference `FluentIcons.WinUI` from tests.
