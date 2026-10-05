@@ -118,7 +118,7 @@ internal static class HdrWicDecode
                 {
                     var frame = FromRadiance(path);
                     return frame is null
-                        ? null
+                        ? (HdrStats?)null
                         : new HdrStats(
                             frame.MaxNits,
                             frame.AvgNits,
