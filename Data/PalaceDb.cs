@@ -28,64 +28,33 @@ public sealed class PalaceDb : IDisposable
         InitializeSchema();
     }
 
-    public async Task<T> ReadAsync<T>(Func<SqliteConnection, T> work)
-    {
-        await _gate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            return work(_connection);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+    /// <summary>
+    /// Runs <paramref name="work"/> on a thread-pool thread while holding the single-connection gate,
+    /// so catalog queries never execute on the caller's (UI) thread. <paramref name="cancellationToken"/>
+    /// cancels the wait for the gate or a not-yet-started run; work already running is not interrupted.
+    /// </summary>
+    public Task<T> ReadAsync<T>(Func<SqliteConnection, T> work, CancellationToken cancellationToken = default) =>
+        RunGatedAsync(work, cancellationToken);
 
-    public async Task WriteAsync(Action<SqliteConnection> work)
-    {
-        await _gate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            work(_connection);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+    public Task WriteAsync(Action<SqliteConnection> work, CancellationToken cancellationToken = default) =>
+        RunGatedAsync<object?>(
+            conn =>
+            {
+                work(conn);
+                return null;
+            },
+            cancellationToken);
 
-    public async Task<T> WriteAsync<T>(Func<SqliteConnection, T> work)
-    {
-        await _gate.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            return work(_connection);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
+    public Task<T> WriteAsync<T>(Func<SqliteConnection, T> work, CancellationToken cancellationToken = default) =>
+        RunGatedAsync(work, cancellationToken);
 
-    public T Read<T>(Func<SqliteConnection, T> work)
+    private async Task<T> RunGatedAsync<T>(Func<SqliteConnection, T> work, CancellationToken cancellationToken)
     {
-        _gate.Wait();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return work(_connection);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
-    public void Write(Action<SqliteConnection> work)
-    {
-        _gate.Wait();
-        try
-        {
-            work(_connection);
+            // The gate is released only after the work task finishes, even if the caller stops waiting.
+            return await Task.Run(() => work(_connection), cancellationToken).ConfigureAwait(false);
         }
         finally
         {
