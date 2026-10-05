@@ -9,7 +9,7 @@ namespace Palace.ViewModels;
 
 public partial class MainPageViewModel : ObservableObject
 {
-    private bool _loading;
+    private readonly LoadGate _load = new();
 
     public MainPageViewModel()
     {
@@ -36,7 +36,7 @@ public partial class MainPageViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        _loading = true;
+        using var _ = _load.Begin();
         var currentId = AppServices.CurrentProject.Id;
         Projects.Clear();
         foreach (var project in await AppServices.Catalog.GetProjectsAsync())
@@ -45,12 +45,11 @@ public partial class MainPageViewModel : ObservableObject
         }
 
         SelectedProject = Projects.FirstOrDefault(p => p.Id == currentId) ?? Projects.FirstOrDefault();
-        _loading = false;
     }
 
     partial void OnSelectedProjectChanged(Project? value)
     {
-        if (_loading || value is null || value.Id == AppServices.CurrentProject.Id)
+        if (_load.IsLoading || value is null || value.Id == AppServices.CurrentProject.Id)
         {
             return;
         }
@@ -100,9 +99,8 @@ public partial class MainPageViewModel : ObservableObject
             if (renamed is not null)
             {
                 AppServices.CurrentProject.Name = renamed.Name;
-                _loading = true;
+                using var _ = _load.Begin();
                 SelectedProject = renamed;
-                _loading = false;
             }
         });
 }

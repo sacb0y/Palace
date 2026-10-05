@@ -19,7 +19,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly WatcherService _watchers;
     private readonly CloudAccountService _cloud;
     private readonly ICloudLibraryFactory _libraries;
-    private bool _loading;
+    private readonly LoadGate _load = new();
 
     public SettingsViewModel(
         CatalogService catalog,
@@ -84,7 +84,7 @@ public partial class SettingsViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        _loading = true;
+        using var _ = _load.Begin();
         Sources.Clear();
         foreach (var source in await _catalog.GetSourceFoldersAsync(AppServices.CurrentProject.Id))
         {
@@ -113,13 +113,12 @@ public partial class SettingsViewModel : ObservableObject
         DropboxAppKey = _cloud.DropboxAppKey;
         RedirectUri = _cloud.RedirectUriDisplay;
         await RefreshCloudStatusAsync();
-        _loading = false;
         StatusText = Sources.Count == 0 ? "No watched folders yet." : $"{Sources.Count} watched folders.";
     }
 
     partial void OnSelectedThemeChanged(string value)
     {
-        if (_loading)
+        if (_load.IsLoading)
         {
             return;
         }
@@ -130,7 +129,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnPeakOverrideEnabledChanged(bool value)
     {
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             PersistPeakOverride();
         }
@@ -139,7 +138,7 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnPeakOverrideNitsChanged(double value)
     {
         PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)value);
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             PersistPeakOverride();
         }
@@ -167,7 +166,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnOneDriveClientIdChanged(string value)
     {
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             _cloud.OneDriveClientId = value ?? "";
         }
@@ -175,7 +174,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnDropboxAppKeyChanged(string value)
     {
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             _cloud.DropboxAppKey = value ?? "";
         }
@@ -410,7 +409,7 @@ public partial class SettingsViewModel : ObservableObject
 
     private async void SourceOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (_loading || sender is not SourceFolderItem item)
+        if (_load.IsLoading || sender is not SourceFolderItem item)
         {
             return;
         }
