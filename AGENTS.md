@@ -163,12 +163,12 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 
 ## Cursor Cloud specific instructions
 
-Cloud Agents run on **Linux**, so the packaged WinUI 3 app (`Palace.csproj`) cannot build or run there — `BuildAndRun.ps1`, `winapp`, and `ui-tests.ps1` are Windows-only and must be run on a Windows host. The buildable, runnable surface on Linux is **`Palace.Tests`** (`net10.0`, off WinUI/WinRT).
-
-The environment is repo-managed via `.cursor/environment.json`, whose `install` runs `.cursor/install.sh` to install the .NET 10 SDK into `$HOME/.dotnet` (added to `PATH`/`DOTNET_ROOT` in `~/.bashrc`) and warm a build of the test project. To verify the environment on Linux:
+Cloud Agents run on **Linux**. On the Linux VM, only **`Palace.Tests`** (`net10.0`, off WinUI/WinRT) builds and runs. Keep those tests cross-platform. Windows-only remains `BuildAndRun.ps1` / `winapp` / `ui-tests.ps1` and live screenshots — not available on the Linux VM itself.
 
 ```bash
 dotnet test ./Palace.Tests/Palace.Tests.csproj
 ```
 
-Keep `Palace.Tests` cross-platform so it stays runnable here. Any Windows-only verification (the WinUI app, UI automation) must be done on Windows.
+**Self-hosted Windows worker.** For WinUI build/run, UI tests, screenshots, or visual design review of the live app, do **not** conclude "no Windows access" just because the Cloud Agent VM is Linux. Check connected workers with cursor-cloud `list-self-hosted-workers`. If a Windows worker is connected (e.g. `win-laptop` / My Machines), target it for that UI/visual work. If none is connected — or Developer Mode / the Palace checkout is missing — remind the user to set up or reconnect the Windows PC (Cursor CLI `agent worker start` from the Palace checkout, Developer Mode on, keep unlocked) before treating live UI verification as impossible.
+
+The environment is repo-managed via `.cursor/environment.json`, whose `install` runs `.cursor/install.sh` to install the .NET 10 SDK into `$HOME/.dotnet` (added to `PATH`/`DOTNET_ROOT` in `~/.bashrc`) and warm a build of the test project.
