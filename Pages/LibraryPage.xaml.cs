@@ -3,6 +3,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -300,6 +301,14 @@ public sealed partial class LibraryPage : Page
     private void FlyAssignTags_Opening(object sender, object e)
     {
         ViewModel.RebuildAssignPanelPublic();
+    }
+
+    private void TglSelectMode_Changed(object sender, RoutedEventArgs e)
+    {
+        var on = (sender as ToggleButton)?.IsChecked == true;
+        GrdAssets.SelectionMode = SelectMode.ClickTogglesTile(on)
+            ? ItemsViewSelectionMode.Multiple
+            : ItemsViewSelectionMode.Extended;
     }
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)

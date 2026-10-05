@@ -442,6 +442,7 @@ Test-UI 'Undo organize exists' { winapp ui wait-for 'BtnUndoOrganize' -a $AppPid
 Test-UI 'Search exists' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 3000 }
 Test-UI 'Asset mosaic exists' { winapp ui wait-for 'GrdAssets' -a $AppPid -t 3000 }
 Test-UI 'Row height slider exists' { winapp ui wait-for 'SldRowHeight' -a $AppPid -t 3000 }
+Test-UI 'Select-mode toggle exists' { winapp ui wait-for 'TglSelectMode' -a $AppPid -t 3000 }
 Test-UI 'Browse selector exists' { winapp ui wait-for 'SelBrowseMode' -a $AppPid -t 3000 }
 Test-UI 'Folders mode exists' { winapp ui wait-for 'SelFolders' -a $AppPid -t 3000 }
 Test-UI 'Select Folders browse' { winapp ui invoke 'SelFolders' -a $AppPid }
@@ -831,6 +832,35 @@ Test-UI 'Multi-select assign applies to both tiles' {
     Ok
 }
 
+Test-UI 'Select mode toggles tiles without modifier keys' {
+    Bind-MainWindow
+    $assets = Get-LibraryAssets
+    if ($assets.Count -lt 2) { throw 'Need two mosaic tiles for select mode' }
+    winapp ui invoke 'TglSelectMode' @(WinArgs) --action toggle-on
+    if ($LASTEXITCODE -ne 0) { throw 'Could not turn select mode on' }
+    Start-Sleep -Milliseconds 300
+    try {
+        Select-LibraryAsset $assets[0]
+        Start-Sleep -Milliseconds 250
+        Select-LibraryAsset $assets[1]
+        $deadline = (Get-Date).AddSeconds(4)
+        $count = ''
+        do {
+            $count = Get-UiText 'TxtSelectionCount'
+            if ($count -match '^2 selected') { break }
+            Start-Sleep -Milliseconds 250
+        } while ((Get-Date) -lt $deadline)
+        if ($count -notmatch '^2 selected') { throw "Expected '2 selected' after two plain selects, got '$count'" }
+        winapp ui wait-for 'BtnAddToRoom' @(WinArgs) -t 2000
+        if ($LASTEXITCODE -ne 0) { throw 'Bulk actions missing while multi-selected' }
+    } finally {
+        winapp ui invoke 'TglSelectMode' @(WinArgs) --action toggle-off | Out-Null
+    }
+    Start-Sleep -Milliseconds 300
+    Select-LibraryAsset $assets[0]
+    Ok
+}
+
 Test-UI 'Remove partial tag only from tiles that have it' {
     $assets = Get-LibraryAssets
     if ($assets.Count -lt 2) { throw 'Need two mosaic tiles' }
@@ -1020,10 +1050,10 @@ Test-UI 'Library shows backfilled Implied tag' {
     Start-Sleep -Milliseconds 800
     winapp ui wait-for 'TxtAssignedTags' @(WinArgs) --value $script:BfImpliedName --contains -t 6000
     if ($LASTEXITCODE -ne 0) { throw "$($script:BfImpliedName) missing after backfill" }
+    # Source is automation/tooltip only (not chip face text); UIA Name still carries "Implied".
     $chips = (Get-UiElements -Selector 'LstTags' -Depth 12 | ForEach-Object { $_.name }) -join ' '
-    $summary = Get-UiText 'LstTags'
-    if ($chips -notmatch 'Implied' -and $summary -notmatch 'Implied') {
-        throw "$($script:BfImpliedName) is present but not labeled Implied (chips='$chips')"
+    if ($chips -notmatch 'Implied') {
+        throw "$($script:BfImpliedName) is present but Automation Name missing Implied (chips='$chips')"
     }
     Ok
 }

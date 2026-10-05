@@ -282,7 +282,8 @@
                                         BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                         BorderThickness="1"
                                         CornerRadius="{StaticResource ControlCornerRadius}"
-                                        Opacity="{x:Bind helpers:TagColor.ChipOpacity(IsPartial), Mode=OneWay}">
+                                        Opacity="{x:Bind ChromeOpacity, Mode=OneWay}"
+                                        ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
                                             <TextBlock
                                                 Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
