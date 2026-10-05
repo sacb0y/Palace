@@ -10,6 +10,9 @@
     <Compile Include="..\Data\PalaceDb.cs" Link="PalaceDb.cs" />
     <Compile Include="..\Helpers\CloudFile.cs" Link="CloudFile.cs" />
     <Compile Include="..\Helpers\CloudSourcePath.cs" Link="CloudSourcePath.cs" />
+    <Compile Include="..\Helpers\ErrorLog.cs" Link="ErrorLog.cs" />
+    <Compile Include="..\Helpers\ErrorReporter.cs" Link="ErrorReporter.cs" />
+    <Compile Include="..\Helpers\ErrorThrottle.cs" Link="ErrorThrottle.cs" />
     <Compile Include="..\Helpers\FolderGroups.cs" Link="FolderGroups.cs" />
     <Compile Include="..\Helpers\GalleryMedia.cs" Link="GalleryMedia.cs" />
     <Compile Include="..\Helpers\GalleryPeak.cs" Link="GalleryPeak.cs" />
