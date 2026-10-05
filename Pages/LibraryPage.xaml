@@ -257,11 +257,37 @@
             </BreadcrumbBar>
             <Grid Grid.Row="1" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="200" />
                 </Grid.ColumnDefinitions>
+                <StackPanel
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <ToggleButton
+                        x:Name="TglSelectMode"
+                        AutomationProperties.AutomationId="TglSelectMode"
+                        AutomationProperties.Name="Select"
+                        Checked="TglSelectMode_Changed"
+                        IsChecked="{x:Bind ViewModel.IsSelectMode, Mode=TwoWay}"
+                        Unchecked="TglSelectMode_Changed">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon Icon="Multiselect" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Select" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <TextBlock
+                        x:Name="TxtSelectionCount"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="TxtSelectionCount"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.SelectionSummary, Mode=OneWay}" />
+                </StackPanel>
                 <AutoSuggestBox
                     x:Name="AsbSearch"
+                    Grid.Column="1"
                     AutomationProperties.AutomationId="AsbSearch"
                     PlaceholderText="Search filename, tags, prompt, model"
                     QueryIcon="Find"
@@ -269,7 +295,7 @@
                     Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <Slider
                     x:Name="SldRowHeight"
-                    Grid.Column="1"
+                    Grid.Column="2"
                     AutomationProperties.AutomationId="SldRowHeight"
                     AutomationProperties.Name="Mosaic row height"
                     Header="Row height"

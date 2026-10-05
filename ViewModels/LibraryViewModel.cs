@@ -122,6 +122,12 @@ public partial class LibraryViewModel : ObservableObject
     public partial bool HasSelection { get; set; }
 
     [ObservableProperty]
+    public partial bool IsSelectMode { get; set; }
+
+    [ObservableProperty]
+    public partial string SelectionSummary { get; set; } = "";
+
+    [ObservableProperty]
     public partial bool ShowPreviewPlaceholder { get; set; }
 
     [ObservableProperty]
@@ -268,6 +274,11 @@ public partial class LibraryViewModel : ObservableObject
         _ = _catalog.UpdateNotesAndRatingAsync(SelectedAsset.Id, PreviewNotes, (int)Math.Round(value));
     }
 
+    partial void OnIsSelectModeChanged(bool value) => RefreshSelectionSummary();
+
+    private void RefreshSelectionSummary() =>
+        SelectionSummary = SelectMode.Summary(IsSelectMode, _selection.Count);
+
     public void SetSelection(IEnumerable<AssetItem> items)
     {
         _selection = items.Where(item => !item.IsFolderHeader).ToList();
@@ -277,6 +288,7 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         HasSelection = _selection.Count > 0;
+        RefreshSelectionSummary();
         CanEditNotes = _selection.Count == 1;
         var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
         _selectionAnchor = next;
@@ -313,6 +325,7 @@ public partial class LibraryViewModel : ObservableObject
 
                 _selection = list.Where(a => a.IsSelected).ToList();
                 HasSelection = _selection.Count > 0;
+                RefreshSelectionSummary();
                 CanEditNotes = _selection.Count == 1;
                 if (!ReferenceEquals(SelectedAsset, item))
                 {
@@ -348,6 +361,7 @@ public partial class LibraryViewModel : ObservableObject
         }
 
         HasSelection = _selection.Count > 0;
+        RefreshSelectionSummary();
         CanEditNotes = _selection.Count == 1;
         var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
         if (!ReferenceEquals(SelectedAsset, next))
@@ -1645,6 +1659,7 @@ public partial class LibraryViewModel : ObservableObject
         _selection.Clear();
         _selectionAnchor = null;
         HasSelection = false;
+        RefreshSelectionSummary();
         CanEditNotes = false;
         SelectedAsset = null;
     }

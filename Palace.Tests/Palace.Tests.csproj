@@ -28,6 +28,7 @@
     <Compile Include="..\Helpers\RecentTags.cs" Link="RecentTags.cs" />
     <Compile Include="..\Helpers\RoomIcons.cs" Link="RoomIcons.cs" />
     <Compile Include="..\Helpers\ScanContent.cs" Link="ScanContent.cs" />
+    <Compile Include="..\Helpers\SelectMode.cs" Link="SelectMode.cs" />
     <Compile Include="..\Helpers\TagBoardExpand.cs" Link="TagBoardExpand.cs" />
     <Compile Include="..\Helpers\TagAlphaIndex.cs" Link="TagAlphaIndex.cs" />
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
