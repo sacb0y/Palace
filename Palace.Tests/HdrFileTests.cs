@@ -343,10 +343,29 @@ public sealed class HdrFileTests
         Assert.Equal(2160, info.Height);
         Assert.Equal(9, info.CicpPrimaries);
         Assert.Equal(16, info.CicpTransfer);
+        Assert.Equal(9, info.CicpMatrix);
         var probe = HdrFile.Probe(avif);
         Assert.Equal(HdrKind.HdrAvif, probe.Kind);
         Assert.True(probe.IsPq);
         Assert.Equal((3840, 2160), AvifFile.TryReadSize(avif));
+    }
+
+    [Fact]
+    public void Probe_AvifPrimaryItem_IdentityMatrix_IgnoresThumbNclx()
+    {
+        var avif = AvifWithPrimaryAndThumb(primaryMatrix: 0, thumbMatrix: 9);
+        var info = AvifFile.Probe(avif);
+        Assert.Equal(3840, info.Width);
+        Assert.Equal(2160, info.Height);
+        Assert.Equal(9, info.CicpPrimaries);
+        Assert.Equal(16, info.CicpTransfer);
+        Assert.Equal(0, info.CicpMatrix);
+        Assert.True(info.FullRange);
+        var probe = HdrFile.Probe(avif);
+        Assert.Equal(HdrKind.HdrAvif, probe.Kind);
+        Assert.True(probe.IsPq);
+        Assert.Equal(0, probe.CicpMatrix);
+        Assert.True(probe.FullRange);
     }
 
     [Fact]
@@ -490,7 +509,7 @@ public sealed class HdrFileTests
     {
         using var ipco = new MemoryStream();
         WriteBox(ipco, "ispe", [.. Be32(width), .. Be32(height)], fullBox: true);
-        WriteBox(ipco, "colr", Nclx(primaries, transfer));
+        WriteBox(ipco, "colr", Nclx(primaries, transfer, 9));
         if (maxCll is int cll)
         {
             WriteBox(ipco, "clli", [(byte)(cll >> 8), (byte)cll, 0, 0]);
@@ -506,13 +525,13 @@ public sealed class HdrFileTests
         return ms.ToArray();
     }
 
-    private static byte[] AvifWithPrimaryAndThumb()
+    private static byte[] AvifWithPrimaryAndThumb(int primaryMatrix = 9, int thumbMatrix = 1)
     {
         using var ipco = new MemoryStream();
         WriteBox(ipco, "ispe", [.. Be32(512), .. Be32(512)], fullBox: true);
-        WriteBox(ipco, "colr", Nclx(1, 13));
+        WriteBox(ipco, "colr", Nclx(1, 13, thumbMatrix));
         WriteBox(ipco, "ispe", [.. Be32(3840), .. Be32(2160)], fullBox: true);
-        WriteBox(ipco, "colr", Nclx(9, 16));
+        WriteBox(ipco, "colr", Nclx(9, 16, primaryMatrix));
 
         using var ipma = new MemoryStream();
         WriteBe32(ipma, 2);
@@ -537,7 +556,7 @@ public sealed class HdrFileTests
         return ms.ToArray();
     }
 
-    private static byte[] Nclx(int primaries, int transfer)
+    private static byte[] Nclx(int primaries, int transfer, int matrix)
     {
         var nclx = new byte[11];
         Encoding.ASCII.GetBytes("nclx").CopyTo(nclx, 0);
@@ -545,7 +564,8 @@ public sealed class HdrFileTests
         nclx[5] = (byte)primaries;
         nclx[6] = (byte)(transfer >> 8);
         nclx[7] = (byte)transfer;
-        nclx[9] = 9;
+        nclx[8] = (byte)(matrix >> 8);
+        nclx[9] = (byte)matrix;
         nclx[10] = 0x80;
         return nclx;
     }

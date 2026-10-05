@@ -10,7 +10,8 @@ public enum HdrPackedFormat
     Rgba8,
     Bgra8,
     P010,
-    Nv12
+    Nv12,
+    Yuy2
 }
 
 public static class HdrPixels
@@ -21,11 +22,19 @@ public static class HdrPixels
             HdrPackedFormat.Rgba16 => 8,
             HdrPackedFormat.P010 => 0,
             HdrPackedFormat.Nv12 => 0,
+            HdrPackedFormat.Yuy2 => 2,
             _ => 4
         };
 
     public static bool IsYuv(HdrPackedFormat format) =>
-        format is HdrPackedFormat.P010 or HdrPackedFormat.Nv12;
+        format is HdrPackedFormat.P010 or HdrPackedFormat.Nv12 or HdrPackedFormat.Yuy2;
+
+    /// <summary>
+    /// AVIF/HEIF 4:4:4 often cannot copy as P010. WIC may hand back
+    /// <c>Rgba16</c>/<c>Yuy2</c> with Y/U/V still in the channels.
+    /// </summary>
+    public static bool TreatAsYuv(HdrPackedFormat format, bool needsYuvConvert) =>
+        IsYuv(format) || (needsYuvConvert && format is HdrPackedFormat.Rgba16 or HdrPackedFormat.Rgba8 or HdrPackedFormat.Bgra8);
 
     public static bool HasPackedData(ReadOnlySpan<byte> data, HdrPackedFormat format, int width, int height)
     {
@@ -42,6 +51,11 @@ public static class HdrPixels
         if (format == HdrPackedFormat.Nv12)
         {
             return data.Length >= width * height * 3 / 2;
+        }
+
+        if (format == HdrPackedFormat.Yuy2)
+        {
+            return data.Length >= width * height * 2;
         }
 
         var bpp = BytesPerPixel(format);
@@ -88,7 +102,45 @@ public static class HdrPixels
             luma = data[yOff] / 255f;
             u = data[uvOff] / 255f;
             v = data[uvOff + 1] / 255f;
+            return;
         }
+
+        if (format == HdrPackedFormat.Yuy2)
+        {
+            var pair = (y * width * 2) + ((x / 2) * 4);
+            luma = data[pair + ((x & 1) == 0 ? 0 : 2)] / 255f;
+            u = data[pair + 1] / 255f;
+            v = data[pair + 3] / 255f;
+        }
+    }
+
+    /// <summary>
+    /// 4:4:4 identity/YCbCr in an RGB WIC buffer: R=Y, G=Cb, B=Cr.
+    /// </summary>
+    public static void ReadYuvPackedRgb(
+        ReadOnlySpan<byte> data,
+        int width,
+        int height,
+        int x,
+        int y,
+        HdrPackedFormat format,
+        out float luma,
+        out float u,
+        out float v)
+    {
+        luma = u = v = 0;
+        if (x < 0 || y < 0 || x >= width || y >= height)
+        {
+            return;
+        }
+
+        if (IsYuv(format))
+        {
+            ReadYuv(data, width, height, x, y, format, out luma, out u, out v);
+            return;
+        }
+
+        Read(data, (y * width) + x, format, out luma, out u, out v, out _);
     }
 
     /// <summary>

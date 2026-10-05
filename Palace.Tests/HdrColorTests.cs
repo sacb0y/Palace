@@ -85,6 +85,58 @@ public sealed class HdrColorTests
     }
 
     [Fact]
+    public void IdentityMatrix_IsGbrWithoutChromaOffset()
+    {
+        HdrColor.YuvToRgb(0.2f, 0.3f, 0.9f, 0, true, out var r, out var g, out var b);
+        Assert.InRange(r, 0.899f, 0.901f);
+        Assert.InRange(g, 0.199f, 0.201f);
+        Assert.InRange(b, 0.299f, 0.301f);
+
+        HdrColor.YuvToRgb(1f, 1f, 1f, 0, true, out var wr, out var wg, out var wb);
+        Assert.InRange(wr, 0.999f, 1.001f);
+        Assert.InRange(wg, 0.999f, 1.001f);
+        Assert.InRange(wb, 0.999f, 1.001f);
+
+        var probe = new HdrProbe(HdrKind.HdrAvif, 9, 16, 1499, 0, true, 10);
+        HdrColor.YuvEncodedToScrgb(1f, 0f, 0f, probe, out var sr, out var sg, out var sb);
+        Assert.True(sr < 50, $"identity G peak must not be Y-as-R ({sr})");
+        Assert.True(sg > 80);
+        Assert.True(Math.Abs(sr - HdrColor.YuvAsRedScrgbPeak) > 50);
+        Assert.True(HdrColor.IsIdentityMatrix(0));
+        Assert.False(HdrColor.IsIdentityMatrix(9));
+    }
+
+    [Fact]
+    public void IdentityLimitedRange_UsesLumaExpandOnAllPlanes()
+    {
+        var black = 16f / 255f;
+        HdrColor.YuvToRgb(black, black, black, 0, false, out var r, out var g, out var b);
+        Assert.InRange(r, -0.001f, 0.001f);
+        Assert.InRange(g, -0.001f, 0.001f);
+        Assert.InRange(b, -0.001f, 0.001f);
+
+        var mid = 128f / 255f;
+        HdrColor.YuvToRgb(mid, mid, mid, 0, false, out var mr, out var mg, out var mb);
+        Assert.InRange(mr, 0.50f, 0.52f);
+        Assert.InRange(mg, 0.50f, 0.52f);
+        Assert.InRange(mb, 0.50f, 0.52f);
+        Assert.InRange(HdrColor.LumaRange(black, false), -0.001f, 0.001f);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(9)]
+    public void YcbcrMatrices_NeutralChromaIsWhite(int matrix)
+    {
+        HdrColor.YuvToRgb(1f, 0.5f, 0.5f, matrix, true, out var r, out var g, out var b);
+        Assert.InRange(r, 0.999f, 1.001f);
+        Assert.InRange(g, 0.999f, 1.001f);
+        Assert.InRange(b, 0.999f, 1.001f);
+    }
+
+    [Fact]
     public void LimitedRangeYuv_ExpandsStudioBlack()
     {
         var y = 16f / 255f;
@@ -115,6 +167,38 @@ public sealed class HdrColorTests
         Assert.InRange(v, 0.499f, 0.502f);
         Assert.True(HdrPixels.IsYuv(HdrPackedFormat.P010));
         Assert.True(HdrPixels.HasPackedData(data, HdrPackedFormat.P010, 2, 2));
+    }
+
+    [Fact]
+    public void Yuy2_ReadsPairedChroma()
+    {
+        var data = new byte[] { 255, 128, 255, 128, 0, 16, 0, 240 };
+        HdrPixels.ReadYuv(data, 2, 2, 0, 0, HdrPackedFormat.Yuy2, out var y0, out var u0, out var v0);
+        Assert.InRange(y0, 0.999f, 1.001f);
+        Assert.InRange(u0, 0.499f, 0.503f);
+        Assert.InRange(v0, 0.499f, 0.503f);
+        HdrPixels.ReadYuv(data, 2, 2, 1, 1, HdrPackedFormat.Yuy2, out var y1, out var u1, out var v1);
+        Assert.InRange(y1, -0.001f, 0.001f);
+        Assert.InRange(u1, 15f / 255f, 17f / 255f);
+        Assert.InRange(v1, 239f / 255f, 241f / 255f);
+        Assert.True(HdrPixels.IsYuv(HdrPackedFormat.Yuy2));
+        Assert.True(HdrPixels.TreatAsYuv(HdrPackedFormat.Rgba16, true));
+        Assert.False(HdrPixels.TreatAsYuv(HdrPackedFormat.Rgba16, false));
+    }
+
+    [Fact]
+    public void Rgba16_444_IdentityReadsGbr()
+    {
+        var data = new byte[8];
+        WriteU16(data, 0, 0x3333);
+        WriteU16(data, 2, 0x6666);
+        WriteU16(data, 4, 0xCCCC);
+        WriteU16(data, 6, 0xFFFF);
+        HdrPixels.ReadYuvPackedRgb(data, 1, 1, 0, 0, HdrPackedFormat.Rgba16, out var y, out var u, out var v);
+        HdrColor.YuvToRgb(y, u, v, 0, true, out var r, out var g, out var b);
+        Assert.InRange(g, 0.19f, 0.21f);
+        Assert.InRange(b, 0.39f, 0.41f);
+        Assert.InRange(r, 0.79f, 0.81f);
     }
 
     private static void WriteU16(byte[] data, int offset, ushort value)
