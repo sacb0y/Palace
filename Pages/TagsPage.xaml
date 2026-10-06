@@ -314,7 +314,8 @@
                         AutomationProperties.Name="Sort"
                         Header="Sort"
                         ItemsSource="{x:Bind ViewModel.SortLabels, Mode=OneWay}"
-                        SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=TwoWay}" />
+                        SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=OneWay}"
+                        SelectionChanged="CmbTagMosaicSort_SelectionChanged" />
                 </StackPanel>
             </Grid>
             <ScrollViewer

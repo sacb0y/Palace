@@ -86,6 +86,16 @@ public sealed class MosaicSortOrderTests
     }
 
     [Fact]
+    public void ShouldApplyIndex_FirstItemIsARealChoice()
+    {
+        // ComboBox init often writes 0 after ItemsSource attaches. That is
+        // indistinguishable from picking Date (newest); chrome must not TwoWay.
+        Assert.True(MosaicSortOrder.ShouldApplyIndex(0, MosaicSort.Name, out var next));
+        Assert.Equal(MosaicSort.DateNewest, next);
+        Assert.Equal(0, MosaicSortOrder.IndexOf(MosaicSort.DateNewest));
+    }
+
+    [Fact]
     public void SettingsKey_IsPerProject()
     {
         Assert.Equal("MosaicSort_abc", MosaicSortOrder.SettingsKey("abc"));

@@ -77,8 +77,10 @@ public static class MosaicSortOrder
         TryFromIndex(index, out var sort) ? sort : Default;
 
     /// <summary>
-    /// ComboBox TwoWay <c>SelectedIndex</c> writes <c>-1</c> on init and
-    /// <c>Frame.Navigate</c> unload. That is not a user sort.
+    /// ComboBox TwoWay <c>SelectedIndex</c> writes <c>-1</c> on init/unload and
+    /// often <c>0</c> (first item) when <c>ItemsSource</c> attaches. Bind OneWay
+    /// and commit from SelectionChanged only after the page stamped the stored
+    /// index (<c>_mosaicSortArmed</c>).
     /// </summary>
     public static bool TryFromIndex(int index, out MosaicSort sort)
     {
