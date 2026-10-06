@@ -1214,12 +1214,19 @@
                             BorderThickness="1"
                             CornerRadius="{StaticResource OverlayCornerRadius}"
                             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowImageInfo), Mode=OneWay, FallbackValue=Collapsed}">
-                            <TextBlock
-                                AutomationProperties.AutomationId="TxtGalleryImageInfo"
-                                AutomationProperties.Name="Image information"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="{x:Bind ViewModel.OverlayGallery.ImageInfoText, Mode=OneWay, FallbackValue=''}"
-                                TextWrapping="Wrap" />
+                            <StackPanel Spacing="6">
+                                <TextBlock
+                                    AutomationProperties.AutomationId="TxtGalleryImageInfo"
+                                    AutomationProperties.Name="Image information"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.OverlayGallery.ImageInfoText, Mode=OneWay, FallbackValue=''}"
+                                    TextWrapping="Wrap" />
+                                <controls:GalleryHistogramChart
+                                    Compact="True"
+                                    IdPrefix="GalleryOverlay"
+                                    Bins="{x:Bind ViewModel.OverlayGallery.Histogram, Mode=OneWay, FallbackValue={x:Null}}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowHistogram), Mode=OneWay, FallbackValue=Collapsed}" />
+                            </StackPanel>
                         </Border>
                     </StackPanel>
                     <Button

@@ -17,6 +17,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private string? _hdrFramePath;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
+    private int _histEpoch;
     private CancellationTokenSource? _hdrLoadCts;
     private CancellationTokenSource? _presentCts;
     private readonly HdrPresentCoalescer _presentQueue = new();
@@ -61,6 +62,7 @@ public sealed partial class GalleryStillSurface : UserControl
         if (_gallery is not null)
         {
             _gallery.PropertyChanged -= Gallery_PropertyChanged;
+            _gallery.ClearHistogram();
         }
 
         CancelInFlight();
@@ -108,6 +110,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private void CancelInFlight()
     {
         Interlocked.Increment(ref _epoch);
+        Interlocked.Increment(ref _histEpoch);
         _hdrLoadCts?.Cancel();
         _presentCts?.Cancel();
     }
@@ -176,6 +179,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _hdrLoadCts?.Cancel();
         _presentCts?.Cancel();
         var epoch = Interlocked.Increment(ref _epoch);
+        Interlocked.Increment(ref _histEpoch);
         var gallery = _gallery;
         ApplyScaleLayout();
         if (gallery is not { IsImage: true })
@@ -183,6 +187,7 @@ public sealed partial class GalleryStillSurface : UserControl
             ClearHdrCache();
             HideHdr();
             ImgStill.Source = null;
+            gallery?.ClearHistogram();
             return;
         }
 
@@ -209,6 +214,7 @@ public sealed partial class GalleryStillSurface : UserControl
             ClearHdrCache();
             HideHdr();
             gallery.SetHdrPresentResult(false, false);
+            gallery.ClearHistogram();
             return;
         }
 
@@ -217,6 +223,7 @@ public sealed partial class GalleryStillSurface : UserControl
             ClearHdrCache();
             HideHdr();
             gallery.SetHdrPresentResult(false, false);
+            gallery.ClearHistogram();
             return;
         }
 
@@ -272,6 +279,7 @@ public sealed partial class GalleryStillSurface : UserControl
                 HideHdr();
                 ImgStill.Source = ToStillImage(still);
                 gallery.SetHdrPresentResult(false, false);
+                gallery.ClearHistogram();
                 return;
             }
 
@@ -279,6 +287,7 @@ public sealed partial class GalleryStillSurface : UserControl
             _hdrFramePath = still;
             _hdrFrameProbe = gallery.CurrentProbe;
             ApplyScaleLayout();
+            QueueHistogram(gallery, frame, gallery.CurrentProbe);
             RequestPresent(HdrPresentCoalescer.ImmediateMs);
             if (!GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight))
             {
@@ -527,6 +536,58 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         return (ScrStill.ActualWidth, ScrStill.ActualHeight);
+    }
+
+    private void QueueHistogram(GalleryViewModel gallery, HdrFrame frame, HdrProbe probe)
+    {
+        var item = gallery.Current;
+        var original = item is not null
+            && string.Equals(gallery.CurrentPath, item.Path, StringComparison.OrdinalIgnoreCase);
+        var onlineOnly = item is null
+            || GalleryMedia.IsLiveOnlineOnly(
+                item.IsOnlineOnly,
+                CloudFile.IsOnlineOnly(item.Path),
+                AssetItemMapper.IsApiOnly(item),
+                GalleryMedia.CanShowPreview(item.Path));
+        if (!GalleryHistogram.ShouldBuild(
+                gallery.IsImage,
+                onlineOnly,
+                item is not null && AssetItemMapper.IsApiOnly(item),
+                item?.IsOrphan ?? true,
+                original))
+        {
+            Interlocked.Increment(ref _histEpoch);
+            gallery.ClearHistogram();
+            return;
+        }
+
+        var epoch = Interlocked.Increment(ref _histEpoch);
+        var rgba = frame.ScrgbRgba;
+        var width = frame.Width;
+        var height = frame.Height;
+        var primaries = probe.CicpPrimaries;
+        _ = Task.Run(() =>
+        {
+            GalleryHistogramBins bins;
+            try
+            {
+                bins = GalleryHistogram.FromScrgb(rgba, width, height, primaries);
+            }
+            catch
+            {
+                bins = GalleryHistogramBins.Empty;
+            }
+
+            return UiDispatch.RunAsync(() =>
+            {
+                if (epoch != Volatile.Read(ref _histEpoch) || !ReferenceEquals(_gallery, gallery))
+                {
+                    return;
+                }
+
+                gallery.SetHistogram(bins);
+            });
+        });
     }
 
     private void HideHdr()

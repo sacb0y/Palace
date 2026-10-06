@@ -502,6 +502,38 @@ public static class GalleryPresent
         b709 = (-0.018151f * r) + (-0.100579f * g) + (1.118730f * b);
     }
 
+    /// <summary>
+    /// Inverse of <see cref="Bt2020ToBt709"/> / SKIV <c>c_Bt2100toscRGB</c>.
+    /// </summary>
+    public static void Bt709ToBt2020(float r709, float g709, float b709, out float r, out float g, out float b)
+    {
+        r = (0.627404f * r709) + (0.329283f * g709) + (0.043313f * b709);
+        g = (0.069097f * r709) + (0.919540f * g709) + (0.011362f * b709);
+        b = (0.016392f * r709) + (0.088013f * g709) + (0.895595f * b709);
+    }
+
+    /// <summary>
+    /// CIE Y for a presented scRGB pixel. <c>HdrFrame.ScrgbRgba</c> is already
+    /// display 709; Info Y is source primaries before 2020→709. Invert that
+    /// matrix whenever <see cref="HdrColor.UsesBt2100ToScrgbMatrix"/> (BT.2020,
+    /// Display P3 12, unspecified / missing <c>colr</c>) — do not run BT.2020
+    /// <see cref="LuminanceY"/> on the display-referred channels. 2020 weights
+    /// stay only when CICP primaries are 9, matching Info.
+    /// </summary>
+    public static float LumaNitsFromPresentedScrgb(float sr, float sg, float sb, int? cicpPrimaries)
+    {
+        var r = sr * ScrgbNits;
+        var g = sg * ScrgbNits;
+        var b = sb * ScrgbNits;
+        if (HdrColor.UsesBt2100ToScrgbMatrix(cicpPrimaries))
+        {
+            Bt709ToBt2020(r, g, b, out r, out g, out b);
+            return LuminanceY(r, g, b, cicpPrimaries == 9);
+        }
+
+        return LuminanceY(r, g, b, false);
+    }
+
     public static float NitsToScrgb(float nits) => nits / ScrgbNits;
 
     public static (float X, float Y, float W, float H) DestRect(

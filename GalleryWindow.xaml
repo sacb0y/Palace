@@ -104,12 +104,19 @@
                         BorderThickness="1"
                         CornerRadius="{StaticResource OverlayCornerRadius}"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowImageInfo), Mode=OneWay}">
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
-                            AutomationProperties.Name="Image information"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
-                            TextWrapping="Wrap" />
+                        <StackPanel Spacing="6">
+                            <TextBlock
+                                AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
+                                AutomationProperties.Name="Image information"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <controls:GalleryHistogramChart
+                                Compact="True"
+                                IdPrefix="GalleryWindowInfo"
+                                Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
+                        </StackPanel>
                     </Border>
                 </StackPanel>
                 <Button
@@ -258,6 +265,12 @@
                             Text="{x:Bind Gallery.HdrStatus, Mode=OneWay}"
                             TextWrapping="Wrap"
                             Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.HdrStatus), Mode=OneWay}" />
+                        <controls:GalleryHistogramChart
+                            Compact="False"
+                            IdPrefix="GalleryWindow"
+                            Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
+                            ShowRgb="{x:Bind Gallery.HistogramShowRgb, Mode=TwoWay}"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
                         <TextBlock
                             AutomationProperties.AutomationId="TxtGalleryPreviewStatus"
                             Style="{StaticResource CaptionTextBlockStyle}"

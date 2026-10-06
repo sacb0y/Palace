@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Palace.Controls.GalleryHistogramChart"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:mc="http://schemas.openxmlschemas.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <StackPanel x:Name="PnlHistogram" Spacing="6">
+        <StackPanel
+            x:Name="PnlHistogramModes"
+            Orientation="Horizontal"
+            Spacing="8">
+            <ToggleButton
+                x:Name="BtnHistogramLuma"
+                Padding="8,4"
+                Click="BtnHistogramLuma_Click"
+                ToolTipService.ToolTip="CIE Y luminance">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ic:FluentIcon Icon="DataHistogram" IconSize="Size16" IconVariant="Regular" />
+                    <TextBlock VerticalAlignment="Center" Text="Y" />
+                </StackPanel>
+            </ToggleButton>
+            <ToggleButton
+                x:Name="BtnHistogramRgb"
+                Padding="8,4"
+                Click="BtnHistogramRgb_Click"
+                ToolTipService.ToolTip="scRGB channels">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ic:FluentIcon Icon="Color" IconSize="Size16" IconVariant="Regular" />
+                    <TextBlock VerticalAlignment="Center" Text="RGB" />
+                </StackPanel>
+            </ToggleButton>
+        </StackPanel>
+        <TextBlock
+            x:Name="TxtHistogram"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            TextWrapping="Wrap" />
+        <Border
+            Padding="0"
+            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{StaticResource ControlCornerRadius}">
+            <Canvas
+                x:Name="CnvHistogram"
+                Height="96"
+                HorizontalAlignment="Stretch"
+                SizeChanged="CnvHistogram_SizeChanged">
+                <Polyline
+                    x:Name="PlnLuma"
+                    Stroke="{ThemeResource TextFillColorPrimaryBrush}"
+                    StrokeThickness="1.5" />
+                <Polyline
+                    x:Name="PlnRed"
+                    Opacity="0.85"
+                    Stroke="{ThemeResource SystemFillColorCriticalBrush}"
+                    StrokeThickness="1.25" />
+                <Polyline
+                    x:Name="PlnGreen"
+                    Opacity="0.85"
+                    Stroke="{ThemeResource SystemFillColorSuccessBrush}"
+                    StrokeThickness="1.25" />
+                <Polyline
+                    x:Name="PlnBlue"
+                    Opacity="0.85"
+                    Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                    StrokeThickness="1.25" />
+            </Canvas>
+        </Border>
+    </StackPanel>
+</UserControl>
