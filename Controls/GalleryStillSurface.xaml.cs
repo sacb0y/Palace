@@ -254,7 +254,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         // Do not BitmapImage the original HDR file — that is a second full
         // WIC decode. Show the mosaic thumb until scRGB present wins.
-        ImgStill.Source = ToStillImage(attempt ? item?.ThumbPath : still);
+        ImgStill.Source = ToStillImage(attempt ? item?.ThumbPath : still, animateGif: true);
 
         if (!pathMatches)
         {
@@ -938,7 +938,7 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
-    private static BitmapImage? ToStillImage(string? path)
+    private static BitmapImage? ToStillImage(string? path, bool animateGif = false)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -960,7 +960,7 @@ public sealed partial class GalleryStillSurface : UserControl
             return new BitmapImage
             {
                 UriSource = new Uri(path, UriKind.Absolute),
-                AutoPlay = !PathSafe.GifExt.Contains(PathSafe.Extension(path))
+                AutoPlay = animateGif || !PathSafe.GifExt.Contains(PathSafe.Extension(path))
             };
         }
         catch
