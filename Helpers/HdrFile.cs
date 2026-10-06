@@ -34,11 +34,12 @@ public readonly record struct HdrProbe(
 
     /// <summary>
     /// WIC stills + Radiance RGBE (no Magick). Ultra HDR JPEG stays SDR base.
-    /// JPEG XR HDR is often already float scRGB; WinRT WIC has no float
-    /// pixel format, so those stay BitmapImage (IsHdr, not presentable).
+    /// JPEG XR HDR is often already float/half scRGB; WinRT has no float
+    /// pixel format, so present uses native WIC COM into the same swapchain
+    /// as HDR PNG — not Magick, not <c>BitmapImage</c>.
     /// </summary>
     public bool CanPresentHdr => Kind is HdrKind.HdrPng or HdrKind.HdrAvif
-        or HdrKind.HdrHeif or HdrKind.HdrJxl or HdrKind.HdrRadiance;
+        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance;
 
     public bool IsPq => CicpTransfer == 16;
 

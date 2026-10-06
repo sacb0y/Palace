@@ -95,6 +95,18 @@ public static class StillFormats
         return width is > 0 && height is > 0 ? (width.Value, height.Value) : null;
     }
 
+    /// <summary>
+    /// WIC <c>GUID_WICPixelFormat64bppRGBAHalf</c> (little-endian on disk).
+    /// </summary>
+    public static ReadOnlySpan<byte> JxrGuidRgbaHalf =>
+        [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x10];
+
+    /// <summary>
+    /// WIC <c>GUID_WICPixelFormat128bppRGBAFloat</c>.
+    /// </summary>
+    public static ReadOnlySpan<byte> JxrGuidRgbaFloat =>
+        [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x1B];
+
     public static bool JxrLooksHdr(ReadOnlySpan<byte> data)
     {
         if (!IsJxr(data) || data.Length < 8)
@@ -118,17 +130,27 @@ public static class StillFormats
                 continue;
             }
 
+            var type = data[i + 2] | (data[i + 3] << 8);
+            var fieldCount = ReadLe32(data, i + 4);
             var offset = ReadLe32(data, i + 8);
+            // PIXEL_FORMAT is a 16-byte GUID (BYTE/UNDEFINED, count 16).
+            if (fieldCount != 16 || type is not (1 or 7))
+            {
+                return false;
+            }
+
             if (offset < 0 || offset + 16 > data.Length)
             {
                 return false;
             }
 
-            return IsHdrJxrGuid(data.Slice(offset, 16));
+            return IsHdrJxrPixelFormat(data.Slice(offset, 16));
         }
 
         return false;
     }
+
+    public static bool IsHdrJxrPixelFormat(ReadOnlySpan<byte> guid) => IsHdrJxrGuid(guid);
 
     public static (int Width, int Height)? TryReadJxlSize(ReadOnlySpan<byte> data)
     {
@@ -232,11 +254,39 @@ public static class StillFormats
         return HdrProbe.None;
     }
 
-    private static bool IsHdrJxrGuid(ReadOnlySpan<byte> guid) =>
-        MatchesGuid(guid, 0x6FDDC324, 0x4E03, 0x4BFE, [0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x10])
-        || MatchesGuid(guid, 0x6FDDC324, 0x4E03, 0x4BFE, [0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x1B]);
+    private static bool IsHdrJxrGuid(ReadOnlySpan<byte> guid)
+    {
+        // WIC pixel-format family 6FDDC324-4E03-4BFE-B185-3D77768DCxxx.
+        if (guid.Length >= 16
+            && ReadLe32(guid, 0) == unchecked((int)0x6FDDC324)
+            && (guid[4] | (guid[5] << 8)) == 0x4E03
+            && (guid[6] | (guid[7] << 8)) == 0x4BFE
+            && guid[8] == 0xB1 && guid[9] == 0x85
+            && guid[10] == 0x3D && guid[11] == 0x77
+            && guid[12] == 0x76 && guid[13] == 0x8D
+            && guid[14] == 0xC9)
+        {
+            return guid[15] is
+                0x10 // 64bppRGBAHalf
+                or 0x11 // 32bppGrayFloat
+                or 0x13 // 16bppGrayHalf
+                or 0x1B // 128bppRGBAFloat
+                or 0x1C // 128bppRGBFloat
+                or 0x3A // 32bppRGBA1010102XR
+                or 0x3B // 48bppRGBHalf
+                or 0x3D // 32bppRGBE
+                or 0x42; // 64bppRGBHalf
+        }
 
-    // 64bppRGBAHalf = …C910, 128bppRGBAFloat = …C91B (WIC pixel format GUIDs).
+        // 96bppRGBFloat (different family).
+        return MatchesGuid(
+            guid,
+            0xE3FED0FC,
+            0x5B71,
+            0x4C75,
+            [0x83, 0x2E, 0x6D, 0xCB, 0x5C, 0x17, 0x21, 0x5D]);
+    }
+
     private static bool MatchesGuid(ReadOnlySpan<byte> data, uint a, ushort b, ushort c, byte[] rest)
     {
         if (data.Length < 16 || rest.Length != 8)

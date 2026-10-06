@@ -31,8 +31,9 @@ internal readonly record struct HdrStats(
 
 /// <summary>
 /// Local HDR still → linear scRGB. HDR AVIF prefers libavif (identity
-/// GBR). HEIF / other stills use WIC P010/NV12/YUY2 or packed RGB-as-YUV.
-/// Never online-only.
+/// GBR). HDR JPEG XR uses native WIC COM float/half (WinRT has no float
+/// pixel format). HEIF / other stills use WIC P010/NV12/YUY2 or packed
+/// RGB-as-YUV. Never online-only.
 /// </summary>
 internal static class HdrWicDecode
 {
@@ -58,6 +59,21 @@ internal static class HdrWicDecode
         if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
         {
             return await Task.Run(() => FromRadiance(path), cancellation).ConfigureAwait(false);
+        }
+
+        if (probe.Kind == HdrKind.HdrJxr)
+        {
+            return await Task.Run(
+                () => FromWicFloat(
+                    path,
+                    probe,
+                    viewportPixelWidth,
+                    viewportPixelHeight,
+                    scaling,
+                    wantRgba: true,
+                    measure: false,
+                    cancellation),
+                cancellation).ConfigureAwait(false);
         }
 
         if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
@@ -192,6 +208,33 @@ internal static class HdrWicDecode
                 cancellation).ConfigureAwait(false);
         }
 
+        if (probe.Kind == HdrKind.HdrJxr)
+        {
+            return await Task.Run(
+                () =>
+                {
+                    var frame = FromWicFloat(
+                        path,
+                        probe,
+                        viewportPixelWidth,
+                        viewportPixelHeight,
+                        ImageScaling.Fit,
+                        wantRgba: false,
+                        measure: true,
+                        cancellation);
+                    return frame is null
+                        ? (HdrStats?)null
+                        : new HdrStats(
+                            frame.MaxNits,
+                            frame.AvgNits,
+                            frame.MinNits,
+                            frame.MaxScrgb,
+                            frame.NativeWidth,
+                            frame.NativeHeight);
+                },
+                cancellation).ConfigureAwait(false);
+        }
+
         try
         {
             var file = await StorageFile.GetFileFromPathAsync(path).AsTask().ConfigureAwait(false);
@@ -226,6 +269,82 @@ internal static class HdrWicDecode
             return await Task.Run(
                 () => Measure(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe, cancellation),
                 cancellation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Native WIC COM (not WinRT <c>BitmapDecoder</c>) so float / half
+    /// JPEG XR can reach the scRGB swapchain. WinRT has no float pixel
+    /// format and would clamp to <c>Rgba16</c>.
+    /// </summary>
+    private static HdrFrame? FromWicFloat(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        ImageScaling scaling,
+        bool wantRgba,
+        bool measure,
+        CancellationToken cancellation)
+    {
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var packed = WicCom.CopyRgba(
+                path, viewportPixelWidth, viewportPixelHeight, scaling, measure, cancellation);
+            if (packed is null)
+            {
+                return null;
+            }
+
+            cancellation.ThrowIfCancellationRequested();
+            var converted = Convert(
+                packed.Value.Data,
+                packed.Value.Format,
+                packed.Value.Width,
+                packed.Value.Height,
+                probe,
+                wantRgba,
+                cancellation);
+            if (converted is null)
+            {
+                return null;
+            }
+
+            var rgba = converted.Value.Rgba;
+            var width = packed.Value.Width;
+            var height = packed.Value.Height;
+            if (wantRgba && rgba is not null && packed.Value.Orientation is >= 2 and <= 8)
+            {
+                (rgba, width, height) = HdrPixels.OrientScrgbRgba(
+                    rgba, packed.Value.Width, packed.Value.Height, packed.Value.Orientation);
+            }
+            else
+            {
+                (width, height) = HdrPixels.OrientedSize(
+                    packed.Value.Width, packed.Value.Height, packed.Value.Orientation);
+            }
+
+            return new HdrFrame
+            {
+                ScrgbRgba = rgba ?? [],
+                Width = width,
+                Height = height,
+                NativeWidth = packed.Value.NativeWidth,
+                NativeHeight = packed.Value.NativeHeight,
+                MaxNits = converted.Value.MaxNits,
+                AvgNits = converted.Value.AvgNits,
+                MinNits = converted.Value.MinNits,
+                MaxScrgb = converted.Value.MaxScrgb
+            };
         }
         catch (OperationCanceledException)
         {
@@ -569,7 +688,8 @@ internal static class HdrWicDecode
 
     /// <summary>
     /// PNG path stays EncodedToNits + BT.2020→709 (Isiac: HDR PNGs look
-    /// right). AVIF/JXL/other use SKIV EncodedRgbToScrgb.
+    /// right). AVIF/JXL/JXR/other use SKIV EncodedRgbToScrgb (JXR is
+    /// already linear scRGB).
     /// </summary>
     private static void EncodedRgbToPresent(
         float r,
@@ -619,6 +739,311 @@ internal static class HdrWicDecode
         }
 
         return HdrColor.IsLumaInRedOnly([maxR], [maxG], [maxB]);
+    }
+
+    /// <summary>
+    /// Native WIC factory / decoder. WinRT <c>BitmapDecoder.GetPixelDataAsync</c>
+    /// cannot request float or half formats.
+    /// </summary>
+    private static class WicCom
+    {
+        private static readonly Guid ClsidFactory = new("cacaf262-9370-4615-a13b-9f5539da4c0a");
+        private static readonly Guid ClsidFactory2 = new("317d06e8-5f24-433d-bdf7-79ce68d8abc2");
+        private static readonly Guid GuidRgbaFloat = new("6fddc324-4e03-4bfe-b185-3d77768dc91b");
+        private static readonly Guid GuidRgbaHalf = new("6fddc324-4e03-4bfe-b185-3d77768dc910");
+        private const uint GenericRead = 0x80000000;
+        private const uint InterpolationLinear = 1;
+
+        public static (byte[] Data, HdrPackedFormat Format, int Width, int Height, int NativeWidth, int NativeHeight, uint Orientation)? CopyRgba(
+            string path,
+            int viewportPixelWidth,
+            int viewportPixelHeight,
+            ImageScaling scaling,
+            bool measure,
+            CancellationToken cancellation)
+        {
+            IWICImagingFactory? factory = null;
+            IWICBitmapDecoder? decoder = null;
+            IWICBitmapFrameDecode? frame = null;
+            IWICBitmapScaler? scaler = null;
+            IWICFormatConverter? converter = null;
+            try
+            {
+                factory = CreateFactory();
+                factory.CreateDecoderFromFilename(path, IntPtr.Zero, GenericRead, 0, out decoder);
+                decoder.GetFrame(0, out frame);
+                frame.GetSize(out var storedW, out var storedH);
+                if (storedW == 0 || storedH == 0 || storedW > 16384 || storedH > 16384)
+                {
+                    return null;
+                }
+
+                var orientation = ReadOrientation(frame);
+                var (nativeW, nativeH) = HdrPixels.OrientedSize((int)storedW, (int)storedH, orientation);
+                var (decodeW, decodeH) = measure
+                    ? GalleryPresent.MeasureDecodeSize(nativeW, nativeH, viewportPixelWidth, viewportPixelHeight)
+                    : GalleryPresent.PresentDecodeSize(
+                        nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
+                if (decodeW <= 0 || decodeH <= 0)
+                {
+                    decodeW = nativeW;
+                    decodeH = nativeH;
+                }
+
+                var (scaleW, scaleH) = HdrPixels.SourceScaleSize(
+                    (int)storedW, (int)storedH, nativeW, nativeH, decodeW, decodeH);
+                IWICBitmapSource source = frame;
+                if (scaleW > 0 && scaleH > 0 && (scaleW != (int)storedW || scaleH != (int)storedH))
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    factory.CreateBitmapScaler(out scaler);
+                    scaler.Initialize(frame, (uint)scaleW, (uint)scaleH, InterpolationLinear);
+                    source = scaler;
+                }
+
+                source.GetPixelFormat(out var format);
+                HdrPackedFormat packed;
+                int bytesPer;
+                if (format == GuidRgbaFloat)
+                {
+                    packed = HdrPackedFormat.RgbaFloat;
+                    bytesPer = 16;
+                }
+                else if (format == GuidRgbaHalf)
+                {
+                    packed = HdrPackedFormat.RgbaHalf;
+                    bytesPer = 8;
+                }
+                else
+                {
+                    packed = HdrPackedFormat.RgbaFloat;
+                    bytesPer = 16;
+                    factory.CreateFormatConverter(out converter);
+                    var dst = GuidRgbaFloat;
+                    converter.Initialize(source, ref dst, 0, IntPtr.Zero, 0, 0);
+                    source = converter;
+                }
+
+                source.GetSize(out var copyW, out var copyH);
+                if (copyW == 0 || copyH == 0 || copyW > 16384 || copyH > 16384)
+                {
+                    return null;
+                }
+
+                cancellation.ThrowIfCancellationRequested();
+                var stride = copyW * (uint)bytesPer;
+                var buffer = new byte[stride * copyH];
+                var pin = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+                try
+                {
+                    source.CopyPixels(IntPtr.Zero, stride, (uint)buffer.Length, pin.AddrOfPinnedObject());
+                }
+                finally
+                {
+                    pin.Free();
+                }
+
+                return (buffer, packed, (int)copyW, (int)copyH, nativeW, nativeH, orientation);
+            }
+            finally
+            {
+                Release(converter);
+                Release(scaler);
+                Release(frame);
+                Release(decoder);
+                Release(factory);
+            }
+        }
+
+        private static IWICImagingFactory CreateFactory()
+        {
+            foreach (var clsid in new[] { ClsidFactory2, ClsidFactory })
+            {
+                var type = Type.GetTypeFromCLSID(clsid, throwOnError: false);
+                if (type is not null && Activator.CreateInstance(type) is IWICImagingFactory factory)
+                {
+                    return factory;
+                }
+            }
+
+            throw new InvalidOperationException("WIC factory");
+        }
+
+        private static uint ReadOrientation(IWICBitmapFrameDecode frame)
+        {
+            IWICMetadataQueryReader? reader = null;
+            try
+            {
+                frame.GetMetadataQueryReader(out reader);
+                foreach (var name in new[]
+                         {
+                             "System.Photo.Orientation",
+                             "/ifd/{ushort=274}",
+                             "/app1/ifd/{ushort=274}",
+                             "/ifd/{ushort=48130}"
+                         })
+                {
+                    var value = default(PropVariant);
+                    try
+                    {
+                        reader.GetMetadataByName(name, ref value);
+                        var n = ReadUInt(value);
+                        if (n is >= 1 and <= 8)
+                        {
+                            return n;
+                        }
+                    }
+                    catch
+                    {
+                        // Next query name.
+                    }
+                    finally
+                    {
+                        PropVariantClear(ref value);
+                    }
+                }
+            }
+            catch
+            {
+                // JPEG XR without orientation metadata is upright.
+            }
+            finally
+            {
+                Release(reader);
+            }
+
+            return 1;
+        }
+
+        private static uint ReadUInt(PropVariant value) =>
+            value.vt switch
+            {
+                2 => (ushort)(long)value.data1, // VT_I2
+                18 => (ushort)(ulong)value.data1, // VT_UI2
+                3 => (uint)(int)(long)value.data1, // VT_I4
+                19 => (uint)(ulong)value.data1, // VT_UI4
+                _ => 0
+            };
+
+        private static void Release(object? com)
+        {
+            if (com is not null)
+            {
+                Marshal.ReleaseComObject(com);
+            }
+        }
+
+        [DllImport("ole32.dll")]
+        private static extern int PropVariantClear(ref PropVariant pvar);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PropVariant
+        {
+            public ushort vt;
+            public ushort reserved1;
+            public ushort reserved2;
+            public ushort reserved3;
+            public IntPtr data1;
+            public IntPtr data2;
+        }
+
+        [ComImport]
+        [Guid("ec5ec8a9-c395-4314-9c77-54d7a935ff70")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IWICImagingFactory
+        {
+            void CreateDecoderFromFilename(
+                [MarshalAs(UnmanagedType.LPWStr)] string wzFilename,
+                IntPtr pguidVendor,
+                uint dwDesiredAccess,
+                uint metadataOptions,
+                out IWICBitmapDecoder ppIDecoder);
+
+            void CreateDecoderFromStream();
+            void CreateDecoderFromFileHandle();
+            void CreateComponentInfo();
+            void CreateDecoder();
+            void CreateEncoder();
+            void CreatePalette();
+            void CreateFormatConverter(out IWICFormatConverter ppIFormatConverter);
+            void CreateBitmapScaler(out IWICBitmapScaler ppIBitmapScaler);
+        }
+
+        [ComImport]
+        [Guid("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IWICBitmapDecoder
+        {
+            void QueryCapability();
+            void Initialize();
+            void GetContainerFormat();
+            void GetDecoderInfo();
+            void CopyPalette();
+            void GetMetadataQueryReader();
+            void GetPreview();
+            void GetColorContexts();
+            void GetThumbnail();
+            void GetFrameCount();
+            void GetFrame(uint index, out IWICBitmapFrameDecode ppIFrameDecode);
+        }
+
+        [ComImport]
+        [Guid("00000120-a8f2-4877-ba0a-fd2b6645fb94")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IWICBitmapSource
+        {
+            void GetSize(out uint puiWidth, out uint puiHeight);
+            void GetPixelFormat(out Guid pPixelFormat);
+            void GetResolution(out double pDpiX, out double pDpiY);
+            void CopyPalette();
+            void CopyPixels(IntPtr prc, uint cbStride, uint cbBufferSize, IntPtr pbBuffer);
+        }
+
+        [ComImport]
+        [Guid("3b16811b-6a43-4ec9-a813-3d930c13b940")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IWICBitmapFrameDecode : IWICBitmapSource
+        {
+            void GetMetadataQueryReader(out IWICMetadataQueryReader ppIMetadataQueryReader);
+        }
+
+        [ComImport]
+        [Guid("00000301-a8f2-4877-ba0a-fd2b6645fb94")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IWICFormatConverter : IWICBitmapSource
+        {
+            void Initialize(
+                IWICBitmapSource pISource,
+                ref Guid dstFormat,
+                uint dither,
+                IntPtr pIPalette,
+                double alphaThresholdPercent,
+                uint paletteTranslate);
+        }
+
+        [ComImport]
+        [Guid("00000302-a8f2-4877-ba0a-fd2b6645fb94")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IWICBitmapScaler : IWICBitmapSource
+        {
+            void Initialize(
+                IWICBitmapSource pISource,
+                uint uiWidth,
+                uint uiHeight,
+                uint mode);
+        }
+
+        [ComImport]
+        [Guid("30989668-e1c9-4597-b395-458eedb808df")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        private interface IWICMetadataQueryReader
+        {
+            void GetContainerFormat();
+            void GetLocation();
+            void GetMetadataByName(
+                [MarshalAs(UnmanagedType.LPWStr)] string wzName,
+                ref PropVariant pvarValue);
+        }
     }
 
     [ComImport]

@@ -33,6 +33,23 @@ public sealed class HdrColorTests
     }
 
     [Fact]
+    public void JxrScrgb_ValuesAboveOneStayLinear()
+    {
+        HdrColor.EncodedRgbToScrgb(2.5f, 1f, 0.5f, HdrTransfer.Scrgb, 1, out var sr, out var sg, out var sb);
+        Assert.Equal(2.5f, sr);
+        Assert.Equal(1f, sg);
+        Assert.Equal(0.5f, sb);
+        Assert.Equal(2.5f * GalleryPresent.ScrgbNits, GalleryPresent.EncodedToNits(2.5f, HdrTransfer.Scrgb), 3);
+        var probe = new HdrProbe(HdrKind.HdrJxr, 1, null, null);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Equal(HdrTransfer.Scrgb, probe.Transfer);
+        Assert.Equal(
+            GalleryPresent.LuminanceY(200f, 80f, 40f, bt2020: false),
+            HdrColor.SourcePrimaryNitsY(2.5f, 1f, 0.5f, HdrTransfer.Scrgb, 1),
+            3);
+    }
+
+    [Fact]
     public void SkivPrimaries_PqWhiteScales()
     {
         HdrColor.EncodedRgbToScrgb(1f, 1f, 1f, HdrTransfer.Pq, 1, out var r709, out var g709, out var b709);
