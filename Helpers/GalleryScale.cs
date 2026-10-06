@@ -35,13 +35,22 @@ public static class GalleryScale
 
     /// <summary>
     /// Space opens the overlay on the focused or selected mosaic tile.
-    /// Do not steal Space while typing, and do not toggle-close on Space.
+    /// Do not steal Space while typing. While the overlay is already open,
+    /// Space must reach MediaPlayer / focused chrome — do not mark it handled
+    /// on the viewer root, and do not toggle-close on Space (Esc closes).
     /// </summary>
     public static bool OpensOverlay(bool overlayOpen, bool isTyping, int keyCode) =>
         !overlayOpen && !isTyping && keyCode == KeySpace;
 
     public static bool ClosesOverlay(bool overlayOpen, int keyCode) =>
         overlayOpen && keyCode == KeyEscape;
+
+    /// <summary>
+    /// Overlay / GalleryWindow PreviewKeyDown must not mark Space handled
+    /// so MediaPlayer play/pause and focused chrome receive it.
+    /// </summary>
+    public static bool PassesViewerSpace(bool overlayOpen, int keyCode) =>
+        overlayOpen && keyCode == KeySpace;
 
     public static ImageScaling Cycle(ImageScaling current) =>
         current switch

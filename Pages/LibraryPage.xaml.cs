@@ -701,6 +701,11 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        if (GalleryScale.PassesViewerSpace(true, (int)e.Key))
+        {
+            return;
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Escape:

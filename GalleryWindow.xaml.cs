@@ -4,6 +4,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
 using Windows.UI.Core;
+using Palace.Helpers;
 using Palace.ViewModels;
 using Windows.Graphics;
 using Windows.Media.Core;
@@ -80,6 +81,11 @@ public sealed partial class GalleryWindow : Window
         if (Gallery.TryHandleViewerShortcut(control, (int)e.Key))
         {
             e.Handled = true;
+            return;
+        }
+
+        if (GalleryScale.PassesViewerSpace(true, (int)e.Key))
+        {
             return;
         }
 
