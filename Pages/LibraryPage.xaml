@@ -1124,12 +1124,20 @@
             x:Name="GrdGalleryOverlay"
             AutomationProperties.AutomationId="GrdGalleryOverlay"
             AutomationProperties.Name="Gallery overlay"
-            Background="{ThemeResource SmokeFillColorDefaultBrush}"
             Canvas.ZIndex="1"
             IsTabStop="True"
-            PointerPressed="GalleryOverlay_BackdropPressed"
             PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
+            <Grid
+                x:Name="GrdGalleryBackdrop"
+                AutomationProperties.AutomationId="GrdGalleryBackdrop"
+                PointerPressed="GalleryOverlay_BackdropPressed">
+                <Grid Background="{StaticResource GalleryOverlayBackdropBrush}" />
+                <Border
+                    Background="{ThemeResource SmokeFillColorDefaultBrush}"
+                    IsHitTestVisible="False"
+                    Opacity="0.28" />
+            </Grid>
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />

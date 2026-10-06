@@ -22,12 +22,26 @@ public static class GalleryScale
     public const int KeyNumberPad3 = 99;
     public const int KeyLetterD = 68;
     public const int KeyLetterI = 73;
+    public const int KeySpace = 32;
+    public const int KeyEscape = 27;
+    public const double MinPinchZoom = 1.0;
+    public const double MaxPinchZoom = 8.0;
 
     public static bool TogglesImageInfo(bool controlDown, int keyCode) =>
         controlDown && keyCode == KeyLetterD;
 
     public static bool TogglesDetails(bool controlDown, int keyCode) =>
         controlDown && keyCode == KeyLetterI;
+
+    /// <summary>
+    /// Space opens the overlay on the focused or selected mosaic tile.
+    /// Do not steal Space while typing, and do not toggle-close on Space.
+    /// </summary>
+    public static bool OpensOverlay(bool overlayOpen, bool isTyping, int keyCode) =>
+        !overlayOpen && !isTyping && keyCode == KeySpace;
+
+    public static bool ClosesOverlay(bool overlayOpen, int keyCode) =>
+        overlayOpen && keyCode == KeyEscape;
 
     public static ImageScaling Cycle(ImageScaling current) =>
         current switch
@@ -77,8 +91,9 @@ public static class GalleryScale
             _ => "Uniform"
         };
 
-    public static bool Scrolls(ImageScaling scaling) =>
-        scaling is ImageScaling.Actual or ImageScaling.Fill;
+    public static bool Scrolls(ImageScaling scaling, double pinchZoom = 1.0) =>
+        scaling is ImageScaling.Actual or ImageScaling.Fill
+        || pinchZoom > MinPinchZoom + 0.0001;
 
     /// <summary>
     /// Layout size so one image pixel is one device pixel. At 150% DPI a
@@ -129,8 +144,31 @@ public static class GalleryScale
     }
 
     /// <summary>
-    /// Left-click drag pans like touch: pointer delta subtracts from the
-    /// current offset and clamps to the scrollable range.
+    /// Mouse left-drag and touch/pen contact pan when the still can scroll.
+    /// </summary>
+    public static bool UsesDragPan(
+        bool scrolls,
+        bool isMouse,
+        bool leftButton,
+        bool isTouch,
+        bool isPen)
+    {
+        if (!scrolls)
+        {
+            return false;
+        }
+
+        if (isMouse)
+        {
+            return leftButton;
+        }
+
+        return isTouch || isPen;
+    }
+
+    /// <summary>
+    /// Pointer delta subtracts from the current offset and clamps to the
+    /// scrollable range (mouse left-drag and touch/pen drag).
     /// </summary>
     public static (double Horizontal, double Vertical) DragPan(
         double horizontalOffset,
@@ -142,6 +180,55 @@ public static class GalleryScale
         (
             ClampOffset(horizontalOffset - pointerDeltaX, scrollableWidth),
             ClampOffset(verticalOffset - pointerDeltaY, scrollableHeight));
+
+    public static double ClampPinchZoom(double zoom) =>
+        Math.Clamp(zoom, MinPinchZoom, MaxPinchZoom);
+
+    /// <summary>
+    /// Multiplicative pinch. <paramref name="scaleDelta"/> is the frame
+    /// scale (1 = unchanged). Clamped to <see cref="MinPinchZoom"/>–
+    /// <see cref="MaxPinchZoom"/>.
+    /// </summary>
+    public static double PinchZoom(double currentZoom, double scaleDelta)
+    {
+        var factor = scaleDelta > 0 ? scaleDelta : 1.0;
+        return ClampPinchZoom(currentZoom * factor);
+    }
+
+    public static (double Width, double Height) ApplyPinchZoom(
+        double width,
+        double height,
+        double zoom)
+    {
+        if (double.IsNaN(width) || double.IsNaN(height))
+        {
+            return (width, height);
+        }
+
+        var z = ClampPinchZoom(zoom);
+        return (width * z, height * z);
+    }
+
+    /// <summary>
+    /// Keep the pinch origin on the same content point after zoom.
+    /// </summary>
+    public static (double Horizontal, double Vertical) PinchPan(
+        double horizontalOffset,
+        double verticalOffset,
+        double originX,
+        double originY,
+        double oldZoom,
+        double newZoom,
+        double scrollableWidth,
+        double scrollableHeight)
+    {
+        var prior = oldZoom > 0 ? oldZoom : 1.0;
+        var next = ClampPinchZoom(newZoom);
+        var scale = next / prior;
+        return (
+            ClampOffset((horizontalOffset + originX) * scale - originX, scrollableWidth),
+            ClampOffset((verticalOffset + originY) * scale - originY, scrollableHeight));
+    }
 
     /// <summary>
     /// Fill starts centered (cover crop). 1:1 starts at the origin.

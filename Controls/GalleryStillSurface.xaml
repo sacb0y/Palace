@@ -10,6 +10,8 @@
         <ScrollViewer
             x:Name="ScrStill"
             HorizontalScrollBarVisibility="Disabled"
+            ManipulationDelta="ScrStill_ManipulationDelta"
+            ManipulationMode="TranslateX,TranslateY,Scale,TranslateInertia"
             PointerCaptureLost="ScrStill_PointerCaptureLost"
             PointerMoved="ScrStill_PointerMoved"
             PointerPressed="ScrStill_PointerPressed"

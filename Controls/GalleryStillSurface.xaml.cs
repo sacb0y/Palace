@@ -23,6 +23,11 @@ public sealed partial class GalleryStillSurface : UserControl
     private bool _panning;
     private double _panLastX;
     private double _panLastY;
+    private double _pinchZoom = 1;
+    private bool _preservePinchPan;
+    private double _pinchOriginX;
+    private double _pinchOriginY;
+    private double _pinchOldZoom = 1;
     private ImageScaling _scrollScaling;
     private int _scrollRevision = int.MinValue;
     private double _scrollContentW;
@@ -59,6 +64,7 @@ public sealed partial class GalleryStillSurface : UserControl
         CancelInFlight();
         ClearHdrCache();
         ResetScrollTracking();
+        _pinchZoom = 1;
         _gallery = gallery;
         if (_gallery is not null)
         {
@@ -108,6 +114,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         if (e.PropertyName is nameof(GalleryViewModel.Scaling))
         {
+            _pinchZoom = 1;
             ApplyScaleLayout();
             if (_hdrFrame is not null && _gallery is { } g)
             {
@@ -133,6 +140,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (e.PropertyName is nameof(GalleryViewModel.StillRevision))
         {
+            _pinchZoom = 1;
             _ = RefreshAsync();
         }
     }
@@ -535,7 +543,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private void ApplyScaleLayout()
     {
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
-        var scrolls = GalleryScale.Scrolls(scaling);
+        var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
         ScrStill.HorizontalScrollBarVisibility = scrolls
             ? ScrollBarVisibility.Auto
             : ScrollBarVisibility.Disabled;
@@ -579,6 +587,8 @@ public sealed partial class GalleryStillSurface : UserControl
             }
         }
 
+        (width, height) = GalleryScale.ApplyPinchZoom(width, height, _pinchZoom);
+
         GrdStillContent.Width = width;
         GrdStillContent.Height = height;
         ImgStill.Width = width;
@@ -612,6 +622,13 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
+        var preserve = _preservePinchPan;
+        var originX = _pinchOriginX;
+        var originY = _pinchOriginY;
+        var oldZoom = _pinchOldZoom;
+        var newZoom = _pinchZoom;
+        _preservePinchPan = false;
+
         _scrollScaling = scaling;
         _scrollRevision = revision;
         _scrollContentW = contentW;
@@ -619,9 +636,19 @@ public sealed partial class GalleryStillSurface : UserControl
         _scrollViewW = viewW;
         _scrollViewH = viewH;
 
-        var (horizontal, vertical) = GalleryScale.InitialScrollOffset(
-            scaling, contentW, contentH, viewW, viewH);
         ScrStill.UpdateLayout();
+        var (horizontal, vertical) = preserve
+            ? GalleryScale.PinchPan(
+                ScrStill.HorizontalOffset,
+                ScrStill.VerticalOffset,
+                originX,
+                originY,
+                oldZoom,
+                newZoom,
+                ScrStill.ScrollableWidth,
+                ScrStill.ScrollableHeight)
+            : GalleryScale.InitialScrollOffset(
+                scaling, contentW, contentH, viewW, viewH);
         ScrStill.ChangeView(horizontal, vertical, null, true);
     }
 
@@ -664,14 +691,19 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void ScrStill_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (!GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit)
-            || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
+        var type = e.Pointer.PointerDeviceType;
+        if (type == PointerDeviceType.Touch)
         {
             return;
         }
 
         var point = e.GetCurrentPoint(ScrStill);
-        if (!point.Properties.IsLeftButtonPressed)
+        if (!GalleryScale.UsesDragPan(
+                GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit, _pinchZoom),
+                type == PointerDeviceType.Mouse,
+                point.Properties.IsLeftButtonPressed,
+                type == PointerDeviceType.Touch,
+                type == PointerDeviceType.Pen))
         {
             return;
         }
@@ -691,7 +723,8 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         var point = e.GetCurrentPoint(ScrStill);
-        if (!point.Properties.IsLeftButtonPressed)
+        var type = e.Pointer.PointerDeviceType;
+        if (type == PointerDeviceType.Mouse && !point.Properties.IsLeftButtonPressed)
         {
             EndPan(e.Pointer);
             return;
@@ -725,6 +758,51 @@ public sealed partial class GalleryStillSurface : UserControl
 
         _panning = false;
         ScrStill.ReleasePointerCapture(pointer);
+    }
+
+    private void ScrStill_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType is not (PointerDeviceType.Touch or PointerDeviceType.Pen))
+        {
+            return;
+        }
+
+        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        var scaleDelta = e.Delta.Scale;
+        if (scaleDelta > 0 && Math.Abs(scaleDelta - 1) > 0.001)
+        {
+            var next = GalleryScale.PinchZoom(_pinchZoom, scaleDelta);
+            if (Math.Abs(next - _pinchZoom) > 0.0001)
+            {
+                _preservePinchPan = true;
+                _pinchOriginX = e.Position.X;
+                _pinchOriginY = e.Position.Y;
+                _pinchOldZoom = _pinchZoom;
+                _pinchZoom = next;
+                ApplyScaleLayout();
+                e.Handled = true;
+            }
+        }
+
+        if (!GalleryScale.Scrolls(scaling, _pinchZoom))
+        {
+            return;
+        }
+
+        if (e.Delta.Translation.X == 0 && e.Delta.Translation.Y == 0)
+        {
+            return;
+        }
+
+        var (horizontal, vertical) = GalleryScale.DragPan(
+            ScrStill.HorizontalOffset,
+            ScrStill.VerticalOffset,
+            e.Delta.Translation.X,
+            e.Delta.Translation.Y,
+            ScrStill.ScrollableWidth,
+            ScrStill.ScrollableHeight);
+        ScrStill.ChangeView(horizontal, vertical, null, true);
+        e.Handled = true;
     }
 
     private static BitmapImage? ToStillImage(string? path)

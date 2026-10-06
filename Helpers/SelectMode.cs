@@ -7,7 +7,7 @@ public static class SelectMode
 {
     /// <summary>
     /// True when a plain click or tap on a tile should toggle it instead of replacing the selection
-    /// (<c>ItemsViewSelectionMode.Multiple</c> vs <c>Extended</c>).
+    /// (<c>ItemsViewSelectionMode.Multiple</c> vs <c>Extended</c>). Space opens overlay, not toggle.
     /// </summary>
     public static bool ClickTogglesTile(bool selectMode) => selectMode;
 
