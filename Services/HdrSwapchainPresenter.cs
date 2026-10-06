@@ -78,10 +78,18 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         try
         {
             // Device / DXGI probe / buffer acquire need the UI apartment.
+            // Re-check _disposed inside the callback: Unloaded may Dispose after
+            // the opening guard and before this runs; EnsureDevice must not
+            // recreate COM objects that Dispose will not release again.
             float clip = 0;
             ushort[]? half = null;
             await UiDispatch.RunAsync(() =>
             {
+                if (_disposed)
+                {
+                    return;
+                }
+
                 EnsureDevice();
                 ProbeDisplay();
                 DisplayPeakNits = GalleryPresent.EffectivePeakNits(
@@ -91,6 +99,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 clip = GalleryPresent.RasterizeClipScrgb(DisplayPeakNits);
                 half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
             });
+            if (_disposed)
+            {
+                return HdrPresentOutcome.Cancelled;
+            }
+
             if (half is null)
             {
                 return HdrPresentOutcome.Failed;
