@@ -46,11 +46,19 @@ public sealed partial class GalleryStillSurface : UserControl
     private WriteableBitmap?[]? _gifBitmaps;
     private CancellationTokenSource? _gifLoadCts;
 
+    private readonly PointerEventHandler _wheelHandler;
+
     public GalleryStillSurface()
     {
+        _wheelHandler = ScrStill_PointerWheelChanged;
         InitializeComponent();
+        // Hidden ScrollViewer marks wheel handled (native pan/zoom no-op with
+        // ZoomMode Disabled). Learn trackpad pinch is this event — listen even
+        // after it is handled so Ctrl+wheel still zooms.
+        ScrStill.AddHandler(UIElement.PointerWheelChangedEvent, _wheelHandler, handledEventsToo: true);
         Unloaded += (_, _) =>
         {
+            ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
             UnhookPeak();
             _gallery?.StopGifPlayback();
             CancelInFlight();
@@ -1016,7 +1024,7 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
-    private void GrdStillHost_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    private void ScrStill_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(ScrStill);
         var delta = point.Properties.MouseWheelDelta;
@@ -1031,9 +1039,9 @@ public sealed partial class GalleryStillSurface : UserControl
             if (Math.Abs(nextZoom - _pinchZoom) > 0.0001)
             {
                 ApplyPinchFrame(point.Position.X, point.Position.Y, nextZoom, 0, 0);
-                e.Handled = true;
             }
 
+            e.Handled = true;
             return;
         }
 

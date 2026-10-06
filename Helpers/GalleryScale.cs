@@ -208,6 +208,13 @@ public static class GalleryScale
         scrolls && !controlDown && wheelDelta != 0;
 
     /// <summary>
+    /// Hidden ScrollViewer marks PointerWheelChanged handled before a parent
+    /// Grid hears it. Listen with handledEventsToo when bars are Hidden.
+    /// </summary>
+    public static bool NeedsHandledWheelListener(bool hidesScrollBars) =>
+        hidesScrollBars;
+
+    /// <summary>
     /// One wheel notch (120) is a 1.1× pinch step. Negative delta pinches out.
     /// </summary>
     public static double WheelPinchFactor(int mouseWheelDelta)
