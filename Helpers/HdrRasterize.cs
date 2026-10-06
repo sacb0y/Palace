@@ -11,7 +11,9 @@ internal static class HdrRasterize
     /// <summary>
     /// Fills the first <c>vw * vh * 4</c> halves of <paramref name="dest"/>
     /// (letterbox is zeroed, so a reused buffer needs no clear). RGB is
-    /// clamped to <paramref name="clip"/>; alpha is passed through.
+    /// scaled then clamped to <paramref name="clip"/>; alpha is passed
+    /// through. <paramref name="scale"/> is 1 on HDR; SDR map-CLL uses
+    /// <see cref="GalleryPresent.PresentMap"/>.
     /// </summary>
     public static void Fill(
         float[] src,
@@ -22,7 +24,8 @@ internal static class HdrRasterize
         int vh,
         float clip,
         ushort[] dest,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        float scale = 1f)
     {
         if (sw <= 0 || sh <= 0 || vw <= 0 || vh <= 0)
         {
@@ -47,7 +50,7 @@ internal static class HdrRasterize
             Parallel.For(0, vh, options, y =>
             {
                 var start = y * vw * 4;
-                ConvertRun(src, dest, start, vw, clip);
+                ConvertRun(src, dest, start, vw, clip, scale);
             });
             return;
         }
@@ -85,22 +88,22 @@ internal static class HdrRasterize
                 }
 
                 var si = (srcRow + sx) * 4;
-                dest[di] = GalleryPresent.FloatToHalf(Math.Clamp(src[si], 0, clip));
-                dest[di + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1], 0, clip));
-                dest[di + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2], 0, clip));
+                dest[di] = GalleryPresent.FloatToHalf(Math.Clamp(src[si] * scale, 0, clip));
+                dest[di + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1] * scale, 0, clip));
+                dest[di + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2] * scale, 0, clip));
                 dest[di + 3] = GalleryPresent.FloatToHalf(src[si + 3]);
             }
         });
     }
 
-    private static void ConvertRun(float[] src, ushort[] dest, int start, int pixels, float clip)
+    private static void ConvertRun(float[] src, ushort[] dest, int start, int pixels, float clip, float scale)
     {
         var end = start + (pixels * 4);
         for (var i = start; i < end; i += 4)
         {
-            dest[i] = GalleryPresent.FloatToHalf(Math.Clamp(src[i], 0, clip));
-            dest[i + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[i + 1], 0, clip));
-            dest[i + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[i + 2], 0, clip));
+            dest[i] = GalleryPresent.FloatToHalf(Math.Clamp(src[i] * scale, 0, clip));
+            dest[i + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[i + 1] * scale, 0, clip));
+            dest[i + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[i + 2] * scale, 0, clip));
             dest[i + 3] = GalleryPresent.FloatToHalf(src[i + 3]);
         }
     }

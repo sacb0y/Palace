@@ -70,10 +70,20 @@ public static class GalleryPresent
         bool peakOverride = false,
         float peakNits = 0)
     {
-        _ = displayHdr;
-        if (probe.CanPresentHdr && presented && peakOverride)
+        if (probe.CanPresentHdr && presented && peakOverride && displayHdr)
         {
             return $"{HdrKindLabel(probe.Kind)} · clip {ClampPeakNits(peakNits):0} nits (override)";
+        }
+
+        if (probe.CanPresentHdr && presented && !displayHdr)
+        {
+            var sdr = !peakOverride && peakNits > 0 ? peakNits : ScrgbNits;
+            if (Math.Abs(sdr - SdrReferenceNits) <= 1f)
+            {
+                sdr = ScrgbNits;
+            }
+
+            return $"{HdrKindLabel(probe.Kind)} · tonemap SDR {sdr:0} nits";
         }
 
         return probe.Kind switch
@@ -152,6 +162,62 @@ public static class GalleryPresent
     /// </summary>
     public static bool IsHdrDisplay(float displayLuminance) =>
         displayLuminance > 220;
+
+    /// <summary>
+    /// DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 (scRGB), G2084 HDR10, studio HDR10.
+    /// G22 sRGB (0) is SDR even when MaxLuminance is the dummy 270.
+    /// </summary>
+    public static bool IsAdvancedColor(int dxgiColorSpace) =>
+        dxgiColorSpace is 1 or 12 or 16;
+
+    /// <summary>
+    /// SDR composition peak. Use DXGI when it looks like a real SDR panel
+    /// (80–220, not BT.2408 203). Dummy 270 / missing / paper white → 80
+    /// (scRGB 1.0), never 203.
+    /// </summary>
+    public static float SdrPresentPeakNits(float maxLuminance, float maxFullFrameLuminance)
+    {
+        var reported = maxFullFrameLuminance > 0 ? maxFullFrameLuminance : maxLuminance;
+        if (reported >= MinPeakNits
+            && reported <= 220
+            && Math.Abs(reported - SdrReferenceNits) > 1f)
+        {
+            return reported;
+        }
+
+        return ScrgbNits;
+    }
+
+    /// <summary>MaxCLL in nits: scRGB channel peak, else CIE Y.</summary>
+    public static float ContentMaxNits(float maxScrgb, float cieYNits)
+    {
+        if (maxScrgb > 0)
+        {
+            return maxScrgb * ScrgbNits;
+        }
+
+        return cieYNits > 0 ? cieYNits : 0;
+    }
+
+    /// <summary>
+    /// HDR panels: clip only (unknown peak → PQ 10 000). SDR: SKIV map
+    /// CLL to display + clip. Never auto-clip to 203 paper white.
+    /// </summary>
+    public static HdrPresentMap PresentMap(bool displayIsHdr, float contentMaxNits, float displayPeakNits)
+    {
+        if (displayIsHdr)
+        {
+            return new HdrPresentMap(1f, RasterizeClipScrgb(displayPeakNits));
+        }
+
+        var display = displayPeakNits > 0 ? displayPeakNits : ScrgbNits;
+        if (Math.Abs(display - SdrReferenceNits) <= 1f)
+        {
+            display = ScrgbNits;
+        }
+
+        return new HdrPresentMap(TonemapScale(contentMaxNits, display), display / ScrgbNits);
+    }
 
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
@@ -316,9 +382,9 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// Overlay present clips highlights to the display peak. Do not scale
-    /// midtones by MaxCLL — that crushes SDR-reference white (203 nits)
-    /// versus the BitmapImage / SDR export of the same scene.
+    /// HDR-display present clips highlights to a real peak (or PQ range).
+    /// Do not map-CLL on HDR — that crushes BT.2408 203 nits white. SDR
+    /// panels use <see cref="PresentMap"/> (map CLL to display + clip).
     /// </summary>
     public static float ClipToPeak(float linearNits, float displayPeakNits)
     {
@@ -633,3 +699,5 @@ public readonly record struct GalleryImageInfo(
     float? MinLuminanceNits,
     float? DisplayLuminanceNits,
     float? MaxScrgb = null);
+
+public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);

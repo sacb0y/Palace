@@ -481,8 +481,8 @@ public partial class GalleryViewModel : ObservableObject
             CurrentProbe,
             HdrPresented,
             DisplayIsHdr,
-            GalleryPeak.Enabled,
-            GalleryPeak.Nits) ?? "";
+            GalleryPeak.Enabled && DisplayIsHdr,
+            DisplayIsHdr && GalleryPeak.Enabled ? GalleryPeak.Nits : DisplayPeakNits) ?? "";
         RefreshImageInfo();
     }
 

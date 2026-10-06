@@ -82,6 +82,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             // the opening guard and before this runs; EnsureDevice must not
             // recreate COM objects that Dispose will not release again.
             float clip = 0;
+            float scale = 1f;
             ushort[]? half = null;
             await UiDispatch.RunAsync(() =>
             {
@@ -92,11 +93,26 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
                 EnsureDevice();
                 ProbeDisplay();
-                DisplayPeakNits = GalleryPresent.EffectivePeakNits(
-                    _autoDisplayNits,
-                    peakOverrideNits is > 0,
-                    peakOverrideNits ?? 0);
-                clip = GalleryPresent.RasterizeClipScrgb(DisplayPeakNits);
+                if (DisplayIsHdr)
+                {
+                    DisplayPeakNits = GalleryPresent.EffectivePeakNits(
+                        _autoDisplayNits,
+                        peakOverrideNits is > 0,
+                        peakOverrideNits ?? 0);
+                }
+                else
+                {
+                    DisplayPeakNits = _autoDisplayNits > 0
+                        ? _autoDisplayNits
+                        : GalleryPresent.ScrgbNits;
+                }
+
+                var map = GalleryPresent.PresentMap(
+                    DisplayIsHdr,
+                    GalleryPresent.ContentMaxNits(frame.MaxScrgb, frame.MaxNits),
+                    DisplayPeakNits);
+                clip = map.ClipScrgb;
+                scale = map.Scale;
                 half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
             });
             if (_disposed)
@@ -110,7 +126,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             }
 
             await Task.Run(
-                () => HdrRasterize.Fill(frame.ScrgbRgba, frame.Width, frame.Height, scaling, vw, vh, clip, half, cancellation),
+                () => HdrRasterize.Fill(frame.ScrgbRgba, frame.Width, frame.Height, scaling, vw, vh, clip, half, cancellation, scale),
                 cancellation).ConfigureAwait(false);
 
             if (_disposed || cancellation.IsCancellationRequested || !stillCurrent())
@@ -222,13 +238,20 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                 var hr = CallGetDesc1(output6, ref desc);
                                 if (hr >= 0)
                                 {
-                                    var peak = GalleryPresent.ProbedDisplayLuminance(
-                                        desc.MaxLuminance, desc.MaxFullFrameLuminance);
-                                    if (peak > 0)
+                                    DisplayIsHdr = GalleryPresent.IsAdvancedColor(desc.ColorSpace);
+                                    if (DisplayIsHdr)
                                     {
+                                        var peak = GalleryPresent.ProbedDisplayLuminance(
+                                            desc.MaxLuminance, desc.MaxFullFrameLuminance);
                                         _autoDisplayNits = peak;
                                         DisplayPeakNits = peak;
-                                        DisplayIsHdr = GalleryPresent.IsHdrDisplay(peak);
+                                    }
+                                    else
+                                    {
+                                        var sdr = GalleryPresent.SdrPresentPeakNits(
+                                            desc.MaxLuminance, desc.MaxFullFrameLuminance);
+                                        _autoDisplayNits = sdr;
+                                        DisplayPeakNits = sdr;
                                     }
                                 }
                             }

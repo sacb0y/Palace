@@ -72,6 +72,20 @@ public sealed class HdrPresentOffThreadTests
     }
 
     [Fact]
+    public void Fill_SdrMapsCllThenClipsToScrgbWhite()
+    {
+        var src = new float[] { 12.5f, 12.5f, 12.5f, 1f };
+        var dest = new ushort[4];
+        var map = GalleryPresent.PresentMap(false, 1000f, 0);
+        HdrRasterize.Fill(src, 1, 1, ImageScaling.Fit, 1, 1, map.ClipScrgb, dest, CancellationToken.None, map.Scale);
+        Assert.Equal(GalleryPresent.FloatToHalf(1f), dest[0]);
+        Assert.Equal(1f, HdrColor.MapCllToDisplayScrgb(12.5f, 1000f, 80f), 3);
+        var hdr = GalleryPresent.PresentMap(true, 1000f, 0);
+        Assert.Equal(1f, hdr.Scale);
+        Assert.Equal(125f, hdr.ClipScrgb);
+    }
+
+    [Fact]
     public void Fill_UnknownPeak_ClipsAtPqRangeNotPaperWhite()
     {
         var src = new float[] { 100f, 100f, 100f, 1f };

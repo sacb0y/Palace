@@ -132,10 +132,10 @@ public sealed class HdrFileTests
             "HDR PNG · presenting scRGB",
             GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, true));
         Assert.Equal(
-            "HDR PNG · presenting scRGB",
-            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, false));
+            "HDR PNG · tonemap SDR 80 nits",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, false, false, 203));
         Assert.Equal(
-            "HDR AVIF · presenting scRGB",
+            "HDR AVIF · tonemap SDR 80 nits",
             GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), true, false));
         Assert.Null(GalleryPresent.StatusLine(HdrProbe.None, false, false));
     }
@@ -171,6 +171,39 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void Present_SdrMapsCllToDisplay_NeverPaperWhite()
+    {
+        Assert.False(GalleryPresent.IsAdvancedColor(0));
+        Assert.True(GalleryPresent.IsAdvancedColor(1));
+        Assert.True(GalleryPresent.IsAdvancedColor(12));
+        Assert.True(GalleryPresent.IsAdvancedColor(16));
+        Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(0, 0));
+        Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(203, 0));
+        Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(270, 270));
+        Assert.Equal(120f, GalleryPresent.SdrPresentPeakNits(120, 0));
+        Assert.Equal(1000f, GalleryPresent.ContentMaxNits(12.5f, 400), 2);
+        Assert.Equal(400f, GalleryPresent.ContentMaxNits(0, 400), 2);
+
+        var sdr = GalleryPresent.PresentMap(false, 1000, 0);
+        Assert.Equal(0.08f, sdr.Scale, 3);
+        Assert.Equal(1f, sdr.ClipScrgb, 3);
+        var paper = GalleryPresent.PresentMap(false, 1000, 203);
+        Assert.Equal(sdr.Scale, paper.Scale, 3);
+        Assert.Equal(sdr.ClipScrgb, paper.ClipScrgb, 3);
+
+        var hdrUnknown = GalleryPresent.PresentMap(true, 1000, 0);
+        Assert.Equal(1f, hdrUnknown.Scale);
+        Assert.Equal(125f, hdrUnknown.ClipScrgb, 3);
+        var hdrPeak = GalleryPresent.PresentMap(true, 1000, 1499);
+        Assert.Equal(1f, hdrPeak.Scale);
+        Assert.Equal(1499f / 80f, hdrPeak.ClipScrgb, 3);
+
+        Assert.Equal(1f, HdrColor.MapCllToDisplayScrgb(12.5f, 1000, 80), 3);
+        Assert.True(HdrColor.MapCllToDisplayScrgb(
+            GalleryPresent.SdrReferenceNits / GalleryPresent.ScrgbNits, 1000, 80) < 0.3f);
+    }
+
+    [Fact]
     public void Present_ClipsPeakWithoutCrushingByMaxCll()
     {
         Assert.Equal(203f, GalleryPresent.ClipToPeak(1000, 203), 2);
@@ -192,13 +225,16 @@ public sealed class HdrFileTests
         Assert.Equal("400 nits", GalleryPresent.PeakNitsLabel(400));
         Assert.Equal(
             "HDR PNG · clip 400 nits (override)",
-            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, false, true, 400));
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, true, true, 400));
         Assert.Equal(
             "HDR PNG · presenting scRGB",
-            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, false));
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, true));
+        Assert.Equal(
+            "HDR PNG · tonemap SDR 80 nits",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrPng, 9, 16, 1000), true, false, true, 400));
         Assert.Equal(
             "HDR AVIF · clip 400 nits (override)",
-            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), true, false, true, 400));
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), true, true, true, 400));
     }
 
     [Fact]
