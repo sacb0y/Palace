@@ -75,36 +75,40 @@ public sealed class WicNativeTests
     public void WicDecoderOpen_FailedIncludesStageAndHRESULT()
     {
         Assert.Equal(
-            ["filename", "handle", "memory", "clsid"],
+            ["filename", "handle", "memory", "winrt"],
             WicNative.WicDecoderOpen.Stages);
         Assert.Equal(
             "WIC decoder memory",
             WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.Memory));
         Assert.Equal(
-            "WIC decoder clsid 88982F50",
+            "WIC decoder winrt 80004002",
             WicNative.WicDecoderOpen.Failed(
-                WicNative.WicDecoderOpen.Clsid,
-                unchecked((int)0x88982F50)));
+                WicNative.WicDecoderOpen.Winrt,
+                unchecked((int)0x80004002)));
         Assert.True(
             WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
+        Assert.True(
+            WicNative.WicDecoderOpen.IsNoInterface(unchecked((int)0x80004002)));
         Assert.False(WicNative.WicDecoderOpen.IsComponentNotFound(0));
     }
 
     [Fact]
-    public void WmpDecoder_UsesInboxClsidNotCatalogContainer()
+    public void JpegXrDecoderId_MatchesWinrtInboxId()
     {
         Assert.Equal(
             Guid.Parse("a26cec36-234c-4950-ae16-e34aace71d0d"),
-            WicNative.ClsidWmpDecoder);
+            WicNative.JpegXrDecoderId);
+        Assert.Equal(WicNative.ClsidWmpDecoder, WicNative.JpegXrDecoderId);
         Assert.Equal(
-            Guid.Parse("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d"),
-            WicNative.IidBitmapDecoder);
+            Guid.Parse("3b16811b-6a43-4ec9-a813-3d930c13b940"),
+            WicNative.IidBitmapFrameDecode);
+        Assert.Equal(
+            Guid.Parse("0000000c-0000-0000-c000-000000000046"),
+            WicNative.IidStream);
+        Assert.Null(WicNative.TypedFromIUnknown<WicNative.IWICBitmapDecoder>(IntPtr.Zero));
         Assert.Equal(
             WicNative.ClassFactoryMethods,
             WicNative.DeclaredMethods(typeof(WicNative.IClassFactory)));
-        Assert.Equal(
-            WicNative.ContainerFormatWmp,
-            Guid.Parse("57a37caa-367a-4540-916b-f183c1868a5f"));
     }
 
     private static void AssertFlattened(Type type, string extra)

@@ -30,21 +30,23 @@ public static class WicNative
     public static IWICBitmapSource AsSource(object com) => (IWICBitmapSource)com;
 
     /// <summary>
-    /// Packaged WinUI: the WIC component catalog omits HD Photo /
-    /// <c>GUID_ContainerFormatWmp</c> (<c>WINCODEC_ERR_COMPONENTNOTFOUND</c>
-    /// <c>0x88982F50</c>). Do not <c>CreateDecoder(Wmp)</c>. CoCreate
-    /// inbox <c>CLSID_WICWmpDecoder</c> (or <c>DllGetClassObject</c> on
-    /// <c>WindowsCodecs.dll</c>) and <c>Initialize</c> a pinned stream.
+    /// Packaged WinUI: the WIC catalog omits HD Photo
+    /// (<c>0x88982F50</c>). Regular <c>CoCreate(CLSID_WICWmpDecoder)</c>
+    /// QIs <c>E_NOINTERFACE</c> (<c>0x80004002</c>). BitmapImage / WinRT
+    /// <c>BitmapDecoder.CreateAsync(JpegXrDecoderId)</c> already opens
+    /// these files — use that inbox path, then native CopyPixels
+    /// float/half (WinRT has no float pixel format).
     /// </summary>
     public static class WicDecoderOpen
     {
         public const string Filename = "filename";
         public const string Handle = "handle";
         public const string Memory = "memory";
-        public const string Clsid = "clsid";
+        public const string Winrt = "winrt";
         public const uint ComponentNotFound = 0x88982F50;
+        public const uint NoInterface = 0x80004002;
 
-        public static readonly string[] Stages = [Filename, Handle, Memory, Clsid];
+        public static readonly string[] Stages = [Filename, Handle, Memory, Winrt];
 
         public static string Failed(string stage, int hr = 0)
         {
@@ -54,17 +56,56 @@ public static class WicNative
 
         public static bool IsComponentNotFound(int hr) =>
             unchecked((uint)hr) == ComponentNotFound;
+
+        public static bool IsNoInterface(int hr) =>
+            unchecked((uint)hr) == NoInterface;
     }
 
     /// <summary>
-    /// Inbox JPEG XR / HD Photo decoder in <c>WindowsCodecs.dll</c>.
-    /// Same CLSID as WinRT <c>BitmapDecoder.JpegXrDecoderId</c>.
+    /// Same CLSID as WinRT <c>BitmapDecoder.JpegXrDecoderId</c>. Do not
+    /// CoCreate this in a packaged app (E_NOINTERFACE).
     /// </summary>
     public static readonly Guid ClsidWmpDecoder = new("a26cec36-234c-4950-ae16-e34aace71d0d");
 
+    public static readonly Guid JpegXrDecoderId = ClsidWmpDecoder;
+
     public static readonly Guid IidBitmapDecoder = new("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d");
 
+    public static readonly Guid IidBitmapFrameDecode = new("3b16811b-6a43-4ec9-a813-3d930c13b940");
+
+    public static readonly Guid IidStream = new("0000000c-0000-0000-c000-000000000046");
+
     public static readonly Guid IidClassFactory = new("00000001-0000-0000-c000-000000000046");
+
+    public static T? TypedFromIUnknown<T>(IntPtr unk) where T : class
+    {
+        if (unk == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return (T)Marshal.GetTypedObjectForIUnknown(unk, typeof(T));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static T? TypedFromUnknown<T>(object com) where T : class
+    {
+        var unk = Marshal.GetIUnknownForObject(com);
+        try
+        {
+            return TypedFromIUnknown<T>(unk);
+        }
+        finally
+        {
+            Marshal.Release(unk);
+        }
+    }
 
     public static readonly string[] ClassFactoryMethods = ["CreateInstance", "LockServer"];
 
