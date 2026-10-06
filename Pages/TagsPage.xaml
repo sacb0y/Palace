@@ -290,9 +290,29 @@
         <Grid Grid.Row="1" Grid.Column="2" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <Grid ColumnSpacing="12">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ToggleButton
+                    x:Name="TglTagSelectMode"
+                    AutomationProperties.AutomationId="TglTagSelectMode"
+                    AutomationProperties.Name="Select"
+                    IsChecked="{x:Bind ViewModel.IsSelectMode, Mode=TwoWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Multiselect" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Select" />
+                    </StackPanel>
+                </ToggleButton>
+                <TextBlock
+                    x:Name="TxtTagSelectionCount"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtTagSelectionCount"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.SelectionSummary, Mode=OneWay}" />
+            </StackPanel>
+            <Grid Grid.Row="1" ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -326,9 +346,10 @@
             </Grid>
             <ScrollViewer
                 x:Name="GrdTagAssets"
-                Grid.Row="1"
+                Grid.Row="2"
                 AutomationProperties.AutomationId="GrdTagAssets"
                 AutomationProperties.Name="Tagged images"
+                IsHoldingEnabled="True"
                 IsTabStop="True"
                 PreviewKeyDown="GrdTagAssets_KeyDown"
                 VerticalScrollBarVisibility="Auto">
@@ -364,7 +385,10 @@
                                                 DoubleTapped="TagAsset_DoubleTapped"
                                                 GotFocus="TagAsset_GotFocus"
                                                 IsDoubleTapEnabled="True"
+                                                IsHoldingEnabled="True"
                                                 IsTabStop="True"
+                                                Holding="GrdTagAssets_RangeHolding"
+                                                PointerPressed="TagAsset_RangePressed"
                                                 RightTapped="TagAsset_RightTapped"
                                                 Tag="{x:Bind Id, Mode=OneWay}"
                                                 Tapped="TagAsset_Tapped"
@@ -469,6 +493,20 @@
                                                     <ic:FluentIcon
                                                         Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                                         Icon="Cloud"
+                                                        IconSize="Size16"
+                                                        IconVariant="Regular" />
+                                                </Border>
+                                                <Border
+                                                    Margin="6"
+                                                    Padding="2"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Bottom"
+                                                    CornerRadius="4"
+                                                    IsHitTestVisible="False"
+                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}">
+                                                    <ic:FluentIcon
+                                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                        Icon="Checkmark"
                                                         IconSize="Size16"
                                                         IconVariant="Regular" />
                                                 </Border>
