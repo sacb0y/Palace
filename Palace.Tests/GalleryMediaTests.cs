@@ -75,8 +75,11 @@ public sealed class GalleryMediaTests
     [Fact]
     public void MosaicAspect_HeadersUseFullLineRatio()
     {
+        Assert.Equal(32.0, GalleryMedia.FolderHeaderAspect);
         Assert.Equal(GalleryMedia.FolderHeaderAspect, GalleryMedia.MosaicAspect(true, 1.5));
         Assert.Equal(1.5, GalleryMedia.MosaicAspect(false, 1.5));
+        // 240 DIP caption / min LineHeight 96 ≈ 2.5 sits beside leftover tiles.
+        Assert.True(GalleryMedia.FolderHeaderAspect > 240.0 / 96.0);
     }
 
     [Fact]

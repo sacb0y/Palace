@@ -87,7 +87,9 @@ public static class GalleryMedia
     }
 
     /// <summary>
-    /// Folder headers take a full mosaic line so tiles do not sit beside the title.
+    /// Folder headers take a full mosaic line (LinedFlowLayout has no break-before),
+    /// so a group never starts mid-row after the previous group's leftover tiles.
+    /// The caption itself stays compact in the tile template.
     /// </summary>
     public const double FolderHeaderAspect = 32.0;
 
