@@ -41,6 +41,8 @@ public partial class SettingsViewModel : ObservableObject
     public IReadOnlyList<string> ThemeOptions { get; } = ["System", "Light", "Dark"];
     public string AppVersionText { get; } = AppVersion.Display;
 
+    public IReadOnlyList<ShortcutHint> ShortcutHints { get; } = ShortcutCheatsheet.Entries;
+
     public Func<ICloudLibrary, Task<CloudEntry?>>? RequestPickCloudFolder { get; set; }
 
     [ObservableProperty]

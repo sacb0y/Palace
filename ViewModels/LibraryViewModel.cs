@@ -128,6 +128,9 @@ public partial class LibraryViewModel : ObservableObject
     public partial string SelectionSummary { get; set; } = "";
 
     [ObservableProperty]
+    public partial bool ShowTagSelectedCta { get; set; }
+
+    [ObservableProperty]
     public partial bool ShowPreviewPlaceholder { get; set; }
 
     [ObservableProperty]
@@ -276,8 +279,11 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnIsSelectModeChanged(bool value) => RefreshSelectionSummary();
 
-    private void RefreshSelectionSummary() =>
+    private void RefreshSelectionSummary()
+    {
         SelectionSummary = SelectMode.Summary(IsSelectMode, _selection.Count);
+        ShowTagSelectedCta = SelectMode.ShowBatchTagCta(IsSelectMode, _selection.Count);
+    }
 
     public void SetSelection(IEnumerable<AssetItem> items)
     {

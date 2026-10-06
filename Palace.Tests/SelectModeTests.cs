@@ -21,4 +21,14 @@ public sealed class SelectModeTests
     [InlineData(true, -2, "Click tiles to select")]
     public void Summary_ShowsCountOrHint(bool mode, int count, string expected) =>
         Assert.Equal(expected, SelectMode.Summary(mode, count));
+
+    [Theory]
+    [InlineData(false, 0, false)]
+    [InlineData(false, 3, false)]
+    [InlineData(true, 0, false)]
+    [InlineData(true, 1, true)]
+    [InlineData(true, 5, true)]
+    [InlineData(true, -1, false)]
+    public void ShowBatchTagCta_NeedsSelectModeAndTiles(bool mode, int count, bool expected) =>
+        Assert.Equal(expected, SelectMode.ShowBatchTagCta(mode, count));
 }

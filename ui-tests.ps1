@@ -531,6 +531,13 @@ Test-UI 'Navigate to Settings' { winapp ui invoke 'NavSettings' -a $AppPid }
 Test-UI 'Theme combo exists' { winapp ui wait-for 'CmbTheme' -a $AppPid -t 4000 }
 Test-UI 'HDR peak override exists' { winapp ui wait-for 'TglHdrPeakOverride' -a $AppPid -t 4000 }
 Test-UI 'App version is shown' { winapp ui wait-for 'TxtAppVersion' -a $AppPid --value '0.0.3' --contains -t 4000 }
+Test-UI 'Shortcut cheatsheet lists 1:1' { winapp ui wait-for 'TxtShortcutActual' -a $AppPid --value 'Ctrl+1' --contains -t 4000 }
+Test-UI 'Shortcut cheatsheet lists Fit' { winapp ui wait-for 'TxtShortcutFit' -a $AppPid --value 'Ctrl+2' --contains -t 3000 }
+Test-UI 'Shortcut cheatsheet lists Fill' { winapp ui wait-for 'TxtShortcutFill' -a $AppPid --value 'Ctrl+3' --contains -t 3000 }
+Test-UI 'Shortcut cheatsheet lists Info' { winapp ui wait-for 'TxtShortcutInfo' -a $AppPid --value 'Ctrl+D' --contains -t 3000 }
+Test-UI 'Shortcut cheatsheet lists Details' { winapp ui wait-for 'TxtShortcutDetails' -a $AppPid --value 'Ctrl+I' --contains -t 3000 }
+Test-UI 'Shortcut cheatsheet lists Space' { winapp ui wait-for 'TxtShortcutSpace' -a $AppPid --value 'Space' --contains -t 3000 }
+Test-UI 'Shortcut cheatsheet lists Esc' { winapp ui wait-for 'TxtShortcutEsc' -a $AppPid --value 'Esc' --contains -t 3000 }
 Test-UI 'Sources list exists' { winapp ui wait-for 'LstSources' -a $AppPid -t 3000 }
 Test-UI 'Auto-organize toggle exists' { winapp ui wait-for 'TglAutoOrganize' -a $AppPid -t 3000 }
 Test-UI 'Connect OneDrive exists' { winapp ui wait-for 'BtnConnectOneDrive' -a $AppPid -t 4000 }
@@ -853,6 +860,8 @@ Test-UI 'Select mode toggles tiles without modifier keys' {
         if ($count -notmatch '^2 selected') { throw "Expected '2 selected' after two plain selects, got '$count'" }
         winapp ui wait-for 'BtnAddToRoom' @(WinArgs) -t 2000
         if ($LASTEXITCODE -ne 0) { throw 'Bulk actions missing while multi-selected' }
+        winapp ui wait-for 'BtnTagSelected' @(WinArgs) -t 2000
+        if ($LASTEXITCODE -ne 0) { throw 'Tag selected CTA missing while select mode has tiles' }
     } finally {
         winapp ui invoke 'TglSelectMode' @(WinArgs) --action toggle-off | Out-Null
     }

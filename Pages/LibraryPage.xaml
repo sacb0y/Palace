@@ -269,6 +269,18 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.SelectionSummary, Mode=OneWay}" />
+                <Button
+                    x:Name="BtnTagSelected"
+                    AutomationProperties.AutomationId="BtnTagSelected"
+                    AutomationProperties.Name="Tag selected"
+                    Click="BtnTagSelected_Click"
+                    Style="{ThemeResource AccentButtonStyle}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowTagSelectedCta), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Tag selected…" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
             <BreadcrumbBar
                 x:Name="BcrPath"
