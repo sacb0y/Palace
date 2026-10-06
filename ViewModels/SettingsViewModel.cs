@@ -19,7 +19,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly WatcherService _watchers;
     private readonly CloudAccountService _cloud;
     private readonly ICloudLibraryFactory _libraries;
-    private bool _loading;
+    private readonly LoadGate _load = new();
 
     public SettingsViewModel(
         CatalogService catalog,
@@ -84,7 +84,7 @@ public partial class SettingsViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        _loading = true;
+        using var _ = _load.Begin();
         Sources.Clear();
         foreach (var source in await _catalog.GetSourceFoldersAsync(AppServices.CurrentProject.Id))
         {
@@ -113,13 +113,12 @@ public partial class SettingsViewModel : ObservableObject
         DropboxAppKey = _cloud.DropboxAppKey;
         RedirectUri = _cloud.RedirectUriDisplay;
         await RefreshCloudStatusAsync();
-        _loading = false;
         StatusText = Sources.Count == 0 ? "No watched folders yet." : $"{Sources.Count} watched folders.";
     }
 
     partial void OnSelectedThemeChanged(string value)
     {
-        if (_loading)
+        if (_load.IsLoading)
         {
             return;
         }
@@ -130,7 +129,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnPeakOverrideEnabledChanged(bool value)
     {
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             PersistPeakOverride();
         }
@@ -139,7 +138,7 @@ public partial class SettingsViewModel : ObservableObject
     partial void OnPeakOverrideNitsChanged(double value)
     {
         PeakOverrideLabel = GalleryPresent.PeakNitsLabel((float)value);
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             PersistPeakOverride();
         }
@@ -167,7 +166,7 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnOneDriveClientIdChanged(string value)
     {
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             _cloud.OneDriveClientId = value ?? "";
         }
@@ -175,123 +174,132 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnDropboxAppKeyChanged(string value)
     {
-        if (!_loading)
+        if (!_load.IsLoading)
         {
             _cloud.DropboxAppKey = value ?? "";
         }
     }
 
     [RelayCommand]
-    private async Task AddSourceAsync()
-    {
-        await AppServices.Library.AddFolderCommand.ExecuteAsync(null);
-        await LoadAsync();
-    }
+    private Task AddSourceAsync() =>
+        ErrorReporter.RunAsync("Add source", Notify, async () =>
+        {
+            await AppServices.Library.AddFolderCommand.ExecuteAsync(null);
+            await LoadAsync();
+        });
 
     [RelayCommand]
-    private async Task RemoveSourceAsync()
-    {
-        if (SelectedSource is null)
+    private Task RemoveSourceAsync() =>
+        ErrorReporter.RunAsync("Remove source", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedSource is null)
+            {
+                return;
+            }
 
-        var folder = await _catalog.GetSourceFolderAsync(SelectedSource.Id);
-        if (folder is not null)
-        {
-            _access.Forget(folder.AccessToken);
-        }
+            var folder = await _catalog.GetSourceFolderAsync(SelectedSource.Id);
+            if (folder is not null)
+            {
+                _access.Forget(folder.AccessToken);
+            }
 
-        await _catalog.DeleteSourceFolderAsync(SelectedSource.Id);
-        await _watchers.RestartAsync();
-        await LoadAsync();
-        await AppServices.Library.LoadAsync();
-    }
+            await _catalog.DeleteSourceFolderAsync(SelectedSource.Id);
+            await _watchers.RestartAsync();
+            await LoadAsync();
+            await AppServices.Library.LoadAsync();
+        });
 
     [RelayCommand]
-    private async Task PickDestinationAsync()
-    {
-        if (SelectedSource is null)
+    private Task PickDestinationAsync() =>
+        ErrorReporter.RunAsync("Pick destination", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedSource is null)
+            {
+                return;
+            }
 
-        var folder = await _access.PickFolderAsync();
-        if (folder is null)
-        {
-            return;
-        }
+            var folder = await _access.PickFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
 
-        SelectedSource.DestinationPath = folder.Path;
-        SelectedSource.DestinationPolicy = nameof(DestinationPolicy.Destination);
-        await PersistSourceAsync(SelectedSource);
-    }
+            SelectedSource.DestinationPath = folder.Path;
+            SelectedSource.DestinationPolicy = nameof(DestinationPolicy.Destination);
+            await PersistSourceAsync(SelectedSource);
+        });
 
     [RelayCommand]
-    private async Task ConnectOneDriveAsync()
-    {
-        try
+    private Task ConnectOneDriveAsync() =>
+        ErrorReporter.RunAsync("Connect OneDrive", Notify, async () =>
         {
-            StatusText = "Connecting to OneDrive…";
-            var result = await _cloud.ConnectOneDriveAsync();
+            try
+            {
+                StatusText = "Connecting to OneDrive…";
+                var result = await _cloud.ConnectOneDriveAsync();
+                await RefreshCloudStatusAsync();
+                StatusText = "Connected OneDrive as " + result.DisplayName
+                    + ". Pick a folder for " + AppServices.CurrentProject.Name + ".";
+                await AddCloudFolderAsync(CloudProvider.OneDrive);
+            }
+            catch (CloudAuthException ex)
+            {
+                StatusText = ex.Message;
+            }
+            catch (Exception)
+            {
+                StatusText = "Could not connect OneDrive.";
+            }
+        });
+
+    [RelayCommand]
+    private Task ConnectDropboxAsync() =>
+        ErrorReporter.RunAsync("Connect Dropbox", Notify, async () =>
+        {
+            try
+            {
+                StatusText = "Connecting to Dropbox…";
+                var result = await _cloud.ConnectDropboxAsync();
+                await RefreshCloudStatusAsync();
+                StatusText = "Connected Dropbox as " + result.DisplayName
+                    + ". Pick a folder for " + AppServices.CurrentProject.Name + ".";
+                await AddCloudFolderAsync(CloudProvider.Dropbox);
+            }
+            catch (CloudAuthException ex)
+            {
+                StatusText = ex.Message;
+            }
+            catch (Exception)
+            {
+                StatusText = "Could not connect Dropbox.";
+            }
+        });
+
+    [RelayCommand]
+    private Task DisconnectOneDriveAsync() =>
+        ErrorReporter.RunAsync("Disconnect OneDrive", Notify, async () =>
+        {
+            await _cloud.DisconnectAsync(CloudProvider.OneDrive);
             await RefreshCloudStatusAsync();
-            StatusText = "Connected OneDrive as " + result.DisplayName
-                + ". Pick a folder for " + AppServices.CurrentProject.Name + ".";
-            await AddCloudFolderAsync(CloudProvider.OneDrive);
-        }
-        catch (CloudAuthException ex)
-        {
-            StatusText = ex.Message;
-        }
-        catch (Exception)
-        {
-            StatusText = "Could not connect OneDrive.";
-        }
-    }
+            StatusText = "Disconnected OneDrive.";
+        });
 
     [RelayCommand]
-    private async Task ConnectDropboxAsync()
-    {
-        try
+    private Task DisconnectDropboxAsync() =>
+        ErrorReporter.RunAsync("Disconnect Dropbox", Notify, async () =>
         {
-            StatusText = "Connecting to Dropbox…";
-            var result = await _cloud.ConnectDropboxAsync();
+            await _cloud.DisconnectAsync(CloudProvider.Dropbox);
             await RefreshCloudStatusAsync();
-            StatusText = "Connected Dropbox as " + result.DisplayName
-                + ". Pick a folder for " + AppServices.CurrentProject.Name + ".";
-            await AddCloudFolderAsync(CloudProvider.Dropbox);
-        }
-        catch (CloudAuthException ex)
-        {
-            StatusText = ex.Message;
-        }
-        catch (Exception)
-        {
-            StatusText = "Could not connect Dropbox.";
-        }
-    }
+            StatusText = "Disconnected Dropbox.";
+        });
 
     [RelayCommand]
-    private async Task DisconnectOneDriveAsync()
-    {
-        await _cloud.DisconnectAsync(CloudProvider.OneDrive);
-        await RefreshCloudStatusAsync();
-        StatusText = "Disconnected OneDrive.";
-    }
+    private Task AddOneDriveFolderAsync() =>
+        ErrorReporter.RunAsync("Add OneDrive folder", Notify, () => AddCloudFolderAsync(CloudProvider.OneDrive));
 
     [RelayCommand]
-    private async Task DisconnectDropboxAsync()
-    {
-        await _cloud.DisconnectAsync(CloudProvider.Dropbox);
-        await RefreshCloudStatusAsync();
-        StatusText = "Disconnected Dropbox.";
-    }
-
-    [RelayCommand]
-    private Task AddOneDriveFolderAsync() => AddCloudFolderAsync(CloudProvider.OneDrive);
-
-    [RelayCommand]
-    private Task AddDropboxFolderAsync() => AddCloudFolderAsync(CloudProvider.Dropbox);
+    private Task AddDropboxFolderAsync() =>
+        ErrorReporter.RunAsync("Add Dropbox folder", Notify, () => AddCloudFolderAsync(CloudProvider.Dropbox));
 
     [RelayCommand]
     private void CopyRedirectUri()
@@ -401,13 +409,15 @@ public partial class SettingsViewModel : ObservableObject
 
     private async void SourceOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (_loading || sender is not SourceFolderItem item)
+        if (_load.IsLoading || sender is not SourceFolderItem item)
         {
             return;
         }
 
-        await PersistSourceAsync(item);
+        await ErrorReporter.RunAsync("Save source settings", Notify, () => PersistSourceAsync(item));
     }
+
+    private void Notify(string message) => StatusText = message;
 
     private async Task PersistSourceAsync(SourceFolderItem item)
     {

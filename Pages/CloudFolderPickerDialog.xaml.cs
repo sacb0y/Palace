@@ -20,7 +20,7 @@ public sealed partial class CloudFolderPickerDialog : ContentDialog
             Title = "Pick a cloud folder for " + projectName;
         }
 
-        Opened += async (_, _) => await LoadChildrenAsync();
+        Opened += async (_, _) => await ErrorReporter.RunAsync("List cloud folders", ShowError, LoadChildrenAsync);
         PrimaryButtonClick += OnPrimaryButtonClick;
     }
 
@@ -36,7 +36,7 @@ public sealed partial class CloudFolderPickerDialog : ContentDialog
         }
 
         _stack.RemoveAt(_stack.Count - 1);
-        await LoadChildrenAsync();
+        await ErrorReporter.RunAsync("List cloud folders", ShowError, LoadChildrenAsync);
     }
 
     private async void LstCloudFolders_ItemClick(object sender, ItemClickEventArgs e)
@@ -47,8 +47,11 @@ public sealed partial class CloudFolderPickerDialog : ContentDialog
         }
 
         _stack.Add(folder);
-        await LoadChildrenAsync();
+        await ErrorReporter.RunAsync("List cloud folders", ShowError, LoadChildrenAsync);
     }
+
+    // The dialog owns the foreground, so the app-level InfoBar behind it would not be seen.
+    private void ShowError(string message) => TxtCloudFolderPath.Text = message;
 
     private void OnPrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {

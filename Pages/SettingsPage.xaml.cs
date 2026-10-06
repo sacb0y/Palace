@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml.Controls;
+using Palace.Helpers;
 using Palace.Services;
 using Palace.Services.Cloud;
 using Palace.ViewModels;
@@ -15,7 +16,7 @@ public sealed partial class SettingsPage : Page
         Loaded += async (_, _) =>
         {
             ViewModel.RequestPickCloudFolder = PickCloudFolderAsync;
-            await ViewModel.LoadAsync();
+            await ErrorReporter.RunAsync("Load settings", null, ViewModel.LoadAsync);
         };
         Unloaded += (_, _) => ViewModel.RequestPickCloudFolder = null;
     }

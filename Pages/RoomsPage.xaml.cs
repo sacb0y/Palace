@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Controls;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
@@ -13,14 +14,14 @@ public sealed partial class RoomsPage : Page
     public RoomsPage()
     {
         InitializeComponent();
-        Loaded += async (_, _) => await ViewModel.RefreshAsync();
+        Loaded += async (_, _) => await ErrorReporter.RunAsync("Load rooms", null, ViewModel.RefreshAsync);
     }
 
     public static IRelayCommand<AssetItem> GetRemovePinCommand() => AppServices.Rooms.RemovePinItemCommand;
 
     protected override async void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
-        await ViewModel.PersistOrderAsync();
         base.OnNavigatedFrom(e);
+        await ErrorReporter.RunAsync("Save room order", null, ViewModel.PersistOrderAsync);
     }
 }

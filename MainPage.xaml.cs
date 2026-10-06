@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Palace.Helpers;
 using Palace.Pages;
 using Palace.Services;
 using Palace.ViewModels;
@@ -18,7 +19,7 @@ public sealed partial class MainPage : Page
         AppServices.Tags.RequestShowLibrary = () => NavMain.SelectedItem = NavLibrary;
         Loaded += async (_, _) =>
         {
-            await ViewModel.LoadAsync();
+            await ErrorReporter.RunAsync("Load projects", null, ViewModel.LoadAsync);
             NavMain.SelectedItem = NavLibrary;
         };
     }

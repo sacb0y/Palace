@@ -40,6 +40,8 @@ public partial class RoomsViewModel : ObservableObject
     [ObservableProperty]
     public partial AssetItem? SelectedPin { get; set; }
 
+    private void Notify(string message) => StatusText = message;
+
     public async Task LoadAsync() => await RefreshAsync();
 
     public async Task RefreshAsync()
@@ -73,74 +75,80 @@ public partial class RoomsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task CreateRoomAsync()
-    {
-        var name = string.IsNullOrWhiteSpace(NewRoomName) ? $"Room {Rooms.Count + 1}" : NewRoomName.Trim();
-        var room = await _catalog.CreateRoomAsync(name, AppServices.CurrentProject.Id, SelectedIcon?.Id);
-        NewRoomName = "";
-        Rooms.Add(room);
-        SelectedRoom = room;
-        StatusText = $"Created {room.Name}.";
-    }
-
-    [RelayCommand]
-    private async Task RenameRoomAsync()
-    {
-        if (SelectedRoom is null || string.IsNullOrWhiteSpace(NewRoomName))
+    private Task CreateRoomAsync() =>
+        ErrorReporter.RunAsync("Create room", Notify, async () =>
         {
-            return;
-        }
-
-        await _catalog.RenameRoomAsync(SelectedRoom.Id, NewRoomName.Trim());
-        SelectedRoom.Name = NewRoomName.Trim();
-        NewRoomName = "";
-        await RefreshAsync();
-    }
+            var name = string.IsNullOrWhiteSpace(NewRoomName) ? $"Room {Rooms.Count + 1}" : NewRoomName.Trim();
+            var room = await _catalog.CreateRoomAsync(name, AppServices.CurrentProject.Id, SelectedIcon?.Id);
+            NewRoomName = "";
+            Rooms.Add(room);
+            SelectedRoom = room;
+            StatusText = $"Created {room.Name}.";
+        });
 
     [RelayCommand]
-    private async Task DeleteRoomAsync()
-    {
-        if (SelectedRoom is null)
+    private Task RenameRoomAsync() =>
+        ErrorReporter.RunAsync("Rename room", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedRoom is null || string.IsNullOrWhiteSpace(NewRoomName))
+            {
+                return;
+            }
 
-        await _catalog.DeleteRoomAsync(SelectedRoom.Id);
-        Rooms.Remove(SelectedRoom);
-        SelectedRoom = Rooms.FirstOrDefault();
-        await LoadSelectedRoomAsync();
-    }
+            await _catalog.RenameRoomAsync(SelectedRoom.Id, NewRoomName.Trim());
+            SelectedRoom.Name = NewRoomName.Trim();
+            NewRoomName = "";
+            await RefreshAsync();
+        });
 
     [RelayCommand]
-    private async Task AddSectionAsync()
-    {
-        if (string.IsNullOrWhiteSpace(NewSectionName) || Sections.Any(s => s.Title.Equals(NewSectionName.Trim(), StringComparison.OrdinalIgnoreCase)))
+    private Task DeleteRoomAsync() =>
+        ErrorReporter.RunAsync("Delete room", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedRoom is null)
+            {
+                return;
+            }
 
-        Sections.Add(new RoomSection { Title = NewSectionName.Trim() });
-        NewSectionName = "";
-        await PersistOrderAsync();
-    }
-
-    [RelayCommand]
-    private async Task RemovePinAsync()
-    {
-        await RemovePinItemAsync(SelectedPin);
-    }
+            await _catalog.DeleteRoomAsync(SelectedRoom.Id);
+            Rooms.Remove(SelectedRoom);
+            SelectedRoom = Rooms.FirstOrDefault();
+            await LoadSelectedRoomAsync();
+        });
 
     [RelayCommand]
-    private async Task RemovePinItemAsync(AssetItem? item)
-    {
-        if (SelectedRoom is null || item is null)
+    private Task AddSectionAsync() =>
+        ErrorReporter.RunAsync("Add section", Notify, async () =>
         {
-            return;
-        }
+            if (string.IsNullOrWhiteSpace(NewSectionName) || Sections.Any(s => s.Title.Equals(NewSectionName.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
 
-        await _catalog.RemoveFromRoomAsync(SelectedRoom.Id, item.Id);
-        await LoadSelectedRoomAsync();
-    }
+            Sections.Add(new RoomSection { Title = NewSectionName.Trim() });
+            NewSectionName = "";
+            await PersistOrderAsync();
+        });
+
+    [RelayCommand]
+    private Task RemovePinAsync() =>
+        ErrorReporter.RunAsync("Remove pin", Notify, async () =>
+        {
+            await RemovePinItemAsync(SelectedPin);
+        });
+
+    [RelayCommand]
+    private Task RemovePinItemAsync(AssetItem? item) =>
+        ErrorReporter.RunAsync("Remove pin item", Notify, async () =>
+        {
+            if (SelectedRoom is null || item is null)
+            {
+                return;
+            }
+
+            await _catalog.RemoveFromRoomAsync(SelectedRoom.Id, item.Id);
+            await LoadSelectedRoomAsync();
+        });
 
     public async Task PersistOrderAsync()
     {

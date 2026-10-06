@@ -37,7 +37,7 @@ public sealed partial class TagsPage : Page
         {
             GrdTagAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdTagAssets_KeyDown), true);
             RefreshRealizedTiles();
-            await ViewModel.RefreshAsync();
+            await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
         };
         Unloaded += (_, _) =>
         {
@@ -117,18 +117,24 @@ public sealed partial class TagsPage : Page
             return;
         }
 
-        await ViewModel.ApplyColorAsync(TagColor.ToHex(PkrTagColor.Color));
-        _colorDirty = false;
+        await ErrorReporter.RunAsync("Apply tag color", null, async () =>
+        {
+            await ViewModel.ApplyColorAsync(TagColor.ToHex(PkrTagColor.Color));
+            _colorDirty = false;
+        });
     }
 
     private async void BtnClearTagColor_Click(object sender, RoutedEventArgs e)
     {
         _colorDirty = false;
         _ignoreColorChanges = true;
-        await ViewModel.ClearColorCommand.ExecuteAsync(null);
-        PkrTagColor.Color = TagColor.TryParse(ViewModel.SelectedEffectiveColor, out var color)
-            ? color
-            : Color.FromArgb(255, 255, 255, 255);
+        await ErrorReporter.RunAsync("Clear tag color", null, async () =>
+        {
+            await ViewModel.ClearColorCommand.ExecuteAsync(null);
+            PkrTagColor.Color = TagColor.TryParse(ViewModel.SelectedEffectiveColor, out var color)
+                ? color
+                : Color.FromArgb(255, 255, 255, 255);
+        });
         DispatcherQueue.TryEnqueue(() => _ignoreColorChanges = false);
     }
 
@@ -223,7 +229,7 @@ public sealed partial class TagsPage : Page
             return;
         }
 
-        await ViewModel.ToggleStarCommand.ExecuteAsync(null);
+        await ErrorReporter.RunAsync("Toggle star", null, () => ViewModel.ToggleStarCommand.ExecuteAsync(null));
     }
 
     private void OnMosaicReset()
@@ -592,7 +598,7 @@ public sealed partial class TagsPage : Page
         var pick = new Button { Content = "Pick destination" };
         AutomationProperties.SetAutomationId(pick, "BtnPickTagOrganizeDestination");
         string? destPath = null;
-        pick.Click += async (_, _) =>
+        pick.Click += async (_, _) => await ErrorReporter.RunAsync("Pick destination", null, async () =>
         {
             var folder = await AppServices.Access.PickFolderAsync();
             if (folder is not null)
@@ -601,7 +607,7 @@ public sealed partial class TagsPage : Page
                 folderBox.Text = folder.Path;
                 dest.IsChecked = true;
             }
-        };
+        });
 
         var panel = new StackPanel { Spacing = 12 };
         panel.Children.Add(new TextBlock

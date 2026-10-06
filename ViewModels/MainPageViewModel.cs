@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 
@@ -8,7 +9,7 @@ namespace Palace.ViewModels;
 
 public partial class MainPageViewModel : ObservableObject
 {
-    private bool _loading;
+    private readonly LoadGate _load = new();
 
     public MainPageViewModel()
     {
@@ -35,7 +36,7 @@ public partial class MainPageViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        _loading = true;
+        using var _ = _load.Begin();
         var currentId = AppServices.CurrentProject.Id;
         Projects.Clear();
         foreach (var project in await AppServices.Catalog.GetProjectsAsync())
@@ -44,12 +45,11 @@ public partial class MainPageViewModel : ObservableObject
         }
 
         SelectedProject = Projects.FirstOrDefault(p => p.Id == currentId) ?? Projects.FirstOrDefault();
-        _loading = false;
     }
 
     partial void OnSelectedProjectChanged(Project? value)
     {
-        if (_loading || value is null || value.Id == AppServices.CurrentProject.Id)
+        if (_load.IsLoading || value is null || value.Id == AppServices.CurrentProject.Id)
         {
             return;
         }
@@ -58,48 +58,49 @@ public partial class MainPageViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task NewProjectAsync()
-    {
-        if (RequestProjectName is null)
+    private Task NewProjectAsync() =>
+        ErrorReporter.RunAsync("New project", null, async () =>
         {
-            return;
-        }
+            if (RequestProjectName is null)
+            {
+                return;
+            }
 
-        var name = await RequestProjectName("New project", "Create", "");
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
+            var name = await RequestProjectName("New project", "Create", "");
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
 
-        var project = await AppServices.Catalog.CreateProjectAsync(name);
-        Projects.Add(project);
-        SelectedProject = project;
-    }
+            var project = await AppServices.Catalog.CreateProjectAsync(name);
+            Projects.Add(project);
+            SelectedProject = project;
+        });
 
     [RelayCommand]
-    private async Task RenameProjectAsync()
-    {
-        if (RequestProjectName is null || SelectedProject is null)
+    private Task RenameProjectAsync() =>
+        ErrorReporter.RunAsync("Rename project", null, async () =>
         {
-            return;
-        }
+            if (RequestProjectName is null || SelectedProject is null)
+            {
+                return;
+            }
 
-        var name = await RequestProjectName("Rename project", "Rename", SelectedProject.Name);
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
+            var name = await RequestProjectName("Rename project", "Rename", SelectedProject.Name);
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
 
-        await AppServices.Catalog.RenameProjectAsync(SelectedProject.Id, name);
-        var id = SelectedProject.Id;
-        await LoadAsync();
-        var renamed = Projects.FirstOrDefault(p => p.Id == id);
-        if (renamed is not null)
-        {
-            AppServices.CurrentProject.Name = renamed.Name;
-            _loading = true;
-            SelectedProject = renamed;
-            _loading = false;
-        }
-    }
+            await AppServices.Catalog.RenameProjectAsync(SelectedProject.Id, name);
+            var id = SelectedProject.Id;
+            await LoadAsync();
+            var renamed = Projects.FirstOrDefault(p => p.Id == id);
+            if (renamed is not null)
+            {
+                AppServices.CurrentProject.Name = renamed.Name;
+                using var _ = _load.Begin();
+                SelectedProject = renamed;
+            }
+        });
 }

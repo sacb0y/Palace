@@ -89,6 +89,8 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSelection { get; set; }
 
+    private void Notify(string message) => StatusText = message;
+
     [ObservableProperty]
     public partial string? SelectedEffectiveColor { get; set; }
 
@@ -189,163 +191,172 @@ public partial class TagsViewModel : ObservableObject
     partial void OnScopeChanged(TagScope value) => RebuildBoard();
 
     [RelayCommand]
-    private async Task CreateUngroupedAsync()
-    {
-        if (string.IsNullOrWhiteSpace(NewTagName))
+    private Task CreateUngroupedAsync() =>
+        ErrorReporter.RunAsync("Create ungrouped", Notify, async () =>
         {
-            return;
-        }
+            if (string.IsNullOrWhiteSpace(NewTagName))
+            {
+                return;
+            }
 
-        var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName));
-        NewTagName = "";
-        _reorderParentId = null;
-        await RefreshAsync();
-        if (result.Tags.Count > 0)
-        {
-            SelectCreated(result.Tags[^1].Id);
-        }
+            var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName));
+            NewTagName = "";
+            _reorderParentId = null;
+            await RefreshAsync();
+            if (result.Tags.Count > 0)
+            {
+                SelectCreated(result.Tags[^1].Id);
+            }
 
-        StatusText = DescribeBatch(result);
-    }
+            StatusText = DescribeBatch(result);
+        });
 
     [RelayCommand]
-    private async Task CreateChildAsync()
-    {
-        if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(NewTagName))
+    private Task CreateChildAsync() =>
+        ErrorReporter.RunAsync("Create child", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(NewTagName))
+            {
+                return;
+            }
 
-        var parentId = SelectedNode.TagId;
-        var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName), parentId);
-        NewTagName = "";
-        _reorderParentId = parentId;
-        await RefreshAsync();
-        if (result.Tags.Count > 0)
-        {
-            SelectCreated(result.Tags[^1].Id);
-        }
+            var parentId = SelectedNode.TagId;
+            var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName), parentId);
+            NewTagName = "";
+            _reorderParentId = parentId;
+            await RefreshAsync();
+            if (result.Tags.Count > 0)
+            {
+                SelectCreated(result.Tags[^1].Id);
+            }
 
-        StatusText = DescribeBatch(result, " under the selected group");
-    }
+            StatusText = DescribeBatch(result, " under the selected group");
+        });
 
     [RelayCommand]
-    private async Task ToggleStarAsync()
-    {
-        if (SelectedNode?.TagId is null)
+    private Task ToggleStarAsync() =>
+        ErrorReporter.RunAsync("Toggle star", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null)
+            {
+                return;
+            }
 
-        var next = !SelectedIsStarred;
-        await _catalog.SetTagStarredAsync(SelectedNode.TagId, next);
-        await RefreshAsync();
-        StatusText = next ? "Starred this tag." : "Removed star.";
-    }
+            var next = !SelectedIsStarred;
+            await _catalog.SetTagStarredAsync(SelectedNode.TagId, next);
+            await RefreshAsync();
+            StatusText = next ? "Starred this tag." : "Removed star.";
+        });
 
     [RelayCommand]
-    private async Task MoveUpAsync()
-    {
-        if (SelectedNode?.TagId is null)
+    private Task MoveUpAsync() =>
+        ErrorReporter.RunAsync("Move up", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null)
+            {
+                return;
+            }
 
-        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, _reorderParentId, -1);
-        await RefreshAsync();
-        StatusText = ok ? "Moved tag up." : "Already first among siblings.";
-    }
+            var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, _reorderParentId, -1);
+            await RefreshAsync();
+            StatusText = ok ? "Moved tag up." : "Already first among siblings.";
+        });
 
     [RelayCommand]
-    private async Task MoveDownAsync()
-    {
-        if (SelectedNode?.TagId is null)
+    private Task MoveDownAsync() =>
+        ErrorReporter.RunAsync("Move down", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null)
+            {
+                return;
+            }
 
-        var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, _reorderParentId, 1);
-        await RefreshAsync();
-        StatusText = ok ? "Moved tag down." : "Already last among siblings.";
-    }
+            var ok = await _catalog.MoveTagAmongSiblingsAsync(SelectedNode.TagId, _reorderParentId, 1);
+            await RefreshAsync();
+            StatusText = ok ? "Moved tag down." : "Already last among siblings.";
+        });
 
     [RelayCommand]
-    private async Task DeleteTagAsync()
-    {
-        if (SelectedNode?.TagId is null)
+    private Task DeleteTagAsync() =>
+        ErrorReporter.RunAsync("Delete tag", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null)
+            {
+                return;
+            }
 
-        var name = SelectedNode.Name;
-        var ok = RequestConfirm is null
-            || await RequestConfirm("Delete tag", $"Delete “{name}”? Assignments and group links are removed.", "Delete");
-        if (!ok)
-        {
-            return;
-        }
+            var name = SelectedNode.Name;
+            var ok = RequestConfirm is null
+                || await RequestConfirm("Delete tag", $"Delete “{name}”? Assignments and group links are removed.", "Delete");
+            if (!ok)
+            {
+                return;
+            }
 
-        await _catalog.DeleteTagAsync(SelectedNode.TagId);
-        SelectedNode = null;
-        await RefreshAsync();
-        StatusText = $"Deleted {name}.";
-    }
+            await _catalog.DeleteTagAsync(SelectedNode.TagId);
+            SelectedNode = null;
+            await RefreshAsync();
+            StatusText = $"Deleted {name}.";
+        });
 
     [RelayCommand]
-    private async Task StarChipAsync(TagChipItem? chip)
-    {
-        if (chip?.TagId is null)
+    private Task StarChipAsync(TagChipItem? chip) =>
+        ErrorReporter.RunAsync("Star chip", Notify, async () =>
         {
-            return;
-        }
+            if (chip?.TagId is null)
+            {
+                return;
+            }
 
-        var next = !chip.IsStarred;
-        await _catalog.SetTagStarredAsync(chip.TagId, next);
-        await RefreshAsync();
-        StatusText = next ? "Starred this tag." : "Removed star.";
-    }
+            var next = !chip.IsStarred;
+            await _catalog.SetTagStarredAsync(chip.TagId, next);
+            await RefreshAsync();
+            StatusText = next ? "Starred this tag." : "Removed star.";
+        });
 
     [RelayCommand]
-    private async Task RemoveChipFromGroupAsync(TagChipItem? chip)
-    {
-        if (chip?.TagId is null)
+    private Task RemoveChipFromGroupAsync(TagChipItem? chip) =>
+        ErrorReporter.RunAsync("Remove chip from group", Notify, async () =>
         {
-            return;
-        }
+            if (chip?.TagId is null)
+            {
+                return;
+            }
 
-        var rootId = chip.ParentGroupId ?? chip.ImmediateParentId;
-        if (string.IsNullOrEmpty(rootId))
-        {
-            return;
-        }
+            var rootId = chip.ParentGroupId ?? chip.ImmediateParentId;
+            if (string.IsNullOrEmpty(rootId))
+            {
+                return;
+            }
 
-        var parents = TagSiblings.ParentsUnderRoot(_memberships, chip.TagId, rootId);
-        if (parents.Count == 0 && !string.IsNullOrEmpty(chip.ImmediateParentId))
-        {
-            parents = [chip.ImmediateParentId];
-        }
+            var parents = TagSiblings.ParentsUnderRoot(_memberships, chip.TagId, rootId);
+            if (parents.Count == 0 && !string.IsNullOrEmpty(chip.ImmediateParentId))
+            {
+                parents = [chip.ImmediateParentId];
+            }
 
-        foreach (var parentId in parents)
-        {
-            await _catalog.RemoveMembershipAsync(parentId, chip.TagId);
-        }
+            foreach (var parentId in parents)
+            {
+                await _catalog.RemoveMembershipAsync(parentId, chip.TagId);
+            }
 
-        _reorderParentId = rootId;
-        await RefreshAsync();
-        StatusText = "Removed from group.";
-    }
+            _reorderParentId = rootId;
+            await RefreshAsync();
+            StatusText = "Removed from group.";
+        });
 
     [RelayCommand]
-    private async Task DeleteChipAsync(TagChipItem? chip)
-    {
-        if (chip is null)
+    private Task DeleteChipAsync(TagChipItem? chip) =>
+        ErrorReporter.RunAsync("Delete chip", Notify, async () =>
         {
-            return;
-        }
+            if (chip is null)
+            {
+                return;
+            }
 
-        SelectChip(chip);
-        await DeleteTagAsync();
-    }
+            SelectChip(chip);
+            await DeleteTagAsync();
+        });
 
     [RelayCommand]
     private void FilterChip(TagChipItem? chip)
@@ -372,59 +383,61 @@ public partial class TagsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task AddChipToGroupAsync(TagChipGroupMove? move)
-    {
-        if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
+    private Task AddChipToGroupAsync(TagChipGroupMove? move) =>
+        ErrorReporter.RunAsync("Add chip to group", Notify, async () =>
         {
-            return;
-        }
+            if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
+            {
+                return;
+            }
 
-        var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
-        StatusText = ok
-            ? $"Also grouped under {move.GroupName}."
-            : "That membership would create a cycle.";
-        if (ok)
-        {
-            _reorderParentId = move.GroupId;
-        }
+            var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+            StatusText = ok
+                ? $"Also grouped under {move.GroupName}."
+                : "That membership would create a cycle.";
+            if (ok)
+            {
+                _reorderParentId = move.GroupId;
+            }
 
-        await RefreshAsync();
-    }
+            await RefreshAsync();
+        });
 
     [RelayCommand]
-    private async Task MoveChipToGroupAsync(TagChipGroupMove? move)
-    {
-        if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
+    private Task MoveChipToGroupAsync(TagChipGroupMove? move) =>
+        ErrorReporter.RunAsync("Move chip to group", Notify, async () =>
         {
-            return;
-        }
-
-        var rootId = move.Chip.ParentGroupId ?? move.Chip.ImmediateParentId;
-        if (!string.IsNullOrEmpty(rootId) && !string.Equals(rootId, move.GroupId, StringComparison.Ordinal))
-        {
-            var parents = TagSiblings.ParentsUnderRoot(_memberships, move.Chip.TagId, rootId);
-            if (parents.Count == 0 && !string.IsNullOrEmpty(move.Chip.ImmediateParentId))
+            if (move?.Chip?.TagId is null || string.IsNullOrEmpty(move.GroupId))
             {
-                parents = [move.Chip.ImmediateParentId];
+                return;
             }
 
-            foreach (var parentId in parents)
+            var rootId = move.Chip.ParentGroupId ?? move.Chip.ImmediateParentId;
+            if (!string.IsNullOrEmpty(rootId) && !string.Equals(rootId, move.GroupId, StringComparison.Ordinal))
             {
-                await _catalog.RemoveMembershipAsync(parentId, move.Chip.TagId);
+                var parents = TagSiblings.ParentsUnderRoot(_memberships, move.Chip.TagId, rootId);
+                if (parents.Count == 0 && !string.IsNullOrEmpty(move.Chip.ImmediateParentId))
+                {
+                    parents = [move.Chip.ImmediateParentId];
+                }
+
+                foreach (var parentId in parents)
+                {
+                    await _catalog.RemoveMembershipAsync(parentId, move.Chip.TagId);
+                }
             }
-        }
 
-        var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
-        StatusText = ok
-            ? $"Moved to {move.GroupName}."
-            : "Removed from this group, but that destination would create a cycle.";
-        if (ok)
-        {
-            _reorderParentId = move.GroupId;
-        }
+            var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+            StatusText = ok
+                ? $"Moved to {move.GroupName}."
+                : "Removed from this group, but that destination would create a cycle.";
+            if (ok)
+            {
+                _reorderParentId = move.GroupId;
+            }
 
-        await RefreshAsync();
-    }
+            await RefreshAsync();
+        });
 
     public IReadOnlyList<TagGroupPick> GroupDestinations(TagChipItem chip, bool add)
     {
@@ -470,18 +483,19 @@ public partial class TagsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task SaveRenameAsync()
-    {
-        if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(SelectedName))
+    private Task SaveRenameAsync() =>
+        ErrorReporter.RunAsync("Save rename", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(SelectedName))
+            {
+                return;
+            }
 
-        await _catalog.RenameTagAsync(SelectedNode.TagId, SelectedName);
-        await _catalog.SetTagPriorityAsync(SelectedNode.TagId, (int)SelectedPriority);
-        await RefreshAsync();
-        StatusText = "Tag updated.";
-    }
+            await _catalog.RenameTagAsync(SelectedNode.TagId, SelectedName);
+            await _catalog.SetTagPriorityAsync(SelectedNode.TagId, (int)SelectedPriority);
+            await RefreshAsync();
+            StatusText = "Tag updated.";
+        });
 
     public async Task ApplyColorAsync(string? hex)
     {
@@ -496,160 +510,167 @@ public partial class TagsViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ClearColorAsync()
-    {
-        if (SelectedNode?.TagId is null)
+    private Task ClearColorAsync() =>
+        ErrorReporter.RunAsync("Clear color", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null)
+            {
+                return;
+            }
 
-        await _catalog.SetTagColorAsync(SelectedNode.TagId, null);
-        await RefreshAsync();
-        StatusText = "Tag color cleared; it will inherit again.";
-    }
+            await _catalog.SetTagColorAsync(SelectedNode.TagId, null);
+            await RefreshAsync();
+            StatusText = "Tag color cleared; it will inherit again.";
+        });
 
     [RelayCommand]
-    private async Task AddToGroupAsync()
-    {
-        if (SelectedNode?.TagId is null || SelectedAvailableGroup is null)
+    private Task AddToGroupAsync() =>
+        ErrorReporter.RunAsync("Add to group", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null || SelectedAvailableGroup is null)
+            {
+                return;
+            }
 
-        var ok = await _catalog.AddMembershipAsync(SelectedAvailableGroup.TagId, SelectedNode.TagId);
-        StatusText = ok ? $"Also grouped under {SelectedAvailableGroup.Name}." : "That membership would create a cycle.";
-        if (ok)
-        {
-            _reorderParentId = SelectedAvailableGroup.TagId;
-        }
+            var ok = await _catalog.AddMembershipAsync(SelectedAvailableGroup.TagId, SelectedNode.TagId);
+            StatusText = ok ? $"Also grouped under {SelectedAvailableGroup.Name}." : "That membership would create a cycle.";
+            if (ok)
+            {
+                _reorderParentId = SelectedAvailableGroup.TagId;
+            }
 
-        await RefreshAsync();
-    }
+            await RefreshAsync();
+        });
 
     [RelayCommand]
-    private async Task RemoveFromGroupAsync(TagGroupPick? group)
-    {
-        if (SelectedNode?.TagId is null || group is null)
+    private Task RemoveFromGroupAsync(TagGroupPick? group) =>
+        ErrorReporter.RunAsync("Remove from group", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null || group is null)
+            {
+                return;
+            }
 
-        await _catalog.RemoveMembershipAsync(group.TagId, SelectedNode.TagId);
-        if (string.Equals(_reorderParentId, group.TagId, StringComparison.Ordinal))
-        {
-            _reorderParentId = ParentGroups.FirstOrDefault(g => g.TagId != group.TagId)?.TagId;
-        }
+            await _catalog.RemoveMembershipAsync(group.TagId, SelectedNode.TagId);
+            if (string.Equals(_reorderParentId, group.TagId, StringComparison.Ordinal))
+            {
+                _reorderParentId = ParentGroups.FirstOrDefault(g => g.TagId != group.TagId)?.TagId;
+            }
 
-        await RefreshAsync();
-        StatusText = $"Removed from {group.Name}.";
-    }
+            await RefreshAsync();
+            StatusText = $"Removed from {group.Name}.";
+        });
 
     [RelayCommand]
-    private async Task AddImpliedAsync()
-    {
-        if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(ImpliedQuery))
+    private Task AddImpliedAsync() =>
+        ErrorReporter.RunAsync("Add implied", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(ImpliedQuery))
+            {
+                return;
+            }
 
-        var sourceId = SelectedNode.TagId;
-        var name = ImpliedQuery.Trim();
-        var existing = await _catalog.FindTagByNameAsync(name);
-        var target = existing ?? await _catalog.CreateTagAsync(name);
-        var ok = await _catalog.AddImplicationAsync(sourceId, target.Id);
-        await UiDispatch.RunAsync(() => ImpliedQuery = "");
-        await RefreshAsync();
-        StatusText = ok
-            ? $"Assigning this tag will also apply {target.Name}."
-            : "That implicit tag would create a cycle.";
-        if (ok)
-        {
-            QueueBackfill(() => _catalog.BackfillImplicationAddedAsync(sourceId));
-        }
-    }
-
-    [RelayCommand]
-    private async Task RemoveImpliedAsync(TagGroupPick? item)
-    {
-        if (SelectedNode?.TagId is null || item is null)
-        {
-            return;
-        }
-
-        var impliedId = item.TagId;
-        await _catalog.RemoveImplicationAsync(SelectedNode.TagId, impliedId);
-        await RefreshAsync();
-        StatusText = $"{item.Name} is no longer implied.";
-        QueueBackfill(() => _catalog.BackfillImplicationRemovedAsync(impliedId));
-    }
+            var sourceId = SelectedNode.TagId;
+            var name = ImpliedQuery.Trim();
+            var existing = await _catalog.FindTagByNameAsync(name);
+            var target = existing ?? await _catalog.CreateTagAsync(name);
+            var ok = await _catalog.AddImplicationAsync(sourceId, target.Id);
+            await UiDispatch.RunAsync(() => ImpliedQuery = "");
+            await RefreshAsync();
+            StatusText = ok
+                ? $"Assigning this tag will also apply {target.Name}."
+                : "That implicit tag would create a cycle.";
+            if (ok)
+            {
+                QueueBackfill(() => _catalog.BackfillImplicationAddedAsync(sourceId));
+            }
+        });
 
     [RelayCommand]
-    private async Task PreviewOrganizeAsync()
-    {
-        if (SelectedNode?.TagId is null || RequestOrganizeChoice is null)
+    private Task RemoveImpliedAsync(TagGroupPick? item) =>
+        ErrorReporter.RunAsync("Remove implied", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null || item is null)
+            {
+                return;
+            }
 
-        var paths = await _catalog.GetPathsToTagAsync(SelectedNode.TagId);
-        if (paths.Count == 0)
-        {
-            StatusText = "Select a tag first.";
-            return;
-        }
+            var impliedId = item.TagId;
+            await _catalog.RemoveImplicationAsync(SelectedNode.TagId, impliedId);
+            await RefreshAsync();
+            StatusText = $"{item.Name} is no longer implied.";
+            QueueBackfill(() => _catalog.BackfillImplicationRemovedAsync(impliedId));
+        });
 
-        var choice = await RequestOrganizeChoice(paths);
-        if (choice is null)
+    [RelayCommand]
+    private Task PreviewOrganizeAsync() =>
+        ErrorReporter.RunAsync("Preview organize", Notify, async () =>
         {
-            return;
-        }
+            if (SelectedNode?.TagId is null || RequestOrganizeChoice is null)
+            {
+                return;
+            }
 
-        var tagIds = new List<string> { SelectedNode.TagId };
-        if (IncludeNested)
-        {
-            tagIds.AddRange(await _catalog.GetDescendantTagIdsAsync(SelectedNode.TagId));
-        }
+            var paths = await _catalog.GetPathsToTagAsync(SelectedNode.TagId);
+            if (paths.Count == 0)
+            {
+                StatusText = "Select a tag first.";
+                return;
+            }
 
-        var assets = await _catalog.GetAssetsForTagsAsync(tagIds);
-        if (assets.Count == 0)
-        {
-            StatusText = "No images have this tag yet.";
+            var choice = await RequestOrganizeChoice(paths);
+            if (choice is null)
+            {
+                return;
+            }
+
+            var tagIds = new List<string> { SelectedNode.TagId };
+            if (IncludeNested)
+            {
+                tagIds.AddRange(await _catalog.GetDescendantTagIdsAsync(SelectedNode.TagId));
+            }
+
+            var assets = await _catalog.GetAssetsForTagsAsync(tagIds);
+            if (assets.Count == 0)
+            {
+                StatusText = "No images have this tag yet.";
+                OrganizePreview.Clear();
+                ShowOrganizePanel = false;
+                return;
+            }
+
+            var preview = await _organize.DryRunAsync(assets, choice);
             OrganizePreview.Clear();
-            ShowOrganizePanel = false;
-            return;
-        }
+            foreach (var item in preview)
+            {
+                OrganizePreview.Add(item);
+            }
 
-        var preview = await _organize.DryRunAsync(assets, choice);
-        OrganizePreview.Clear();
-        foreach (var item in preview)
-        {
-            OrganizePreview.Add(item);
-        }
-
-        ShowOrganizePanel = true;
-        StatusText = $"Organize preview: {preview.Count} files.";
-    }
+            ShowOrganizePanel = true;
+            StatusText = $"Organize preview: {preview.Count} files.";
+        });
 
     [RelayCommand]
-    private async Task ApplyOrganizeAsync()
-    {
-        if (OrganizePreview.Count == 0)
+    private Task ApplyOrganizeAsync() =>
+        ErrorReporter.RunAsync("Apply organize", Notify, async () =>
         {
-            return;
-        }
+            if (OrganizePreview.Count == 0)
+            {
+                return;
+            }
 
-        IsBusy = true;
-        try
-        {
-            var applied = await _organize.ApplyAsync(OrganizePreview.ToList());
-            await AppServices.Library.RefreshQuietAsync();
-            StatusText = $"Moved {applied} files. Last batch is undoable from Library.";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
+            IsBusy = true;
+            try
+            {
+                var applied = await _organize.ApplyAsync(OrganizePreview.ToList());
+                await AppServices.Library.RefreshQuietAsync();
+                StatusText = $"Moved {applied} files. Last batch is undoable from Library.";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        });
 
     partial void OnSelectedNodeChanged(TagTreeNode? value) => HasSelection = value?.TagId is not null;
 

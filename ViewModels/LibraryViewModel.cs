@@ -460,290 +460,301 @@ public partial class LibraryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task AddFolderAsync()
-    {
-        var folder = await _access.PickFolderAsync();
-        if (folder is null)
+    private Task AddFolderAsync() =>
+        ErrorReporter.RunAsync("Add folder", Notify, async () =>
         {
-            return;
-        }
-
-        var existing = (await _catalog.GetSourceFoldersAsync(AppServices.CurrentProject.Id))
-            .FirstOrDefault(s => string.Equals(s.Path, folder.Path, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
-        {
-            Notify("That folder is already in the library.");
-            return;
-        }
-
-        var source = new SourceFolder
-        {
-            Id = PalaceDb.NewId(),
-            Path = folder.Path,
-            AccessToken = _access.Remember(folder),
-            FolderTemplate = "{Character}/{tags:2}",
-            FileTemplate = "{Character}-{tags}.{ext}",
-            ProjectId = AppServices.CurrentProject.Id
-        };
-        await _catalog.UpsertSourceFolderAsync(source);
-        await ScanFolderAsync(source);
-        await _watchers.RestartAsync();
-    }
-
-    [RelayCommand]
-    private async Task ScanAsync()
-    {
-        BeginBusy("Scanning…");
-        try
-        {
-            var report = await _scan.ScanAllAsync(
-                new Progress<string>(p => StatusText = $"Scanning {Path.GetFileName(p)}"),
-                projectId: AppServices.CurrentProject.Id);
-            await RefreshQuietAsync();
-            StatusText = $"Indexed {report.Added} new, {report.Updated} updated, {report.Orphaned} missing.";
-        }
-        finally
-        {
-            EndBusy();
-        }
-    }
-
-    [RelayCommand]
-    private async Task SearchAsync()
-    {
-        await ApplyFilterAsync();
-    }
-
-    [RelayCommand]
-    private async Task AssignFromQueryAsync()
-    {
-        var targets = TagTargets();
-        if (targets.Count == 0 || string.IsNullOrWhiteSpace(TagQuery))
-        {
-            return;
-        }
-
-        var names = TagNameList.Split(TagQuery);
-        if (names.Count == 0)
-        {
-            return;
-        }
-
-        var assigned = new List<string>();
-        foreach (var query in names)
-        {
-            var match = FindTagPick(query);
-            string tagId;
-            string tagName;
-            if (match is null)
+            var folder = await _access.PickFolderAsync();
+            if (folder is null)
             {
-                var existing = await _catalog.FindTagByNameAsync(query);
-                var created = existing ?? await _catalog.CreateTagAsync(query);
-                tagId = created.Id;
-                tagName = created.Name;
+                return;
+            }
+
+            var existing = (await _catalog.GetSourceFoldersAsync(AppServices.CurrentProject.Id))
+                .FirstOrDefault(s => string.Equals(s.Path, folder.Path, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                Notify("That folder is already in the library.");
+                return;
+            }
+
+            var source = new SourceFolder
+            {
+                Id = PalaceDb.NewId(),
+                Path = folder.Path,
+                AccessToken = _access.Remember(folder),
+                FolderTemplate = "{Character}/{tags:2}",
+                FileTemplate = "{Character}-{tags}.{ext}",
+                ProjectId = AppServices.CurrentProject.Id
+            };
+            await _catalog.UpsertSourceFolderAsync(source);
+            await ScanFolderAsync(source);
+            await _watchers.RestartAsync();
+        });
+
+    [RelayCommand]
+    private Task ScanAsync() =>
+        ErrorReporter.RunAsync("Scan", Notify, async () =>
+        {
+            BeginBusy("Scanning…");
+            try
+            {
+                var report = await _scan.ScanAllAsync(
+                    new Progress<string>(p => StatusText = $"Scanning {Path.GetFileName(p)}"),
+                    projectId: AppServices.CurrentProject.Id);
+                await RefreshQuietAsync();
+                StatusText = $"Indexed {report.Added} new, {report.Updated} updated, {report.Orphaned} missing.";
+            }
+            finally
+            {
+                EndBusy();
+            }
+        });
+
+    [RelayCommand]
+    private Task SearchAsync() =>
+        ErrorReporter.RunAsync("Search", Notify, async () =>
+        {
+            await ApplyFilterAsync();
+        });
+
+    [RelayCommand]
+    private Task AssignFromQueryAsync() =>
+        ErrorReporter.RunAsync("Assign from query", Notify, async () =>
+        {
+            var targets = TagTargets();
+            if (targets.Count == 0 || string.IsNullOrWhiteSpace(TagQuery))
+            {
+                return;
+            }
+
+            var names = TagNameList.Split(TagQuery);
+            if (names.Count == 0)
+            {
+                return;
+            }
+
+            var assigned = new List<string>();
+            foreach (var query in names)
+            {
+                var match = FindTagPick(query);
+                string tagId;
+                string tagName;
+                if (match is null)
+                {
+                    var existing = await _catalog.FindTagByNameAsync(query);
+                    var created = existing ?? await _catalog.CreateTagAsync(query);
+                    tagId = created.Id;
+                    tagName = created.Name;
+                }
+                else
+                {
+                    tagId = match.TagId;
+                    tagName = match.Name;
+                }
+
+                await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Manual);
+                assigned.Add(tagName);
+            }
+
+            await UiDispatch.RunAsync(() =>
+            {
+                TagQuery = "";
+                SelectedPickTag = null;
+                if (assigned.Count > 1)
+                {
+                    StatusText = targets.Count == 1
+                        ? $"Tagged 1 image with {string.Join(", ", assigned)}"
+                        : $"Tagged {targets.Count} images with {string.Join(", ", assigned)}";
+                }
+            });
+            await LoadPreviewAsync(SelectedAsset);
+            await ReloadTagCatalogAsync();
+        });
+
+    [RelayCommand]
+    private Task CreateAndAssignTagAsync() =>
+        ErrorReporter.RunAsync("Create and assign tag", Notify, async () =>
+        {
+            var targets = TagTargets();
+            if (targets.Count == 0 || string.IsNullOrWhiteSpace(NewTagName))
+            {
+                return;
+            }
+
+            var names = TagNameList.Split(NewTagName);
+            if (names.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var name in names)
+            {
+                var existing = await _catalog.FindTagByNameAsync(name);
+                var tag = existing ?? await _catalog.CreateTagAsync(name);
+                await AssignToSelectionAsync(targets, tag.Id, tag.Name, TagSource.Manual);
+            }
+
+            await UiDispatch.RunAsync(() => NewTagName = "");
+            await LoadPreviewAsync(SelectedAsset);
+            await ReloadTagCatalogAsync();
+        });
+
+    [RelayCommand]
+    private Task RemoveAssignedTagAsync(AssignedTagItem? item) =>
+        ErrorReporter.RunAsync("Remove assigned tag", Notify, async () =>
+        {
+            var targets = TagTargets();
+            if (targets.Count == 0 || item is null)
+            {
+                return;
+            }
+
+            foreach (var asset in targets)
+            {
+                await _catalog.RemoveTagAsync(asset.Id, item.TagId);
+            }
+
+            StatusText = targets.Count == 1
+                ? $"Removed {item.TagName} from 1 image"
+                : $"Removed {item.TagName} from {targets.Count} images";
+            await LoadPreviewAsync(SelectedAsset);
+        });
+
+    [RelayCommand]
+    private Task AcceptSuggestionAsync(PromptSuggestion? suggestion) =>
+        ErrorReporter.RunAsync("Accept suggestion", Notify, async () =>
+        {
+            var targets = TagTargets();
+            if (targets.Count == 0 || suggestion is null)
+            {
+                return;
+            }
+
+            string tagId;
+            string tagName = suggestion.Token;
+            if (suggestion.ExistingTagId is not null)
+            {
+                tagId = suggestion.ExistingTagId;
+                tagName = suggestion.ExistingTagName ?? suggestion.Token;
             }
             else
             {
-                tagId = match.TagId;
-                tagName = match.Name;
+                var created = await _catalog.CreateTagAsync(suggestion.Token);
+                tagId = created.Id;
+                tagName = created.Name;
             }
 
-            await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Manual);
-            assigned.Add(tagName);
-        }
+            await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Prompt);
+            await LoadPreviewAsync(SelectedAsset);
+            await ReloadTagCatalogAsync();
+        });
 
-        await UiDispatch.RunAsync(() =>
+    [RelayCommand]
+    private Task PreviewOrganizeAsync() =>
+        ErrorReporter.RunAsync("Preview organize", Notify, async () =>
         {
-            TagQuery = "";
-            SelectedPickTag = null;
-            if (assigned.Count > 1)
+            var targets = await SelectedAssetsAsync();
+            if (targets.Count == 0)
             {
-                StatusText = targets.Count == 1
-                    ? $"Tagged 1 image with {string.Join(", ", assigned)}"
-                    : $"Tagged {targets.Count} images with {string.Join(", ", assigned)}";
+                Notify("Select assets or a folder to organize.");
+                return;
+            }
+
+            if (RequestOrganizeChoice is null)
+            {
+                return;
+            }
+
+            var choice = await RequestOrganizeChoice();
+            if (choice is null)
+            {
+                return;
+            }
+
+            var preview = await _organize.DryRunAsync(targets, choice);
+            OrganizePreview.Clear();
+            foreach (var item in preview)
+            {
+                OrganizePreview.Add(item);
+            }
+
+            ShowOrganizePanel = true;
+            StatusText = $"Organize preview: {preview.Count} items.";
+        });
+
+    [RelayCommand]
+    private Task ApplyOrganizeAsync() =>
+        ErrorReporter.RunAsync("Apply organize", Notify, async () =>
+        {
+            if (OrganizePreview.Count == 0)
+            {
+                return;
+            }
+
+            BeginBusy("Organizing…");
+            try
+            {
+                var applied = await _organize.ApplyAsync(OrganizePreview.ToList());
+                await RefreshQuietAsync();
+                StatusText = $"Moved {applied} files. Last batch is undoable.";
+            }
+            finally
+            {
+                EndBusy();
             }
         });
-        await LoadPreviewAsync(SelectedAsset);
-        await ReloadTagCatalogAsync();
-    }
 
     [RelayCommand]
-    private async Task CreateAndAssignTagAsync()
-    {
-        var targets = TagTargets();
-        if (targets.Count == 0 || string.IsNullOrWhiteSpace(NewTagName))
+    private Task UndoOrganizeAsync() =>
+        ErrorReporter.RunAsync("Undo organize", Notify, async () =>
         {
-            return;
-        }
-
-        var names = TagNameList.Split(NewTagName);
-        if (names.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var name in names)
-        {
-            var existing = await _catalog.FindTagByNameAsync(name);
-            var tag = existing ?? await _catalog.CreateTagAsync(name);
-            await AssignToSelectionAsync(targets, tag.Id, tag.Name, TagSource.Manual);
-        }
-
-        await UiDispatch.RunAsync(() => NewTagName = "");
-        await LoadPreviewAsync(SelectedAsset);
-        await ReloadTagCatalogAsync();
-    }
+            BeginBusy("Undoing…");
+            try
+            {
+                var count = await _organize.UndoLastAsync();
+                await RefreshQuietAsync();
+                StatusText = count == 0 ? "Nothing to undo." : $"Restored {count} files.";
+                ShowOrganizePanel = false;
+            }
+            finally
+            {
+                EndBusy();
+            }
+        });
 
     [RelayCommand]
-    private async Task RemoveAssignedTagAsync(AssignedTagItem? item)
-    {
-        var targets = TagTargets();
-        if (targets.Count == 0 || item is null)
+    private Task AddSelectionToRoomAsync() =>
+        ErrorReporter.RunAsync("Add selection to room", Notify, async () =>
         {
-            return;
-        }
+            if (RequestPickRoom is null || _selection.Count == 0)
+            {
+                Notify("Select assets first.");
+                return;
+            }
 
-        foreach (var asset in targets)
-        {
-            await _catalog.RemoveTagAsync(asset.Id, item.TagId);
-        }
+            var rooms = await _catalog.GetRoomsAsync(AppServices.CurrentProject.Id);
+            if (rooms.Count == 0)
+            {
+                Notify("Create a room in the Rooms page first.");
+                return;
+            }
 
-        StatusText = targets.Count == 1
-            ? $"Removed {item.TagName} from 1 image"
-            : $"Removed {item.TagName} from {targets.Count} images";
-        await LoadPreviewAsync(SelectedAsset);
-    }
+            var room = await RequestPickRoom(rooms);
+            if (room is null)
+            {
+                return;
+            }
 
-    [RelayCommand]
-    private async Task AcceptSuggestionAsync(PromptSuggestion? suggestion)
-    {
-        var targets = TagTargets();
-        if (targets.Count == 0 || suggestion is null)
-        {
-            return;
-        }
+            var existing = await _catalog.GetRoomItemsAsync(room.Id);
+            var sort = existing.Count;
+            foreach (var item in _selection)
+            {
+                await _catalog.AddToRoomAsync(room.Id, item.Id, "Pins", sort++);
+            }
 
-        string tagId;
-        string tagName = suggestion.Token;
-        if (suggestion.ExistingTagId is not null)
-        {
-            tagId = suggestion.ExistingTagId;
-            tagName = suggestion.ExistingTagName ?? suggestion.Token;
-        }
-        else
-        {
-            var created = await _catalog.CreateTagAsync(suggestion.Token);
-            tagId = created.Id;
-            tagName = created.Name;
-        }
-
-        await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Prompt);
-        await LoadPreviewAsync(SelectedAsset);
-        await ReloadTagCatalogAsync();
-    }
-
-    [RelayCommand]
-    private async Task PreviewOrganizeAsync()
-    {
-        var targets = await SelectedAssetsAsync();
-        if (targets.Count == 0)
-        {
-            Notify("Select assets or a folder to organize.");
-            return;
-        }
-
-        if (RequestOrganizeChoice is null)
-        {
-            return;
-        }
-
-        var choice = await RequestOrganizeChoice();
-        if (choice is null)
-        {
-            return;
-        }
-
-        var preview = await _organize.DryRunAsync(targets, choice);
-        OrganizePreview.Clear();
-        foreach (var item in preview)
-        {
-            OrganizePreview.Add(item);
-        }
-
-        ShowOrganizePanel = true;
-        StatusText = $"Organize preview: {preview.Count} items.";
-    }
-
-    [RelayCommand]
-    private async Task ApplyOrganizeAsync()
-    {
-        if (OrganizePreview.Count == 0)
-        {
-            return;
-        }
-
-        BeginBusy("Organizing…");
-        try
-        {
-            var applied = await _organize.ApplyAsync(OrganizePreview.ToList());
-            await RefreshQuietAsync();
-            StatusText = $"Moved {applied} files. Last batch is undoable.";
-        }
-        finally
-        {
-            EndBusy();
-        }
-    }
-
-    [RelayCommand]
-    private async Task UndoOrganizeAsync()
-    {
-        BeginBusy("Undoing…");
-        try
-        {
-            var count = await _organize.UndoLastAsync();
-            await RefreshQuietAsync();
-            StatusText = count == 0 ? "Nothing to undo." : $"Restored {count} files.";
-            ShowOrganizePanel = false;
-        }
-        finally
-        {
-            EndBusy();
-        }
-    }
-
-    [RelayCommand]
-    private async Task AddSelectionToRoomAsync()
-    {
-        if (RequestPickRoom is null || _selection.Count == 0)
-        {
-            Notify("Select assets first.");
-            return;
-        }
-
-        var rooms = await _catalog.GetRoomsAsync(AppServices.CurrentProject.Id);
-        if (rooms.Count == 0)
-        {
-            Notify("Create a room in the Rooms page first.");
-            return;
-        }
-
-        var room = await RequestPickRoom(rooms);
-        if (room is null)
-        {
-            return;
-        }
-
-        var existing = await _catalog.GetRoomItemsAsync(room.Id);
-        var sort = existing.Count;
-        foreach (var item in _selection)
-        {
-            await _catalog.AddToRoomAsync(room.Id, item.Id, "Pins", sort++);
-        }
-
-        Notify($"Added {_selection.Count} to {room.Name}.");
-        await AppServices.Rooms.RefreshAsync();
-    }
+            Notify($"Added {_selection.Count} to {room.Name}.");
+            await AppServices.Rooms.RefreshAsync();
+        });
 
     [RelayCommand]
     private void OpenOverlay(AssetItem? item)
@@ -790,195 +801,200 @@ public partial class LibraryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ShowInExplorerAsync()
-    {
-        var targets = await SelectedAssetsAsync();
-        if (targets.Count == 0)
+    private Task ShowInExplorerAsync() =>
+        ErrorReporter.RunAsync("Show in explorer", Notify, async () =>
         {
-            Notify("Select assets first.");
-            return;
-        }
-
-        var opened = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var asset in targets)
-        {
-            var dir = Path.GetDirectoryName(asset.Path);
-            if (string.IsNullOrEmpty(dir) || !opened.Add(dir))
+            var targets = await SelectedAssetsAsync();
+            if (targets.Count == 0)
             {
-                continue;
+                Notify("Select assets first.");
+                return;
             }
 
-            Process.Start(new ProcessStartInfo
+            var opened = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var asset in targets)
             {
-                FileName = "explorer.exe",
-                Arguments = $"/select,\"{asset.Path}\"",
-                UseShellExecute = true
-            });
-        }
-    }
+                var dir = Path.GetDirectoryName(asset.Path);
+                if (string.IsNullOrEmpty(dir) || !opened.Add(dir))
+                {
+                    continue;
+                }
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{asset.Path}\"",
+                    UseShellExecute = true
+                });
+            }
+        });
 
     [RelayCommand]
-    private async Task CopyFilesAsync()
-    {
-        var targets = await SelectedAssetsAsync();
-        var paths = AccessService.FilterCopyPaths(targets.Select(t => t.Path), out var skipped);
-        var files = new List<IStorageItem>();
-        foreach (var path in paths)
+    private Task CopyFilesAsync() =>
+        ErrorReporter.RunAsync("Copy files", Notify, async () =>
         {
-            if (!CloudFile.Exists(path))
+            var targets = await SelectedAssetsAsync();
+            var paths = AccessService.FilterCopyPaths(targets.Select(t => t.Path), out var skipped);
+            var files = new List<IStorageItem>();
+            foreach (var path in paths)
             {
-                continue;
-            }
+                if (!CloudFile.Exists(path))
+                {
+                    continue;
+                }
 
-            try
-            {
-                files.Add(await StorageFile.GetFileFromPathAsync(path));
-            }
-            catch
-            {
-                // Skip files the package cannot open.
-            }
-        }
-
-        if (files.Count == 0)
-        {
-            Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : "Nothing to copy.");
-            return;
-        }
-
-        var package = new DataPackage();
-        package.SetStorageItems(files);
-        Clipboard.SetContent(package);
-        Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : $"Copied {files.Count} file(s).");
-    }
-
-    [RelayCommand]
-    private async Task CopyPathAsync()
-    {
-        var targets = await SelectedAssetsAsync();
-        if (targets.Count == 0)
-        {
-            Notify("Select assets first.");
-            return;
-        }
-
-        var paths = AccessService.FilterCopyPaths(targets.Select(t => t.Path), out var skipped);
-        if (paths.Count == 0)
-        {
-            Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : "Nothing to copy.");
-            return;
-        }
-
-        var package = new DataPackage();
-        package.SetText(string.Join(Environment.NewLine, paths));
-        Clipboard.SetContent(package);
-        Notify(skipped > 0
-            ? AccessService.OnlineOnlyCopyWarning
-            : paths.Count == 1 ? "Copied path." : $"Copied {paths.Count} paths.");
-    }
-
-    [RelayCommand]
-    private async Task MoveToFolderAsync()
-    {
-        var targets = await SelectedAssetsAsync();
-        if (targets.Count == 0)
-        {
-            Notify("Select assets first.");
-            return;
-        }
-
-        var folder = await _access.PickFolderAsync();
-        if (folder is null)
-        {
-            return;
-        }
-
-        var destRoot = folder.Path;
-        Directory.CreateDirectory(destRoot);
-        var moved = 0;
-        foreach (var asset in targets)
-        {
-            if (!CloudFile.Exists(asset.Path))
-            {
-                continue;
-            }
-
-            var dest = Path.Combine(destRoot, Path.GetFileName(asset.Path));
-            if (string.Equals(Path.GetFullPath(asset.Path), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            dest = PathSafe.UniquePath(dest);
-            try
-            {
-                File.Move(asset.Path, dest);
-                await _catalog.UpdateAssetPathAsync(asset.Id, dest);
-                moved++;
-            }
-            catch (Exception ex)
-            {
-                await _catalog.SetOrganizeErrorAsync(asset.Id, ex.Message);
-            }
-        }
-
-        CloseOverlay();
-        await RefreshQuietAsync();
-        StatusText = moved == 0 ? "No files moved." : $"Moved {moved} file(s).";
-    }
-
-    [RelayCommand]
-    private async Task DeleteFilesAsync()
-    {
-        var targets = await SelectedAssetsAsync();
-        if (targets.Count == 0 || RequestConfirm is null)
-        {
-            Notify("Select assets first.");
-            return;
-        }
-
-        var preview = targets.Count == 1
-            ? targets[0].FileName
-            : $"{targets.Count} files ({string.Join(", ", targets.Take(3).Select(t => t.FileName))}{(targets.Count > 3 ? ", …" : "")})";
-        if (!await RequestConfirm(
-                "Delete",
-                $"Send {preview} to the Recycle Bin? This also removes them from the catalog.",
-                "Delete"))
-        {
-            return;
-        }
-
-        var removed = new List<string>();
-        foreach (var asset in targets)
-        {
-            if (CloudFile.Exists(asset.Path))
-            {
                 try
                 {
-                    var file = await StorageFile.GetFileFromPathAsync(asset.Path);
-                    await file.DeleteAsync(StorageDeleteOption.Default);
+                    files.Add(await StorageFile.GetFileFromPathAsync(path));
+                }
+                catch
+                {
+                    // Skip files the package cannot open.
+                }
+            }
+
+            if (files.Count == 0)
+            {
+                Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : "Nothing to copy.");
+                return;
+            }
+
+            var package = new DataPackage();
+            package.SetStorageItems(files);
+            Clipboard.SetContent(package);
+            Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : $"Copied {files.Count} file(s).");
+        });
+
+    [RelayCommand]
+    private Task CopyPathAsync() =>
+        ErrorReporter.RunAsync("Copy path", Notify, async () =>
+        {
+            var targets = await SelectedAssetsAsync();
+            if (targets.Count == 0)
+            {
+                Notify("Select assets first.");
+                return;
+            }
+
+            var paths = AccessService.FilterCopyPaths(targets.Select(t => t.Path), out var skipped);
+            if (paths.Count == 0)
+            {
+                Notify(skipped > 0 ? AccessService.OnlineOnlyCopyWarning : "Nothing to copy.");
+                return;
+            }
+
+            var package = new DataPackage();
+            package.SetText(string.Join(Environment.NewLine, paths));
+            Clipboard.SetContent(package);
+            Notify(skipped > 0
+                ? AccessService.OnlineOnlyCopyWarning
+                : paths.Count == 1 ? "Copied path." : $"Copied {paths.Count} paths.");
+        });
+
+    [RelayCommand]
+    private Task MoveToFolderAsync() =>
+        ErrorReporter.RunAsync("Move to folder", Notify, async () =>
+        {
+            var targets = await SelectedAssetsAsync();
+            if (targets.Count == 0)
+            {
+                Notify("Select assets first.");
+                return;
+            }
+
+            var folder = await _access.PickFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
+
+            var destRoot = folder.Path;
+            Directory.CreateDirectory(destRoot);
+            var moved = 0;
+            foreach (var asset in targets)
+            {
+                if (!CloudFile.Exists(asset.Path))
+                {
+                    continue;
+                }
+
+                var dest = Path.Combine(destRoot, Path.GetFileName(asset.Path));
+                if (string.Equals(Path.GetFullPath(asset.Path), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                dest = PathSafe.UniquePath(dest);
+                try
+                {
+                    File.Move(asset.Path, dest);
+                    await _catalog.UpdateAssetPathAsync(asset.Id, dest);
+                    moved++;
                 }
                 catch (Exception ex)
                 {
-                    Notify($"Could not delete {asset.FileName}: {ex.Message}");
-                    continue;
+                    await _catalog.SetOrganizeErrorAsync(asset.Id, ex.Message);
                 }
             }
 
-            _thumbs.TryDelete(asset.ContentHash);
-            removed.Add(asset.Id);
-        }
+            CloseOverlay();
+            await RefreshQuietAsync();
+            StatusText = moved == 0 ? "No files moved." : $"Moved {moved} file(s).";
+        });
 
-        if (removed.Count > 0)
+    [RelayCommand]
+    private Task DeleteFilesAsync() =>
+        ErrorReporter.RunAsync("Delete files", Notify, async () =>
         {
-            await _catalog.DeleteAssetsAsync(removed);
-        }
+            var targets = await SelectedAssetsAsync();
+            if (targets.Count == 0 || RequestConfirm is null)
+            {
+                Notify("Select assets first.");
+                return;
+            }
 
-        CloseOverlay();
-        await RefreshQuietAsync();
-        await AppServices.Rooms.RefreshAsync();
-        Notify(removed.Count == 0 ? "Nothing deleted." : $"Deleted {removed.Count} file(s).");
-    }
+            var preview = targets.Count == 1
+                ? targets[0].FileName
+                : $"{targets.Count} files ({string.Join(", ", targets.Take(3).Select(t => t.FileName))}{(targets.Count > 3 ? ", …" : "")})";
+            if (!await RequestConfirm(
+                    "Delete",
+                    $"Send {preview} to the Recycle Bin? This also removes them from the catalog.",
+                    "Delete"))
+            {
+                return;
+            }
+
+            var removed = new List<string>();
+            foreach (var asset in targets)
+            {
+                if (CloudFile.Exists(asset.Path))
+                {
+                    try
+                    {
+                        var file = await StorageFile.GetFileFromPathAsync(asset.Path);
+                        await file.DeleteAsync(StorageDeleteOption.Default);
+                    }
+                    catch (Exception ex)
+                    {
+                        Notify($"Could not delete {asset.FileName}: {ex.Message}");
+                        continue;
+                    }
+                }
+
+                _thumbs.TryDelete(asset.ContentHash);
+                removed.Add(asset.Id);
+            }
+
+            if (removed.Count > 0)
+            {
+                await _catalog.DeleteAssetsAsync(removed);
+            }
+
+            CloseOverlay();
+            await RefreshQuietAsync();
+            await AppServices.Rooms.RefreshAsync();
+            Notify(removed.Count == 0 ? "Nothing deleted." : $"Deleted {removed.Count} file(s).");
+        });
 
     [RelayCommand]
     private void FocusAssignTag()
@@ -1087,24 +1103,25 @@ public partial class LibraryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task ToggleAssignChipAsync(TagChipItem? chip)
-    {
-        var targets = TagTargets();
-        if (chip is null || targets.Count == 0)
+    private Task ToggleAssignChipAsync(TagChipItem? chip) =>
+        ErrorReporter.RunAsync("Toggle assign chip", Notify, async () =>
         {
-            return;
-        }
+            var targets = TagTargets();
+            if (chip is null || targets.Count == 0)
+            {
+                return;
+            }
 
-        if (chip.IsAssigned && !chip.IsPartial)
-        {
-            await RemoveAssignedTagAsync(new AssignedTagItem { TagId = chip.TagId, TagName = chip.Name });
-            return;
-        }
+            if (chip.IsAssigned && !chip.IsPartial)
+            {
+                await RemoveAssignedTagAsync(new AssignedTagItem { TagId = chip.TagId, TagName = chip.Name });
+                return;
+            }
 
-        await AssignToSelectionAsync(targets, chip.TagId, chip.Name, TagSource.Manual);
-        await LoadPreviewAsync(SelectedAsset);
-        RebuildAssignPanel();
-    }
+            await AssignToSelectionAsync(targets, chip.TagId, chip.Name, TagSource.Manual);
+            await LoadPreviewAsync(SelectedAsset);
+            RebuildAssignPanel();
+        });
 
     public void NavigateBreadcrumb(PathCrumb crumb)
     {

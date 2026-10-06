@@ -310,47 +310,48 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task DownloadOriginalAsync()
-    {
-        var item = Current;
-        if (item is null || string.IsNullOrEmpty(item.CloudItemId))
+    private Task DownloadOriginalAsync() =>
+        ErrorReporter.RunAsync("Download original", null, async () =>
         {
-            return;
-        }
-
-        var folder = await AppServices.Access.PickFolderAsync();
-        if (folder is null)
-        {
-            return;
-        }
-
-        try
-        {
-            var url = await ResolveOriginalUrlAsync(item);
-            if (string.IsNullOrEmpty(url))
+            var item = Current;
+            if (item is null || string.IsNullOrEmpty(item.CloudItemId))
             {
-                PreviewStatus = "Could not get a download link.";
                 return;
             }
 
-            var dest = Path.Combine(folder.Path, item.FileName);
-            dest = PathSafe.UniquePath(dest);
-            await using var stream = await CloudOAuth.GetStreamAsync(url, null, CancellationToken.None);
-            if (stream is null)
+            var folder = await AppServices.Access.PickFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
+
+            try
+            {
+                var url = await ResolveOriginalUrlAsync(item);
+                if (string.IsNullOrEmpty(url))
+                {
+                    PreviewStatus = "Could not get a download link.";
+                    return;
+                }
+
+                var dest = Path.Combine(folder.Path, item.FileName);
+                dest = PathSafe.UniquePath(dest);
+                await using var stream = await CloudOAuth.GetStreamAsync(url, null, CancellationToken.None);
+                if (stream is null)
+                {
+                    PreviewStatus = "Download failed.";
+                    return;
+                }
+
+                await using var output = File.Create(dest);
+                await stream.CopyToAsync(output);
+                PreviewStatus = "Downloaded " + Path.GetFileName(dest) + ".";
+            }
+            catch (Exception)
             {
                 PreviewStatus = "Download failed.";
-                return;
             }
-
-            await using var output = File.Create(dest);
-            await stream.CopyToAsync(output);
-            PreviewStatus = "Downloaded " + Path.GetFileName(dest) + ".";
-        }
-        catch (Exception)
-        {
-            PreviewStatus = "Download failed.";
-        }
-    }
+        });
 
     [RelayCommand]
     private void OpenInExplorer()
