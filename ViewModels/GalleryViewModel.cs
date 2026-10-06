@@ -633,7 +633,6 @@ public partial class GalleryViewModel : ObservableObject
                 HdrStatus = "";
                 HdrPresented = false;
                 ClearHistogram();
-                ApplyGifState(false, 0);
                 ApplyGifState(false, null);
                 RefreshImageInfo();
                 ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
@@ -749,7 +748,6 @@ public partial class GalleryViewModel : ObservableObject
             CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
             HdrPresented = false;
             ClearHistogram();
-            ApplyGifState(gifCanScrub, gifFrames);
             ApplyGifState(gifCanScrub, gifInfo);
             var detailsPixels = GalleryPresent.FilePixelSize(
                 null, null, _headerPixelWidth, _headerPixelHeight, item.Width, item.Height);
