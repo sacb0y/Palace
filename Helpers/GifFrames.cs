@@ -1,0 +1,635 @@
+using Palace.Models;
+
+namespace Palace.Helpers;
+
+/// <summary>
+/// GIF frame count / index math and local composite raster for overlay scrub.
+/// Off WinUI. Never opens an On-Demand original.
+/// </summary>
+public static class GifFrames
+{
+    public const int MinScrubCount = 2;
+
+    public static bool CanScrub(
+        AssetKind kind,
+        bool apiOnly,
+        bool isOnlineOnly,
+        bool localExists,
+        string? path) =>
+        kind == AssetKind.Gif
+        && !apiOnly
+        && !isOnlineOnly
+        && localExists
+        && PathSafe.GifExt.Contains(PathSafe.Extension(path));
+
+    public static int ClampIndex(int index, int frameCount)
+    {
+        if (frameCount <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Clamp(index, 0, frameCount - 1);
+    }
+
+    public static int Step(int index, int frameCount, int delta)
+    {
+        if (frameCount <= 0)
+        {
+            return 0;
+        }
+
+        var n = ClampIndex(index, frameCount) + delta;
+        n %= frameCount;
+        if (n < 0)
+        {
+            n += frameCount;
+        }
+
+        return n;
+    }
+
+    public static string PositionLabel(int index, int frameCount)
+    {
+        if (frameCount <= 0)
+        {
+            return "";
+        }
+
+        return $"{ClampIndex(index, frameCount) + 1} / {frameCount}";
+    }
+
+    public static bool ShouldShowScrub(bool canScrub, int frameCount) =>
+        canScrub && frameCount >= MinScrubCount;
+
+    public readonly record struct Info(int Width, int Height, int FrameCount, IReadOnlyList<int> DelaysCs);
+
+    public readonly record struct Raster(int Width, int Height, byte[] Bgra);
+
+    public static Info? TryRead(string? path)
+    {
+        if (!MayOpen(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = new FileStream(path!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return TryRead(stream);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static Info? TryRead(Stream stream)
+    {
+        try
+        {
+            var file = Parse(stream, renderIndex: null);
+            return file is null
+                ? null
+                : new Info(file.Width, file.Height, file.FrameCount, file.DelaysCs);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static Raster? TryRenderFrame(string? path, int index)
+    {
+        if (!MayOpen(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = new FileStream(path!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return TryRenderFrame(stream, index);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static Raster? TryRenderFrame(Stream stream, int index)
+    {
+        try
+        {
+            var file = Parse(stream, index);
+            if (file?.Composite is null)
+            {
+                return null;
+            }
+
+            return new Raster(file.Width, file.Height, file.Composite);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool MayOpen(string? path) =>
+        !string.IsNullOrWhiteSpace(path)
+        && CloudFile.Exists(path)
+        && ScanContent.MayReadOriginal(path);
+
+    private sealed class Parsed
+    {
+        public int Width;
+        public int Height;
+        public int FrameCount;
+        public List<int> DelaysCs = [];
+        public byte[]? Composite;
+    }
+
+    private static Parsed? Parse(Stream stream, int? renderIndex)
+    {
+        if (!stream.CanSeek || stream.Length < 14)
+        {
+            return null;
+        }
+
+        stream.Position = 0;
+        Span<byte> header = stackalloc byte[13];
+        if (stream.Read(header) < 13)
+        {
+            return null;
+        }
+
+        if (header[0] != (byte)'G' || header[1] != (byte)'I' || header[2] != (byte)'F')
+        {
+            return null;
+        }
+
+        var width = header[6] | (header[7] << 8);
+        var height = header[8] | (header[9] << 8);
+        if (width <= 0 || height <= 0)
+        {
+            return null;
+        }
+
+        var packed = header[10];
+        var bgIndex = header[11];
+        var gctSize = (packed & 0x80) != 0 ? 1 << ((packed & 7) + 1) : 0;
+        var gct = ReadPalette(stream, gctSize);
+        var bg = PaletteColor(gct, bgIndex, alpha: 255);
+
+        var canvas = new byte[width * height * 4];
+        FillRect(canvas, width, height, 0, 0, width, height, bg);
+        byte[]? previous = null;
+
+        var disposal = 0;
+        var delay = 10;
+        var transparent = -1;
+        var frameCount = 0;
+        var delays = new List<int>();
+        var want = renderIndex is null ? -1 : ClampIndex(renderIndex.Value, int.MaxValue);
+        byte[]? composite = null;
+        Span<byte> desc = stackalloc byte[9];
+
+        while (stream.Position < stream.Length)
+        {
+            var intro = stream.ReadByte();
+            if (intro < 0)
+            {
+                break;
+            }
+
+            if (intro == 0x3B)
+            {
+                break;
+            }
+
+            if (intro == 0x21)
+            {
+                var label = stream.ReadByte();
+                if (label == 0xF9)
+                {
+                    var block = ReadSubBlockPayload(stream);
+                    if (block.Length >= 4)
+                    {
+                        disposal = (block[0] >> 2) & 7;
+                        delay = block[1] | (block[2] << 8);
+                        transparent = (block[0] & 1) != 0 ? block[3] : -1;
+                    }
+
+                    continue;
+                }
+
+                SkipSubBlocks(stream);
+                continue;
+            }
+
+            if (intro != 0x2C)
+            {
+                return frameCount > 0
+                    ? Finish(width, height, frameCount, delays, composite)
+                    : null;
+            }
+
+            if (stream.Read(desc) < 9)
+            {
+                break;
+            }
+
+            var left = desc[0] | (desc[1] << 8);
+            var top = desc[2] | (desc[3] << 8);
+            var fw = desc[4] | (desc[5] << 8);
+            var fh = desc[6] | (desc[7] << 8);
+            var ip = desc[8];
+            var lctSize = (ip & 0x80) != 0 ? 1 << ((ip & 7) + 1) : 0;
+            var lct = ReadPalette(stream, lctSize);
+            var palette = lct.Length >= 3 ? lct : gct;
+            var interlace = (ip & 0x40) != 0;
+            var minCode = stream.ReadByte();
+            if (minCode < 0)
+            {
+                break;
+            }
+
+            if (renderIndex is null)
+            {
+                SkipSubBlocks(stream);
+            }
+            else
+            {
+                var indices = DecodeLzw(stream, minCode, fw * fh);
+                if (disposal == 3)
+                {
+                    previous = (byte[])canvas.Clone();
+                }
+
+                if (indices is not null && fw > 0 && fh > 0)
+                {
+                    Blit(
+                        canvas, width, height,
+                        indices, fw, fh, left, top,
+                        palette, transparent, interlace);
+                }
+
+                if (frameCount == want)
+                {
+                    composite = (byte[])canvas.Clone();
+                }
+
+                ApplyDisposal(
+                    canvas, width, height, left, top, fw, fh, disposal, bg, previous);
+            }
+
+            delays.Add(delay <= 0 ? 10 : delay);
+            frameCount++;
+            disposal = 0;
+            delay = 10;
+            transparent = -1;
+
+            if (renderIndex is not null && frameCount > want && composite is not null)
+            {
+                break;
+            }
+        }
+
+        return frameCount > 0
+            ? Finish(width, height, frameCount, delays, composite)
+            : null;
+    }
+
+    private static Parsed Finish(
+        int width, int height, int frameCount, List<int> delays, byte[]? composite) =>
+        new()
+        {
+            Width = width,
+            Height = height,
+            FrameCount = frameCount,
+            DelaysCs = delays,
+            Composite = composite
+        };
+
+    private static byte[] ReadPalette(Stream stream, int count)
+    {
+        if (count <= 0)
+        {
+            return [];
+        }
+
+        var bytes = new byte[count * 3];
+        var n = stream.Read(bytes);
+        if (n < bytes.Length)
+        {
+            Array.Resize(ref bytes, Math.Max(0, n));
+        }
+
+        return bytes;
+    }
+
+    private static uint PaletteColor(byte[] palette, int index, byte alpha)
+    {
+        var o = index * 3;
+        if ((uint)o + 2 >= (uint)palette.Length)
+        {
+            return (uint)(alpha << 24);
+        }
+
+        return (uint)(alpha << 24 | palette[o] << 16 | palette[o + 1] << 8 | palette[o + 2]);
+    }
+
+    private static byte[] ReadSubBlockPayload(Stream stream)
+    {
+        using var ms = new MemoryStream();
+        while (true)
+        {
+            var len = stream.ReadByte();
+            if (len <= 0)
+            {
+                break;
+            }
+
+            var buf = new byte[len];
+            var n = stream.Read(buf);
+            if (n > 0)
+            {
+                ms.Write(buf, 0, n);
+            }
+
+            if (n < len)
+            {
+                break;
+            }
+        }
+
+        return ms.ToArray();
+    }
+
+    private static void SkipSubBlocks(Stream stream)
+    {
+        while (true)
+        {
+            var len = stream.ReadByte();
+            if (len <= 0)
+            {
+                return;
+            }
+
+            stream.Seek(len, SeekOrigin.Current);
+        }
+    }
+
+    private static byte[]? DecodeLzw(Stream stream, int minCodeSize, int pixelCount)
+    {
+        if (minCodeSize < 2 || minCodeSize > 8)
+        {
+            SkipSubBlocks(stream);
+            return null;
+        }
+
+        var data = ReadSubBlockPayload(stream);
+        if (data.Length == 0 || pixelCount <= 0)
+        {
+            return pixelCount <= 0 ? [] : null;
+        }
+
+        var clear = 1 << minCodeSize;
+        var eoi = clear + 1;
+        var codeSize = minCodeSize + 1;
+        var next = eoi + 1;
+        var prefixes = new int[4096];
+        var suffixes = new byte[4096];
+        var stack = new byte[4096];
+        for (var i = 0; i < clear; i++)
+        {
+            prefixes[i] = -1;
+            suffixes[i] = (byte)i;
+        }
+
+        var output = new byte[pixelCount];
+        var written = 0;
+        var bitPos = 0;
+        var bitLen = data.Length * 8;
+        var prev = -1;
+
+        int ReadCode()
+        {
+            if (bitPos + codeSize > bitLen)
+            {
+                return -1;
+            }
+
+            var code = 0;
+            for (var i = 0; i < codeSize; i++)
+            {
+                var byteIndex = bitPos >> 3;
+                var bit = (data[byteIndex] >> (bitPos & 7)) & 1;
+                code |= bit << i;
+                bitPos++;
+            }
+
+            return code;
+        }
+
+        while (written < pixelCount)
+        {
+            var code = ReadCode();
+            if (code < 0 || code == eoi)
+            {
+                break;
+            }
+
+            if (code == clear)
+            {
+                codeSize = minCodeSize + 1;
+                next = eoi + 1;
+                prev = -1;
+                continue;
+            }
+
+            var extract = code;
+            if (code == next && prev >= 0)
+            {
+                extract = prev;
+            }
+            else if (code > next)
+            {
+                break;
+            }
+
+            var sp = 0;
+            var cur = extract;
+            while (cur >= clear)
+            {
+                if (sp >= stack.Length)
+                {
+                    break;
+                }
+
+                stack[sp++] = suffixes[cur];
+                cur = prefixes[cur];
+                if (cur < 0)
+                {
+                    break;
+                }
+            }
+
+            if (cur < 0)
+            {
+                break;
+            }
+
+            var first = suffixes[cur];
+            if (written < pixelCount)
+            {
+                output[written++] = first;
+            }
+
+            while (sp > 0 && written < pixelCount)
+            {
+                output[written++] = stack[--sp];
+            }
+
+            if (code == next && written < pixelCount)
+            {
+                output[written++] = first;
+            }
+
+            if (prev >= 0 && next < 4096)
+            {
+                prefixes[next] = prev;
+                suffixes[next] = first;
+                next++;
+                if (next == (1 << codeSize) && codeSize < 12)
+                {
+                    codeSize++;
+                }
+            }
+
+            prev = code;
+        }
+
+        return output;
+    }
+
+    private static void Blit(
+        byte[] canvas,
+        int canvasW,
+        int canvasH,
+        byte[] indices,
+        int fw,
+        int fh,
+        int left,
+        int top,
+        byte[] palette,
+        int transparent,
+        bool interlace)
+    {
+        var i = 0;
+        void Put(int x, int y, byte index)
+        {
+            if ((uint)index == (uint)transparent)
+            {
+                return;
+            }
+
+            var dx = left + x;
+            var dy = top + y;
+            if ((uint)dx >= (uint)canvasW || (uint)dy >= (uint)canvasH)
+            {
+                return;
+            }
+
+            var color = PaletteColor(palette, index, 255);
+            var o = (dy * canvasW + dx) * 4;
+            canvas[o] = (byte)color;
+            canvas[o + 1] = (byte)(color >> 8);
+            canvas[o + 2] = (byte)(color >> 16);
+            canvas[o + 3] = (byte)(color >> 24);
+        }
+
+        if (!interlace)
+        {
+            for (var y = 0; y < fh; y++)
+            {
+                for (var x = 0; x < fw; x++)
+                {
+                    if (i >= indices.Length)
+                    {
+                        return;
+                    }
+
+                    Put(x, y, indices[i++]);
+                }
+            }
+
+            return;
+        }
+
+        var passes = new (int Start, int Step)[] { (0, 8), (4, 8), (2, 4), (1, 2) };
+        foreach (var (start, step) in passes)
+        {
+            for (var y = start; y < fh; y += step)
+            {
+                for (var x = 0; x < fw; x++)
+                {
+                    if (i >= indices.Length)
+                    {
+                        return;
+                    }
+
+                    Put(x, y, indices[i++]);
+                }
+            }
+        }
+    }
+
+    private static void ApplyDisposal(
+        byte[] canvas,
+        int canvasW,
+        int canvasH,
+        int left,
+        int top,
+        int fw,
+        int fh,
+        int disposal,
+        uint bg,
+        byte[]? previous)
+    {
+        if (disposal == 3 && previous is not null)
+        {
+            Buffer.BlockCopy(previous, 0, canvas, 0, canvas.Length);
+            return;
+        }
+
+        if (disposal == 2)
+        {
+            FillRect(canvas, canvasW, canvasH, left, top, fw, fh, bg);
+        }
+    }
+
+    private static void FillRect(
+        byte[] canvas, int canvasW, int canvasH, int left, int top, int fw, int fh, uint bg)
+    {
+        var b = (byte)bg;
+        var g = (byte)(bg >> 8);
+        var r = (byte)(bg >> 16);
+        var a = (byte)(bg >> 24);
+        var x1 = Math.Max(0, left);
+        var y1 = Math.Max(0, top);
+        var x2 = Math.Min(canvasW, left + fw);
+        var y2 = Math.Min(canvasH, top + fh);
+        for (var y = y1; y < y2; y++)
+        {
+            var o = (y * canvasW + x1) * 4;
+            for (var x = x1; x < x2; x++)
+            {
+                canvas[o++] = b;
+                canvas[o++] = g;
+                canvas[o++] = r;
+                canvas[o++] = a;
+            }
+        }
+    }
+}

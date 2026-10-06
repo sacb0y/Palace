@@ -147,6 +147,105 @@
                     ToolTipService.ToolTip="Next">
                     <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
                 </Button>
+                <Border
+                    x:Name="BrdGalleryWindowGifScrub"
+                    MaxWidth="640"
+                    MinWidth="280"
+                    Margin="16,16,16,64"
+                    Padding="10,6"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    AutomationProperties.AutomationId="BrdGalleryWindowGifScrub"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanScrubGif), Mode=OneWay}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Name="BtnGalleryWindowGifPause"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowGifPause"
+                            AutomationProperties.Name="Pause GIF"
+                            Command="{x:Bind Gallery.ToggleGifPlayCommand}"
+                            ToolTipService.ToolTip="Pause"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.GifPlaying), Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="Pause" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Pause" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="BtnGalleryWindowGifPlay"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowGifPlay"
+                            AutomationProperties.Name="Play GIF"
+                            Command="{x:Bind Gallery.ToggleGifPlayCommand}"
+                            ToolTipService.ToolTip="Play"
+                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(Gallery.GifPlaying), Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="Play" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Play" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="BtnGalleryWindowGifPrevFrame"
+                            Grid.Column="1"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowGifPrevFrame"
+                            AutomationProperties.Name="Previous frame"
+                            Command="{x:Bind Gallery.GifPreviousFrameCommand}"
+                            ToolTipService.ToolTip="Previous frame">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="PreviousFrame" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Prev frame" />
+                            </StackPanel>
+                        </Button>
+                        <Slider
+                            x:Name="SldGalleryWindowGifFrame"
+                            Grid.Column="2"
+                            MinWidth="120"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="SldGalleryWindowGifFrame"
+                            AutomationProperties.Name="GIF frame"
+                            Maximum="{x:Bind Gallery.GifFrameMaximum, Mode=OneWay}"
+                            Minimum="0"
+                            SnapsTo="StepValues"
+                            StepFrequency="1"
+                            TickPlacement="None"
+                            Value="{x:Bind Gallery.GifFrameIndex, Mode=TwoWay}" />
+                        <Button
+                            x:Name="BtnGalleryWindowGifNextFrame"
+                            Grid.Column="3"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowGifNextFrame"
+                            AutomationProperties.Name="Next frame"
+                            Command="{x:Bind Gallery.GifNextFrameCommand}"
+                            ToolTipService.ToolTip="Next frame">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="NextFrame" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Next frame" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock
+                            x:Name="TxtGalleryWindowGifFrame"
+                            Grid.Column="4"
+                            MinWidth="48"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="TxtGalleryWindowGifFrame"
+                            AutomationProperties.Name="GIF frame"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Gallery.GifFrameLabel, Mode=OneWay}" />
+                    </Grid>
+                </Border>
                 <StackPanel
                     Margin="16"
                     HorizontalAlignment="Left"

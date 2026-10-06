@@ -158,6 +158,26 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial string HistogramCaption { get; set; } = "";
 
+    [ObservableProperty]
+    public partial bool CanScrubGif { get; set; }
+
+    [ObservableProperty]
+    public partial bool GifPlaying { get; set; }
+
+    [ObservableProperty]
+    public partial int GifFrameCount { get; set; }
+
+    [ObservableProperty]
+    public partial double GifFrameIndex { get; set; }
+
+    [ObservableProperty]
+    public partial double GifFrameMaximum { get; set; }
+
+    [ObservableProperty]
+    public partial string GifFrameLabel { get; set; } = "";
+
+    private bool _gifLoad;
+
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
 
     partial void OnScalingChanged(ImageScaling value)
@@ -220,6 +240,62 @@ public partial class GalleryViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleDetails() => ShowDetails = !ShowDetails;
+
+    partial void OnGifFrameIndexChanged(double value)
+    {
+        var clamped = GifFrames.ClampIndex((int)Math.Round(value), GifFrameCount);
+        if (Math.Abs(clamped - value) > 0.01)
+        {
+            GifFrameIndex = clamped;
+            return;
+        }
+
+        GifFrameLabel = GifFrames.PositionLabel(clamped, GifFrameCount);
+        if (!_gifLoad && CanScrubGif)
+        {
+            GifPlaying = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleGifPlay()
+    {
+        if (!CanScrubGif)
+        {
+            return;
+        }
+
+        GifPlaying = !GifPlaying;
+    }
+
+    [RelayCommand]
+    private void GifPreviousFrame() => StepGifFrame(-1);
+
+    [RelayCommand]
+    private void GifNextFrame() => StepGifFrame(1);
+
+    private void StepGifFrame(int delta)
+    {
+        if (!CanScrubGif)
+        {
+            return;
+        }
+
+        GifPlaying = false;
+        GifFrameIndex = GifFrames.Step((int)Math.Round(GifFrameIndex), GifFrameCount, delta);
+    }
+
+    private void ApplyGifState(bool canScrub, int frameCount)
+    {
+        _gifLoad = true;
+        CanScrubGif = GifFrames.ShouldShowScrub(canScrub, frameCount);
+        GifFrameCount = frameCount;
+        GifFrameMaximum = Math.Max(0, frameCount - 1);
+        GifFrameIndex = 0;
+        GifPlaying = CanScrubGif;
+        GifFrameLabel = GifFrames.PositionLabel(0, frameCount);
+        _gifLoad = false;
+    }
 
     public void SetHdrPresentResult(
         bool presented,
@@ -449,6 +525,7 @@ public partial class GalleryViewModel : ObservableObject
                 HdrStatus = "";
                 HdrPresented = false;
                 ClearHistogram();
+                ApplyGifState(false, 0);
                 RefreshImageInfo();
                 ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
                 Tags.Clear();
@@ -512,6 +589,13 @@ public partial class GalleryViewModel : ObservableObject
             item.Path,
             item.ThumbPath,
             previewCache);
+        var gifCanScrub = GifFrames.CanScrub(
+            item.Kind, apiOnly, onlineOnly, onDisk, item.Path);
+        var gifFrames = 0;
+        if (gifCanScrub)
+        {
+            gifFrames = GifFrames.TryRead(item.Path)?.FrameCount ?? 0;
+        }
 
         await UiDispatch.RunAsync(() =>
         {
@@ -552,6 +636,7 @@ public partial class GalleryViewModel : ObservableObject
             CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
             HdrPresented = false;
             ClearHistogram();
+            ApplyGifState(gifCanScrub, gifFrames);
             var detailsPixels = GalleryPresent.FilePixelSize(
                 null, null, _headerPixelWidth, _headerPixelHeight, item.Width, item.Height);
             DetailsText = GalleryPresent.DetailsLine(

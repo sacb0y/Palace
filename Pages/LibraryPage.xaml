@@ -1144,6 +1144,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid>
                     <controls:GalleryStillSurface
@@ -1275,8 +1276,108 @@
                 </Grid>
 
                 <Border
-                    x:Name="BrdGalleryOverlayInfo"
+                    x:Name="BrdGifScrub"
                     Grid.Row="1"
+                    MaxWidth="640"
+                    MinWidth="280"
+                    Margin="16,8,16,0"
+                    Padding="10,6"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="BrdGifScrub"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource OverlayCornerRadius}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.CanScrubGif), Mode=OneWay, FallbackValue=Collapsed}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Name="BtnGifPause"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGifPause"
+                            AutomationProperties.Name="Pause GIF"
+                            Command="{x:Bind ViewModel.OverlayGallery.ToggleGifPlayCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            ToolTipService.ToolTip="Pause"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.GifPlaying), Mode=OneWay, FallbackValue=Collapsed}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:FluentIcon Icon="Pause" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Pause" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="BtnGifPlay"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGifPlay"
+                            AutomationProperties.Name="Play GIF"
+                            Command="{x:Bind ViewModel.OverlayGallery.ToggleGifPlayCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            ToolTipService.ToolTip="Play"
+                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.OverlayGallery.GifPlaying), Mode=OneWay, FallbackValue=Collapsed}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:FluentIcon Icon="Play" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Play" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            x:Name="BtnGifPrevFrame"
+                            Grid.Column="1"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGifPrevFrame"
+                            AutomationProperties.Name="Previous frame"
+                            Command="{x:Bind ViewModel.OverlayGallery.GifPreviousFrameCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            ToolTipService.ToolTip="Previous frame">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:FluentIcon Icon="PreviousFrame" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Prev frame" />
+                            </StackPanel>
+                        </Button>
+                        <Slider
+                            x:Name="SldGifFrame"
+                            Grid.Column="2"
+                            MinWidth="120"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="SldGifFrame"
+                            AutomationProperties.Name="GIF frame"
+                            Maximum="{x:Bind ViewModel.OverlayGallery.GifFrameMaximum, Mode=OneWay, FallbackValue=0}"
+                            Minimum="0"
+                            SnapsTo="StepValues"
+                            StepFrequency="1"
+                            TickPlacement="None"
+                            Value="{x:Bind ViewModel.OverlayGallery.GifFrameIndex, Mode=TwoWay, FallbackValue=0}" />
+                        <Button
+                            x:Name="BtnGifNextFrame"
+                            Grid.Column="3"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGifNextFrame"
+                            AutomationProperties.Name="Next frame"
+                            Command="{x:Bind ViewModel.OverlayGallery.GifNextFrameCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            ToolTipService.ToolTip="Next frame">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:FluentIcon Icon="NextFrame" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Next frame" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock
+                            x:Name="TxtGifFrame"
+                            Grid.Column="4"
+                            MinWidth="48"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="TxtGifFrame"
+                            AutomationProperties.Name="GIF frame"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.OverlayGallery.GifFrameLabel, Mode=OneWay, FallbackValue=''}" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    x:Name="BrdGalleryOverlayInfo"
+                    Grid.Row="2"
                     MaxWidth="920"
                     MinWidth="280"
                     Margin="16,8,16,12"

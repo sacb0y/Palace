@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -143,7 +144,10 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (e.PropertyName is nameof(GalleryViewModel.StillRevision))
+        if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
+            or nameof(GalleryViewModel.GifPlaying)
+            or nameof(GalleryViewModel.GifFrameIndex)
+            or nameof(GalleryViewModel.CanScrubGif))
         {
             ResetPinchTracking();
             _ = RefreshAsync();
@@ -188,6 +192,15 @@ public sealed partial class GalleryStillSurface : UserControl
             HideHdr();
             ImgStill.Source = null;
             gallery?.ClearHistogram();
+            return;
+        }
+
+        if (gallery.CanScrubGif && !gallery.GifPlaying)
+        {
+            ClearHdrCache();
+            HideHdr();
+            gallery.SetHdrPresentResult(false, false);
+            await ShowGifScrubAsync(gallery, epoch);
             return;
         }
 
@@ -764,6 +777,13 @@ public sealed partial class GalleryStillSurface : UserControl
             return (bmp.PixelWidth, bmp.PixelHeight);
         }
 
+        if (ImgStill.Source is WriteableBitmap writeable
+            && writeable.PixelWidth > 0
+            && writeable.PixelHeight > 0)
+        {
+            return (writeable.PixelWidth, writeable.PixelHeight);
+        }
+
         return (0, 0);
     }
 
@@ -903,7 +923,63 @@ public sealed partial class GalleryStillSurface : UserControl
                 return null;
             }
 
-            return new BitmapImage { UriSource = new Uri(path, UriKind.Absolute) };
+            return new BitmapImage { UriSource = new Uri(path, UriKind.Absolute), AutoPlay = true };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ShowGifScrubAsync(GalleryViewModel gallery, int epoch)
+    {
+        var path = gallery.Current?.Path;
+        if (string.IsNullOrEmpty(path)
+            || !CloudFile.Exists(path)
+            || CloudFile.IsOnlineOnly(path)
+            || !ScanContent.MayReadOriginal(path))
+        {
+            ImgStill.Source = ToStillImage(gallery.PreviewImageUri ?? gallery.CurrentPath);
+            return;
+        }
+
+        var index = GifFrames.ClampIndex((int)Math.Round(gallery.GifFrameIndex), gallery.GifFrameCount);
+        GifFrames.Raster? raster = null;
+        try
+        {
+            raster = await Task.Run(() => GifFrames.TryRenderFrame(path, index));
+        }
+        catch
+        {
+            raster = null;
+        }
+
+        if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
+        {
+            return;
+        }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
+            {
+                return;
+            }
+
+            ImgStill.Source = raster is { } frame ? ToWriteable(frame) : ToStillImage(path);
+            ApplyScaleLayout();
+        });
+    }
+
+    private static WriteableBitmap? ToWriteable(GifFrames.Raster raster)
+    {
+        try
+        {
+            var bmp = new WriteableBitmap(raster.Width, raster.Height);
+            using var pixels = bmp.PixelBuffer.AsStream();
+            pixels.Write(raster.Bgra, 0, raster.Bgra.Length);
+            bmp.Invalidate();
+            return bmp;
         }
         catch
         {
