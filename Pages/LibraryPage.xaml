@@ -136,27 +136,27 @@
                     AutomationProperties.AutomationId="SelTagMatchNone"
                     Text="None" />
             </SelectorBar>
-            <ItemsControl
+            <ItemsRepeater
                 x:Name="LstTagFilters"
                 Grid.Row="2"
                 AutomationProperties.AutomationId="LstTagFilters"
                 AutomationProperties.Name="Selected tags"
                 ItemsSource="{x:Bind ViewModel.SelectedFilterTags, Mode=OneWay}"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowTagFilterChips), Mode=OneWay}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Spacing="4" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
+                <ItemsRepeater.Layout>
+                    <WrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:TagChipItem">
                         <Button
-                            HorizontalAlignment="Stretch"
+                            MinWidth="0"
+                            Padding="8,4"
+                            HorizontalAlignment="Left"
                             HorizontalContentAlignment="Left"
                             AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                             Command="{x:Bind pages:LibraryPage.GetRemoveFilterTagCommand()}"
                             CommandParameter="{x:Bind}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
                                 <Border
                                     Width="10"
                                     Height="10"
@@ -168,12 +168,13 @@
                                 <TextBlock
                                     VerticalAlignment="Center"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="Remove" />
                             </StackPanel>
                         </Button>
                     </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
             <TreeView
                 x:Name="TreFolders"
                 Grid.Row="3"
@@ -191,24 +192,31 @@
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
-            <TreeView
+            <ScrollViewer
                 x:Name="TreTagsBrowse"
                 Grid.Row="3"
                 AutomationProperties.AutomationId="TreTagsBrowse"
                 AutomationProperties.Name="Tags"
-                ItemInvoked="TreTagsBrowse_ItemInvoked"
-                ItemsSource="{x:Bind ViewModel.TagTree, Mode=OneWay}"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Auto"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
-                <TreeView.ItemTemplate>
-                    <DataTemplate x:DataType="models:TagTreeNode">
-                        <TreeViewItem IsExpanded="True" ItemsSource="{x:Bind Children, Mode=OneWay}">
-                            <TreeViewItem.Content>
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                <ItemsRepeater ItemsSource="{x:Bind ViewModel.BrowseTags, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <WrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagChipItem">
+                            <Button
+                                MinWidth="0"
+                                Padding="8,4"
+                                HorizontalAlignment="Left"
+                                HorizontalContentAlignment="Left"
+                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                Command="{x:Bind pages:LibraryPage.GetToggleFilterChipCommand()}"
+                                CommandParameter="{x:Bind}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
                                     <Border
                                         Width="10"
                                         Height="10"
@@ -217,23 +225,19 @@
                                         BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                         BorderThickness="1"
                                         CornerRadius="2" />
+                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind Name, Mode=OneWay}" />
                                     <TextBlock
-                                        Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        Text="{x:Bind Name, Mode=OneWay}" />
-                                    <TextBlock
-                                        Grid.Column="2"
                                         VerticalAlignment="Center"
                                         Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="On"
                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
-                                </Grid>
-                            </TreeViewItem.Content>
-                        </TreeViewItem>
-                    </DataTemplate>
-                </TreeView.ItemTemplate>
-            </TreeView>
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </ScrollViewer>
         </Grid>
 
         <Grid
@@ -263,6 +267,21 @@
                         <TextBlock VerticalAlignment="Center" Text="Select" />
                     </StackPanel>
                 </ToggleButton>
+                <ic:FluentIcon
+                    VerticalAlignment="Center"
+                    Icon="ArrowSort"
+                    IconSize="Size16"
+                    IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Sort" />
+                <ComboBox
+                    x:Name="CmbMosaicSort"
+                    MinWidth="168"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="CmbMosaicSort"
+                    AutomationProperties.Name="Sort"
+                    ItemsSource="{x:Bind ViewModel.SortLabels, Mode=OneWay}"
+                    SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=OneWay}"
+                    SelectionChanged="CmbMosaicSort_SelectionChanged" />
                 <TextBlock
                     x:Name="TxtSelectionCount"
                     VerticalAlignment="Center"
@@ -295,39 +314,14 @@
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
-            <Grid Grid.Row="2" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <AutoSuggestBox
-                    x:Name="AsbSearch"
-                    AutomationProperties.AutomationId="AsbSearch"
-                    PlaceholderText="Search filename, tags, prompt, model"
-                    QueryIcon="Find"
-                    QuerySubmitted="AsbSearch_QuerySubmitted"
-                    Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <StackPanel
-                    Grid.Column="1"
-                    VerticalAlignment="Bottom"
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <ic:FluentIcon
-                        VerticalAlignment="Center"
-                        Icon="ArrowSort"
-                        IconSize="Size16"
-                        IconVariant="Regular" />
-                    <ComboBox
-                        x:Name="CmbMosaicSort"
-                        MinWidth="168"
-                        AutomationProperties.AutomationId="CmbMosaicSort"
-                        AutomationProperties.Name="Sort"
-                        Header="Sort"
-                        ItemsSource="{x:Bind ViewModel.SortLabels, Mode=OneWay}"
-                        SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=OneWay}"
-                        SelectionChanged="CmbMosaicSort_SelectionChanged" />
-                </StackPanel>
-            </Grid>
+            <AutoSuggestBox
+                x:Name="AsbSearch"
+                Grid.Row="2"
+                AutomationProperties.AutomationId="AsbSearch"
+                PlaceholderText="Search filename, tags, prompt, model"
+                QueryIcon="Find"
+                QuerySubmitted="AsbSearch_QuerySubmitted"
+                Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <ItemsView
                 x:Name="GrdAssets"
                 Grid.Row="3"
@@ -340,15 +334,14 @@
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
                 PreviewKeyDown="GrdAssets_PreviewKeyDown"
                 SelectionChanged="GrdAssets_SelectionChanged"
-                SelectionMode="Extended">
+                SelectionMode="Single">
                 <ItemsView.Layout>
-                    <LinedFlowLayout
+                    <helpers:JustifiedMosaicLayout
                         x:Name="MosaicLayout"
-                        ItemsInfoRequested="MosaicLayout_ItemsInfoRequested"
-                        ItemsStretch="Fill"
-                        LineHeight="{x:Bind ViewModel.MosaicRowHeight, Mode=OneWay}"
-                        LineSpacing="8"
-                        MinItemSpacing="8" />
+                        CaptionHeight="0"
+                        HeaderHeight="28"
+                        ItemSpacing="8"
+                        RowHeight="{x:Bind ViewModel.MosaicRowHeight, Mode=OneWay}" />
                 </ItemsView.Layout>
                 <ItemsView.ItemTemplate>
                     <DataTemplate x:DataType="models:AssetItem">
@@ -445,12 +438,11 @@
                             <Grid>
                                 <Button
                                     Padding="4,2"
-                                    HorizontalAlignment="Left"
+                                    HorizontalAlignment="Stretch"
                                     HorizontalContentAlignment="Left"
-                                    VerticalAlignment="Top"
+                                    VerticalAlignment="Stretch"
                                     Background="Transparent"
                                     BorderThickness="0"
-                                    MaxHeight="32"
                                     Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
                                     CommandParameter="{x:Bind}"
                                     IsTabStop="False"

@@ -450,7 +450,7 @@ Test-UI 'Folders mode exists' { winapp ui wait-for 'SelFolders' -a $AppPid -t 30
 Test-UI 'Select Folders browse' { winapp ui invoke 'SelFolders' -a $AppPid }
 Test-UI 'Folder tree exists' { winapp ui wait-for 'TreFolders' -a $AppPid -t 4000 }
 Test-UI 'Switch to Tags browse' { winapp ui invoke 'SelTags' -a $AppPid }
-Test-UI 'Tag browse tree exists' { winapp ui wait-for 'TreTagsBrowse' -a $AppPid -t 4000 }
+Test-UI 'Tag browse mosaic exists' { winapp ui wait-for 'TreTagsBrowse' -a $AppPid -t 4000 }
 Test-UI 'Tag match selector exists' { winapp ui wait-for 'SelTagMatch' -a $AppPid -t 3000 }
 Test-UI 'Switch to Folders browse' { winapp ui invoke 'SelFolders' -a $AppPid }
 Test-UI 'Folder tree after switch' { winapp ui wait-for 'TreFolders' -a $AppPid -t 4000 }

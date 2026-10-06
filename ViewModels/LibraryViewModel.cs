@@ -63,6 +63,7 @@ public partial class LibraryViewModel : ObservableObject
 
     public ObservableCollection<FolderNode> FolderTree { get; } = [];
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
+    public ObservableCollection<TagChipItem> BrowseTags { get; } = [];
     public ObservableCollection<PathCrumb> Breadcrumbs { get; } = [];
 
     public ObservableCollection<AssetItem> Assets { get; } = [];
@@ -1124,6 +1125,25 @@ public partial class LibraryViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ToggleFilterChip(TagChipItem? chip)
+    {
+        if (chip is null || string.IsNullOrEmpty(chip.TagId))
+        {
+            return;
+        }
+
+        var node = TagTreeBuilder.Find(TagTree, chip.TagId)
+            ?? new TagTreeNode
+            {
+                TagId = chip.TagId,
+                Name = chip.Name,
+                EffectiveColor = chip.EffectiveColor,
+                IsStarred = chip.IsStarred
+            };
+        ToggleFilterTag(node);
+    }
+
+    [RelayCommand]
     private void RemoveFilterTag(TagChipItem? chip)
     {
         if (chip is null)
@@ -1782,6 +1802,26 @@ public partial class LibraryViewModel : ObservableObject
             ? ""
             : string.Join(TagFilterMode == TagFilterMode.All ? " + " : TagFilterMode == TagFilterMode.None ? " except " : " or ",
                 SelectedFilterTags.Select(t => t.Name));
+        RebuildBrowseTags();
+    }
+
+    private void RebuildBrowseTags()
+    {
+        var selected = SelectedFilterTags.Select(t => t.TagId).ToHashSet(StringComparer.Ordinal);
+        var nodes = TagBrowseMosaic.Flatten(TagTree, node => node.TagId, node => node.Children);
+        BrowseTags.Clear();
+        foreach (var node in nodes)
+        {
+            BrowseTags.Add(new TagChipItem
+            {
+                TagId = node.TagId ?? "",
+                Name = node.Name,
+                EffectiveColor = node.EffectiveColor,
+                IsStarred = node.IsStarred,
+                IsFilterSelected = node.TagId is { } id && selected.Contains(id),
+                AutomationPrefix = "BtnTagChip_"
+            });
+        }
     }
 
     private static TagChipItem ToFilterChip(TagTreeNode node) => new()
