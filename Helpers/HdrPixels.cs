@@ -332,6 +332,86 @@ public static class HdrPixels
     }
 
     /// <summary>
+    /// Box-filter downsample (or nearest upsample) of linear scRGB RGBA.
+    /// Used when WIC <c>IWICBitmapScaler</c> would crush half/float HDR
+    /// JPEG XR to 8-bit BGRA.
+    /// </summary>
+    public static (float[] Rgba, int Width, int Height) ScaleScrgbRgba(
+        float[] source,
+        int sourceWidth,
+        int sourceHeight,
+        int destWidth,
+        int destHeight)
+    {
+        if (sourceWidth <= 0
+            || sourceHeight <= 0
+            || destWidth <= 0
+            || destHeight <= 0
+            || source.Length < sourceWidth * sourceHeight * 4)
+        {
+            return (source, sourceWidth, sourceHeight);
+        }
+
+        if (destWidth == sourceWidth && destHeight == sourceHeight)
+        {
+            return (source, sourceWidth, sourceHeight);
+        }
+
+        destWidth = Math.Min(destWidth, sourceWidth);
+        destHeight = Math.Min(destHeight, sourceHeight);
+        if (destWidth <= 0 || destHeight <= 0)
+        {
+            return (source, sourceWidth, sourceHeight);
+        }
+
+        if (destWidth == sourceWidth && destHeight == sourceHeight)
+        {
+            return (source, sourceWidth, sourceHeight);
+        }
+
+        var dest = new float[destWidth * destHeight * 4];
+        for (var y = 0; y < destHeight; y++)
+        {
+            var y0 = y * sourceHeight / destHeight;
+            var y1 = Math.Max(y0 + 1, (y + 1) * sourceHeight / destHeight);
+            y1 = Math.Min(y1, sourceHeight);
+            for (var x = 0; x < destWidth; x++)
+            {
+                var x0 = x * sourceWidth / destWidth;
+                var x1 = Math.Max(x0 + 1, (x + 1) * sourceWidth / destWidth);
+                x1 = Math.Min(x1, sourceWidth);
+                double r = 0, g = 0, b = 0, a = 0;
+                var n = 0;
+                for (var sy = y0; sy < y1; sy++)
+                {
+                    for (var sx = x0; sx < x1; sx++)
+                    {
+                        var si = ((sy * sourceWidth) + sx) * 4;
+                        r += source[si];
+                        g += source[si + 1];
+                        b += source[si + 2];
+                        a += source[si + 3];
+                        n++;
+                    }
+                }
+
+                var di = ((y * destWidth) + x) * 4;
+                if (n <= 0)
+                {
+                    continue;
+                }
+
+                dest[di] = (float)(r / n);
+                dest[di + 1] = (float)(g / n);
+                dest[di + 2] = (float)(b / n);
+                dest[di + 3] = (float)(a / n);
+            }
+        }
+
+        return (dest, destWidth, destHeight);
+    }
+
+    /// <summary>
     /// WIC <c>BitmapTransform</c> scales in source (unoriented) space, then
     /// <c>RespectExifOrientation</c> swaps 90/270. Dest is the oriented size.
     /// </summary>

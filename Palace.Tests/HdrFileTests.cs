@@ -627,6 +627,25 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void ScaleScrgbRgba_BoxDownsamplePreservesBrightPeak()
+    {
+        // 2×2: three dim + one bright → 1×1 average keeps HDR (>1).
+        var src = new float[]
+        {
+            0.1f, 0.1f, 0.1f, 1f,
+            0.2f, 0.2f, 0.2f, 1f,
+            0.3f, 0.3f, 0.3f, 1f,
+            8f, 8f, 8f, 1f
+        };
+        var (dst, w, h) = HdrPixels.ScaleScrgbRgba(src, 2, 2, 1, 1);
+        Assert.Equal(1, w);
+        Assert.Equal(1, h);
+        Assert.Equal(4, dst.Length);
+        Assert.True(dst[0] > 1f, $"expected HDR peak average, got {dst[0]}");
+        Assert.Equal((0.1f + 0.2f + 0.3f + 8f) / 4f, dst[0], 3);
+    }
+
+    [Fact]
     public void OrientScrgbRgba_Rotate90CwMovesCorner()
     {
         // 2×1 stored: left=red, right=green → EXIF 6 (90° CW) is 1×2: top=green, bottom=red.
