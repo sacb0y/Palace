@@ -548,6 +548,36 @@ public sealed class HdrFileTests
         Assert.Equal(1f, hg);
         Assert.Equal(0f, hb);
         Assert.InRange(ha, 0.49f, 0.51f);
+
+        var half2 = BitConverter.GetBytes((Half)2f);
+        var half1 = BitConverter.GetBytes((Half)1f);
+        var halfPx = new byte[8];
+        half2.CopyTo(halfPx, 0);
+        half1.CopyTo(halfPx, 2);
+        half1.CopyTo(halfPx, 4);
+        half1.CopyTo(halfPx, 6);
+        HdrPixels.Read(halfPx, 0, HdrPackedFormat.RgbaHalf, out var rHalf, out var gHalf, out var bHalf, out var aHalf);
+        Assert.Equal(2f, rHalf);
+        Assert.Equal(1f, gHalf);
+        Assert.Equal(1f, bHalf);
+        Assert.Equal(1f, aHalf);
+        Assert.Equal(2f, HdrPixels.HalfToFloat(half2, 0));
+
+        var f2 = BitConverter.GetBytes(2.5f);
+        var f0 = BitConverter.GetBytes(0f);
+        var f1 = BitConverter.GetBytes(1f);
+        var floatPx = new byte[16];
+        f2.CopyTo(floatPx, 0);
+        f0.CopyTo(floatPx, 4);
+        f0.CopyTo(floatPx, 8);
+        f1.CopyTo(floatPx, 12);
+        HdrPixels.Read(floatPx, 0, HdrPackedFormat.RgbaFloat, out var rF, out var gF, out var bF, out var aF);
+        Assert.Equal(2.5f, rF);
+        Assert.Equal(0f, gF);
+        Assert.Equal(0f, bF);
+        Assert.Equal(1f, aF);
+        Assert.True(HdrPixels.HasPackedData(floatPx, HdrPackedFormat.RgbaFloat, 1, 1));
+        Assert.True(HdrPixels.HasPackedData(halfPx, HdrPackedFormat.RgbaHalf, 1, 1));
     }
 
     [Fact]

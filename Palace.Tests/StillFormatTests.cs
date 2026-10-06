@@ -90,6 +90,94 @@ public sealed class StillFormatTests
         Assert.True(StillFormats.IsJxr(jxr));
         Assert.False(StillFormats.JxrLooksHdr(jxr));
         Assert.Equal(HdrKind.None, HdrFile.Probe(jxr).Kind);
+        Assert.False(HdrFile.Probe(jxr).CanPresentHdr);
+    }
+
+    [Fact]
+    public void Jxr_FloatAndHalfGuids_ArePresentableHdr()
+    {
+        var half = JxrHeader(StillFormats.JxrGuidRgbaHalf, 32, 16);
+        var probeHalf = HdrFile.Probe(half);
+        Assert.True(StillFormats.IsJxr(half));
+        Assert.True(StillFormats.JxrLooksHdr(half));
+        Assert.True(StillFormats.IsHdrJxrPixelFormat(StillFormats.JxrGuidRgbaHalf));
+        Assert.Equal(HdrKind.HdrJxr, probeHalf.Kind);
+        Assert.True(probeHalf.IsHdr);
+        Assert.True(probeHalf.CanPresentHdr);
+        Assert.Equal(HdrTransfer.Scrgb, probeHalf.Transfer);
+        Assert.Equal((32, 16), StillFormats.TryReadJxrSize(half));
+        Assert.Equal((32, 16), ImageDimensions.TryRead(new MemoryStream(half)));
+
+        var flt = JxrHeader(StillFormats.JxrGuidRgbaFloat, 8, 4);
+        var probeFloat = HdrFile.Probe(flt);
+        Assert.Equal(HdrKind.HdrJxr, probeFloat.Kind);
+        Assert.True(probeFloat.CanPresentHdr);
+        Assert.True(StillFormats.IsHdrJxrPixelFormat(StillFormats.JxrGuidRgbaFloat));
+        Assert.Equal((8, 4), StillFormats.TryReadJxrSize(flt));
+    }
+
+    [Fact]
+    public void Jxr_1010102XrGuid_LooksHdr()
+    {
+        Assert.True(StillFormats.IsHdrJxrPixelFormat(StillFormats.JxrGuidRgba1010102Xr));
+        var header = JxrHeader(StillFormats.JxrGuidRgba1010102Xr, 64, 32);
+        Assert.True(StillFormats.JxrLooksHdr(header));
+        Assert.Equal(HdrKind.HdrJxr, HdrFile.Probe(header).Kind);
+        Assert.Equal((64, 32), StillFormats.TryReadJxrSize(header));
+    }
+
+    [Fact]
+    public void Jxr_AnnexAIfd_ReadsPixelsNotDpiFloat()
+    {
+        // WIC / SKIV write 0xBC82/0xBC83 as FLOAT 96 DPI (0x42C00000 = 1119879168).
+        var header = JxrHeader(StillFormats.JxrGuidRgbaHalf, 1920, 1080);
+        Assert.Equal((1920, 1080), StillFormats.TryReadJxrSize(header));
+        Assert.Equal((1920, 1080), ImageDimensions.TryRead(new MemoryStream(header)));
+        var probe = HdrFile.Probe(header);
+        Assert.Equal(HdrKind.HdrJxr, probe.Kind);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Contains(
+            "HDR JPEG XR",
+            GalleryPresent.StatusLine(probe, true, true, false, 0),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HDR JPEG XR",
+            GalleryPresent.ImageInfoText(new GalleryImageInfo(
+                "cyberpunk-capture.jxr",
+                28_200_000,
+                1920,
+                1080,
+                probe,
+                GalleryPresent.StatusLine(probe, true, true, false, 0),
+                null, null, null, null)),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("1119879168", GalleryPresent.ImageInfoText(new GalleryImageInfo(
+            "cyberpunk-capture.jxr",
+            28_200_000,
+            StillFormats.TryReadJxrSize(header)?.Width,
+            StillFormats.TryReadJxrSize(header)?.Height,
+            probe,
+            GalleryPresent.StatusLine(probe, false, false, false, 0),
+            null, null, null, null)));
+    }
+
+    [Fact]
+    public void Jxr_8BitBgraGuid_IsNotHdr()
+    {
+        ReadOnlySpan<byte> bgra =
+            [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x0F];
+        Assert.False(StillFormats.IsHdrJxrPixelFormat(bgra));
+        var header = JxrHeader(bgra, 8, 8);
+        Assert.False(StillFormats.JxrLooksHdr(header));
+        Assert.Equal(HdrKind.None, HdrFile.Probe(header).Kind);
+        Assert.False(HdrFile.Probe(header).CanPresentHdr);
+        Assert.Equal((8, 8), StillFormats.TryReadJxrSize(header));
+
+        ReadOnlySpan<byte> pbgra =
+            [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x10];
+        Assert.False(StillFormats.IsHdrJxrPixelFormat(pbgra));
+        Assert.False(StillFormats.JxrLooksHdr(JxrHeader(pbgra, 1920, 1080)));
+        Assert.False(HdrFile.Probe(JxrHeader(pbgra, 1920, 1080)).CanPresentHdr);
     }
 
     [Fact]
@@ -241,6 +329,48 @@ public sealed class StillFormatTests
         data[23] = 8;
         data[25] = 3;
         return data;
+    }
+
+    private static byte[] JxrHeader(ReadOnlySpan<byte> pixelFormat, int width, int height)
+    {
+        // Annex A IFD: PIXEL_FORMAT 0xBC01, WIDTH 0xBC80, HEIGHT 0xBC81,
+        // H/V resolution 0xBC82/0xBC83 as FLOAT 96 DPI (not pixels).
+        const int ifd = 8;
+        const int dpi96 = 0x42C00000;
+        const int guidOff = 78;
+        var data = new byte[guidOff + 16];
+        data[0] = 0x49;
+        data[1] = 0x49;
+        data[2] = 0xBC;
+        data[3] = 0x01;
+        WriteLe32(data, 4, ifd);
+        data[ifd] = 5;
+        data[ifd + 1] = 0;
+        WriteJxrEntry(data, ifd + 2, 0xBC01, type: 1, count: 16, value: guidOff);
+        WriteJxrEntry(data, ifd + 14, 0xBC80, type: 4, count: 1, value: width);
+        WriteJxrEntry(data, ifd + 26, 0xBC81, type: 4, count: 1, value: height);
+        WriteJxrEntry(data, ifd + 38, 0xBC82, type: 11, count: 1, value: dpi96);
+        WriteJxrEntry(data, ifd + 50, 0xBC83, type: 11, count: 1, value: dpi96);
+        pixelFormat.CopyTo(data.AsSpan(guidOff, 16));
+        return data;
+    }
+
+    private static void WriteJxrEntry(byte[] data, int offset, int tag, int type, int count, int value)
+    {
+        data[offset] = (byte)tag;
+        data[offset + 1] = (byte)(tag >> 8);
+        data[offset + 2] = (byte)type;
+        data[offset + 3] = (byte)(type >> 8);
+        WriteLe32(data, offset + 4, count);
+        WriteLe32(data, offset + 8, value);
+    }
+
+    private static void WriteLe32(byte[] data, int offset, int value)
+    {
+        data[offset] = (byte)value;
+        data[offset + 1] = (byte)(value >> 8);
+        data[offset + 2] = (byte)(value >> 16);
+        data[offset + 3] = (byte)(value >> 24);
     }
 
     private static void WriteBe32(byte[] data, int offset, int value)

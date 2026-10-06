@@ -9,6 +9,8 @@ public enum HdrPackedFormat
     Rgba16,
     Rgba8,
     Bgra8,
+    RgbaHalf,
+    RgbaFloat,
     P010,
     Nv12,
     Yuy2
@@ -19,7 +21,8 @@ public static class HdrPixels
     public static int BytesPerPixel(HdrPackedFormat format) =>
         format switch
         {
-            HdrPackedFormat.Rgba16 => 8,
+            HdrPackedFormat.Rgba16 or HdrPackedFormat.RgbaHalf => 8,
+            HdrPackedFormat.RgbaFloat => 16,
             HdrPackedFormat.P010 => 0,
             HdrPackedFormat.Nv12 => 0,
             HdrPackedFormat.Yuy2 => 2,
@@ -376,6 +379,18 @@ public static class HdrPixels
                 b = ReadU16(data, offset + 4) / 65535f;
                 a = ReadU16(data, offset + 6) / 65535f;
                 break;
+            case HdrPackedFormat.RgbaHalf:
+                r = HalfToFloat(data, offset);
+                g = HalfToFloat(data, offset + 2);
+                b = HalfToFloat(data, offset + 4);
+                a = HalfToFloat(data, offset + 6);
+                break;
+            case HdrPackedFormat.RgbaFloat:
+                r = BitConverter.ToSingle(data.Slice(offset, 4));
+                g = BitConverter.ToSingle(data.Slice(offset + 4, 4));
+                b = BitConverter.ToSingle(data.Slice(offset + 8, 4));
+                a = BitConverter.ToSingle(data.Slice(offset + 12, 4));
+                break;
             case HdrPackedFormat.Bgra8:
                 b = data[offset] / 255f;
                 g = data[offset + 1] / 255f;
@@ -393,4 +408,18 @@ public static class HdrPixels
 
     private static int ReadU16(ReadOnlySpan<byte> data, int offset) =>
         data[offset] | (data[offset + 1] << 8);
+
+    /// <summary>
+    /// IEEE 754 binary16 (WIC <c>64bppRGBAHalf</c>). Values are already
+    /// linear scRGB (1.0 = 80 nits) — not unorm 0–1.
+    /// </summary>
+    public static float HalfToFloat(ReadOnlySpan<byte> data, int offset)
+    {
+        if (offset < 0 || offset + 2 > data.Length)
+        {
+            return 0;
+        }
+
+        return (float)BitConverter.ToHalf(data.Slice(offset, 2));
+    }
 }
