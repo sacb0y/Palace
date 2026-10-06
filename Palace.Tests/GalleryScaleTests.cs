@@ -166,7 +166,7 @@ public sealed class GalleryScaleTests
         var wheelPan = GalleryScale.DragPan(40, 40, 0, GalleryScale.WheelToPanDelta(120), 100, 100);
         Assert.Equal(40, wheelPan.Horizontal, 3);
         Assert.Equal(10, wheelPan.Vertical, 3);
-        Assert.Equal(2.0, GalleryScale.PinchZoom(GalleryScale.PinchZoom(1, 2), 1.5), 3);
+        Assert.Equal(3.0, GalleryScale.PinchZoom(GalleryScale.PinchZoom(1, 2), 1.5), 3);
     }
 
     [Fact]
