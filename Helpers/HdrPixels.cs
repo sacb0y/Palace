@@ -11,6 +11,11 @@ public enum HdrPackedFormat
     Bgra8,
     RgbaHalf,
     RgbaFloat,
+    RgbHalf,
+    RgbHalfPadded,
+    RgbFloat,
+    RgbFloatPadded,
+    Rgba1010102Xr,
     P010,
     Nv12,
     Yuy2
@@ -22,7 +27,10 @@ public static class HdrPixels
         format switch
         {
             HdrPackedFormat.Rgba16 or HdrPackedFormat.RgbaHalf => 8,
-            HdrPackedFormat.RgbaFloat => 16,
+            HdrPackedFormat.RgbHalf => 6,
+            HdrPackedFormat.RgbHalfPadded => 8,
+            HdrPackedFormat.RgbFloat => 12,
+            HdrPackedFormat.RgbFloatPadded or HdrPackedFormat.RgbaFloat => 16,
             HdrPackedFormat.P010 => 0,
             HdrPackedFormat.Nv12 => 0,
             HdrPackedFormat.Yuy2 => 2,
@@ -385,11 +393,28 @@ public static class HdrPixels
                 b = HalfToFloat(data, offset + 4);
                 a = HalfToFloat(data, offset + 6);
                 break;
+            case HdrPackedFormat.RgbHalf:
+            case HdrPackedFormat.RgbHalfPadded:
+                r = HalfToFloat(data, offset);
+                g = HalfToFloat(data, offset + 2);
+                b = HalfToFloat(data, offset + 4);
+                a = 1f;
+                break;
             case HdrPackedFormat.RgbaFloat:
                 r = BitConverter.ToSingle(data.Slice(offset, 4));
                 g = BitConverter.ToSingle(data.Slice(offset + 4, 4));
                 b = BitConverter.ToSingle(data.Slice(offset + 8, 4));
                 a = BitConverter.ToSingle(data.Slice(offset + 12, 4));
+                break;
+            case HdrPackedFormat.RgbFloat:
+            case HdrPackedFormat.RgbFloatPadded:
+                r = BitConverter.ToSingle(data.Slice(offset, 4));
+                g = BitConverter.ToSingle(data.Slice(offset + 4, 4));
+                b = BitConverter.ToSingle(data.Slice(offset + 8, 4));
+                a = 1f;
+                break;
+            case HdrPackedFormat.Rgba1010102Xr:
+                ReadRgba1010102Xr(data, offset, out r, out g, out b, out a);
                 break;
             case HdrPackedFormat.Bgra8:
                 b = data[offset] / 255f;
@@ -408,6 +433,145 @@ public static class HdrPixels
 
     private static int ReadU16(ReadOnlySpan<byte> data, int offset) =>
         data[offset] | (data[offset + 1] << 8);
+
+    /// <summary>
+    /// DXGI / WIC <c>R10G10B10A2_XR_BIAS</c>: 10-bit RGB, 384 = 0.0,
+    /// divide 510. Linear scRGB-ish (can be slightly negative).
+    /// </summary>
+    public static void ReadRgba1010102Xr(
+        ReadOnlySpan<byte> data,
+        int offset,
+        out float r,
+        out float g,
+        out float b,
+        out float a)
+    {
+        if (offset < 0 || offset + 4 > data.Length)
+        {
+            r = g = b = a = 0;
+            return;
+        }
+
+        var packed = (uint)(data[offset]
+            | (data[offset + 1] << 8)
+            | (data[offset + 2] << 16)
+            | (data[offset + 3] << 24));
+        r = Xr10ToLinear((int)(packed & 0x3FF));
+        g = Xr10ToLinear((int)((packed >> 10) & 0x3FF));
+        b = Xr10ToLinear((int)((packed >> 20) & 0x3FF));
+        a = ((packed >> 30) & 0x3) / 3f;
+    }
+
+    public static float Xr10ToLinear(int n) => (n - 384) / 510f;
+
+    public static bool TryMapWicPixelFormat(Guid guid, out HdrPackedFormat format)
+    {
+        if (guid == GuidRgbaFloat || guid == GuidPrgbaFloat)
+        {
+            format = HdrPackedFormat.RgbaFloat;
+            return true;
+        }
+
+        if (guid == GuidRgbFloat)
+        {
+            format = HdrPackedFormat.RgbFloatPadded;
+            return true;
+        }
+
+        if (guid == GuidRgbFloat96)
+        {
+            format = HdrPackedFormat.RgbFloat;
+            return true;
+        }
+
+        if (guid == GuidRgbaHalf)
+        {
+            format = HdrPackedFormat.RgbaHalf;
+            return true;
+        }
+
+        if (guid == GuidRgbHalf48)
+        {
+            format = HdrPackedFormat.RgbHalf;
+            return true;
+        }
+
+        if (guid == GuidRgbHalf64)
+        {
+            format = HdrPackedFormat.RgbHalfPadded;
+            return true;
+        }
+
+        if (guid == GuidRgba1010102Xr)
+        {
+            format = HdrPackedFormat.Rgba1010102Xr;
+            return true;
+        }
+
+        format = HdrPackedFormat.Rgba8;
+        return false;
+    }
+
+    /// <summary>Box-average scRGB RGBA downscale. Same size is a no-op.</summary>
+    public static float[] BoxScaleScrgb(float[] src, int srcW, int srcH, int destW, int destH)
+    {
+        if (srcW <= 0 || srcH <= 0 || destW <= 0 || destH <= 0
+            || src.Length < srcW * srcH * 4)
+        {
+            return src;
+        }
+
+        if (destW == srcW && destH == srcH)
+        {
+            return src;
+        }
+
+        var dest = new float[destW * destH * 4];
+        for (var y = 0; y < destH; y++)
+        {
+            var y0 = y * srcH / destH;
+            var y1 = Math.Max(y0 + 1, (y + 1) * srcH / destH);
+            for (var x = 0; x < destW; x++)
+            {
+                var x0 = x * srcW / destW;
+                var x1 = Math.Max(x0 + 1, (x + 1) * srcW / destW);
+                var r = 0f;
+                var g = 0f;
+                var b = 0f;
+                var a = 0f;
+                var n = 0;
+                for (var sy = y0; sy < y1 && sy < srcH; sy++)
+                {
+                    for (var sx = x0; sx < x1 && sx < srcW; sx++)
+                    {
+                        var i = ((sy * srcW) + sx) * 4;
+                        r += src[i];
+                        g += src[i + 1];
+                        b += src[i + 2];
+                        a += src[i + 3];
+                        n++;
+                    }
+                }
+
+                var o = ((y * destW) + x) * 4;
+                dest[o] = n > 0 ? r / n : 0;
+                dest[o + 1] = n > 0 ? g / n : 0;
+                dest[o + 2] = n > 0 ? b / n : 0;
+                dest[o + 3] = n > 0 ? a / n : 0;
+            }
+        }
+
+        return dest;
+    }
+
+    public static readonly Guid GuidRgbaFloat = new("6fddc324-4e03-4bfe-b185-3d77768dc919");
+    public static readonly Guid GuidPrgbaFloat = new("6fddc324-4e03-4bfe-b185-3d77768dc91a");
+    public static readonly Guid GuidRgbFloat = new("6fddc324-4e03-4bfe-b185-3d77768dc91b");
+    public static readonly Guid GuidRgbaHalf = new("6fddc324-4e03-4bfe-b185-3d77768dc93a");
+    public static readonly Guid GuidRgbHalf48 = new("6fddc324-4e03-4bfe-b185-3d77768dc93b");
+    public static readonly Guid GuidRgbHalf64 = new("6fddc324-4e03-4bfe-b185-3d77768dc942");
+    public static readonly Guid GuidRgba1010102Xr = new("00de6b9a-c101-434b-b502-d0165ee1122c");
+    public static readonly Guid GuidRgbFloat96 = new("e3fed0a0-146e-4aaa-8d3a-63a321a61717");
 
     /// <summary>
     /// IEEE 754 binary16 (WIC <c>64bppRGBAHalf</c>). Values are already

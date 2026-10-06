@@ -686,6 +686,30 @@ public sealed class HdrFileTests
         Assert.Equal(1f, aF);
         Assert.True(HdrPixels.HasPackedData(floatPx, HdrPackedFormat.RgbaFloat, 1, 1));
         Assert.True(HdrPixels.HasPackedData(halfPx, HdrPackedFormat.RgbaHalf, 1, 1));
+
+        Assert.True(HdrPixels.TryMapWicPixelFormat(HdrPixels.GuidRgba1010102Xr, out var xrFmt));
+        Assert.Equal(HdrPackedFormat.Rgba1010102Xr, xrFmt);
+        Assert.True(HdrPixels.TryMapWicPixelFormat(HdrPixels.GuidRgbaFloat, out var fFmt));
+        Assert.Equal(HdrPackedFormat.RgbaFloat, fFmt);
+        Assert.Equal(0f, HdrPixels.Xr10ToLinear(384), 3);
+        Assert.Equal(1f, HdrPixels.Xr10ToLinear(894), 3);
+        var xr = new byte[4];
+        var xrPack = 384 | (894 << 10) | (384 << 20) | (3 << 30);
+        xr[0] = (byte)xrPack;
+        xr[1] = (byte)(xrPack >> 8);
+        xr[2] = (byte)(xrPack >> 16);
+        xr[3] = (byte)(xrPack >> 24);
+        HdrPixels.Read(xr, 0, HdrPackedFormat.Rgba1010102Xr, out var xrR, out var xrG, out var xrB, out var xrA);
+        Assert.Equal(0f, xrR, 3);
+        Assert.Equal(1f, xrG, 3);
+        Assert.Equal(0f, xrB, 3);
+        Assert.Equal(1f, xrA, 3);
+
+        var scaled = HdrPixels.BoxScaleScrgb(
+            [1f, 0f, 0f, 1f, 3f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 3f, 0f, 0f, 1f],
+            2, 2, 1, 1);
+        Assert.Equal(2f, scaled[0], 3);
+        Assert.Equal(1f, scaled[3], 3);
     }
 
     [Fact]

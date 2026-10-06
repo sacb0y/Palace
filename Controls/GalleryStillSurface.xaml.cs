@@ -328,10 +328,13 @@ public sealed partial class GalleryStillSurface : UserControl
                 ClearHdrCache();
                 HideHdr();
                 ImgStill.Source = ToStillImage(still);
+                var wic = HdrWicDecode.LastWicError;
                 gallery.SetHdrPresentResult(
                     false,
                     GalleryPresent.UnknownDisplayPresentsHdr(gallery.CurrentProbe),
-                    displayProbe: DisplayHdr.Describe());
+                    displayProbe: string.IsNullOrWhiteSpace(wic)
+                        ? DisplayHdr.Describe()
+                        : $"JXR {wic} · {DisplayHdr.Describe()}");
                 gallery.ClearHistogram();
                 return;
             }
