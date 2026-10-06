@@ -248,6 +248,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                     }
                                     else
                                     {
+                                        // G22: composition white is scRGB 1.0. Do not use EDID nits.
                                         var sdr = GalleryPresent.SdrPresentPeakNits(
                                             desc.MaxLuminance, desc.MaxFullFrameLuminance);
                                         _autoDisplayNits = sdr;

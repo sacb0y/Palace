@@ -77,13 +77,9 @@ public static class GalleryPresent
 
         if (probe.CanPresentHdr && presented && !displayHdr)
         {
-            var sdr = !peakOverride && peakNits > 0 ? peakNits : ScrgbNits;
-            if (Math.Abs(sdr - SdrReferenceNits) <= 1f)
-            {
-                sdr = ScrgbNits;
-            }
-
-            return $"{HdrKindLabel(probe.Kind)} · tonemap SDR {sdr:0} nits";
+            _ = peakOverride;
+            _ = peakNits;
+            return $"{HdrKindLabel(probe.Kind)} · tonemap SDR {ScrgbNits:0} nits";
         }
 
         return probe.Kind switch
@@ -171,12 +167,15 @@ public static class GalleryPresent
         dxgiColorSpace is 1 or 12 or 16;
 
     /// <summary>
-    /// SDR composition peak. On G22 DWM maps scRGB 1.0 to panel white, so the
-    /// peak is always 80 nits (scRGB 1.0); EDID-advertised SDR luminance
-    /// (dummy 270, 120–200, paper white 203) is ignored.
+    /// G22 DWM composition white is scRGB 1.0 (80 nits). DXGI EDID luminance
+    /// (dummy 270, 80–220 panel ads, BT.2408 203) is not the map target.
     /// </summary>
-    public static float SdrPresentPeakNits(float maxLuminance, float maxFullFrameLuminance) =>
-        ScrgbNits;
+    public static float SdrPresentPeakNits(float maxLuminance, float maxFullFrameLuminance)
+    {
+        _ = maxLuminance;
+        _ = maxFullFrameLuminance;
+        return ScrgbNits;
+    }
 
     /// <summary>MaxCLL in nits: scRGB channel peak, else CIE Y.</summary>
     public static float ContentMaxNits(float maxScrgb, float cieYNits)
@@ -191,7 +190,9 @@ public static class GalleryPresent
 
     /// <summary>
     /// HDR panels: clip only (unknown peak → PQ 10 000). SDR: SKIV map
-    /// CLL to display + clip. Never auto-clip to 203 paper white.
+    /// CLL to G22 composition white (scRGB 1.0 / 80 nits) + clip. Never
+    /// auto-clip to 203 paper white, and never map to an EDID 80–220 peak
+    /// (that would present scRGB above 1 on G22 and look overblown).
     /// </summary>
     public static HdrPresentMap PresentMap(bool displayIsHdr, float contentMaxNits, float displayPeakNits)
     {
@@ -200,13 +201,8 @@ public static class GalleryPresent
             return new HdrPresentMap(1f, RasterizeClipScrgb(displayPeakNits));
         }
 
-        var display = displayPeakNits > 0 ? displayPeakNits : ScrgbNits;
-        if (Math.Abs(display - SdrReferenceNits) <= 1f)
-        {
-            display = ScrgbNits;
-        }
-
-        return new HdrPresentMap(TonemapScale(contentMaxNits, display), display / ScrgbNits);
+        _ = displayPeakNits;
+        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f);
     }
 
     public static string PeakNitsLabel(float nits) =>

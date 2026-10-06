@@ -191,6 +191,9 @@ public sealed class HdrFileTests
         var paper = GalleryPresent.PresentMap(false, 1000, 203);
         Assert.Equal(sdr.Scale, paper.Scale, 3);
         Assert.Equal(sdr.ClipScrgb, paper.ClipScrgb, 3);
+        var edid200 = GalleryPresent.PresentMap(false, 1000, 200);
+        Assert.Equal(0.08f, edid200.Scale, 3);
+        Assert.Equal(1f, edid200.ClipScrgb, 3);
 
         var hdrUnknown = GalleryPresent.PresentMap(true, 1000, 0);
         Assert.Equal(1f, hdrUnknown.Scale);
