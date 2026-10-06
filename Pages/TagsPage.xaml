@@ -14,7 +14,7 @@
     <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="220" />
-            <ColumnDefinition Width="260" />
+            <ColumnDefinition Width="360" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="340" />
         </Grid.ColumnDefinitions>
@@ -108,6 +108,8 @@
                 Grid.Row="1"
                 AutomationProperties.AutomationId="RepTagChildren"
                 AutomationProperties.Name="Tags in selected group"
+                HorizontalScrollBarVisibility="Disabled"
+                HorizontalScrollMode="Disabled"
                 VerticalScrollBarVisibility="Auto">
                 <ItemsControl
                     ItemsSource="{x:Bind ViewModel.SelectedBoard.Letters, Mode=OneWay}">
@@ -118,11 +120,18 @@
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"
                                     Text="{x:Bind Header, Mode=OneWay}" />
-                                <ItemsControl ItemsSource="{x:Bind Chips, Mode=OneWay}">
-                                    <ItemsControl.ItemTemplate>
+                                <ItemsRepeater ItemsSource="{x:Bind Chips, Mode=OneWay}">
+                                    <ItemsRepeater.Layout>
+                                        <WrapLayout
+                                            HorizontalSpacing="6"
+                                            VerticalSpacing="6" />
+                                    </ItemsRepeater.Layout>
+                                    <ItemsRepeater.ItemTemplate>
                                         <DataTemplate x:DataType="models:TagChipItem">
                                             <Button
-                                                HorizontalAlignment="Stretch"
+                                                MinWidth="0"
+                                                Padding="8,4"
+                                                HorizontalAlignment="Left"
                                                 HorizontalContentAlignment="Left"
                                                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                 AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
@@ -202,13 +211,7 @@
                                                         </MenuFlyoutItem>
                                                     </MenuFlyout>
                                                 </Button.ContextFlyout>
-                                                <Grid ColumnSpacing="8">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
                                                     <Border
                                                         Width="10"
                                                         Height="10"
@@ -218,29 +221,27 @@
                                                         BorderThickness="1"
                                                         CornerRadius="5" />
                                                     <TextBlock
-                                                        Grid.Column="1"
+                                                        MaxWidth="140"
                                                         VerticalAlignment="Center"
                                                         Text="{x:Bind Name, Mode=OneWay}"
                                                         TextTrimming="CharacterEllipsis" />
                                                     <ic:FluentIcon
-                                                        Grid.Column="2"
                                                         VerticalAlignment="Center"
                                                         Icon="Star"
                                                         IconSize="Size12"
                                                         IconVariant="Regular"
                                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}" />
                                                     <TextBlock
-                                                        Grid.Column="3"
                                                         VerticalAlignment="Center"
                                                         Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                                         Style="{StaticResource CaptionTextBlockStyle}"
                                                         Text="On"
                                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
-                                                </Grid>
+                                                </StackPanel>
                                             </Button>
                                         </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                    </ItemsRepeater.ItemTemplate>
+                                </ItemsRepeater>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
