@@ -38,6 +38,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         double dipW,
         double dipH,
         float? peakOverrideNits,
+        float contentMaxNits,
         Func<bool> stillCurrent,
         CancellationToken cancellation)
     {
@@ -109,7 +110,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
                 var map = GalleryPresent.PresentMap(
                     DisplayIsHdr,
-                    GalleryPresent.ContentMaxNits(frame.MaxScrgb, frame.MaxNits),
+                    contentMaxNits,
                     DisplayPeakNits);
                 clip = map.ClipScrgb;
                 scale = map.Scale;
