@@ -93,18 +93,17 @@ public sealed class WicNativeTests
     }
 
     [Fact]
-    public void JpegXrDecoderId_MatchesWinrtInboxId()
+    public void SoftwareBitmapNative_FlattensInspectableBeforeGetData()
     {
         Assert.Equal(
-            Guid.Parse("a26cec36-234c-4950-ae16-e34aace71d0d"),
-            WicNative.JpegXrDecoderId);
-        Assert.Equal(WicNative.ClsidWmpDecoder, WicNative.JpegXrDecoderId);
+            WicNative.SoftwareBitmapNativeMethods,
+            WicNative.DeclaredMethods(typeof(WicNative.ISoftwareBitmapNative)));
         Assert.Equal(
-            Guid.Parse("3b16811b-6a43-4ec9-a813-3d930c13b940"),
-            WicNative.IidBitmapFrameDecode);
+            "GetData",
+            WicNative.DeclaredMethods(typeof(WicNative.ISoftwareBitmapNative))[^1]);
         Assert.Equal(
-            Guid.Parse("0000000c-0000-0000-c000-000000000046"),
-            WicNative.IidStream);
+            Guid.Parse("00000121-a8f2-4877-ba0a-fd2b6645fb94"),
+            WicNative.IidWicBitmap);
         Assert.Null(WicNative.TypedFromIUnknown<WicNative.IWICBitmapDecoder>(IntPtr.Zero));
         Assert.Equal(
             WicNative.ClassFactoryMethods,

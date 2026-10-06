@@ -31,11 +31,12 @@ public static class WicNative
 
     /// <summary>
     /// Packaged WinUI: the WIC catalog omits HD Photo
-    /// (<c>0x88982F50</c>). Regular <c>CoCreate(CLSID_WICWmpDecoder)</c>
-    /// QIs <c>E_NOINTERFACE</c> (<c>0x80004002</c>). BitmapImage / WinRT
-    /// <c>BitmapDecoder.CreateAsync(JpegXrDecoderId)</c> already opens
-    /// these files — use that inbox path, then native CopyPixels
-    /// float/half (WinRT has no float pixel format).
+    /// (<c>0x88982F50</c>). <c>CoCreate(CLSID_WICWmpDecoder)</c> and
+    /// <c>CreateAsync(JpegXrDecoderId)</c> both QI
+    /// <c>E_NOINTERFACE</c> (<c>0x80004002</c>); some WASDK builds
+    /// lack <c>BitmapDecoder.JpegXrDecoderId</c>. BitmapImage / sniff
+    /// <c>CreateAsync(stream)</c> already opens these files — use that
+    /// factory, then native CopyPixels float/half.
     /// </summary>
     public static class WicDecoderOpen
     {
@@ -62,12 +63,13 @@ public static class WicNative
     }
 
     /// <summary>
-    /// Same CLSID as WinRT <c>BitmapDecoder.JpegXrDecoderId</c>. Do not
-    /// CoCreate this in a packaged app (E_NOINTERFACE).
+    /// Inbox JPEG XR CLSID. Do not
+    /// <c>CreateAsync(JpegXrDecoderId)</c> or CoCreate this in a
+    /// packaged app (E_NOINTERFACE; property missing on some WASDK).
     /// </summary>
     public static readonly Guid ClsidWmpDecoder = new("a26cec36-234c-4950-ae16-e34aace71d0d");
 
-    public static readonly Guid JpegXrDecoderId = ClsidWmpDecoder;
+    public static readonly Guid IidWicBitmap = new("00000121-a8f2-4877-ba0a-fd2b6645fb94");
 
     public static readonly Guid IidBitmapDecoder = new("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d");
 
@@ -76,6 +78,31 @@ public static class WicNative
     public static readonly Guid IidStream = new("0000000c-0000-0000-c000-000000000046");
 
     public static readonly Guid IidClassFactory = new("00000001-0000-0000-c000-000000000046");
+
+    public static readonly string[] SoftwareBitmapNativeMethods =
+    [
+        "GetIids",
+        "GetRuntimeClassName",
+        "GetTrustLevel",
+        "GetData"
+    ];
+
+    /// <summary>
+    /// Flattened <c>IInspectable</c> + <c>GetData</c>. Do not inherit
+    /// a C# Inspectable interface.
+    /// </summary>
+    [ComImport]
+    [Guid("94c952b4-5e6c-4c7a-8c2e-535a0621f5ae")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface ISoftwareBitmapNative
+    {
+        void GetIids();
+        void GetRuntimeClassName();
+        void GetTrustLevel();
+
+        [PreserveSig]
+        int GetData(ref Guid riid, out IntPtr ppv);
+    }
 
 #pragma warning disable CA1416 // Linked into Palace.Tests on Linux; callers are Windows-only.
     public static T? TypedFromIUnknown<T>(IntPtr unk) where T : class

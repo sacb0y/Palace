@@ -66,18 +66,14 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrJxr)
         {
-            var bytes = await TryReadLocalBytesAsync(path, cancellation).ConfigureAwait(false);
-            return await Task.Run(
-                () => FromWicFloat(
-                    path,
-                    bytes,
-                    probe,
-                    viewportPixelWidth,
-                    viewportPixelHeight,
-                    scaling,
-                    wantRgba: true,
-                    measure: false,
-                    cancellation),
+            return await TryLoadJxrAsync(
+                path,
+                probe,
+                viewportPixelWidth,
+                viewportPixelHeight,
+                scaling,
+                wantRgba: true,
+                measure: false,
                 cancellation).ConfigureAwait(false);
         }
 
@@ -215,31 +211,24 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrJxr)
         {
-            var bytes = await TryReadLocalBytesAsync(path, cancellation).ConfigureAwait(false);
-            return await Task.Run(
-                () =>
-                {
-                    var frame = FromWicFloat(
-                        path,
-                        bytes,
-                        probe,
-                        viewportPixelWidth,
-                        viewportPixelHeight,
-                        ImageScaling.Fit,
-                        wantRgba: false,
-                        measure: true,
-                        cancellation);
-                    return frame is null
-                        ? (HdrStats?)null
-                        : new HdrStats(
-                            frame.MaxNits,
-                            frame.AvgNits,
-                            frame.MinNits,
-                            frame.MaxScrgb,
-                            frame.NativeWidth,
-                            frame.NativeHeight);
-                },
+            var frame = await TryLoadJxrAsync(
+                path,
+                probe,
+                viewportPixelWidth,
+                viewportPixelHeight,
+                ImageScaling.Fit,
+                wantRgba: false,
+                measure: true,
                 cancellation).ConfigureAwait(false);
+            return frame is null
+                ? null
+                : new HdrStats(
+                    frame.MaxNits,
+                    frame.AvgNits,
+                    frame.MinNits,
+                    frame.MaxScrgb,
+                    frame.NativeWidth,
+                    frame.NativeHeight);
         }
 
         try
@@ -351,9 +340,15 @@ internal static class HdrWicDecode
         }
     }
 
-    private static HdrFrame? FromWicFloat(
+    /// <summary>
+    /// Packaged JXR: sniff <c>BitmapDecoder.CreateAsync(stream)</c>
+    /// with no decoder ID (same factory as SDR / HEIF; some WASDK
+    /// builds have no <c>JpegXrDecoderId</c>). Then native float/half
+    /// CopyPixels. Filename / handle / memory stay as unpackaged
+    /// fallback.
+    /// </summary>
+    private static async Task<HdrFrame?> TryLoadJxrAsync(
         string path,
-        byte[]? bytes,
         HdrProbe probe,
         int viewportPixelWidth,
         int viewportPixelHeight,
@@ -365,8 +360,107 @@ internal static class HdrWicDecode
         LastWicError = null;
         try
         {
+            var file = await StorageFile.GetFileFromPathAsync(path).AsTask(cancellation).ConfigureAwait(false);
             cancellation.ThrowIfCancellationRequested();
-            var packed = WicCom.CopyRgba(path, bytes, cancellation);
+            using var stream = await file.OpenAsync(FileAccessMode.Read).AsTask(cancellation).ConfigureAwait(false);
+            cancellation.ThrowIfCancellationRequested();
+            var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellation).ConfigureAwait(false);
+            BitmapFrame? bitmapFrame = null;
+            try
+            {
+                bitmapFrame = await decoder.GetFrameAsync(0).AsTask(cancellation).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Frame QI is optional; decoder QI / SoftwareBitmap next.
+            }
+
+            SoftwareBitmap? software = null;
+            try
+            {
+                software = await decoder.GetSoftwareBitmapAsync().AsTask(cancellation).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Float source may refuse SoftwareBitmap; WIC CopyPixels next.
+            }
+
+            cancellation.ThrowIfCancellationRequested();
+            var sniffed = await Task.Run(
+                () => FromWicFloat(
+                    path,
+                    bytes: null,
+                    probe,
+                    viewportPixelWidth,
+                    viewportPixelHeight,
+                    scaling,
+                    wantRgba,
+                    measure,
+                    cancellation,
+                    decoder,
+                    bitmapFrame,
+                    software),
+                cancellation).ConfigureAwait(false);
+            software?.Dispose();
+            if (sniffed is not null)
+            {
+                return sniffed;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LastWicError = WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.Winrt,
+                ex.HResult != 0 ? ex.HResult : unchecked((int)0x80004005));
+        }
+
+        var sniffError = LastWicError;
+        var bytes = await TryReadLocalBytesAsync(path, cancellation).ConfigureAwait(false);
+        var unpacked = await Task.Run(
+            () => FromWicFloat(
+                path,
+                bytes,
+                probe,
+                viewportPixelWidth,
+                viewportPixelHeight,
+                scaling,
+                wantRgba,
+                measure,
+                cancellation),
+            cancellation).ConfigureAwait(false);
+        if (unpacked is null && !string.IsNullOrEmpty(sniffError))
+        {
+            LastWicError = sniffError;
+        }
+
+        return unpacked;
+    }
+
+    private static HdrFrame? FromWicFloat(
+        string path,
+        byte[]? bytes,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        ImageScaling scaling,
+        bool wantRgba,
+        bool measure,
+        CancellationToken cancellation,
+        BitmapDecoder? sniffDecoder = null,
+        BitmapFrame? sniffFrame = null,
+        SoftwareBitmap? sniffBitmap = null)
+    {
+        LastWicError = null;
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var packed = sniffDecoder is not null
+                ? WicCom.CopyFromSniffed(sniffDecoder, sniffFrame, sniffBitmap, cancellation)
+                : WicCom.CopyRgba(path, bytes, cancellation);
             if (packed is null)
             {
                 LastWicError ??= "WIC copy failed";
@@ -852,7 +946,6 @@ internal static class HdrWicDecode
             WicNative.IWICImagingFactory? factory = null;
             WicNative.IWICBitmapDecoder? decoder = null;
             WicNative.IWICBitmapFrameDecode? frame = null;
-            WicNative.IWICFormatConverter? converter = null;
             DecoderOpenHold? streamKeep = null;
             try
             {
@@ -868,16 +961,158 @@ internal static class HdrWicDecode
                 {
                     decoder!.GetFrame(0, out frame);
                 }
-                frame.GetSize(out var storedW, out var storedH);
+
+                return CopyOpenedFrame(factory, frame, cancellation);
+            }
+            finally
+            {
+                Release(frame);
+                Release(decoder);
+                Release(factory);
+                streamKeep?.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Sniff <c>CreateAsync(stream)</c> already opened the JXR.
+        /// QI the WinRT decoder / frame (and SoftwareBitmap native)
+        /// to WIC and CopyPixels float/half. Do not
+        /// <c>CreateAsync(decoderId)</c>.
+        /// </summary>
+        public static (byte[] Data, HdrPackedFormat Format, int Width, int Height, int NativeWidth, int NativeHeight, uint Orientation)? CopyFromSniffed(
+            BitmapDecoder sniff,
+            BitmapFrame? sniffFrame,
+            SoftwareBitmap? sniffBitmap,
+            CancellationToken cancellation)
+        {
+            WicNative.IWICImagingFactory? factory = null;
+            WicNative.IWICBitmapDecoder? decoder = null;
+            WicNative.IWICBitmapFrameDecode? frame = null;
+            WicNative.IWICBitmapSource? nativeSource = null;
+            try
+            {
+                factory = CreateFactory();
+                decoder = TryAsWic<WicNative.IWICBitmapDecoder>(sniff);
+                if (decoder is not null)
+                {
+                    decoder.GetFrame(0, out frame);
+                }
+
+                if (frame is null && sniffFrame is not null)
+                {
+                    frame = TryAsWic<WicNative.IWICBitmapFrameDecode>(sniffFrame);
+                }
+
+                if (frame is null && sniffBitmap is not null)
+                {
+                    nativeSource = TrySoftwareBitmapSource(sniffBitmap);
+                }
+
+                if (frame is not null)
+                {
+                    return CopyOpenedFrame(factory, frame, cancellation);
+                }
+
+                if (nativeSource is not null)
+                {
+                    return CopyOpenedSource(factory, nativeSource, orientation: 1, cancellation);
+                }
+
+                LastWicError = WicNative.WicDecoderOpen.Failed(
+                    WicNative.WicDecoderOpen.Winrt,
+                    unchecked((int)WicNative.WicDecoderOpen.NoInterface));
+                return null;
+            }
+            finally
+            {
+                Release(nativeSource);
+                Release(frame);
+                Release(decoder);
+                Release(factory);
+            }
+        }
+
+        private static T? TryAsWic<T>(object com) where T : class
+        {
+            var typed = WicNative.TypedFromUnknown<T>(com);
+            if (typed is not null)
+            {
+                return typed;
+            }
+
+            try
+            {
+                if (com is IWinRTObject winrt)
+                {
+                    return WicNative.TypedFromIUnknown<T>(winrt.NativeObject.ThisPtr);
+                }
+            }
+            catch
+            {
+                // CsWinRT native pointer is optional.
+            }
+
+            return null;
+        }
+
+        private static WicNative.IWICBitmapSource? TrySoftwareBitmapSource(SoftwareBitmap bitmap)
+        {
+            var native = WicNative.TypedFromUnknown<WicNative.ISoftwareBitmapNative>(bitmap)
+                ?? TryAsWic<WicNative.ISoftwareBitmapNative>(bitmap);
+            if (native is null)
+            {
+                return null;
+            }
+
+            foreach (var iid in new[] { WicNative.IidWicBitmap, new Guid("00000120-a8f2-4877-ba0a-fd2b6645fb94") })
+            {
+                var id = iid;
+                if (native.GetData(ref id, out var ptr) >= 0 && ptr != IntPtr.Zero)
+                {
+                    try
+                    {
+                        var source = WicNative.TypedFromIUnknown<WicNative.IWICBitmapSource>(ptr);
+                        if (source is not null)
+                        {
+                            return source;
+                        }
+                    }
+                    finally
+                    {
+                        Marshal.Release(ptr);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static (byte[] Data, HdrPackedFormat Format, int Width, int Height, int NativeWidth, int NativeHeight, uint Orientation)? CopyOpenedFrame(
+            WicNative.IWICImagingFactory factory,
+            WicNative.IWICBitmapFrameDecode frame,
+            CancellationToken cancellation)
+        {
+            var orientation = ReadOrientation(frame);
+            return CopyOpenedSource(factory, WicNative.AsSource(frame), orientation, cancellation);
+        }
+
+        private static (byte[] Data, HdrPackedFormat Format, int Width, int Height, int NativeWidth, int NativeHeight, uint Orientation)? CopyOpenedSource(
+            WicNative.IWICImagingFactory factory,
+            WicNative.IWICBitmapSource source,
+            uint orientation,
+            CancellationToken cancellation)
+        {
+            WicNative.IWICFormatConverter? converter = null;
+            try
+            {
+                source.GetSize(out var storedW, out var storedH);
                 if (storedW == 0 || storedH == 0 || storedW > 16384 || storedH > 16384)
                 {
                     LastWicError = "WIC size";
                     return null;
                 }
 
-                var orientation = ReadOrientation(frame);
                 var (nativeW, nativeH) = HdrPixels.OrientedSize((int)storedW, (int)storedH, orientation);
-                var source = WicNative.AsSource(frame);
                 source.GetPixelFormat(out var format);
                 if (!HdrPixels.TryMapWicPixelFormat(format, out var packed))
                 {
@@ -922,10 +1157,6 @@ internal static class HdrWicDecode
             finally
             {
                 Release(converter);
-                Release(frame);
-                Release(decoder);
-                Release(factory);
-                streamKeep?.Dispose();
             }
         }
 
@@ -1001,9 +1232,6 @@ internal static class HdrWicDecode
             public GCHandle Pin;
             public IntPtr FileHandle;
             public byte[]? Bytes;
-            public object? Ras;
-            public object? WinrtDecoder;
-            public object? WinrtFrame;
 
             public void Dispose()
             {
@@ -1024,28 +1252,7 @@ internal static class HdrWicDecode
                     FileHandle = IntPtr.Zero;
                 }
 
-                DisposeKeep(WinrtFrame);
-                WinrtFrame = null;
-                DisposeKeep(WinrtDecoder);
-                WinrtDecoder = null;
-                DisposeKeep(Ras);
-                Ras = null;
                 Bytes = null;
-            }
-
-            private static void DisposeKeep(object? value)
-            {
-                if (value is IDisposable disposable)
-                {
-                    try
-                    {
-                        disposable.Dispose();
-                    }
-                    catch
-                    {
-                        // WinRT / stream already closed.
-                    }
-                }
             }
         }
 
@@ -1104,15 +1311,6 @@ internal static class HdrWicDecode
             }
 
             lastStage = WicNative.WicDecoderOpen.Memory;
-            LastWicError = WicNative.WicDecoderOpen.Failed(lastStage, lastHr);
-
-            if (TryOpenFromWinrt(path, bytes, out decoder, out frame, out streamKeep, out lastHr))
-            {
-                LastWicError = null;
-                return true;
-            }
-
-            lastStage = WicNative.WicDecoderOpen.Winrt;
             LastWicError = WicNative.WicDecoderOpen.Failed(lastStage, lastHr);
             decoder = null;
             frame = null;
@@ -1258,435 +1456,10 @@ internal static class HdrWicDecode
             }
         }
 
-        /// <summary>
-        /// Packaged BitmapImage already decodes these JXR files. Open
-        /// with WinRT <c>BitmapDecoder.JpegXrDecoderId</c> (same inbox
-        /// path), then native float/half <c>CopyPixels</c>. Do not
-        /// <c>CoCreate(CLSID_WICWmpDecoder)</c> — that QIs
-        /// <c>E_NOINTERFACE</c>.
-        /// </summary>
-        private static bool TryOpenFromWinrt(
-            string path,
-            byte[] bytes,
-            out WicNative.IWICBitmapDecoder? decoder,
-            out WicNative.IWICBitmapFrameDecode? frame,
-            out DecoderOpenHold? hold,
-            out int hr)
-        {
-            decoder = null;
-            frame = null;
-            hold = null;
-            hr = 0;
-            IRandomAccessStream? ras = null;
-            try
-            {
-                ras = OpenRandomAccess(path, bytes);
-                if (ras is null)
-                {
-                    hr = unchecked((int)0x80070002);
-                    return false;
-                }
-
-                var winrt = CreateWinrtJpegXr(ras, out hr);
-                if (winrt is null)
-                {
-                    ras.Dispose();
-                    return false;
-                }
-
-                hold = new DecoderOpenHold
-                {
-                    Bytes = bytes,
-                    Ras = ras,
-                    WinrtDecoder = winrt
-                };
-
-                decoder = WicNative.TypedFromUnknown<WicNative.IWICBitmapDecoder>(winrt);
-                if (decoder is not null)
-                {
-                    return true;
-                }
-
-                var winrtFrame = winrt.GetFrameAsync(0).AsTask().GetAwaiter().GetResult();
-                hold.WinrtFrame = winrtFrame;
-                frame = WicNative.TypedFromUnknown<WicNative.IWICBitmapFrameDecode>(winrtFrame);
-                if (frame is not null)
-                {
-                    return true;
-                }
-
-                if (TryFromAppOverRas(ras, out decoder, out var stream, out hr) && decoder is not null)
-                {
-                    hold.Stream = stream;
-                    return true;
-                }
-
-                hold.Dispose();
-                hold = null;
-                decoder = null;
-                frame = null;
-                if (hr == 0)
-                {
-                    hr = unchecked((int)WicNative.WicDecoderOpen.NoInterface);
-                }
-
-                return false;
-            }
-            catch (Exception ex)
-            {
-                decoder = null;
-                frame = null;
-                hold?.Dispose();
-                hold = null;
-                hr = ex.HResult != 0 ? ex.HResult : unchecked((int)0x80004005);
-                return false;
-            }
-        }
-
-        private static IRandomAccessStream? OpenRandomAccess(string path, byte[] bytes)
-        {
-            try
-            {
-                var file = StorageFile.GetFileFromPathAsync(path).AsTask().GetAwaiter().GetResult();
-                return file.OpenReadAsync().AsTask().GetAwaiter().GetResult();
-            }
-            catch
-            {
-                // In-memory bytes next (same bytes AVIF already reads).
-            }
-
-            try
-            {
-                var ras = new InMemoryRandomAccessStream();
-                var writer = new DataWriter(ras);
-                try
-                {
-                    writer.WriteBytes(bytes);
-                    writer.StoreAsync().AsTask().GetAwaiter().GetResult();
-                    writer.DetachStream();
-                }
-                finally
-                {
-                    writer.Dispose();
-                }
-
-                ras.Seek(0);
-                return ras;
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        private static BitmapDecoder? CreateWinrtJpegXr(IRandomAccessStream ras, out int hr)
-        {
-            hr = 0;
-            try
-            {
-                ras.Seek(0);
-                return BitmapDecoder.CreateAsync(BitmapDecoder.JpegXrDecoderId, ras)
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult();
-            }
-            catch (Exception ex)
-            {
-                hr = ex.HResult != 0 ? ex.HResult : unchecked((int)0x80004005);
-            }
-
-            try
-            {
-                ras.Seek(0);
-                var decoder = BitmapDecoder.CreateAsync(ras).AsTask().GetAwaiter().GetResult();
-                hr = 0;
-                return decoder;
-            }
-            catch (Exception ex)
-            {
-                hr = ex.HResult != 0 ? ex.HResult : hr;
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// Same activation WinRT uses in a packaged app
-        /// (<c>CoCreateInstanceFromApp</c> +
-        /// <c>CreateStreamOverRandomAccessStream</c>), then native
-        /// <c>Initialize</c> so we can CopyPixels float/half.
-        /// </summary>
-        private static bool TryFromAppOverRas(
-            IRandomAccessStream ras,
-            out WicNative.IWICBitmapDecoder? decoder,
-            out object? stream,
-            out int hr)
-        {
-            decoder = null;
-            stream = null;
-            try
-            {
-                ras.Seek(0);
-            }
-            catch
-            {
-                // Stream may already be at 0.
-            }
-
-            hr = TryCreateStreamOverRas(ras, out stream);
-            if (hr < 0 || stream is null)
-            {
-                return false;
-            }
-
-            hr = TryCoCreateFromApp(WicNative.JpegXrDecoderId, WicNative.IidBitmapDecoder, out var unk);
-            if (hr < 0 || unk == IntPtr.Zero)
-            {
-                var dllHr = TryDecoderFromCodecsDll(out decoder);
-                if (decoder is not null)
-                {
-                    var initDll = decoder.Initialize(stream, 0);
-                    if (initDll >= 0)
-                    {
-                        hr = 0;
-                        return true;
-                    }
-
-                    Release(decoder);
-                    decoder = null;
-                    hr = initDll;
-                }
-                else if (hr == 0)
-                {
-                    hr = dllHr;
-                }
-
-                Release(stream);
-                stream = null;
-                return false;
-            }
-
-            try
-            {
-                decoder = WicNative.TypedFromIUnknown<WicNative.IWICBitmapDecoder>(unk);
-                if (decoder is null)
-                {
-                    hr = unchecked((int)WicNative.WicDecoderOpen.NoInterface);
-                    Release(stream);
-                    stream = null;
-                    return false;
-                }
-
-                var init = decoder.Initialize(stream, 0);
-                if (init < 0)
-                {
-                    Release(decoder);
-                    decoder = null;
-                    Release(stream);
-                    stream = null;
-                    hr = init;
-                    return false;
-                }
-
-                hr = 0;
-                return true;
-            }
-            finally
-            {
-                Marshal.Release(unk);
-            }
-        }
-
-        private static int TryCreateStreamOverRas(IRandomAccessStream ras, out object? stream)
-        {
-            stream = null;
-            var unk = Marshal.GetIUnknownForObject(ras);
-            try
-            {
-                var iid = WicNative.IidStream;
-                var hr = CreateStreamOverRandomAccessStream(unk, ref iid, out var streamPtr);
-                if (hr < 0 || streamPtr == IntPtr.Zero)
-                {
-                    return hr != 0 ? hr : unchecked((int)0x80004005);
-                }
-
-                try
-                {
-                    stream = Marshal.GetObjectForIUnknown(streamPtr);
-                    return stream is null ? unchecked((int)0x80004002) : 0;
-                }
-                finally
-                {
-                    Marshal.Release(streamPtr);
-                }
-            }
-            finally
-            {
-                Marshal.Release(unk);
-            }
-        }
-
-        private static int TryCoCreateFromApp(Guid clsid, Guid iid, out IntPtr unk)
-        {
-            unk = IntPtr.Zero;
-            var iidLocal = iid;
-            var iidPin = GCHandle.Alloc(iidLocal, GCHandleType.Pinned);
-            try
-            {
-                var results = new MultiQi[1];
-                results[0].pIID = iidPin.AddrOfPinnedObject();
-                var hr = CoCreateInstanceFromApp(
-                    ref clsid, IntPtr.Zero, ClsctxInproc, IntPtr.Zero, 1, results);
-                if (hr < 0)
-                {
-                    return hr;
-                }
-
-                unk = results[0].pItf;
-                if (results[0].hr < 0)
-                {
-                    return results[0].hr;
-                }
-
-                return unk == IntPtr.Zero ? unchecked((int)WicNative.WicDecoderOpen.NoInterface) : 0;
-            }
-            catch
-            {
-                return unchecked((int)0x80004001);
-            }
-            finally
-            {
-                iidPin.Free();
-            }
-        }
-
-        private static int TryDecoderFromCodecsDll(out WicNative.IWICBitmapDecoder? decoder)
-        {
-            decoder = null;
-            var lastHr = 0;
-            foreach (var name in new[] { "WindowsCodecs.dll", "WindowsCodecsExt.dll" })
-            {
-                var hr = TryDecoderFromModule(name, out decoder);
-                if (decoder is not null)
-                {
-                    return 0;
-                }
-
-                if (hr != 0)
-                {
-                    lastHr = hr;
-                }
-            }
-
-            return lastHr != 0 ? lastHr : unchecked((int)WicNative.WicDecoderOpen.ComponentNotFound);
-        }
-
-        private static int TryDecoderFromModule(string fileName, out WicNative.IWICBitmapDecoder? decoder)
-        {
-            decoder = null;
-            var module = GetModuleHandleW(fileName);
-            if (module == IntPtr.Zero)
-            {
-                module = LoadLibraryExW(fileName, IntPtr.Zero, LoadLibrarySearchSystem32);
-            }
-
-            if (module == IntPtr.Zero)
-            {
-                var win32 = Marshal.GetHRForLastWin32Error();
-                return win32 != 0 ? win32 : unchecked((int)0x8007007E);
-            }
-
-            var proc = GetProcAddress(module, "DllGetClassObject");
-            if (proc == IntPtr.Zero)
-            {
-                return unchecked((int)0x80004005);
-            }
-
-            var fn = Marshal.GetDelegateForFunctionPointer<DllGetClassObjectFn>(proc);
-            var clsid = WicNative.ClsidWmpDecoder;
-            var factoryIid = WicNative.IidClassFactory;
-            var hr = fn(ref clsid, ref factoryIid, out var factoryUnk);
-            if (hr < 0 || factoryUnk == IntPtr.Zero)
-            {
-                return hr != 0 ? hr : unchecked((int)WicNative.WicDecoderOpen.ComponentNotFound);
-            }
-
-            try
-            {
-                var factory = WicNative.TypedFromIUnknown<WicNative.IClassFactory>(factoryUnk);
-                if (factory is null)
-                {
-                    return unchecked((int)WicNative.WicDecoderOpen.NoInterface);
-                }
-
-                try
-                {
-                    var decoderIid = WicNative.IidBitmapDecoder;
-                    hr = factory.CreateInstance(IntPtr.Zero, ref decoderIid, out var decoderUnk);
-                    if (hr < 0 || decoderUnk == IntPtr.Zero)
-                    {
-                        return hr != 0 ? hr : unchecked((int)WicNative.WicDecoderOpen.ComponentNotFound);
-                    }
-
-                    try
-                    {
-                        decoder = WicNative.TypedFromIUnknown<WicNative.IWICBitmapDecoder>(decoderUnk);
-                        return decoder is null ? unchecked((int)WicNative.WicDecoderOpen.NoInterface) : 0;
-                    }
-                    finally
-                    {
-                        Marshal.Release(decoderUnk);
-                    }
-                }
-                finally
-                {
-                    Release(factory);
-                }
-            }
-            finally
-            {
-                Marshal.Release(factoryUnk);
-            }
-        }
 
         private const uint FileShareReadWrite = 3;
         private const uint OpenExisting = 3;
-        private const uint LoadLibrarySearchSystem32 = 0x00000800;
         private static readonly IntPtr InvalidHandle = new(-1);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct MultiQi
-        {
-            public IntPtr pIID;
-            public IntPtr pItf;
-            public int hr;
-        }
-
-        [DllImport("ole32.dll")]
-        private static extern int CoCreateInstanceFromApp(
-            ref Guid rclsid,
-            IntPtr pUnkOuter,
-            uint dwClsContext,
-            IntPtr reserved,
-            uint dwCount,
-            [In] [Out] MultiQi[] pResults);
-
-        [DllImport("shcore.dll", ExactSpelling = true)]
-        private static extern int CreateStreamOverRandomAccessStream(
-            IntPtr punk,
-            ref Guid riid,
-            out IntPtr ppv);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int DllGetClassObjectFn(ref Guid rclsid, ref Guid riid, out IntPtr ppv);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern IntPtr GetModuleHandleW(string lpModuleName);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-        private static extern IntPtr LoadLibraryExW(string lpLibFileName, IntPtr hFile, uint dwFlags);
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
-        private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr CreateFileW(
