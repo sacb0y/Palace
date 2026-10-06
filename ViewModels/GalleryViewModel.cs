@@ -146,6 +146,18 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial string ImageInfoText { get; set; } = "";
 
+    [ObservableProperty]
+    public partial GalleryHistogramBins Histogram { get; set; } = GalleryHistogramBins.Empty;
+
+    [ObservableProperty]
+    public partial bool ShowHistogram { get; set; }
+
+    [ObservableProperty]
+    public partial bool HistogramShowRgb { get; set; }
+
+    [ObservableProperty]
+    public partial string HistogramCaption { get; set; } = "";
+
     partial void OnCurrentIndexChanged(int value) => _ = LoadCurrentAsync();
 
     partial void OnScalingChanged(ImageScaling value)
@@ -244,6 +256,23 @@ public partial class GalleryViewModel : ObservableObject
         }
 
         RefreshHdrStatus();
+    }
+
+    public void SetHistogram(GalleryHistogramBins bins)
+    {
+        Histogram = bins.HasSamples ? bins : GalleryHistogramBins.Empty;
+        ShowHistogram = Histogram.HasSamples;
+        HistogramCaption = GalleryHistogram.Caption(HistogramShowRgb, Histogram.BinCount, Histogram.SampleCount);
+    }
+
+    public void ClearHistogram() => SetHistogram(GalleryHistogramBins.Empty);
+
+    partial void OnHistogramShowRgbChanged(bool value)
+    {
+        if (ShowHistogram)
+        {
+            HistogramCaption = GalleryHistogram.Caption(value, Histogram.BinCount, Histogram.SampleCount);
+        }
     }
 
     public void SetHdrStats(float maxNits, float avgNits, float minNits, float maxScrgb)
@@ -419,6 +448,7 @@ public partial class GalleryViewModel : ObservableObject
                 DetailsText = "";
                 HdrStatus = "";
                 HdrPresented = false;
+                ClearHistogram();
                 RefreshImageInfo();
                 ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
                 Tags.Clear();
@@ -521,6 +551,7 @@ public partial class GalleryViewModel : ObservableObject
             CanGoNext = CurrentIndex < _items.Count - 1;
             CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
             HdrPresented = false;
+            ClearHistogram();
             var detailsPixels = GalleryPresent.FilePixelSize(
                 null, null, _headerPixelWidth, _headerPixelHeight, item.Width, item.Height);
             DetailsText = GalleryPresent.DetailsLine(

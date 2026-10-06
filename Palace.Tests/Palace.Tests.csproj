@@ -15,6 +15,7 @@
     <Compile Include="..\Helpers\ErrorThrottle.cs" Link="ErrorThrottle.cs" />
     <Compile Include="..\Helpers\FolderGroups.cs" Link="FolderGroups.cs" />
     <Compile Include="..\Helpers\GalleryMedia.cs" Link="GalleryMedia.cs" />
+    <Compile Include="..\Helpers\GalleryHistogram.cs" Link="GalleryHistogram.cs" />
     <Compile Include="..\Helpers\GalleryPeak.cs" Link="GalleryPeak.cs" />
     <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />
     <Compile Include="..\Helpers\GalleryScale.cs" Link="GalleryScale.cs" />
