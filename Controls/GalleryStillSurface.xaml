@@ -8,21 +8,22 @@
     mc:Ignorable="d">
     <Grid
         x:Name="GrdStillHost"
-        ManipulationDelta="GrdStillHost_ManipulationDelta"
-        ManipulationMode="TranslateX,TranslateY,Scale"
         PointerWheelChanged="GrdStillHost_PointerWheelChanged"
         SizeChanged="GrdStillHost_SizeChanged">
         <ScrollViewer
             x:Name="ScrStill"
-            HorizontalScrollBarVisibility="Disabled"
+            HorizontalScrollBarVisibility="Hidden"
             ManipulationMode="None"
             PointerCaptureLost="ScrStill_PointerCaptureLost"
             PointerMoved="ScrStill_PointerMoved"
             PointerPressed="ScrStill_PointerPressed"
             PointerReleased="ScrStill_PointerReleased"
-            VerticalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Hidden"
             ZoomMode="Disabled">
-            <Grid x:Name="GrdStillContent">
+            <Grid
+                x:Name="GrdStillContent"
+                ManipulationDelta="GrdStillContent_ManipulationDelta"
+                ManipulationMode="TranslateX,TranslateY,Scale">
                 <Image
                     x:Name="ImgStill"
                     HorizontalAlignment="Stretch"

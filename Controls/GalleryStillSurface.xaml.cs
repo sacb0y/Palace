@@ -703,7 +703,7 @@ public sealed partial class GalleryStillSurface : UserControl
         var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
         var bars = GalleryScale.ShowsScrollBars()
             ? ScrollBarVisibility.Auto
-            : ScrollBarVisibility.Disabled;
+            : ScrollBarVisibility.Hidden;
         ScrStill.HorizontalScrollBarVisibility = bars;
         ScrStill.VerticalScrollBarVisibility = bars;
         ImgStill.Stretch = BindHelpers.ImageStretch(scaling);
@@ -903,6 +903,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var type = e.Pointer.PointerDeviceType;
         var point = e.GetCurrentPoint(ScrStill);
+        CancelScrollViewerDirectManipulation();
         if (!GalleryScale.UsesPointerCapturePan(
                 GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit, _pinchZoom),
                 type == PointerDeviceType.Mouse,
@@ -963,8 +964,18 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.ReleasePointerCapture(pointer);
     }
 
-    private void GrdStillHost_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    private void CancelScrollViewerDirectManipulation()
     {
+        // Learn: pointer events inside a ScrollViewer are swallowed by
+        // DirectManipulation unless the child cancels it.
+        GrdStillContent.CancelDirectManipulations();
+        ImgStill.CancelDirectManipulations();
+        ScpHdr.CancelDirectManipulations();
+    }
+
+    private void GrdStillContent_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        CancelScrollViewerDirectManipulation();
         var isTouch = e.PointerDeviceType == PointerDeviceType.Touch;
         var isPen = e.PointerDeviceType == PointerDeviceType.Pen;
         var isMouse = e.PointerDeviceType == PointerDeviceType.Mouse;
@@ -1009,6 +1020,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var point = e.GetCurrentPoint(ScrStill);
         var delta = point.Properties.MouseWheelDelta;
+        CancelScrollViewerDirectManipulation();
         var controlDown = e.KeyModifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control);
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
         var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
