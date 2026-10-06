@@ -87,12 +87,27 @@ public static class GalleryMedia
     }
 
     /// <summary>
-    /// Folder headers take a full mosaic line so tiles do not sit beside the title.
+    /// DIP width for a folder caption (icon + <c>Selected / Sub / Sub</c>).
+    /// LinedFlowLayout still uses the mosaic line height; this width keeps the
+    /// cell a compact caption slot instead of a full-line image-tall banner
+    /// (the old 32:1 aspect).
     /// </summary>
-    public const double FolderHeaderAspect = 32.0;
+    public const double FolderHeaderCaptionWidth = 240;
 
-    public static double MosaicAspect(bool isFolderHeader, double assetAspect) =>
-        isFolderHeader ? FolderHeaderAspect : assetAspect;
+    /// <summary>Typical mosaic <c>LineHeight</c> when the caller has none.</summary>
+    public const double DefaultMosaicRowHeight = 140;
+
+    public static double FolderHeaderAspect(double lineHeight)
+    {
+        var height = lineHeight > 0 ? lineHeight : DefaultMosaicRowHeight;
+        return FolderHeaderCaptionWidth / height;
+    }
+
+    public static double MosaicAspect(
+        bool isFolderHeader,
+        double assetAspect,
+        double lineHeight = DefaultMosaicRowHeight) =>
+        isFolderHeader ? FolderHeaderAspect(lineHeight) : assetAspect;
 
     /// <summary>
     /// Asset commands stay on tiles. Headers cancel <c>ContextRequested</c>

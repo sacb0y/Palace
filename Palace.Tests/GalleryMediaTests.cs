@@ -73,10 +73,21 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
-    public void MosaicAspect_HeadersUseFullLineRatio()
+    public void MosaicAspect_HeadersUseCompactCaptionRatio()
     {
-        Assert.Equal(GalleryMedia.FolderHeaderAspect, GalleryMedia.MosaicAspect(true, 1.5));
-        Assert.Equal(1.5, GalleryMedia.MosaicAspect(false, 1.5));
+        Assert.Equal(
+            GalleryMedia.FolderHeaderCaptionWidth / 140,
+            GalleryMedia.MosaicAspect(true, 1.5, 140));
+        Assert.Equal(1.0, GalleryMedia.MosaicAspect(true, 1.5, GalleryMedia.FolderHeaderCaptionWidth));
+        Assert.Equal(
+            GalleryMedia.FolderHeaderAspect(140),
+            GalleryMedia.MosaicAspect(true, 1.5));
+        Assert.True(GalleryMedia.MosaicAspect(true, 1.5) < 8);
+        Assert.True(GalleryMedia.MosaicAspect(true, 1.5, 96) < 8);
+        Assert.Equal(1.5, GalleryMedia.MosaicAspect(false, 1.5, 280));
+        Assert.Equal(
+            GalleryMedia.FolderHeaderCaptionWidth / GalleryMedia.DefaultMosaicRowHeight,
+            GalleryMedia.FolderHeaderAspect(0));
     }
 
     [Fact]

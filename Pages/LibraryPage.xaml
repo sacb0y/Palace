@@ -294,30 +294,14 @@
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
-            <Grid Grid.Row="2" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="200" />
-                </Grid.ColumnDefinitions>
-                <AutoSuggestBox
-                    x:Name="AsbSearch"
-                    AutomationProperties.AutomationId="AsbSearch"
-                    PlaceholderText="Search filename, tags, prompt, model"
-                    QueryIcon="Find"
-                    QuerySubmitted="AsbSearch_QuerySubmitted"
-                    Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <Slider
-                    x:Name="SldRowHeight"
-                    Grid.Column="1"
-                    AutomationProperties.AutomationId="SldRowHeight"
-                    AutomationProperties.Name="Mosaic row height"
-                    Header="Row height"
-                    Maximum="280"
-                    Minimum="96"
-                    StepFrequency="4"
-                    TickFrequency="20"
-                    Value="{x:Bind ViewModel.MosaicRowHeight, Mode=TwoWay}" />
-            </Grid>
+            <AutoSuggestBox
+                x:Name="AsbSearch"
+                Grid.Row="2"
+                AutomationProperties.AutomationId="AsbSearch"
+                PlaceholderText="Search filename, tags, prompt, model"
+                QueryIcon="Find"
+                QuerySubmitted="AsbSearch_QuerySubmitted"
+                Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <ItemsView
                 x:Name="GrdAssets"
                 Grid.Row="3"
@@ -432,12 +416,13 @@
                             </ItemContainer.ContextFlyout>
                             <Grid>
                                 <Button
-                                    Padding="4,0"
-                                    HorizontalAlignment="Stretch"
+                                    Padding="4,2"
+                                    HorizontalAlignment="Left"
                                     HorizontalContentAlignment="Left"
-                                    VerticalAlignment="Stretch"
+                                    VerticalAlignment="Top"
                                     Background="Transparent"
                                     BorderThickness="0"
+                                    MaxHeight="32"
                                     Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
                                     CommandParameter="{x:Bind}"
                                     IsTabStop="False"
@@ -448,7 +433,7 @@
                                     <StackPanel
                                         VerticalAlignment="Center"
                                         Orientation="Horizontal"
-                                        Spacing="8">
+                                        Spacing="6">
                                         <ic:FluentIcon
                                             Icon="Folder"
                                             IconSize="Size16"
@@ -456,7 +441,8 @@
                                         <TextBlock
                                             VerticalAlignment="Center"
                                             AutomationProperties.AutomationId="{x:Bind FolderGroupAutomationId, Mode=OneWay}"
-                                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
                                             Tag="{x:Bind MosaicTag, Mode=OneWay}"
                                             Text="{x:Bind FolderGroupTitle, Mode=OneWay}" />
                                     </StackPanel>
@@ -1070,13 +1056,43 @@
             IsOpen="{x:Bind ViewModel.ShowInfo, Mode=TwoWay}"
             Message="{x:Bind ViewModel.InfoMessage, Mode=OneWay}"
             Severity="Informational" />
-        <TextBlock
-            x:Name="TxtStatus"
+        <Grid
             Grid.Row="3"
             Grid.ColumnSpan="3"
-            AutomationProperties.AutomationId="TxtStatus"
-            Style="{StaticResource CaptionTextBlockStyle}"
-            Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+            ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                x:Name="TxtStatus"
+                VerticalAlignment="Center"
+                AutomationProperties.AutomationId="TxtStatus"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                TextTrimming="CharacterEllipsis" />
+            <StackPanel
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="8">
+                <ic:FluentIcon Icon="RowTriple" IconSize="Size16" IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Row height" />
+                <Slider
+                    x:Name="SldRowHeight"
+                    Width="160"
+                    MinWidth="120"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="SldRowHeight"
+                    AutomationProperties.Name="Mosaic row height"
+                    Maximum="280"
+                    Minimum="96"
+                    StepFrequency="4"
+                    TickFrequency="20"
+                    TickPlacement="None"
+                    Value="{x:Bind ViewModel.MosaicRowHeight, Mode=TwoWay}" />
+            </StackPanel>
+        </Grid>
     </Grid>
 
         <Grid

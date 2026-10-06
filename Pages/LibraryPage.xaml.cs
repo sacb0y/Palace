@@ -236,7 +236,10 @@ public sealed partial class LibraryPage : Page
             }
 
             var item = assets[start + i];
-            ratios[i] = GalleryMedia.MosaicAspect(item.IsFolderHeader, item.AspectRatio);
+            ratios[i] = GalleryMedia.MosaicAspect(
+                item.IsFolderHeader,
+                item.AspectRatio,
+                ViewModel.MosaicRowHeight);
         }
 
         args.SetDesiredAspectRatios(ratios);
