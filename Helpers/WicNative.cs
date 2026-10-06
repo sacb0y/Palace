@@ -77,6 +77,7 @@ public static class WicNative
 
     public static readonly Guid IidClassFactory = new("00000001-0000-0000-c000-000000000046");
 
+#pragma warning disable CA1416 // Linked into Palace.Tests on Linux; callers are Windows-only.
     public static T? TypedFromIUnknown<T>(IntPtr unk) where T : class
     {
         if (unk == IntPtr.Zero)
@@ -106,6 +107,7 @@ public static class WicNative
             Marshal.Release(unk);
         }
     }
+#pragma warning restore CA1416
 
     public static readonly string[] ClassFactoryMethods = ["CreateInstance", "LockServer"];
 
