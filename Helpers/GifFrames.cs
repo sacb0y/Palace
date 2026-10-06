@@ -176,7 +176,7 @@ public static class GifFrames
     /// One pass over the file — composites every frame. Overlay autoplay
     /// must use this cache instead of <see cref="TryRenderFrame"/> per tick.
     /// </summary>
-    public static IReadOnlyList<Raster>? TryRenderAll(string? path)
+    public static IReadOnlyList<Raster>? TryRenderAll(string? path, CancellationToken cancellation = default)
     {
         if (!MayOpen(path))
         {
@@ -186,7 +186,11 @@ public static class GifFrames
         try
         {
             using var stream = new FileStream(path!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            return TryRenderAll(stream);
+            return TryRenderAll(stream, cancellation);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -194,11 +198,11 @@ public static class GifFrames
         }
     }
 
-    public static IReadOnlyList<Raster>? TryRenderAll(Stream stream)
+    public static IReadOnlyList<Raster>? TryRenderAll(Stream stream, CancellationToken cancellation = default)
     {
         try
         {
-            var file = Parse(stream, renderIndex: null, renderAll: true);
+            var file = Parse(stream, renderIndex: null, renderAll: true, cancellation);
             if (file?.Composites is null || file.Composites.Count == 0)
             {
                 return null;
@@ -211,6 +215,10 @@ public static class GifFrames
             }
 
             return frames;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -248,7 +256,11 @@ public static class GifFrames
         public List<byte[]>? Composites;
     }
 
-    private static Parsed? Parse(Stream stream, int? renderIndex, bool renderAll = false)
+    private static Parsed? Parse(
+        Stream stream,
+        int? renderIndex,
+        bool renderAll = false,
+        CancellationToken cancellation = default)
     {
         if (!stream.CanSeek || stream.Length < 14)
         {
@@ -296,6 +308,7 @@ public static class GifFrames
 
         while (stream.Position < stream.Length)
         {
+            cancellation.ThrowIfCancellationRequested();
             var intro = stream.ReadByte();
             if (intro < 0)
             {

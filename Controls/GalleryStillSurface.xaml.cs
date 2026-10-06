@@ -982,6 +982,8 @@ public sealed partial class GalleryStillSurface : UserControl
             && _gifRasters is { Count: > 0 };
         if (cacheReady)
         {
+            _gifLoadCts?.Cancel();
+            _gifLoadingPath = null;
             ApplyCachedGifFrame(gallery);
             return;
         }
@@ -997,10 +999,21 @@ public sealed partial class GalleryStillSurface : UserControl
         var load = new CancellationTokenSource();
         _gifLoadCts = load;
         _gifLoadingPath = path;
+        if (ImgStill.Source is BitmapImage animated)
+        {
+            animated.Stop();
+        }
+
+        var pausedForLoad = gallery.GifPlaying;
+        if (pausedForLoad)
+        {
+            gallery.GifPlaying = false;
+        }
+
         IReadOnlyList<GifFrames.Raster>? frames = null;
         try
         {
-            frames = await Task.Run(() => GifFrames.TryRenderAll(path), load.Token);
+            frames = await Task.Run(() => GifFrames.TryRenderAll(path, load.Token), load.Token);
         }
         catch (OperationCanceledException)
         {
@@ -1028,6 +1041,13 @@ public sealed partial class GalleryStillSurface : UserControl
             }
 
             _gifLoadingPath = null;
+            if (pausedForLoad
+                && !gallery.GifPlaying
+                && (int)Math.Round(gallery.GifFrameIndex) == 0)
+            {
+                gallery.GifPlaying = true;
+            }
+
             if (frames is { Count: > 0 })
             {
                 _gifCachePath = path;
