@@ -28,6 +28,8 @@
     <Compile Include="..\Helpers\StillFormats.cs" Link="StillFormats.cs" />
     <Compile Include="..\Helpers\PathSafe.cs" Link="PathSafe.cs" />
     <Compile Include="..\Helpers\HdrPixels.cs" Link="HdrPixels.cs" />
+    <Compile Include="..\Helpers\HdrPresentCoalescer.cs" Link="HdrPresentCoalescer.cs" />
+    <Compile Include="..\Helpers\HdrRasterize.cs" Link="HdrRasterize.cs" />
     <Compile Include="..\Helpers\ImageDimensions.cs" Link="ImageDimensions.cs" />
     <Compile Include="..\Services\HashService.cs" Link="HashService.cs" />
     <Compile Include="..\Helpers\RecentTags.cs" Link="RecentTags.cs" />

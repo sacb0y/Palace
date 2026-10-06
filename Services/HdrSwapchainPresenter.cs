@@ -19,6 +19,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private int _bufferH;
     private bool _attached;
     private float _autoDisplayNits;
+    private bool _disposed;
+    private readonly HdrHalfBuffer _halfBuffer = new();
 
     public HdrSwapchainPresenter(SwapChainPanel panel)
     {
@@ -29,14 +31,25 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public float DisplayPeakNits { get; private set; }
 
-    public bool TryPresent(
+    public async Task<HdrPresentOutcome> TryPresentAsync(
         HdrFrame frame,
         ImageScaling scaling,
         float rasterScale,
-        double dipW = 0,
-        double dipH = 0,
-        float? peakOverrideNits = null)
+        double dipW,
+        double dipH,
+        float? peakOverrideNits,
+        Func<bool> stillCurrent,
+        CancellationToken cancellation)
     {
+        // UI thread only for COM / XAML: layout, device, DXGI probe, resize,
+        // upload and Present. The half-float raster runs on the thread pool
+        // and a stale result is dropped before it touches the swapchain.
+        // One call at a time (GalleryStillSurface serializes them).
+        if (_disposed)
+        {
+            return HdrPresentOutcome.Cancelled;
+        }
+
         if (dipW < 2 || dipH < 2)
         {
             dipW = _panel.ActualWidth;
@@ -52,36 +65,86 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
         if (dipW < 2 || dipH < 2 || rasterScale <= 0)
         {
-            return false;
+            return HdrPresentOutcome.Failed;
         }
 
         var vw = Math.Max(1, (int)Math.Round(dipW * rasterScale));
         var vh = Math.Max(1, (int)Math.Round(dipH * rasterScale));
         if (vw > 8192 || vh > 8192)
         {
-            return false;
+            return HdrPresentOutcome.Failed;
         }
 
         try
         {
-            EnsureDevice();
-            ProbeDisplay();
-            DisplayPeakNits = GalleryPresent.EffectivePeakNits(
-                _autoDisplayNits,
-                peakOverrideNits is > 0,
-                peakOverrideNits ?? 0);
-            EnsureSwapChain(vw, vh);
-            var half = Rasterize(frame, scaling, vw, vh);
-            Upload(half, vw, vh);
-            Present();
-            return true;
+            // Device / DXGI probe / buffer acquire need the UI apartment.
+            // Re-check _disposed inside the callback: Unloaded may Dispose after
+            // the opening guard and before this runs; EnsureDevice must not
+            // recreate COM objects that Dispose will not release again.
+            float clip = 0;
+            ushort[]? half = null;
+            await UiDispatch.RunAsync(() =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                EnsureDevice();
+                ProbeDisplay();
+                DisplayPeakNits = GalleryPresent.EffectivePeakNits(
+                    _autoDisplayNits,
+                    peakOverrideNits is > 0,
+                    peakOverrideNits ?? 0);
+                clip = GalleryPresent.RasterizeClipScrgb(DisplayPeakNits);
+                half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
+            });
+            if (_disposed)
+            {
+                return HdrPresentOutcome.Cancelled;
+            }
+
+            if (half is null)
+            {
+                return HdrPresentOutcome.Failed;
+            }
+
+            await Task.Run(
+                () => HdrRasterize.Fill(frame.ScrgbRgba, frame.Width, frame.Height, scaling, vw, vh, clip, half, cancellation),
+                cancellation).ConfigureAwait(false);
+
+            if (_disposed || cancellation.IsCancellationRequested || !stillCurrent())
+            {
+                return HdrPresentOutcome.Cancelled;
+            }
+
+            // Upload / Present must run on the UI thread even when the await
+            // resume lost the WinUI SynchronizationContext (pool continuation).
+            var outcome = HdrPresentOutcome.Cancelled;
+            await UiDispatch.RunAsync(() =>
+            {
+                if (_disposed || cancellation.IsCancellationRequested || !stillCurrent())
+                {
+                    outcome = HdrPresentOutcome.Cancelled;
+                    return;
+                }
+
+                EnsureSwapChain(vw, vh);
+                Upload(half, vw, vh);
+                Present();
+                outcome = HdrPresentOutcome.Presented;
+            });
+            return outcome;
+        }
+        catch (OperationCanceledException)
+        {
+            return HdrPresentOutcome.Cancelled;
         }
         catch
         {
-            return false;
+            return HdrPresentOutcome.Failed;
         }
     }
-
     public void Clear()
     {
         try
@@ -99,6 +162,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
+        _halfBuffer.Release();
         Release(ref _swapChain);
         Release(ref _context);
         Release(ref _device);
@@ -354,54 +419,6 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         }
 
         _attached = true;
-    }
-
-    private ushort[] Rasterize(HdrFrame frame, ImageScaling scaling, int vw, int vh)
-    {
-        var dest = new ushort[vw * vh * 4];
-        var (dx, dy, dw, dh) = GalleryPresent.DestRect(scaling, frame.Width, frame.Height, vw, vh);
-        var clip = GalleryPresent.RasterizeClipScrgb(DisplayPeakNits);
-        var src = frame.ScrgbRgba;
-        var sw = frame.Width;
-        var sh = frame.Height;
-        if (sw == vw && sh == vh && Math.Abs(dx) < 0.5f && Math.Abs(dy) < 0.5f
-            && Math.Abs(dw - vw) < 0.5f && Math.Abs(dh - vh) < 0.5f)
-        {
-            var count = sw * sh;
-            for (var i = 0; i < count; i++)
-            {
-                var si = i * 4;
-                dest[si] = GalleryPresent.FloatToHalf(Math.Clamp(src[si], 0, clip));
-                dest[si + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1], 0, clip));
-                dest[si + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2], 0, clip));
-                dest[si + 3] = GalleryPresent.FloatToHalf(src[si + 3]);
-            }
-
-            return dest;
-        }
-        for (var y = 0; y < vh; y++)
-        {
-            for (var x = 0; x < vw; x++)
-            {
-                var u = (x + 0.5f - dx) / dw;
-                var v = (y + 0.5f - dy) / dh;
-                if (u < 0 || v < 0 || u >= 1 || v >= 1)
-                {
-                    continue;
-                }
-
-                var sx = Math.Clamp((int)(u * sw), 0, sw - 1);
-                var sy = Math.Clamp((int)(v * sh), 0, sh - 1);
-                var si = (sy * sw + sx) * 4;
-                var di = (y * vw + x) * 4;
-                dest[di] = GalleryPresent.FloatToHalf(Math.Clamp(src[si], 0, clip));
-                dest[di + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1], 0, clip));
-                dest[di + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2], 0, clip));
-                dest[di + 3] = GalleryPresent.FloatToHalf(src[si + 3]);
-            }
-        }
-
-        return dest;
     }
 
     private void Upload(ushort[] half, int width, int height)
@@ -705,4 +722,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private delegate int GetBufferDelegate(IntPtr self, uint index, ref Guid iid, out IntPtr surface);
     private delegate void CopyResourceDelegate(IntPtr self, IntPtr dest, IntPtr src);
     private delegate int PresentDelegate(IntPtr self, uint sync, uint flags);
+}
+
+internal enum HdrPresentOutcome
+{
+    Presented,
+    Failed,
+    Cancelled
 }

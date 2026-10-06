@@ -393,6 +393,18 @@ public static class GalleryPresent
         return (Math.Min(destW, imageW), Math.Min(destH, imageH));
     }
 
+    /// <summary>
+    /// Decode size for post-present CIE Y / MaxCLL. Always the viewport /
+    /// <see cref="FastPresentLongEdge"/> Fit cap — never a native 16384²
+    /// buffer. Math stays CIE Y in source primaries and MaxCLL scRGB.
+    /// </summary>
+    public static (int Width, int Height) MeasureDecodeSize(
+        int imageW,
+        int imageH,
+        int viewportW,
+        int viewportH) =>
+        PresentDecodeSize(imageW, imageH, viewportW, viewportH, ImageScaling.Fit);
+
     public static bool NeedsBetterDecode(int haveW, int haveH, int wantW, int wantH) =>
         wantW > 0 && wantH > 0 && (haveW < wantW || haveH < wantH);
 
@@ -400,8 +412,8 @@ public static class GalleryPresent
         nativeW > 0 && nativeH > 0 && decodedW >= nativeW && decodedH >= nativeH;
 
     /// <summary>
-    /// Native CIE Y / MaxCLL from a full-res measure must survive Fit/peak
-    /// re-present of a viewport <c>HdrFrame</c>.
+    /// Authoritative CIE Y / MaxCLL from the measure / native frame must
+    /// survive Fit/peak re-present of a viewport <c>HdrFrame</c>.
     /// </summary>
     public static bool ReplaceHdrStats(bool haveNative, bool incomingNative) =>
         !haveNative || incomingNative;
