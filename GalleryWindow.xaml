@@ -273,13 +273,13 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Bottom"
                     Orientation="Horizontal"
-                    Spacing="8"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.CanScale), Mode=OneWay}">
+                    Spacing="8">
                     <Button
                         x:Name="BtnGalleryWindowScaleActual"
                         AutomationProperties.AutomationId="BtnGalleryWindowScaleActual"
                         AutomationProperties.Name="Actual size"
                         Command="{x:Bind Gallery.SetScaleActualCommand}"
+                        IsEnabled="{x:Bind Gallery.CanScale, Mode=OneWay}"
                         ToolTipService.ToolTip="1:1 (Ctrl+1)">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size16" IconVariant="Regular" />
@@ -291,6 +291,7 @@
                         AutomationProperties.AutomationId="BtnGalleryWindowScaleFit"
                         AutomationProperties.Name="Fit"
                         Command="{x:Bind Gallery.SetScaleFitCommand}"
+                        IsEnabled="{x:Bind Gallery.CanScale, Mode=OneWay}"
                         ToolTipService.ToolTip="Fit (Ctrl+2)">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ic:FluentIcon Icon="ArrowFit" IconSize="Size16" IconVariant="Regular" />
@@ -302,6 +303,7 @@
                         AutomationProperties.AutomationId="BtnGalleryWindowScaleFill"
                         AutomationProperties.Name="Fill"
                         Command="{x:Bind Gallery.SetScaleFillCommand}"
+                        IsEnabled="{x:Bind Gallery.CanScale, Mode=OneWay}"
                         ToolTipService.ToolTip="Fill (Ctrl+3)">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ic:FluentIcon Icon="ArrowMaximize" IconSize="Size16" IconVariant="Regular" />
