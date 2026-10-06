@@ -879,8 +879,7 @@ internal static class HdrWicDecode
                          {
                              "System.Photo.Orientation",
                              "/ifd/{ushort=274}",
-                             "/app1/ifd/{ushort=274}",
-                             "/ifd/{ushort=48130}"
+                             "/app1/ifd/{ushort=274}"
                          })
                 {
                     var value = default(WicNative.PropVariant);
