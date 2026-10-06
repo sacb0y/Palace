@@ -7,6 +7,9 @@ namespace Palace.Services;
 /// <summary>
 /// HDR AVIF → linear scRGB via libavif (SKIV path). Inbox WIC drops chroma
 /// on identity-matrix 4:4:4; <c>avifImageYUVToRGB</c> keeps GBR intact.
+/// Applies HEIF <c>irot</c>/<c>imir</c> (or EXIF Orientation) so sizes match
+/// WIC <c>RespectExifOrientation</c>. Native failures return null — never throw
+/// into the HDR present path (WIC remains the fallback).
 /// </summary>
 internal static unsafe class HdrAvifDecode
 {
@@ -23,27 +26,39 @@ internal static unsafe class HdrAvifDecode
             return null;
         }
 
-        return Decode(
-            path,
-            probe,
-            viewportPixelWidth,
-            viewportPixelHeight,
-            scaling,
-            wantRgba: true,
-            cancellation) is { } packed
-            ? new HdrFrame
-            {
-                ScrgbRgba = packed.Rgba!,
-                Width = packed.Width,
-                Height = packed.Height,
-                NativeWidth = packed.NativeWidth,
-                NativeHeight = packed.NativeHeight,
-                MaxNits = packed.MaxNits,
-                AvgNits = packed.AvgNits,
-                MinNits = packed.MinNits,
-                MaxScrgb = packed.MaxScrgb
-            }
-            : null;
+        try
+        {
+            return Decode(
+                path,
+                probe,
+                viewportPixelWidth,
+                viewportPixelHeight,
+                scaling,
+                wantRgba: true,
+                cancellation) is { } packed
+                ? new HdrFrame
+                {
+                    ScrgbRgba = packed.Rgba!,
+                    Width = packed.Width,
+                    Height = packed.Height,
+                    NativeWidth = packed.NativeWidth,
+                    NativeHeight = packed.NativeHeight,
+                    MaxNits = packed.MaxNits,
+                    AvgNits = packed.AvgNits,
+                    MinNits = packed.MinNits,
+                    MaxScrgb = packed.MaxScrgb
+                }
+                : null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Missing avif.dll, bad native state, etc. — let WIC try.
+            return null;
+        }
     }
 
     public static HdrStats? TryMeasure(string path, HdrProbe probe, CancellationToken cancellation)
@@ -53,22 +68,33 @@ internal static unsafe class HdrAvifDecode
             return null;
         }
 
-        return Decode(
-            path,
-            probe,
-            viewportPixelWidth: 0,
-            viewportPixelHeight: 0,
-            ImageScaling.Actual,
-            wantRgba: false,
-            cancellation) is { } packed
-            ? new HdrStats(
-                packed.MaxNits,
-                packed.AvgNits,
-                packed.MinNits,
-                packed.MaxScrgb,
-                packed.NativeWidth,
-                packed.NativeHeight)
-            : null;
+        try
+        {
+            return Decode(
+                path,
+                probe,
+                viewportPixelWidth: 0,
+                viewportPixelHeight: 0,
+                ImageScaling.Actual,
+                wantRgba: false,
+                cancellation) is { } packed
+                ? new HdrStats(
+                    packed.MaxNits,
+                    packed.AvgNits,
+                    packed.MinNits,
+                    packed.MaxScrgb,
+                    packed.NativeWidth,
+                    packed.NativeHeight)
+                : null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool CanDecode(string path, HdrProbe probe) =>
@@ -146,34 +172,33 @@ internal static unsafe class HdrAvifDecode
                     return null;
                 }
 
-                var nativeW = (int)image->width;
-                var nativeH = (int)image->height;
-                if (nativeW <= 0 || nativeH <= 0 || nativeW > 16384 || nativeH > 16384)
+                var storedW = (int)image->width;
+                var storedH = (int)image->height;
+                if (storedW <= 0 || storedH <= 0 || storedW > 16384 || storedH > 16384)
                 {
                     return null;
                 }
 
-                var (decodeW, decodeH) = GalleryPresent.PresentDecodeSize(
+                var orientation = ReadOrientation(image);
+                var (nativeW, nativeH) = HdrPixels.OrientedSize(storedW, storedH, orientation);
+                var (decodeOrientedW, decodeOrientedH) = GalleryPresent.PresentDecodeSize(
                     nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
-                if (decodeW <= 0 || decodeH <= 0)
+                if (decodeOrientedW <= 0 || decodeOrientedH <= 0)
                 {
-                    decodeW = nativeW;
-                    decodeH = nativeH;
+                    decodeOrientedW = nativeW;
+                    decodeOrientedH = nativeH;
                 }
 
-                if (decodeW < nativeW || decodeH < nativeH)
+                var (scaleW, scaleH) = HdrPixels.SourceScaleSize(
+                    storedW, storedH, nativeW, nativeH, decodeOrientedW, decodeOrientedH);
+                if (scaleW < storedW || scaleH < storedH)
                 {
                     avifDiagnostics diag = default;
                     if (avifNativeMethod.avifImageScale(
-                            image, (uint)decodeW, (uint)decodeH, &diag) == avifResult.OK)
+                            image, (uint)scaleW, (uint)scaleH, &diag) == avifResult.OK)
                     {
-                        decodeW = (int)image->width;
-                        decodeH = (int)image->height;
-                    }
-                    else
-                    {
-                        decodeW = nativeW;
-                        decodeH = nativeH;
+                        storedW = (int)image->width;
+                        storedH = (int)image->height;
                     }
                 }
 
@@ -198,16 +223,42 @@ internal static unsafe class HdrAvifDecode
                         return null;
                     }
 
-                    return ToScrgb(
+                    var packed = ToScrgb(
                         rgb.pixels,
                         (int)rgb.rowBytes,
-                        decodeW,
-                        decodeH,
-                        nativeW,
-                        nativeH,
+                        storedW,
+                        storedH,
                         probe,
                         wantRgba,
                         cancellation);
+                    if (packed is null)
+                    {
+                        return null;
+                    }
+
+                    var rgba = packed.Value.Rgba;
+                    var width = storedW;
+                    var height = storedH;
+                    if (wantRgba && rgba is not null && orientation is >= 2 and <= 8)
+                    {
+                        (rgba, width, height) = HdrPixels.OrientScrgbRgba(
+                            rgba, storedW, storedH, orientation);
+                    }
+                    else
+                    {
+                        (width, height) = HdrPixels.OrientedSize(storedW, storedH, orientation);
+                    }
+
+                    return (
+                        rgba,
+                        width,
+                        height,
+                        nativeW,
+                        nativeH,
+                        packed.Value.MaxNits,
+                        packed.Value.AvgNits,
+                        packed.Value.MinNits,
+                        packed.Value.MaxScrgb);
                 }
                 finally
                 {
@@ -221,12 +272,39 @@ internal static unsafe class HdrAvifDecode
         }
     }
 
+    private static uint ReadOrientation(avifImage* image)
+    {
+        var flags = image->transformFlags;
+        var hasIrot = (flags & avifTransformFlag.IROT) != 0;
+        var hasImir = (flags & avifTransformFlag.IMIR) != 0;
+        if (hasIrot || hasImir)
+        {
+            return HdrPixels.ExifOrientationFromIrotImir(
+                hasIrot,
+                (byte)image->irot,
+                hasImir,
+                (byte)image->imir);
+        }
+
+        var exif = image->exif;
+        if (exif.Data == IntPtr.Zero || exif.Size == UIntPtr.Zero)
+        {
+            return 1;
+        }
+
+        UIntPtr offset = UIntPtr.Zero;
+        if (avifNativeMethod.avifGetExifOrientationOffset(
+                (byte*)exif.Data, exif.Size, &offset) != avifResult.OK)
+        {
+            return 1;
+        }
+
+        var value = *((byte*)exif.Data + (nuint)offset);
+        return value is >= 1 and <= 8 ? value : 1u;
+    }
+
     private static (
         float[]? Rgba,
-        int Width,
-        int Height,
-        int NativeWidth,
-        int NativeHeight,
         float MaxNits,
         float AvgNits,
         float MinNits,
@@ -235,8 +313,6 @@ internal static unsafe class HdrAvifDecode
         int rowBytes,
         int width,
         int height,
-        int nativeWidth,
-        int nativeHeight,
         HdrProbe probe,
         bool wantRgba,
         CancellationToken cancellation)
@@ -298,6 +374,6 @@ internal static unsafe class HdrAvifDecode
             minY = 0;
         }
 
-        return (rgba, width, height, nativeWidth, nativeHeight, maxY, (float)(sumY / count), minY, maxScrgb);
+        return (rgba, maxY, (float)(sumY / count), minY, maxScrgb);
     }
 }

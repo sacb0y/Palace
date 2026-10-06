@@ -169,6 +169,147 @@ public static class HdrPixels
     }
 
     /// <summary>
+    /// HEIF <c>irot</c>/<c>imir</c> → EXIF Orientation 1–8 (same table as
+    /// libavif <c>avifImageGetExifOrientationFromIrotImir</c>). Angle is
+    /// anti-clockwise turns; imir mode 0 = top↔bottom, 1 = left↔right.
+    /// </summary>
+    public static uint ExifOrientationFromIrotImir(bool hasIrot, byte angle, bool hasImir, byte mode)
+    {
+        angle = (byte)(angle & 3);
+        mode = (byte)(mode & 1);
+        if (hasIrot && angle == 1)
+        {
+            if (hasImir)
+            {
+                return mode != 0 ? 7u : 5u;
+            }
+
+            return 6u;
+        }
+
+        if (hasIrot && angle == 2)
+        {
+            if (hasImir)
+            {
+                return mode != 0 ? 4u : 2u;
+            }
+
+            return 3u;
+        }
+
+        if (hasIrot && angle == 3)
+        {
+            if (hasImir)
+            {
+                return mode != 0 ? 5u : 7u;
+            }
+
+            return 8u;
+        }
+
+        if (hasImir)
+        {
+            return mode != 0 ? 2u : 4u;
+        }
+
+        return 1u;
+    }
+
+    /// <summary>
+    /// Map an upright (oriented) pixel to the stored buffer coordinate for
+    /// the given EXIF Orientation tag.
+    /// </summary>
+    public static void OrientedToSource(
+        int orientedX,
+        int orientedY,
+        int sourceWidth,
+        int sourceHeight,
+        uint orientation,
+        out int sourceX,
+        out int sourceY)
+    {
+        switch (orientation)
+        {
+            case 2:
+                sourceX = sourceWidth - 1 - orientedX;
+                sourceY = orientedY;
+                return;
+            case 3:
+                sourceX = sourceWidth - 1 - orientedX;
+                sourceY = sourceHeight - 1 - orientedY;
+                return;
+            case 4:
+                sourceX = orientedX;
+                sourceY = sourceHeight - 1 - orientedY;
+                return;
+            case 5: // Transpose (mirror of 6)
+                sourceX = orientedY;
+                sourceY = orientedX;
+                return;
+            case 6: // Rotate 90° CW to upright (WIC / Pillow ROTATE_270)
+                sourceX = sourceWidth - 1 - orientedY;
+                sourceY = orientedX;
+                return;
+            case 7: // Transverse (mirror of 8)
+                sourceX = sourceWidth - 1 - orientedY;
+                sourceY = sourceHeight - 1 - orientedX;
+                return;
+            case 8: // Rotate 90° CCW to upright (WIC / Pillow ROTATE_90)
+                sourceX = orientedY;
+                sourceY = sourceHeight - 1 - orientedX;
+                return;
+            default:
+                sourceX = orientedX;
+                sourceY = orientedY;
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Copy stored scRGB RGBA into an upright buffer matching WIC
+    /// <c>RespectExifOrientation</c>. Orientation 1 returns <paramref name="source"/>.
+    /// </summary>
+    public static (float[] Rgba, int Width, int Height) OrientScrgbRgba(
+        float[] source,
+        int sourceWidth,
+        int sourceHeight,
+        uint orientation)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 || source.Length < sourceWidth * sourceHeight * 4)
+        {
+            return (source, sourceWidth, sourceHeight);
+        }
+
+        if (orientation is < 2 or > 8)
+        {
+            return (source, sourceWidth, sourceHeight);
+        }
+
+        var (ow, oh) = OrientedSize(sourceWidth, sourceHeight, orientation);
+        var dest = new float[ow * oh * 4];
+        for (var y = 0; y < oh; y++)
+        {
+            for (var x = 0; x < ow; x++)
+            {
+                OrientedToSource(x, y, sourceWidth, sourceHeight, orientation, out var sx, out var sy);
+                if ((uint)sx >= (uint)sourceWidth || (uint)sy >= (uint)sourceHeight)
+                {
+                    continue;
+                }
+
+                var si = ((sy * sourceWidth) + sx) * 4;
+                var di = ((y * ow) + x) * 4;
+                dest[di] = source[si];
+                dest[di + 1] = source[si + 1];
+                dest[di + 2] = source[si + 2];
+                dest[di + 3] = source[si + 3];
+            }
+        }
+
+        return (dest, ow, oh);
+    }
+
+    /// <summary>
     /// WIC <c>BitmapTransform</c> scales in source (unoriented) space, then
     /// <c>RespectExifOrientation</c> swaps 90/270. Dest is the oriented size.
     /// </summary>

@@ -467,6 +467,37 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void ExifOrientationFromIrotImir_MatchesLibavifTable()
+    {
+        Assert.Equal(1u, HdrPixels.ExifOrientationFromIrotImir(false, 0, false, 0));
+        Assert.Equal(6u, HdrPixels.ExifOrientationFromIrotImir(true, 1, false, 0));
+        Assert.Equal(5u, HdrPixels.ExifOrientationFromIrotImir(true, 1, true, 0));
+        Assert.Equal(7u, HdrPixels.ExifOrientationFromIrotImir(true, 1, true, 1));
+        Assert.Equal(3u, HdrPixels.ExifOrientationFromIrotImir(true, 2, false, 0));
+        Assert.Equal(8u, HdrPixels.ExifOrientationFromIrotImir(true, 3, false, 0));
+        Assert.Equal(2u, HdrPixels.ExifOrientationFromIrotImir(false, 0, true, 1));
+        Assert.Equal(4u, HdrPixels.ExifOrientationFromIrotImir(false, 0, true, 0));
+    }
+
+    [Fact]
+    public void OrientScrgbRgba_Rotate90CwMovesCorner()
+    {
+        // 2×1 stored: left=red, right=green → EXIF 6 (90° CW) is 1×2: top=green, bottom=red.
+        var src = new float[]
+        {
+            1f, 0f, 0f, 1f,
+            0f, 1f, 0f, 1f
+        };
+        var (dst, w, h) = HdrPixels.OrientScrgbRgba(src, 2, 1, 6);
+        Assert.Equal(1, w);
+        Assert.Equal(2, h);
+        Assert.Equal(0f, dst[0]); // top G
+        Assert.Equal(1f, dst[1]);
+        Assert.Equal(1f, dst[4]); // bottom R
+        Assert.Equal(0f, dst[5]);
+    }
+
+    [Fact]
     public void FloatToHalf_RoundTripsCommonValues()
     {
         Assert.Equal(0, GalleryPresent.FloatToHalf(0));

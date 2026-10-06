@@ -62,13 +62,24 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
         {
-            var avif = await Task.Run(
-                () => HdrAvifDecode.TryLoad(
-                    path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
-                cancellation).ConfigureAwait(false);
-            if (avif is not null)
+            try
             {
-                return avif;
+                var avif = await Task.Run(
+                    () => HdrAvifDecode.TryLoad(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (avif is not null)
+                {
+                    return avif;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Native libavif load/throw — fall through to WIC.
             }
         }
 
@@ -126,12 +137,23 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
         {
-            var avif = await Task.Run(
-                () => HdrAvifDecode.TryMeasure(path, probe, cancellation),
-                cancellation).ConfigureAwait(false);
-            if (avif is not null)
+            try
             {
-                return avif;
+                var avif = await Task.Run(
+                    () => HdrAvifDecode.TryMeasure(path, probe, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (avif is not null)
+                {
+                    return avif;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Native libavif load/throw — fall through to WIC.
             }
         }
 
