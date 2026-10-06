@@ -75,21 +75,62 @@ public sealed class WicNativeTests
     public void WicDecoderOpen_FailedIncludesStageAndHRESULT()
     {
         Assert.Equal(
-            ["filename", "handle", "memory", "winrt"],
+            [
+                "filename",
+                "handle",
+                "memory",
+                "CreateAsync",
+                "GetSoftwareBitmap",
+                "LockBuffer",
+                "GetPixelData"
+            ],
             WicNative.WicDecoderOpen.Stages);
+        Assert.Equal(
+            [
+                "CreateAsync",
+                "GetSoftwareBitmap",
+                "LockBuffer",
+                "GetPixelData"
+            ],
+            WicNative.WicDecoderOpen.WinrtCalls);
         Assert.Equal(
             "WIC decoder memory",
             WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.Memory));
         Assert.Equal(
-            "WIC decoder winrt 80004002",
+            "WIC decoder GetSoftwareBitmap 80004002",
             WicNative.WicDecoderOpen.Failed(
-                WicNative.WicDecoderOpen.Winrt,
+                WicNative.WicDecoderOpen.GetSoftwareBitmap,
                 unchecked((int)0x80004002)));
+        Assert.Equal(
+            "WIC decoder CreateAsync 80004002",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.CreateAsync,
+                unchecked((int)0x80004002)));
+        Assert.Equal(
+            "WIC decoder LockBuffer 80004002",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.LockBuffer,
+                unchecked((int)0x80004002)));
+        Assert.Equal(
+            "WIC decoder GetPixelData 8001010E",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.GetPixelData,
+                unchecked((int)0x8001010E)));
         Assert.True(
             WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
         Assert.True(
             WicNative.WicDecoderOpen.IsNoInterface(unchecked((int)0x80004002)));
+        Assert.True(
+            WicNative.WicDecoderOpen.IsWrongThread(unchecked((int)0x8001010E)));
+        Assert.False(WicNative.WicDecoderOpen.IsWrongThread(unchecked((int)0x80004002)));
         Assert.False(WicNative.WicDecoderOpen.IsComponentNotFound(0));
+        var stamped = new InvalidOperationException();
+        stamped.HResult = unchecked((int)0x80004002);
+        Assert.Equal(
+            "WIC decoder GetSoftwareBitmap 80004002",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.GetSoftwareBitmap,
+                stamped));
     }
 
     [Fact]
