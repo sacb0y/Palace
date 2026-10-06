@@ -48,7 +48,7 @@ public sealed partial class SettingsPage : Page
 
         _ignoreTintChanges = true;
         PkrShellTint.Color = color;
-        _ignoreTintChanges = false;
+        DispatcherQueue.TryEnqueue(() => _ignoreTintChanges = false);
     }
 
     private void PkrShellTint_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
