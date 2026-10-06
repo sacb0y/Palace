@@ -506,7 +506,7 @@ public partial class GalleryViewModel : ObservableObject
             HdrPresented && ContentMaxNits > 0 ? ContentMaxNits : null,
             HdrPresented && ContentMaxNits > 0 ? ContentAvgNits : null,
             HdrPresented && ContentMaxNits > 0 ? ContentMinNits : null,
-            HdrPresented && DisplayPeakNits > 0 ? DisplayPeakNits : null,
+            HdrPresented && DisplayIsHdr && DisplayPeakNits > 0 ? DisplayPeakNits : null,
             HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null));
     }
 
