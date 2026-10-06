@@ -180,7 +180,8 @@ public sealed class HdrFileTests
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(0, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(203, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(270, 270));
-        Assert.Equal(120f, GalleryPresent.SdrPresentPeakNits(120, 0));
+        Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(120, 0));
+        Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(200, 180));
         Assert.Equal(1000f, GalleryPresent.ContentMaxNits(12.5f, 400), 2);
         Assert.Equal(400f, GalleryPresent.ContentMaxNits(0, 400), 2);
 

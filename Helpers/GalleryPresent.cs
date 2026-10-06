@@ -171,22 +171,12 @@ public static class GalleryPresent
         dxgiColorSpace is 1 or 12 or 16;
 
     /// <summary>
-    /// SDR composition peak. Use DXGI when it looks like a real SDR panel
-    /// (80–220, not BT.2408 203). Dummy 270 / missing / paper white → 80
-    /// (scRGB 1.0), never 203.
+    /// SDR composition peak. On G22 DWM maps scRGB 1.0 to panel white, so the
+    /// peak is always 80 nits (scRGB 1.0); EDID-advertised SDR luminance
+    /// (dummy 270, 120–200, paper white 203) is ignored.
     /// </summary>
-    public static float SdrPresentPeakNits(float maxLuminance, float maxFullFrameLuminance)
-    {
-        var reported = maxFullFrameLuminance > 0 ? maxFullFrameLuminance : maxLuminance;
-        if (reported >= MinPeakNits
-            && reported <= 220
-            && Math.Abs(reported - SdrReferenceNits) > 1f)
-        {
-            return reported;
-        }
-
-        return ScrgbNits;
-    }
+    public static float SdrPresentPeakNits(float maxLuminance, float maxFullFrameLuminance) =>
+        ScrgbNits;
 
     /// <summary>MaxCLL in nits: scRGB channel peak, else CIE Y.</summary>
     public static float ContentMaxNits(float maxScrgb, float cieYNits)
