@@ -82,6 +82,23 @@ public static class RangeSelect
 
         return indexes;
     }
+
+    /// <summary>
+    /// <c>FindElementsInHostCoordinates</c> uses window / XamlRoot space.
+    /// Add the host origin so a local pointer is not treated as a window point.
+    /// </summary>
+    public static (double X, double Y) ToWindowPoint(
+        double localX,
+        double localY,
+        double hostOriginX,
+        double hostOriginY) =>
+        (localX + hostOriginX, localY + hostOriginY);
+
+    /// <summary>
+    /// Live range drag only stamps tiles. Preview / catalog hydrate waits for
+    /// pointer-up or a one-shot Shift range.
+    /// </summary>
+    public static bool LoadsPreview(bool liveDrag) => !liveDrag;
 }
 
 /// <summary>
@@ -127,6 +144,12 @@ public sealed class RangeSelectSession
         IsActive = true;
         return true;
     }
+
+    /// <summary>
+    /// After hold or drag-activate, pages must <c>CapturePointer</c> using the
+    /// press <c>Pointer</c> — Holding has no pointer of its own.
+    /// </summary>
+    public bool RequiresPointerCapture => IsActive;
 
     public IReadOnlyList<int> Highlight(IReadOnlyList<bool> isHeader, int hoverIndex)
     {

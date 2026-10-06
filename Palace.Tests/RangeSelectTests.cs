@@ -76,7 +76,22 @@ public sealed class RangeSelectTests
         Assert.False(session.TryActivateHold(80));
         Assert.True(session.TryActivateHold(RangeSelect.TouchHoldMs));
         Assert.True(session.IsActive);
+        Assert.True(session.RequiresPointerCapture);
         Assert.Equal([0, 1, 2], session.Highlight(headers, 2));
+    }
+
+    [Fact]
+    public void ToWindowPoint_AddsHostOrigin()
+    {
+        Assert.Equal((110, 70), RangeSelect.ToWindowPoint(10, 20, 100, 50));
+        Assert.NotEqual((10, 20), RangeSelect.ToWindowPoint(10, 20, 100, 50));
+    }
+
+    [Fact]
+    public void LoadsPreview_NotDuringLiveDrag()
+    {
+        Assert.False(RangeSelect.LoadsPreview(liveDrag: true));
+        Assert.True(RangeSelect.LoadsPreview(liveDrag: false));
     }
 
     [Fact]
@@ -84,6 +99,7 @@ public sealed class RangeSelectTests
     {
         var session = new RangeSelectSession(RangeSelectPointer.Touch, 0);
         Assert.True(session.TryActivate(RangeSelect.TouchHoldMs, 10, 0));
+        Assert.True(session.RequiresPointerCapture);
         Assert.Equal([0, 1], session.Highlight([false, false], 1));
     }
 

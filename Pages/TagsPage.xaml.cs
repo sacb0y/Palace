@@ -35,6 +35,8 @@ public sealed partial class TagsPage : Page
     private long _rangePressMs;
     private Windows.Foundation.Point _rangePressPoint;
     private uint _rangePointerId;
+    private Pointer? _rangePointer;
+    private bool _rangeCaptured;
     private bool _rangeConsumedTap;
 
     public TagsPage()
@@ -643,6 +645,8 @@ public sealed partial class TagsPage : Page
         _rangePressMs = Environment.TickCount64;
         _rangePressPoint = point.Position;
         _rangePointerId = e.Pointer.PointerId;
+        _rangePointer = e.Pointer;
+        _rangeCaptured = false;
     }
 
     private void GrdTagAssets_RangeMoved(object sender, PointerRoutedEventArgs e)
@@ -668,8 +672,11 @@ public sealed partial class TagsPage : Page
             {
                 return;
             }
+        }
 
-            GrdTagAssets.CapturePointer(e.Pointer);
+        if (_rangeSelect.RequiresPointerCapture)
+        {
+            CaptureRangePointer(e.Pointer);
         }
 
         ApplyRangeHover(e);
@@ -700,6 +707,7 @@ public sealed partial class TagsPage : Page
             return;
         }
 
+        CaptureRangePointer(_rangePointer);
         ViewModel.ApplyMosaicRange(_rangeSelect.AnchorIndex, _rangeSelect.AnchorIndex);
         StampRangeAnchor();
         e.Handled = true;
@@ -763,8 +771,11 @@ public sealed partial class TagsPage : Page
 
     private AssetItem? HitMosaicItem(PointerRoutedEventArgs e)
     {
-        var point = e.GetCurrentPoint(GrdTagAssets).Position;
-        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(point, GrdTagAssets))
+        var local = e.GetCurrentPoint(GrdTagAssets).Position;
+        var origin = GrdTagAssets.TransformToVisual(null).TransformPoint(default);
+        var (x, y) = RangeSelect.ToWindowPoint(local.X, local.Y, origin.X, origin.Y);
+        var windowPoint = new Windows.Foundation.Point(x, y);
+        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(windowPoint, GrdTagAssets))
         {
             var item = FindAssetItem(hit);
             if (item is not null)
@@ -776,13 +787,25 @@ public sealed partial class TagsPage : Page
         return FindAssetItem(e.OriginalSource);
     }
 
+    private void CaptureRangePointer(Pointer? pointer)
+    {
+        pointer ??= _rangePointer;
+        if (pointer is null || _rangeCaptured)
+        {
+            return;
+        }
+
+        _rangeCaptured = GrdTagAssets.CapturePointer(pointer);
+        _rangePointer = pointer;
+    }
+
     private void EndRangeSelect(Pointer? pointer)
     {
-        if (pointer is not null)
+        if (pointer is not null || _rangePointer is not null)
         {
             try
             {
-                GrdTagAssets.ReleasePointerCapture(pointer);
+                GrdTagAssets.ReleasePointerCapture(pointer ?? _rangePointer!);
             }
             catch (ArgumentException)
             {
@@ -792,6 +815,8 @@ public sealed partial class TagsPage : Page
 
         _rangeSelect = null;
         _rangePointerId = 0;
+        _rangePointer = null;
+        _rangeCaptured = false;
     }
 
     private void FocusMosaicTile(AssetItem item)

@@ -61,7 +61,9 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 | Library folder groups | `Helpers/FolderGroups.cs` |
 | Library select mode | `Helpers/SelectMode.cs` (`ClickTogglesTile` → `ItemsViewSelectionMode.Multiple`, `Summary` count text, `ShowBatchTagCta`; `TglSelectMode` / `TxtSelectionCount` / `BtnTagSelected`) |
 | Mosaic sort | `Helpers/MosaicSortOrder.cs` (`MosaicSort` enum → allowlisted `ORDER BY`; `ShouldApplyIndex` ignores ComboBox `-1`; `CmbMosaicSort` / `CmbTagMosaicSort` OneWay + armed SelectionChanged; LocalSettings `MosaicSort_{projectId}`; Library `Loaded` `ReloadMosaicSortAsync`) |
-| Shortcut cheatsheet | `Helpers/ShortcutCheatsheet.cs` (Settings → About; `LstShortcuts` / `TxtShortcut*`; keep `TxtAppVersion`) || Cloud source paths | `Helpers/CloudSourcePath.cs` |
+| Shortcut cheatsheet | `Helpers/ShortcutCheatsheet.cs` (Settings → About; `LstShortcuts` / `TxtShortcut*`; keep `TxtAppVersion`) |
+| Mosaic range select | `Helpers/RangeSelect.cs` (contiguous first→last, skip headers; touch hold then `CapturePointer`; hit-test uses window coords via `ToWindowPoint`; live drag skips `LoadPreviewAsync`; `TglTagSelectMode` / `TxtTagSelectionCount` on Tags) |
+| Cloud source paths | `Helpers/CloudSourcePath.cs` |
 | Room icon ids | `Helpers/RoomIcons.cs` |
 | Tags mosaic groups | `Helpers/TagMosaicGroups.cs` (longest path under the selected root, then Priority then name) |
 | Tag name lists | `Helpers/TagNameList.cs` |

@@ -322,7 +322,7 @@ public partial class LibraryViewModel : ObservableObject
         ShowTagSelectedCta = SelectMode.ShowBatchTagCta(IsSelectMode, _selection.Count);
     }
 
-    public void SetSelection(IEnumerable<AssetItem> items)
+    public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
     {
         _selection = items.Where(item => !item.IsFolderHeader).ToList();
         foreach (var asset in Assets)
@@ -335,6 +335,11 @@ public partial class LibraryViewModel : ObservableObject
         CanEditNotes = _selection.Count == 1;
         var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
         _selectionAnchor = next;
+        if (!loadPreview)
+        {
+            return;
+        }
+
         if (!ReferenceEquals(SelectedAsset, next))
         {
             SelectedAsset = next;
@@ -348,12 +353,14 @@ public partial class LibraryViewModel : ObservableObject
     /// <summary>
     /// Contiguous mosaic span from the drag origin through the last highlighted
     /// item. Folder headers are skipped. The origin stays the Shift/range anchor.
+    /// Live drag passes <paramref name="loadPreview"/> false so hover does not
+    /// re-query the catalog on every move.
     /// </summary>
-    public void ApplyMosaicRange(int from, int to)
+    public void ApplyMosaicRange(int from, int to, bool loadPreview = true)
     {
         var flags = Assets.Select(asset => asset.IsFolderHeader).ToList();
         var indexes = RangeSelect.ContiguousIndexes(flags, from, to);
-        SetSelection(indexes.Select(i => Assets[i]));
+        SetSelection(indexes.Select(i => Assets[i]), loadPreview);
         if ((uint)from < (uint)Assets.Count && !Assets[from].IsFolderHeader)
         {
             _selectionAnchor = Assets[from];

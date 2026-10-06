@@ -501,6 +501,7 @@
                                                     Padding="2"
                                                     HorizontalAlignment="Left"
                                                     VerticalAlignment="Bottom"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                     CornerRadius="4"
                                                     IsHitTestVisible="False"
                                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}">

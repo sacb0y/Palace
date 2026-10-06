@@ -40,6 +40,8 @@ public sealed partial class LibraryPage : Page
     private long _rangePressMs;
     private Windows.Foundation.Point _rangePressPoint;
     private uint _rangePointerId;
+    private Pointer? _rangePointer;
+    private bool _rangeCaptured;
     private bool _rangeConsumedTap;
 
     public LibraryViewModel ViewModel => AppServices.Library;
@@ -489,6 +491,8 @@ public sealed partial class LibraryPage : Page
         _rangePressMs = Environment.TickCount64;
         _rangePressPoint = point.Position;
         _rangePointerId = e.Pointer.PointerId;
+        _rangePointer = e.Pointer;
+        _rangeCaptured = false;
     }
 
     private void GrdAssets_RangeMoved(object sender, PointerRoutedEventArgs e)
@@ -514,11 +518,14 @@ public sealed partial class LibraryPage : Page
             {
                 return;
             }
-
-            GrdAssets.CapturePointer(e.Pointer);
         }
 
-        ApplyRangeHover(e);
+        if (_rangeSelect.RequiresPointerCapture)
+        {
+            CaptureRangePointer(e.Pointer);
+        }
+
+        ApplyRangeHover(e, liveDrag: true);
         e.Handled = true;
     }
 
@@ -546,7 +553,8 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        ApplyRangeIndexes(_rangeSelect.Highlight(MosaicHeaderFlags(), _rangeSelect.AnchorIndex));
+        CaptureRangePointer(_rangePointer);
+        ApplyRangeIndexes(_rangeSelect.Highlight(MosaicHeaderFlags(), _rangeSelect.AnchorIndex), liveDrag: true);
         e.Handled = true;
     }
 
@@ -559,7 +567,7 @@ public sealed partial class LibraryPage : Page
 
         if (_rangeSelect.IsActive)
         {
-            ApplyRangeHover(e);
+            ApplyRangeHover(e, liveDrag: false);
             _rangeConsumedTap = true;
             e.Handled = true;
         }
@@ -575,7 +583,7 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    private void ApplyRangeHover(PointerRoutedEventArgs e)
+    private void ApplyRangeHover(PointerRoutedEventArgs e, bool liveDrag)
     {
         if (_rangeSelect is null)
         {
@@ -584,13 +592,13 @@ public sealed partial class LibraryPage : Page
 
         var hover = HitMosaicItem(e);
         var hoverIndex = hover is null ? _rangeSelect.EndIndex : ViewModel.Assets.IndexOf(hover);
-        ApplyRangeIndexes(_rangeSelect.Highlight(MosaicHeaderFlags(), hoverIndex));
+        ApplyRangeIndexes(_rangeSelect.Highlight(MosaicHeaderFlags(), hoverIndex), liveDrag);
     }
 
     private IReadOnlyList<bool> MosaicHeaderFlags() =>
         ViewModel.Assets.Select(asset => asset.IsFolderHeader).ToList();
 
-    private void ApplyRangeIndexes(IReadOnlyList<int> indexes)
+    private void ApplyRangeIndexes(IReadOnlyList<int> indexes, bool liveDrag)
     {
         _suppressMosaicSelection = true;
         try
@@ -621,14 +629,20 @@ public sealed partial class LibraryPage : Page
 
         if (_rangeSelect is not null)
         {
-            ViewModel.ApplyMosaicRange(_rangeSelect.AnchorIndex, _rangeSelect.EndIndex);
+            ViewModel.ApplyMosaicRange(
+                _rangeSelect.AnchorIndex,
+                _rangeSelect.EndIndex,
+                RangeSelect.LoadsPreview(liveDrag));
         }
     }
 
     private AssetItem? HitMosaicItem(PointerRoutedEventArgs e)
     {
-        var point = e.GetCurrentPoint(GrdAssets).Position;
-        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(point, GrdAssets))
+        var local = e.GetCurrentPoint(GrdAssets).Position;
+        var origin = GrdAssets.TransformToVisual(null).TransformPoint(default);
+        var (x, y) = RangeSelect.ToWindowPoint(local.X, local.Y, origin.X, origin.Y);
+        var windowPoint = new Windows.Foundation.Point(x, y);
+        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(windowPoint, GrdAssets))
         {
             var item = FindAssetItem(hit);
             if (item is not null)
@@ -640,13 +654,25 @@ public sealed partial class LibraryPage : Page
         return FindAssetItem(e.OriginalSource);
     }
 
+    private void CaptureRangePointer(Pointer? pointer)
+    {
+        pointer ??= _rangePointer;
+        if (pointer is null || _rangeCaptured)
+        {
+            return;
+        }
+
+        _rangeCaptured = GrdAssets.CapturePointer(pointer);
+        _rangePointer = pointer;
+    }
+
     private void EndRangeSelect(Pointer? pointer)
     {
-        if (pointer is not null)
+        if (pointer is not null || _rangePointer is not null)
         {
             try
             {
-                GrdAssets.ReleasePointerCapture(pointer);
+                GrdAssets.ReleasePointerCapture(pointer ?? _rangePointer!);
             }
             catch (ArgumentException)
             {
@@ -656,6 +682,8 @@ public sealed partial class LibraryPage : Page
 
         _rangeSelect = null;
         _rangePointerId = 0;
+        _rangePointer = null;
+        _rangeCaptured = false;
     }
 
     private void FolderGroupHeader_Tapped(object sender, TappedRoutedEventArgs e)
