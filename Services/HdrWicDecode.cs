@@ -750,7 +750,7 @@ internal static class HdrWicDecode
         private static readonly Guid ClsidFactory = new("cacaf262-9370-4615-a13b-9f5539da4c0a");
         private static readonly Guid ClsidFactory2 = new("317d06e8-5f24-433d-bdf7-79ce68d8abc2");
         private static readonly Guid GuidRgbaFloat = new("6fddc324-4e03-4bfe-b185-3d77768dc91b");
-        private static readonly Guid GuidRgbaHalf = new("6fddc324-4e03-4bfe-b185-3d77768dc910");
+        private static readonly Guid GuidRgbaHalf = new("6fddc324-4e03-4bfe-b185-3d77768dc93a");
         private const uint GenericRead = 0x80000000;
         private const uint InterpolationLinear = 1;
 

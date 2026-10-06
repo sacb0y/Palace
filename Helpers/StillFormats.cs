@@ -99,7 +99,7 @@ public static class StillFormats
     /// WIC <c>GUID_WICPixelFormat64bppRGBAHalf</c> (little-endian on disk).
     /// </summary>
     public static ReadOnlySpan<byte> JxrGuidRgbaHalf =>
-        [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x10];
+        [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x3A];
 
     /// <summary>
     /// WIC <c>GUID_WICPixelFormat128bppRGBAFloat</c>.
@@ -267,12 +267,11 @@ public static class StillFormats
             && guid[14] == 0xC9)
         {
             return guid[15] is
-                0x10 // 64bppRGBAHalf
-                or 0x11 // 32bppGrayFloat
+                0x11 // 32bppGrayFloat
                 or 0x13 // 16bppGrayHalf
                 or 0x1B // 128bppRGBAFloat
                 or 0x1C // 128bppRGBFloat
-                or 0x3A // 32bppRGBA1010102XR
+                or 0x3A // 64bppRGBAHalf
                 or 0x3B // 48bppRGBHalf
                 or 0x3D // 32bppRGBE
                 or 0x42; // 64bppRGBHalf
