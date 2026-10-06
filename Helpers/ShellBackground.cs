@@ -14,12 +14,22 @@ public static class ShellBackground
     public const string TintEnabledKey = "ShellTintEnabled";
     public const string TintKey = "ShellTintColor";
 
+    public const string WallpaperFilePrefix = "shell-wallpaper-";
     public const double MinAmount = 0;
     public const double MaxAmount = 100;
     public const double DefaultDarkness = 40;
     public const double DefaultBlur = 45;
+    public const double LightDimScale = 0.35;
     public const string DefaultTintHex = "#502C3A6B";
-    public const string DefaultWallpaperLabel = "Default dark gradient";
+    public const string DefaultWallpaperLabel = "Default gradient";
+    public const string DarkGradientStartHex = "#FF0B0E14";
+    public const string DarkGradientMidHex = "#FF161022";
+    public const string DarkGradientEndHex = "#FF0A1628";
+    public const string LightGradientStartHex = "#FFF7F8FB";
+    public const string LightGradientMidHex = "#FFE8EDF5";
+    public const string LightGradientEndHex = "#FFD9E3F0";
+    public const string DarkGlassTintHex = "#FF0C0E14";
+    public const string LightGlassTintHex = "#FFF2F4F8";
 
     public static string? WallpaperPath { get; private set; }
 
@@ -30,6 +40,8 @@ public static class ShellBackground
     public static bool TintEnabled { get; private set; }
 
     public static string TintHex { get; private set; } = DefaultTintHex;
+
+    public static int WallpaperEpoch { get; private set; }
 
     public static bool HasWallpaper => !string.IsNullOrWhiteSpace(WallpaperPath);
 
@@ -52,22 +64,30 @@ public static class ShellBackground
 
     public static event EventHandler? Changed;
 
+    /// <summary>
+    /// Drop the displayed <c>BitmapImage</c> before overwriting or deleting the
+    /// store file so the decode does not keep it locked.
+    /// </summary>
+    public static event EventHandler? DisplayReleasing;
+
     public static void Apply(
         string? wallpaperPath,
         double darkness,
         double blur,
         bool tintEnabled,
-        string? tintHex)
+        string? tintHex,
+        bool reloadWallpaper = false)
     {
         wallpaperPath = NormalizePath(wallpaperPath);
         darkness = ClampAmount(darkness);
         blur = ClampAmount(blur);
         tintHex = ParseTint(tintHex);
-        if (WallpaperPath == wallpaperPath
+        var unchanged = WallpaperPath == wallpaperPath
             && Math.Abs(Darkness - darkness) < 0.01
             && Math.Abs(Blur - blur) < 0.01
             && TintEnabled == tintEnabled
-            && TintHex == tintHex)
+            && TintHex == tintHex;
+        if (unchanged && !reloadWallpaper)
         {
             return;
         }
@@ -77,7 +97,69 @@ public static class ShellBackground
         Blur = blur;
         TintEnabled = tintEnabled;
         TintHex = tintHex;
+        WallpaperEpoch++;
         Changed?.Invoke(null, EventArgs.Empty);
+    }
+
+    public static void ReleaseDisplay() =>
+        DisplayReleasing?.Invoke(null, EventArgs.Empty);
+
+    public static void Refresh() =>
+        Changed?.Invoke(null, EventArgs.Empty);
+
+    public static bool IsLightChrome(string? requestedTheme, bool systemIsLight) =>
+        requestedTheme switch
+        {
+            "Light" => true,
+            "Dark" => false,
+            _ => systemIsLight
+        };
+
+    public static string GradientStartHex(bool lightChrome) =>
+        lightChrome ? LightGradientStartHex : DarkGradientStartHex;
+
+    public static string GradientMidHex(bool lightChrome) =>
+        lightChrome ? LightGradientMidHex : DarkGradientMidHex;
+
+    public static string GradientEndHex(bool lightChrome) =>
+        lightChrome ? LightGradientEndHex : DarkGradientEndHex;
+
+    public static string GlassTintHex(bool lightChrome) =>
+        lightChrome ? LightGlassTintHex : DarkGlassTintHex;
+
+    public static double DimOpacity(bool lightChrome, double darkness)
+    {
+        var t = ClampAmount(darkness) / 100.0;
+        return lightChrome ? t * LightDimScale : t;
+    }
+
+    public static string NewWallpaperFileName(string? extension)
+    {
+        var ext = extension ?? "";
+        if (ext.Length > 0 && ext[0] != '.')
+        {
+            ext = "." + ext;
+        }
+
+        return WallpaperFilePrefix + Guid.NewGuid().ToString("N") + ext;
+    }
+
+    public static bool IsStoredWallpaperName(string? fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return false;
+        }
+
+        var name = fileName;
+        var slash = name.LastIndexOfAny(['/', '\\']);
+        if (slash >= 0)
+        {
+            name = name[(slash + 1)..];
+        }
+
+        return name.StartsWith(WallpaperFilePrefix, StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("shell-wallpaper.", StringComparison.OrdinalIgnoreCase);
     }
 
     public static string? NormalizePath(string? stored)

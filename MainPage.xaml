@@ -8,12 +8,12 @@
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Background="Transparent">
+    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
 
     <NavigationView
         x:Name="NavMain"
         AutomationProperties.AutomationId="NavMain"
-        Background="Transparent"
+        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
         OpenPaneLength="248"

@@ -94,6 +94,90 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void Apply_ReloadWallpaper_FiresWhenPathUnchanged()
+    {
+        ShellBackground.Apply(@"C:\pics\bg.jpg", 40, 45, false, ShellBackground.DefaultTintHex);
+        var epoch = ShellBackground.WallpaperEpoch;
+        var fired = 0;
+        void OnChanged(object? _, EventArgs e) => fired++;
+        ShellBackground.Changed += OnChanged;
+        try
+        {
+            ShellBackground.Apply(@"C:\pics\bg.jpg", 40, 45, false, ShellBackground.DefaultTintHex);
+            Assert.Equal(0, fired);
+            Assert.Equal(epoch, ShellBackground.WallpaperEpoch);
+
+            ShellBackground.Apply(@"C:\pics\bg.jpg", 40, 45, false, ShellBackground.DefaultTintHex, reloadWallpaper: true);
+            Assert.Equal(1, fired);
+            Assert.True(ShellBackground.WallpaperEpoch > epoch);
+            Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
+        }
+        finally
+        {
+            ShellBackground.Changed -= OnChanged;
+            Reset();
+        }
+    }
+
+    [Fact]
+    public void ReleaseDisplay_AndRefresh_NotifyWithoutChangingPath()
+    {
+        ShellBackground.Apply(@"C:\pics\bg.jpg", 40, 45, false, ShellBackground.DefaultTintHex);
+        var released = 0;
+        var changed = 0;
+        void OnRelease(object? _, EventArgs e) => released++;
+        void OnChanged(object? _, EventArgs e) => changed++;
+        ShellBackground.DisplayReleasing += OnRelease;
+        ShellBackground.Changed += OnChanged;
+        try
+        {
+            ShellBackground.ReleaseDisplay();
+            Assert.Equal(1, released);
+            Assert.Equal(0, changed);
+            Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
+
+            ShellBackground.Refresh();
+            Assert.Equal(1, changed);
+            Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
+        }
+        finally
+        {
+            ShellBackground.DisplayReleasing -= OnRelease;
+            ShellBackground.Changed -= OnChanged;
+            Reset();
+        }
+    }
+
+    [Fact]
+    public void NewWallpaperFileName_IsUniqueStoreName()
+    {
+        var a = ShellBackground.NewWallpaperFileName(".jpg");
+        var b = ShellBackground.NewWallpaperFileName("png");
+        Assert.NotEqual(a, b);
+        Assert.StartsWith(ShellBackground.WallpaperFilePrefix, a);
+        Assert.EndsWith(".jpg", a);
+        Assert.EndsWith(".png", b);
+        Assert.True(ShellBackground.IsStoredWallpaperName(a));
+        Assert.True(ShellBackground.IsStoredWallpaperName(@"C:\local\shell-wallpaper.jpg"));
+        Assert.False(ShellBackground.IsStoredWallpaperName(@"C:\pics\photo.jpg"));
+    }
+
+    [Fact]
+    public void LightChrome_UsesSofterDimAndLightGradient()
+    {
+        Assert.True(ShellBackground.IsLightChrome("Light", false));
+        Assert.False(ShellBackground.IsLightChrome("Dark", true));
+        Assert.True(ShellBackground.IsLightChrome("System", true));
+        Assert.False(ShellBackground.IsLightChrome(null, false));
+        Assert.Equal(ShellBackground.LightGradientStartHex, ShellBackground.GradientStartHex(true));
+        Assert.Equal(ShellBackground.DarkGradientStartHex, ShellBackground.GradientStartHex(false));
+        Assert.Equal(ShellBackground.LightGlassTintHex, ShellBackground.GlassTintHex(true));
+        Assert.Equal(0.40, ShellBackground.DimOpacity(false, 40), 3);
+        Assert.Equal(0.40 * ShellBackground.LightDimScale, ShellBackground.DimOpacity(true, 40), 3);
+        Assert.True(ShellBackground.DimOpacity(true, 40) < ShellBackground.DimOpacity(false, 40));
+    }
+
+    [Fact]
     public void AmountLabel_IsPercent()
     {
         Assert.Equal("0%", ShellBackground.AmountLabel(-3));

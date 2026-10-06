@@ -9,7 +9,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
     mc:Ignorable="d"
-    Background="Transparent">
+    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
 
     <ScrollViewer>
         <StackPanel
@@ -34,7 +34,7 @@
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Wallpaper sits behind chrome. Buttons, panes, and cards keep ThemeResource / Fluent. Default is a dark gradient."
+                Text="Wallpaper sits behind chrome. Buttons, panes, and cards keep ThemeResource / Fluent. Default gradient follows Light / Dark."
                 TextWrapping="Wrap" />
             <TextBlock
                 x:Name="TxtShellWallpaper"

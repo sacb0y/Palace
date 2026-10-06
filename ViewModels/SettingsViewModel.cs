@@ -242,9 +242,9 @@ public partial class SettingsViewModel : ObservableObject
         PeakOverrideLabel = GalleryPresent.PeakNitsLabel(GalleryPeak.Nits);
     }
 
-    private void PersistShellBackground()
+    private void PersistShellBackground(bool reloadWallpaper = false)
     {
-        ShellBackground.Apply(WallpaperPath, Darkness, Blur, TintEnabled, TintHex);
+        ShellBackground.Apply(WallpaperPath, Darkness, Blur, TintEnabled, TintHex, reloadWallpaper);
         var values = ApplicationData.Current.LocalSettings.Values;
         values[ShellBackground.WallpaperPathKey] = ShellBackground.WallpaperPath ?? "";
         values[ShellBackground.DarknessKey] = ShellBackground.Darkness;
@@ -268,12 +268,15 @@ public partial class SettingsViewModel : ObservableObject
                 return;
             }
 
+            var previous = ShellBackground.WallpaperPath;
+            ShellBackground.ReleaseDisplay();
             var dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
-                "shell-wallpaper" + Path.GetExtension(file.Name),
+                ShellBackground.NewWallpaperFileName(Path.GetExtension(file.Name)),
                 CreationCollisionOption.ReplaceExisting);
             await file.CopyAndReplaceAsync(dest);
             WallpaperPath = dest.Path;
-            PersistShellBackground();
+            PersistShellBackground(reloadWallpaper: true);
+            await TryDeleteStoredWallpaperAsync(previous);
             StatusText = "Wallpaper updated.";
         });
 
@@ -282,23 +285,30 @@ public partial class SettingsViewModel : ObservableObject
         ErrorReporter.RunAsync("Clear wallpaper", Notify, async () =>
         {
             var path = ShellBackground.WallpaperPath;
+            ShellBackground.ReleaseDisplay();
             WallpaperPath = "";
-            PersistShellBackground();
-            if (!string.IsNullOrWhiteSpace(path))
-            {
-                try
-                {
-                    var stored = await StorageFile.GetFileFromPathAsync(path);
-                    await stored.DeleteAsync();
-                }
-                catch
-                {
-                    // Local copy may already be gone.
-                }
-            }
-
-            StatusText = "Using the default dark gradient.";
+            PersistShellBackground(reloadWallpaper: true);
+            await TryDeleteStoredWallpaperAsync(path);
+            StatusText = "Using the default gradient.";
         });
+
+    private static async Task TryDeleteStoredWallpaperAsync(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !ShellBackground.IsStoredWallpaperName(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var stored = await StorageFile.GetFileFromPathAsync(path);
+            await stored.DeleteAsync();
+        }
+        catch
+        {
+            // Local copy may already be gone or still flushing.
+        }
+    }
 
     partial void OnOneDriveClientIdChanged(string value)
     {
@@ -587,5 +597,6 @@ public partial class SettingsViewModel : ObservableObject
             "Dark" => Microsoft.UI.Xaml.ElementTheme.Dark,
             _ => Microsoft.UI.Xaml.ElementTheme.Default
         };
+        ShellBackground.Refresh();
     }
 }

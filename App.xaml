@@ -16,8 +16,6 @@
                 TintColor="{ThemeResource SolidBackgroundFillColorBase}"
                 TintLuminosityOpacity="0.55"
                 TintOpacity="0.35" />
-            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
-            <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

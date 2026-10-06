@@ -25,15 +25,25 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new SizeInt32((int)(1200 * scale), (int)(800 * scale)));
 
         ShellBackground.Changed += ShellBackground_Changed;
+        ShellBackground.DisplayReleasing += ShellBackground_DisplayReleasing;
+        if (Content is FrameworkElement root)
+        {
+            root.ActualThemeChanged += (_, _) => ApplyShellBackdrop();
+        }
+
         ApplyShellBackdrop();
         Closed += (_, _) =>
         {
             ShellBackground.Changed -= ShellBackground_Changed;
+            ShellBackground.DisplayReleasing -= ShellBackground_DisplayReleasing;
             GalleryWindow.CloseAll();
         };
     }
 
     private void ShellBackground_Changed(object? sender, EventArgs e) => ApplyShellBackdrop();
+
+    private void ShellBackground_DisplayReleasing(object? sender, EventArgs e) =>
+        ShellBackdrop.Release(ImgShellWallpaper);
 
     private void ApplyShellBackdrop() =>
         ShellBackdrop.Apply(BrdShellGradient, ImgShellWallpaper, BrdShellGlass, BrdShellDim, BrdShellTint);
