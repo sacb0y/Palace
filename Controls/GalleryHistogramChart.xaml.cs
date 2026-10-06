@@ -84,9 +84,19 @@ public sealed partial class GalleryHistogramChart : UserControl
         }
     }
 
-    private void BtnHistogramLuma_Click(object sender, RoutedEventArgs e) => ShowRgb = false;
+    private void BtnHistogramLuma_Click(object sender, RoutedEventArgs e)
+    {
+        ShowRgb = false;
+        // ToggleButton unchecks itself first. Re-clicking Y must restore
+        // the check even when ShowRgb was already false (no DP change).
+        Redraw();
+    }
 
-    private void BtnHistogramRgb_Click(object sender, RoutedEventArgs e) => ShowRgb = true;
+    private void BtnHistogramRgb_Click(object sender, RoutedEventArgs e)
+    {
+        ShowRgb = true;
+        Redraw();
+    }
 
     private void CnvHistogram_SizeChanged(object sender, SizeChangedEventArgs e) => Redraw();
 
@@ -116,8 +126,9 @@ public sealed partial class GalleryHistogramChart : UserControl
         PnlHistogramModes.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         CnvHistogram.Height = compact ? 48 : 96;
         var rgb = !compact && ShowRgb;
-        BtnHistogramLuma.IsChecked = !rgb;
-        BtnHistogramRgb.IsChecked = rgb;
+        var (lumaOn, rgbOn) = GalleryHistogram.ExclusiveModeChecks(rgb);
+        BtnHistogramLuma.IsChecked = lumaOn;
+        BtnHistogramRgb.IsChecked = rgbOn;
 
         var bins = Bins;
         var samples = bins?.SampleCount ?? 0;

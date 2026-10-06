@@ -565,13 +565,13 @@ public sealed partial class GalleryStillSurface : UserControl
         var rgba = frame.ScrgbRgba;
         var width = frame.Width;
         var height = frame.Height;
-        var bt2020 = probe.CicpPrimaries == 9;
+        var primaries = probe.CicpPrimaries;
         _ = Task.Run(() =>
         {
             GalleryHistogramBins bins;
             try
             {
-                bins = GalleryHistogram.FromScrgb(rgba, width, height, bt2020);
+                bins = GalleryHistogram.FromScrgb(rgba, width, height, primaries);
             }
             catch
             {

@@ -3,8 +3,9 @@ namespace Palace.Helpers;
 /// <summary>
 /// CIE Y + scRGB channel histograms from a presented scRGB frame.
 /// Off WinUI. Never a mosaic JPEG. Online-only stays out (no original).
-/// Luma bins are log nits so paper white and PQ highlights both show;
-/// channels are linear 0…PQ-peak scRGB (WIC-style 0–max, last-bin clip).
+/// Luma bins are log nits in the <em>source</em> primaries (Info CIE Y),
+/// not BT.2020 weights on display-referred scRGB. Channels stay linear
+/// presented scRGB (WIC-style 0…PQ-peak, last-bin clip).
 /// </summary>
 public static class GalleryHistogram
 {
@@ -40,6 +41,13 @@ public static class GalleryHistogram
 
         return (int)Math.Ceiling(pixelCount / (double)maxSamples);
     }
+
+    /// <summary>
+    /// Y / RGB is exclusive. Re-clicking the active mode must keep that
+    /// check on — <c>ToggleButton</c> would otherwise uncheck it.
+    /// </summary>
+    public static (bool LumaChecked, bool RgbChecked) ExclusiveModeChecks(bool showRgb) =>
+        (!showRgb, showRgb);
 
     public static int LogNitsBin(float nits, int binCount = BinCount)
     {
@@ -89,7 +97,7 @@ public static class GalleryHistogram
         float[] rgba,
         int width,
         int height,
-        bool bt2020,
+        int? cicpPrimaries,
         int binCount = BinCount,
         int maxSamples = DefaultMaxSamples)
     {
@@ -116,11 +124,7 @@ public static class GalleryHistogram
             var r = rgba[o];
             var g = rgba[o + 1];
             var b = rgba[o + 2];
-            var yNits = GalleryPresent.LuminanceY(
-                r * GalleryPresent.ScrgbNits,
-                g * GalleryPresent.ScrgbNits,
-                b * GalleryPresent.ScrgbNits,
-                bt2020);
+            var yNits = GalleryPresent.LumaNitsFromPresentedScrgb(r, g, b, cicpPrimaries);
             luma[LogNitsBin(yNits, binCount)]++;
             red[LinearScrgbBin(r, binCount)]++;
             green[LinearScrgbBin(g, binCount)]++;

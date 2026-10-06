@@ -54,7 +54,7 @@ public sealed class GalleryHistogramTests
     public void FromScrgb_UniformGrayLandsInOneLumaBin()
     {
         var rgba = ScrgbPixel(1f, 1f, 1f);
-        var bins = GalleryHistogram.FromScrgb(rgba, 1, 1, bt2020: false);
+        var bins = GalleryHistogram.FromScrgb(rgba, 1, 1, cicpPrimaries: 1);
         var expected = GalleryHistogram.LogNitsBin(GalleryPresent.ScrgbNits);
         Assert.Equal(1, bins.SampleCount);
         Assert.Equal(1, bins.Luma[expected]);
@@ -63,27 +63,31 @@ public sealed class GalleryHistogramTests
     }
 
     [Fact]
-    public void FromScrgb_Bt2020RedDiffersFrom709()
+    public void FromScrgb_PresentedBt2020Red_MatchesInfoSourceY()
     {
-        var rgba = ScrgbPixel(10f, 0f, 0f);
-        var rec709 = GalleryHistogram.FromScrgb(rgba, 1, 1, bt2020: false);
-        var bt2020 = GalleryHistogram.FromScrgb(rgba, 1, 1, bt2020: true);
-        var y709 = GalleryPresent.LuminanceY(10f * 80f, 0, 0, false);
-        var y2020 = GalleryPresent.LuminanceY(10f * 80f, 0, 0, true);
-        Assert.NotEqual(y709, y2020);
-        Assert.Equal(1, rec709.Luma[GalleryHistogram.LogNitsBin(y709)]);
-        Assert.Equal(1, bt2020.Luma[GalleryHistogram.LogNitsBin(y2020)]);
-        if (GalleryHistogram.LogNitsBin(y709) != GalleryHistogram.LogNitsBin(y2020))
-        {
-            Assert.NotEqual(rec709.Luma, bt2020.Luma);
-        }
+        HdrColor.EncodedRgbToScrgb(1f, 0f, 0f, HdrTransfer.Pq, 9, out var sr, out var sg, out var sb);
+        var sourceY = HdrColor.SourcePrimaryNitsY(1f, 0f, 0f, HdrTransfer.Pq, 9);
+        var presentedY = GalleryPresent.LumaNitsFromPresentedScrgb(sr, sg, sb, 9);
+        Assert.Equal(sourceY, presentedY, 0);
+        Assert.InRange(presentedY, 2625f, 2630f);
+
+        var wrong = GalleryPresent.LuminanceY(
+            sr * GalleryPresent.ScrgbNits,
+            sg * GalleryPresent.ScrgbNits,
+            sb * GalleryPresent.ScrgbNits,
+            true);
+        Assert.True(wrong > presentedY + 400f, $"display 2020 weights {wrong} vs source {presentedY}");
+
+        var bins = GalleryHistogram.FromScrgb(ScrgbPixel(sr, sg, sb), 1, 1, 9);
+        Assert.Equal(1, bins.Luma[GalleryHistogram.LogNitsBin(sourceY)]);
+        Assert.Equal(0, bins.Luma[GalleryHistogram.LogNitsBin(wrong)]);
     }
 
     [Fact]
     public void FromScrgb_PqHighlightFillsLastChannelBin()
     {
         var rgba = ScrgbPixel(GalleryHistogram.ChannelMaxScrgb, 0.1f, 0.1f);
-        var bins = GalleryHistogram.FromScrgb(rgba, 1, 1, bt2020: true);
+        var bins = GalleryHistogram.FromScrgb(rgba, 1, 1, 9);
         Assert.Equal(1, bins.Red[^1]);
         Assert.Equal(0, bins.Red[0]);
     }
@@ -91,8 +95,8 @@ public sealed class GalleryHistogramTests
     [Fact]
     public void FromScrgb_EmptyOrShortBufferIsEmpty()
     {
-        Assert.False(GalleryHistogram.FromScrgb([], 0, 0, false).HasSamples);
-        Assert.False(GalleryHistogram.FromScrgb(new float[4], 2, 1, false).HasSamples);
+        Assert.False(GalleryHistogram.FromScrgb([], 0, 0, null).HasSamples);
+        Assert.False(GalleryHistogram.FromScrgb(new float[4], 2, 1, 1).HasSamples);
         Assert.False(GalleryHistogramBins.Empty.HasSamples);
     }
 
@@ -103,7 +107,7 @@ public sealed class GalleryHistogramTests
         var rgba = new float[pixels * 4];
         var maxSamples = 10;
         Assert.Equal(10, GalleryHistogram.SampleStride(pixels, maxSamples));
-        var bins = GalleryHistogram.FromScrgb(rgba, 10, 10, false, GalleryHistogram.BinCount, maxSamples);
+        var bins = GalleryHistogram.FromScrgb(rgba, 10, 10, 1, GalleryHistogram.BinCount, maxSamples);
         Assert.Equal(10, bins.SampleCount);
     }
 
@@ -144,6 +148,16 @@ public sealed class GalleryHistogramTests
             "scRGB R/G/B · 64 bins · presented frame",
             GalleryHistogram.Caption(true, 64, 10));
         Assert.Equal("", GalleryHistogram.Caption(false, 64, 0));
+    }
+
+    [Fact]
+    public void ExclusiveModeChecks_KeepsActiveModeOn()
+    {
+        Assert.Equal((true, false), GalleryHistogram.ExclusiveModeChecks(false));
+        Assert.Equal((false, true), GalleryHistogram.ExclusiveModeChecks(true));
+        Assert.Equal(
+            GalleryHistogram.ExclusiveModeChecks(false),
+            GalleryHistogram.ExclusiveModeChecks(false));
     }
 
     private static float[] ScrgbPixel(float r, float g, float b) =>
