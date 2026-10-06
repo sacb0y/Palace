@@ -241,11 +241,14 @@ public static class GalleryMedia
         ShowKindBadge(isFolderHeader, isOrphan, kind == AssetKind.Gif);
 
     /// <summary>
-    /// Fluent <c>Hdr</c> Regular exists at 20 and 24 DIP only. Mosaic /
-    /// overlay chips must use <see cref="HdrBadgeIconDip"/> — Size16
-    /// paints an empty tag with the HDR label and no glyph.
+    /// Fluent <c>Hdr</c> Regular exists at 20 and 24 DIP only. Mosaic
+    /// uses <see cref="HdrBadgeIconDip"/> (Size24) plus
+    /// <see cref="HdrBadgeLabel"/> on Accent so the chip reads on a
+    /// tile — Size16 / Secondary is an empty dark tag in library shots.
     /// </summary>
-    public const int HdrBadgeIconDip = 20;
+    public const int HdrBadgeIconDip = 24;
+
+    public const string HdrBadgeLabel = "HDR";
 
     /// <summary>
     /// HDR glyph from catalog / header already on the row, or overlay

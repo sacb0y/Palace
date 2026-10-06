@@ -199,7 +199,8 @@ public sealed class GalleryMediaTests
         Assert.False(GalleryMedia.ShowHdrBadge(false, false, null, false));
         Assert.False(GalleryMedia.ShowHdrBadge(true, false, @"D:\shots\sky.hdr", true));
         Assert.False(GalleryMedia.ShowHdrBadge(false, true, @"D:\shots\sky.hdr", true));
-        Assert.Equal(20, GalleryMedia.HdrBadgeIconDip);
+        Assert.Equal(24, GalleryMedia.HdrBadgeIconDip);
+        Assert.Equal("HDR", GalleryMedia.HdrBadgeLabel);
         Assert.Equal("IcnGalleryOverlayHdr", GalleryMedia.OverlayHdrBadgeAutomationId);
         Assert.Equal("IcnGalleryWindowHdr", GalleryMedia.WindowHdrBadgeAutomationId);
         Assert.False(GalleryMedia.CatalogHdrFromHeader(@"D:\shots\a.jpg", mayReadOriginalHeader: false));
