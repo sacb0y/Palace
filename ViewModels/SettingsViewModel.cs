@@ -272,9 +272,10 @@ public partial class SettingsViewModel : ObservableObject
             var previous = ShellBackground.WallpaperPath;
             var previousName = ShellBackground.WallpaperName;
             ShellBackground.ReleaseDisplay();
+            StorageFile? dest = null;
             try
             {
-                var dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
+                dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
                     ShellBackground.NewWallpaperFileName(Path.GetExtension(file.Name)),
                     CreationCollisionOption.ReplaceExisting);
                 await file.CopyAndReplaceAsync(dest);
@@ -286,6 +287,11 @@ public partial class SettingsViewModel : ObservableObject
             }
             catch
             {
+                if (dest is not null && !string.Equals(ShellBackground.WallpaperPath, dest.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    await TryDeleteStoredWallpaperAsync(dest.Path);
+                }
+
                 ShellBackground.SetWallpaperName(previousName);
                 ShellBackground.RestoreDisplay();
                 throw;
