@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -38,6 +39,11 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _scrollViewW;
     private double _scrollViewH;
     private bool _peakHooked;
+    private string? _gifCachePath;
+    private string? _gifLoadingPath;
+    private IReadOnlyList<GifFrames.Raster>? _gifRasters;
+    private WriteableBitmap?[]? _gifBitmaps;
+    private CancellationTokenSource? _gifLoadCts;
 
     public GalleryStillSurface()
     {
@@ -45,8 +51,10 @@ public sealed partial class GalleryStillSurface : UserControl
         Unloaded += (_, _) =>
         {
             UnhookPeak();
+            _gallery?.StopGifPlayback();
             CancelInFlight();
             ClearHdrCache();
+            ClearGifCache();
             _presenter?.Dispose();
             _presenter = null;
         };
@@ -62,11 +70,13 @@ public sealed partial class GalleryStillSurface : UserControl
         if (_gallery is not null)
         {
             _gallery.PropertyChanged -= Gallery_PropertyChanged;
+            _gallery.StopGifPlayback();
             _gallery.ClearHistogram();
         }
 
         CancelInFlight();
         ClearHdrCache();
+        ClearGifCache();
         ResetScrollTracking();
         ResetPinchTracking();
         _gallery = gallery;
@@ -80,6 +90,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         UnhookPeak();
         HideHdr();
+        ClearGifCache();
         ImgStill.Source = null;
     }
 
@@ -113,6 +124,7 @@ public sealed partial class GalleryStillSurface : UserControl
         Interlocked.Increment(ref _histEpoch);
         _hdrLoadCts?.Cancel();
         _presentCts?.Cancel();
+        _gifLoadCts?.Cancel();
     }
 
     private void Gallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -143,7 +155,23 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (e.PropertyName is nameof(GalleryViewModel.StillRevision))
+        if (e.PropertyName is nameof(GalleryViewModel.GifFrameIndex)
+            or nameof(GalleryViewModel.GifPlaying))
+        {
+            if (_gallery is { CanScrubGif: true } g
+                && GifFrames.ShouldApplyGifTick(
+                    true,
+                    GifFrames.CacheMatchesPath(_gifCachePath, g.Current?.Path)
+                    && _gifRasters is { Count: > 0 }))
+            {
+                ApplyCachedGifFrame(g);
+            }
+
+            return;
+        }
+
+        if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
+            or nameof(GalleryViewModel.CanScrubGif))
         {
             ResetPinchTracking();
             _ = RefreshAsync();
@@ -176,20 +204,41 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private async Task RefreshAsync()
     {
+        var gallery = _gallery;
+        ApplyScaleLayout();
+        if (gallery is { IsImage: true, CanScrubGif: true })
+        {
+            _hdrLoadCts?.Cancel();
+            _presentCts?.Cancel();
+            if (GifFrames.ShouldBumpHdrEpochOnGifStillRefresh(true))
+            {
+                Interlocked.Increment(ref _epoch);
+            }
+
+            Interlocked.Increment(ref _histEpoch);
+            ClearHdrCache();
+            HideHdr();
+            gallery.SetHdrPresentResult(false, false);
+            gallery.ClearHistogram();
+            await ShowGifScrubAsync(gallery);
+            return;
+        }
+
         _hdrLoadCts?.Cancel();
         _presentCts?.Cancel();
         var epoch = Interlocked.Increment(ref _epoch);
         Interlocked.Increment(ref _histEpoch);
-        var gallery = _gallery;
-        ApplyScaleLayout();
         if (gallery is not { IsImage: true })
         {
             ClearHdrCache();
+            ClearGifCache();
             HideHdr();
             ImgStill.Source = null;
             gallery?.ClearHistogram();
             return;
         }
+
+        ClearGifCache();
 
         var still = gallery.PreviewImageUri ?? gallery.CurrentPath;
         var item = gallery.Current;
@@ -207,7 +256,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         // Do not BitmapImage the original HDR file — that is a second full
         // WIC decode. Show the mosaic thumb until scRGB present wins.
-        ImgStill.Source = ToStillImage(attempt ? item?.ThumbPath : still);
+        ImgStill.Source = ToStillImage(attempt ? item?.ThumbPath : still, animateGif: true);
 
         if (!pathMatches)
         {
@@ -764,6 +813,13 @@ public sealed partial class GalleryStillSurface : UserControl
             return (bmp.PixelWidth, bmp.PixelHeight);
         }
 
+        if (ImgStill.Source is WriteableBitmap writeable
+            && writeable.PixelWidth > 0
+            && writeable.PixelHeight > 0)
+        {
+            return (writeable.PixelWidth, writeable.PixelHeight);
+        }
+
         return (0, 0);
     }
 
@@ -884,7 +940,7 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
-    private static BitmapImage? ToStillImage(string? path)
+    private static BitmapImage? ToStillImage(string? path, bool animateGif = false)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -903,7 +959,159 @@ public sealed partial class GalleryStillSurface : UserControl
                 return null;
             }
 
-            return new BitmapImage { UriSource = new Uri(path, UriKind.Absolute) };
+            return new BitmapImage
+            {
+                UriSource = new Uri(path, UriKind.Absolute),
+                AutoPlay = animateGif || !PathSafe.GifExt.Contains(PathSafe.Extension(path))
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task ShowGifScrubAsync(GalleryViewModel gallery)
+    {
+        var path = gallery.Current?.Path;
+        if (string.IsNullOrEmpty(path)
+            || !CloudFile.Exists(path)
+            || CloudFile.IsOnlineOnly(path)
+            || !ScanContent.MayReadOriginal(path))
+        {
+            ClearGifCache();
+            ImgStill.Source = ToStillImage(gallery.PreviewImageUri ?? gallery.CurrentPath);
+            return;
+        }
+
+        var cacheReady = GifFrames.CacheMatchesPath(_gifCachePath, path)
+            && _gifRasters is { Count: > 0 };
+        if (cacheReady)
+        {
+            if (GifFrames.ShouldCancelStaleGifLoad(true))
+            {
+                _gifLoadCts?.Cancel();
+                _gifLoadingPath = null;
+            }
+
+            ApplyCachedGifFrame(gallery);
+            gallery.NotifyGifCompositeReady();
+            return;
+        }
+
+        var loadInFlight = string.Equals(_gifLoadingPath, path, StringComparison.OrdinalIgnoreCase)
+            && _gifLoadCts is { IsCancellationRequested: false };
+        if (!GifFrames.ShouldStartGifCompositeLoad(cacheReady, loadInFlight))
+        {
+            return;
+        }
+
+        _gifLoadCts?.Cancel();
+        var load = new CancellationTokenSource();
+        _gifLoadCts = load;
+        _gifLoadingPath = path;
+        ImgStill.Source = ToStillImage(path);
+
+        IReadOnlyList<GifFrames.Raster>? frames = null;
+        try
+        {
+            frames = await Task.Run(() => GifFrames.TryRenderAll(path, load.Token), load.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch
+        {
+            frames = null;
+        }
+
+        if (load.IsCancellationRequested
+            || !ReferenceEquals(_gallery, gallery)
+            || !string.Equals(_gifLoadingPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (load.IsCancellationRequested
+                || !ReferenceEquals(_gallery, gallery)
+                || !string.Equals(_gifLoadingPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _gifLoadingPath = null;
+            if (frames is { Count: > 0 })
+            {
+                _gifCachePath = path;
+                _gifRasters = frames;
+                _gifBitmaps = new WriteableBitmap?[frames.Count];
+                ApplyCachedGifFrame(gallery);
+                gallery.NotifyGifCompositeReady();
+                return;
+            }
+
+            ClearGifCache();
+            var abandon = GifFrames.ShouldAbandonScrubOnFailedComposite(
+                gallery.CanScrubGif, hasCompositeFrames: false);
+            if (abandon)
+            {
+                gallery.AbandonGifScrub();
+            }
+
+            ImgStill.Source = ToStillImage(path, animateGif: GifFrames.ShouldAnimateGifFallback(abandon));
+            ApplyScaleLayout();
+        });
+    }
+
+    private void ApplyCachedGifFrame(GalleryViewModel gallery)
+    {
+        var frames = _gifRasters;
+        if (frames is null || frames.Count == 0)
+        {
+            return;
+        }
+
+        var index = GifFrames.ClampIndex((int)Math.Round(gallery.GifFrameIndex), frames.Count);
+        WriteableBitmap? bmp = null;
+        if (_gifBitmaps is { Length: > 0 } bitmaps && (uint)index < (uint)bitmaps.Length)
+        {
+            bmp = bitmaps[index];
+            if (bmp is null && GifFrames.PickCached(frames, index) is { } raster)
+            {
+                bmp = ToWriteable(raster);
+                bitmaps[index] = bmp;
+            }
+        }
+        else if (GifFrames.PickCached(frames, index) is { } raster)
+        {
+            bmp = ToWriteable(raster);
+        }
+
+        ImgStill.Source = bmp ?? ToStillImage(gallery.Current?.Path);
+        ApplyScaleLayout();
+    }
+
+    private void ClearGifCache()
+    {
+        _gifLoadCts?.Cancel();
+        _gifCachePath = null;
+        _gifLoadingPath = null;
+        _gifRasters = null;
+        _gifBitmaps = null;
+    }
+
+    private static WriteableBitmap? ToWriteable(GifFrames.Raster raster)
+    {
+        try
+        {
+            var bmp = new WriteableBitmap(raster.Width, raster.Height);
+            using var pixels = bmp.PixelBuffer.AsStream();
+            pixels.Write(raster.Bgra, 0, raster.Bgra.Length);
+            bmp.Invalidate();
+            return bmp;
         }
         catch
         {

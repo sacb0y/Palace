@@ -2,7 +2,9 @@ using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.UI.Core;
 using Palace.Helpers;
 using Palace.ViewModels;
@@ -50,6 +52,7 @@ public sealed partial class GalleryWindow : Window
         Closed += (_, _) =>
         {
             OpenWindows.Remove(this);
+            Gallery.StopGifPlayback();
             SrfWindowStill.Bind(null);
             MpeGallery.Source = null;
         };
@@ -89,6 +92,11 @@ public sealed partial class GalleryWindow : Window
             return;
         }
 
+        if (GifFrames.PassesGifSliderArrows(FocusIsGifSlider(e.OriginalSource), (int)e.Key))
+        {
+            return;
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Escape:
@@ -104,6 +112,20 @@ public sealed partial class GalleryWindow : Window
                 e.Handled = true;
                 break;
         }
+    }
+
+    private static bool FocusIsGifSlider(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement element
+                && GifFrames.IsGifFrameSlider(AutomationProperties.GetAutomationId(element)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private int _mediaEpoch;

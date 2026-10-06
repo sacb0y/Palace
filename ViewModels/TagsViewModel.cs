@@ -598,6 +598,7 @@ public partial class TagsViewModel : ObservableObject
     private void CloseOverlay()
     {
         IsGalleryOverlayOpen = false;
+        OverlayGallery?.StopGifPlayback();
         OverlayGallery = null;
     }
 

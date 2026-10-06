@@ -826,6 +826,7 @@ public partial class LibraryViewModel : ObservableObject
     private void CloseOverlay()
     {
         IsGalleryOverlayOpen = false;
+        OverlayGallery?.StopGifPlayback();
         OverlayGallery = null;
     }
 
