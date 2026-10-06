@@ -1418,7 +1418,14 @@ internal static class HdrWicDecode
                     sniffDecoder, WicNative.IidBitmapDecoder, out qiHr);
                 if (decoder is not null)
                 {
-                    decoder.GetFrame(0, out frame);
+                    try
+                    {
+                        decoder.GetFrame(0, out frame);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        frame = null;
+                    }
                 }
 
                 if (frame is null && sniffFrame is not null)
@@ -1430,25 +1437,24 @@ internal static class HdrWicDecode
                 if (frame is not null)
                 {
                     var packed = CopyOpenedFrame(factory, frame, cancellation);
-                    if (packed is null)
+                    if (packed is not null)
                     {
-                        return null;
-                    }
+                        if (!GalleryPresent.JxrWinrtClampsHdr(packed.Value.Format))
+                        {
+                            LastWicError = null;
+                            return FinishJxrFromPacked(packed.Value, probe, viewportPixelWidth, viewportPixelHeight, scaling, wantRgba, measure, cancellation);
+                        }
 
-                    if (GalleryPresent.JxrWinrtClampsHdr(packed.Value.Format))
-                    {
                         LastWicError = WicNative.WicDecoderOpen.Failed(
                             WicNative.WicDecoderOpen.UnormClamp);
-                        return null;
                     }
-
-                    LastWicError = null;
-                    return FinishJxrFromPacked(packed.Value, probe, viewportPixelWidth, viewportPixelHeight, scaling, wantRgba, measure, cancellation);
                 }
-
-                LastWicError = WicNative.WicDecoderOpen.Failed(
-                    WicNative.WicDecoderOpen.Qi,
-                    qiHr);
+                else
+                {
+                    LastWicError = WicNative.WicDecoderOpen.Failed(
+                        WicNative.WicDecoderOpen.Qi,
+                        qiHr);
+                }
 
                 Release(frame);
                 frame = null;
@@ -1626,7 +1632,7 @@ internal static class HdrWicDecode
 
                 try
                 {
-                    return WicNative.TypedFromIUnknown<T>(ppv);
+                    return WicNative.TypedUniqueFromIUnknown<T>(ppv);
                 }
                 finally
                 {

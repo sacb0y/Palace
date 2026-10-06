@@ -176,6 +176,29 @@ public static class WicNative
         }
     }
 
+    /// <summary>
+    /// Like <see cref="TypedFromIUnknown{T}"/> but bypasses the RCW cache.
+    /// A QI'd pointer shares the IUnknown identity of the CsWinRT object,
+    /// so the cached lookup would return that wrapper and the cast to a
+    /// WIC interface would fail.
+    /// </summary>
+    public static T? TypedUniqueFromIUnknown<T>(IntPtr unk) where T : class
+    {
+        if (unk == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return (T)Marshal.GetUniqueObjectForIUnknown(unk);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public static T? TypedFromUnknown<T>(object com) where T : class
     {
         var unk = Marshal.GetIUnknownForObject(com);
