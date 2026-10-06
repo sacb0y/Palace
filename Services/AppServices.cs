@@ -120,6 +120,7 @@ public static class AppServices
     internal static void LoadShellBackground()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
+        ShellBackground.SetWallpaperName(ShellBackground.ParsePath(values[ShellBackground.WallpaperNameKey]));
         ShellBackground.Apply(
             ShellBackground.ParsePath(values[ShellBackground.WallpaperPathKey]),
             ShellBackground.ParseDarkness(values[ShellBackground.DarknessKey]),

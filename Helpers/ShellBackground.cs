@@ -9,6 +9,7 @@ namespace Palace.Helpers;
 public static class ShellBackground
 {
     public const string WallpaperPathKey = "ShellWallpaperPath";
+    public const string WallpaperNameKey = "ShellWallpaperName";
     public const string DarknessKey = "ShellDarkness";
     public const string BlurKey = "ShellBlur";
     public const string TintEnabledKey = "ShellTintEnabled";
@@ -33,6 +34,9 @@ public static class ShellBackground
 
     public static string? WallpaperPath { get; private set; }
 
+    /// <summary>The user's chosen file name; the store copy has a generated name.</summary>
+    public static string? WallpaperName { get; private set; }
+
     public static double Darkness { get; private set; } = DefaultDarkness;
 
     public static double Blur { get; private set; } = DefaultBlur;
@@ -52,6 +56,11 @@ public static class ShellBackground
             if (!HasWallpaper)
             {
                 return DefaultWallpaperLabel;
+            }
+
+            if (WallpaperName is { } name)
+            {
+                return name;
             }
 
             var path = WallpaperPath!;
@@ -105,6 +114,9 @@ public static class ShellBackground
 
         Changed?.Invoke(null, EventArgs.Empty);
     }
+
+    public static void SetWallpaperName(string? name) =>
+        WallpaperName = NormalizePath(name);
 
     public static void ReleaseDisplay() =>
         DisplayReleasing?.Invoke(null, EventArgs.Empty);

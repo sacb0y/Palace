@@ -94,6 +94,26 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void WallpaperLabel_PrefersChosenNameOverStoredCopy()
+    {
+        try
+        {
+            ShellBackground.Apply(@"C:\store\shell-wallpaper-abc.jpg", 40, 45, false, ShellBackground.DefaultTintHex);
+            Assert.Equal("shell-wallpaper-abc.jpg", ShellBackground.WallpaperLabel);
+
+            ShellBackground.SetWallpaperName("sunset.jpg");
+            Assert.Equal("sunset.jpg", ShellBackground.WallpaperLabel);
+
+            ShellBackground.Apply(null, 40, 45, false, ShellBackground.DefaultTintHex);
+            Assert.Equal(ShellBackground.DefaultWallpaperLabel, ShellBackground.WallpaperLabel);
+        }
+        finally
+        {
+            Reset();
+        }
+    }
+
+    [Fact]
     public void Apply_ReloadWallpaper_FiresWhenPathUnchanged()
     {
         ShellBackground.Apply(@"C:\pics\bg.jpg", 40, 45, false, ShellBackground.DefaultTintHex);
@@ -213,6 +233,9 @@ public sealed class ShellBackgroundTests
         Assert.Equal("100%", ShellBackground.AmountLabel(140));
     }
 
-    private static void Reset() =>
+    private static void Reset()
+    {
+        ShellBackground.SetWallpaperName(null);
         ShellBackground.Apply(null, ShellBackground.DefaultDarkness, ShellBackground.DefaultBlur, false, ShellBackground.DefaultTintHex);
+    }
 }

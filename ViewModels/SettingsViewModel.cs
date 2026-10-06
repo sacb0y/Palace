@@ -247,6 +247,7 @@ public partial class SettingsViewModel : ObservableObject
         ShellBackground.Apply(WallpaperPath, Darkness, Blur, TintEnabled, TintHex, reloadWallpaper);
         var values = ApplicationData.Current.LocalSettings.Values;
         values[ShellBackground.WallpaperPathKey] = ShellBackground.WallpaperPath ?? "";
+        values[ShellBackground.WallpaperNameKey] = ShellBackground.WallpaperName ?? "";
         values[ShellBackground.DarknessKey] = ShellBackground.Darkness;
         values[ShellBackground.BlurKey] = ShellBackground.Blur;
         values[ShellBackground.TintEnabledKey] = ShellBackground.TintEnabled;
@@ -269,6 +270,7 @@ public partial class SettingsViewModel : ObservableObject
             }
 
             var previous = ShellBackground.WallpaperPath;
+            var previousName = ShellBackground.WallpaperName;
             ShellBackground.ReleaseDisplay();
             try
             {
@@ -277,12 +279,14 @@ public partial class SettingsViewModel : ObservableObject
                     CreationCollisionOption.ReplaceExisting);
                 await file.CopyAndReplaceAsync(dest);
                 WallpaperPath = dest.Path;
+                ShellBackground.SetWallpaperName(file.Name);
                 PersistShellBackground(reloadWallpaper: true);
                 await TryDeleteStoredWallpaperAsync(previous);
                 StatusText = "Wallpaper updated.";
             }
             catch
             {
+                ShellBackground.SetWallpaperName(previousName);
                 ShellBackground.RestoreDisplay();
                 throw;
             }
@@ -293,10 +297,12 @@ public partial class SettingsViewModel : ObservableObject
         ErrorReporter.RunAsync("Clear wallpaper", Notify, async () =>
         {
             var path = ShellBackground.WallpaperPath;
+            var name = ShellBackground.WallpaperName;
             ShellBackground.ReleaseDisplay();
             try
             {
                 WallpaperPath = "";
+                ShellBackground.SetWallpaperName(null);
                 PersistShellBackground(reloadWallpaper: true);
                 await TryDeleteStoredWallpaperAsync(path);
                 StatusText = "Using the default gradient.";
@@ -304,6 +310,7 @@ public partial class SettingsViewModel : ObservableObject
             catch
             {
                 WallpaperPath = path ?? "";
+                ShellBackground.SetWallpaperName(name);
                 ShellBackground.RestoreDisplay();
                 throw;
             }
