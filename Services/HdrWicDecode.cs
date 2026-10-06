@@ -1066,7 +1066,7 @@ internal static class HdrWicDecode
                 return false;
             }
 
-            if (TryOpenFromPinnedMemory(factory, bytes, forceWmp: false, out decoder, out streamKeep, out lastHr))
+            if (TryOpenFromPinnedMemory(factory, bytes, useInboxClsid: false, out decoder, out streamKeep, out lastHr))
             {
                 LastWicError = null;
                 return true;
@@ -1075,13 +1075,13 @@ internal static class HdrWicDecode
             lastStage = WicNative.WicDecoderOpen.Memory;
             LastWicError = WicNative.WicDecoderOpen.Failed(lastStage, lastHr);
 
-            if (TryOpenFromPinnedMemory(factory, bytes, forceWmp: true, out decoder, out streamKeep, out lastHr))
+            if (TryOpenFromPinnedMemory(factory, bytes, useInboxClsid: true, out decoder, out streamKeep, out lastHr))
             {
                 LastWicError = null;
                 return true;
             }
 
-            lastStage = WicNative.WicDecoderOpen.Wmp;
+            lastStage = WicNative.WicDecoderOpen.Clsid;
             LastWicError = WicNative.WicDecoderOpen.Failed(lastStage, lastHr);
             decoder = null;
             return false;
@@ -1158,7 +1158,7 @@ internal static class HdrWicDecode
         private static bool TryOpenFromPinnedMemory(
             WicNative.IWICImagingFactory factory,
             byte[] bytes,
-            bool forceWmp,
+            bool useInboxClsid,
             out WicNative.IWICBitmapDecoder? decoder,
             out DecoderOpenHold? hold,
             out int hr)
@@ -1193,13 +1193,11 @@ internal static class HdrWicDecode
                     Bytes = bytes
                 };
 
-                if (forceWmp)
+                if (useInboxClsid)
                 {
-                    var format = WicNative.ContainerFormatWmp;
-                    hr = factory.CreateDecoder(ref format, IntPtr.Zero, out decoder);
-                    if (hr < 0 || decoder is null)
+                    decoder = TryCreateWmpDecoder(out hr);
+                    if (decoder is null)
                     {
-                        decoder = null;
                         hold.Dispose();
                         hold = null;
                         return false;
@@ -1253,9 +1251,166 @@ internal static class HdrWicDecode
             }
         }
 
+        /// <summary>
+        /// Packaged catalog has no WMP container. Inbox
+        /// <c>CLSID_WICWmpDecoder</c> lives in <c>WindowsCodecs.dll</c>
+        /// — CoCreate, then <c>DllGetClassObject</c> if COM registration
+        /// is filtered.
+        /// </summary>
+        private static WicNative.IWICBitmapDecoder? TryCreateWmpDecoder(out int hr)
+        {
+            hr = TryCoCreateDecoder(out var decoder);
+            if (decoder is not null)
+            {
+                return decoder;
+            }
+
+            var dllHr = TryDecoderFromCodecsDll(out decoder);
+            if (decoder is not null)
+            {
+                hr = 0;
+                return decoder;
+            }
+
+            if (hr == 0 || WicNative.WicDecoderOpen.IsComponentNotFound(hr))
+            {
+                hr = dllHr != 0 ? dllHr : hr;
+            }
+
+            if (hr == 0)
+            {
+                hr = unchecked((int)WicNative.WicDecoderOpen.ComponentNotFound);
+            }
+
+            return null;
+        }
+
+        private static int TryCoCreateDecoder(out WicNative.IWICBitmapDecoder? decoder)
+        {
+            decoder = null;
+            var clsid = WicNative.ClsidWmpDecoder;
+            var iid = WicNative.IidBitmapDecoder;
+            var hr = CoCreateInstance(ref clsid, IntPtr.Zero, ClsctxInproc, ref iid, out var unk);
+            if (hr < 0 || unk == IntPtr.Zero)
+            {
+                return hr != 0 ? hr : unchecked((int)0x80040154);
+            }
+
+            try
+            {
+                decoder = Marshal.GetObjectForIUnknown(unk) as WicNative.IWICBitmapDecoder;
+                return decoder is null ? unchecked((int)0x80004002) : 0;
+            }
+            finally
+            {
+                Marshal.Release(unk);
+            }
+        }
+
+        private static int TryDecoderFromCodecsDll(out WicNative.IWICBitmapDecoder? decoder)
+        {
+            decoder = null;
+            var lastHr = 0;
+            foreach (var name in new[] { "WindowsCodecs.dll", "WindowsCodecsExt.dll" })
+            {
+                var hr = TryDecoderFromModule(name, out decoder);
+                if (decoder is not null)
+                {
+                    return 0;
+                }
+
+                if (hr != 0)
+                {
+                    lastHr = hr;
+                }
+            }
+
+            return lastHr != 0 ? lastHr : unchecked((int)WicNative.WicDecoderOpen.ComponentNotFound);
+        }
+
+        private static int TryDecoderFromModule(string fileName, out WicNative.IWICBitmapDecoder? decoder)
+        {
+            decoder = null;
+            var module = GetModuleHandleW(fileName);
+            if (module == IntPtr.Zero)
+            {
+                module = LoadLibraryExW(fileName, IntPtr.Zero, LoadLibrarySearchSystem32);
+            }
+
+            if (module == IntPtr.Zero)
+            {
+                var win32 = Marshal.GetHRForLastWin32Error();
+                return win32 != 0 ? win32 : unchecked((int)0x8007007E);
+            }
+
+            var proc = GetProcAddress(module, "DllGetClassObject");
+            if (proc == IntPtr.Zero)
+            {
+                return unchecked((int)0x80004005);
+            }
+
+            var fn = Marshal.GetDelegateForFunctionPointer<DllGetClassObjectFn>(proc);
+            var clsid = WicNative.ClsidWmpDecoder;
+            var factoryIid = WicNative.IidClassFactory;
+            var hr = fn(ref clsid, ref factoryIid, out var factoryUnk);
+            if (hr < 0 || factoryUnk == IntPtr.Zero)
+            {
+                return hr != 0 ? hr : unchecked((int)WicNative.WicDecoderOpen.ComponentNotFound);
+            }
+
+            try
+            {
+                if (Marshal.GetObjectForIUnknown(factoryUnk) is not WicNative.IClassFactory factory)
+                {
+                    return unchecked((int)0x80004002);
+                }
+
+                try
+                {
+                    var decoderIid = WicNative.IidBitmapDecoder;
+                    hr = factory.CreateInstance(IntPtr.Zero, ref decoderIid, out var decoderUnk);
+                    if (hr < 0 || decoderUnk == IntPtr.Zero)
+                    {
+                        return hr != 0 ? hr : unchecked((int)WicNative.WicDecoderOpen.ComponentNotFound);
+                    }
+
+                    try
+                    {
+                        decoder = Marshal.GetObjectForIUnknown(decoderUnk) as WicNative.IWICBitmapDecoder;
+                        return decoder is null ? unchecked((int)0x80004002) : 0;
+                    }
+                    finally
+                    {
+                        Marshal.Release(decoderUnk);
+                    }
+                }
+                finally
+                {
+                    Release(factory);
+                }
+            }
+            finally
+            {
+                Marshal.Release(factoryUnk);
+            }
+        }
+
         private const uint FileShareReadWrite = 3;
         private const uint OpenExisting = 3;
+        private const uint LoadLibrarySearchSystem32 = 0x00000800;
         private static readonly IntPtr InvalidHandle = new(-1);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int DllGetClassObjectFn(ref Guid rclsid, ref Guid riid, out IntPtr ppv);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr GetModuleHandleW(string lpModuleName);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr LoadLibraryExW(string lpLibFileName, IntPtr hFile, uint dwFlags);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true, SetLastError = true)]
+        private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr CreateFileW(

@@ -30,27 +30,43 @@ public static class WicNative
     public static IWICBitmapSource AsSource(object com) => (IWICBitmapSource)com;
 
     /// <summary>
-    /// Packaged WinUI: <c>CreateDecoderFromFilename</c> bypasses
-    /// FutureAccessList. Open from pinned memory via
-    /// <c>IWICStream.InitializeFromMemory</c>, then
-    /// <c>CreateDecoder(GUID_ContainerFormatWmp)</c> +
-    /// <c>Initialize</c> so sniffing cannot miss HDR JXR.
+    /// Packaged WinUI: the WIC component catalog omits HD Photo /
+    /// <c>GUID_ContainerFormatWmp</c> (<c>WINCODEC_ERR_COMPONENTNOTFOUND</c>
+    /// <c>0x88982F50</c>). Do not <c>CreateDecoder(Wmp)</c>. CoCreate
+    /// inbox <c>CLSID_WICWmpDecoder</c> (or <c>DllGetClassObject</c> on
+    /// <c>WindowsCodecs.dll</c>) and <c>Initialize</c> a pinned stream.
     /// </summary>
     public static class WicDecoderOpen
     {
         public const string Filename = "filename";
         public const string Handle = "handle";
         public const string Memory = "memory";
-        public const string Wmp = "wmp";
+        public const string Clsid = "clsid";
+        public const uint ComponentNotFound = 0x88982F50;
 
-        public static readonly string[] Stages = [Filename, Handle, Memory, Wmp];
+        public static readonly string[] Stages = [Filename, Handle, Memory, Clsid];
 
         public static string Failed(string stage, int hr = 0)
         {
             var suffix = hr == 0 ? "" : " " + unchecked((uint)hr).ToString("X8");
             return "WIC decoder " + stage + suffix;
         }
+
+        public static bool IsComponentNotFound(int hr) =>
+            unchecked((uint)hr) == ComponentNotFound;
     }
+
+    /// <summary>
+    /// Inbox JPEG XR / HD Photo decoder in <c>WindowsCodecs.dll</c>.
+    /// Same CLSID as WinRT <c>BitmapDecoder.JpegXrDecoderId</c>.
+    /// </summary>
+    public static readonly Guid ClsidWmpDecoder = new("a26cec36-234c-4950-ae16-e34aace71d0d");
+
+    public static readonly Guid IidBitmapDecoder = new("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d");
+
+    public static readonly Guid IidClassFactory = new("00000001-0000-0000-c000-000000000046");
+
+    public static readonly string[] ClassFactoryMethods = ["CreateInstance", "LockServer"];
 
     [ComImport]
     [Guid("ec5ec8a9-c395-4314-9c77-54d7a935ff70")]
@@ -253,6 +269,18 @@ public static class WicNative
     ];
 
     public static readonly Guid ContainerFormatWmp = new("57a37caa-367a-4540-916b-f183c1868a5f");
+
+    [ComImport]
+    [Guid("00000001-0000-0000-c000-000000000046")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IClassFactory
+    {
+        [PreserveSig]
+        int CreateInstance(IntPtr pUnkOuter, ref Guid riid, out IntPtr ppvObject);
+
+        [PreserveSig]
+        int LockServer(int fLock);
+    }
 
     [ComImport]
     [Guid("30989668-e1c9-4597-b395-458eedb808df")]

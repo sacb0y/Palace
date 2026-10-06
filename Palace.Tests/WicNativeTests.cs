@@ -75,16 +75,33 @@ public sealed class WicNativeTests
     public void WicDecoderOpen_FailedIncludesStageAndHRESULT()
     {
         Assert.Equal(
-            ["filename", "handle", "memory", "wmp"],
+            ["filename", "handle", "memory", "clsid"],
             WicNative.WicDecoderOpen.Stages);
         Assert.Equal(
             "WIC decoder memory",
             WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.Memory));
         Assert.Equal(
-            "WIC decoder wmp 88982F50",
+            "WIC decoder clsid 88982F50",
             WicNative.WicDecoderOpen.Failed(
-                WicNative.WicDecoderOpen.Wmp,
+                WicNative.WicDecoderOpen.Clsid,
                 unchecked((int)0x88982F50)));
+        Assert.True(
+            WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
+        Assert.False(WicNative.WicDecoderOpen.IsComponentNotFound(0));
+    }
+
+    [Fact]
+    public void WmpDecoder_UsesInboxClsidNotCatalogContainer()
+    {
+        Assert.Equal(
+            Guid.Parse("a26cec36-234c-4950-ae16-e34aace71d0d"),
+            WicNative.ClsidWmpDecoder);
+        Assert.Equal(
+            Guid.Parse("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d"),
+            WicNative.IidBitmapDecoder);
+        Assert.Equal(
+            WicNative.ClassFactoryMethods,
+            WicNative.DeclaredMethods(typeof(WicNative.IClassFactory)));
         Assert.Equal(
             WicNative.ContainerFormatWmp,
             Guid.Parse("57a37caa-367a-4540-916b-f183c1868a5f"));
