@@ -40,6 +40,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _scrollViewH;
     private bool _peakHooked;
     private string? _gifCachePath;
+    private string? _gifLoadingPath;
     private IReadOnlyList<GifFrames.Raster>? _gifRasters;
     private WriteableBitmap?[]? _gifBitmaps;
     private CancellationTokenSource? _gifLoadCts;
@@ -156,16 +157,18 @@ public sealed partial class GalleryStillSurface : UserControl
             or nameof(GalleryViewModel.GifPlaying))
         {
             if (_gallery is { CanScrubGif: true } g
-                && GifFrames.CacheMatchesPath(_gifCachePath, g.Current?.Path))
+                && GifFrames.ShouldApplyGifTick(
+                    true,
+                    GifFrames.CacheMatchesPath(_gifCachePath, g.Current?.Path)
+                    && _gifRasters is { Count: > 0 }))
             {
                 ApplyCachedGifFrame(g);
-                return;
             }
+
+            return;
         }
 
         if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
-            or nameof(GalleryViewModel.GifPlaying)
-            or nameof(GalleryViewModel.GifFrameIndex)
             or nameof(GalleryViewModel.CanScrubGif))
         {
             ResetPinchTracking();
@@ -199,12 +202,25 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private async Task RefreshAsync()
     {
+        var gallery = _gallery;
+        ApplyScaleLayout();
+        if (gallery is { IsImage: true, CanScrubGif: true })
+        {
+            _hdrLoadCts?.Cancel();
+            _presentCts?.Cancel();
+            Interlocked.Increment(ref _histEpoch);
+            ClearHdrCache();
+            HideHdr();
+            gallery.SetHdrPresentResult(false, false);
+            gallery.ClearHistogram();
+            await ShowGifScrubAsync(gallery);
+            return;
+        }
+
         _hdrLoadCts?.Cancel();
         _presentCts?.Cancel();
         var epoch = Interlocked.Increment(ref _epoch);
         Interlocked.Increment(ref _histEpoch);
-        var gallery = _gallery;
-        ApplyScaleLayout();
         if (gallery is not { IsImage: true })
         {
             ClearHdrCache();
@@ -212,15 +228,6 @@ public sealed partial class GalleryStillSurface : UserControl
             HideHdr();
             ImgStill.Source = null;
             gallery?.ClearHistogram();
-            return;
-        }
-
-        if (gallery.CanScrubGif)
-        {
-            ClearHdrCache();
-            HideHdr();
-            gallery.SetHdrPresentResult(false, false);
-            await ShowGifScrubAsync(gallery, epoch);
             return;
         }
 
@@ -953,7 +960,7 @@ public sealed partial class GalleryStillSurface : UserControl
         }
     }
 
-    private async Task ShowGifScrubAsync(GalleryViewModel gallery, int epoch)
+    private async Task ShowGifScrubAsync(GalleryViewModel gallery)
     {
         var path = gallery.Current?.Path;
         if (string.IsNullOrEmpty(path)
@@ -966,15 +973,25 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (GifFrames.CacheMatchesPath(_gifCachePath, path) && _gifRasters is { Count: > 0 })
+        var cacheReady = GifFrames.CacheMatchesPath(_gifCachePath, path)
+            && _gifRasters is { Count: > 0 };
+        if (cacheReady)
         {
             ApplyCachedGifFrame(gallery);
+            return;
+        }
+
+        var loadInFlight = string.Equals(_gifLoadingPath, path, StringComparison.OrdinalIgnoreCase)
+            && _gifLoadCts is { IsCancellationRequested: false };
+        if (!GifFrames.ShouldStartGifCompositeLoad(cacheReady, loadInFlight))
+        {
             return;
         }
 
         _gifLoadCts?.Cancel();
         var load = new CancellationTokenSource();
         _gifLoadCts = load;
+        _gifLoadingPath = path;
         IReadOnlyList<GifFrames.Raster>? frames = null;
         try
         {
@@ -989,22 +1006,23 @@ public sealed partial class GalleryStillSurface : UserControl
             frames = null;
         }
 
-        if (epoch != _epoch
-            || load.IsCancellationRequested
-            || !ReferenceEquals(_gallery, gallery))
+        if (load.IsCancellationRequested
+            || !ReferenceEquals(_gallery, gallery)
+            || !string.Equals(_gifLoadingPath, path, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         await UiDispatch.RunAsync(() =>
         {
-            if (epoch != _epoch
-                || load.IsCancellationRequested
-                || !ReferenceEquals(_gallery, gallery))
+            if (load.IsCancellationRequested
+                || !ReferenceEquals(_gallery, gallery)
+                || !string.Equals(_gifLoadingPath, path, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
+            _gifLoadingPath = null;
             if (frames is { Count: > 0 })
             {
                 _gifCachePath = path;
@@ -1052,6 +1070,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         _gifLoadCts?.Cancel();
         _gifCachePath = null;
+        _gifLoadingPath = null;
         _gifRasters = null;
         _gifBitmaps = null;
     }

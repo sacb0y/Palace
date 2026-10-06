@@ -94,6 +94,12 @@ public sealed class GifFramesTests
         Assert.True(GifFrames.CacheMatchesPath(@"D:\loop.gif", @"d:\loop.gif"));
         Assert.False(GifFrames.CacheMatchesPath(@"D:\a.gif", @"D:\b.gif"));
         Assert.False(GifFrames.CacheMatchesPath(null, @"D:\loop.gif"));
+        Assert.False(GifFrames.ShouldApplyGifTick(true, cacheReady: false));
+        Assert.True(GifFrames.ShouldApplyGifTick(true, cacheReady: true));
+        Assert.False(GifFrames.ShouldApplyGifTick(false, cacheReady: true));
+        Assert.True(GifFrames.ShouldStartGifCompositeLoad(cacheReady: false, loadInFlightForSamePath: false));
+        Assert.False(GifFrames.ShouldStartGifCompositeLoad(cacheReady: false, loadInFlightForSamePath: true));
+        Assert.False(GifFrames.ShouldStartGifCompositeLoad(cacheReady: true, loadInFlightForSamePath: false));
     }
 
     [Fact]

@@ -79,6 +79,18 @@ public static class GifFrames
     public static bool ShouldShowScrub(bool canScrub, int frameCount) =>
         canScrub && frameCount >= MinScrubCount;
 
+    /// <summary>
+    /// Play ticks / Pause apply a cached raster. They must not start
+    /// another <see cref="TryRenderAll"/> while the first load is in flight.
+    /// </summary>
+    public static bool ShouldApplyGifTick(bool canScrub, bool cacheReady) =>
+        canScrub && cacheReady;
+
+    public static bool ShouldStartGifCompositeLoad(
+        bool cacheReady,
+        bool loadInFlightForSamePath) =>
+        !cacheReady && !loadInFlightForSamePath;
+
     public readonly record struct Info(int Width, int Height, int FrameCount, IReadOnlyList<int> DelaysCs);
 
     public readonly record struct Raster(int Width, int Height, byte[] Bgra);
