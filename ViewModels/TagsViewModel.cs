@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
+using Windows.Storage;
 
 namespace Palace.ViewModels;
 
@@ -18,6 +19,7 @@ public partial class TagsViewModel : ObservableObject
     private List<TagImplication> _implications = [];
     private int _mosaicEpoch;
     private int _busyDepth;
+    private bool _suppressMosaicSort;
     private string? _reorderParentId;
     private string? _renameBaseline;
     private string? _renameBaselineTagId;
@@ -78,6 +80,25 @@ public partial class TagsViewModel : ObservableObject
     public partial bool IncludeNested { get; set; } = true;
 
     [ObservableProperty]
+    public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
+
+    public IReadOnlyList<string> SortLabels => MosaicSortOrder.Labels;
+
+    public int MosaicSortIndex
+    {
+        get => MosaicSortOrder.IndexOf(MosaicSort);
+        set
+        {
+            if (!MosaicSortOrder.ShouldApplyIndex(value, MosaicSort, out var next))
+            {
+                return;
+            }
+
+            MosaicSort = next;
+        }
+    }
+
+    [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }
 
     [ObservableProperty]
@@ -127,11 +148,44 @@ public partial class TagsViewModel : ObservableObject
 
     public async Task LoadAsync() => await RefreshAsync();
 
+    partial void OnMosaicSortChanged(MosaicSort value)
+    {
+        OnPropertyChanged(nameof(MosaicSortIndex));
+        if (_suppressMosaicSort)
+        {
+            return;
+        }
+
+        if (AppServices.CurrentProject is { } project)
+        {
+            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(project.Id)] =
+                MosaicSortOrder.Persist(value);
+        }
+
+        _ = LoadMosaicAsync();
+    }
+
+    private void LoadMosaicSort()
+    {
+        var projectId = AppServices.CurrentProject?.Id;
+        if (projectId is null)
+        {
+            return;
+        }
+
+        var next = MosaicSortOrder.Parse(
+            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(projectId)]);
+        _suppressMosaicSort = true;
+        MosaicSort = next;
+        _suppressMosaicSort = false;
+    }
+
     public async Task RefreshAsync()
     {
         BeginBusy("Loading…");
         try
         {
+            LoadMosaicSort();
             _tags = (await _catalog.GetTagsAsync()).ToList();
             _memberships = (await _catalog.GetMembershipsAsync()).ToList();
             _implications = (await _catalog.GetImplicationsAsync()).ToList();
@@ -1001,7 +1055,11 @@ public partial class TagsViewModel : ObservableObject
             }
 
             var projectId = AppServices.CurrentProject?.Id;
-            var assets = await _catalog.GetAssetsForTagFilterAsync(sets, TagFilterMode.Any, projectId);
+            var assets = await _catalog.GetAssetsForTagFilterAsync(
+                sets,
+                TagFilterMode.Any,
+                projectId,
+                MosaicSort);
             if (epoch != _mosaicEpoch)
             {
                 return;

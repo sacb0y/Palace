@@ -32,6 +32,7 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<string, WeakReference<BitmapImage>> _tileBitmapCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _suppressBrowseChrome;
     private bool _suppressMosaicSelection;
+    private bool _mosaicSortArmed;
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
 
@@ -87,6 +88,8 @@ public sealed partial class LibraryPage : Page
             _suppressBrowseChrome = true;
             SyncBrowseChromeFromViewModel();
             _suppressBrowseChrome = false;
+            await ErrorReporter.RunAsync("Reload mosaic sort", null, ViewModel.ReloadMosaicSortAsync);
+            ArmMosaicSortCombo();
             await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
             UpdatePreview();
             MosaicLayout.InvalidateItemsInfo();
@@ -105,6 +108,7 @@ public sealed partial class LibraryPage : Page
         };
         Unloaded += (_, _) =>
         {
+            _mosaicSortArmed = false;
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
@@ -291,6 +295,29 @@ public sealed partial class LibraryPage : Page
             TagFilterMode.None => SelTagMatchNone,
             _ => SelTagMatchAll
         };
+    }
+
+    private void ArmMosaicSortCombo()
+    {
+        _mosaicSortArmed = false;
+        CmbMosaicSort.SelectedIndex = ViewModel.MosaicSortIndex;
+        _mosaicSortArmed = true;
+    }
+
+    private void CmbMosaicSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_mosaicSortArmed)
+        {
+            return;
+        }
+
+        var index = CmbMosaicSort.SelectedIndex;
+        if (!MosaicSortOrder.ShouldApplyIndex(index, ViewModel.MosaicSort, out _))
+        {
+            return;
+        }
+
+        ViewModel.MosaicSortIndex = index;
     }
 
     private void BtnBrowseTags_Click(object sender, RoutedEventArgs e)

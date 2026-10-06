@@ -19,6 +19,7 @@ public sealed partial class TagsPage : Page
 
     private bool _ignoreColorChanges;
     private bool _colorDirty;
+    private bool _mosaicSortArmed;
     private static readonly SemaphoreSlim TileDecodeGate = new(4);
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
@@ -38,15 +39,40 @@ public sealed partial class TagsPage : Page
             GrdTagAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdTagAssets_KeyDown), true);
             RefreshRealizedTiles();
             await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
+            ArmMosaicSortCombo();
         };
         Unloaded += (_, _) =>
         {
+            _mosaicSortArmed = false;
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
                 ViewModel.MosaicChunkAppended = null;
             }
         };
+    }
+
+    private void ArmMosaicSortCombo()
+    {
+        _mosaicSortArmed = false;
+        CmbTagMosaicSort.SelectedIndex = ViewModel.MosaicSortIndex;
+        _mosaicSortArmed = true;
+    }
+
+    private void CmbTagMosaicSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_mosaicSortArmed)
+        {
+            return;
+        }
+
+        var index = CmbTagMosaicSort.SelectedIndex;
+        if (!MosaicSortOrder.ShouldApplyIndex(index, ViewModel.MosaicSort, out _))
+        {
+            return;
+        }
+
+        ViewModel.MosaicSortIndex = index;
     }
 
     public static IRelayCommand<AssetItem?> GetOpenAssetCommand() => AppServices.Tags.OpenAssetCommand;
