@@ -70,10 +70,16 @@ public static class GalleryPresent
         bool peakOverride = false,
         float peakNits = 0)
     {
-        _ = displayHdr;
-        if (probe.CanPresentHdr && presented && peakOverride)
+        if (probe.CanPresentHdr && presented && peakOverride && displayHdr)
         {
             return $"{HdrKindLabel(probe.Kind)} · clip {ClampPeakNits(peakNits):0} nits (override)";
+        }
+
+        if (probe.CanPresentHdr && presented && !displayHdr)
+        {
+            _ = peakOverride;
+            _ = peakNits;
+            return $"{HdrKindLabel(probe.Kind)} · tonemap SDR {ScrgbNits:0} nits";
         }
 
         return probe.Kind switch
@@ -152,6 +158,108 @@ public static class GalleryPresent
     /// </summary>
     public static bool IsHdrDisplay(float displayLuminance) =>
         displayLuminance > 220;
+
+    /// <summary>
+    /// DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 (scRGB), G2084 HDR10, studio HDR10.
+    /// G22 sRGB (0) is SDR even when MaxLuminance is the dummy 270.
+    /// </summary>
+    public static bool IsAdvancedColor(int dxgiColorSpace) =>
+        dxgiColorSpace is 1 or 12 or 16;
+
+    /// <summary>
+    /// G22 DWM composition white is scRGB 1.0 (80 nits). DXGI EDID luminance
+    /// (dummy 270, 80–220 panel ads, BT.2408 203) is not the map target.
+    /// </summary>
+    public static float SdrPresentPeakNits(float maxLuminance, float maxFullFrameLuminance)
+    {
+        _ = maxLuminance;
+        _ = maxFullFrameLuminance;
+        return ScrgbNits;
+    }
+
+    /// <summary>MaxCLL in nits: scRGB channel peak, else CIE Y.</summary>
+    public static float ContentMaxNits(float maxScrgb, float cieYNits)
+    {
+        if (maxScrgb > 0)
+        {
+            return maxScrgb * ScrgbNits;
+        }
+
+        return cieYNits > 0 ? cieYNits : 0;
+    }
+
+    /// <summary>
+    /// SDR map peak must not follow the current decode size. Viewport Fit
+    /// often sees a lower MaxScrgb than native 1:1; keep the highest known
+    /// so Fit and 1:1 share one scale. Never shrink after a native peak.
+    /// </summary>
+    public static float StickyContentMaxNits(float currentNits, float knownNits)
+    {
+        if (currentNits < 0)
+        {
+            currentNits = 0;
+        }
+
+        if (knownNits < 0)
+        {
+            knownNits = 0;
+        }
+
+        return currentNits > knownNits ? currentNits : knownNits;
+    }
+
+    /// <summary>
+    /// Pixel CLL, plus header cLLi as a decode-size-independent floor so
+    /// the first Fit paint is not weaker than later 1:1. Info MaxCLL stays
+    /// the pixel peak (not cLLi).
+    /// </summary>
+    public static float StickyContentMaxNits(
+        float frameMaxScrgb,
+        float frameMaxNits,
+        int? probeMaxCllNits,
+        float knownNits)
+    {
+        var current = ContentMaxNits(frameMaxScrgb, frameMaxNits);
+        var probe = probeMaxCllNits is > 0 ? probeMaxCllNits.Value : 0f;
+        return StickyContentMaxNits(current, StickyContentMaxNits(probe, knownNits));
+    }
+
+    /// <summary>
+    /// Sticky peak is per still. Next/prev must not keep a prior MaxCLL
+    /// (that would crush a dimmer HDR still). Same path (Fit ↔ 1:1) keeps
+    /// the highest known.
+    /// </summary>
+    public static float StickyContentMaxNitsForStill(
+        string? framePath,
+        string? knownPath,
+        float frameMaxScrgb,
+        float frameMaxNits,
+        int? probeMaxCllNits,
+        float knownNits)
+    {
+        var known = !string.IsNullOrEmpty(framePath)
+            && string.Equals(framePath, knownPath, StringComparison.OrdinalIgnoreCase)
+            ? knownNits
+            : 0f;
+        return StickyContentMaxNits(frameMaxScrgb, frameMaxNits, probeMaxCllNits, known);
+    }
+
+    /// <summary>
+    /// HDR panels: clip only (unknown peak → PQ 10 000). SDR: SKIV map
+    /// CLL to G22 composition white (scRGB 1.0 / 80 nits) + clip. Never
+    /// auto-clip to 203 paper white, and never map to an EDID 80–220 peak
+    /// (that would present scRGB above 1 on G22 and look overblown).
+    /// </summary>
+    public static HdrPresentMap PresentMap(bool displayIsHdr, float contentMaxNits, float displayPeakNits)
+    {
+        if (displayIsHdr)
+        {
+            return new HdrPresentMap(1f, RasterizeClipScrgb(displayPeakNits));
+        }
+
+        _ = displayPeakNits;
+        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f);
+    }
 
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
@@ -316,9 +424,9 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// Overlay present clips highlights to the display peak. Do not scale
-    /// midtones by MaxCLL — that crushes SDR-reference white (203 nits)
-    /// versus the BitmapImage / SDR export of the same scene.
+    /// HDR-display present clips highlights to a real peak (or PQ range).
+    /// Do not map-CLL on HDR — that crushes BT.2408 203 nits white. SDR
+    /// panels use <see cref="PresentMap"/> (map CLL to display + clip).
     /// </summary>
     public static float ClipToPeak(float linearNits, float displayPeakNits)
     {
@@ -633,3 +741,5 @@ public readonly record struct GalleryImageInfo(
     float? MinLuminanceNits,
     float? DisplayLuminanceNits,
     float? MaxScrgb = null);
+
+public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);

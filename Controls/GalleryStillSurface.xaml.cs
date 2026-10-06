@@ -16,6 +16,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private HdrSwapchainPresenter? _presenter;
     private HdrFrame? _hdrFrame;
     private string? _hdrFramePath;
+    private float _hdrMapMaxNits;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
     private int _histEpoch;
@@ -332,6 +333,17 @@ public sealed partial class GalleryStillSurface : UserControl
                 return;
             }
 
+            // Highest pixel / header CLL wins on this still (Fit viewport then
+            // 1:1 native). A new path (next/prev) drops the prior peak so a
+            // dimmer HDR still is not crushed.
+            _hdrMapMaxNits = GalleryPresent.StickyContentMaxNitsForStill(
+                still,
+                _hdrFramePath,
+                frame.MaxScrgb,
+                frame.MaxNits,
+                gallery.CurrentProbe.MaxCllNits,
+                _hdrMapMaxNits);
+
             _hdrFrame = frame;
             _hdrFramePath = still;
             _hdrFrameProbe = gallery.CurrentProbe;
@@ -475,6 +487,7 @@ public sealed partial class GalleryStillSurface : UserControl
         var dipH = 0.0;
         var scale = 1.0;
         float? peakOverride = null;
+        var mapMaxNits = 0f;
         ImageScaling scaling = ImageScaling.Fit;
         await UiDispatch.RunAsync(() =>
         {
@@ -497,6 +510,16 @@ public sealed partial class GalleryStillSurface : UserControl
             (dipW, dipH) = HdrPanelDips();
             scale = XamlRoot?.RasterizationScale ?? 1.0;
             peakOverride = GalleryPeak.PresentOverrideNits;
+            mapMaxNits = GalleryPresent.StickyContentMaxNitsForStill(
+                _hdrFramePath,
+                g.PreviewImageUri ?? g.CurrentPath,
+                f.MaxScrgb,
+                f.MaxNits,
+                g.CurrentProbe.MaxCllNits,
+                GalleryPresent.StickyContentMaxNits(
+                    GalleryPresent.ContentMaxNits(g.ContentMaxScrgb, g.ContentMaxNits),
+                    _hdrMapMaxNits));
+            _hdrMapMaxNits = mapMaxNits;
         });
 
         if (gallery is null || frame is null || presenter is null)
@@ -519,7 +542,7 @@ public sealed partial class GalleryStillSurface : UserControl
         try
         {
             outcome = await presenterRef.TryPresentAsync(
-                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, StillCurrent, cts.Token);
+                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token);
         }
         finally
         {
@@ -649,6 +672,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         _hdrFrame = null;
         _hdrFramePath = null;
+        _hdrMapMaxNits = 0;
         _hdrFrameProbe = HdrProbe.None;
     }
 

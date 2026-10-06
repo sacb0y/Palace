@@ -253,6 +253,20 @@ public static class HdrColor
     }
 
     /// <summary>
+    /// SKIV map-CLL-to-display in scRGB. SDR present uses this; HDR keeps
+    /// identity + clip in <see cref="GalleryPresent.PresentMap"/>.
+    /// </summary>
+    public static float MapCllToDisplayScrgb(float scrgb, float contentMaxNits, float displayNits)
+    {
+        var peak = displayNits > 0 ? displayNits : GalleryPresent.ScrgbNits;
+        var nits = GalleryPresent.MapCllAndClip(
+            scrgb * GalleryPresent.ScrgbNits,
+            contentMaxNits,
+            peak);
+        return nits / GalleryPresent.ScrgbNits;
+    }
+
+    /// <summary>
     /// WIC <c>Rgba16</c> on HDR AVIF often writes luma in R and zeros G/B
     /// (DoNotColorManage skips libavif’s YUV→RGB). SKIV never presents that.
     /// </summary>
