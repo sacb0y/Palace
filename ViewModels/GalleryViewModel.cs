@@ -177,6 +177,7 @@ public partial class GalleryViewModel : ObservableObject
     public partial string GifFrameLabel { get; set; } = "";
 
     private bool _gifLoad;
+    private bool _gifCompositeReady;
     private bool _gifPlayTick;
     private IReadOnlyList<int> _gifDelays = [];
     private CancellationTokenSource? _gifPlayCts;
@@ -320,7 +321,7 @@ public partial class GalleryViewModel : ObservableObject
     private void StartGifPlayLoop()
     {
         StopGifPlayback();
-        if (!CanScrubGif || !GifPlaying)
+        if (!GifFrames.ShouldRunGifPlayLoop(CanScrubGif, GifPlaying, _gifCompositeReady))
         {
             return;
         }
@@ -380,6 +381,7 @@ public partial class GalleryViewModel : ObservableObject
         StopGifPlayback();
         var frameCount = info?.FrameCount ?? 0;
         _gifLoad = true;
+        _gifCompositeReady = false;
         _gifDelays = info?.DelaysCs ?? [];
         CanScrubGif = GifFrames.ShouldShowScrub(canScrub, frameCount);
         GifFrameCount = frameCount;
@@ -388,6 +390,15 @@ public partial class GalleryViewModel : ObservableObject
         GifPlaying = CanScrubGif;
         GifFrameLabel = GifFrames.PositionLabel(0, frameCount);
         _gifLoad = false;
+    }
+
+    /// <summary>
+    /// Overlay composite cache is ready. Start the delay clock only now so
+    /// Pause / slider during load keep frame 0.
+    /// </summary>
+    public void NotifyGifCompositeReady()
+    {
+        _gifCompositeReady = true;
         if (GifPlaying)
         {
             StartGifPlayLoop();

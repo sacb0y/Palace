@@ -957,7 +957,11 @@ public sealed partial class GalleryStillSurface : UserControl
                 return null;
             }
 
-            return new BitmapImage { UriSource = new Uri(path, UriKind.Absolute), AutoPlay = true };
+            return new BitmapImage
+            {
+                UriSource = new Uri(path, UriKind.Absolute),
+                AutoPlay = !PathSafe.GifExt.Contains(PathSafe.Extension(path))
+            };
         }
         catch
         {
@@ -982,9 +986,14 @@ public sealed partial class GalleryStillSurface : UserControl
             && _gifRasters is { Count: > 0 };
         if (cacheReady)
         {
-            _gifLoadCts?.Cancel();
-            _gifLoadingPath = null;
+            if (GifFrames.ShouldCancelStaleGifLoad(true))
+            {
+                _gifLoadCts?.Cancel();
+                _gifLoadingPath = null;
+            }
+
             ApplyCachedGifFrame(gallery);
+            gallery.NotifyGifCompositeReady();
             return;
         }
 
@@ -1002,12 +1011,6 @@ public sealed partial class GalleryStillSurface : UserControl
         if (ImgStill.Source is BitmapImage animated)
         {
             animated.Stop();
-        }
-
-        var pausedForLoad = gallery.GifPlaying;
-        if (pausedForLoad)
-        {
-            gallery.GifPlaying = false;
         }
 
         IReadOnlyList<GifFrames.Raster>? frames = null;
@@ -1041,19 +1044,13 @@ public sealed partial class GalleryStillSurface : UserControl
             }
 
             _gifLoadingPath = null;
-            if (pausedForLoad
-                && !gallery.GifPlaying
-                && (int)Math.Round(gallery.GifFrameIndex) == 0)
-            {
-                gallery.GifPlaying = true;
-            }
-
             if (frames is { Count: > 0 })
             {
                 _gifCachePath = path;
                 _gifRasters = frames;
                 _gifBitmaps = new WriteableBitmap?[frames.Count];
                 ApplyCachedGifFrame(gallery);
+                gallery.NotifyGifCompositeReady();
                 return;
             }
 

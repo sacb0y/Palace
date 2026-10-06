@@ -99,6 +99,21 @@ public static class GifFrames
     public static bool ShouldBumpHdrEpochOnGifStillRefresh(bool isScrubbableGif) =>
         isScrubbableGif;
 
+    /// <summary>
+    /// Applying a cached composite for the current path must cancel any
+    /// in-flight decode for a previous GIF so it cannot replace rasters.
+    /// </summary>
+    public static bool ShouldCancelStaleGifLoad(bool cacheReadyForCurrentPath) =>
+        cacheReadyForCurrentPath;
+
+    /// <summary>
+    /// The delay clock must not run until <see cref="TryRenderAll"/> has
+    /// filled the overlay cache. Otherwise Pause/slider cannot freeze the
+    /// still, and applying the cache jumps to an advanced index.
+    /// </summary>
+    public static bool ShouldRunGifPlayLoop(bool canScrub, bool playing, bool compositeReady) =>
+        canScrub && playing && compositeReady;
+
     public readonly record struct Info(int Width, int Height, int FrameCount, IReadOnlyList<int> DelaysCs);
 
     public readonly record struct Raster(int Width, int Height, byte[] Bgra);
@@ -373,6 +388,7 @@ public static class GifFrames
             }
             else
             {
+                cancellation.ThrowIfCancellationRequested();
                 var indices = DecodeLzw(stream, minCode, fw * fh);
                 if (disposal == 3)
                 {

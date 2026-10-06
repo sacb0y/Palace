@@ -109,6 +109,23 @@ public sealed class GifFramesTests
         Assert.False(GifFrames.ShouldBumpHdrEpochOnGifStillRefresh(false));
         Assert.False(GifFrames.ShouldStartGifCompositeLoad(cacheReady: false, loadInFlightForSamePath: true));
         Assert.False(GifFrames.ShouldApplyGifTick(true, cacheReady: false));
+        Assert.True(GifFrames.ShouldCancelStaleGifLoad(true));
+        Assert.False(GifFrames.ShouldCancelStaleGifLoad(false));
+        Assert.False(GifFrames.ShouldRunGifPlayLoop(true, playing: true, compositeReady: false));
+        Assert.True(GifFrames.ShouldRunGifPlayLoop(true, playing: true, compositeReady: true));
+        Assert.False(GifFrames.ShouldRunGifPlayLoop(true, playing: false, compositeReady: true));
+        Assert.False(GifFrames.ShouldRunGifPlayLoop(false, playing: true, compositeReady: true));
+    }
+
+    [Fact]
+    public void TryRenderAll_HonorsCancellation()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        using var stream = new MemoryStream(TwoFrameGif());
+        Assert.Throws<OperationCanceledException>(() => GifFrames.TryRenderAll(stream, cts.Token));
+        using var ok = new MemoryStream(TwoFrameGif());
+        Assert.NotNull(GifFrames.TryRenderAll(ok));
     }
 
     [Fact]
