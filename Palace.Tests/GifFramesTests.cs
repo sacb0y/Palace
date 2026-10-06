@@ -136,6 +136,33 @@ public sealed class GifFramesTests
         Assert.False(GifFrames.FitsCacheBudget(1, 1, GifFrames.MaxCacheFrames + 1));
         Assert.False(GifFrames.FitsCacheBudget(int.MaxValue, int.MaxValue, int.MaxValue));
         Assert.True(GifFrames.FitsCacheBudget(64, 64, 100));
+        Assert.True(GifFrames.FitsFramePixels(2, 1));
+        Assert.True(GifFrames.FitsFramePixels(100, 100));
+        Assert.False(GifFrames.FitsFramePixels(0, 10));
+        Assert.False(GifFrames.FitsFramePixels(10, 0));
+        Assert.False(GifFrames.FitsFramePixels(46341, 46341));
+        Assert.False(GifFrames.FitsFramePixels(65535, 65535));
+        Assert.False(GifFrames.FitsFramePixels(int.MaxValue, 2));
+        Assert.True(GifFrames.PassesGifSliderArrows(true, GifFrames.KeyLeft));
+        Assert.True(GifFrames.PassesGifSliderArrows(true, GifFrames.KeyRight));
+        Assert.False(GifFrames.PassesGifSliderArrows(false, GifFrames.KeyLeft));
+        Assert.False(GifFrames.PassesGifSliderArrows(true, GalleryScale.KeySpace));
+        Assert.False(GifFrames.PassesGifSliderArrows(true, GalleryScale.KeyEscape));
+        Assert.True(GifFrames.IsGifFrameSlider("SldGifFrame"));
+        Assert.True(GifFrames.IsGifFrameSlider("SldGalleryWindowGifFrame"));
+        Assert.False(GifFrames.IsGifFrameSlider("SldRowHeight"));
+        Assert.False(GifFrames.IsGifFrameSlider(null));
+    }
+
+    [Fact]
+    public void TryRead_RejectsHugeFrameDescriptor()
+    {
+        using var stream = new MemoryStream(HugeFrameGif());
+        Assert.Null(GifFrames.TryRead(stream));
+        using var render = new MemoryStream(HugeFrameGif());
+        Assert.Null(GifFrames.TryRenderAll(render));
+        using var one = new MemoryStream(HugeFrameGif());
+        Assert.Null(GifFrames.TryRenderFrame(one, 0));
     }
 
     [Fact]
@@ -254,6 +281,33 @@ public sealed class GifFramesTests
         WriteImage(ms, [0, 0]);
         WriteGce(ms, delayCs: 12);
         WriteImage(ms, [1, 1]);
+        ms.WriteByte(0x3B);
+        return ms.ToArray();
+    }
+
+    /// <summary>
+    /// 2×1 logical screen, image descriptor 46341×46341 so fw*fh is ~2 GB
+    /// in 32-bit multiply. Header/LZW stay tiny.
+    /// </summary>
+    private static byte[] HugeFrameGif()
+    {
+        using var ms = new MemoryStream();
+        ms.Write("GIF89a"u8);
+        ms.WriteByte(2);
+        ms.WriteByte(0);
+        ms.WriteByte(1);
+        ms.WriteByte(0);
+        ms.WriteByte(0x80);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        WriteGce(ms, delayCs: 8);
+        WriteImage(ms, [0], width: 46341, height: 46341);
         ms.WriteByte(0x3B);
         return ms.ToArray();
     }

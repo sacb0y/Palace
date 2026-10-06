@@ -132,6 +132,20 @@ public static class GifFrames
     public static bool ShouldRunGifPlayLoop(bool canScrub, bool playing, bool compositeReady) =>
         canScrub && playing && compositeReady;
 
+    public const int KeyLeft = 37;
+    public const int KeyRight = 39;
+
+    /// <summary>
+    /// Overlay / GalleryWindow PreviewKeyDown must not mark Left/Right
+    /// handled while the GIF frame slider is focused, so the slider can
+    /// nudge the frame instead of changing the asset.
+    /// </summary>
+    public static bool PassesGifSliderArrows(bool sliderFocused, int keyCode) =>
+        sliderFocused && (keyCode == KeyLeft || keyCode == KeyRight);
+
+    public static bool IsGifFrameSlider(string? automationId) =>
+        automationId is "SldGifFrame" or "SldGalleryWindowGifFrame";
+
     /// <summary>
     /// Upper bound on the decoded composite cache (one full-canvas BGRA
     /// raster per frame). Larger GIFs skip scrub and keep BitmapImage autoplay.
@@ -155,6 +169,21 @@ public static class GifFrames
 
         var frameBytes = stride * height;
         return frameBytes <= MaxCacheBytes / frameCount;
+    }
+
+    /// <summary>
+    /// Image-descriptor <c>fw*fh</c> is independent of the logical screen.
+    /// Cap the 1-byte LZW index buffer and Blit loops with the same 256 MB
+    /// bound, overflow-safe (divide, not 32-bit <c>fw*fh</c>).
+    /// </summary>
+    public static bool FitsFramePixels(int frameWidth, int frameHeight)
+    {
+        if (frameWidth <= 0 || frameHeight <= 0)
+        {
+            return false;
+        }
+
+        return frameHeight <= MaxCacheBytes / frameWidth;
     }
 
     public readonly record struct Info(int Width, int Height, int FrameCount, IReadOnlyList<int> DelaysCs);
@@ -428,6 +457,11 @@ public static class GifFrames
             if (minCode < 0)
             {
                 break;
+            }
+
+            if (!FitsFramePixels(fw, fh))
+            {
+                return null;
             }
 
             if (!decode)

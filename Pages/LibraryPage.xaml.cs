@@ -985,6 +985,11 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        if (GifFrames.PassesGifSliderArrows(FocusIsGifSlider(e.OriginalSource), (int)e.Key))
+        {
+            return;
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Escape:
@@ -1013,6 +1018,20 @@ public sealed partial class LibraryPage : Page
         for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
             if (current is TextBox or RichEditBox or PasswordBox or AutoSuggestBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool FocusIsGifSlider(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is FrameworkElement element
+                && GifFrames.IsGifFrameSlider(AutomationProperties.GetAutomationId(element)))
             {
                 return true;
             }
