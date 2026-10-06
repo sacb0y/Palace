@@ -707,9 +707,6 @@ public sealed partial class LibraryPage : Page
                 ViewModel.CloseOverlayCommand.Execute(null);
                 e.Handled = true;
                 break;
-            case VirtualKey.Space:
-                e.Handled = true;
-                break;
             case VirtualKey.Left:
                 ViewModel.OverlayGallery.GoPreviousCommand.Execute(null);
                 e.Handled = true;

@@ -841,9 +841,6 @@ public sealed partial class TagsPage : Page
                 ViewModel.CloseOverlayCommand.Execute(null);
                 e.Handled = true;
                 break;
-            case VirtualKey.Space:
-                e.Handled = true;
-                break;
             case VirtualKey.Left:
                 ViewModel.OverlayGallery.GoPreviousCommand.Execute(null);
                 e.Handled = true;

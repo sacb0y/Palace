@@ -89,9 +89,6 @@ public sealed partial class GalleryWindow : Window
                 Close();
                 e.Handled = true;
                 break;
-            case VirtualKey.Space:
-                e.Handled = true;
-                break;
             case VirtualKey.Left:
                 Gallery.GoPreviousCommand.Execute(null);
                 e.Handled = true;
