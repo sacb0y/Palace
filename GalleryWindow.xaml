@@ -20,7 +20,6 @@
         x:Name="GrdGalleryWindow"
         AutomationProperties.AutomationId="GrdGalleryWindow"
         AutomationProperties.Name="Gallery window"
-        Background="{ThemeResource SmokeFillColorDefaultBrush}"
         IsTabStop="True"
         PreviewKeyDown="GalleryRoot_PreviewKeyDown">
         <Grid.RowDefinitions>
@@ -44,12 +43,10 @@
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0">
-                <Grid IsHitTestVisible="False">
-                    <Grid Background="{StaticResource GalleryOverlayBackdropBrush}" />
-                    <Border
-                        Background="{ThemeResource SmokeFillColorDefaultBrush}"
-                        Opacity="0.28" />
-                </Grid>
+                <Border
+                    Background="{ThemeResource SmokeFillColorDefaultBrush}"
+                    IsHitTestVisible="False"
+                    Opacity="0.28" />
                 <controls:GalleryStillSurface
                     x:Name="SrfWindowStill"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />
