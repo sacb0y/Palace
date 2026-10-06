@@ -380,7 +380,7 @@ internal static class HdrWicDecode
         }
         catch (Exception ex)
         {
-            LastWicError = WicNative.WicDecoderOpen.Failed(
+            LastWicError ??= WicNative.WicDecoderOpen.Failed(
                 WicNative.WicDecoderOpen.CreateAsync,
                 ex);
             sniffError = LastWicError;
@@ -431,16 +431,26 @@ internal static class HdrWicDecode
         }
         catch (Exception ex) when (WicNative.WicDecoderOpen.IsWrongThread(ex.HResult))
         {
-            return await UiDispatch.RunTaskAsync(
-                () => TryLoadJxrWinrtCoreAsync(
-                    path,
-                    probe,
-                    viewportPixelWidth,
-                    viewportPixelHeight,
-                    scaling,
-                    wantRgba,
-                    measure,
-                    cancellation)).ConfigureAwait(false);
+            try
+            {
+                return await UiDispatch.RunTaskAsync(
+                    () => TryLoadJxrWinrtCoreAsync(
+                        path,
+                        probe,
+                        viewportPixelWidth,
+                        viewportPixelHeight,
+                        scaling,
+                        wantRgba,
+                        measure,
+                        cancellation)).ConfigureAwait(false);
+            }
+            catch (Exception retry) when (WicNative.WicDecoderOpen.IsWrongThread(retry.HResult))
+            {
+                LastWicError ??= WicNative.WicDecoderOpen.Failed(
+                    WicNative.WicDecoderOpen.GetSoftwareBitmap,
+                    retry);
+                return null;
+            }
         }
     }
 
