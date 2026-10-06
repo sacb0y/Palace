@@ -175,11 +175,13 @@ public static class GalleryPresent
 
     /// <summary>
     /// Windows HDR vs SDR for present. <paramref name="windowsHdrEnabled"/>
-    /// is DisplayConfig HDR (user toggle / INFO_2). DXGI ColorSpace often
-    /// stays G22 with dummy 270 while that toggle is on — that is HDR, not
-    /// SDR tonemap. Advanced color spaces are HDR. Without the Windows
-    /// flag, 10-bit + peak&gt;220 or peak&gt;270 is HDR; dummy 270 at 8-bit
-    /// stays SDR. 203 is paper white, not a display peak.
+    /// true is DisplayConfig HDR (<c>AdvancedColorEnabled</c> / INFO_2).
+    /// DXGI ColorSpace often stays G22 with dummy 270 while that toggle is
+    /// on — that is HDR, not SDR tonemap. Do not treat a failed or false
+    /// Windows flag as SDR when the DXGI peak already looks like HDR.
+    /// Advanced color spaces are HDR. Without the Windows flag, 10-bit +
+    /// peak&gt;220 or peak&gt;270 is HDR; dummy 270 at 8-bit stays SDR.
+    /// 203 is paper white, not a display peak.
     /// </summary>
     public static bool IsHdrOutput(
         int dxgiColorSpace,
@@ -196,11 +198,6 @@ public static class GalleryPresent
         if (IsAdvancedColor(dxgiColorSpace))
         {
             return true;
-        }
-
-        if (windowsHdrEnabled == false)
-        {
-            return false;
         }
 
         var peak = ProbedDisplayLuminance(maxLuminance, maxFullFrameLuminance);

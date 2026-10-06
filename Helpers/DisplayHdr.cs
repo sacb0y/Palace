@@ -5,7 +5,8 @@ namespace Palace.Helpers;
 /// <summary>
 /// Windows HDR (Advanced Color) from DisplayConfig. DXGI ColorSpace often
 /// stays G22 with dummy 270 nits while HDR is on — that is not SDR.
-/// Off WinRT. Linux tests only parse flags.
+/// Native CCD structs are 4-byte packed (header is 20 bytes). Off WinRT.
+/// Linux tests only parse flags / <see cref="NativeLayoutSizes"/>.
 /// </summary>
 public static class DisplayHdr
 {
@@ -13,30 +14,54 @@ public static class DisplayHdr
     public const int ColorModeWcg = 1;
     public const int ColorModeHdr = 2;
 
+    public const int NativeHeaderBytes = 20;
+    public const int NativePathBytes = 72;
+    public const int NativeModeBytes = 64;
+    public const int NativeInfoBytes = 32;
+    public const int NativeInfo2Bytes = 36;
+    public const int NativeSourceNameBytes = 84;
+
     /// <summary>
-    /// Win10 <c>DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO</c> bit 1
-    /// (<c>advancedColorEnabled</c>) is the HDR toggle before ACM split.
+    /// Win10/11 <c>DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO</c> bit 1
+    /// (<c>advancedColorEnabled</c>). Isiac’s SAM713F reports this as 1
+    /// with <c>HDREnabled=1</c> while DXGI stays G22 / dummy 270.
     /// </summary>
     public static bool WindowsHdrEnabledFromInfo(uint value) =>
         (value & 2u) != 0;
 
     /// <summary>
-    /// Win11 <c>DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO_2</c>: bit 5 is
-    /// <c>highDynamicRangeUserEnabled</c>. Do not use bit 1
-    /// (<c>advancedColorActive</c>) — that is also WCG / ACM SDR.
+    /// Win11 <c>INFO_2</c> bit 5 <c>highDynamicRangeUserEnabled</c>.
     /// </summary>
     public static bool WindowsHdrEnabledFromInfo2(uint value) =>
         ((value >> 5) & 1u) != 0;
 
+    /// <summary>
+    /// Win11 <c>INFO_2</c> bit 1 <c>advancedColorActive</c> plus HDR user
+    /// or HDR mode. Active-only is WCG; still honor INFO
+    /// <c>advancedColorEnabled</c>.
+    /// </summary>
+    public static bool AdvancedColorActiveFromInfo2(uint value) =>
+        (value & 2u) != 0;
+
     public static bool IsHdrColorMode(int activeColorMode) =>
         activeColorMode == ColorModeHdr;
 
+    /// <summary>
+    /// HDR when the user HDR toggle is on, INFO_2 mode is HDR, or
+    /// <c>AdvancedColorEnabled</c> is set. Do not treat a failed parse as
+    /// “HDR off” — that forced SDR on Main-Desktop.
+    /// </summary>
     public static bool? CombineWindowsHdr(
         bool? info2HdrUserEnabled,
         int? info2ColorMode,
         bool? infoEnabled)
     {
         if (info2HdrUserEnabled == true || (info2ColorMode is { } mode && IsHdrColorMode(mode)))
+        {
+            return true;
+        }
+
+        if (infoEnabled == true)
         {
             return true;
         }
@@ -49,14 +74,23 @@ public static class DisplayHdr
         return infoEnabled;
     }
 
+    public static (int Header, int Path, int Mode, int Info, int Info2, int SourceName) NativeLayoutSizes() =>
+        (
+            Marshal.SizeOf<DeviceInfoHeader>(),
+            Marshal.SizeOf<PathInfo>(),
+            Marshal.SizeOf<ModeInfo>(),
+            Marshal.SizeOf<AdvancedColorInfo>(),
+            Marshal.SizeOf<AdvancedColorInfo2>(),
+            Marshal.SizeOf<SourceName>());
+
     /// <summary>
-    /// <c>true</c> when Windows HDR is on for <paramref name="gdiDeviceName"/>
-    /// (<c>\\.\DISPLAYn</c>). <c>null</c> when DisplayConfig is unavailable
-    /// (Linux tests) or the name does not match an active path.
+    /// <c>true</c> when Windows HDR / Advanced Color is on for
+    /// <paramref name="gdiDeviceName"/> (<c>\\.\DISPLAYn</c>). Empty name
+    /// uses any active path. <c>null</c> when DisplayConfig is unavailable.
     /// </summary>
     public static bool? TryWindowsHdrEnabled(string? gdiDeviceName)
     {
-        if (string.IsNullOrWhiteSpace(gdiDeviceName) || !OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows())
         {
             return null;
         }
@@ -71,70 +105,95 @@ public static class DisplayHdr
         }
     }
 
-    private static bool? QueryWindowsHdrEnabled(string gdiDeviceName)
+    private static bool? QueryWindowsHdrEnabled(string? gdiDeviceName)
     {
-        const uint onlyActive = 2;
+        foreach (var flags in new uint[] { 0x12, 0x52, 0x02, 0x01 })
+        {
+            var parsed = TryQueryPaths(flags, gdiDeviceName, out var hdr);
+            if (parsed)
+            {
+                return hdr;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryQueryPaths(uint flags, string? gdiDeviceName, out bool? hdr)
+    {
+        hdr = null;
         var pathCount = 0u;
         var modeCount = 0u;
-        if (GetDisplayConfigBufferSizes(onlyActive, out pathCount, out modeCount) != 0
-            || pathCount == 0)
+        if (GetDisplayConfigBufferSizes(flags, out pathCount, out modeCount) != 0
+            || pathCount == 0
+            || modeCount == 0)
         {
-            return null;
+            return false;
         }
 
         var paths = new PathInfo[pathCount];
         var modes = new ModeInfo[modeCount];
-        if (QueryDisplayConfig(onlyActive, ref pathCount, paths, ref modeCount, modes, IntPtr.Zero) != 0)
+        if (QueryDisplayConfig(flags, ref pathCount, paths, ref modeCount, modes, IntPtr.Zero) != 0)
         {
-            return null;
+            return false;
         }
 
         bool? anyHdr = null;
         var matches = 0;
         bool? matched = null;
+        var want = string.IsNullOrWhiteSpace(gdiDeviceName) ? null : gdiDeviceName.Trim();
         for (var i = 0; i < (int)pathCount; i++)
         {
             var path = paths[i];
+            var pathHdr = PathWindowsHdr(path.targetInfo.adapterId, path.targetInfo.id);
+            if (pathHdr == true)
+            {
+                anyHdr = true;
+            }
+            else if (pathHdr == false && anyHdr is null)
+            {
+                anyHdr = false;
+            }
+
+            if (want is null)
+            {
+                continue;
+            }
+
             var source = new SourceName
             {
                 header = new DeviceInfoHeader
                 {
                     type = 1,
-                    size = (uint)Marshal.SizeOf<SourceName>(),
+                    size = NativeSourceNameBytes,
                     adapterId = path.sourceInfo.adapterId,
                     id = path.sourceInfo.id
                 }
             };
-            if (DisplayConfigGetDeviceInfo(ref source) != 0)
-            {
-                continue;
-            }
-
-            var hdr = PathWindowsHdr(path.targetInfo.adapterId, path.targetInfo.id);
-            if (hdr == true)
-            {
-                anyHdr = true;
-            }
-            else if (hdr == false && anyHdr is null)
-            {
-                anyHdr = false;
-            }
-
-            if (!NamesMatch(source.viewGdiDeviceName, gdiDeviceName))
+            if (DisplayConfigGetDeviceInfo(ref source) != 0
+                || !NamesMatch(source.viewGdiDeviceName, want))
             {
                 continue;
             }
 
             matches++;
-            matched = hdr;
+            matched = pathHdr;
+        }
+
+        if (want is null)
+        {
+            hdr = anyHdr;
+            return anyHdr is not null;
         }
 
         if (matches == 1)
         {
-            return matched;
+            hdr = matched ?? anyHdr;
+            return true;
         }
 
-        return matches == 0 ? anyHdr : matched;
+        hdr = anyHdr;
+        return anyHdr == true;
     }
 
     private static bool? PathWindowsHdr(Luid adapterId, uint targetId)
@@ -144,17 +203,22 @@ public static class DisplayHdr
             header = new DeviceInfoHeader
             {
                 type = 15,
-                size = (uint)Marshal.SizeOf<AdvancedColorInfo2>(),
+                size = NativeInfo2Bytes,
                 adapterId = adapterId,
                 id = targetId
             }
         };
         if (DisplayConfigGetDeviceInfo(ref info2) == 0)
         {
-            return CombineWindowsHdr(
+            var combined = CombineWindowsHdr(
                 WindowsHdrEnabledFromInfo2(info2.value),
                 info2.activeColorMode,
-                WindowsHdrEnabledFromInfo(info2.value));
+                WindowsHdrEnabledFromInfo(info2.value)
+                    || AdvancedColorActiveFromInfo2(info2.value));
+            if (combined == true)
+            {
+                return true;
+            }
         }
 
         var info = new AdvancedColorInfo
@@ -162,7 +226,7 @@ public static class DisplayHdr
             header = new DeviceInfoHeader
             {
                 type = 9,
-                size = (uint)Marshal.SizeOf<AdvancedColorInfo>(),
+                size = NativeInfoBytes,
                 adapterId = adapterId,
                 id = targetId
             }
@@ -182,7 +246,15 @@ public static class DisplayHdr
             return false;
         }
 
-        return string.Equals(left.Trim(), right.Trim(), StringComparison.OrdinalIgnoreCase);
+        var a = left.Trim();
+        var b = right.Trim();
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return a.EndsWith(b, StringComparison.OrdinalIgnoreCase)
+            || b.EndsWith(a, StringComparison.OrdinalIgnoreCase);
     }
 
     [DllImport("user32.dll")]
@@ -213,7 +285,7 @@ public static class DisplayHdr
         public int HighPart;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct DeviceInfoHeader
     {
         public int type;
@@ -222,7 +294,7 @@ public static class DisplayHdr
         public uint id;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4, CharSet = CharSet.Unicode)]
     private struct SourceName
     {
         public DeviceInfoHeader header;
@@ -230,7 +302,7 @@ public static class DisplayHdr
         public string viewGdiDeviceName;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct AdvancedColorInfo
     {
         public DeviceInfoHeader header;
@@ -239,7 +311,7 @@ public static class DisplayHdr
         public uint bitsPerColorChannel;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct AdvancedColorInfo2
     {
         public DeviceInfoHeader header;
@@ -249,14 +321,14 @@ public static class DisplayHdr
         public int activeColorMode;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct Rational
     {
         public uint Numerator;
         public uint Denominator;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct PathSourceInfo
     {
         public Luid adapterId;
@@ -265,7 +337,7 @@ public static class DisplayHdr
         public uint statusFlags;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct PathTargetInfo
     {
         public Luid adapterId;
@@ -280,7 +352,7 @@ public static class DisplayHdr
         public uint statusFlags;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct PathInfo
     {
         public PathSourceInfo sourceInfo;
@@ -288,7 +360,7 @@ public static class DisplayHdr
         public uint flags;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     private struct ModeInfo
     {
         public uint infoType;

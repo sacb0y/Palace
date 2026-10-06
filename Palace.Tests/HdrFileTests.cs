@@ -224,8 +224,16 @@ public sealed class HdrFileTests
         Assert.True(DisplayHdr.IsHdrColorMode(DisplayHdr.ColorModeHdr));
         Assert.False(DisplayHdr.IsHdrColorMode(DisplayHdr.ColorModeWcg));
         Assert.True(DisplayHdr.CombineWindowsHdr(true, DisplayHdr.ColorModeSdr, false));
-        Assert.False(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, true));
+        Assert.True(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, true));
         Assert.True(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeHdr, false));
+        Assert.False(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, false));
+        var sizes = DisplayHdr.NativeLayoutSizes();
+        Assert.Equal(DisplayHdr.NativeHeaderBytes, sizes.Header);
+        Assert.Equal(DisplayHdr.NativePathBytes, sizes.Path);
+        Assert.Equal(DisplayHdr.NativeModeBytes, sizes.Mode);
+        Assert.Equal(DisplayHdr.NativeInfoBytes, sizes.Info);
+        Assert.Equal(DisplayHdr.NativeInfo2Bytes, sizes.Info2);
+        Assert.Equal(DisplayHdr.NativeSourceNameBytes, sizes.SourceName);
         Assert.True(GalleryPresent.IsDummySdrLuminance(270));
         Assert.False(GalleryPresent.IsDummySdrLuminance(400));
         // 8-bit G22 with a real HDR peak (not dummy 270) is still HDR.
