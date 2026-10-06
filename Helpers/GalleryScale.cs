@@ -160,8 +160,10 @@ public static class GalleryScale
         scrolls && isMouse && leftButton;
 
     /// <summary>
-    /// Precision touchpad reports as Mouse without a left button. Left-button
-    /// mouse stays on pointer-capture pan.
+    /// Learn: touchpad does not raise Manipulation events. PointerWheelChanged
+    /// (often with Ctrl) is pinch; two-finger pan is wheel without Ctrl.
+    /// Touch/pen still use ManipulationDelta. Mouse-without-left is the
+    /// simulator, not a real precision touchpad.
     /// </summary>
     public static bool UsesManipulationGesture(
         bool isTouch,
@@ -171,8 +173,9 @@ public static class GalleryScale
         isTouch || isPen || (isMouse && !leftButton);
 
     /// <summary>
-    /// Inertia after the first gesture leaves ScrollViewer DirectManipulation
-    /// stuck so a second pinch/pan never fires. Ignore inertial frames.
+    /// Learn: call CancelDirectManipulations on the element inside a
+    /// ScrollViewer so pointer/manipulation events are not marked handled
+    /// after the first DirectManipulation pan/zoom. Ignore inertial frames.
     /// </summary>
     public static bool HandlesManipulationDelta(
         bool isInertial,
@@ -183,8 +186,8 @@ public static class GalleryScale
         !isInertial && UsesManipulationGesture(isTouch, isPen, isMouse, leftButton);
 
     /// <summary>
-    /// Auto scrollbars turn on ScrollViewer DirectManipulation, which swallows
-    /// the next touch/trackpad gesture. Drive pan with ChangeView instead.
+    /// Auto bars turn on DirectManipulation. Disabled also blocks ChangeView
+    /// pan. Hidden keeps programmatic pan without showing bars.
     /// </summary>
     public static bool ShowsScrollBars() => false;
 
