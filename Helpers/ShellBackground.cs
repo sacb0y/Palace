@@ -16,6 +16,13 @@ public static class ShellBackground
     public const string TintKey = "ShellTintColor";
 
     public const string WallpaperFilePrefix = "shell-wallpaper-";
+    /// <summary>
+    /// Physical pixel cap for the always-resident wallpaper <c>BitmapImage</c>.
+    /// Set <c>DecodePixelWidth</c> before <c>UriSource</c> — the Uri constructor
+    /// starts a native decode and ignores a later cap.
+    /// </summary>
+    public const int WallpaperDecodeWidth = 2560;
+
     public const double MinAmount = 0;
     public const double MaxAmount = 100;
     public const double DefaultDarkness = 40;
@@ -167,6 +174,13 @@ public static class ShellBackground
 
         return WallpaperFilePrefix + Guid.NewGuid().ToString("N") + ext;
     }
+
+    /// <summary>
+    /// Width to decode the resident wallpaper. Native files at or under the cap
+    /// keep their width; larger camera photos clamp to <see cref="WallpaperDecodeWidth"/>.
+    /// </summary>
+    public static int DecodePixelWidth(int sourceWidth) =>
+        sourceWidth <= 0 ? WallpaperDecodeWidth : Math.Min(sourceWidth, WallpaperDecodeWidth);
 
     public static bool IsStoredWallpaperName(string? fileName)
     {

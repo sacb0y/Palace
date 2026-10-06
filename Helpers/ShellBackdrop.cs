@@ -12,8 +12,6 @@ namespace Palace.Helpers;
 /// </summary>
 public static class ShellBackdrop
 {
-    private const int WallpaperDecodeWidth = 2560;
-
     private static string? _loadedPath;
     private static int _loadedEpoch = -1;
 
@@ -44,10 +42,10 @@ public static class ShellBackdrop
                 wallpaper.Source = null;
                 try
                 {
-                    wallpaper.Source = new BitmapImage(new Uri(path, UriKind.Absolute))
+                    wallpaper.Source = new BitmapImage
                     {
-                        DecodePixelWidth = WallpaperDecodeWidth,
-                        DecodePixelType = DecodePixelType.Logical
+                        DecodePixelWidth = ShellBackground.WallpaperDecodeWidth,
+                        UriSource = new Uri(path, UriKind.Absolute)
                     };
                     wallpaper.Visibility = Visibility.Visible;
                     _loadedPath = path;

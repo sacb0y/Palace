@@ -211,6 +211,16 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void DecodePixelWidth_CapsCameraPhotosKeepsSmallerSources()
+    {
+        Assert.Equal(2560, ShellBackground.WallpaperDecodeWidth);
+        Assert.Equal(1920, ShellBackground.DecodePixelWidth(1920));
+        Assert.Equal(2560, ShellBackground.DecodePixelWidth(8000));
+        Assert.Equal(2560, ShellBackground.DecodePixelWidth(0));
+        Assert.Equal(2560, ShellBackground.DecodePixelWidth(-12));
+    }
+
+    [Fact]
     public void LightChrome_UsesSofterDimAndLightGradient()
     {
         Assert.True(ShellBackground.IsLightChrome("Light", false));
