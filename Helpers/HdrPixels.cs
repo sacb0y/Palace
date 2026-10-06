@@ -169,9 +169,11 @@ public static class HdrPixels
     }
 
     /// <summary>
-    /// HEIF <c>irot</c>/<c>imir</c> → EXIF Orientation 1–8 (same table as
-    /// libavif <c>avifImageGetExifOrientationFromIrotImir</c>). Angle is
-    /// anti-clockwise turns; imir mode 0 = top↔bottom, 1 = left↔right.
+    /// HEIF <c>irot</c>/<c>imir</c> → EXIF Orientation 1–8. Matches libavif
+    /// 1.2.2+ <c>avifImageExtractExifOrientationToIrotImir</c> /
+    /// <c>avifImageIrotImirToExifOrientation</c>: irot angle is 90°
+    /// anti-clockwise turns; imir 0 = top↔bottom, 1 = left↔right.
+    /// Angle 1 is EXIF 8, angle 3 is EXIF 6 (not the reverse).
     /// </summary>
     public static uint ExifOrientationFromIrotImir(bool hasIrot, byte angle, bool hasImir, byte mode)
     {
@@ -184,7 +186,7 @@ public static class HdrPixels
                 return mode != 0 ? 7u : 5u;
             }
 
-            return 6u;
+            return 8u;
         }
 
         if (hasIrot && angle == 2)
@@ -204,7 +206,7 @@ public static class HdrPixels
                 return mode != 0 ? 5u : 7u;
             }
 
-            return 8u;
+            return 6u;
         }
 
         if (hasImir)
@@ -213,6 +215,23 @@ public static class HdrPixels
         }
 
         return 1u;
+    }
+
+    /// <summary>
+    /// libavif <c>avifGetExifOrientationOffset</c> returns OK with
+    /// <paramref name="offset"/> equal to payload size when the tag is
+    /// missing — do not read that byte.
+    /// </summary>
+    public static bool TryExifOrientationAt(ReadOnlySpan<byte> exif, nuint offset, out byte value)
+    {
+        if (offset >= (nuint)exif.Length)
+        {
+            value = 1;
+            return false;
+        }
+
+        value = exif[(int)offset];
+        return value is >= 1 and <= 8;
     }
 
     /// <summary>

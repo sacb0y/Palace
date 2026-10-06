@@ -470,13 +470,28 @@ public sealed class HdrFileTests
     public void ExifOrientationFromIrotImir_MatchesLibavifTable()
     {
         Assert.Equal(1u, HdrPixels.ExifOrientationFromIrotImir(false, 0, false, 0));
-        Assert.Equal(6u, HdrPixels.ExifOrientationFromIrotImir(true, 1, false, 0));
+        Assert.Equal(8u, HdrPixels.ExifOrientationFromIrotImir(true, 1, false, 0));
         Assert.Equal(5u, HdrPixels.ExifOrientationFromIrotImir(true, 1, true, 0));
         Assert.Equal(7u, HdrPixels.ExifOrientationFromIrotImir(true, 1, true, 1));
         Assert.Equal(3u, HdrPixels.ExifOrientationFromIrotImir(true, 2, false, 0));
-        Assert.Equal(8u, HdrPixels.ExifOrientationFromIrotImir(true, 3, false, 0));
+        Assert.Equal(6u, HdrPixels.ExifOrientationFromIrotImir(true, 3, false, 0));
+        Assert.Equal(7u, HdrPixels.ExifOrientationFromIrotImir(true, 3, true, 0));
+        Assert.Equal(5u, HdrPixels.ExifOrientationFromIrotImir(true, 3, true, 1));
         Assert.Equal(2u, HdrPixels.ExifOrientationFromIrotImir(false, 0, true, 1));
         Assert.Equal(4u, HdrPixels.ExifOrientationFromIrotImir(false, 0, true, 0));
+    }
+
+    [Fact]
+    public void TryExifOrientationAt_RejectsMissingTagOffset()
+    {
+        byte[] payload = [6, 7, 8];
+        Assert.False(HdrPixels.TryExifOrientationAt(payload, 3, out var missing));
+        Assert.Equal(1, missing);
+        Assert.False(HdrPixels.TryExifOrientationAt(payload, 4, out _));
+        Assert.True(HdrPixels.TryExifOrientationAt(payload, 0, out var value));
+        Assert.Equal(6, value);
+        Assert.False(HdrPixels.TryExifOrientationAt([0], 0, out var reserved));
+        Assert.Equal(0, reserved);
     }
 
     [Fact]
@@ -495,6 +510,25 @@ public sealed class HdrFileTests
         Assert.Equal(1f, dst[1]);
         Assert.Equal(1f, dst[4]); // bottom R
         Assert.Equal(0f, dst[5]);
+    }
+
+    [Fact]
+    public void OrientScrgbRgba_IrotAngle1IsExif8()
+    {
+        // irot angle 1 (90° CCW) is EXIF 8: 2×1 left=red right=green → 1×2 top=red, bottom=green.
+        var src = new float[]
+        {
+            1f, 0f, 0f, 1f,
+            0f, 1f, 0f, 1f
+        };
+        Assert.Equal(8u, HdrPixels.ExifOrientationFromIrotImir(true, 1, false, 0));
+        var (dst, w, h) = HdrPixels.OrientScrgbRgba(src, 2, 1, 8);
+        Assert.Equal(1, w);
+        Assert.Equal(2, h);
+        Assert.Equal(1f, dst[0]);
+        Assert.Equal(0f, dst[1]);
+        Assert.Equal(0f, dst[4]);
+        Assert.Equal(1f, dst[5]);
     }
 
     [Fact]

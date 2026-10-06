@@ -299,8 +299,8 @@ internal static unsafe class HdrAvifDecode
             return 1;
         }
 
-        var value = *((byte*)exif.Data + (nuint)offset);
-        return value is >= 1 and <= 8 ? value : 1u;
+        var span = new ReadOnlySpan<byte>((void*)exif.Data, (int)exif.Size);
+        return HdrPixels.TryExifOrientationAt(span, (nuint)offset, out var value) ? value : 1u;
     }
 
     private static (
