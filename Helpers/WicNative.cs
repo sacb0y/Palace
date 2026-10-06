@@ -29,31 +29,71 @@ public static class WicNative
 
     public static IWICBitmapSource AsSource(object com) => (IWICBitmapSource)com;
 
+    /// <summary>
+    /// Packaged WinUI: <c>CreateDecoderFromFilename</c> bypasses
+    /// FutureAccessList. Open from pinned memory via
+    /// <c>IWICStream.InitializeFromMemory</c>, then
+    /// <c>CreateDecoder(GUID_ContainerFormatWmp)</c> +
+    /// <c>Initialize</c> so sniffing cannot miss HDR JXR.
+    /// </summary>
+    public static class WicDecoderOpen
+    {
+        public const string Filename = "filename";
+        public const string Handle = "handle";
+        public const string Memory = "memory";
+        public const string Wmp = "wmp";
+
+        public static readonly string[] Stages = [Filename, Handle, Memory, Wmp];
+
+        public static string Failed(string stage, int hr = 0)
+        {
+            var suffix = hr == 0 ? "" : " " + unchecked((uint)hr).ToString("X8");
+            return "WIC decoder " + stage + suffix;
+        }
+    }
+
     [ComImport]
     [Guid("ec5ec8a9-c395-4314-9c77-54d7a935ff70")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IWICImagingFactory
     {
-        void CreateDecoderFromFilename(
+        [PreserveSig]
+        int CreateDecoderFromFilename(
             [MarshalAs(UnmanagedType.LPWStr)] string wzFilename,
             IntPtr pguidVendor,
             uint dwDesiredAccess,
             uint metadataOptions,
             out IWICBitmapDecoder ppIDecoder);
 
-        void CreateDecoderFromStream(
-            [MarshalAs(UnmanagedType.Interface)] System.Runtime.InteropServices.ComTypes.IStream pIStream,
+        [PreserveSig]
+        int CreateDecoderFromStream(
+            [MarshalAs(UnmanagedType.Interface)] object pIStream,
             IntPtr pguidVendor,
             uint metadataOptions,
             out IWICBitmapDecoder ppIDecoder);
 
-        void CreateDecoderFromFileHandle();
+        [PreserveSig]
+        int CreateDecoderFromFileHandle(
+            UIntPtr hFile,
+            IntPtr pguidVendor,
+            uint metadataOptions,
+            out IWICBitmapDecoder ppIDecoder);
+
         void CreateComponentInfo();
-        void CreateDecoder();
+
+        [PreserveSig]
+        int CreateDecoder(
+            ref Guid guidContainerFormat,
+            IntPtr pguidVendor,
+            out IWICBitmapDecoder ppIDecoder);
+
         void CreateEncoder();
         void CreatePalette();
         void CreateFormatConverter(out IWICFormatConverter ppIFormatConverter);
         void CreateBitmapScaler(out IWICBitmapScaler ppIBitmapScaler);
+        void CreateBitmapClipper();
+        void CreateBitmapFlipRotator();
+        void CreateStream(out IWICStream ppIWICStream);
     }
 
     [ComImport]
@@ -62,7 +102,11 @@ public static class WicNative
     public interface IWICBitmapDecoder
     {
         void QueryCapability();
-        void Initialize();
+
+        [PreserveSig]
+        int Initialize(
+            [MarshalAs(UnmanagedType.Interface)] object pIStream,
+            uint cacheOptions);
         void GetContainerFormat();
         void GetDecoderInfo();
         void CopyPalette();
@@ -144,6 +188,71 @@ public static class WicNative
             uint uiHeight,
             uint mode);
     }
+
+    /// <summary>
+    /// Flattened <c>IStream</c> + <c>InitializeFromMemory</c>. Do not
+    /// inherit <c>ComTypes.IStream</c> (vtable would skip Read/Seek).
+    /// </summary>
+    [ComImport]
+    [Guid("135ff860-22b7-4ddf-b0f6-218f4f299a43")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface IWICStream
+    {
+        void Read(IntPtr pv, uint cb, IntPtr pcbRead);
+        void Write(IntPtr pv, uint cb, IntPtr pcbWritten);
+        void Seek(long dlibMove, int dwOrigin, IntPtr plibNewPosition);
+        void SetSize(long libNewSize);
+        void CopyTo(IntPtr pstm, long cb, IntPtr pcbRead, IntPtr pcbWritten);
+        void Commit(uint grfCommitFlags);
+        void Revert();
+        void LockRegion(long libOffset, long cb, uint dwLockType);
+        void UnlockRegion(long libOffset, long cb, uint dwLockType);
+        void Stat(IntPtr pstatstg, uint grfStatFlag);
+        void Clone(IntPtr ppstm);
+        void InitializeFromIStream([MarshalAs(UnmanagedType.Interface)] object pIStream);
+        void InitializeFromFilename(
+            [MarshalAs(UnmanagedType.LPWStr)] string wzFileName,
+            uint dwDesiredAccess);
+
+        [PreserveSig]
+        int InitializeFromMemory(IntPtr pbBuffer, uint cbBufferSize);
+    }
+
+    public static readonly string[] FactoryOpenMethods =
+    [
+        "CreateDecoderFromFilename",
+        "CreateDecoderFromStream",
+        "CreateDecoderFromFileHandle",
+        "CreateComponentInfo",
+        "CreateDecoder",
+        "CreateEncoder",
+        "CreatePalette",
+        "CreateFormatConverter",
+        "CreateBitmapScaler",
+        "CreateBitmapClipper",
+        "CreateBitmapFlipRotator",
+        "CreateStream"
+    ];
+
+    public static readonly string[] StreamMethods =
+    [
+        "Read",
+        "Write",
+        "Seek",
+        "SetSize",
+        "CopyTo",
+        "Commit",
+        "Revert",
+        "LockRegion",
+        "UnlockRegion",
+        "Stat",
+        "Clone",
+        "InitializeFromIStream",
+        "InitializeFromFilename",
+        "InitializeFromMemory"
+    ];
+
+    public static readonly Guid ContainerFormatWmp = new("57a37caa-367a-4540-916b-f183c1868a5f");
 
     [ComImport]
     [Guid("30989668-e1c9-4597-b395-458eedb808df")]
