@@ -29,6 +29,13 @@ public sealed class GifFramesTests
         Assert.Equal(2, GifFrames.Step(0, 3, -1));
         Assert.Equal(1, GifFrames.Step(0, 3, 1));
         Assert.Equal(0, GifFrames.Step(2, 3, 1));
+        Assert.Equal(1, GifFrames.NextPlayIndex(0, 3));
+        Assert.Equal(0, GifFrames.NextPlayIndex(2, 3));
+        Assert.Equal(100, GifFrames.DisplayDelayMs(0));
+        Assert.Equal(100, GifFrames.DisplayDelayMs(1));
+        Assert.Equal(80, GifFrames.DisplayDelayMs(8));
+        Assert.False(GifFrames.ShouldStopPlaybackOnIndexChange(true));
+        Assert.True(GifFrames.ShouldStopPlaybackOnIndexChange(false));
         Assert.Equal("2 / 4", GifFrames.PositionLabel(1, 4));
         Assert.Equal("1 / 4", GifFrames.PositionLabel(-3, 4));
         Assert.Equal("", GifFrames.PositionLabel(0, 0));
@@ -68,6 +75,58 @@ public sealed class GifFramesTests
     }
 
     [Fact]
+    public void TryRenderFrame_KeepsTransparentPixelsClear()
+    {
+        var bytes = TransparentThenPartialGif();
+        using var firstStream = new MemoryStream(bytes);
+        var first = GifFrames.TryRenderFrame(firstStream, 0);
+        using var secondStream = new MemoryStream(bytes);
+        var second = GifFrames.TryRenderFrame(secondStream, 1);
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+        AssertRed(first!.Value.Bgra, 0);
+        AssertClear(first.Value.Bgra, 4);
+        AssertRed(second!.Value.Bgra, 0);
+        AssertBlue(second.Value.Bgra, 4);
+    }
+
+    [Fact]
+    public void TryRenderFrame_DisposalRestoreIsTransparent()
+    {
+        using var ms = new MemoryStream();
+        ms.Write("GIF89a"u8);
+        ms.WriteByte(2);
+        ms.WriteByte(0);
+        ms.WriteByte(1);
+        ms.WriteByte(0);
+        ms.WriteByte(0x81);
+        ms.WriteByte(2);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        ms.WriteByte(255);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        WriteGce(ms, delayCs: 8, transparent: 2, disposal: 2);
+        WriteImage(ms, [0, 0], width: 2, height: 1);
+        WriteGce(ms, delayCs: 12, transparent: 2, disposal: 1);
+        WriteImage(ms, [1], left: 0, width: 1, height: 1);
+        ms.WriteByte(0x3B);
+        using var stream = new MemoryStream(ms.ToArray());
+        var second = GifFrames.TryRenderFrame(stream, 1);
+        Assert.NotNull(second);
+        AssertBlue(second!.Value.Bgra, 0);
+        AssertClear(second.Value.Bgra, 4);
+    }
+
+    [Fact]
     public void TryRead_RejectsNonGif()
     {
         using var stream = new MemoryStream("not a gif"u8.ToArray());
@@ -88,6 +147,14 @@ public sealed class GifFramesTests
         Assert.Equal(0, bgra[o + 1]);
         Assert.Equal(0, bgra[o + 2]);
         Assert.Equal(255, bgra[o + 3]);
+    }
+
+    private static void AssertClear(byte[] bgra, int o)
+    {
+        Assert.Equal(0, bgra[o]);
+        Assert.Equal(0, bgra[o + 1]);
+        Assert.Equal(0, bgra[o + 2]);
+        Assert.Equal(0, bgra[o + 3]);
     }
 
     /// <summary>2×1 GIF89a, two full-canvas frames (red then blue).</summary>
@@ -116,29 +183,71 @@ public sealed class GifFramesTests
         return ms.ToArray();
     }
 
-    private static void WriteGce(Stream stream, int delayCs)
+    /// <summary>
+    /// 2×1 red + hole, then a 1-wide blue pixel over the hole.
+    /// Magenta is the LSD background / transparent index — it must not
+    /// appear as an opaque backdrop.
+    /// </summary>
+    private static byte[] TransparentThenPartialGif()
+    {
+        using var ms = new MemoryStream();
+        ms.Write("GIF89a"u8);
+        ms.WriteByte(2);
+        ms.WriteByte(0);
+        ms.WriteByte(1);
+        ms.WriteByte(0);
+        ms.WriteByte(0x81);
+        ms.WriteByte(2);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        ms.WriteByte(255);
+        ms.WriteByte(0);
+        ms.WriteByte(255);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        ms.WriteByte(0);
+        WriteGce(ms, delayCs: 8, transparent: 2, disposal: 1);
+        WriteImage(ms, [0, 2], width: 2, height: 1);
+        WriteGce(ms, delayCs: 12, transparent: 2, disposal: 1);
+        WriteImage(ms, [1], left: 1, width: 1, height: 1);
+        ms.WriteByte(0x3B);
+        return ms.ToArray();
+    }
+
+    private static void WriteGce(Stream stream, int delayCs, int transparent = -1, int disposal = 0)
     {
         stream.WriteByte(0x21);
         stream.WriteByte(0xF9);
         stream.WriteByte(4);
-        stream.WriteByte(0);
+        stream.WriteByte((byte)((disposal << 2) | (transparent >= 0 ? 1 : 0)));
         stream.WriteByte((byte)delayCs);
         stream.WriteByte((byte)(delayCs >> 8));
-        stream.WriteByte(0);
+        stream.WriteByte((byte)(transparent >= 0 ? transparent : 0));
         stream.WriteByte(0);
     }
 
-    private static void WriteImage(Stream stream, byte[] indices)
+    private static void WriteImage(
+        Stream stream,
+        byte[] indices,
+        int left = 0,
+        int top = 0,
+        int width = 2,
+        int height = 1)
     {
         stream.WriteByte(0x2C);
-        stream.WriteByte(0);
-        stream.WriteByte(0);
-        stream.WriteByte(0);
-        stream.WriteByte(0);
-        stream.WriteByte(2);
-        stream.WriteByte(0);
-        stream.WriteByte(1);
-        stream.WriteByte(0);
+        stream.WriteByte((byte)left);
+        stream.WriteByte((byte)(left >> 8));
+        stream.WriteByte((byte)top);
+        stream.WriteByte((byte)(top >> 8));
+        stream.WriteByte((byte)width);
+        stream.WriteByte((byte)(width >> 8));
+        stream.WriteByte((byte)height);
+        stream.WriteByte((byte)(height >> 8));
         stream.WriteByte(0);
         stream.WriteByte(2);
         var lzw = EncodeLzw(indices, minCodeSize: 2);

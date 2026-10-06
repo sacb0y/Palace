@@ -50,6 +50,7 @@ public sealed partial class GalleryWindow : Window
         Closed += (_, _) =>
         {
             OpenWindows.Remove(this);
+            Gallery.StopGifPlayback();
             SrfWindowStill.Bind(null);
             MpeGallery.Source = null;
         };

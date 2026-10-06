@@ -59,6 +59,23 @@ public static class GifFrames
         return $"{ClampIndex(index, frameCount) + 1} / {frameCount}";
     }
 
+    public static int NextPlayIndex(int index, int frameCount) =>
+        Step(index, frameCount, 1);
+
+    /// <summary>
+    /// GIF delay units are centiseconds. 0 and 1cs are treated as 10cs
+    /// (common players / BitmapImage). Playback owns this clock so Pause
+    /// keeps the visible frame instead of jumping to slider residue.
+    /// </summary>
+    public static int DisplayDelayMs(int delayCs)
+    {
+        var cs = delayCs < 2 ? 10 : delayCs;
+        return cs * 10;
+    }
+
+    public static bool ShouldStopPlaybackOnIndexChange(bool isPlaybackTick) =>
+        !isPlaybackTick;
+
     public static bool ShouldShowScrub(bool canScrub, int frameCount) =>
         canScrub && frameCount >= MinScrubCount;
 
@@ -176,13 +193,12 @@ public static class GifFrames
         }
 
         var packed = header[10];
-        var bgIndex = header[11];
         var gctSize = (packed & 0x80) != 0 ? 1 << ((packed & 7) + 1) : 0;
         var gct = ReadPalette(stream, gctSize);
-        var bg = PaletteColor(gct, bgIndex, alpha: 255);
 
+        // Transparent canvas — matches BitmapImage. Do not fill the LSD
+        // background color (opaque backdrop on paused/scrubbed frames).
         var canvas = new byte[width * height * 4];
-        FillRect(canvas, width, height, 0, 0, width, height, bg);
         byte[]? previous = null;
 
         var disposal = 0;
@@ -280,7 +296,7 @@ public static class GifFrames
                 }
 
                 ApplyDisposal(
-                    canvas, width, height, left, top, fw, fh, disposal, bg, previous);
+                    canvas, width, height, left, top, fw, fh, disposal, previous);
             }
 
             delays.Add(delay <= 0 ? 10 : delay);
@@ -594,7 +610,6 @@ public static class GifFrames
         int fw,
         int fh,
         int disposal,
-        uint bg,
         byte[]? previous)
     {
         if (disposal == 3 && previous is not null)
@@ -605,7 +620,7 @@ public static class GifFrames
 
         if (disposal == 2)
         {
-            FillRect(canvas, canvasW, canvasH, left, top, fw, fh, bg);
+            FillRect(canvas, canvasW, canvasH, left, top, fw, fh, 0);
         }
     }
 

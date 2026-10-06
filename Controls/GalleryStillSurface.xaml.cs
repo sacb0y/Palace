@@ -195,7 +195,7 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (gallery.CanScrubGif && !gallery.GifPlaying)
+        if (gallery.CanScrubGif)
         {
             ClearHdrCache();
             HideHdr();
