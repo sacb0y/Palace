@@ -155,9 +155,11 @@ public static class WicNative
 
 #pragma warning disable CA1416 // Linked into Palace.Tests on Linux; callers are Windows-only.
     /// <summary>
-    /// Typed RCW after a successful <c>QueryInterface</c>. Prefer
-    /// <c>Marshal.QueryInterface</c> on <c>IWinRTObject.ThisPtr</c>
-    /// (in <c>HdrWicDecode</c>) over <c>GetIUnknownForObject</c>.
+    /// Typed RCW after a successful <c>QueryInterface</c>. Do
+    /// <strong>not</strong> use this for a WIC IID QI'd from a CsWinRT
+    /// object — <c>GetTypedObjectForIUnknown</c> returns the cached
+    /// WinRT RCW and the cast fails. Use
+    /// <see cref="TypedUniqueFromIUnknown{T}"/> instead.
     /// </summary>
     public static T? TypedFromIUnknown<T>(IntPtr unk) where T : class
     {
@@ -177,10 +179,10 @@ public static class WicNative
     }
 
     /// <summary>
-    /// Like <see cref="TypedFromIUnknown{T}"/> but bypasses the RCW cache.
-    /// A QI'd pointer shares the IUnknown identity of the CsWinRT object,
-    /// so the cached lookup would return that wrapper and the cast to a
-    /// WIC interface would fail.
+    /// Wrap a native WIC <c>ppv</c> without the RCW cache. Required after
+    /// QI from <c>IWinRTObject.ThisPtr</c> so float <c>CopyPixels</c>
+    /// keeps the WIC pointer instead of the CsWinRT
+    /// <c>BitmapDecoder</c> wrapper.
     /// </summary>
     public static T? TypedUniqueFromIUnknown<T>(IntPtr unk) where T : class
     {

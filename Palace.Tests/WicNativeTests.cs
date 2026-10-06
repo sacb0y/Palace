@@ -168,6 +168,7 @@ public sealed class WicNativeTests
             Guid.Parse("00000121-a8f2-4877-ba0a-fd2b6645fb94"),
             WicNative.IidWicBitmap);
         Assert.Null(WicNative.TypedFromIUnknown<WicNative.IWICBitmapDecoder>(IntPtr.Zero));
+        Assert.Null(WicNative.TypedUniqueFromIUnknown<WicNative.IWICBitmapDecoder>(IntPtr.Zero));
         Assert.Equal(
             WicNative.ClassFactoryMethods,
             WicNative.DeclaredMethods(typeof(WicNative.IClassFactory)));
