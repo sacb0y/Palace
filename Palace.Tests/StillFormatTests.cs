@@ -119,12 +119,46 @@ public sealed class StillFormatTests
     [Fact]
     public void Jxr_1010102XrGuid_LooksHdr()
     {
-        ReadOnlySpan<byte> xr =
-            [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x3A];
-        Assert.True(StillFormats.IsHdrJxrPixelFormat(xr));
-        var header = JxrHeader(xr, 64, 32);
+        Assert.True(StillFormats.IsHdrJxrPixelFormat(StillFormats.JxrGuidRgba1010102Xr));
+        var header = JxrHeader(StillFormats.JxrGuidRgba1010102Xr, 64, 32);
         Assert.True(StillFormats.JxrLooksHdr(header));
         Assert.Equal(HdrKind.HdrJxr, HdrFile.Probe(header).Kind);
+        Assert.Equal((64, 32), StillFormats.TryReadJxrSize(header));
+    }
+
+    [Fact]
+    public void Jxr_AnnexAIfd_ReadsPixelsNotDpiFloat()
+    {
+        // WIC / SKIV write 0xBC82/0xBC83 as FLOAT 96 DPI (0x42C00000 = 1119879168).
+        var header = JxrHeader(StillFormats.JxrGuidRgbaHalf, 1920, 1080);
+        Assert.Equal((1920, 1080), StillFormats.TryReadJxrSize(header));
+        Assert.Equal((1920, 1080), ImageDimensions.TryRead(new MemoryStream(header)));
+        var probe = HdrFile.Probe(header);
+        Assert.Equal(HdrKind.HdrJxr, probe.Kind);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Contains(
+            "HDR JPEG XR",
+            GalleryPresent.StatusLine(probe, true, true, false, 0),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HDR JPEG XR",
+            GalleryPresent.ImageInfoText(new GalleryImageInfo(
+                "cyberpunk-capture.jxr",
+                28_200_000,
+                1920,
+                1080,
+                probe,
+                GalleryPresent.StatusLine(probe, true, true, false, 0),
+                null, null, null, null)),
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("1119879168", GalleryPresent.ImageInfoText(new GalleryImageInfo(
+            "cyberpunk-capture.jxr",
+            28_200_000,
+            StillFormats.TryReadJxrSize(header)?.Width,
+            StillFormats.TryReadJxrSize(header)?.Height,
+            probe,
+            GalleryPresent.StatusLine(probe, false, false, false, 0),
+            null, null, null, null)));
     }
 
     [Fact]
@@ -137,6 +171,13 @@ public sealed class StillFormatTests
         Assert.False(StillFormats.JxrLooksHdr(header));
         Assert.Equal(HdrKind.None, HdrFile.Probe(header).Kind);
         Assert.False(HdrFile.Probe(header).CanPresentHdr);
+        Assert.Equal((8, 8), StillFormats.TryReadJxrSize(header));
+
+        ReadOnlySpan<byte> pbgra =
+            [0x24, 0xC3, 0xDD, 0x6F, 0x03, 0x4E, 0xFE, 0x4B, 0xB1, 0x85, 0x3D, 0x77, 0x76, 0x8D, 0xC9, 0x10];
+        Assert.False(StillFormats.IsHdrJxrPixelFormat(pbgra));
+        Assert.False(StillFormats.JxrLooksHdr(JxrHeader(pbgra, 1920, 1080)));
+        Assert.False(HdrFile.Probe(JxrHeader(pbgra, 1920, 1080)).CanPresentHdr);
     }
 
     [Fact]
@@ -292,19 +333,24 @@ public sealed class StillFormatTests
 
     private static byte[] JxrHeader(ReadOnlySpan<byte> pixelFormat, int width, int height)
     {
+        // Annex A IFD: PIXEL_FORMAT 0xBC01, WIDTH 0xBC80, HEIGHT 0xBC81,
+        // H/V resolution 0xBC82/0xBC83 as FLOAT 96 DPI (not pixels).
         const int ifd = 8;
-        const int guidOff = 50;
+        const int dpi96 = 0x42C00000;
+        const int guidOff = 78;
         var data = new byte[guidOff + 16];
         data[0] = 0x49;
         data[1] = 0x49;
         data[2] = 0xBC;
         data[3] = 0x01;
         WriteLe32(data, 4, ifd);
-        data[ifd] = 3;
+        data[ifd] = 5;
         data[ifd + 1] = 0;
-        WriteJxrEntry(data, ifd + 2, 0xBC80, type: 1, count: 16, value: guidOff);
-        WriteJxrEntry(data, ifd + 14, 0xBC82, type: 4, count: 1, value: width);
-        WriteJxrEntry(data, ifd + 26, 0xBC83, type: 4, count: 1, value: height);
+        WriteJxrEntry(data, ifd + 2, 0xBC01, type: 1, count: 16, value: guidOff);
+        WriteJxrEntry(data, ifd + 14, 0xBC80, type: 4, count: 1, value: width);
+        WriteJxrEntry(data, ifd + 26, 0xBC81, type: 4, count: 1, value: height);
+        WriteJxrEntry(data, ifd + 38, 0xBC82, type: 11, count: 1, value: dpi96);
+        WriteJxrEntry(data, ifd + 50, 0xBC83, type: 11, count: 1, value: dpi96);
         pixelFormat.CopyTo(data.AsSpan(guidOff, 16));
         return data;
     }
