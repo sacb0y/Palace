@@ -91,6 +91,16 @@ public static class HdrColor
     }
 
     /// <summary>
+    /// SKIV else after 709 / unspecified-709 (2) / XYZ / 601 / DCI-P3:
+    /// BT.2020 (9), Display P3 (12), and missing/unspecified <c>colr</c>
+    /// already went through <c>c_Bt2100toscRGB</c> /
+    /// <see cref="GalleryPresent.Bt2020ToBt709"/>. Histogram luma must invert
+    /// that same set — not only primaries 9.
+    /// </summary>
+    public static bool UsesBt2100ToScrgbMatrix(int? primaries) =>
+        primaries is not (1 or 2 or 5 or 6 or 10 or 11);
+
+    /// <summary>
     /// SKIV AVIF primaries switch after PQ-linear (0–1, 1 = 10 000 nits).
     /// BT.709 + non-PQ stays encoded-as-linear * 203/80 (SDR).
     /// Unspecified / BT.2020 / Display P3 (12) use <c>c_Bt2100toscRGB</c>.
@@ -157,6 +167,7 @@ public static class HdrColor
         }
 
         // SKIV else: BT.2020 / BT.2100 / unspecified / Display P3 (12).
+        // Keep in lockstep with UsesBt2100ToScrgbMatrix.
         if (transfer == HdrTransfer.Pq)
         {
             Bt2100ToScrgb(r, g, b, out sr, out sg, out sb);

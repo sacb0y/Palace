@@ -83,6 +83,44 @@ public sealed class GalleryHistogramTests
         Assert.Equal(0, bins.Luma[GalleryHistogram.LogNitsBin(wrong)]);
     }
 
+    [Theory]
+    [InlineData(12)]
+    [InlineData(null)]
+    public void FromScrgb_PresentedP3OrUnspecified_MatchesInfoSourceY(int? primaries)
+    {
+        HdrColor.EncodedRgbToScrgb(1f, 0f, 0f, HdrTransfer.Pq, primaries, out var sr, out var sg, out var sb);
+        var sourceY = HdrColor.SourcePrimaryNitsY(1f, 0f, 0f, HdrTransfer.Pq, primaries);
+        var presentedY = GalleryPresent.LumaNitsFromPresentedScrgb(sr, sg, sb, primaries);
+        Assert.Equal(sourceY, presentedY, 0);
+        Assert.True(HdrColor.UsesBt2100ToScrgbMatrix(primaries));
+
+        var displayY = GalleryPresent.LuminanceY(
+            sr * GalleryPresent.ScrgbNits,
+            sg * GalleryPresent.ScrgbNits,
+            sb * GalleryPresent.ScrgbNits,
+            false);
+        Assert.True(
+            Math.Abs(displayY - presentedY) > 50f,
+            $"display 709 Y {displayY} vs source {presentedY}");
+
+        var bins = GalleryHistogram.FromScrgb(ScrgbPixel(sr, sg, sb), 1, 1, primaries);
+        Assert.Equal(1, bins.Luma[GalleryHistogram.LogNitsBin(sourceY)]);
+        Assert.Equal(0, bins.Luma[GalleryHistogram.LogNitsBin(displayY)]);
+    }
+
+    [Fact]
+    public void UsesBt2100ToScrgbMatrix_MatchesPresentElseBranch()
+    {
+        Assert.True(HdrColor.UsesBt2100ToScrgbMatrix(9));
+        Assert.True(HdrColor.UsesBt2100ToScrgbMatrix(12));
+        Assert.True(HdrColor.UsesBt2100ToScrgbMatrix(null));
+        Assert.False(HdrColor.UsesBt2100ToScrgbMatrix(1));
+        Assert.False(HdrColor.UsesBt2100ToScrgbMatrix(2));
+        Assert.False(HdrColor.UsesBt2100ToScrgbMatrix(11));
+        Assert.False(HdrColor.UsesBt2100ToScrgbMatrix(10));
+        Assert.False(HdrColor.UsesBt2100ToScrgbMatrix(5));
+    }
+
     [Fact]
     public void FromScrgb_PqHighlightFillsLastChannelBin()
     {
