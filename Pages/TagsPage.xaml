@@ -375,6 +375,53 @@
                                                         Style="{StaticResource CaptionTextBlockStyle}"
                                                         Text="Online" />
                                                 </StackPanel>
+                                                <StackPanel
+                                                    Margin="6"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
+                                                    IsHitTestVisible="False"
+                                                    Orientation="Horizontal"
+                                                    Spacing="4">
+                                                    <Border
+                                                        Padding="4"
+                                                        AutomationProperties.AutomationId="{x:Bind VideoBadgeAutomationId, Mode=OneWay}"
+                                                        AutomationProperties.Name="Video"
+                                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                                        CornerRadius="4"
+                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowVideoBadge), Mode=OneWay}">
+                                                        <ic:FluentIcon
+                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                            Icon="Video"
+                                                            IconSize="Size16"
+                                                            IconVariant="Regular" />
+                                                    </Border>
+                                                    <Border
+                                                        Padding="4"
+                                                        AutomationProperties.AutomationId="{x:Bind GifBadgeAutomationId, Mode=OneWay}"
+                                                        AutomationProperties.Name="GIF"
+                                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                                        CornerRadius="4"
+                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowGifBadge), Mode=OneWay}">
+                                                        <ic:FluentIcon
+                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                            Icon="Gif"
+                                                            IconSize="Size16"
+                                                            IconVariant="Regular" />
+                                                    </Border>
+                                                    <Border
+                                                        Padding="4"
+                                                        AutomationProperties.AutomationId="{x:Bind HdrBadgeAutomationId, Mode=OneWay}"
+                                                        AutomationProperties.Name="HDR"
+                                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                                        CornerRadius="4"
+                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowHdrBadge), Mode=OneWay}">
+                                                        <ic:FluentIcon
+                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                            Icon="Hdr"
+                                                            IconSize="Size16"
+                                                            IconVariant="Regular" />
+                                                    </Border>
+                                                </StackPanel>
                                                 <Border
                                                     Margin="6"
                                                     Padding="4"

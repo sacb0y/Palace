@@ -23,7 +23,10 @@ public partial class AssetItem : ObservableObject
 {
     public string Id { get; set; } = "";
     public string SourceFolderId { get; set; } = "";
-    public bool IsFolderHeader { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsFolderHeader { get; set; }
+
     public string FolderGroupTitle { get; set; } = "";
     public string FolderGroupPath { get; set; } = "";
 
@@ -86,6 +89,9 @@ public partial class AssetItem : ObservableObject
     [ObservableProperty]
     public partial bool IsCloudBacked { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsHdr { get; set; }
+
     public bool HasThumbnail => !string.IsNullOrEmpty(ThumbPath);
 
     public bool ShowCloudTile =>
@@ -99,7 +105,44 @@ public partial class AssetItem : ObservableObject
             !string.IsNullOrEmpty(CloudItemId),
             IsCloudBacked);
 
+    public bool ShowVideoBadge =>
+        GalleryMedia.ShowVideoBadge(IsFolderHeader, IsOrphan, Kind);
+
+    public bool ShowGifBadge =>
+        GalleryMedia.ShowGifBadge(IsFolderHeader, IsOrphan, Kind);
+
+    public bool ShowHdrBadge =>
+        GalleryMedia.ShowHdrBadge(IsFolderHeader, IsOrphan, Path, IsHdr);
+
     public string CloudBadgeAutomationId => GalleryMedia.CloudBadgeAutomationId(Id);
+
+    public string VideoBadgeAutomationId => GalleryMedia.VideoBadgeAutomationId(Id);
+
+    public string GifBadgeAutomationId => GalleryMedia.GifBadgeAutomationId(Id);
+
+    public string HdrBadgeAutomationId => GalleryMedia.HdrBadgeAutomationId(Id);
+
+    private void NotifyMosaicBadges()
+    {
+        OnPropertyChanged(nameof(ShowCloudBadge));
+        OnPropertyChanged(nameof(ShowVideoBadge));
+        OnPropertyChanged(nameof(ShowGifBadge));
+        OnPropertyChanged(nameof(ShowHdrBadge));
+    }
+
+    partial void OnIsFolderHeaderChanged(bool value) => NotifyMosaicBadges();
+
+    partial void OnKindChanged(AssetKind value)
+    {
+        OnPropertyChanged(nameof(ShowVideoBadge));
+        OnPropertyChanged(nameof(ShowGifBadge));
+        OnPropertyChanged(nameof(AspectRatio));
+        OnPropertyChanged(nameof(AspectHintWidth));
+    }
+
+    partial void OnPathChanged(string value) => OnPropertyChanged(nameof(ShowHdrBadge));
+
+    partial void OnIsHdrChanged(bool value) => OnPropertyChanged(nameof(ShowHdrBadge));
 
     partial void OnIsOnlineOnlyChanged(bool value)
     {
@@ -114,7 +157,7 @@ public partial class AssetItem : ObservableObject
     partial void OnIsOrphanChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowCloudTile));
-        OnPropertyChanged(nameof(ShowCloudBadge));
+        NotifyMosaicBadges();
     }
 
     partial void OnThumbImageChanged(ImageSource? value) => OnPropertyChanged(nameof(ShowCloudTile));

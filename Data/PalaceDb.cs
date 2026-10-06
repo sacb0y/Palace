@@ -112,6 +112,7 @@ public sealed class PalaceDb : IDisposable
                 FileSize INTEGER,
                 IsOnlineOnly INTEGER NOT NULL DEFAULT 0,
                 CloudItemId TEXT,
+                IsHdr INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (SourceFolderId) REFERENCES SourceFolder(Id) ON DELETE CASCADE
             );
 
@@ -236,6 +237,7 @@ public sealed class PalaceDb : IDisposable
         EnsureTagColorColumn();
         EnsureColumn("Tag", "IsStarred", "INTEGER NOT NULL DEFAULT 0");
         EnsureCloudColumns();
+        EnsureColumn("Asset", "IsHdr", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Collection", "Icon", "TEXT");
         SeedDefaults();
         EnsureDefaultProject();

@@ -186,6 +186,11 @@ public partial class RoomsViewModel : ObservableObject
         }
 
         var grouped = new Dictionary<string, RoomSection>(StringComparer.OrdinalIgnoreCase);
+        var sources = await _catalog.GetSourceFoldersAsync();
+        var sourceCloud = sources.ToDictionary(
+            source => source.Id,
+            source => GalleryMedia.SourceFolderIsCloud(source.Kind, source.Path),
+            StringComparer.Ordinal);
         foreach (var item in await _catalog.GetRoomItemsAsync(SelectedRoom.Id))
         {
             var title = string.IsNullOrWhiteSpace(item.Section) ? "Pins" : item.Section;
@@ -202,7 +207,8 @@ public partial class RoomsViewModel : ObservableObject
                 continue;
             }
 
-            section.Items.Add(AssetItemMapper.FromAsset(asset, _thumbs));
+            sourceCloud.TryGetValue(asset.SourceFolderId, out var cloud);
+            section.Items.Add(AssetItemMapper.FromAsset(asset, _thumbs, cloud));
         }
 
         if (Sections.Count == 0)

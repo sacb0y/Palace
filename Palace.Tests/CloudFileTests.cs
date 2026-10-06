@@ -99,6 +99,10 @@ public sealed class CloudFileTests
         Assert.True(CloudFile.IsCloudBacked(FileAttributes.SparseFile | FileAttributes.ReparsePoint));
         Assert.True(CloudFile.IsCloudBacked(
             FileAttributes.Archive | FileAttributes.ReparsePoint | CloudFile.Offline));
+        Assert.True(CloudFile.IsCloudBackedFolder(FileAttributes.Directory | FileAttributes.ReparsePoint));
+        Assert.True(CloudFile.IsCloudBackedFolder(FileAttributes.Directory | CloudFile.Offline));
+        Assert.False(CloudFile.IsCloudBackedFolder(FileAttributes.Directory));
+        Assert.False(CloudFile.IsCloudBackedFolder(FileAttributes.Archive));
     }
 
     [Fact]

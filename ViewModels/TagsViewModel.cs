@@ -1007,6 +1007,16 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
+            var sources = await _catalog.GetSourceFoldersAsync(projectId);
+            var sourceCloud = sources.ToDictionary(
+                source => source.Id,
+                source => GalleryMedia.SourceFolderIsCloud(source.Kind, source.Path),
+                StringComparer.Ordinal);
+            if (epoch != _mosaicEpoch)
+            {
+                return;
+            }
+
             var assigned = await _catalog.GetAssignedTagIdsByAssetAsync(assets.Select(a => a.Id));
             if (epoch != _mosaicEpoch)
             {
@@ -1015,7 +1025,11 @@ public partial class TagsViewModel : ObservableObject
 
             var tags = _tags;
             var memberships = _memberships;
-            var items = await Task.Run(() => assets.Select(a => AssetItemMapper.FromAsset(a, _thumbs)).ToList());
+            var items = await Task.Run(() => assets.Select(a =>
+            {
+                sourceCloud.TryGetValue(a.SourceFolderId, out var cloud);
+                return AssetItemMapper.FromAsset(a, _thumbs, cloud);
+            }).ToList());
             if (epoch != _mosaicEpoch)
             {
                 return;

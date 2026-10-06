@@ -42,6 +42,8 @@ public sealed class Asset
     public long? FileSize { get; set; }
     public bool IsOnlineOnly { get; set; }
     public string? CloudItemId { get; set; }
+    /// <summary>Header probe from scan/hydrate — mosaic must not Open the original.</summary>
+    public bool IsHdr { get; set; }
 }
 
 public sealed class CloudAccount
