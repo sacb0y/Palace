@@ -159,6 +159,8 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.UsesWheelPan(scrolls: true, controlDown: false, wheelDelta: -120));
         Assert.False(GalleryScale.UsesWheelPan(scrolls: false, controlDown: false, wheelDelta: -120));
         Assert.False(GalleryScale.UsesWheelPan(scrolls: true, controlDown: true, wheelDelta: -120));
+        Assert.True(GalleryScale.NeedsHandledWheelListener(hidesScrollBars: true));
+        Assert.False(GalleryScale.NeedsHandledWheelListener(hidesScrollBars: false));
         Assert.Equal(1.1, GalleryScale.WheelPinchFactor(120), 5);
         Assert.Equal(1 / 1.1, GalleryScale.WheelPinchFactor(-120), 5);
         Assert.Equal(1.0, GalleryScale.WheelPinchFactor(0), 5);

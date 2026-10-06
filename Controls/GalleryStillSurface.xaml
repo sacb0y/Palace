@@ -8,17 +8,18 @@
     mc:Ignorable="d">
     <Grid
         x:Name="GrdStillHost"
-        PointerWheelChanged="GrdStillHost_PointerWheelChanged"
         SizeChanged="GrdStillHost_SizeChanged">
         <ScrollViewer
             x:Name="ScrStill"
             HorizontalScrollBarVisibility="Hidden"
+            HorizontalScrollMode="Disabled"
             ManipulationMode="None"
             PointerCaptureLost="ScrStill_PointerCaptureLost"
             PointerMoved="ScrStill_PointerMoved"
             PointerPressed="ScrStill_PointerPressed"
             PointerReleased="ScrStill_PointerReleased"
             VerticalScrollBarVisibility="Hidden"
+            VerticalScrollMode="Disabled"
             ZoomMode="Disabled">
             <Grid
                 x:Name="GrdStillContent"
