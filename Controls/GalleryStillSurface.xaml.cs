@@ -208,7 +208,11 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             _hdrLoadCts?.Cancel();
             _presentCts?.Cancel();
-            Interlocked.Increment(ref _epoch);
+            if (GifFrames.ShouldBumpHdrEpochOnGifStillRefresh(true))
+            {
+                Interlocked.Increment(ref _epoch);
+            }
+
             Interlocked.Increment(ref _histEpoch);
             ClearHdrCache();
             HideHdr();

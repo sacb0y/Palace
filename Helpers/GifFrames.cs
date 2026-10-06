@@ -91,6 +91,14 @@ public static class GifFrames
         bool loadInFlightForSamePath) =>
         !cacheReady && !loadInFlightForSamePath;
 
+    /// <summary>
+    /// Opening a scrubbable GIF must bump the HDR present epoch so a late
+    /// WIC / scRGB result cannot paint over the still. That bump must not
+    /// cancel an in-flight <see cref="TryRenderAll"/>.
+    /// </summary>
+    public static bool ShouldBumpHdrEpochOnGifStillRefresh(bool isScrubbableGif) =>
+        isScrubbableGif;
+
     public readonly record struct Info(int Width, int Height, int FrameCount, IReadOnlyList<int> DelaysCs);
 
     public readonly record struct Raster(int Width, int Height, byte[] Bgra);

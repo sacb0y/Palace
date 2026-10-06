@@ -103,6 +103,15 @@ public sealed class GifFramesTests
     }
 
     [Fact]
+    public void GifStillRefresh_BumpsHdrEpochWithoutRestartingLoad()
+    {
+        Assert.True(GifFrames.ShouldBumpHdrEpochOnGifStillRefresh(true));
+        Assert.False(GifFrames.ShouldBumpHdrEpochOnGifStillRefresh(false));
+        Assert.False(GifFrames.ShouldStartGifCompositeLoad(cacheReady: false, loadInFlightForSamePath: true));
+        Assert.False(GifFrames.ShouldApplyGifTick(true, cacheReady: false));
+    }
+
+    [Fact]
     public void TryRenderFrame_KeepsTransparentPixelsClear()
     {
         var bytes = TransparentThenPartialGif();
