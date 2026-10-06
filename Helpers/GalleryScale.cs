@@ -153,14 +153,79 @@ public static class GalleryScale
     }
 
     /// <summary>
-    /// Mouse left-drag uses pointer capture. Touch and pen pan via
+    /// Mouse left-drag uses pointer capture. Touch, pen, and trackpad pan via
     /// ManipulationDelta so a contact does not pan twice.
     /// </summary>
     public static bool UsesPointerCapturePan(bool scrolls, bool isMouse, bool leftButton) =>
         scrolls && isMouse && leftButton;
 
     /// <summary>
+    /// Precision touchpad reports as Mouse without a left button. Left-button
+    /// mouse stays on pointer-capture pan.
+    /// </summary>
+    public static bool UsesManipulationGesture(
+        bool isTouch,
+        bool isPen,
+        bool isMouse,
+        bool leftButton) =>
+        isTouch || isPen || (isMouse && !leftButton);
+
+    /// <summary>
+    /// Inertia after the first gesture leaves ScrollViewer DirectManipulation
+    /// stuck so a second pinch/pan never fires. Ignore inertial frames.
+    /// </summary>
+    public static bool HandlesManipulationDelta(
+        bool isInertial,
+        bool isTouch,
+        bool isPen,
+        bool isMouse,
+        bool leftButton) =>
+        !isInertial && UsesManipulationGesture(isTouch, isPen, isMouse, leftButton);
+
+    /// <summary>
+    /// Auto scrollbars turn on ScrollViewer DirectManipulation, which swallows
+    /// the next touch/trackpad gesture. Drive pan with ChangeView instead.
+    /// </summary>
+    public static bool ShowsScrollBars() => false;
+
+    /// <summary>
+    /// Recenter / drop pinch when the still, 1:1/Fit/Fill mode, or viewport
+    /// changes so a prior pan does not stick.
+    /// </summary>
+    public static bool ShouldResetView(
+        bool stillChanged,
+        bool scalingChanged,
+        bool viewportChanged) =>
+        stillChanged || scalingChanged || viewportChanged;
+
+    public static bool UsesWheelPinch(bool controlDown, int wheelDelta) =>
+        controlDown && wheelDelta != 0;
+
+    public static bool UsesWheelPan(bool scrolls, bool controlDown, int wheelDelta) =>
+        scrolls && !controlDown && wheelDelta != 0;
+
+    /// <summary>
+    /// One wheel notch (120) is a 1.1× pinch step. Negative delta pinches out.
+    /// </summary>
+    public static double WheelPinchFactor(int mouseWheelDelta)
+    {
+        if (mouseWheelDelta == 0)
+        {
+            return 1.0;
+        }
+
+        return Math.Pow(1.1, mouseWheelDelta / 120.0);
+    }
+
+    /// <summary>
+    /// Wheel delta as a DragPan pointer delta (subtracted from offset).
+    /// </summary>
+    public static double WheelToPanDelta(int mouseWheelDelta) =>
+        mouseWheelDelta / 4.0;
+
+    /// <summary>
     /// Mouse left-drag and touch/pen contact pan when the still can scroll.
+    /// Trackpad two-finger pan is ManipulationDelta / wheel, not this.
     /// </summary>
     public static bool UsesDragPan(
         bool scrolls,
