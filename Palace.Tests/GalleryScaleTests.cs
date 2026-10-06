@@ -114,6 +114,10 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.UsesDragPan(true, isMouse: false, leftButton: false, isTouch: true, isPen: false));
         Assert.True(GalleryScale.UsesDragPan(true, isMouse: false, leftButton: false, isTouch: false, isPen: true));
         Assert.False(GalleryScale.UsesDragPan(false, isMouse: false, leftButton: false, isTouch: true, isPen: false));
+        Assert.True(GalleryScale.UsesPointerCapturePan(true, isMouse: true, leftButton: true));
+        Assert.False(GalleryScale.UsesPointerCapturePan(true, isMouse: true, leftButton: false));
+        Assert.False(GalleryScale.UsesPointerCapturePan(true, isMouse: false, leftButton: true));
+        Assert.False(GalleryScale.UsesPointerCapturePan(true, isMouse: false, leftButton: false));
         Assert.Equal(2.0, GalleryScale.PinchZoom(1, 2), 3);
         Assert.Equal(1.0, GalleryScale.PinchZoom(1, 0.25), 3);
         Assert.Equal(8.0, GalleryScale.PinchZoom(4, 4), 3);
@@ -124,6 +128,11 @@ public sealed class GalleryScaleTests
         var pinchPan = GalleryScale.PinchPan(10, 0, 40, 20, 1, 2, 200, 100);
         Assert.Equal(60, pinchPan.Horizontal, 3);
         Assert.Equal(20, pinchPan.Vertical, 3);
+        var composed = GalleryScale.PinchThenDrag(10, 0, 40, 20, 1, 2, 4, -3, 200, 100);
+        Assert.Equal(56, composed.Horizontal, 3);
+        Assert.Equal(23, composed.Vertical, 3);
+        var staleDrag = GalleryScale.DragPan(10, 0, 4, -3, 200, 100);
+        Assert.NotEqual(composed.Horizontal, staleDrag.Horizontal);
     }
 
     [Fact]

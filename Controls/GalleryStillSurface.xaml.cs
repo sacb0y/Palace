@@ -28,6 +28,8 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _pinchOriginX;
     private double _pinchOriginY;
     private double _pinchOldZoom = 1;
+    private double _coalescedPanX;
+    private double _coalescedPanY;
     private ImageScaling _scrollScaling;
     private int _scrollRevision = int.MinValue;
     private double _scrollContentW;
@@ -64,7 +66,7 @@ public sealed partial class GalleryStillSurface : UserControl
         CancelInFlight();
         ClearHdrCache();
         ResetScrollTracking();
-        _pinchZoom = 1;
+        ResetPinchTracking();
         _gallery = gallery;
         if (_gallery is not null)
         {
@@ -114,7 +116,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         if (e.PropertyName is nameof(GalleryViewModel.Scaling))
         {
-            _pinchZoom = 1;
+            ResetPinchTracking();
             ApplyScaleLayout();
             if (_hdrFrame is not null && _gallery is { } g)
             {
@@ -140,7 +142,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (e.PropertyName is nameof(GalleryViewModel.StillRevision))
         {
-            _pinchZoom = 1;
+            ResetPinchTracking();
             _ = RefreshAsync();
         }
     }
@@ -608,11 +610,22 @@ public sealed partial class GalleryStillSurface : UserControl
         if (double.IsNaN(contentW) || double.IsNaN(contentH) || contentW <= 1 || contentH <= 1
             || viewW <= 1 || viewH <= 1)
         {
+            ResetPinchPanIntent();
             return;
         }
 
         var revision = _gallery?.StillRevision ?? 0;
-        if (scaling == _scrollScaling
+        var preserve = _preservePinchPan;
+        var originX = _pinchOriginX;
+        var originY = _pinchOriginY;
+        var oldZoom = _pinchOldZoom;
+        var newZoom = _pinchZoom;
+        var panX = _coalescedPanX;
+        var panY = _coalescedPanY;
+        ResetPinchPanIntent();
+
+        if (!preserve
+            && scaling == _scrollScaling
             && revision == _scrollRevision
             && NearlyEqual(contentW, _scrollContentW)
             && NearlyEqual(contentH, _scrollContentH)
@@ -621,13 +634,6 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             return;
         }
-
-        var preserve = _preservePinchPan;
-        var originX = _pinchOriginX;
-        var originY = _pinchOriginY;
-        var oldZoom = _pinchOldZoom;
-        var newZoom = _pinchZoom;
-        _preservePinchPan = false;
 
         _scrollScaling = scaling;
         _scrollRevision = revision;
@@ -638,13 +644,15 @@ public sealed partial class GalleryStillSurface : UserControl
 
         ScrStill.UpdateLayout();
         var (horizontal, vertical) = preserve
-            ? GalleryScale.PinchPan(
+            ? GalleryScale.PinchThenDrag(
                 ScrStill.HorizontalOffset,
                 ScrStill.VerticalOffset,
                 originX,
                 originY,
                 oldZoom,
                 newZoom,
+                panX,
+                panY,
                 ScrStill.ScrollableWidth,
                 ScrStill.ScrollableHeight)
             : GalleryScale.InitialScrollOffset(
@@ -659,6 +667,23 @@ public sealed partial class GalleryStillSurface : UserControl
         _scrollContentH = 0;
         _scrollViewW = 0;
         _scrollViewH = 0;
+        ResetPinchPanIntent();
+    }
+
+    private void ResetPinchTracking()
+    {
+        _pinchZoom = 1;
+        _pinchOldZoom = 1;
+        _pinchOriginX = 0;
+        _pinchOriginY = 0;
+        ResetPinchPanIntent();
+    }
+
+    private void ResetPinchPanIntent()
+    {
+        _preservePinchPan = false;
+        _coalescedPanX = 0;
+        _coalescedPanY = 0;
     }
 
     private static bool NearlyEqual(double a, double b) =>
@@ -692,18 +717,11 @@ public sealed partial class GalleryStillSurface : UserControl
     private void ScrStill_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var type = e.Pointer.PointerDeviceType;
-        if (type == PointerDeviceType.Touch)
-        {
-            return;
-        }
-
         var point = e.GetCurrentPoint(ScrStill);
-        if (!GalleryScale.UsesDragPan(
+        if (!GalleryScale.UsesPointerCapturePan(
                 GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit, _pinchZoom),
                 type == PointerDeviceType.Mouse,
-                point.Properties.IsLeftButtonPressed,
-                type == PointerDeviceType.Touch,
-                type == PointerDeviceType.Pen))
+                point.Properties.IsLeftButtonPressed))
         {
             return;
         }
@@ -769,27 +787,27 @@ public sealed partial class GalleryStillSurface : UserControl
 
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
         var scaleDelta = e.Delta.Scale;
-        if (scaleDelta > 0 && Math.Abs(scaleDelta - 1) > 0.001)
-        {
-            var next = GalleryScale.PinchZoom(_pinchZoom, scaleDelta);
-            if (Math.Abs(next - _pinchZoom) > 0.0001)
-            {
-                _preservePinchPan = true;
-                _pinchOriginX = e.Position.X;
-                _pinchOriginY = e.Position.Y;
-                _pinchOldZoom = _pinchZoom;
-                _pinchZoom = next;
-                ApplyScaleLayout();
-                e.Handled = true;
-            }
-        }
+        var nextZoom = GalleryScale.PinchZoom(_pinchZoom, scaleDelta);
+        var didPinch = scaleDelta > 0 && Math.Abs(nextZoom - _pinchZoom) > 0.0001;
+        var deltaX = e.Delta.Translation.X;
+        var deltaY = e.Delta.Translation.Y;
+        var hasPan = deltaX != 0 || deltaY != 0;
 
-        if (!GalleryScale.Scrolls(scaling, _pinchZoom))
+        if (didPinch)
         {
+            _preservePinchPan = true;
+            _pinchOriginX = e.Position.X;
+            _pinchOriginY = e.Position.Y;
+            _pinchOldZoom = _pinchZoom;
+            _pinchZoom = nextZoom;
+            _coalescedPanX = deltaX;
+            _coalescedPanY = deltaY;
+            ApplyScaleLayout();
+            e.Handled = true;
             return;
         }
 
-        if (e.Delta.Translation.X == 0 && e.Delta.Translation.Y == 0)
+        if (!GalleryScale.Scrolls(scaling, _pinchZoom) || !hasPan)
         {
             return;
         }
@@ -797,8 +815,8 @@ public sealed partial class GalleryStillSurface : UserControl
         var (horizontal, vertical) = GalleryScale.DragPan(
             ScrStill.HorizontalOffset,
             ScrStill.VerticalOffset,
-            e.Delta.Translation.X,
-            e.Delta.Translation.Y,
+            deltaX,
+            deltaY,
             ScrStill.ScrollableWidth,
             ScrStill.ScrollableHeight);
         ScrStill.ChangeView(horizontal, vertical, null, true);

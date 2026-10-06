@@ -950,6 +950,11 @@
                                                     Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
                                                     Style="{StaticResource CaptionTextBlockStyle}"
                                                     Text="{x:Bind TagName, Mode=OneWay}" />
+                                                <TextBlock
+                                                    Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                                    Text="{x:Bind CountLabel, Mode=OneWay}"
+                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
                                             </StackPanel>
                                         </Border>
                                     </DataTemplate>
@@ -999,12 +1004,68 @@
                                 </Button>
                             </StackPanel>
                         </Grid>
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtGalleryOverlayPosition"
-                            AutomationProperties.Name="Gallery position"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.OverlayGallery.PositionLabel, Mode=OneWay, FallbackValue=''}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                AutomationProperties.AutomationId="TxtGalleryOverlayPosition"
+                                AutomationProperties.Name="Gallery position"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.OverlayGallery.PositionLabel, Mode=OneWay, FallbackValue=''}" />
+                            <TextBlock
+                                AutomationProperties.AutomationId="TxtGalleryOverlayDetails"
+                                AutomationProperties.Name="Image details"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.OverlayGallery.DetailsText, Mode=OneWay, FallbackValue=''}"
+                                TextTrimming="CharacterEllipsis"
+                                Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.OverlayGallery.DetailsText), Mode=OneWay, FallbackValue=Collapsed}" />
+                            <TextBlock
+                                AutomationProperties.AutomationId="TxtGalleryOverlayHdr"
+                                AutomationProperties.Name="HDR status"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.OverlayGallery.HdrStatus, Mode=OneWay, FallbackValue=''}"
+                                TextTrimming="CharacterEllipsis"
+                                Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.OverlayGallery.HdrStatus), Mode=OneWay, FallbackValue=Collapsed}" />
+                        </StackPanel>
+                        <StackPanel
+                            AutomationProperties.AutomationId="PnlOverlayGeneration"
+                            Spacing="4"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowGeneration), Mode=OneWay, FallbackValue=Collapsed}">
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Generation" />
+                            <TextBlock
+                                AutomationProperties.AutomationId="TxtOverlayModel"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewModel), Mode=OneWay, FallbackValue=''}"
+                                TextWrapping="Wrap" />
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Prompt" />
+                            <ScrollViewer
+                                AutomationProperties.AutomationId="ScrOverlayPrompt"
+                                MaxHeight="120"
+                                HorizontalScrollBarVisibility="Disabled"
+                                VerticalScrollBarVisibility="Auto">
+                                <TextBlock
+                                    AutomationProperties.AutomationId="TxtOverlayPrompt"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewPrompt), Mode=OneWay, FallbackValue=''}"
+                                    TextWrapping="Wrap" />
+                            </ScrollViewer>
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Negative" />
+                            <ScrollViewer
+                                AutomationProperties.AutomationId="ScrOverlayNegative"
+                                MaxHeight="80"
+                                HorizontalScrollBarVisibility="Disabled"
+                                VerticalScrollBarVisibility="Auto">
+                                <TextBlock
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewNegative), Mode=OneWay, FallbackValue=''}"
+                                    TextWrapping="Wrap" />
+                            </ScrollViewer>
+                            <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Seed" />
+                            <TextBlock
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewSeed), Mode=OneWay, FallbackValue=''}" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>

@@ -144,6 +144,13 @@ public static class GalleryScale
     }
 
     /// <summary>
+    /// Mouse left-drag uses pointer capture. Touch and pen pan via
+    /// ManipulationDelta so a contact does not pan twice.
+    /// </summary>
+    public static bool UsesPointerCapturePan(bool scrolls, bool isMouse, bool leftButton) =>
+        scrolls && isMouse && leftButton;
+
+    /// <summary>
     /// Mouse left-drag and touch/pen contact pan when the still can scroll.
     /// </summary>
     public static bool UsesDragPan(
@@ -228,6 +235,35 @@ public static class GalleryScale
         return (
             ClampOffset((horizontalOffset + originX) * scale - originX, scrollableWidth),
             ClampOffset((verticalOffset + originY) * scale - originY, scrollableHeight));
+    }
+
+    /// <summary>
+    /// One scroll target for a pinch frame: keep the pinch origin, then apply
+    /// the same-frame translation. Do not DragPan from a stale offset after
+    /// ChangeView — ScrollViewer has not updated HorizontalOffset yet.
+    /// </summary>
+    public static (double Horizontal, double Vertical) PinchThenDrag(
+        double horizontalOffset,
+        double verticalOffset,
+        double originX,
+        double originY,
+        double oldZoom,
+        double newZoom,
+        double pointerDeltaX,
+        double pointerDeltaY,
+        double scrollableWidth,
+        double scrollableHeight)
+    {
+        var (h, v) = PinchPan(
+            horizontalOffset,
+            verticalOffset,
+            originX,
+            originY,
+            oldZoom,
+            newZoom,
+            scrollableWidth,
+            scrollableHeight);
+        return DragPan(h, v, pointerDeltaX, pointerDeltaY, scrollableWidth, scrollableHeight);
     }
 
     /// <summary>
