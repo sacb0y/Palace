@@ -71,7 +71,7 @@ public sealed class HydrationService
             asset.Height = size.Height;
         }
 
-        asset.IsHdr = GalleryMedia.CatalogHdrFromHeader(asset.Path, !stillOnline);
+        asset.IsHdr = GalleryMedia.CatalogHdrFromHeader(asset.Path, !stillOnline, asset.IsHdr);
 
         await _catalog.UpsertAssetAsync(asset, "").ConfigureAwait(false);
         if (!string.Equals(previousHash, hash, StringComparison.OrdinalIgnoreCase))

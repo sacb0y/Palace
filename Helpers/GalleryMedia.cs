@@ -245,16 +245,26 @@ public static class GalleryMedia
 
     /// <summary>
     /// Scan / hydrate only. Mosaic mapping must pass the catalog flag —
-    /// never call this while building tiles.
+    /// never call this while building tiles. When the original cannot be
+    /// read, keep <paramref name="existingHdr"/> so a later online-only /
+    /// API rescan does not wipe a probe from Open.
     /// </summary>
-    public static bool CatalogHdrFromHeader(string? path, bool mayReadOriginalHeader)
+    public static bool CatalogHdrFromHeader(
+        string? path,
+        bool mayReadOriginalHeader,
+        bool existingHdr = false)
     {
         if (PathSafe.IsRadiance(path))
         {
             return true;
         }
 
-        return mayReadOriginalHeader && HdrFile.ProbePath(path).IsHdr;
+        if (mayReadOriginalHeader)
+        {
+            return HdrFile.ProbePath(path).IsHdr;
+        }
+
+        return existingHdr;
     }
 
     public static bool ShowKindBadge(bool isFolderHeader, bool isOrphan, bool matches) =>

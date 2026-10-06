@@ -192,6 +192,18 @@ public sealed class GalleryMediaTests
         Assert.False(GalleryMedia.ShowHdrBadge(false, true, @"D:\shots\sky.hdr", true));
         Assert.False(GalleryMedia.CatalogHdrFromHeader(@"D:\shots\a.jpg", mayReadOriginalHeader: false));
         Assert.True(GalleryMedia.CatalogHdrFromHeader(@"D:\shots\sky.hdr", mayReadOriginalHeader: false));
+        Assert.True(GalleryMedia.CatalogHdrFromHeader(
+            @"D:\cloud\hdr.avif",
+            mayReadOriginalHeader: false,
+            existingHdr: true));
+        Assert.False(GalleryMedia.CatalogHdrFromHeader(
+            @"D:\cloud\hdr.avif",
+            mayReadOriginalHeader: false,
+            existingHdr: false));
+        Assert.True(GalleryMedia.CatalogHdrFromHeader(
+            @"D:\shots\sky.hdr",
+            mayReadOriginalHeader: false,
+            existingHdr: false));
         Assert.Equal("IcnVideoBadge_abc123", GalleryMedia.VideoBadgeAutomationId("abc-123"));
         Assert.Equal("IcnGifBadge_clip", GalleryMedia.GifBadgeAutomationId("clip"));
         Assert.Equal("IcnHdrBadge_", GalleryMedia.HdrBadgeAutomationId(null));
