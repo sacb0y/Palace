@@ -11,7 +11,7 @@
     xmlns:models="using:Palace.Models"
     xmlns:pages="using:Palace.Pages"
     mc:Ignorable="d"
-    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+    Background="Transparent">
 
     <Grid>
     <Grid
