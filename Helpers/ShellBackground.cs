@@ -86,6 +86,16 @@ public static class ShellBackground
     /// </summary>
     public static event EventHandler? DisplayReleasing;
 
+    /// <summary>
+    /// True between <see cref="ReleaseDisplay"/> and the next restore or
+    /// committed apply. <see cref="Changed"/> (theme, sliders) must not re-bind
+    /// the previous file while a copy or delete is in flight.
+    /// </summary>
+    public static bool DisplayHeld { get; private set; }
+
+    /// <summary>Show the wallpaper image — not while a replace holds the file.</summary>
+    public static bool ShouldBindWallpaper => HasWallpaper && !DisplayHeld;
+
     public static void Apply(
         string? wallpaperPath,
         double darkness,
@@ -117,6 +127,7 @@ public static class ShellBackground
         if (pathChanged || reloadWallpaper)
         {
             WallpaperEpoch++;
+            DisplayHeld = false;
         }
 
         Changed?.Invoke(null, EventArgs.Empty);
@@ -125,18 +136,27 @@ public static class ShellBackground
     public static void SetWallpaperName(string? name) =>
         WallpaperName = NormalizePath(name);
 
-    public static void ReleaseDisplay() =>
+    public static void ReleaseDisplay()
+    {
+        DisplayHeld = true;
         DisplayReleasing?.Invoke(null, EventArgs.Empty);
+    }
 
     /// <summary>
     /// Reload the current wallpaper after <see cref="ReleaseDisplay"/> when a
     /// replace did not commit a new path (copy failed).
     /// </summary>
-    public static void RestoreDisplay() =>
+    public static void RestoreDisplay()
+    {
+        DisplayHeld = false;
         Changed?.Invoke(null, EventArgs.Empty);
+    }
 
+    /// <summary>
+    /// Re-paint glass / dim / theme without clearing a replace hold.
+    /// </summary>
     public static void Refresh() =>
-        RestoreDisplay();
+        Changed?.Invoke(null, EventArgs.Empty);
 
     public static bool IsLightChrome(string? requestedTheme, bool systemIsLight) =>
         requestedTheme switch

@@ -181,12 +181,33 @@ public sealed class ShellBackgroundTests
             ShellBackground.ReleaseDisplay();
             Assert.Equal(1, released);
             Assert.Equal(0, changed);
+            Assert.True(ShellBackground.DisplayHeld);
+            Assert.False(ShellBackground.ShouldBindWallpaper);
             Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
 
+            ShellBackground.Apply(@"C:\pics\bg.jpg", 70, 45, false, ShellBackground.DefaultTintHex);
+            Assert.True(ShellBackground.DisplayHeld);
+            Assert.False(ShellBackground.ShouldBindWallpaper);
+            Assert.Equal(70, ShellBackground.Darkness, 2);
+            Assert.Equal(epoch, ShellBackground.WallpaperEpoch);
+
+            ShellBackground.Refresh();
+            Assert.True(ShellBackground.DisplayHeld);
+            Assert.False(ShellBackground.ShouldBindWallpaper);
+            Assert.Equal(2, changed);
+
             ShellBackground.RestoreDisplay();
-            Assert.Equal(1, changed);
+            Assert.Equal(3, changed);
+            Assert.False(ShellBackground.DisplayHeld);
+            Assert.True(ShellBackground.ShouldBindWallpaper);
             Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
             Assert.Equal(epoch, ShellBackground.WallpaperEpoch);
+
+            ShellBackground.ReleaseDisplay();
+            ShellBackground.Apply(@"C:\pics\new.jpg", 70, 10, false, ShellBackground.DefaultTintHex, reloadWallpaper: true);
+            Assert.False(ShellBackground.DisplayHeld);
+            Assert.True(ShellBackground.ShouldBindWallpaper);
+            Assert.Equal(@"C:\pics\new.jpg", ShellBackground.WallpaperPath);
         }
         finally
         {
@@ -246,6 +267,6 @@ public sealed class ShellBackgroundTests
     private static void Reset()
     {
         ShellBackground.SetWallpaperName(null);
-        ShellBackground.Apply(null, ShellBackground.DefaultDarkness, ShellBackground.DefaultBlur, false, ShellBackground.DefaultTintHex);
+        ShellBackground.Apply(null, ShellBackground.DefaultDarkness, ShellBackground.DefaultBlur, false, ShellBackground.DefaultTintHex, reloadWallpaper: true);
     }
 }

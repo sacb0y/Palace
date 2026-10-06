@@ -35,7 +35,7 @@ public static class ShellBackdrop
 
         var path = ShellBackground.WallpaperPath;
         var epoch = ShellBackground.WallpaperEpoch;
-        if (ShellBackground.HasWallpaper && !string.IsNullOrWhiteSpace(path))
+        if (ShellBackground.ShouldBindWallpaper && !string.IsNullOrWhiteSpace(path))
         {
             if (_loadedPath != path || _loadedEpoch != epoch)
             {
