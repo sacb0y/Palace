@@ -259,7 +259,7 @@ public sealed class HdrFileTests
             4000f);
         Assert.Equal(4000f, sameStill, 2);
         Assert.Equal(
-            0f,
+            viewport,
             GalleryPresent.StickyContentMaxNitsForStill(null, @"C:\hdr\bright.avif", 5f, 0, null, 4000f),
             2);
     }
