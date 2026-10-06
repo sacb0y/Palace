@@ -120,8 +120,24 @@ public static class GifFrames
     /// </summary>
     public const long MaxCacheBytes = 256L * 1024 * 1024;
 
-    public static bool FitsCacheBudget(int width, int height, int frameCount) =>
-        (long)width * height * 4 * frameCount <= MaxCacheBytes;
+    public const int MaxCacheFrames = 2048;
+
+    public static bool FitsCacheBudget(int width, int height, int frameCount)
+    {
+        if (width <= 0 || height <= 0 || frameCount <= 0 || frameCount > MaxCacheFrames)
+        {
+            return false;
+        }
+
+        var stride = (long)width * 4;
+        if (height > MaxCacheBytes / stride)
+        {
+            return false;
+        }
+
+        var frameBytes = stride * height;
+        return frameBytes <= MaxCacheBytes / frameCount;
+    }
 
     public readonly record struct Info(int Width, int Height, int FrameCount, IReadOnlyList<int> DelaysCs);
 
@@ -317,6 +333,11 @@ public static class GifFrames
         // Transparent canvas — matches BitmapImage. Do not fill the LSD
         // background color (opaque backdrop on paused/scrubbed frames).
         var decode = renderAll || renderIndex is not null;
+        if (decode && !FitsCacheBudget(width, height, 1))
+        {
+            return null;
+        }
+
         var canvas = decode ? new byte[width * height * 4] : [];
         byte[]? previous = null;
 

@@ -118,6 +118,19 @@ public sealed class GifFramesTests
     }
 
     [Fact]
+    public void FitsCacheBudget_CapsFramesAndBytes()
+    {
+        Assert.True(GifFrames.FitsCacheBudget(2, 1, 2));
+        Assert.True(GifFrames.FitsCacheBudget(1920, 1080, 2));
+        Assert.False(GifFrames.FitsCacheBudget(1920, 1080, 40));
+        Assert.False(GifFrames.FitsCacheBudget(0, 10, 2));
+        Assert.False(GifFrames.FitsCacheBudget(10, 10, 0));
+        Assert.False(GifFrames.FitsCacheBudget(1, 1, GifFrames.MaxCacheFrames + 1));
+        Assert.False(GifFrames.FitsCacheBudget(int.MaxValue, int.MaxValue, int.MaxValue));
+        Assert.True(GifFrames.FitsCacheBudget(64, 64, 100));
+    }
+
+    [Fact]
     public void TryRenderAll_HonorsCancellation()
     {
         using var cts = new CancellationTokenSource();
