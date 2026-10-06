@@ -83,6 +83,54 @@ public static class DisplayHdr
             Marshal.SizeOf<AdvancedColorInfo2>(),
             Marshal.SizeOf<SourceName>());
 
+    public static DisplayHdrQuery LastQuery { get; private set; } =
+        new("CCD not queried", null, 0, 0, null, null);
+
+    /// <summary>
+    /// One-line CCD + DXGI probe for Overlay Info / DebugView.
+    /// </summary>
+    public static string Describe(string? gdiDeviceName = null)
+    {
+        _ = TryWindowsHdrEnabled(gdiDeviceName);
+        var text = LastQuery.Summary + " | " + DescribeDxgi();
+        WriteDebug(text);
+        return text;
+    }
+
+    public static string DescribeDxgi()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return "DXGI unavailable (not Windows)";
+        }
+
+        try
+        {
+            return QueryDxgiOutputs();
+        }
+        catch (Exception ex)
+        {
+            return "DXGI probe failed: " + ex.GetType().Name;
+        }
+    }
+
+    public static void WriteDebug(string text)
+    {
+        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            OutputDebugString("Palace.DisplayHdr " + text);
+        }
+        catch
+        {
+            // DebugView is optional.
+        }
+    }
+
     /// <summary>
     /// <c>true</c> when Windows HDR / Advanced Color is on for
     /// <paramref name="gdiDeviceName"/> (<c>\\.\DISPLAYn</c>). Empty name
@@ -92,6 +140,7 @@ public static class DisplayHdr
     {
         if (!OperatingSystem.IsWindows())
         {
+            LastQuery = new("CCD unavailable (not Windows)", null, 0, 0, null, gdiDeviceName);
             return null;
         }
 
@@ -99,65 +148,103 @@ public static class DisplayHdr
         {
             return QueryWindowsHdrEnabled(gdiDeviceName);
         }
-        catch
+        catch (Exception ex)
         {
+            LastQuery = new("CCD throw " + ex.GetType().Name, null, 0, 0, null, gdiDeviceName);
             return null;
         }
     }
 
     private static bool? QueryWindowsHdrEnabled(string? gdiDeviceName)
     {
+        DisplayHdrQuery? last = null;
         foreach (var flags in new uint[] { 0x12, 0x52, 0x02, 0x01 })
         {
-            var parsed = TryQueryPaths(flags, gdiDeviceName, out var hdr);
+            var parsed = TryQueryPaths(flags, gdiDeviceName, out var hdr, out var query);
+            last = query;
             if (parsed)
             {
+                LastQuery = query;
+                WriteDebug(query.Summary);
                 return hdr;
             }
         }
 
+        LastQuery = last ?? new("CCD no path flags", null, 0, 0, null, gdiDeviceName);
+        WriteDebug(LastQuery.Summary);
         return null;
     }
 
-    private static bool TryQueryPaths(uint flags, string? gdiDeviceName, out bool? hdr)
+    private static bool TryQueryPaths(
+        uint flags,
+        string? gdiDeviceName,
+        out bool? hdr,
+        out DisplayHdrQuery query)
     {
         hdr = null;
+        query = new($"CCD flags=0x{flags:X} bufHr=? paths=0", null, 0, 0, null, gdiDeviceName);
         var pathCount = 0u;
         var modeCount = 0u;
-        if (GetDisplayConfigBufferSizes(flags, out pathCount, out modeCount) != 0
-            || pathCount == 0
-            || modeCount == 0)
+        var bufHr = GetDisplayConfigBufferSizes(flags, out pathCount, out modeCount);
+        if (bufHr != 0 || pathCount == 0 || modeCount == 0)
         {
+            query = new(
+                $"CCD flags=0x{flags:X} bufHr={bufHr} paths={pathCount} modes={modeCount}",
+                null,
+                (int)pathCount,
+                0,
+                null,
+                gdiDeviceName);
             return false;
         }
 
         var paths = new PathInfo[pathCount];
         var modes = new ModeInfo[modeCount];
-        if (QueryDisplayConfig(flags, ref pathCount, paths, ref modeCount, modes, IntPtr.Zero) != 0)
+        var qHr = QueryDisplayConfig(flags, ref pathCount, paths, ref modeCount, modes, IntPtr.Zero);
+        if (qHr != 0)
         {
+            query = new(
+                $"CCD flags=0x{flags:X} bufHr=0 paths={pathCount} qHr={qHr}",
+                null,
+                (int)pathCount,
+                0,
+                null,
+                gdiDeviceName);
             return false;
         }
 
         bool? anyHdr = null;
         var matches = 0;
         bool? matched = null;
+        bool? firstAce = null;
+        string? firstSource = null;
+        uint firstInfo = 0;
+        int firstInfoHr = -1;
+        uint firstInfo2 = 0;
+        int firstInfo2Hr = -1;
+        int firstMode = -1;
         var want = string.IsNullOrWhiteSpace(gdiDeviceName) ? null : gdiDeviceName.Trim();
         for (var i = 0; i < (int)pathCount; i++)
         {
             var path = paths[i];
-            var pathHdr = PathWindowsHdr(path.targetInfo.adapterId, path.targetInfo.id);
-            if (pathHdr == true)
+            var detail = ReadPathHdr(path.targetInfo.adapterId, path.targetInfo.id);
+            if (firstAce is null)
+            {
+                firstAce = detail.AdvancedColorEnabled;
+                firstInfo = detail.InfoValue;
+                firstInfoHr = detail.InfoHr;
+                firstInfo2 = detail.Info2Value;
+                firstInfo2Hr = detail.Info2Hr;
+                firstMode = detail.ColorMode;
+            }
+
+            if (detail.Hdr == true)
             {
                 anyHdr = true;
             }
-            else if (pathHdr == false && anyHdr is null)
+            else if (detail.Hdr == false && anyHdr is null)
             {
                 anyHdr = false;
-            }
-
-            if (want is null)
-            {
-                continue;
             }
 
             var source = new SourceName
@@ -170,33 +257,54 @@ public static class DisplayHdr
                     id = path.sourceInfo.id
                 }
             };
-            if (DisplayConfigGetDeviceInfo(ref source) != 0
-                || !NamesMatch(source.viewGdiDeviceName, want))
+            var srcHr = DisplayConfigGetDeviceInfo(ref source);
+            var srcName = srcHr == 0 ? source.viewGdiDeviceName : null;
+            firstSource ??= srcName;
+            if (want is null)
+            {
+                continue;
+            }
+
+            if (srcHr != 0 || !NamesMatch(srcName, want))
             {
                 continue;
             }
 
             matches++;
-            matched = pathHdr;
+            matched = detail.Hdr;
+            firstAce = detail.AdvancedColorEnabled;
+            firstInfo = detail.InfoValue;
+            firstInfoHr = detail.InfoHr;
+            firstInfo2 = detail.Info2Value;
+            firstInfo2Hr = detail.Info2Hr;
+            firstMode = detail.ColorMode;
+            firstSource = srcName;
         }
 
         if (want is null)
         {
             hdr = anyHdr;
-            return anyHdr is not null;
         }
-
-        if (matches == 1)
+        else if (matches == 1)
         {
             hdr = matched ?? anyHdr;
-            return true;
+        }
+        else
+        {
+            hdr = anyHdr == true ? true : matches == 0 ? anyHdr : matched;
         }
 
-        hdr = anyHdr;
-        return anyHdr == true;
+        query = new(
+            $"CCD flags=0x{flags:X} qHr=0 paths={pathCount} want={want ?? "-"} match={matches} src={firstSource ?? "-"} ACE={FmtFlag(firstAce)} info=0x{firstInfo:X}/hr{firstInfoHr} info2=0x{firstInfo2:X}/hr{firstInfo2Hr} mode={firstMode} winHdr={FmtFlag(hdr)}",
+            hdr,
+            (int)pathCount,
+            matches,
+            firstAce,
+            want ?? firstSource);
+        return hdr is not null && (want is null || matches == 1 || hdr == true);
     }
 
-    private static bool? PathWindowsHdr(Luid adapterId, uint targetId)
+    private static PathHdr ReadPathHdr(Luid adapterId, uint targetId)
     {
         var info2 = new AdvancedColorInfo2
         {
@@ -208,16 +316,25 @@ public static class DisplayHdr
                 id = targetId
             }
         };
-        if (DisplayConfigGetDeviceInfo(ref info2) == 0)
+        var info2Hr = DisplayConfigGetDeviceInfo(ref info2);
+        bool? hdr = null;
+        if (info2Hr == 0)
         {
-            var combined = CombineWindowsHdr(
+            hdr = CombineWindowsHdr(
                 WindowsHdrEnabledFromInfo2(info2.value),
                 info2.activeColorMode,
                 WindowsHdrEnabledFromInfo(info2.value)
                     || AdvancedColorActiveFromInfo2(info2.value));
-            if (combined == true)
+            if (hdr == true)
             {
-                return true;
+                return new(
+                    true,
+                    WindowsHdrEnabledFromInfo(info2.value) || AdvancedColorActiveFromInfo2(info2.value),
+                    info2.value,
+                    -1,
+                    info2.value,
+                    info2Hr,
+                    info2.activeColorMode);
             }
         }
 
@@ -231,12 +348,134 @@ public static class DisplayHdr
                 id = targetId
             }
         };
-        if (DisplayConfigGetDeviceInfo(ref info) != 0)
+        var infoHr = DisplayConfigGetDeviceInfo(ref info);
+        var ace = infoHr == 0 ? WindowsHdrEnabledFromInfo(info.value) : (bool?)null;
+        hdr ??= ace;
+        return new(hdr, ace, infoHr == 0 ? info.value : 0, infoHr, info2.value, info2Hr, info2.activeColorMode);
+    }
+
+    private static string FmtFlag(bool? value) =>
+        value is null ? "?" : value.Value ? "1" : "0";
+
+    private static string QueryDxgiOutputs()
+    {
+        var iid = IidDxgiFactory1;
+        var hr = CreateDXGIFactory1(ref iid, out var factory);
+        if (hr < 0 || factory == IntPtr.Zero)
         {
-            return null;
+            return $"DXGI factoryHr=0x{hr:X8}";
         }
 
-        return WindowsHdrEnabledFromInfo(info.value);
+        try
+        {
+            var parts = new List<string>();
+            for (uint a = 0; a < 8; a++)
+            {
+                var adapter = CallEnumAdapters(factory, a);
+                if (adapter == IntPtr.Zero)
+                {
+                    break;
+                }
+
+                try
+                {
+                    for (uint o = 0; o < 8; o++)
+                    {
+                        var output = CallEnumOutputs(adapter, o);
+                        if (output == IntPtr.Zero)
+                        {
+                            break;
+                        }
+
+                        try
+                        {
+                            var output6 = QueryInterface(output, IidDxgiOutput6);
+                            if (output6 == IntPtr.Zero)
+                            {
+                                parts.Add($"out{a}.{o} noOutput6");
+                                continue;
+                            }
+
+                            try
+                            {
+                                var desc = new DxgiOutputDesc1();
+                                var dhr = CallGetDesc1(output6, ref desc);
+                                if (dhr < 0)
+                                {
+                                    parts.Add($"out{a}.{o} descHr=0x{dhr:X8}");
+                                    continue;
+                                }
+
+                                parts.Add(
+                                    $"DXGI {desc.DeviceName} cs={desc.ColorSpace} max={desc.MaxLuminance:0} ff={desc.MaxFullFrameLuminance:0} bits={desc.BitsPerColor}");
+                            }
+                            finally
+                            {
+                                Release(output6);
+                            }
+                        }
+                        finally
+                        {
+                            Release(output);
+                        }
+                    }
+                }
+                finally
+                {
+                    Release(adapter);
+                }
+            }
+
+            return parts.Count == 0 ? "DXGI no outputs" : string.Join(" · ", parts);
+        }
+        finally
+        {
+            Release(factory);
+        }
+    }
+
+    private static IntPtr CallEnumAdapters(IntPtr factory, uint index)
+    {
+        var fn = Marshal.GetDelegateForFunctionPointer<EnumAdaptersDelegate>(Vtbl(factory, 7));
+        var hr = fn(factory, index, out var adapter);
+        return hr < 0 ? IntPtr.Zero : adapter;
+    }
+
+    private static IntPtr CallEnumOutputs(IntPtr adapter, uint index)
+    {
+        var fn = Marshal.GetDelegateForFunctionPointer<EnumOutputsDelegate>(Vtbl(adapter, 7));
+        var hr = fn(adapter, index, out var output);
+        return hr < 0 ? IntPtr.Zero : output;
+    }
+
+    private static int CallGetDesc1(IntPtr output6, ref DxgiOutputDesc1 desc)
+    {
+        var fn = Marshal.GetDelegateForFunctionPointer<GetDesc1Delegate>(Vtbl(output6, 27));
+        return fn(output6, ref desc);
+    }
+
+    private static IntPtr QueryInterface(IntPtr unk, Guid iid)
+    {
+        var fn = Marshal.GetDelegateForFunctionPointer<QueryInterfaceDelegate>(Vtbl(unk, 0));
+        var hr = fn(unk, ref iid, out var ppv);
+        return hr < 0 ? IntPtr.Zero : ppv;
+    }
+
+    private static void Release(IntPtr unk)
+    {
+        if (unk == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var fn = Marshal.GetDelegateForFunctionPointer<ReleaseDelegate>(Vtbl(unk, 2));
+        fn(unk);
+    }
+
+    private static IntPtr Vtbl(IntPtr unk, int index)
+    {
+        var table = Marshal.ReadIntPtr(unk);
+        return Marshal.ReadIntPtr(table, index * IntPtr.Size);
     }
 
     private static bool NamesMatch(string? left, string right)
@@ -256,6 +495,12 @@ public static class DisplayHdr
         return a.EndsWith(b, StringComparison.OrdinalIgnoreCase)
             || b.EndsWith(a, StringComparison.OrdinalIgnoreCase);
     }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "OutputDebugStringW")]
+    private static extern void OutputDebugString(string message);
+
+    [DllImport("dxgi.dll")]
+    private static extern int CreateDXGIFactory1(ref Guid riid, out IntPtr factory);
 
     [DllImport("user32.dll")]
     private static extern int GetDisplayConfigBufferSizes(uint flags, out uint numPathArrayElements, out uint numModeInfoArrayElements);
@@ -376,4 +621,57 @@ public static class DisplayHdr
         public uint videoStandard;
         public uint scanLineOrdering;
     }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DxgiOutputDesc1
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+        public int DesktopLeft;
+        public int DesktopTop;
+        public int DesktopRight;
+        public int DesktopBottom;
+        public int AttachedToDesktop;
+        public uint Rotation;
+        public IntPtr Monitor;
+        public uint BitsPerColor;
+        public int ColorSpace;
+        public float RedPrimaryX;
+        public float RedPrimaryY;
+        public float GreenPrimaryX;
+        public float GreenPrimaryY;
+        public float BluePrimaryX;
+        public float BluePrimaryY;
+        public float WhitePointX;
+        public float WhitePointY;
+        public float MinLuminance;
+        public float MaxLuminance;
+        public float MaxFullFrameLuminance;
+    }
+
+    private readonly record struct PathHdr(
+        bool? Hdr,
+        bool? AdvancedColorEnabled,
+        uint InfoValue,
+        int InfoHr,
+        uint Info2Value,
+        int Info2Hr,
+        int ColorMode);
+
+    private static readonly Guid IidDxgiFactory1 = new("770aae78-f26f-4dba-a829-253c83d1b387");
+    private static readonly Guid IidDxgiOutput6 = new("068346e8-aaec-4b84-add5-13ff8c7033c8");
+
+    private delegate int EnumAdaptersDelegate(IntPtr self, uint index, out IntPtr adapter);
+    private delegate int EnumOutputsDelegate(IntPtr self, uint index, out IntPtr output);
+    private delegate int GetDesc1Delegate(IntPtr self, ref DxgiOutputDesc1 desc);
+    private delegate int QueryInterfaceDelegate(IntPtr self, ref Guid iid, out IntPtr ppv);
+    private delegate uint ReleaseDelegate(IntPtr self);
 }
+
+public readonly record struct DisplayHdrQuery(
+    string Summary,
+    bool? WindowsHdr,
+    int PathCount,
+    int NameMatches,
+    bool? AdvancedColorEnabled,
+    string? DeviceName);

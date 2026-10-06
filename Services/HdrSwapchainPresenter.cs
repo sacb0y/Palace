@@ -29,6 +29,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public bool DisplayIsHdr { get; private set; }
 
+    public string DisplayProbeText { get; private set; } = "";
+
     public float DisplayPeakNits { get; private set; }
 
     public async Task<HdrPresentOutcome> TryPresentAsync(
@@ -217,6 +219,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private void ProbeDisplay()
     {
         DisplayIsHdr = false;
+        DisplayProbeText = "";
         _autoDisplayNits = 0;
         DisplayPeakNits = 0;
         try
@@ -256,6 +259,15 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                         desc.MaxFullFrameLuminance,
                                         (int)desc.BitsPerColor,
                                         windowsHdr);
+                                    DisplayProbeText = GalleryPresent.FormatDisplayProbe(
+                                        desc.ColorSpace,
+                                        desc.MaxLuminance,
+                                        desc.MaxFullFrameLuminance,
+                                        (int)desc.BitsPerColor,
+                                        windowsHdr,
+                                        DisplayIsHdr,
+                                        DisplayHdr.LastQuery.Summary);
+                                    DisplayHdr.WriteDebug(DisplayProbeText);
                                     if (DisplayIsHdr)
                                     {
                                         var peak = GalleryPresent.ProbedDisplayLuminance(
@@ -296,6 +308,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         catch
         {
             DisplayIsHdr = false;
+            DisplayProbeText = "DXGI probe throw";
             _autoDisplayNits = 0;
             DisplayPeakNits = 0;
         }

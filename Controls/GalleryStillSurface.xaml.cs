@@ -581,12 +581,16 @@ public sealed partial class GalleryStillSurface : UserControl
                     frameRef.NativeWidth,
                     frameRef.NativeHeight,
                     GalleryPresent.IsNativeDecode(
-                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight));
+                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
+                    presenterRef.DisplayProbeText);
                 return;
             }
 
             HideHdr();
-            galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
+            galleryRef.SetHdrPresentResult(
+                false,
+                presenterRef.DisplayIsHdr,
+                displayProbe: presenterRef.DisplayProbeText);
         });
     }
     private (double Width, double Height) HdrPanelDips()

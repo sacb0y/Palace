@@ -121,6 +121,7 @@ public partial class GalleryViewModel : ObservableObject
     private int _nativePixelWidth;
     private int _nativePixelHeight;
     private bool _nativeHdrStats;
+    private string _displayProbe = "";
 
     [ObservableProperty]
     public partial string? PreviewModel { get; set; }
@@ -421,11 +422,16 @@ public partial class GalleryViewModel : ObservableObject
         float maxScrgb = 0,
         int pixelWidth = 0,
         int pixelHeight = 0,
-        bool statsAreNative = false)
+        bool statsAreNative = false,
+        string? displayProbe = null)
     {
         HdrPresented = presented;
         DisplayIsHdr = displayHdr;
         DisplayPeakNits = displayPeakNits;
+        if (displayProbe is not null)
+        {
+            _displayProbe = displayProbe;
+        }
         if (GalleryPresent.ReplaceHdrStats(_nativeHdrStats, statsAreNative))
         {
             ContentMaxNits = maxNits;
@@ -507,7 +513,8 @@ public partial class GalleryViewModel : ObservableObject
             HdrPresented && ContentMaxNits > 0 ? ContentAvgNits : null,
             HdrPresented && ContentMaxNits > 0 ? ContentMinNits : null,
             HdrPresented && DisplayIsHdr && DisplayPeakNits > 0 ? DisplayPeakNits : null,
-            HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null));
+            HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null,
+            string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe));
     }
 
     [RelayCommand]
@@ -620,6 +627,7 @@ public partial class GalleryViewModel : ObservableObject
                 _nativePixelWidth = 0;
                 _nativePixelHeight = 0;
                 _nativeHdrStats = false;
+                _displayProbe = "";
                 ContentMaxScrgb = 0;
                 CurrentPath = null;
                 PreviewImageUri = null;
@@ -729,6 +737,7 @@ public partial class GalleryViewModel : ObservableObject
             _nativePixelWidth = 0;
             _nativePixelHeight = 0;
             _nativeHdrStats = false;
+            _displayProbe = "";
             ContentMaxNits = 0;
             ContentAvgNits = 0;
             ContentMinNits = 0;

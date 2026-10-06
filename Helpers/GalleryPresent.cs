@@ -136,16 +136,21 @@ public static class GalleryPresent
 
     /// <summary>
     /// Prefer DXGI full-frame luminance (SKIV “display luminance”) when it
-    /// looks like a real HDR peak. Never substitute 203 paper white.
+    /// looks like a real HDR peak. Dummy 270 is unknown (Windows HDR-on
+    /// lie) — return 0 so rasterize uses 10 000, not 203 paper white.
     /// </summary>
     public static float ProbedDisplayLuminance(float maxLuminance, float maxFullFrameLuminance)
     {
-        if (IsHdrDisplay(maxFullFrameLuminance) && maxFullFrameLuminance <= 10000)
+        if (IsHdrDisplay(maxFullFrameLuminance)
+            && !IsDummySdrLuminance(maxFullFrameLuminance)
+            && maxFullFrameLuminance <= 10000)
         {
             return maxFullFrameLuminance;
         }
 
-        if (IsHdrDisplay(maxLuminance) && maxLuminance <= 10000)
+        if (IsHdrDisplay(maxLuminance)
+            && !IsDummySdrLuminance(maxLuminance)
+            && maxLuminance <= 10000)
         {
             return maxLuminance;
         }
@@ -177,11 +182,9 @@ public static class GalleryPresent
     /// Windows HDR vs SDR for present. <paramref name="windowsHdrEnabled"/>
     /// true is DisplayConfig HDR (<c>AdvancedColorEnabled</c> / INFO_2).
     /// DXGI ColorSpace often stays G22 with dummy 270 while that toggle is
-    /// on — that is HDR, not SDR tonemap. Do not treat a failed or false
-    /// Windows flag as SDR when the DXGI peak already looks like HDR.
-    /// Advanced color spaces are HDR. Without the Windows flag, 10-bit +
-    /// peak&gt;220 or peak&gt;270 is HDR; dummy 270 at 8-bit stays SDR.
-    /// 203 is paper white, not a display peak.
+    /// on — that is HDR, not SDR tonemap. Peak &gt;220 (including dummy
+    /// 270) is HDR even when CCD parse fails. 203 paper white and 80–220
+    /// stay SDR. Unknown dummy peak does not clip to 203.
     /// </summary>
     public static bool IsHdrOutput(
         int dxgiColorSpace,
@@ -190,6 +193,7 @@ public static class GalleryPresent
         int bitsPerColor,
         bool? windowsHdrEnabled = null)
     {
+        _ = bitsPerColor;
         if (windowsHdrEnabled == true)
         {
             return true;
@@ -200,18 +204,28 @@ public static class GalleryPresent
             return true;
         }
 
-        var peak = ProbedDisplayLuminance(maxLuminance, maxFullFrameLuminance);
-        if (peak <= 0)
+        var raw = Math.Max(maxLuminance, maxFullFrameLuminance);
+        return IsHdrDisplay(raw);
+    }
+
+    public static string FormatDisplayProbe(
+        int colorSpace,
+        float maxLuminance,
+        float maxFullFrameLuminance,
+        int bitsPerColor,
+        bool? windowsHdrEnabled,
+        bool displayHdr,
+        string? ccd = null)
+    {
+        var win = windowsHdrEnabled is null ? "?" : windowsHdrEnabled.Value ? "1" : "0";
+        var line =
+            $"DXGI cs={colorSpace} max={maxLuminance:0} ff={maxFullFrameLuminance:0} bits={bitsPerColor} winHdr={win} displayHdr={(displayHdr ? 1 : 0)}";
+        if (!string.IsNullOrWhiteSpace(ccd))
         {
-            return false;
+            line += " · " + ccd.Trim();
         }
 
-        if (bitsPerColor >= 10 && IsHdrDisplay(peak))
-        {
-            return true;
-        }
-
-        return peak > 270 && !IsDummySdrLuminance(peak);
+        return line;
     }
 
     /// <summary>
@@ -374,6 +388,11 @@ public static class GalleryPresent
         if (info.DisplayLuminanceNits is > 0)
         {
             lines.Add($"Display luminance: {FormatNits(info.DisplayLuminanceNits.Value)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.DisplayProbe))
+        {
+            lines.Add($"Display: {info.DisplayProbe.Trim()}");
         }
 
         return string.Join('\n', lines);
@@ -794,6 +813,7 @@ public readonly record struct GalleryImageInfo(
     float? AvgLuminanceNits,
     float? MinLuminanceNits,
     float? DisplayLuminanceNits,
-    float? MaxScrgb = null);
+    float? MaxScrgb = null,
+    string? DisplayProbe = null);
 
 public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);
