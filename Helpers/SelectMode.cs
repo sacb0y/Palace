@@ -21,4 +21,10 @@ public static class SelectMode
 
         return selectMode ? "Click tiles to select" : "";
     }
+
+    /// <summary>
+    /// Select-mode chrome shows <c>Tag selected…</c> only when mode is on and tiles are selected.
+    /// </summary>
+    public static bool ShowBatchTagCta(bool selectMode, int selectedCount) =>
+        selectMode && selectedCount > 0;
 }

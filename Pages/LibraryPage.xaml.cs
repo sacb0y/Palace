@@ -49,7 +49,7 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestFocusAssignTag = () =>
             DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
         ViewModel.RequestOpenAssignPanel = () =>
-            DispatcherQueue.TryEnqueue(() => BtnBrowseTags.Flyout?.ShowAt(BtnBrowseTags));
+            DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
@@ -296,6 +296,20 @@ public sealed partial class LibraryPage : Page
     private void BtnBrowseTags_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.RebuildAssignPanelPublic();
+    }
+
+    private void BtnTagSelected_Click(object sender, RoutedEventArgs e)
+    {
+        ShowAssignTagsFlyout(preferTagSelectedCta: true);
+    }
+
+    private void ShowAssignTagsFlyout(bool preferTagSelectedCta)
+    {
+        ViewModel.RebuildAssignPanelPublic();
+        var anchor = preferTagSelectedCta && ViewModel.ShowTagSelectedCta
+            ? BtnTagSelected
+            : BtnBrowseTags;
+        FlyAssignTags.ShowAt(anchor);
     }
 
     private void FlyAssignTags_Opening(object sender, object e)
