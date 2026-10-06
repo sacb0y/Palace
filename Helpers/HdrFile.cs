@@ -15,7 +15,9 @@ public enum HdrKind
     HdrJxr,
     HdrJxl,
     WideGamutJxl,
-    HdrRadiance
+    HdrRadiance,
+    HdrExr,
+    MagickTga
 }
 
 public readonly record struct HdrProbe(
@@ -30,16 +32,17 @@ public readonly record struct HdrProbe(
     public static HdrProbe None { get; } = new(HdrKind.None, null, null, null);
 
     public bool IsHdr => Kind is HdrKind.UltraHdrJpeg or HdrKind.HdrPng or HdrKind.HdrAvif
-        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance;
+        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance
+        or HdrKind.HdrExr;
 
     /// <summary>
-    /// WIC stills + Radiance RGBE (no Magick). Ultra HDR JPEG stays SDR base.
-    /// JPEG XR HDR is often already float/half scRGB; WinRT has no float
-    /// pixel format, so present uses native WIC COM into the same swapchain
-    /// as HDR PNG — not Magick, not <c>BitmapImage</c>.
+    /// WIC stills + Radiance RGBE + Magick (JXR / EXR / TGA). Ultra HDR JPEG
+    /// stays SDR base. JPEG XR / EXR / TGA present via Magick.NET into the
+    /// same scRGB swapchain — not <c>BitmapImage</c> for those.
     /// </summary>
     public bool CanPresentHdr => Kind is HdrKind.HdrPng or HdrKind.HdrAvif
-        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance;
+        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance
+        or HdrKind.HdrExr or HdrKind.MagickTga;
 
     public bool IsPq => CicpTransfer == 16;
 
@@ -55,7 +58,8 @@ public readonly record struct HdrProbe(
         16 => HdrTransfer.Pq,
         18 => HdrTransfer.Hlg,
         8 => HdrTransfer.Linear,
-        _ when Kind == HdrKind.HdrRadiance || Kind == HdrKind.HdrJxr => HdrTransfer.Scrgb,
+        _ when Kind is HdrKind.HdrRadiance or HdrKind.HdrJxr or HdrKind.HdrExr => HdrTransfer.Scrgb,
+        _ when Kind == HdrKind.MagickTga => HdrTransfer.Srgb,
         _ when (Kind is HdrKind.HdrAvif or HdrKind.HdrHeif) && CicpTransfer is null or 2 => HdrTransfer.Pq,
         _ => HdrTransfer.Srgb
     };
@@ -84,6 +88,17 @@ public static class HdrFile
             || CloudFile.IsOnlineOnly(path))
         {
             return HdrProbe.None;
+        }
+
+        // TGA has a weak header — Magick present is keyed off extension.
+        if (PathSafe.IsTga(path))
+        {
+            return new HdrProbe(HdrKind.MagickTga, null, null, null);
+        }
+
+        if (PathSafe.IsExr(path))
+        {
+            return new HdrProbe(HdrKind.HdrExr, 1, null, null);
         }
 
         try
@@ -159,6 +174,11 @@ public static class HdrFile
             return new HdrProbe(HdrKind.HdrRadiance, 1, null, null);
         }
 
+        if (IsOpenExr(data))
+        {
+            return new HdrProbe(HdrKind.HdrExr, 1, null, null);
+        }
+
         if (StillFormats.IsJxl(data))
         {
             return StillFormats.ProbeJxl(data);
@@ -173,6 +193,14 @@ public static class HdrFile
 
         return HdrProbe.None;
     }
+
+    /// <summary>OpenEXR magic <c>v/1\\x01</c> — header-only, no Magick.</summary>
+    public static bool IsOpenExr(ReadOnlySpan<byte> data) =>
+        data.Length >= 4
+        && data[0] == 0x76
+        && data[1] == 0x2F
+        && data[2] == 0x31
+        && data[3] == 0x01;
 
     private static HdrProbe ProbePng(ReadOnlySpan<byte> data)
     {

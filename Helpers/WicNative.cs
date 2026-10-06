@@ -29,6 +29,51 @@ public static class WicNative
 
     public static IWICBitmapSource AsSource(object com) => (IWICBitmapSource)com;
 
+    /// <summary>
+    /// <c>CreateDecoderFromFilename</c> returns a decoder whose vtable is
+    /// <c>IWICBitmapDecoder</c>, but <c>QueryInterface</c> for that IID
+    /// fails (E_NOINTERFACE). Keep the pointer as <see cref="IntPtr"/> and
+    /// call <see cref="GetDecoderFrame"/> — the frame QI works.
+    /// </summary>
+    public const int DecoderGetFrameVtableSlot = 13; // IUnknown(3) + 10 methods
+
+    public static IWICBitmapFrameDecode GetDecoderFrame(IntPtr decoder, uint index)
+    {
+        if (decoder == IntPtr.Zero)
+        {
+            throw new ArgumentNullException(nameof(decoder));
+        }
+
+        var vt = Marshal.ReadIntPtr(decoder);
+        var fn = Marshal.ReadIntPtr(vt, IntPtr.Size * DecoderGetFrameVtableSlot);
+        var getFrame = Marshal.GetDelegateForFunctionPointer<GetDecoderFrameDlg>(fn);
+        var hr = getFrame(decoder, index, out var framePtr);
+        if (hr < 0)
+        {
+            Marshal.ThrowExceptionForHR(hr);
+        }
+
+        try
+        {
+            return (IWICBitmapFrameDecode)Marshal.GetObjectForIUnknown(framePtr);
+        }
+        finally
+        {
+            Marshal.Release(framePtr);
+        }
+    }
+
+    public static void Release(IntPtr punk)
+    {
+        if (punk != IntPtr.Zero)
+        {
+            Marshal.Release(punk);
+        }
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int GetDecoderFrameDlg(IntPtr self, uint index, out IntPtr frame);
+
     [ComImport]
     [Guid("ec5ec8a9-c395-4314-9c77-54d7a935ff70")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -39,7 +84,7 @@ public static class WicNative
             IntPtr pguidVendor,
             uint dwDesiredAccess,
             uint metadataOptions,
-            out IWICBitmapDecoder ppIDecoder);
+            out IntPtr ppIDecoder);
 
         void CreateDecoderFromStream();
         void CreateDecoderFromFileHandle();
@@ -49,24 +94,6 @@ public static class WicNative
         void CreatePalette();
         void CreateFormatConverter(out IWICFormatConverter ppIFormatConverter);
         void CreateBitmapScaler(out IWICBitmapScaler ppIBitmapScaler);
-    }
-
-    [ComImport]
-    [Guid("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    public interface IWICBitmapDecoder
-    {
-        void QueryCapability();
-        void Initialize();
-        void GetContainerFormat();
-        void GetDecoderInfo();
-        void CopyPalette();
-        void GetMetadataQueryReader();
-        void GetPreview();
-        void GetColorContexts();
-        void GetThumbnail();
-        void GetFrameCount();
-        void GetFrame(uint index, out IWICBitmapFrameDecode ppIFrameDecode);
     }
 
     [ComImport]

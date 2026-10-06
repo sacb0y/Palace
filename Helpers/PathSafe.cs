@@ -72,7 +72,7 @@ public static class PathSafe
             ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff",
             ".avif", ".heic", ".heif",
             ".jxr", ".wdp", ".hdp",
-            ".jxl", ".hdr", ".psd", ".dds"
+            ".jxl", ".hdr", ".exr", ".tga", ".psd", ".dds"
         };
 
     public static readonly HashSet<string> GifExt =
@@ -102,6 +102,12 @@ public static class PathSafe
     public static bool IsRadiance(string? pathOrExt) =>
         ExtensionEquals(pathOrExt, ".hdr");
 
+    public static bool IsExr(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".exr");
+
+    public static bool IsTga(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".tga");
+
     public static bool IsPsd(string? pathOrExt) =>
         ExtensionEquals(pathOrExt, ".psd");
 
@@ -115,10 +121,16 @@ public static class PathSafe
 
     /// <summary>
     /// Shell <c>GetThumbnailAsync</c> only — WIC-open of these originals
-    /// is either useless (PSD) or can recall On-Demand HEIF/AVIF.
+    /// can recall On-Demand HEIF/AVIF. PSD uses Magick mosaic thumbs instead.
     /// </summary>
     public static bool UsesShellStillThumb(string? pathOrExt) =>
-        IsAvif(pathOrExt) || IsHeif(pathOrExt) || IsPsd(pathOrExt);
+        IsAvif(pathOrExt) || IsHeif(pathOrExt);
+
+    /// <summary>
+    /// Magick.NET mosaic JPEG (local hydrated only) — not shell, not WIC.
+    /// </summary>
+    public static bool UsesMagickStillThumb(string? pathOrExt) =>
+        IsPsd(pathOrExt);
 
     private static bool ExtensionEquals(string? pathOrExt, string ext) =>
         string.Equals(Extension(pathOrExt), ext, StringComparison.OrdinalIgnoreCase);

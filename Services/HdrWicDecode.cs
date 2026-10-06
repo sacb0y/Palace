@@ -31,9 +31,10 @@ internal readonly record struct HdrStats(
 
 /// <summary>
 /// Local HDR still → linear scRGB. HDR AVIF prefers libavif (identity
-/// GBR). HDR JPEG XR uses native WIC COM float/half (WinRT has no float
-/// pixel format). HEIF / other stills use WIC P010/NV12/YUY2 or packed
-/// RGB-as-YUV. Never online-only.
+/// GBR). HDR JPEG XR / OpenEXR / TGA prefer Magick.NET (packaged float);
+/// JXR falls back to native WIC COM float/half if Magick fails. HEIF /
+/// other stills use WIC P010/NV12/YUY2 or packed RGB-as-YUV. Never
+/// online-only.
 /// </summary>
 internal static class HdrWicDecode
 {
@@ -59,6 +60,29 @@ internal static class HdrWicDecode
         if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
         {
             return await Task.Run(() => FromRadiance(path), cancellation).ConfigureAwait(false);
+        }
+
+        if (MagickDecode.CanPresent(path, probe) && probe.Kind is not HdrKind.HdrJxr)
+        {
+            try
+            {
+                var magick = await Task.Run(
+                    () => MagickDecode.TryLoad(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (magick is not null)
+                {
+                    return magick;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Missing Magick natives / bad codec — fall through.
+            }
         }
 
         if (probe.Kind == HdrKind.HdrJxr)
@@ -208,6 +232,29 @@ internal static class HdrWicDecode
                 cancellation).ConfigureAwait(false);
         }
 
+        if (MagickDecode.CanPresent(path, probe))
+        {
+            try
+            {
+                var magick = await Task.Run(
+                    () => MagickDecode.TryMeasure(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (magick is not null)
+                {
+                    return magick;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Magick missing — JXR may still use WIC.
+            }
+        }
+
         if (probe.Kind == HdrKind.HdrJxr)
         {
             return await Task.Run(
@@ -331,6 +378,28 @@ internal static class HdrWicDecode
             {
                 (width, height) = HdrPixels.OrientedSize(
                     packed.Value.Width, packed.Value.Height, packed.Value.Orientation);
+            }
+
+            // IWICBitmapScaler crushes half/float HDR JXR to 8-bit BGRA.
+            // Copy native, then box-scale scRGB in software for Fit/measure.
+            if (wantRgba && rgba is not null)
+            {
+                var (wantW, wantH) = measure
+                    ? GalleryPresent.MeasureDecodeSize(
+                        packed.Value.NativeWidth,
+                        packed.Value.NativeHeight,
+                        viewportPixelWidth,
+                        viewportPixelHeight)
+                    : GalleryPresent.PresentDecodeSize(
+                        packed.Value.NativeWidth,
+                        packed.Value.NativeHeight,
+                        viewportPixelWidth,
+                        viewportPixelHeight,
+                        scaling);
+                if (wantW > 0 && wantH > 0 && (wantW < width || wantH < height))
+                {
+                    (rgba, width, height) = HdrPixels.ScaleScrgbRgba(rgba, width, height, wantW, wantH);
+                }
             }
 
             return new HdrFrame
@@ -752,7 +821,6 @@ internal static class HdrWicDecode
         private static readonly Guid GuidRgbaFloat = new("6fddc324-4e03-4bfe-b185-3d77768dc919");
         private static readonly Guid GuidRgbaHalf = new("6fddc324-4e03-4bfe-b185-3d77768dc93a");
         private const uint GenericRead = 0x80000000;
-        private const uint InterpolationLinear = 1;
 
         public static (byte[] Data, HdrPackedFormat Format, int Width, int Height, int NativeWidth, int NativeHeight, uint Orientation)? CopyRgba(
             string path,
@@ -763,15 +831,15 @@ internal static class HdrWicDecode
             CancellationToken cancellation)
         {
             WicNative.IWICImagingFactory? factory = null;
-            WicNative.IWICBitmapDecoder? decoder = null;
+            var decoder = IntPtr.Zero;
             WicNative.IWICBitmapFrameDecode? frame = null;
-            WicNative.IWICBitmapScaler? scaler = null;
             WicNative.IWICFormatConverter? converter = null;
             try
             {
                 factory = CreateFactory();
+                // Decoder pointer: QI(IWICBitmapDecoder) fails; use vtable GetFrame.
                 factory.CreateDecoderFromFilename(path, IntPtr.Zero, GenericRead, 0, out decoder);
-                decoder.GetFrame(0, out frame);
+                frame = WicNative.GetDecoderFrame(decoder, 0);
                 frame.GetSize(out var storedW, out var storedH);
                 if (storedW == 0 || storedH == 0 || storedW > 16384 || storedH > 16384)
                 {
@@ -780,28 +848,18 @@ internal static class HdrWicDecode
 
                 var orientation = ReadOrientation(frame);
                 var (nativeW, nativeH) = HdrPixels.OrientedSize((int)storedW, (int)storedH, orientation);
-                var (decodeW, decodeH) = measure
-                    ? GalleryPresent.MeasureDecodeSize(nativeW, nativeH, viewportPixelWidth, viewportPixelHeight)
-                    : GalleryPresent.PresentDecodeSize(
-                        nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
-                if (decodeW <= 0 || decodeH <= 0)
-                {
-                    decodeW = nativeW;
-                    decodeH = nativeH;
-                }
+                // viewport/scaling used by FromWicFloat after Convert (software scale).
+                _ = viewportPixelWidth;
+                _ = viewportPixelHeight;
+                _ = scaling;
+                _ = measure;
 
-                var (scaleW, scaleH) = HdrPixels.SourceScaleSize(
-                    (int)storedW, (int)storedH, nativeW, nativeH, decodeW, decodeH);
                 var source = WicNative.AsSource(frame);
-                if (scaleW > 0 && scaleH > 0 && (scaleW != (int)storedW || scaleH != (int)storedH))
-                {
-                    cancellation.ThrowIfCancellationRequested();
-                    factory.CreateBitmapScaler(out scaler);
-                    scaler.Initialize(source, (uint)scaleW, (uint)scaleH, InterpolationLinear);
-                    source = WicNative.AsSource(scaler);
-                }
-
                 source.GetPixelFormat(out var format);
+
+                // Never IWICBitmapScaler on half/float HDR JXR — it emits
+                // 8-bit BGRA and crushes MaxCLL to ~1.0. Copy native packed
+                // pixels; FromWicFloat box-scales scRGB in software.
                 HdrPackedFormat packed;
                 int bytesPer;
                 if (format == GuidRgbaFloat)
@@ -848,9 +906,8 @@ internal static class HdrWicDecode
             finally
             {
                 Release(converter);
-                Release(scaler);
                 Release(frame);
-                Release(decoder);
+                WicNative.Release(decoder);
                 Release(factory);
             }
         }

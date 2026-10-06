@@ -129,9 +129,11 @@
                                     Text="{x:Bind Header, Mode=OneWay}" />
                                 <ItemsRepeater ItemsSource="{x:Bind Chips, Mode=OneWay}">
                                     <ItemsRepeater.Layout>
-                                        <WrapLayout
-                                            HorizontalSpacing="6"
-                                            VerticalSpacing="6" />
+                                        <UniformGridLayout
+                                            MinColumnSpacing="6"
+                                            MinItemHeight="32"
+                                            MinItemWidth="72"
+                                            MinRowSpacing="6" />
                                     </ItemsRepeater.Layout>
                                     <ItemsRepeater.ItemTemplate>
                                         <DataTemplate x:DataType="models:TagChipItem">

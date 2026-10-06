@@ -3,6 +3,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.Helpers;
 using Palace.Services;
@@ -1114,7 +1115,7 @@ public sealed partial class GalleryStillSurface : UserControl
             bmp = ToWriteable(raster);
         }
 
-        ImgStill.Source = bmp ?? ToStillImage(gallery.Current?.Path);
+        ImgStill.Source = (ImageSource?)bmp ?? ToStillImage(gallery.Current?.Path);
         ApplyScaleLayout();
     }
 

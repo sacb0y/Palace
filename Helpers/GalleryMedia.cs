@@ -162,22 +162,33 @@ public static class GalleryMedia
         && string.IsNullOrEmpty(thumbPath);
 
     /// <summary>
-    /// PSD has no WIC overlay decode; show the shell mosaic JPEG.
+    /// PSD has no WIC overlay decode; show the Magick mosaic JPEG.
     /// </summary>
     public static bool PrefersCachedThumbStill(string? path) =>
         PathSafe.IsPsd(path);
 
     /// <summary>
-    /// Video / AVIF / HEIC / PSD must not <c>Open</c> + <c>BitmapDecoder</c>
+    /// Video / AVIF / HEIC must not <c>Open</c> + <c>BitmapDecoder</c>
     /// the original. Shell / provider <c>GetThumbnailAsync</c> only; if that
     /// fails, no JPEG. Never call this for online-only placeholders.
     /// </summary>
     public static bool UsesShellThumbnail(AssetKind kind, string? path) =>
         kind == AssetKind.Video || PathSafe.UsesShellStillThumb(path);
 
-    /// <summary>WIC decode of the original — never online-only, never AVIF.</summary>
+    /// <summary>
+    /// Local PSD → Magick JPEG under the Palace thumb root (not shell).
+    /// </summary>
+    public static bool UsesMagickThumbnail(AssetKind kind, string? path) =>
+        kind == AssetKind.Image && PathSafe.UsesMagickStillThumb(path);
+
+    /// <summary>
+    /// WIC decode of the original — never online-only, never AVIF/HEIC/PSD.
+    /// </summary>
     public static bool MayOpenOriginalForThumb(bool isOnlineOnly, AssetKind kind, string? path) =>
-        !isOnlineOnly && !UsesShellThumbnail(kind, path) && kind != AssetKind.Other;
+        !isOnlineOnly
+        && !UsesShellThumbnail(kind, path)
+        && !UsesMagickThumbnail(kind, path)
+        && kind != AssetKind.Other;
 
     /// <summary>
     /// Never <c>ImageDimensions.TryRead</c> / <c>AvifFile</c> the original to
@@ -263,7 +274,7 @@ public static class GalleryMedia
         bool mayReadOriginalHeader,
         bool existingHdr = false)
     {
-        if (PathSafe.IsRadiance(path))
+        if (PathSafe.IsRadiance(path) || PathSafe.IsExr(path))
         {
             return true;
         }

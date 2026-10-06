@@ -86,10 +86,11 @@ public static class GalleryPresent
         {
             HdrKind.UltraHdrJpeg => "Ultra HDR JPEG — showing the SDR base",
             HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
-                or HdrKind.HdrJxl or HdrKind.HdrRadiance when presented =>
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr or HdrKind.MagickTga
+                when presented =>
                 $"{HdrKindLabel(probe.Kind)} · presenting scRGB",
             HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
-                or HdrKind.HdrJxl or HdrKind.HdrRadiance =>
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr or HdrKind.MagickTga =>
                 $"{HdrKindLabel(probe.Kind)} — SDR preview",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
@@ -108,6 +109,8 @@ public static class GalleryPresent
             HdrKind.HdrJxr => "HDR JPEG XR",
             HdrKind.HdrJxl => "HDR JPEG XL",
             HdrKind.HdrRadiance => "Radiance HDR",
+            HdrKind.HdrExr => "OpenEXR",
+            HdrKind.MagickTga => "TGA",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
             HdrKind.WideGamutHeif => "Wide-gamut HEIF",

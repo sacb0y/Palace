@@ -31,6 +31,23 @@ public sealed class WicNativeTests
             typeof(WicNative.IWICBitmapFrameDecode).GetInterfaces());
     }
 
+    [Fact]
+    public void DecoderGetFrame_UsesVtableSlotPastIUnknown()
+    {
+        // IUnknown(3) + QueryCapability…GetFrameCount(10) → GetFrame at 13.
+        Assert.Equal(13, WicNative.DecoderGetFrameVtableSlot);
+    }
+
+    [Fact]
+    public void CreateDecoderFromFilename_OutIsIntPtrNotManagedDecoder()
+    {
+        var method = typeof(WicNative.IWICImagingFactory).GetMethod("CreateDecoderFromFilename");
+        Assert.NotNull(method);
+        var parameters = method!.GetParameters();
+        var outParam = parameters[^1];
+        Assert.Equal(typeof(IntPtr).MakeByRefType(), outParam.ParameterType);
+    }
+
     private static void AssertFlattened(Type type, string extra)
     {
         var methods = WicNative.DeclaredMethods(type);

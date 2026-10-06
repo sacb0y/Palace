@@ -62,10 +62,10 @@ public sealed class ThumbnailService
     /// Ensures a mosaic JPEG exists under the Palace thumb cache — never
     /// beside the source. Online-only: cached JPEG only; do not
     /// <see cref="StorageFile.GetThumbnailAsync"/> or WIC-open the original
-    /// (AVIF still recalls Dropbox). Local video / AVIF: provider thumb only.
-    /// Local video / AVIF / HEIC / PSD: provider thumb only. Other local
-    /// images may WIC-decode the original. Missing / API-only paths return
-    /// a cached JPEG if present.
+    /// (AVIF still recalls Dropbox). Local video / AVIF / HEIC: provider
+    /// thumb only. Local PSD: Magick flatten → JPEG. Other local images
+    /// may WIC-decode the original. Missing / API-only paths return a
+    /// cached JPEG if present.
     /// </summary>
     public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
     {
@@ -89,6 +89,11 @@ public sealed class ThumbnailService
         if (File.Exists(dest) && !ShouldRegenerate(dest, filePath))
         {
             return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0);
+        }
+
+        if (GalleryMedia.UsesMagickThumbnail(kind, filePath))
+        {
+            return await EnsureMagickThumbnailAsync(filePath, hash).ConfigureAwait(false);
         }
 
         if (GalleryMedia.UsesShellThumbnail(kind, filePath))
@@ -138,7 +143,32 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
-    /// Windows shell / provider poster. Local video / AVIF / HEIC / PSD
+    /// Magick.NET flatten/composite → JPEG under <see cref="ThumbFileName"/>.
+    /// Local hydrated PSD only — never online-only placeholders.
+    /// </summary>
+    private Task<ThumbnailInfo?> EnsureMagickThumbnailAsync(string filePath, string hash) =>
+        Task.Run(() =>
+        {
+            var cached = ReadCached(hash);
+            if (cached is not null)
+            {
+                return cached;
+            }
+
+            var dest = PathForHash(hash);
+            if (!MagickDecode.TryWritePsdJpegThumb(filePath, dest, MaxSide))
+            {
+                return ReadCached(hash);
+            }
+
+            var written = ImageDimensions.TryRead(dest);
+            return written is { } size
+                ? new ThumbnailInfo(dest, size.Width, size.Height)
+                : new ThumbnailInfo(dest, 0, 0);
+        });
+
+    /// <summary>
+    /// Windows shell / provider poster. Local video / AVIF / HEIC
     /// only — never the online-only path (HEIF/AVIF handlers open the original).
     /// </summary>
     private async Task<ThumbnailInfo?> EnsureShellThumbnailAsync(string filePath, string hash)

@@ -110,6 +110,10 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, false, true, avif));
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrRadiance, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrExr, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.MagickTga, null, null, null)));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, true, false, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, true, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Gif, false, false, false, true, hdr));
@@ -482,7 +486,8 @@ public sealed class HdrFileTests
         Assert.True(PathSafe.IsAvif(".avif"));
         Assert.Equal(AssetKind.Image, PathSafe.KindFromExt(".avif"));
         Assert.True(PathSafe.IsCatalogExt(".jxl"));
-        Assert.False(PathSafe.IsCatalogExt(".exr"));
+        Assert.True(PathSafe.IsCatalogExt(".exr"));
+        Assert.True(PathSafe.IsCatalogExt(".tga"));
     }
 
     [Fact]
@@ -619,6 +624,25 @@ public sealed class HdrFileTests
         Assert.Equal(6, value);
         Assert.False(HdrPixels.TryExifOrientationAt([0], 0, out var reserved));
         Assert.Equal(0, reserved);
+    }
+
+    [Fact]
+    public void ScaleScrgbRgba_BoxDownsamplePreservesBrightPeak()
+    {
+        // 2×2: three dim + one bright → 1×1 average keeps HDR (>1).
+        var src = new float[]
+        {
+            0.1f, 0.1f, 0.1f, 1f,
+            0.2f, 0.2f, 0.2f, 1f,
+            0.3f, 0.3f, 0.3f, 1f,
+            8f, 8f, 8f, 1f
+        };
+        var (dst, w, h) = HdrPixels.ScaleScrgbRgba(src, 2, 2, 1, 1);
+        Assert.Equal(1, w);
+        Assert.Equal(1, h);
+        Assert.Equal(4, dst.Length);
+        Assert.True(dst[0] > 1f, $"expected HDR peak average, got {dst[0]}");
+        Assert.Equal((0.1f + 0.2f + 0.3f + 8f) / 4f, dst[0], 3);
     }
 
     [Fact]

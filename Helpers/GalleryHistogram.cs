@@ -228,6 +228,16 @@ public sealed class GalleryHistogramBins
         BinCount = GalleryHistogram.BinCount
     };
 
+    [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
+    public GalleryHistogramBins()
+    {
+        Luma = new int[GalleryHistogram.BinCount];
+        Red = new int[GalleryHistogram.BinCount];
+        Green = new int[GalleryHistogram.BinCount];
+        Blue = new int[GalleryHistogram.BinCount];
+        BinCount = GalleryHistogram.BinCount;
+    }
+
     public required int[] Luma { get; init; }
     public required int[] Red { get; init; }
     public required int[] Green { get; init; }
