@@ -115,6 +115,14 @@ public sealed class GifFramesTests
         Assert.True(GifFrames.ShouldRunGifPlayLoop(true, playing: true, compositeReady: true));
         Assert.False(GifFrames.ShouldRunGifPlayLoop(true, playing: false, compositeReady: true));
         Assert.False(GifFrames.ShouldRunGifPlayLoop(false, playing: true, compositeReady: true));
+        Assert.True(GifFrames.ShouldStopPlaybackOnUnbind(true));
+        Assert.False(GifFrames.ShouldStopPlaybackOnUnbind(false));
+        Assert.True(GifFrames.ShouldAbandonScrubOnFailedComposite(true, hasCompositeFrames: false));
+        Assert.False(GifFrames.ShouldAbandonScrubOnFailedComposite(true, hasCompositeFrames: true));
+        Assert.False(GifFrames.ShouldAbandonScrubOnFailedComposite(false, hasCompositeFrames: false));
+        Assert.True(GifFrames.ShouldAnimateGifFallback(true));
+        Assert.False(GifFrames.ShouldAnimateGifFallback(false));
+        Assert.False(GifFrames.ShouldRunGifPlayLoop(false, playing: false, compositeReady: false));
     }
 
     [Fact]

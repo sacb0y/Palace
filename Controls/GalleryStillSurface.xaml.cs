@@ -51,6 +51,7 @@ public sealed partial class GalleryStillSurface : UserControl
         Unloaded += (_, _) =>
         {
             UnhookPeak();
+            _gallery?.StopGifPlayback();
             CancelInFlight();
             ClearHdrCache();
             ClearGifCache();
@@ -69,6 +70,7 @@ public sealed partial class GalleryStillSurface : UserControl
         if (_gallery is not null)
         {
             _gallery.PropertyChanged -= Gallery_PropertyChanged;
+            _gallery.StopGifPlayback();
             _gallery.ClearHistogram();
         }
 
@@ -1052,7 +1054,14 @@ public sealed partial class GalleryStillSurface : UserControl
             }
 
             ClearGifCache();
-            ImgStill.Source = ToStillImage(path);
+            var abandon = GifFrames.ShouldAbandonScrubOnFailedComposite(
+                gallery.CanScrubGif, hasCompositeFrames: false);
+            if (abandon)
+            {
+                gallery.AbandonGifScrub();
+            }
+
+            ImgStill.Source = ToStillImage(path, animateGif: GifFrames.ShouldAnimateGifFallback(abandon));
             ApplyScaleLayout();
         });
     }

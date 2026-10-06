@@ -76,6 +76,24 @@ public static class GifFrames
     public static bool ShouldStopPlaybackOnIndexChange(bool isPlaybackTick) =>
         !isPlaybackTick;
 
+    /// <summary>
+    /// Overlay / GalleryWindow close and <c>Bind(null)</c> must cancel the
+    /// delay clock. Decode cancel alone leaves <see cref="NotifyGifCompositeReady"/>
+    /// ticks running.
+    /// </summary>
+    public static bool ShouldStopPlaybackOnUnbind(bool hadGallery) =>
+        hadGallery;
+
+    /// <summary>
+    /// <see cref="TryRenderAll"/> failed after scrub chrome was shown: drop
+    /// the timeline and keep <c>BitmapImage</c> autoplay.
+    /// </summary>
+    public static bool ShouldAbandonScrubOnFailedComposite(bool canScrub, bool hasCompositeFrames) =>
+        canScrub && !hasCompositeFrames;
+
+    public static bool ShouldAnimateGifFallback(bool abandonScrub) =>
+        abandonScrub;
+
     public static bool ShouldShowScrub(bool canScrub, int frameCount) =>
         canScrub && frameCount >= MinScrubCount;
 

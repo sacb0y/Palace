@@ -318,6 +318,12 @@ public partial class GalleryViewModel : ObservableObject
         cts?.Dispose();
     }
 
+    /// <summary>
+    /// Composite decode failed after scrub was offered. Hide chrome and let
+    /// <c>BitmapImage</c> autoplay.
+    /// </summary>
+    public void AbandonGifScrub() => ApplyGifState(false, null);
+
     private void StartGifPlayLoop()
     {
         StopGifPlayback();
