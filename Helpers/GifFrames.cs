@@ -114,6 +114,15 @@ public static class GifFrames
     public static bool ShouldRunGifPlayLoop(bool canScrub, bool playing, bool compositeReady) =>
         canScrub && playing && compositeReady;
 
+    /// <summary>
+    /// Upper bound on the decoded composite cache (one full-canvas BGRA
+    /// raster per frame). Larger GIFs skip scrub and keep BitmapImage autoplay.
+    /// </summary>
+    public const long MaxCacheBytes = 256L * 1024 * 1024;
+
+    public static bool FitsCacheBudget(int width, int height, int frameCount) =>
+        (long)width * height * 4 * frameCount <= MaxCacheBytes;
+
     public readonly record struct Info(int Width, int Height, int FrameCount, IReadOnlyList<int> DelaysCs);
 
     public readonly record struct Raster(int Width, int Height, byte[] Bgra);
@@ -307,7 +316,8 @@ public static class GifFrames
 
         // Transparent canvas — matches BitmapImage. Do not fill the LSD
         // background color (opaque backdrop on paused/scrubbed frames).
-        var canvas = new byte[width * height * 4];
+        var decode = renderAll || renderIndex is not null;
+        var canvas = decode ? new byte[width * height * 4] : [];
         byte[]? previous = null;
 
         var disposal = 0;
@@ -318,7 +328,6 @@ public static class GifFrames
         var want = renderIndex is null ? -1 : ClampIndex(renderIndex.Value, int.MaxValue);
         byte[]? composite = null;
         List<byte[]>? composites = renderAll ? [] : null;
-        var decode = renderAll || renderIndex is not null;
         Span<byte> desc = stackalloc byte[9];
 
         while (stream.Position < stream.Length)
@@ -408,7 +417,12 @@ public static class GifFrames
                     var copy = (byte[])canvas.Clone();
                     if (renderAll)
                     {
-                        composites!.Add(copy);
+                        if (!FitsCacheBudget(width, height, composites!.Count + 1))
+                        {
+                            return null;
+                        }
+
+                        composites.Add(copy);
                     }
                     else
                     {

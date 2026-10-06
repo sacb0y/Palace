@@ -1008,10 +1008,7 @@ public sealed partial class GalleryStillSurface : UserControl
         var load = new CancellationTokenSource();
         _gifLoadCts = load;
         _gifLoadingPath = path;
-        if (ImgStill.Source is BitmapImage animated)
-        {
-            animated.Stop();
-        }
+        ImgStill.Source = ToStillImage(path);
 
         IReadOnlyList<GifFrames.Raster>? frames = null;
         try

@@ -703,7 +703,11 @@ public partial class GalleryViewModel : ObservableObject
         GifFrames.Info? gifInfo = null;
         if (gifCanScrub)
         {
-            gifInfo = GifFrames.TryRead(item.Path);
+            gifInfo = await Task.Run(() => GifFrames.TryRead(item.Path));
+            if (gifInfo is { } read && !GifFrames.FitsCacheBudget(read.Width, read.Height, read.FrameCount))
+            {
+                gifInfo = null;
+            }
         }
 
         await UiDispatch.RunAsync(() =>
