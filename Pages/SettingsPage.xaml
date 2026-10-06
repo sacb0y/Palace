@@ -8,7 +8,8 @@
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    Background="Transparent">
 
     <ScrollViewer>
         <StackPanel
@@ -24,6 +25,91 @@
                 Header="Theme"
                 ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}" />
+
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Background" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ic:FluentIcon Icon="Image" IconSize="Size16" IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Glass wallpaper" />
+            </StackPanel>
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Wallpaper sits behind chrome. Buttons, panes, and cards keep ThemeResource / Fluent. Default is a dark gradient."
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="TxtShellWallpaper"
+                AutomationProperties.AutomationId="TxtShellWallpaper"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="{x:Bind ViewModel.WallpaperLabel, Mode=OneWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="BtnPickWallpaper"
+                    Command="{x:Bind ViewModel.PickWallpaperCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Image" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Choose wallpaper" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    AutomationProperties.AutomationId="BtnClearWallpaper"
+                    Command="{x:Bind ViewModel.ClearWallpaperCommand}"
+                    IsEnabled="{x:Bind ViewModel.HasWallpaper, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Use default gradient" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+            <Slider
+                x:Name="SldShellDarkness"
+                AutomationProperties.AutomationId="SldShellDarkness"
+                AutomationProperties.Name="Darkness"
+                Header="Darkness"
+                Maximum="100"
+                Minimum="0"
+                StepFrequency="1"
+                TickFrequency="10"
+                TickPlacement="None"
+                Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
+            <TextBlock
+                x:Name="TxtShellDarkness"
+                AutomationProperties.AutomationId="TxtShellDarkness"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.DarknessLabel, Mode=OneWay}" />
+            <Slider
+                x:Name="SldShellBlur"
+                AutomationProperties.AutomationId="SldShellBlur"
+                AutomationProperties.Name="Blur"
+                Header="Blur"
+                Maximum="100"
+                Minimum="0"
+                StepFrequency="1"
+                TickFrequency="10"
+                TickPlacement="None"
+                Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
+            <TextBlock
+                x:Name="TxtShellBlur"
+                AutomationProperties.AutomationId="TxtShellBlur"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.BlurLabel, Mode=OneWay}" />
+            <ToggleSwitch
+                x:Name="TglShellTint"
+                AutomationProperties.AutomationId="TglShellTint"
+                AutomationProperties.Name="Color tint"
+                Header="Color tint"
+                IsOn="{x:Bind ViewModel.TintEnabled, Mode=TwoWay}"
+                OffContent="Off"
+                OnContent="On" />
+            <ColorPicker
+                x:Name="PkrShellTint"
+                AutomationProperties.AutomationId="PkrShellTint"
+                AutomationProperties.Name="Wallpaper tint"
+                IsAlphaEnabled="True"
+                IsHexInputVisible="True"
+                ColorChanged="PkrShellTint_ColorChanged"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.TintEnabled), Mode=OneWay}" />
 
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="HDR" />
             <StackPanel Orientation="Horizontal" Spacing="8">

@@ -24,8 +24,19 @@ public sealed partial class MainWindow : Window
         var scale = GetDpiForWindow(hwnd) / 96.0;
         AppWindow.Resize(new SizeInt32((int)(1200 * scale), (int)(800 * scale)));
 
-        Closed += (_, _) => GalleryWindow.CloseAll();
+        ShellBackground.Changed += ShellBackground_Changed;
+        ApplyShellBackdrop();
+        Closed += (_, _) =>
+        {
+            ShellBackground.Changed -= ShellBackground_Changed;
+            GalleryWindow.CloseAll();
+        };
     }
+
+    private void ShellBackground_Changed(object? sender, EventArgs e) => ApplyShellBackdrop();
+
+    private void ApplyShellBackdrop() =>
+        ShellBackdrop.Apply(BrdShellGradient, ImgShellWallpaper, BrdShellGlass, BrdShellDim, BrdShellTint);
 
     public void ShowMain()
     {
