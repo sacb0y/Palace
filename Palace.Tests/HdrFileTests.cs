@@ -208,6 +208,40 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void Present_SdrMapPeakDoesNotFollowDecodeSize()
+    {
+        var viewport = GalleryPresent.ContentMaxNits(5f, 0);
+        var native = GalleryPresent.ContentMaxNits(12.5f, 0);
+        Assert.Equal(400f, viewport, 2);
+        Assert.Equal(1000f, native, 2);
+        Assert.NotEqual(
+            GalleryPresent.PresentMap(false, viewport, 0).Scale,
+            GalleryPresent.PresentMap(false, native, 0).Scale);
+
+        // First Fit (viewport) then 1:1 (native): keep the higher peak.
+        var afterNative = GalleryPresent.StickyContentMaxNits(native, viewport);
+        Assert.Equal(native, afterNative, 2);
+        // Fit again with the lower viewport peak must not shrink the map.
+        var fitAgain = GalleryPresent.StickyContentMaxNits(viewport, afterNative);
+        Assert.Equal(native, fitAgain, 2);
+        Assert.Equal(
+            GalleryPresent.PresentMap(false, native, 0).Scale,
+            GalleryPresent.PresentMap(false, fitAgain, 0).Scale,
+            3);
+
+        // Header cLLi seeds first Fit so the map is not weaker than later 1:1.
+        var firstFitWithCll = GalleryPresent.StickyContentMaxNits(5f, 0, 1000, 0);
+        Assert.Equal(native, firstFitWithCll, 2);
+        Assert.Equal(
+            GalleryPresent.PresentMap(false, native, 0).Scale,
+            GalleryPresent.PresentMap(false, firstFitWithCll, 0).Scale,
+            3);
+        // Pin-first (Autofix) would freeze 400 and leave 1:1 overblown.
+        Assert.NotEqual(viewport, firstFitWithCll, 2);
+        Assert.Equal(0, GalleryPresent.StickyContentMaxNits(-4, -8), 2);
+    }
+
+    [Fact]
     public void Present_ClipsPeakWithoutCrushingByMaxCll()
     {
         Assert.Equal(203f, GalleryPresent.ClipToPeak(1000, 203), 2);

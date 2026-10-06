@@ -108,9 +108,12 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                         : GalleryPresent.ScrgbNits;
                 }
 
+                var content = contentMaxNits > 0
+                    ? contentMaxNits
+                    : GalleryPresent.ContentMaxNits(frame.MaxScrgb, frame.MaxNits);
                 var map = GalleryPresent.PresentMap(
                     DisplayIsHdr,
-                    contentMaxNits,
+                    content,
                     DisplayPeakNits);
                 clip = map.ClipScrgb;
                 scale = map.Scale;

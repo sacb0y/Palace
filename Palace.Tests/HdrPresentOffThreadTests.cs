@@ -80,6 +80,12 @@ public sealed class HdrPresentOffThreadTests
         HdrRasterize.Fill(src, 1, 1, ImageScaling.Fit, 1, 1, map.ClipScrgb, dest, CancellationToken.None, map.Scale);
         Assert.Equal(GalleryPresent.FloatToHalf(1f), dest[0]);
         Assert.Equal(1f, HdrColor.MapCllToDisplayScrgb(12.5f, 1000f, 80f), 3);
+        var viewportPeak = GalleryPresent.ContentMaxNits(5f, 0);
+        var sticky = GalleryPresent.StickyContentMaxNits(12.5f, 0, 1000, viewportPeak);
+        var viewportMap = GalleryPresent.PresentMap(false, viewportPeak, 0);
+        var stickyMap = GalleryPresent.PresentMap(false, sticky, 0);
+        Assert.True(viewportMap.Scale > stickyMap.Scale);
+        Assert.Equal(map.Scale, stickyMap.Scale, 3);
         var hdr = GalleryPresent.PresentMap(true, 1000f, 0);
         Assert.Equal(1f, hdr.Scale);
         Assert.Equal(125f, hdr.ClipScrgb);

@@ -189,6 +189,42 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// SDR map peak must not follow the current decode size. Viewport Fit
+    /// often sees a lower MaxScrgb than native 1:1; keep the highest known
+    /// so Fit and 1:1 share one scale. Never shrink after a native peak.
+    /// </summary>
+    public static float StickyContentMaxNits(float currentNits, float knownNits)
+    {
+        if (currentNits < 0)
+        {
+            currentNits = 0;
+        }
+
+        if (knownNits < 0)
+        {
+            knownNits = 0;
+        }
+
+        return currentNits > knownNits ? currentNits : knownNits;
+    }
+
+    /// <summary>
+    /// Pixel CLL, plus header cLLi as a decode-size-independent floor so
+    /// the first Fit paint is not weaker than later 1:1. Info MaxCLL stays
+    /// the pixel peak (not cLLi).
+    /// </summary>
+    public static float StickyContentMaxNits(
+        float frameMaxScrgb,
+        float frameMaxNits,
+        int? probeMaxCllNits,
+        float knownNits)
+    {
+        var current = ContentMaxNits(frameMaxScrgb, frameMaxNits);
+        var probe = probeMaxCllNits is > 0 ? probeMaxCllNits.Value : 0f;
+        return StickyContentMaxNits(current, StickyContentMaxNits(probe, knownNits));
+    }
+
+    /// <summary>
     /// HDR panels: clip only (unknown peak → PQ 10 000). SDR: SKIV map
     /// CLL to G22 composition white (scRGB 1.0 / 80 nits) + clip. Never
     /// auto-clip to 203 paper white, and never map to an EDID 80–220 peak

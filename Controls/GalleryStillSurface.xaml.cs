@@ -333,12 +333,14 @@ public sealed partial class GalleryStillSurface : UserControl
                 return;
             }
 
-            // The SDR map peak is pinned to the first decode of a still so a
-            // later native / viewport re-decode (1:1 <-> Fit) does not change brightness.
-            if (CachedFrame(still, gallery.CurrentProbe) is null)
-            {
-                _hdrMapMaxNits = GalleryPresent.ContentMaxNits(frame.MaxScrgb, frame.MaxNits);
-            }
+            // Highest pixel / header CLL wins. First Fit is often a viewport
+            // decode whose peak is below native; pinning that first peak would
+            // leave 1:1 overblown. Native 1:1 then keeps that higher map on Fit.
+            _hdrMapMaxNits = GalleryPresent.StickyContentMaxNits(
+                frame.MaxScrgb,
+                frame.MaxNits,
+                gallery.CurrentProbe.MaxCllNits,
+                _hdrMapMaxNits);
 
             _hdrFrame = frame;
             _hdrFramePath = still;
@@ -506,7 +508,14 @@ public sealed partial class GalleryStillSurface : UserControl
             (dipW, dipH) = HdrPanelDips();
             scale = XamlRoot?.RasterizationScale ?? 1.0;
             peakOverride = GalleryPeak.PresentOverrideNits;
-            mapMaxNits = _hdrMapMaxNits;
+            mapMaxNits = GalleryPresent.StickyContentMaxNits(
+                f.MaxScrgb,
+                f.MaxNits,
+                g.CurrentProbe.MaxCllNits,
+                GalleryPresent.StickyContentMaxNits(
+                    GalleryPresent.ContentMaxNits(g.ContentMaxScrgb, g.ContentMaxNits),
+                    _hdrMapMaxNits));
+            _hdrMapMaxNits = mapMaxNits;
         });
 
         if (gallery is null || frame is null || presenter is null)
