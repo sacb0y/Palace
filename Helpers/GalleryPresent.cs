@@ -229,9 +229,13 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// WinRT <c>BitmapPixelFormat</c> has no float. These unorm layouts
-    /// clamp HDR JXR (linear scRGB) to 1.0 / 80 nits — do not present
-    /// them as scRGB; run native float/half <c>CopyPixels</c> instead.
+    /// WinRT <c>BitmapPixelFormat</c> has no float (only Rgba16/Rgba8/Bgra8
+    /// unorm, etc.). Those clamp HDR JXR (linear scRGB) to 1.0 / 80 nits —
+    /// do not present them as scRGB. Packaged apps also cannot activate
+    /// <c>CLSID_WICWmpDecoder</c> for native float CopyPixels
+    /// (<c>wmp</c>/<c>qi</c> <c>E_NOINTERFACE</c>, <c>rasDecoder</c>
+    /// <c>E_FAIL</c>) — that is a packaging wall, not another CLSID retry.
+    /// <c>BitmapImage</c> UriSource is the same SDR pipeline.
     /// </summary>
     public static bool JxrWinrtClampsHdr(HdrPackedFormat format) =>
         format is HdrPackedFormat.Rgba16 or HdrPackedFormat.Rgba8 or HdrPackedFormat.Bgra8;

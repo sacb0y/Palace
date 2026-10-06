@@ -88,7 +88,8 @@ public sealed class WicNativeTests
                 "GetSoftwareBitmap",
                 "LockBuffer",
                 "GetPixelData",
-                "unorm"
+                "unorm",
+                "packaged"
             ],
             WicNative.WicDecoderOpen.Stages);
         Assert.Equal(
@@ -101,7 +102,8 @@ public sealed class WicNativeTests
                 "GetSoftwareBitmap",
                 "LockBuffer",
                 "GetPixelData",
-                "unorm"
+                "unorm",
+                "packaged"
             ],
             WicNative.WicDecoderOpen.WinrtCalls);
         Assert.Equal(
@@ -169,6 +171,13 @@ public sealed class WicNativeTests
             WicNative.WicDecoderOpen.Join(
                 null,
                 WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.UnormClamp)));
+        var wallChain =
+            "WIC decoder wmp 80004002; WIC decoder qi 80004002; WIC decoder rasDecoder 80004005";
+        Assert.True(WicNative.WicDecoderOpen.IsPackagedNoFloatWall(wallChain));
+        Assert.False(WicNative.WicDecoderOpen.IsPackagedNoFloatWall("WIC decoder unorm"));
+        Assert.Equal(
+            "WIC decoder packaged; " + wallChain,
+            WicNative.WicDecoderOpen.MarkPackagedWall(wallChain));
         Assert.Equal(
             Guid.Parse("94BC8415-04EA-4B2E-AF13-4DE95AA898EB"),
             WicNative.IidSoftwareBitmapNative);

@@ -62,9 +62,11 @@ public static class WicNative
         public const string LockBuffer = "LockBuffer";
         public const string GetPixelData = "GetPixelData";
         public const string UnormClamp = "unorm";
+        public const string Packaged = "packaged";
         public const uint ComponentNotFound = 0x88982F50;
         public const uint NoInterface = 0x80004002;
         public const uint WrongThread = 0x8001010E;
+        public const uint Fail = 0x80004005;
 
         public static readonly string[] WinrtCalls =
         [
@@ -76,7 +78,8 @@ public static class WicNative
             GetSoftwareBitmap,
             LockBuffer,
             GetPixelData,
-            UnormClamp
+            UnormClamp,
+            Packaged
         ];
 
         public static readonly string[] Stages =
@@ -93,7 +96,8 @@ public static class WicNative
             GetSoftwareBitmap,
             LockBuffer,
             GetPixelData,
-            UnormClamp
+            UnormClamp,
+            Packaged
         ];
 
         public static string Failed(string stage, int hr = 0)
@@ -118,10 +122,43 @@ public static class WicNative
 
             if (string.IsNullOrEmpty(next) || prior == next)
             {
-                return prior;
+                return prior!;
             }
 
             return prior + "; " + next;
+        }
+
+        /// <summary>
+        /// Packaged float HDR JXR wall: <c>wmp</c> + <c>qi</c> both
+        /// <c>E_NOINTERFACE</c>, <c>rasDecoder</c> <c>E_FAIL</c>.
+        /// WinRT / <c>BitmapImage</c> only yield unorm SDR — no more
+        /// CLSID retries. Ship jxrlib/Magick or present SDR preview.
+        /// </summary>
+        public static bool IsPackagedNoFloatWall(string? error)
+        {
+            if (string.IsNullOrEmpty(error))
+            {
+                return false;
+            }
+
+            return error.Contains(Wmp, StringComparison.Ordinal)
+                && error.Contains(Qi, StringComparison.Ordinal)
+                && (error.Contains(RasDecoder, StringComparison.Ordinal)
+                    || error.Contains(Ras, StringComparison.Ordinal))
+                && error.Contains(NoInterface.ToString("X8"), StringComparison.Ordinal)
+                && error.Contains(Fail.ToString("X8"), StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Prefix the diagnostic chain with <c>packaged</c> so Info
+        /// reads as a capability wall, not another CLSID miss.
+        /// </summary>
+        public static string MarkPackagedWall(string chain)
+        {
+            var marker = Failed(Packaged);
+            return chain.StartsWith(marker, StringComparison.Ordinal)
+                ? chain
+                : Join(marker, chain);
         }
 
         public static bool IsComponentNotFound(int hr) =>

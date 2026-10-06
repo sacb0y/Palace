@@ -420,6 +420,11 @@ internal static class HdrWicDecode
             LastWicError = WicNative.WicDecoderOpen.Join(nativeError, LastWicError);
         }
 
+        if (WicNative.WicDecoderOpen.IsPackagedNoFloatWall(LastWicError))
+        {
+            LastWicError = WicNative.WicDecoderOpen.MarkPackagedWall(LastWicError!);
+        }
+
         return null;
     }
 
