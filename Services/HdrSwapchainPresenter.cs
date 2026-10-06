@@ -270,11 +270,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                 return;
                             }
 
-                            var windowsHdr = DisplayHdr.TryWindowsHdrEnabled(desc.DeviceName);
-                            if (windowsHdr is null)
-                            {
-                                windowsHdr = DisplayHdr.TryWindowsHdrEnabled(null);
-                            }
+                            var windowsHdr = DisplayHdr.WindowsHdrForNamedOutput(
+                                DisplayHdr.TryWindowsHdrEnabled(desc.DeviceName));
 
                             DisplayIsHdr = GalleryPresent.IsHdrOutput(
                                 desc.ColorSpace,

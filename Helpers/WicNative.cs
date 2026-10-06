@@ -51,6 +51,7 @@ public static class WicNative
         public const string GetSoftwareBitmap = "GetSoftwareBitmap";
         public const string LockBuffer = "LockBuffer";
         public const string GetPixelData = "GetPixelData";
+        public const string UnormClamp = "unorm";
         public const uint ComponentNotFound = 0x88982F50;
         public const uint NoInterface = 0x80004002;
         public const uint WrongThread = 0x8001010E;
@@ -60,7 +61,8 @@ public static class WicNative
             CreateAsync,
             GetSoftwareBitmap,
             LockBuffer,
-            GetPixelData
+            GetPixelData,
+            UnormClamp
         ];
 
         public static readonly string[] Stages =
@@ -71,7 +73,8 @@ public static class WicNative
             CreateAsync,
             GetSoftwareBitmap,
             LockBuffer,
-            GetPixelData
+            GetPixelData,
+            UnormClamp
         ];
 
         public static string Failed(string stage, int hr = 0)

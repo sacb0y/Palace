@@ -132,6 +132,17 @@ public static class DisplayHdr
     }
 
     /// <summary>
+    /// CCD for this DXGI output only. A named miss or CCD-off must not
+    /// inherit HDR from another active path
+    /// (<c>TryWindowsHdrEnabled(null)</c>).
+    /// </summary>
+    public static bool? WindowsHdrForNamedOutput(bool? namedOutputHdr, bool? anyPathHdr = null)
+    {
+        _ = anyPathHdr;
+        return namedOutputHdr;
+    }
+
+    /// <summary>
     /// <c>true</c> when Windows HDR / Advanced Color is on for
     /// <paramref name="gdiDeviceName"/> (<c>\\.\DISPLAYn</c>). Empty name
     /// uses any active path. <c>null</c> when DisplayConfig is unavailable.

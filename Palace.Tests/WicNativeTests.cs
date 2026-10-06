@@ -82,7 +82,8 @@ public sealed class WicNativeTests
                 "CreateAsync",
                 "GetSoftwareBitmap",
                 "LockBuffer",
-                "GetPixelData"
+                "GetPixelData",
+                "unorm"
             ],
             WicNative.WicDecoderOpen.Stages);
         Assert.Equal(
@@ -90,7 +91,8 @@ public sealed class WicNativeTests
                 "CreateAsync",
                 "GetSoftwareBitmap",
                 "LockBuffer",
-                "GetPixelData"
+                "GetPixelData",
+                "unorm"
             ],
             WicNative.WicDecoderOpen.WinrtCalls);
         Assert.Equal(
@@ -116,6 +118,9 @@ public sealed class WicNativeTests
             WicNative.WicDecoderOpen.Failed(
                 WicNative.WicDecoderOpen.GetPixelData,
                 unchecked((int)0x8001010E)));
+        Assert.Equal(
+            "WIC decoder unorm",
+            WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.UnormClamp));
         Assert.True(
             WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
         Assert.True(

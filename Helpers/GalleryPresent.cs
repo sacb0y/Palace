@@ -229,6 +229,14 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// WinRT <c>BitmapPixelFormat</c> has no float. These unorm layouts
+    /// clamp HDR JXR (linear scRGB) to 1.0 / 80 nits — do not present
+    /// them as scRGB; run native float/half <c>CopyPixels</c> instead.
+    /// </summary>
+    public static bool JxrWinrtClampsHdr(HdrPackedFormat format) =>
+        format is HdrPackedFormat.Rgba16 or HdrPackedFormat.Rgba8 or HdrPackedFormat.Bgra8;
+
+    /// <summary>
     /// When DXGI / CCD cannot be read, PQ / HLG / HDR JPEG XR still present
     /// scRGB at unknown peak (10 000), not 80-nit SDR tonemap.
     /// </summary>

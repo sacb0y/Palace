@@ -228,6 +228,15 @@ public sealed class HdrFileTests
         Assert.True(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, true));
         Assert.True(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeHdr, false));
         Assert.False(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, false));
+        Assert.False(DisplayHdr.WindowsHdrForNamedOutput(false, anyPathHdr: true));
+        Assert.Null(DisplayHdr.WindowsHdrForNamedOutput(null, anyPathHdr: true));
+        Assert.True(DisplayHdr.WindowsHdrForNamedOutput(true, anyPathHdr: false));
+        Assert.True(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Rgba16));
+        Assert.True(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Rgba8));
+        Assert.True(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Bgra8));
+        Assert.False(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.RgbaFloat));
+        Assert.False(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.RgbaHalf));
+        Assert.False(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Rgba1010102Xr));
         var sizes = DisplayHdr.NativeLayoutSizes();
         Assert.Equal(DisplayHdr.NativeHeaderBytes, sizes.Header);
         Assert.Equal(DisplayHdr.NativePathBytes, sizes.Path);
