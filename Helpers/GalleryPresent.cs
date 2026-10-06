@@ -174,20 +174,33 @@ public static class GalleryPresent
         nits > 265 && nits < 275;
 
     /// <summary>
-    /// Windows HDR vs SDR for present. Advanced color spaces are HDR.
-    /// G22 is not automatically SDR: laptops often keep ColorSpace 0 with
-    /// a real HDR peak and 10-bit. Dummy 270 at 8-bit stays SDR. Do not
-    /// treat 203 paper white as a display peak.
+    /// Windows HDR vs SDR for present. <paramref name="windowsHdrEnabled"/>
+    /// is DisplayConfig HDR (user toggle / INFO_2). DXGI ColorSpace often
+    /// stays G22 with dummy 270 while that toggle is on — that is HDR, not
+    /// SDR tonemap. Advanced color spaces are HDR. Without the Windows
+    /// flag, 10-bit + peak&gt;220 or peak&gt;270 is HDR; dummy 270 at 8-bit
+    /// stays SDR. 203 is paper white, not a display peak.
     /// </summary>
     public static bool IsHdrOutput(
         int dxgiColorSpace,
         float maxLuminance,
         float maxFullFrameLuminance,
-        int bitsPerColor)
+        int bitsPerColor,
+        bool? windowsHdrEnabled = null)
     {
+        if (windowsHdrEnabled == true)
+        {
+            return true;
+        }
+
         if (IsAdvancedColor(dxgiColorSpace))
         {
             return true;
+        }
+
+        if (windowsHdrEnabled == false)
+        {
+            return false;
         }
 
         var peak = ProbedDisplayLuminance(maxLuminance, maxFullFrameLuminance);

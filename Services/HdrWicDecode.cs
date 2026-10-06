@@ -770,7 +770,10 @@ internal static class HdrWicDecode
             try
             {
                 factory = CreateFactory();
-                factory.CreateDecoderFromFilename(path, IntPtr.Zero, GenericRead, 0, out decoder);
+                if (!TryOpenDecoder(factory, path, out decoder) || decoder is null)
+                {
+                    return null;
+                }
                 decoder.GetFrame(0, out frame);
                 frame.GetSize(out var storedW, out var storedH);
                 if (storedW == 0 || storedH == 0 || storedW > 16384 || storedH > 16384)
@@ -816,11 +819,22 @@ internal static class HdrWicDecode
                 }
                 else
                 {
-                    packed = HdrPackedFormat.RgbaFloat;
-                    bytesPer = 16;
                     factory.CreateFormatConverter(out converter);
-                    var dst = GuidRgbaFloat;
-                    converter.Initialize(source, ref dst, 0, IntPtr.Zero, 0, 0);
+                    if (TryConvert(converter, source, GuidRgbaFloat))
+                    {
+                        packed = HdrPackedFormat.RgbaFloat;
+                        bytesPer = 16;
+                    }
+                    else if (TryConvert(converter, source, GuidRgbaHalf))
+                    {
+                        packed = HdrPackedFormat.RgbaHalf;
+                        bytesPer = 8;
+                    }
+                    else
+                    {
+                        return null;
+                    }
+
                     source = WicNative.AsSource(converter);
                 }
 
@@ -867,6 +881,86 @@ internal static class HdrWicDecode
             }
 
             throw new InvalidOperationException("WIC factory");
+        }
+
+        private static bool TryOpenDecoder(
+            WicNative.IWICImagingFactory factory,
+            string path,
+            out WicNative.IWICBitmapDecoder? decoder)
+        {
+            decoder = null;
+            try
+            {
+                factory.CreateDecoderFromFilename(path, IntPtr.Zero, GenericRead, 0, out decoder);
+                if (decoder is not null)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                decoder = null;
+            }
+
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                if (bytes.Length == 0)
+                {
+                    return false;
+                }
+
+                var stream = CreateMemoryStream(bytes);
+                if (stream is null)
+                {
+                    return false;
+                }
+
+                factory.CreateDecoderFromStream(stream, IntPtr.Zero, 0, out decoder);
+                return decoder is not null;
+            }
+            catch
+            {
+                decoder = null;
+                return false;
+            }
+        }
+
+        private static System.Runtime.InteropServices.ComTypes.IStream? CreateMemoryStream(byte[] bytes)
+        {
+            var ptr = SHCreateMemStream(bytes, (uint)bytes.Length);
+            if (ptr == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            try
+            {
+                return (System.Runtime.InteropServices.ComTypes.IStream)Marshal.GetObjectForIUnknown(ptr);
+            }
+            finally
+            {
+                Marshal.Release(ptr);
+            }
+        }
+
+        [DllImport("shlwapi.dll", ExactSpelling = true)]
+        private static extern IntPtr SHCreateMemStream(byte[] pInit, uint cbInit);
+
+        private static bool TryConvert(
+            WicNative.IWICFormatConverter converter,
+            WicNative.IWICBitmapSource source,
+            Guid dst)
+        {
+            try
+            {
+                converter.Initialize(source, ref dst, 0, IntPtr.Zero, 0, 0);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static uint ReadOrientation(WicNative.IWICBitmapFrameDecode frame)

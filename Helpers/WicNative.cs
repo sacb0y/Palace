@@ -41,7 +41,12 @@ public static class WicNative
             uint metadataOptions,
             out IWICBitmapDecoder ppIDecoder);
 
-        void CreateDecoderFromStream();
+        void CreateDecoderFromStream(
+            [MarshalAs(UnmanagedType.Interface)] System.Runtime.InteropServices.ComTypes.IStream pIStream,
+            IntPtr pguidVendor,
+            uint metadataOptions,
+            out IWICBitmapDecoder ppIDecoder);
+
         void CreateDecoderFromFileHandle();
         void CreateComponentInfo();
         void CreateDecoder();

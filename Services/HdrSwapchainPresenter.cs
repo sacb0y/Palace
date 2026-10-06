@@ -246,7 +246,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                         desc.ColorSpace,
                                         desc.MaxLuminance,
                                         desc.MaxFullFrameLuminance,
-                                        (int)desc.BitsPerColor);
+                                        (int)desc.BitsPerColor,
+                                        DisplayHdr.TryWindowsHdrEnabled(desc.DeviceName));
                                     if (DisplayIsHdr)
                                     {
                                         var peak = GalleryPresent.ProbedDisplayLuminance(

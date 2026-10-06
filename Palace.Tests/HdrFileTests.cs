@@ -206,10 +206,26 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.IsHdrOutput(0, 1499, 1000, 10));
         Assert.True(GalleryPresent.IsHdrOutput(12, 400, 400, 10));
         Assert.True(GalleryPresent.IsHdrOutput(1, 80, 80, 8));
-        // Dummy 270 at 8-bit G22 is SDR; 203 is paper white, not a peak.
+        // Dummy 270 at 8-bit G22 is SDR unless Windows HDR is on.
         Assert.False(GalleryPresent.IsHdrOutput(0, 270, 270, 8));
         Assert.False(GalleryPresent.IsHdrOutput(0, 203, 203, 8));
         Assert.False(GalleryPresent.IsHdrOutput(0, 120, 80, 8));
+        Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: true));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: false));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 0, 0, 8));
+        var mainDesktop = GalleryPresent.PresentMap(
+            GalleryPresent.IsHdrOutput(0, 270, 270, 8, true), 1000, 0);
+        Assert.Equal(1f, mainDesktop.Scale);
+        Assert.Equal(125f, mainDesktop.ClipScrgb, 3);
+        Assert.True(DisplayHdr.WindowsHdrEnabledFromInfo(2));
+        Assert.False(DisplayHdr.WindowsHdrEnabledFromInfo(1));
+        Assert.True(DisplayHdr.WindowsHdrEnabledFromInfo2(1u << 5));
+        Assert.False(DisplayHdr.WindowsHdrEnabledFromInfo2(2));
+        Assert.True(DisplayHdr.IsHdrColorMode(DisplayHdr.ColorModeHdr));
+        Assert.False(DisplayHdr.IsHdrColorMode(DisplayHdr.ColorModeWcg));
+        Assert.True(DisplayHdr.CombineWindowsHdr(true, DisplayHdr.ColorModeSdr, false));
+        Assert.False(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, true));
+        Assert.True(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeHdr, false));
         Assert.True(GalleryPresent.IsDummySdrLuminance(270));
         Assert.False(GalleryPresent.IsDummySdrLuminance(400));
         // 8-bit G22 with a real HDR peak (not dummy 270) is still HDR.
