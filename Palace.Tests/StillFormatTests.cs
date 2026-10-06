@@ -8,35 +8,37 @@ namespace Palace.Tests;
 public sealed class StillFormatTests
 {
     [Fact]
-    public void PathSafe_IndexesSkivStills_NotExr()
+    public void PathSafe_IndexesSkivStills_IncludingExrTga()
     {
         foreach (var ext in new[]
                  {
                      ".avif", ".heic", ".heif", ".jxr", ".wdp", ".hdp",
-                     ".jxl", ".hdr", ".psd", ".dds"
+                     ".jxl", ".hdr", ".exr", ".tga", ".psd", ".dds"
                  })
         {
             Assert.True(PathSafe.IsCatalogExt(ext), ext);
             Assert.Equal(AssetKind.Image, PathSafe.KindFromExt(ext));
         }
 
-        Assert.False(PathSafe.IsCatalogExt(".exr"));
-        Assert.False(PathSafe.IsCatalogExt(".tga"));
+        Assert.True(PathSafe.IsExr(".exr"));
+        Assert.True(PathSafe.IsTga(".tga"));
         Assert.True(PathSafe.IsHeif(".heic"));
         Assert.True(PathSafe.IsRadiance(@"D:\a.hdr"));
         Assert.True(PathSafe.IsPsd(".psd"));
         Assert.True(PathSafe.IsJxl(".jxl"));
         Assert.True(PathSafe.IsJxr(".wdp"));
         Assert.True(PathSafe.UsesShellStillThumb(@"D:\a.heic"));
-        Assert.True(PathSafe.UsesShellStillThumb(@"D:\a.psd"));
+        Assert.False(PathSafe.UsesShellStillThumb(@"D:\a.psd"));
+        Assert.True(PathSafe.UsesMagickStillThumb(@"D:\a.psd"));
         Assert.False(PathSafe.UsesShellStillThumb(@"D:\a.jpg"));
     }
 
     [Fact]
-    public void ShellThumbs_HeicPsdAvif_NeverOpenOriginal()
+    public void ShellThumbs_HeicAvif_MagickPsd_NeverOpenOriginal()
     {
         Assert.True(GalleryMedia.UsesShellThumbnail(AssetKind.Image, @"D:\a.heic"));
-        Assert.True(GalleryMedia.UsesShellThumbnail(AssetKind.Image, @"D:\a.psd"));
+        Assert.False(GalleryMedia.UsesShellThumbnail(AssetKind.Image, @"D:\a.psd"));
+        Assert.True(GalleryMedia.UsesMagickThumbnail(AssetKind.Image, @"D:\a.psd"));
         Assert.True(GalleryMedia.UsesShellThumbnail(AssetKind.Image, @"D:\a.avif"));
         Assert.False(GalleryMedia.MayOpenOriginalForThumb(false, AssetKind.Image, @"D:\a.heic"));
         Assert.False(GalleryMedia.MayOpenOriginalForThumb(false, AssetKind.Image, @"D:\a.psd"));

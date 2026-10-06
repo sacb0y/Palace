@@ -110,6 +110,10 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, false, true, avif));
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrRadiance, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrExr, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.MagickTga, null, null, null)));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, true, false, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, true, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Gif, false, false, false, true, hdr));
@@ -482,7 +486,8 @@ public sealed class HdrFileTests
         Assert.True(PathSafe.IsAvif(".avif"));
         Assert.Equal(AssetKind.Image, PathSafe.KindFromExt(".avif"));
         Assert.True(PathSafe.IsCatalogExt(".jxl"));
-        Assert.False(PathSafe.IsCatalogExt(".exr"));
+        Assert.True(PathSafe.IsCatalogExt(".exr"));
+        Assert.True(PathSafe.IsCatalogExt(".tga"));
     }
 
     [Fact]

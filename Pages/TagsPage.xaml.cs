@@ -14,7 +14,6 @@ using Windows.Storage;
 using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
-using Windows.UI.Input;
 
 namespace Palace.Pages;
 

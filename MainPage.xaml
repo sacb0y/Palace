@@ -17,7 +17,6 @@
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
         OpenPaneLength="248"
-        PaneBackground="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
         PaneDisplayMode="Left"
         SelectionChanged="NavMain_SelectionChanged">
         <NavigationView.PaneHeader>

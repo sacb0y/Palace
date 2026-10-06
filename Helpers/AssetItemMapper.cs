@@ -34,7 +34,7 @@ public static class AssetItemMapper
         item.Height = asset.Height;
         item.FileSize = asset.FileSize;
         // Catalog / extension only — never HdrFile.ProbePath / Open the original.
-        item.IsHdr = asset.IsHdr || PathSafe.IsRadiance(asset.Path);
+        item.IsHdr = asset.IsHdr || PathSafe.IsRadiance(asset.Path) || PathSafe.IsExr(asset.Path);
         ApplyCloud(item, asset, sourceFolderIsCloud);
     }
 

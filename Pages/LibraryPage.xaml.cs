@@ -8,7 +8,6 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI.Core;
-using Windows.UI.Input;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;

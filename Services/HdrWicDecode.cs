@@ -31,9 +31,10 @@ internal readonly record struct HdrStats(
 
 /// <summary>
 /// Local HDR still → linear scRGB. HDR AVIF prefers libavif (identity
-/// GBR). HDR JPEG XR uses native WIC COM float/half (WinRT has no float
-/// pixel format). HEIF / other stills use WIC P010/NV12/YUY2 or packed
-/// RGB-as-YUV. Never online-only.
+/// GBR). HDR JPEG XR / OpenEXR / TGA prefer Magick.NET (packaged float);
+/// JXR falls back to native WIC COM float/half if Magick fails. HEIF /
+/// other stills use WIC P010/NV12/YUY2 or packed RGB-as-YUV. Never
+/// online-only.
 /// </summary>
 internal static class HdrWicDecode
 {
@@ -59,6 +60,29 @@ internal static class HdrWicDecode
         if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
         {
             return await Task.Run(() => FromRadiance(path), cancellation).ConfigureAwait(false);
+        }
+
+        if (MagickDecode.CanPresent(path, probe))
+        {
+            try
+            {
+                var magick = await Task.Run(
+                    () => MagickDecode.TryLoad(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (magick is not null)
+                {
+                    return magick;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Missing Magick natives / bad codec — JXR may still use WIC.
+            }
         }
 
         if (probe.Kind == HdrKind.HdrJxr)
@@ -206,6 +230,29 @@ internal static class HdrWicDecode
                             frame.Height);
                 },
                 cancellation).ConfigureAwait(false);
+        }
+
+        if (MagickDecode.CanPresent(path, probe))
+        {
+            try
+            {
+                var magick = await Task.Run(
+                    () => MagickDecode.TryMeasure(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (magick is not null)
+                {
+                    return magick;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Magick missing — JXR may still use WIC.
+            }
         }
 
         if (probe.Kind == HdrKind.HdrJxr)
