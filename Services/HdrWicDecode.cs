@@ -604,13 +604,6 @@ internal static class HdrWicDecode
                     continue;
                 }
 
-                if (GalleryPresent.JxrWinrtClampsHdr(packed))
-                {
-                    LastWicError = WicNative.WicDecoderOpen.Failed(
-                        WicNative.WicDecoderOpen.UnormClamp);
-                    return null;
-                }
-
                 var copied = CopySoftwareRgb(bitmap, packed);
                 if (copied is not null)
                 {
@@ -648,13 +641,6 @@ internal static class HdrWicDecode
                 var bytes = data.DetachPixelData();
                 if (HdrPixels.HasPackedData(bytes, packed, decodeW, decodeH))
                 {
-                    if (GalleryPresent.JxrWinrtClampsHdr(packed))
-                    {
-                        LastWicError = WicNative.WicDecoderOpen.Failed(
-                            WicNative.WicDecoderOpen.UnormClamp);
-                        return null;
-                    }
-
                     LastWicError = null;
                     return (bytes, packed, decodeW, decodeH);
                 }
