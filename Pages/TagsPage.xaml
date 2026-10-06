@@ -476,7 +476,7 @@
                                                         <ic:FluentIcon
                                                             Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                                                             Icon="Hdr"
-                                                            IconSize="Size16"
+                                                            IconSize="Size20"
                                                             IconVariant="Regular" />
                                                     </Border>
                                                 </StackPanel>
@@ -870,6 +870,21 @@
                                     <TextBlock VerticalAlignment="Center" Text="Details" />
                                 </StackPanel>
                             </ToggleButton>
+                            <Border
+                                Padding="4"
+                                VerticalAlignment="Center"
+                                AutomationProperties.AutomationId="IcnGalleryOverlayHdr"
+                                AutomationProperties.Name="HDR"
+                                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                CornerRadius="4"
+                                IsHitTestVisible="False"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowHdrBadge), Mode=OneWay, FallbackValue=Collapsed}">
+                                <ic:FluentIcon
+                                    Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                    Icon="Hdr"
+                                    IconSize="Size20"
+                                    IconVariant="Regular" />
+                            </Border>
                         </StackPanel>
                         <Border
                             x:Name="BrdGalleryImageInfo"

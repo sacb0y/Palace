@@ -241,9 +241,17 @@ public static class GalleryMedia
         ShowKindBadge(isFolderHeader, isOrphan, kind == AssetKind.Gif);
 
     /// <summary>
-    /// HDR glyph from catalog / header already on the row. Never Open or
-    /// recall the original — <paramref name="catalogHdr"/> is scan-time
-    /// header probe; Radiance <c>.hdr</c> is the path on the catalog row.
+    /// Fluent <c>Hdr</c> Regular exists at 20 and 24 DIP only. Mosaic /
+    /// overlay chips must use <see cref="HdrBadgeIconDip"/> — Size16
+    /// paints an empty tag with the HDR label and no glyph.
+    /// </summary>
+    public const int HdrBadgeIconDip = 20;
+
+    /// <summary>
+    /// HDR glyph from catalog / header already on the row, or overlay
+    /// probe. Never Open or recall the original — <paramref name="catalogHdr"/>
+    /// is scan-time header probe or live <c>HdrProbe.IsHdr</c>; Radiance
+    /// <c>.hdr</c> is the path on the catalog row.
     /// </summary>
     public static bool ShowHdrBadge(
         bool isFolderHeader,
@@ -287,6 +295,10 @@ public static class GalleryMedia
 
     public static string HdrBadgeAutomationId(string? assetId) =>
         MosaicBadgeAutomationId("IcnHdrBadge_", assetId);
+
+    public const string OverlayHdrBadgeAutomationId = "IcnGalleryOverlayHdr";
+
+    public const string WindowHdrBadgeAutomationId = "IcnGalleryWindowHdr";
 
     private static string MosaicBadgeAutomationId(string prefix, string? assetId) =>
         prefix + string.Concat((assetId ?? "").Where(char.IsLetterOrDigit));
