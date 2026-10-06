@@ -515,18 +515,18 @@ public static class GalleryPresent
     /// <summary>
     /// CIE Y for a presented scRGB pixel. <c>HdrFrame.ScrgbRgba</c> is already
     /// display 709; Info Y is source primaries before 2020→709. Invert that
-    /// matrix when CICP primaries are 9 — do not run BT.2020 <see cref="LuminanceY"/>
-    /// on the display-referred channels.
+    /// matrix whenever present applied it (BT.2020, Display P3 12, unspecified) —
+    /// do not run BT.2020 <see cref="LuminanceY"/> on the display-referred channels.
     /// </summary>
     public static float LumaNitsFromPresentedScrgb(float sr, float sg, float sb, int? cicpPrimaries)
     {
         var r = sr * ScrgbNits;
         var g = sg * ScrgbNits;
         var b = sb * ScrgbNits;
-        if (cicpPrimaries == 9)
+        if (cicpPrimaries is null or 9 or 12)
         {
             Bt709ToBt2020(r, g, b, out r, out g, out b);
-            return LuminanceY(r, g, b, true);
+            return LuminanceY(r, g, b, cicpPrimaries == 9);
         }
 
         return LuminanceY(r, g, b, false);
