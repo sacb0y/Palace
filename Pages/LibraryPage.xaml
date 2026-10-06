@@ -334,6 +334,7 @@
                 AutomationProperties.Name="Assets"
                 DoubleTapped="GrdAssets_DoubleTapped"
                 IsItemInvokedEnabled="False"
+                IsHoldingEnabled="True"
                 IsTabStop="True"
                 ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
                 PreviewKeyDown="GrdAssets_PreviewKeyDown"
@@ -355,6 +356,7 @@
                             ContextRequested="AssetItem_ContextRequested"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
+                            IsHoldingEnabled="True"
                             IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                             ManipulationMode="None"
                             Tag="{x:Bind MosaicTag, Mode=OneWay}">

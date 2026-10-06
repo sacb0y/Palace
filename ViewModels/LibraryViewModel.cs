@@ -322,7 +322,7 @@ public partial class LibraryViewModel : ObservableObject
         ShowTagSelectedCta = SelectMode.ShowBatchTagCta(IsSelectMode, _selection.Count);
     }
 
-    public void SetSelection(IEnumerable<AssetItem> items)
+    public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
     {
         _selection = items.Where(item => !item.IsFolderHeader).ToList();
         foreach (var asset in Assets)
@@ -335,6 +335,11 @@ public partial class LibraryViewModel : ObservableObject
         CanEditNotes = _selection.Count == 1;
         var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
         _selectionAnchor = next;
+        if (!loadPreview)
+        {
+            return;
+        }
+
         if (!ReferenceEquals(SelectedAsset, next))
         {
             SelectedAsset = next;
@@ -342,6 +347,23 @@ public partial class LibraryViewModel : ObservableObject
         else
         {
             _ = LoadPreviewAsync(next);
+        }
+    }
+
+    /// <summary>
+    /// Contiguous mosaic span from the drag origin through the last highlighted
+    /// item. Folder headers are skipped. The origin stays the Shift/range anchor.
+    /// Live drag passes <paramref name="loadPreview"/> false so hover does not
+    /// re-query the catalog on every move.
+    /// </summary>
+    public void ApplyMosaicRange(int from, int to, bool loadPreview = true)
+    {
+        var flags = Assets.Select(asset => asset.IsFolderHeader).ToList();
+        var indexes = RangeSelect.ContiguousIndexes(flags, from, to);
+        SetSelection(indexes.Select(i => Assets[i]), loadPreview);
+        if ((uint)from < (uint)Assets.Count && !Assets[from].IsFolderHeader)
+        {
+            _selectionAnchor = Assets[from];
         }
     }
 
@@ -354,31 +376,11 @@ public partial class LibraryViewModel : ObservableObject
 
         if (range && _selectionAnchor is not null)
         {
-            var list = Assets.ToList();
-            var from = list.IndexOf(_selectionAnchor);
-            var to = list.IndexOf(item);
+            var from = Assets.IndexOf(_selectionAnchor);
+            var to = Assets.IndexOf(item);
             if (from >= 0 && to >= 0)
             {
-                var lo = Math.Min(from, to);
-                var hi = Math.Max(from, to);
-                for (var i = 0; i < list.Count; i++)
-                {
-                    list[i].IsSelected = i >= lo && i <= hi && !list[i].IsFolderHeader;
-                }
-
-                _selection = list.Where(a => a.IsSelected).ToList();
-                HasSelection = _selection.Count > 0;
-                RefreshSelectionSummary();
-                CanEditNotes = _selection.Count == 1;
-                if (!ReferenceEquals(SelectedAsset, item))
-                {
-                    SelectedAsset = item;
-                }
-                else
-                {
-                    _ = LoadPreviewAsync(item);
-                }
-
+                ApplyMosaicRange(from, to);
                 return;
             }
         }

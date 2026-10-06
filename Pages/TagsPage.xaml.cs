@@ -14,6 +14,7 @@ using Windows.Storage;
 using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
+using Windows.UI.Input;
 
 namespace Palace.Pages;
 
@@ -30,6 +31,13 @@ public sealed partial class TagsPage : Page
     private AssetItem? _selectedMosaicAsset;
     private GalleryViewModel? _hookedOverlay;
     private int _overlayMediaEpoch;
+    private RangeSelectSession? _rangeSelect;
+    private long _rangePressMs;
+    private Windows.Foundation.Point _rangePressPoint;
+    private uint _rangePointerId;
+    private Pointer? _rangePointer;
+    private bool _rangeCaptured;
+    private bool _rangeConsumedTap;
 
     public TagsPage()
     {
@@ -55,6 +63,10 @@ public sealed partial class TagsPage : Page
         Loaded += async (_, _) =>
         {
             GrdTagAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdTagAssets_KeyDown), true);
+            GrdTagAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdTagAssets_RangeMoved), true);
+            GrdTagAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdTagAssets_RangeReleased), true);
+            GrdTagAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdTagAssets_RangeCaptureLost), true);
+            GrdTagAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdTagAssets_RangeHolding), true);
             RefreshRealizedTiles();
             HookOverlayGallery();
             await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
@@ -446,16 +458,39 @@ public sealed partial class TagsPage : Page
             return;
         }
 
+        if (_rangeConsumedTap)
+        {
+            _rangeConsumedTap = false;
+            e.Handled = true;
+            return;
+        }
+
+        if (ViewModel.IsSelectMode)
+        {
+            ViewModel.ToggleMosaicAsset(item);
+            _selectedMosaicAsset = item;
+            e.Handled = true;
+            return;
+        }
+
         EnsureSelectedForContext(item);
     }
 
     private void TagAsset_GotFocus(object sender, RoutedEventArgs e)
     {
         var item = FindAssetItem(sender);
-        if (item is not null)
+        if (item is null)
         {
-            StampMosaicSelection(item);
+            return;
         }
+
+        if (ViewModel.IsSelectMode)
+        {
+            _selectedMosaicAsset = item;
+            return;
+        }
+
+        StampMosaicSelection(item);
     }
 
     private void TagAsset_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
@@ -554,26 +589,234 @@ public sealed partial class TagsPage : Page
 
     private void EnsureSelectedForContext(AssetItem item)
     {
+        if (ViewModel.IsSelectMode && item.IsSelected)
+        {
+            _selectedMosaicAsset = item;
+            FocusMosaicTile(item);
+            return;
+        }
+
         StampMosaicSelection(item);
         FocusMosaicTile(item);
     }
 
     private void StampMosaicSelection(AssetItem item)
     {
-        if (_selectedMosaicAsset?.Id == item.Id)
+        ViewModel.SetMosaicSelection([item]);
+        _selectedMosaicAsset = ViewModel.Assets.FirstOrDefault(asset => asset.Id == item.Id) ?? item;
+    }
+
+    private static RangeSelectPointer ToRangePointer(PointerDeviceType type) => type switch
+    {
+        PointerDeviceType.Touch => RangeSelectPointer.Touch,
+        PointerDeviceType.Pen => RangeSelectPointer.Pen,
+        PointerDeviceType.Mouse => RangeSelectPointer.Mouse,
+        _ => RangeSelectPointer.Other
+    };
+
+    private void TagAsset_RangePressed(object sender, PointerRoutedEventArgs e)
+    {
+        _rangeConsumedTap = false;
+        if (!ViewModel.IsSelectMode)
         {
-            item.IsSelected = true;
-            _selectedMosaicAsset = item;
             return;
         }
 
-        foreach (var asset in ViewModel.Assets)
+        var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
+        if (item is null
+            || !RangeSelect.AllowsGesture(true, overlayOpen: false, item.IsFolderHeader))
         {
-            asset.IsSelected = asset.Id == item.Id;
+            return;
         }
 
-        _selectedMosaicAsset = ViewModel.Assets.FirstOrDefault(asset => asset.Id == item.Id) ?? item;
-        _selectedMosaicAsset.IsSelected = true;
+        var index = ViewModel.Assets.IndexOf(item);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(GrdTagAssets);
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse && !point.Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _rangeSelect = new RangeSelectSession(ToRangePointer(e.Pointer.PointerDeviceType), index);
+        _rangePressMs = Environment.TickCount64;
+        _rangePressPoint = point.Position;
+        _rangePointerId = e.Pointer.PointerId;
+        _rangePointer = e.Pointer;
+        _rangeCaptured = false;
+    }
+
+    private void GrdTagAssets_RangeMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(GrdTagAssets);
+        var dx = point.Position.X - _rangePressPoint.X;
+        var dy = point.Position.Y - _rangePressPoint.Y;
+        var elapsed = (int)(Environment.TickCount64 - _rangePressMs);
+        if (!_rangeSelect.IsActive)
+        {
+            if (RangeSelect.CancelsHold(_rangeSelect.Pointer, elapsed, dx, dy))
+            {
+                EndRangeSelect(e.Pointer);
+                return;
+            }
+
+            if (!_rangeSelect.TryActivate(elapsed, dx, dy))
+            {
+                return;
+            }
+        }
+
+        if (_rangeSelect.RequiresPointerCapture)
+        {
+            CaptureRangePointer(e.Pointer);
+        }
+
+        ApplyRangeHover(e);
+        e.Handled = true;
+    }
+
+    private void GrdTagAssets_RangeHolding(object sender, HoldingRoutedEventArgs e)
+    {
+        if (_rangeSelect is null)
+        {
+            return;
+        }
+
+        if (e.HoldingState == HoldingState.Canceled && !_rangeSelect.IsActive)
+        {
+            EndRangeSelect(null);
+            return;
+        }
+
+        if (e.HoldingState != HoldingState.Started)
+        {
+            return;
+        }
+
+        var elapsed = (int)(Environment.TickCount64 - _rangePressMs);
+        if (!_rangeSelect.TryActivateHold(elapsed))
+        {
+            return;
+        }
+
+        CaptureRangePointer(_rangePointer);
+        ViewModel.ApplyMosaicRange(_rangeSelect.AnchorIndex, _rangeSelect.AnchorIndex);
+        StampRangeAnchor();
+        e.Handled = true;
+    }
+
+    private void GrdTagAssets_RangeReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
+        {
+            return;
+        }
+
+        if (_rangeSelect.IsActive)
+        {
+            ApplyRangeHover(e);
+            _rangeConsumedTap = true;
+            e.Handled = true;
+        }
+
+        EndRangeSelect(e.Pointer);
+    }
+
+    private void GrdTagAssets_RangeCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
+        {
+            EndRangeSelect(null);
+        }
+    }
+
+    private void ApplyRangeHover(PointerRoutedEventArgs e)
+    {
+        if (_rangeSelect is null)
+        {
+            return;
+        }
+
+        var hover = HitMosaicItem(e);
+        var hoverIndex = hover is null ? _rangeSelect.EndIndex : ViewModel.Assets.IndexOf(hover);
+        var flags = ViewModel.Assets.Select(asset => asset.IsFolderHeader).ToList();
+        _rangeSelect.Highlight(flags, hoverIndex);
+        ViewModel.ApplyMosaicRange(_rangeSelect.AnchorIndex, _rangeSelect.EndIndex);
+        StampRangeAnchor();
+    }
+
+    private void StampRangeAnchor()
+    {
+        if (_rangeSelect is null)
+        {
+            return;
+        }
+
+        var end = (uint)_rangeSelect.EndIndex < (uint)ViewModel.Assets.Count
+            ? ViewModel.Assets[_rangeSelect.EndIndex]
+            : null;
+        if (end is { IsFolderHeader: false })
+        {
+            _selectedMosaicAsset = end;
+        }
+    }
+
+    private AssetItem? HitMosaicItem(PointerRoutedEventArgs e)
+    {
+        var local = e.GetCurrentPoint(GrdTagAssets).Position;
+        var origin = GrdTagAssets.TransformToVisual(null).TransformPoint(default);
+        var (x, y) = RangeSelect.ToWindowPoint(local.X, local.Y, origin.X, origin.Y);
+        var windowPoint = new Windows.Foundation.Point(x, y);
+        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(windowPoint, GrdTagAssets))
+        {
+            var item = FindAssetItem(hit);
+            if (item is not null)
+            {
+                return item;
+            }
+        }
+
+        return FindAssetItem(e.OriginalSource);
+    }
+
+    private void CaptureRangePointer(Pointer? pointer)
+    {
+        pointer ??= _rangePointer;
+        if (pointer is null || _rangeCaptured)
+        {
+            return;
+        }
+
+        _rangeCaptured = GrdTagAssets.CapturePointer(pointer);
+        _rangePointer = pointer;
+    }
+
+    private void EndRangeSelect(Pointer? pointer)
+    {
+        if (pointer is not null || _rangePointer is not null)
+        {
+            try
+            {
+                GrdTagAssets.ReleasePointerCapture(pointer ?? _rangePointer!);
+            }
+            catch (ArgumentException)
+            {
+                // Not captured.
+            }
+        }
+
+        _rangeSelect = null;
+        _rangePointerId = 0;
+        _rangePointer = null;
+        _rangeCaptured = false;
     }
 
     private void FocusMosaicTile(AssetItem item)

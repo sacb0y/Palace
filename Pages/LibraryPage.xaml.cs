@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI.Core;
+using Windows.UI.Input;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -35,6 +36,15 @@ public sealed partial class LibraryPage : Page
     private bool _mosaicSortArmed;
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
+    private RangeSelectSession? _rangeSelect;
+    private long _rangePressMs;
+    private Windows.Foundation.Point _rangePressPoint;
+    private uint _rangePointerId;
+    private Pointer? _rangePointer;
+    private bool _rangeCaptured;
+    private bool _rangeConsumedTap;
+    private int _rangeConsumedFrom;
+    private int _rangeConsumedTo;
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
@@ -96,6 +106,12 @@ public sealed partial class LibraryPage : Page
             HookOverlayGallery();
             GrdAssets.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(GrdAssets_DoubleTapped), true);
             GrdAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdAssets_KeyDown), true);
+            GrdAssets.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(GrdAssets_RangePressed), true);
+            GrdAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdAssets_RangeMoved), true);
+            GrdAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdAssets_RangeReleased), true);
+            GrdAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdAssets_RangeCaptureLost), true);
+            GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
+            GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
             RefreshRealizedTiles();
             if (ViewModel.Assets.Count > 0)
             {
@@ -437,6 +453,269 @@ public sealed partial class LibraryPage : Page
         _mosaicArrow = VirtualKey.None;
         NoteHeaderGesture();
         e.Handled = true;
+    }
+
+    private static RangeSelectPointer ToRangePointer(PointerDeviceType type) => type switch
+    {
+        PointerDeviceType.Touch => RangeSelectPointer.Touch,
+        PointerDeviceType.Pen => RangeSelectPointer.Pen,
+        PointerDeviceType.Mouse => RangeSelectPointer.Mouse,
+        _ => RangeSelectPointer.Other
+    };
+
+    private void GrdAssets_RangePressed(object sender, PointerRoutedEventArgs e)
+    {
+        _rangeConsumedTap = false;
+        if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(GrdAssets);
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse && !point.Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        var item = FindAssetItem(e.OriginalSource);
+        if (item is null
+            || !RangeSelect.AllowsGesture(true, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
+        {
+            return;
+        }
+
+        var index = ViewModel.Assets.IndexOf(item);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _rangeSelect = new RangeSelectSession(ToRangePointer(e.Pointer.PointerDeviceType), index);
+        _rangePressMs = Environment.TickCount64;
+        _rangePressPoint = point.Position;
+        _rangePointerId = e.Pointer.PointerId;
+        _rangePointer = e.Pointer;
+        _rangeCaptured = false;
+    }
+
+    private void GrdAssets_RangeMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(GrdAssets);
+        var dx = point.Position.X - _rangePressPoint.X;
+        var dy = point.Position.Y - _rangePressPoint.Y;
+        var elapsed = (int)(Environment.TickCount64 - _rangePressMs);
+        if (!_rangeSelect.IsActive)
+        {
+            if (RangeSelect.CancelsHold(_rangeSelect.Pointer, elapsed, dx, dy))
+            {
+                EndRangeSelect(e.Pointer);
+                return;
+            }
+
+            if (!_rangeSelect.TryActivate(elapsed, dx, dy))
+            {
+                return;
+            }
+        }
+
+        if (_rangeSelect.RequiresPointerCapture)
+        {
+            CaptureRangePointer(e.Pointer);
+        }
+
+        ApplyRangeHover(e, liveDrag: true);
+        e.Handled = true;
+    }
+
+    private void GrdAssets_RangeHolding(object sender, HoldingRoutedEventArgs e)
+    {
+        if (_rangeSelect is null || ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
+        if (e.HoldingState == HoldingState.Canceled && !_rangeSelect.IsActive)
+        {
+            EndRangeSelect(null);
+            return;
+        }
+
+        if (e.HoldingState != HoldingState.Started)
+        {
+            return;
+        }
+
+        var elapsed = (int)(Environment.TickCount64 - _rangePressMs);
+        if (!_rangeSelect.TryActivateHold(elapsed))
+        {
+            return;
+        }
+
+        CaptureRangePointer(_rangePointer);
+        ApplyRangeIndexes(_rangeSelect.Highlight(MosaicHeaderFlags(), _rangeSelect.AnchorIndex), liveDrag: true);
+        e.Handled = true;
+    }
+
+    private void GrdAssets_RangeReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
+        {
+            return;
+        }
+
+        if (_rangeSelect.IsActive)
+        {
+            ApplyRangeHover(e, liveDrag: false);
+            _rangeConsumedTap = true;
+            _rangeConsumedFrom = _rangeSelect.AnchorIndex;
+            _rangeConsumedTo = _rangeSelect.EndIndex;
+            e.Handled = true;
+        }
+
+        EndRangeSelect(e.Pointer);
+    }
+
+    private void GrdAssets_RangeTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (!_rangeConsumedTap)
+        {
+            return;
+        }
+
+        _rangeConsumedTap = false;
+        var indexes = RangeSelect.ContiguousIndexes(MosaicHeaderFlags(), _rangeConsumedFrom, _rangeConsumedTo);
+        ApplyRangeIndexes(indexes, liveDrag: false, _rangeConsumedFrom, _rangeConsumedTo);
+    }
+
+    private void GrdAssets_RangeCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
+        {
+            if (_rangeSelect.IsActive)
+            {
+                var from = _rangeSelect.AnchorIndex;
+                var to = _rangeSelect.EndIndex;
+                var indexes = RangeSelect.ContiguousIndexes(MosaicHeaderFlags(), from, to);
+                EndRangeSelect(null);
+                ApplyRangeIndexes(indexes, liveDrag: false, from, to);
+                return;
+            }
+
+            EndRangeSelect(null);
+        }
+    }
+
+    private void ApplyRangeHover(PointerRoutedEventArgs e, bool liveDrag)
+    {
+        if (_rangeSelect is null)
+        {
+            return;
+        }
+
+        var hover = HitMosaicItem(e);
+        var hoverIndex = hover is null ? _rangeSelect.EndIndex : ViewModel.Assets.IndexOf(hover);
+        ApplyRangeIndexes(_rangeSelect.Highlight(MosaicHeaderFlags(), hoverIndex), liveDrag);
+    }
+
+    private IReadOnlyList<bool> MosaicHeaderFlags() =>
+        ViewModel.Assets.Select(asset => asset.IsFolderHeader).ToList();
+
+    private void ApplyRangeIndexes(IReadOnlyList<int> indexes, bool liveDrag, int? from = null, int? to = null)
+    {
+        _suppressMosaicSelection = true;
+        try
+        {
+            var want = indexes.ToHashSet();
+            for (var i = 0; i < ViewModel.Assets.Count; i++)
+            {
+                var on = want.Contains(i);
+                if (on == GrdAssets.IsSelected(i))
+                {
+                    continue;
+                }
+
+                if (on)
+                {
+                    GrdAssets.Select(i);
+                }
+                else
+                {
+                    GrdAssets.Deselect(i);
+                }
+            }
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+
+        if (from is not null && to is not null)
+        {
+            ViewModel.ApplyMosaicRange(from.Value, to.Value, RangeSelect.LoadsPreview(liveDrag));
+        }
+        else if (_rangeSelect is not null)
+        {
+            ViewModel.ApplyMosaicRange(
+                _rangeSelect.AnchorIndex,
+                _rangeSelect.EndIndex,
+                RangeSelect.LoadsPreview(liveDrag));
+        }
+    }
+
+    private AssetItem? HitMosaicItem(PointerRoutedEventArgs e)
+    {
+        var local = e.GetCurrentPoint(GrdAssets).Position;
+        var origin = GrdAssets.TransformToVisual(null).TransformPoint(default);
+        var (x, y) = RangeSelect.ToWindowPoint(local.X, local.Y, origin.X, origin.Y);
+        var windowPoint = new Windows.Foundation.Point(x, y);
+        foreach (var hit in VisualTreeHelper.FindElementsInHostCoordinates(windowPoint, GrdAssets))
+        {
+            var item = FindAssetItem(hit);
+            if (item is not null)
+            {
+                return item;
+            }
+        }
+
+        return FindAssetItem(e.OriginalSource);
+    }
+
+    private void CaptureRangePointer(Pointer? pointer)
+    {
+        pointer ??= _rangePointer;
+        if (pointer is null || _rangeCaptured)
+        {
+            return;
+        }
+
+        _rangeCaptured = GrdAssets.CapturePointer(pointer);
+        _rangePointer = pointer;
+    }
+
+    private void EndRangeSelect(Pointer? pointer)
+    {
+        var release = pointer ?? _rangePointer;
+        _rangeSelect = null;
+        _rangePointerId = 0;
+        _rangePointer = null;
+        _rangeCaptured = false;
+
+        if (release is not null)
+        {
+            try
+            {
+                GrdAssets.ReleasePointerCapture(release);
+            }
+            catch (ArgumentException)
+            {
+                // Not captured.
+            }
+        }
     }
 
     private void FolderGroupHeader_Tapped(object sender, TappedRoutedEventArgs e)

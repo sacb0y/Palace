@@ -461,6 +461,7 @@ Test-UI 'Tag scope exists' { winapp ui wait-for 'SelTagScope' -a $AppPid -t 4000
 Test-UI 'Tag search exists' { winapp ui wait-for 'AsbTagSearch' -a $AppPid -t 4000 }
 Test-UI 'Tag mosaic exists' { winapp ui wait-for 'GrdTagAssets' -a $AppPid -t 4000 }
 Test-UI 'Tag mosaic sort combo exists' { winapp ui wait-for 'CmbTagMosaicSort' -a $AppPid -t 4000 }
+Test-UI 'Tags select-mode toggle exists' { winapp ui wait-for 'TglTagSelectMode' -a $AppPid -t 4000 }
 Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000 }
 Test-UI 'Set tag name' { winapp ui set-value 'TxtNewTagName' 'Sonic' -a $AppPid }
 Test-UI 'Create ungrouped tag' {

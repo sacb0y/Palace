@@ -110,7 +110,53 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasSelection { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsSelectMode { get; set; }
+
+    [ObservableProperty]
+    public partial string SelectionSummary { get; set; } = "";
+
+    private readonly List<AssetItem> _mosaicSelection = [];
+
     private void Notify(string message) => StatusText = message;
+
+    partial void OnIsSelectModeChanged(bool value) => RefreshMosaicSelectionSummary();
+
+    private void RefreshMosaicSelectionSummary() =>
+        SelectionSummary = SelectMode.Summary(IsSelectMode, _mosaicSelection.Count);
+
+    public void SetMosaicSelection(IEnumerable<AssetItem> items)
+    {
+        _mosaicSelection.Clear();
+        _mosaicSelection.AddRange(items.Where(item => !item.IsFolderHeader && !string.IsNullOrEmpty(item.Id)));
+        var ids = _mosaicSelection.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var asset in Assets)
+        {
+            asset.IsSelected = ids.Contains(asset.Id);
+        }
+
+        RefreshMosaicSelectionSummary();
+    }
+
+    public void ToggleMosaicAsset(AssetItem item)
+    {
+        if (item.IsFolderHeader || string.IsNullOrEmpty(item.Id))
+        {
+            return;
+        }
+
+        item.IsSelected = !item.IsSelected;
+        _mosaicSelection.Clear();
+        _mosaicSelection.AddRange(Assets.Where(asset => asset.IsSelected));
+        RefreshMosaicSelectionSummary();
+    }
+
+    public void ApplyMosaicRange(int from, int to)
+    {
+        var flags = Assets.Select(asset => asset.IsFolderHeader).ToList();
+        var indexes = RangeSelect.ContiguousIndexes(flags, from, to);
+        SetMosaicSelection(indexes.Select(i => Assets[i]));
+    }
 
     [ObservableProperty]
     public partial string? SelectedEffectiveColor { get; set; }
@@ -1058,6 +1104,8 @@ public partial class TagsViewModel : ObservableObject
 
                 Assets.Clear();
                 MosaicGroups.Clear();
+                _mosaicSelection.Clear();
+                RefreshMosaicSelectionSummary();
                 MosaicReset?.Invoke();
             });
             return;
@@ -1128,6 +1176,8 @@ public partial class TagsViewModel : ObservableObject
 
                 Assets.Clear();
                 MosaicGroups.Clear();
+                _mosaicSelection.Clear();
+                RefreshMosaicSelectionSummary();
                 MosaicReset?.Invoke();
             });
 

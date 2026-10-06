@@ -1,7 +1,8 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// Select-mode rules for the Library mosaic. Off WinUI so the toggle and count text are testable.
+/// Select-mode rules for the Library and Tags mosaics. Off WinUI so the
+/// toggle and count text are testable.
 /// </summary>
 public static class SelectMode
 {
@@ -19,7 +20,7 @@ public static class SelectMode
             return $"{selectedCount} selected";
         }
 
-        return selectMode ? "Click tiles to select" : "";
+        return selectMode ? "Click or drag tiles to select" : "";
     }
 
     /// <summary>
