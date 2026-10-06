@@ -128,7 +128,7 @@ No new tables. No Magick reference. No SwapChainPanel yet.
 Only after Phase A, and only for files we can already decode (WIC JPEG/PNG/TIFF/JXR, plus any format a *green* packaging spike adds).
 
 - Overlay / `GalleryWindow` image surface becomes a **`SwapChainPanel` + DXGI** swapchain (`R16G16B16A16_FLOAT` / scRGB, or HDR10 when the display is HDR). `BitmapImage` stays for SDR and for thumbs
-- Detect display HDR (`DXGI_OUTPUT_DESC1` / advanced color). If the panel is SDR (G22, not scRGB/HDR10), apply **map CLL to display** + clip (`PresentMap`); do not clip auto present to 203 paper white. The map peak is sticky highest content MaxCLL (`StickyContentMaxNits`), not the current Fit viewport vs 1:1 native decode. HDR panels keep scRGB + Settings Peak override. Do not ship SKIV’s full enum on day one.
+- Detect display HDR (`DXGI_OUTPUT_DESC1` / advanced color). If the panel is SDR (G22, not scRGB/HDR10), apply **map CLL to display** + clip (`PresentMap`); do not clip auto present to 203 paper white. The map peak is sticky highest content MaxCLL (`StickyContentMaxNitsForStill`), not the current Fit viewport vs 1:1 native decode, and resets when the still path changes. HDR panels keep scRGB + Settings Peak override. Do not ship SKIV’s full enum on day one.
 - Visualization (heatmap / gamut / SDR) is a later toggle on this same surface
 - Load happens on explicit Open, off the UI thread, then present on the dispatcher. Honor overlay close / `_filterEpoch`-style cancel
 - Thumbs remain `ColorManageToSRgb` JPEG. Viewport upgrade may write a larger SDR JPEG; it does not write a float EXR into the thumb cache

@@ -333,10 +333,12 @@ public sealed partial class GalleryStillSurface : UserControl
                 return;
             }
 
-            // Highest pixel / header CLL wins. First Fit is often a viewport
-            // decode whose peak is below native; pinning that first peak would
-            // leave 1:1 overblown. Native 1:1 then keeps that higher map on Fit.
-            _hdrMapMaxNits = GalleryPresent.StickyContentMaxNits(
+            // Highest pixel / header CLL wins on this still (Fit viewport then
+            // 1:1 native). A new path (next/prev) drops the prior peak so a
+            // dimmer HDR still is not crushed.
+            _hdrMapMaxNits = GalleryPresent.StickyContentMaxNitsForStill(
+                still,
+                _hdrFramePath,
                 frame.MaxScrgb,
                 frame.MaxNits,
                 gallery.CurrentProbe.MaxCllNits,
@@ -508,7 +510,9 @@ public sealed partial class GalleryStillSurface : UserControl
             (dipW, dipH) = HdrPanelDips();
             scale = XamlRoot?.RasterizationScale ?? 1.0;
             peakOverride = GalleryPeak.PresentOverrideNits;
-            mapMaxNits = GalleryPresent.StickyContentMaxNits(
+            mapMaxNits = GalleryPresent.StickyContentMaxNitsForStill(
+                _hdrFramePath,
+                g.PreviewImageUri ?? g.CurrentPath,
                 f.MaxScrgb,
                 f.MaxNits,
                 g.CurrentProbe.MaxCllNits,

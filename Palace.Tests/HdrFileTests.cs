@@ -239,6 +239,29 @@ public sealed class HdrFileTests
         // Pin-first (Autofix) would freeze 400 and leave 1:1 overblown.
         Assert.NotEqual(viewport, firstFitWithCll, 2);
         Assert.Equal(0, GalleryPresent.StickyContentMaxNits(-4, -8), 2);
+
+        // Next/prev: a dimmer still must not keep the prior MaxCLL.
+        var nextStill = GalleryPresent.StickyContentMaxNitsForStill(
+            @"C:\hdr\dim.avif",
+            @"C:\hdr\bright.avif",
+            5f,
+            0,
+            null,
+            4000f);
+        Assert.Equal(viewport, nextStill, 2);
+        Assert.NotEqual(4000f, nextStill, 2);
+        var sameStill = GalleryPresent.StickyContentMaxNitsForStill(
+            @"C:\hdr\bright.avif",
+            @"C:\hdr\bright.avif",
+            5f,
+            0,
+            1000,
+            4000f);
+        Assert.Equal(4000f, sameStill, 2);
+        Assert.Equal(
+            0f,
+            GalleryPresent.StickyContentMaxNitsForStill(null, @"C:\hdr\bright.avif", 5f, 0, null, 4000f),
+            2);
     }
 
     [Fact]

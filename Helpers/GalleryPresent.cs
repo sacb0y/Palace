@@ -225,6 +225,26 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// Sticky peak is per still. Next/prev must not keep a prior MaxCLL
+    /// (that would crush a dimmer HDR still). Same path (Fit ↔ 1:1) keeps
+    /// the highest known.
+    /// </summary>
+    public static float StickyContentMaxNitsForStill(
+        string? framePath,
+        string? knownPath,
+        float frameMaxScrgb,
+        float frameMaxNits,
+        int? probeMaxCllNits,
+        float knownNits)
+    {
+        var known = !string.IsNullOrEmpty(framePath)
+            && string.Equals(framePath, knownPath, StringComparison.OrdinalIgnoreCase)
+            ? knownNits
+            : 0f;
+        return StickyContentMaxNits(frameMaxScrgb, frameMaxNits, probeMaxCllNits, known);
+    }
+
+    /// <summary>
     /// HDR panels: clip only (unknown peak → PQ 10 000). SDR: SKIV map
     /// CLL to G22 composition white (scRGB 1.0 / 80 nits) + clip. Never
     /// auto-clip to 203 paper white, and never map to an EDID 80–220 peak
