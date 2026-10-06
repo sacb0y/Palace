@@ -294,14 +294,38 @@
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
-            <AutoSuggestBox
-                x:Name="AsbSearch"
-                Grid.Row="2"
-                AutomationProperties.AutomationId="AsbSearch"
-                PlaceholderText="Search filename, tags, prompt, model"
-                QueryIcon="Find"
-                QuerySubmitted="AsbSearch_QuerySubmitted"
-                Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <AutoSuggestBox
+                    x:Name="AsbSearch"
+                    AutomationProperties.AutomationId="AsbSearch"
+                    PlaceholderText="Search filename, tags, prompt, model"
+                    QueryIcon="Find"
+                    QuerySubmitted="AsbSearch_QuerySubmitted"
+                    Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Bottom"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <ic:FluentIcon
+                        VerticalAlignment="Center"
+                        Icon="ArrowSort"
+                        IconSize="Size16"
+                        IconVariant="Regular" />
+                    <ComboBox
+                        x:Name="CmbMosaicSort"
+                        MinWidth="168"
+                        AutomationProperties.AutomationId="CmbMosaicSort"
+                        AutomationProperties.Name="Sort"
+                        Header="Sort"
+                        ItemsSource="{x:Bind ViewModel.SortLabels, Mode=OneWay}"
+                        SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=TwoWay}" />
+                </StackPanel>
+            </Grid>
             <ItemsView
                 x:Name="GrdAssets"
                 Grid.Row="3"

@@ -164,15 +164,19 @@ public sealed class CatalogService
             tx.Commit();
         });
 
-    public Task<IReadOnlyList<Asset>> GetAssetsAsync(string? folderPrefix = null, string? sourceId = null, string? projectId = null) =>
+    public Task<IReadOnlyList<Asset>> GetAssetsAsync(
+        string? folderPrefix = null,
+        string? sourceId = null,
+        string? projectId = null,
+        MosaicSort sort = MosaicSort.Name) =>
         _db.ReadAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = SelectAssetSql + """
+            cmd.CommandText = SelectAssetSql + $"""
                 WHERE ($source IS NULL OR SourceFolderId = $source)
                   AND ($prefix IS NULL OR Path LIKE $like)
                   AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
-                ORDER BY FileName COLLATE NOCASE
+                {MosaicSortOrder.OrderBySql(sort)}
                 """;
             cmd.Parameters.AddWithValue("$source", (object?)sourceId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$prefix", (object?)folderPrefix ?? DBNull.Value);
@@ -748,7 +752,10 @@ public sealed class CatalogService
             return Convert.ToInt32(cmd.ExecuteScalar());
         });
 
-    public Task<IReadOnlyList<Asset>> GetAssetsForTagsAsync(IEnumerable<string> tagIds, string? projectId = null) =>
+    public Task<IReadOnlyList<Asset>> GetAssetsForTagsAsync(
+        IEnumerable<string> tagIds,
+        string? projectId = null,
+        MosaicSort sort = MosaicSort.Name) =>
         _db.ReadAsync(conn =>
         {
             var ids = tagIds.Distinct().ToList();
@@ -770,7 +777,7 @@ public sealed class CatalogService
             cmd.CommandText = SelectAssetSql + $"""
                  WHERE Id IN (SELECT DISTINCT AssetId FROM AssetTag WHERE TagId IN ({string.Join(",", names)}))
                    AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
-                 ORDER BY FileName COLLATE NOCASE
+                 {MosaicSortOrder.OrderBySql(sort)}
                 """;
             return ReadAssets(cmd);
         });
@@ -778,19 +785,21 @@ public sealed class CatalogService
     public Task<IReadOnlyList<Asset>> GetAssetsForTagFilterAsync(
         IReadOnlyList<IReadOnlyCollection<string>> expandedIdSets,
         TagFilterMode mode,
-        string? projectId = null) =>
+        string? projectId = null,
+        MosaicSort sort = MosaicSort.Name) =>
         _db.ReadAsync<IReadOnlyList<Asset>>(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
             var projectClause =
                 "($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))";
+            var order = MosaicSortOrder.OrderBySql(sort);
 
             if (expandedIdSets.Count == 0 || expandedIdSets.All(set => set.Count == 0))
             {
                 cmd.CommandText = SelectAssetSql + $"""
                      WHERE {projectClause}
-                     ORDER BY FileName COLLATE NOCASE
+                     {order}
                     """;
                 return ReadAssets(cmd);
             }
@@ -822,7 +831,7 @@ public sealed class CatalogService
                 {
                     cmd.CommandText = SelectAssetSql + $"""
                          WHERE {projectClause}
-                         ORDER BY FileName COLLATE NOCASE
+                         {order}
                         """;
                     return ReadAssets(cmd);
                 }
@@ -830,7 +839,7 @@ public sealed class CatalogService
                 cmd.CommandText = SelectAssetSql + $"""
                      WHERE Id IN ({string.Join(" INTERSECT ", parts)})
                        AND {projectClause}
-                     ORDER BY FileName COLLATE NOCASE
+                     {order}
                     """;
                 return ReadAssets(cmd);
             }
@@ -849,7 +858,7 @@ public sealed class CatalogService
             cmd.CommandText = SelectAssetSql + $"""
                  WHERE Id {op} ({unionSql})
                    AND {projectClause}
-                 ORDER BY FileName COLLATE NOCASE
+                 {order}
                 """;
             return ReadAssets(cmd);
         });
@@ -1197,15 +1206,18 @@ public sealed class CatalogService
             }
         });
 
-    public Task<IReadOnlyList<Asset>> SearchAsync(string query, string? projectId = null) =>
+    public Task<IReadOnlyList<Asset>> SearchAsync(
+        string query,
+        string? projectId = null,
+        MosaicSort sort = MosaicSort.Name) =>
         _db.ReadAsync(conn =>
         {
             var match = ToFtsQuery(query);
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = SelectAssetSql + """
+            cmd.CommandText = SelectAssetSql + $"""
                  WHERE RowId IN (SELECT rowid FROM AssetFts WHERE AssetFts MATCH $q)
                    AND ($project IS NULL OR SourceFolderId IN (SELECT Id FROM SourceFolder WHERE ProjectId = $project))
-                 ORDER BY FileName COLLATE NOCASE
+                 {MosaicSortOrder.OrderBySql(sort)}
                 """;
             cmd.Parameters.AddWithValue("$q", match);
             cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);

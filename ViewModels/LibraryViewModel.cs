@@ -102,6 +102,26 @@ public partial class LibraryViewModel : ObservableObject
     public partial double MosaicRowHeight { get; set; } = 140;
 
     [ObservableProperty]
+    public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
+
+    public IReadOnlyList<string> SortLabels => MosaicSortOrder.Labels;
+
+    public int MosaicSortIndex
+    {
+        get => MosaicSortOrder.IndexOf(MosaicSort);
+        set
+        {
+            var next = MosaicSortOrder.FromIndex(value);
+            if (next == MosaicSort)
+            {
+                return;
+            }
+
+            MosaicSort = next;
+        }
+    }
+
+    [ObservableProperty]
     public partial AssetItem? SelectedAsset { get; set; }
 
     [ObservableProperty]
@@ -236,6 +256,23 @@ public partial class LibraryViewModel : ObservableObject
         _suppressFilter = false;
         SyncFilterFlags();
         RebuildBreadcrumbs();
+        _ = ApplyFilterAsync();
+    }
+
+    partial void OnMosaicSortChanged(MosaicSort value)
+    {
+        OnPropertyChanged(nameof(MosaicSortIndex));
+        if (_suppressFilter)
+        {
+            return;
+        }
+
+        if (AppServices.CurrentProject is { } project)
+        {
+            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(project.Id)] =
+                MosaicSortOrder.Persist(value);
+        }
+
         _ = ApplyFilterAsync();
     }
 
@@ -387,6 +424,7 @@ public partial class LibraryViewModel : ObservableObject
         try
         {
             LoadRowHeight();
+            LoadMosaicSort();
             LoadRecentTags();
             await RefreshQuietAsync();
         }
@@ -1207,22 +1245,23 @@ public partial class LibraryViewModel : ObservableObject
             {
                 var memberships = _memberships.Count > 0 ? _memberships : (await _catalog.GetMembershipsAsync()).ToList();
                 var sets = TagFilter.ExpandEach(filterIds, memberships);
-                assets = await _catalog.GetAssetsForTagFilterAsync(sets, matchMode, projectId);
+                assets = await _catalog.GetAssetsForTagFilterAsync(sets, matchMode, projectId, MosaicSort);
             }
             else if (folderPath is not null)
             {
-                assets = await _catalog.GetAssetsAsync(folderPrefix: folderPath, projectId: projectId);
+                assets = await _catalog.GetAssetsAsync(
+                    folderPrefix: folderPath,
+                    projectId: projectId,
+                    sort: MosaicSort);
             }
             else
             {
-                assets = _allAssets.Count > 0
-                    ? _allAssets
-                    : await _catalog.GetAssetsAsync(projectId: projectId);
+                assets = await _catalog.GetAssetsAsync(projectId: projectId, sort: MosaicSort);
             }
 
             if (!string.IsNullOrWhiteSpace(search))
             {
-                var hits = await _catalog.SearchAsync(search, projectId);
+                var hits = await _catalog.SearchAsync(search, projectId, MosaicSort);
                 var set = hits.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
                 assets = assets.Where(a => set.Contains(a.Id)).ToList();
             }
@@ -2111,6 +2150,15 @@ public partial class LibraryViewModel : ObservableObject
             int i => Math.Clamp(i, 96, 280),
             _ => 140
         };
+    }
+
+    private void LoadMosaicSort()
+    {
+        var key = MosaicSortOrder.SettingsKey(AppServices.CurrentProject.Id);
+        var next = MosaicSortOrder.Parse(ApplicationData.Current.LocalSettings.Values[key]);
+        _suppressFilter = true;
+        MosaicSort = next;
+        _suppressFilter = false;
     }
 
     private static string RowHeightKey(string projectId) => $"MosaicRowHeight_{projectId}";

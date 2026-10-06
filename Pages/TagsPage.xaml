@@ -286,11 +286,37 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock
-                x:Name="TxtTagAssetCount"
-                AutomationProperties.AutomationId="TxtTagAssetCount"
-                Style="{StaticResource BodyTextBlockStyle}"
-                Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}" />
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    x:Name="TxtTagAssetCount"
+                    VerticalAlignment="Bottom"
+                    AutomationProperties.AutomationId="TxtTagAssetCount"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}" />
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Bottom"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <ic:FluentIcon
+                        VerticalAlignment="Center"
+                        Icon="ArrowSort"
+                        IconSize="Size16"
+                        IconVariant="Regular" />
+                    <ComboBox
+                        x:Name="CmbTagMosaicSort"
+                        MinWidth="168"
+                        AutomationProperties.AutomationId="CmbTagMosaicSort"
+                        AutomationProperties.Name="Sort"
+                        Header="Sort"
+                        ItemsSource="{x:Bind ViewModel.SortLabels, Mode=OneWay}"
+                        SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=TwoWay}" />
+                </StackPanel>
+            </Grid>
             <ScrollViewer
                 x:Name="GrdTagAssets"
                 Grid.Row="1"

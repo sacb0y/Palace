@@ -24,6 +24,19 @@ public enum TagFilterMode
     None
 }
 
+/// <summary>User mosaic sort for Library and Tags. Mapped to SQL in <c>MosaicSortOrder</c>.</summary>
+public enum MosaicSort
+{
+    DateNewest,
+    DateOldest,
+    DateAdded,
+    Name,
+    NameZ,
+    Size,
+    Rating,
+    Type
+}
+
 public enum TagScope
 {
     All,
