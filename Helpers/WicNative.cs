@@ -34,13 +34,14 @@ public static class WicNative
     /// (<c>0x88982F50</c>). <c>CoCreate(CLSID_WICWmpDecoder)</c> and
     /// <c>CreateAsync(JpegXrDecoderId)</c> both QI
     /// <c>E_NOINTERFACE</c> (<c>0x80004002</c>); some WASDK builds
-    /// lack <c>BitmapDecoder.JpegXrDecoderId</c>. BitmapImage SDR already
-    /// opens these files. Packaged HDR present uses
-    /// <c>CreateAsync(stream)</c> then
-    /// <c>GetSoftwareBitmapAsync</c> + <c>LockBuffer</c> (UI hop on
-    /// <c>RPC_E_WRONG_THREAD</c>) — not QI
-    /// <c>GetTypedObjectForIUnknown</c> / <c>ISoftwareBitmapNative</c>.
-    /// Stamp the exact WinRT call on <c>LastWicError</c>.
+    /// lack <c>BitmapDecoder.JpegXrDecoderId</c>. BitmapImage /
+    /// <c>CreateAsync(stream)</c> still opens these files. Packaged
+    /// HDR present: native float CopyPixels first, then QI the WinRT
+    /// decoder/frame (<c>IWinRTObject.ThisPtr</c> +
+    /// <c>QueryInterface</c>) for float/half CopyPixels, then
+    /// <c>CreateStreamOverRandomAccessStream</c>. WinRT unorm
+    /// (<c>Rgba16</c>) clamps HDR — do not present it.
+    /// Stamp the exact call on <c>LastWicError</c>.
     /// </summary>
     public static class WicDecoderOpen
     {
@@ -48,6 +49,8 @@ public static class WicNative
         public const string Handle = "handle";
         public const string Memory = "memory";
         public const string CreateAsync = "CreateAsync";
+        public const string Qi = "qi";
+        public const string Ras = "ras";
         public const string GetSoftwareBitmap = "GetSoftwareBitmap";
         public const string LockBuffer = "LockBuffer";
         public const string GetPixelData = "GetPixelData";
@@ -59,6 +62,8 @@ public static class WicNative
         public static readonly string[] WinrtCalls =
         [
             CreateAsync,
+            Qi,
+            Ras,
             GetSoftwareBitmap,
             LockBuffer,
             GetPixelData,
@@ -71,6 +76,8 @@ public static class WicNative
             Handle,
             Memory,
             CreateAsync,
+            Qi,
+            Ras,
             GetSoftwareBitmap,
             LockBuffer,
             GetPixelData,
@@ -122,13 +129,19 @@ public static class WicNative
     ];
 
     /// <summary>
+    /// Official <c>windows.graphics.imaging.interop.h</c>
+    /// <c>IID_ISoftwareBitmapNative</c>. Do not use
+    /// <c>94c952b4-…</c> (fake <c>E_NOINTERFACE</c>).
+    /// </summary>
+    public static readonly Guid IidSoftwareBitmapNative =
+        new("94BC8415-04EA-4B2E-AF13-4DE95AA898EB");
+
+    /// <summary>
     /// Flattened <c>IInspectable</c> + <c>GetData</c>. Do not inherit
-    /// a C# Inspectable interface. Packaged JXR present uses
-    /// <c>GetSoftwareBitmapAsync</c> + <c>LockBuffer</c> instead of
-    /// this QI (E_NOINTERFACE).
+    /// a C# Inspectable interface.
     /// </summary>
     [ComImport]
-    [Guid("94c952b4-5e6c-4c7a-8c2e-535a0621f5ae")]
+    [Guid("94BC8415-04EA-4B2E-AF13-4DE95AA898EB")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface ISoftwareBitmapNative
     {
@@ -142,10 +155,9 @@ public static class WicNative
 
 #pragma warning disable CA1416 // Linked into Palace.Tests on Linux; callers are Windows-only.
     /// <summary>
-    /// COM factory / unpackaged WIC only. Packaged JXR present must not
-    /// QI WinRT <c>BitmapDecoder</c> / <c>SoftwareBitmap</c> through
-    /// this — <c>GetTypedObjectForIUnknown</c> surfaces
-    /// <c>E_NOINTERFACE</c> even when <c>CreateAsync(stream)</c> worked.
+    /// Typed RCW after a successful <c>QueryInterface</c>. Prefer
+    /// <c>Marshal.QueryInterface</c> on <c>IWinRTObject.ThisPtr</c>
+    /// (in <c>HdrWicDecode</c>) over <c>GetIUnknownForObject</c>.
     /// </summary>
     public static T? TypedFromIUnknown<T>(IntPtr unk) where T : class
     {

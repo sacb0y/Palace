@@ -80,6 +80,8 @@ public sealed class WicNativeTests
                 "handle",
                 "memory",
                 "CreateAsync",
+                "qi",
+                "ras",
                 "GetSoftwareBitmap",
                 "LockBuffer",
                 "GetPixelData",
@@ -89,6 +91,8 @@ public sealed class WicNativeTests
         Assert.Equal(
             [
                 "CreateAsync",
+                "qi",
+                "ras",
                 "GetSoftwareBitmap",
                 "LockBuffer",
                 "GetPixelData",
@@ -121,6 +125,19 @@ public sealed class WicNativeTests
         Assert.Equal(
             "WIC decoder unorm",
             WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.UnormClamp));
+        Assert.Equal(
+            "WIC decoder qi 80004002",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.Qi,
+                unchecked((int)0x80004002)));
+        Assert.Equal(
+            "WIC decoder ras 88982F50",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.Ras,
+                unchecked((int)0x88982F50)));
+        Assert.Equal(
+            Guid.Parse("94BC8415-04EA-4B2E-AF13-4DE95AA898EB"),
+            WicNative.IidSoftwareBitmapNative);
         Assert.True(
             WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
         Assert.True(
