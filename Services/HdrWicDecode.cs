@@ -762,11 +762,11 @@ internal static class HdrWicDecode
             bool measure,
             CancellationToken cancellation)
         {
-            IWICImagingFactory? factory = null;
-            IWICBitmapDecoder? decoder = null;
-            IWICBitmapFrameDecode? frame = null;
-            IWICBitmapScaler? scaler = null;
-            IWICFormatConverter? converter = null;
+            WicNative.IWICImagingFactory? factory = null;
+            WicNative.IWICBitmapDecoder? decoder = null;
+            WicNative.IWICBitmapFrameDecode? frame = null;
+            WicNative.IWICBitmapScaler? scaler = null;
+            WicNative.IWICFormatConverter? converter = null;
             try
             {
                 factory = CreateFactory();
@@ -792,13 +792,13 @@ internal static class HdrWicDecode
 
                 var (scaleW, scaleH) = HdrPixels.SourceScaleSize(
                     (int)storedW, (int)storedH, nativeW, nativeH, decodeW, decodeH);
-                IWICBitmapSource source = frame;
+                var source = WicNative.AsSource(frame);
                 if (scaleW > 0 && scaleH > 0 && (scaleW != (int)storedW || scaleH != (int)storedH))
                 {
                     cancellation.ThrowIfCancellationRequested();
                     factory.CreateBitmapScaler(out scaler);
-                    scaler.Initialize(frame, (uint)scaleW, (uint)scaleH, InterpolationLinear);
-                    source = scaler;
+                    scaler.Initialize(source, (uint)scaleW, (uint)scaleH, InterpolationLinear);
+                    source = WicNative.AsSource(scaler);
                 }
 
                 source.GetPixelFormat(out var format);
@@ -821,7 +821,7 @@ internal static class HdrWicDecode
                     factory.CreateFormatConverter(out converter);
                     var dst = GuidRgbaFloat;
                     converter.Initialize(source, ref dst, 0, IntPtr.Zero, 0, 0);
-                    source = converter;
+                    source = WicNative.AsSource(converter);
                 }
 
                 source.GetSize(out var copyW, out var copyH);
@@ -855,12 +855,12 @@ internal static class HdrWicDecode
             }
         }
 
-        private static IWICImagingFactory CreateFactory()
+        private static WicNative.IWICImagingFactory CreateFactory()
         {
             foreach (var clsid in new[] { ClsidFactory2, ClsidFactory })
             {
                 var type = Type.GetTypeFromCLSID(clsid, throwOnError: false);
-                if (type is not null && Activator.CreateInstance(type) is IWICImagingFactory factory)
+                if (type is not null && Activator.CreateInstance(type) is WicNative.IWICImagingFactory factory)
                 {
                     return factory;
                 }
@@ -869,9 +869,9 @@ internal static class HdrWicDecode
             throw new InvalidOperationException("WIC factory");
         }
 
-        private static uint ReadOrientation(IWICBitmapFrameDecode frame)
+        private static uint ReadOrientation(WicNative.IWICBitmapFrameDecode frame)
         {
-            IWICMetadataQueryReader? reader = null;
+            WicNative.IWICMetadataQueryReader? reader = null;
             try
             {
                 frame.GetMetadataQueryReader(out reader);
@@ -883,7 +883,7 @@ internal static class HdrWicDecode
                              "/ifd/{ushort=48130}"
                          })
                 {
-                    var value = default(PropVariant);
+                    var value = default(WicNative.PropVariant);
                     try
                     {
                         reader.GetMetadataByName(name, ref value);
@@ -915,7 +915,7 @@ internal static class HdrWicDecode
             return 1;
         }
 
-        private static uint ReadUInt(PropVariant value) =>
+        private static uint ReadUInt(WicNative.PropVariant value) =>
             value.vt switch
             {
                 2 => (ushort)(long)value.data1, // VT_I2
@@ -934,116 +934,7 @@ internal static class HdrWicDecode
         }
 
         [DllImport("ole32.dll")]
-        private static extern int PropVariantClear(ref PropVariant pvar);
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct PropVariant
-        {
-            public ushort vt;
-            public ushort reserved1;
-            public ushort reserved2;
-            public ushort reserved3;
-            public IntPtr data1;
-            public IntPtr data2;
-        }
-
-        [ComImport]
-        [Guid("ec5ec8a9-c395-4314-9c77-54d7a935ff70")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IWICImagingFactory
-        {
-            void CreateDecoderFromFilename(
-                [MarshalAs(UnmanagedType.LPWStr)] string wzFilename,
-                IntPtr pguidVendor,
-                uint dwDesiredAccess,
-                uint metadataOptions,
-                out IWICBitmapDecoder ppIDecoder);
-
-            void CreateDecoderFromStream();
-            void CreateDecoderFromFileHandle();
-            void CreateComponentInfo();
-            void CreateDecoder();
-            void CreateEncoder();
-            void CreatePalette();
-            void CreateFormatConverter(out IWICFormatConverter ppIFormatConverter);
-            void CreateBitmapScaler(out IWICBitmapScaler ppIBitmapScaler);
-        }
-
-        [ComImport]
-        [Guid("9edde9c7-3d7c-410a-ba78-0ebaf22aa18d")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IWICBitmapDecoder
-        {
-            void QueryCapability();
-            void Initialize();
-            void GetContainerFormat();
-            void GetDecoderInfo();
-            void CopyPalette();
-            void GetMetadataQueryReader();
-            void GetPreview();
-            void GetColorContexts();
-            void GetThumbnail();
-            void GetFrameCount();
-            void GetFrame(uint index, out IWICBitmapFrameDecode ppIFrameDecode);
-        }
-
-        [ComImport]
-        [Guid("00000120-a8f2-4877-ba0a-fd2b6645fb94")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IWICBitmapSource
-        {
-            void GetSize(out uint puiWidth, out uint puiHeight);
-            void GetPixelFormat(out Guid pPixelFormat);
-            void GetResolution(out double pDpiX, out double pDpiY);
-            void CopyPalette();
-            void CopyPixels(IntPtr prc, uint cbStride, uint cbBufferSize, IntPtr pbBuffer);
-        }
-
-        [ComImport]
-        [Guid("3b16811b-6a43-4ec9-a813-3d930c13b940")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IWICBitmapFrameDecode : IWICBitmapSource
-        {
-            void GetMetadataQueryReader(out IWICMetadataQueryReader ppIMetadataQueryReader);
-        }
-
-        [ComImport]
-        [Guid("00000301-a8f2-4877-ba0a-fd2b6645fb94")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IWICFormatConverter : IWICBitmapSource
-        {
-            void Initialize(
-                IWICBitmapSource pISource,
-                ref Guid dstFormat,
-                uint dither,
-                IntPtr pIPalette,
-                double alphaThresholdPercent,
-                uint paletteTranslate);
-        }
-
-        [ComImport]
-        [Guid("00000302-a8f2-4877-ba0a-fd2b6645fb94")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IWICBitmapScaler : IWICBitmapSource
-        {
-            void Initialize(
-                IWICBitmapSource pISource,
-                uint uiWidth,
-                uint uiHeight,
-                uint mode);
-        }
-
-        [ComImport]
-        [Guid("30989668-e1c9-4597-b395-458eedb808df")]
-        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-        private interface IWICMetadataQueryReader
-        {
-            void GetContainerFormat();
-            void GetLocation();
-            void GetMetadataByName(
-                [MarshalAs(UnmanagedType.LPWStr)] string wzName,
-                ref PropVariant pvarValue);
-        }
+        private static extern int PropVariantClear(ref WicNative.PropVariant pvar);
     }
 
     [ComImport]

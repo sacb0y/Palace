@@ -53,6 +53,7 @@
     <Compile Include="..\Helpers\TagSelection.cs" Link="TagSelection.cs" />
     <Compile Include="..\Helpers\TagSiblings.cs" Link="TagSiblings.cs" />
     <Compile Include="..\Helpers\ThumbFileName.cs" Link="ThumbFileName.cs" />
+    <Compile Include="..\Helpers\WicNative.cs" Link="WicNative.cs" />
     <Compile Include="..\Models\Entities.cs" Link="Entities.cs" />
     <Compile Include="..\Models\Enums.cs" Link="Enums.cs" />
   </ItemGroup>
