@@ -229,6 +229,34 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// When DXGI / CCD cannot be read, PQ / HLG / HDR JPEG XR still present
+    /// scRGB at unknown peak (10 000), not 80-nit SDR tonemap.
+    /// </summary>
+    public static bool UnknownDisplayPresentsHdr(HdrProbe probe)
+    {
+        if (!probe.CanPresentHdr)
+        {
+            return false;
+        }
+
+        return probe.IsPq
+            || probe.IsHlg
+            || probe.Transfer is HdrTransfer.Pq or HdrTransfer.Hlg
+            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance;
+    }
+
+    public static string FormatUnknownDisplayProbe(string reason, bool assumeHdr, string? ccd = null)
+    {
+        var line = $"DXGI {reason} · assumeHdr={(assumeHdr ? 1 : 0)} displayHdr={(assumeHdr ? 1 : 0)}";
+        if (!string.IsNullOrWhiteSpace(ccd))
+        {
+            line += " · " + ccd.Trim();
+        }
+
+        return line;
+    }
+
+    /// <summary>
     /// IDXGISwapChain3::CheckColorSpaceSupport PRESENT bit.
     /// </summary>
     public static bool ColorSpaceSupportsPresent(uint supportFlags) =>

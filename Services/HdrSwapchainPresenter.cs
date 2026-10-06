@@ -42,7 +42,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         float? peakOverrideNits,
         float contentMaxNits,
         Func<bool> stillCurrent,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        HdrProbe contentProbe = default)
     {
         // UI thread only for COM / XAML: layout, device, DXGI probe, resize,
         // upload and Present. The half-float raster runs on the thread pool
@@ -95,7 +96,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 }
 
                 EnsureDevice();
-                ProbeDisplay();
+                ProbeDisplay(contentProbe);
                 if (DisplayIsHdr)
                 {
                     DisplayPeakNits = GalleryPresent.EffectivePeakNits(
@@ -216,85 +217,107 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         }
     }
 
-    private void ProbeDisplay()
+    private void ProbeDisplay(HdrProbe content)
     {
         DisplayIsHdr = false;
         DisplayProbeText = "";
         _autoDisplayNits = 0;
         DisplayPeakNits = 0;
+        string? fail = null;
         try
         {
-            var dxgiDevice = Query(_device, IidDxgiDevice);
+            var dxgiDevice = TryQuery(_device, IidDxgiDevice);
+            if (dxgiDevice == IntPtr.Zero)
+            {
+                ApplyUnknownDisplay("no DXGI device", content);
+                return;
+            }
+
             try
             {
                 var adapter = CallGetAdapter(dxgiDevice);
+                if (adapter == IntPtr.Zero)
+                {
+                    ApplyUnknownDisplay("no adapter", content);
+                    return;
+                }
+
+                try
+                {
+                    var output = FindOutputForWindow(adapter);
+                    if (output == IntPtr.Zero)
+                    {
+                        ApplyUnknownDisplay("no output", content);
+                        return;
+                    }
+
                     try
                     {
-                        var output = FindOutputForWindow(adapter);
-                        if (output == IntPtr.Zero)
+                        var output6 = TryQuery(output, IidDxgiOutput6);
+                        if (output6 == IntPtr.Zero)
                         {
+                            ApplyUnknownDisplay("no Output6", content);
                             return;
                         }
 
                         try
                         {
-                            var output6 = Query(output, IidDxgiOutput6);
-                            try
+                            var desc = new DxgiOutputDesc1();
+                            var hr = CallGetDesc1(output6, ref desc);
+                            if (hr < 0)
                             {
-                                var desc = new DxgiOutputDesc1();
-                                var hr = CallGetDesc1(output6, ref desc);
-                                if (hr >= 0)
-                                {
-                                    var windowsHdr = DisplayHdr.TryWindowsHdrEnabled(desc.DeviceName);
-                                    if (windowsHdr != true)
-                                    {
-                                        windowsHdr = DisplayHdr.TryWindowsHdrEnabled(null) == true
-                                            ? true
-                                            : windowsHdr;
-                                    }
-
-                                    DisplayIsHdr = GalleryPresent.IsHdrOutput(
-                                        desc.ColorSpace,
-                                        desc.MaxLuminance,
-                                        desc.MaxFullFrameLuminance,
-                                        (int)desc.BitsPerColor,
-                                        windowsHdr);
-                                    DisplayProbeText = GalleryPresent.FormatDisplayProbe(
-                                        desc.ColorSpace,
-                                        desc.MaxLuminance,
-                                        desc.MaxFullFrameLuminance,
-                                        (int)desc.BitsPerColor,
-                                        windowsHdr,
-                                        DisplayIsHdr,
-                                        DisplayHdr.LastQuery.Summary);
-                                    DisplayHdr.WriteDebug(DisplayProbeText);
-                                    if (DisplayIsHdr)
-                                    {
-                                        var peak = GalleryPresent.ProbedDisplayLuminance(
-                                            desc.MaxLuminance, desc.MaxFullFrameLuminance);
-                                        _autoDisplayNits = peak;
-                                        DisplayPeakNits = peak;
-                                    }
-                                    else
-                                    {
-                                        // G22: composition white is scRGB 1.0. Do not use EDID nits.
-                                        var sdr = GalleryPresent.SdrPresentPeakNits(
-                                            desc.MaxLuminance, desc.MaxFullFrameLuminance);
-                                        _autoDisplayNits = sdr;
-                                        DisplayPeakNits = sdr;
-                                    }
-                                }
+                                ApplyUnknownDisplay($"descHr=0x{hr:X8}", content);
+                                return;
                             }
-                            finally
+
+                            var windowsHdr = DisplayHdr.TryWindowsHdrEnabled(desc.DeviceName);
+                            if (windowsHdr != true)
                             {
-                                Release(ref output6);
+                                windowsHdr = DisplayHdr.TryWindowsHdrEnabled(null) == true
+                                    ? true
+                                    : windowsHdr;
+                            }
+
+                            DisplayIsHdr = GalleryPresent.IsHdrOutput(
+                                desc.ColorSpace,
+                                desc.MaxLuminance,
+                                desc.MaxFullFrameLuminance,
+                                (int)desc.BitsPerColor,
+                                windowsHdr);
+                            DisplayProbeText = GalleryPresent.FormatDisplayProbe(
+                                desc.ColorSpace,
+                                desc.MaxLuminance,
+                                desc.MaxFullFrameLuminance,
+                                (int)desc.BitsPerColor,
+                                windowsHdr,
+                                DisplayIsHdr,
+                                DisplayHdr.LastQuery.Summary);
+                            DisplayHdr.WriteDebug(DisplayProbeText);
+                            if (DisplayIsHdr)
+                            {
+                                var peak = GalleryPresent.ProbedDisplayLuminance(
+                                    desc.MaxLuminance, desc.MaxFullFrameLuminance);
+                                _autoDisplayNits = peak;
+                                DisplayPeakNits = peak;
+                            }
+                            else
+                            {
+                                var sdr = GalleryPresent.SdrPresentPeakNits(
+                                    desc.MaxLuminance, desc.MaxFullFrameLuminance);
+                                _autoDisplayNits = sdr;
+                                DisplayPeakNits = sdr;
                             }
                         }
                         finally
                         {
-                            Release(ref output);
+                            Release(ref output6);
                         }
                     }
+                    finally
+                    {
+                        Release(ref output);
+                    }
+                }
                 finally
                 {
                     Release(ref adapter);
@@ -305,17 +328,32 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 Release(ref dxgiDevice);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            DisplayIsHdr = false;
-            DisplayProbeText = "DXGI probe throw";
-            _autoDisplayNits = 0;
-            DisplayPeakNits = 0;
+            ApplyUnknownDisplay("throw " + ex.GetType().Name, content);
         }
+    }
+
+    private void ApplyUnknownDisplay(string reason, HdrProbe content)
+    {
+        var assume = GalleryPresent.UnknownDisplayPresentsHdr(content);
+        DisplayIsHdr = assume;
+        _autoDisplayNits = 0;
+        DisplayPeakNits = 0;
+        DisplayProbeText = GalleryPresent.FormatUnknownDisplayProbe(
+            reason,
+            assume,
+            DisplayHdr.LastQuery.Summary);
+        DisplayHdr.WriteDebug(DisplayProbeText);
     }
 
     private IntPtr FindOutputForWindow(IntPtr adapter)
     {
+        if (adapter == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
         var want = TryWindowMonitor();
         IntPtr chosen = IntPtr.Zero;
         for (uint i = 0; ; i++)
@@ -354,7 +392,12 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     {
         try
         {
-            var output6 = Query(output, IidDxgiOutput6);
+            var output6 = TryQuery(output, IidDxgiOutput6);
+            if (output6 == IntPtr.Zero)
+            {
+                return false;
+            }
+
             try
             {
                 var desc = new DxgiOutputDesc1();
@@ -533,14 +576,32 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     private static IntPtr Query(IntPtr unk, Guid iid)
     {
-        var fn = Marshal.GetDelegateForFunctionPointer<QueryInterface>(Vtbl(unk, 0));
-        var hr = fn(unk, ref iid, out var ppv);
-        if (hr < 0 || ppv == IntPtr.Zero)
+        var ppv = TryQuery(unk, iid);
+        if (ppv == IntPtr.Zero)
         {
             throw new InvalidOperationException("QueryInterface failed.");
         }
 
         return ppv;
+    }
+
+    private static IntPtr TryQuery(IntPtr unk, Guid iid)
+    {
+        if (unk == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        try
+        {
+            var fn = Marshal.GetDelegateForFunctionPointer<QueryInterface>(Vtbl(unk, 0));
+            var hr = fn(unk, ref iid, out var ppv);
+            return hr < 0 ? IntPtr.Zero : ppv;
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
     }
 
     private static void Release(ref IntPtr unk)

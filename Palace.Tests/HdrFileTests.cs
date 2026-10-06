@@ -259,6 +259,18 @@ public sealed class HdrFileTests
         var probeLine = GalleryPresent.FormatDisplayProbe(0, 270, 270, 8, null, true, "CCD ACE=1");
         Assert.Contains("displayHdr=1", probeLine);
         Assert.Contains("ACE=1", probeLine);
+        var pq = new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000);
+        var hlg = new HdrProbe(HdrKind.HdrHeif, 9, 18, null);
+        var jxr = new HdrProbe(HdrKind.HdrJxr, 1, null, null);
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(pq));
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(hlg));
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(jxr));
+        Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(HdrProbe.None));
+        Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(new HdrProbe(HdrKind.UltraHdrJpeg, 1, 13, null)));
+        var unknown = GalleryPresent.PresentMap(GalleryPresent.UnknownDisplayPresentsHdr(pq), 1000, 0);
+        Assert.Equal(1f, unknown.Scale);
+        Assert.Equal(125f, unknown.ClipScrgb, 3);
+        Assert.Contains("assumeHdr=1", GalleryPresent.FormatUnknownDisplayProbe("throw NullReferenceException", true));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(0, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(203, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(270, 270));

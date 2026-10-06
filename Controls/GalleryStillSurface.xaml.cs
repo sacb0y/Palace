@@ -328,7 +328,10 @@ public sealed partial class GalleryStillSurface : UserControl
                 ClearHdrCache();
                 HideHdr();
                 ImgStill.Source = ToStillImage(still);
-                gallery.SetHdrPresentResult(false, false);
+                gallery.SetHdrPresentResult(
+                    false,
+                    GalleryPresent.UnknownDisplayPresentsHdr(gallery.CurrentProbe),
+                    displayProbe: DisplayHdr.Describe());
                 gallery.ClearHistogram();
                 return;
             }
@@ -542,7 +545,8 @@ public sealed partial class GalleryStillSurface : UserControl
         try
         {
             outcome = await presenterRef.TryPresentAsync(
-                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token);
+                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token,
+                galleryRef.CurrentProbe);
         }
         finally
         {
