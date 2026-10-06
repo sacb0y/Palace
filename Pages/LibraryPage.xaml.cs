@@ -322,7 +322,7 @@ public sealed partial class LibraryPage : Page
         ViewModel.RebuildAssignPanelPublic();
     }
 
-    private void InvalidateMosaicLayout() => MosaicLayout.InvalidateMeasure();
+    private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
 
     private void TglSelectMode_Changed(object sender, RoutedEventArgs e)
     {

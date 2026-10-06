@@ -55,6 +55,12 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         set => SetValue(HeaderHeightProperty, value);
     }
 
+    /// <summary>
+    /// WASDK 2.4 keeps Layout.InvalidateMeasure protected.
+    /// LibraryPage calls this instead of reaching into Layout.
+    /// </summary>
+    public void Relayout() => InvalidateMeasure();
+
     protected override void InitializeForContextCore(VirtualizingLayoutContext context)
     {
         context.LayoutState ??= new MosaicState();

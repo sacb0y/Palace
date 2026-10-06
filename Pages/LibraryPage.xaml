@@ -144,7 +144,7 @@
                 ItemsSource="{x:Bind ViewModel.SelectedFilterTags, Mode=OneWay}"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowTagFilterChips), Mode=OneWay}">
                 <ItemsRepeater.Layout>
-                    <WrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                    <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
                 </ItemsRepeater.Layout>
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:TagChipItem">
@@ -203,7 +203,7 @@
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
                 <ItemsRepeater ItemsSource="{x:Bind ViewModel.BrowseTags, Mode=OneWay}">
                     <ItemsRepeater.Layout>
-                        <WrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                        <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:TagChipItem">
