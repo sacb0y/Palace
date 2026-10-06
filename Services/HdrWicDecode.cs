@@ -30,8 +30,8 @@ internal readonly record struct HdrStats(
     int Height);
 
 /// <summary>
-/// Local HDR still → linear scRGB. AVIF/HEIF uses WIC P010/NV12/YUY2
-/// or packed RGB-as-YUV 4:4:4 + CICP YUV→RGB (identity is GBR).
+/// Local HDR still → linear scRGB. HDR AVIF prefers libavif (identity
+/// GBR). HEIF / other stills use WIC P010/NV12/YUY2 or packed RGB-as-YUV.
 /// Never online-only.
 /// </summary>
 internal static class HdrWicDecode
@@ -58,6 +58,18 @@ internal static class HdrWicDecode
         if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
         {
             return await Task.Run(() => FromRadiance(path), cancellation).ConfigureAwait(false);
+        }
+
+        if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
+        {
+            var avif = await Task.Run(
+                () => HdrAvifDecode.TryLoad(
+                    path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                cancellation).ConfigureAwait(false);
+            if (avif is not null)
+            {
+                return avif;
+            }
         }
 
         try
@@ -110,6 +122,17 @@ internal static class HdrWicDecode
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
             return null;
+        }
+
+        if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
+        {
+            var avif = await Task.Run(
+                () => HdrAvifDecode.TryMeasure(path, probe, cancellation),
+                cancellation).ConfigureAwait(false);
+            if (avif is not null)
+            {
+                return avif;
+            }
         }
 
         if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
