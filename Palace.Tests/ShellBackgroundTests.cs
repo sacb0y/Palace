@@ -120,9 +120,36 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void Apply_DimBlurTint_DoesNotBumpWallpaperEpoch()
+    {
+        ShellBackground.Apply(@"C:\pics\bg.jpg", 40, 45, false, ShellBackground.DefaultTintHex);
+        var epoch = ShellBackground.WallpaperEpoch;
+        var fired = 0;
+        void OnChanged(object? _, EventArgs e) => fired++;
+        ShellBackground.Changed += OnChanged;
+        try
+        {
+            ShellBackground.Apply(@"C:\pics\bg.jpg", 70, 45, false, ShellBackground.DefaultTintHex);
+            ShellBackground.Apply(@"C:\pics\bg.jpg", 70, 10, false, ShellBackground.DefaultTintHex);
+            ShellBackground.Apply(@"C:\pics\bg.jpg", 70, 10, true, "#336699");
+            Assert.Equal(3, fired);
+            Assert.Equal(epoch, ShellBackground.WallpaperEpoch);
+            Assert.Equal(70, ShellBackground.Darkness, 2);
+            Assert.Equal(10, ShellBackground.Blur, 2);
+            Assert.True(ShellBackground.TintEnabled);
+        }
+        finally
+        {
+            ShellBackground.Changed -= OnChanged;
+            Reset();
+        }
+    }
+
+    [Fact]
     public void ReleaseDisplay_AndRefresh_NotifyWithoutChangingPath()
     {
         ShellBackground.Apply(@"C:\pics\bg.jpg", 40, 45, false, ShellBackground.DefaultTintHex);
+        var epoch = ShellBackground.WallpaperEpoch;
         var released = 0;
         var changed = 0;
         void OnRelease(object? _, EventArgs e) => released++;
@@ -136,9 +163,10 @@ public sealed class ShellBackgroundTests
             Assert.Equal(0, changed);
             Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
 
-            ShellBackground.Refresh();
+            ShellBackground.RestoreDisplay();
             Assert.Equal(1, changed);
             Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
+            Assert.Equal(epoch, ShellBackground.WallpaperEpoch);
         }
         finally
         {

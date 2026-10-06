@@ -270,14 +270,22 @@ public partial class SettingsViewModel : ObservableObject
 
             var previous = ShellBackground.WallpaperPath;
             ShellBackground.ReleaseDisplay();
-            var dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
-                ShellBackground.NewWallpaperFileName(Path.GetExtension(file.Name)),
-                CreationCollisionOption.ReplaceExisting);
-            await file.CopyAndReplaceAsync(dest);
-            WallpaperPath = dest.Path;
-            PersistShellBackground(reloadWallpaper: true);
-            await TryDeleteStoredWallpaperAsync(previous);
-            StatusText = "Wallpaper updated.";
+            try
+            {
+                var dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
+                    ShellBackground.NewWallpaperFileName(Path.GetExtension(file.Name)),
+                    CreationCollisionOption.ReplaceExisting);
+                await file.CopyAndReplaceAsync(dest);
+                WallpaperPath = dest.Path;
+                PersistShellBackground(reloadWallpaper: true);
+                await TryDeleteStoredWallpaperAsync(previous);
+                StatusText = "Wallpaper updated.";
+            }
+            catch
+            {
+                ShellBackground.RestoreDisplay();
+                throw;
+            }
         });
 
     [RelayCommand]
@@ -286,10 +294,19 @@ public partial class SettingsViewModel : ObservableObject
         {
             var path = ShellBackground.WallpaperPath;
             ShellBackground.ReleaseDisplay();
-            WallpaperPath = "";
-            PersistShellBackground(reloadWallpaper: true);
-            await TryDeleteStoredWallpaperAsync(path);
-            StatusText = "Using the default gradient.";
+            try
+            {
+                WallpaperPath = "";
+                PersistShellBackground(reloadWallpaper: true);
+                await TryDeleteStoredWallpaperAsync(path);
+                StatusText = "Using the default gradient.";
+            }
+            catch
+            {
+                WallpaperPath = path ?? "";
+                ShellBackground.RestoreDisplay();
+                throw;
+            }
         });
 
     private static async Task TryDeleteStoredWallpaperAsync(string? path)

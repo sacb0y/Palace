@@ -87,6 +87,7 @@ public static class ShellBackground
             && Math.Abs(Blur - blur) < 0.01
             && TintEnabled == tintEnabled
             && TintHex == tintHex;
+        var pathChanged = WallpaperPath != wallpaperPath;
         if (unchanged && !reloadWallpaper)
         {
             return;
@@ -97,15 +98,26 @@ public static class ShellBackground
         Blur = blur;
         TintEnabled = tintEnabled;
         TintHex = tintHex;
-        WallpaperEpoch++;
+        if (pathChanged || reloadWallpaper)
+        {
+            WallpaperEpoch++;
+        }
+
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
     public static void ReleaseDisplay() =>
         DisplayReleasing?.Invoke(null, EventArgs.Empty);
 
-    public static void Refresh() =>
+    /// <summary>
+    /// Reload the current wallpaper after <see cref="ReleaseDisplay"/> when a
+    /// replace did not commit a new path (copy failed).
+    /// </summary>
+    public static void RestoreDisplay() =>
         Changed?.Invoke(null, EventArgs.Empty);
+
+    public static void Refresh() =>
+        RestoreDisplay();
 
     public static bool IsLightChrome(string? requestedTheme, bool systemIsLight) =>
         requestedTheme switch
