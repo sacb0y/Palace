@@ -43,6 +43,8 @@ public sealed partial class LibraryPage : Page
     private Pointer? _rangePointer;
     private bool _rangeCaptured;
     private bool _rangeConsumedTap;
+    private int _rangeConsumedFrom;
+    private int _rangeConsumedTo;
 
     public LibraryViewModel ViewModel => AppServices.Library;
 
@@ -108,6 +110,7 @@ public sealed partial class LibraryPage : Page
             GrdAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdAssets_RangeMoved), true);
             GrdAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdAssets_RangeReleased), true);
             GrdAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdAssets_RangeCaptureLost), true);
+            GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
             GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
             RefreshRealizedTiles();
             if (ViewModel.Assets.Count > 0)
@@ -569,10 +572,24 @@ public sealed partial class LibraryPage : Page
         {
             ApplyRangeHover(e, liveDrag: false);
             _rangeConsumedTap = true;
+            _rangeConsumedFrom = _rangeSelect.AnchorIndex;
+            _rangeConsumedTo = _rangeSelect.EndIndex;
             e.Handled = true;
         }
 
         EndRangeSelect(e.Pointer);
+    }
+
+    private void GrdAssets_RangeTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (!_rangeConsumedTap)
+        {
+            return;
+        }
+
+        _rangeConsumedTap = false;
+        var indexes = RangeSelect.ContiguousIndexes(MosaicHeaderFlags(), _rangeConsumedFrom, _rangeConsumedTo);
+        ApplyRangeIndexes(indexes, liveDrag: false, _rangeConsumedFrom, _rangeConsumedTo);
     }
 
     private void GrdAssets_RangeCaptureLost(object sender, PointerRoutedEventArgs e)
@@ -598,7 +615,7 @@ public sealed partial class LibraryPage : Page
     private IReadOnlyList<bool> MosaicHeaderFlags() =>
         ViewModel.Assets.Select(asset => asset.IsFolderHeader).ToList();
 
-    private void ApplyRangeIndexes(IReadOnlyList<int> indexes, bool liveDrag)
+    private void ApplyRangeIndexes(IReadOnlyList<int> indexes, bool liveDrag, int? from = null, int? to = null)
     {
         _suppressMosaicSelection = true;
         try
@@ -627,7 +644,11 @@ public sealed partial class LibraryPage : Page
             _suppressMosaicSelection = false;
         }
 
-        if (_rangeSelect is not null)
+        if (from is not null && to is not null)
+        {
+            ViewModel.ApplyMosaicRange(from.Value, to.Value, RangeSelect.LoadsPreview(liveDrag));
+        }
+        else if (_rangeSelect is not null)
         {
             ViewModel.ApplyMosaicRange(
                 _rangeSelect.AnchorIndex,
