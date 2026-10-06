@@ -128,7 +128,22 @@ internal static class HdrWicDecode
         }
     }
 
-    public static async Task<HdrStats?> TryMeasureAsync(string path, HdrProbe probe, CancellationToken cancellation)
+    public static Task<HdrStats?> TryMeasureAsync(
+        string path,
+        HdrProbe probe,
+        CancellationToken cancellation) =>
+        TryMeasureAsync(path, probe, 0, 0, cancellation);
+
+    /// <summary>
+    /// CIE Y / MaxCLL from a downscaled or viewport-sized frame — never a
+    /// native 16384² decode. File pixel size is still reported as native.
+    /// </summary>
+    public static async Task<HdrStats?> TryMeasureAsync(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        CancellationToken cancellation)
     {
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
@@ -140,7 +155,8 @@ internal static class HdrWicDecode
             try
             {
                 var avif = await Task.Run(
-                    () => HdrAvifDecode.TryMeasure(path, probe, cancellation),
+                    () => HdrAvifDecode.TryMeasure(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, cancellation),
                     cancellation).ConfigureAwait(false);
                 if (avif is not null)
                 {
@@ -190,8 +206,16 @@ internal static class HdrWicDecode
                 return null;
             }
 
+            var (decodeW, decodeH) = GalleryPresent.MeasureDecodeSize(
+                nativeW, nativeH, viewportPixelWidth, viewportPixelHeight);
+            if (decodeW <= 0 || decodeH <= 0)
+            {
+                decodeW = nativeW;
+                decodeH = nativeH;
+            }
+
             var pixels = await TryPixelsAsync(
-                decoder, nativeW, nativeH, HdrColor.NeedsYuvConvert(probe.Kind), cancellation).ConfigureAwait(false);
+                decoder, decodeW, decodeH, HdrColor.NeedsYuvConvert(probe.Kind), cancellation).ConfigureAwait(false);
             if (pixels is null)
             {
                 return null;
@@ -200,7 +224,7 @@ internal static class HdrWicDecode
             cancellation.ThrowIfCancellationRequested();
             var packed = pixels.Value;
             return await Task.Run(
-                () => Measure(packed.Data, packed.Format, nativeW, nativeH, probe, cancellation),
+                () => Measure(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe, cancellation),
                 cancellation).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -432,6 +456,8 @@ internal static class HdrWicDecode
         HdrPackedFormat format,
         int width,
         int height,
+        int nativeWidth,
+        int nativeHeight,
         HdrProbe probe,
         CancellationToken cancellation)
     {
@@ -443,8 +469,8 @@ internal static class HdrWicDecode
                 converted.Value.AvgNits,
                 converted.Value.MinNits,
                 converted.Value.MaxScrgb,
-                width,
-                height);
+                nativeWidth,
+                nativeHeight);
     }
 
     private static (float[]? Rgba, float MaxNits, float AvgNits, float MinNits, float MaxScrgb)? Convert(

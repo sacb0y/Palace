@@ -61,7 +61,19 @@ internal static unsafe class HdrAvifDecode
         }
     }
 
-    public static HdrStats? TryMeasure(string path, HdrProbe probe, CancellationToken cancellation)
+    public static HdrStats? TryMeasure(string path, HdrProbe probe, CancellationToken cancellation) =>
+        TryMeasure(path, probe, 0, 0, cancellation);
+
+    /// <summary>
+    /// CIE Y / MaxCLL at <see cref="GalleryPresent.MeasureDecodeSize"/> —
+    /// viewport or Fit long-edge cap, never a native 16384² decode.
+    /// </summary>
+    public static HdrStats? TryMeasure(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        CancellationToken cancellation)
     {
         if (!CanDecode(path, probe))
         {
@@ -73,9 +85,9 @@ internal static unsafe class HdrAvifDecode
             return Decode(
                 path,
                 probe,
-                viewportPixelWidth: 0,
-                viewportPixelHeight: 0,
-                ImageScaling.Actual,
+                viewportPixelWidth,
+                viewportPixelHeight,
+                ImageScaling.Fit,
                 wantRgba: false,
                 cancellation) is { } packed
                 ? new HdrStats(
