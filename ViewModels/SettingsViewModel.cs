@@ -84,6 +84,33 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string PeakOverrideLabel { get; set; } = GalleryPresent.PeakNitsLabel(GalleryPresent.SdrReferenceNits);
 
+    [ObservableProperty]
+    public partial string WallpaperPath { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string WallpaperLabel { get; set; } = ShellBackground.DefaultWallpaperLabel;
+
+    [ObservableProperty]
+    public partial bool HasWallpaper { get; set; }
+
+    [ObservableProperty]
+    public partial double Darkness { get; set; } = ShellBackground.DefaultDarkness;
+
+    [ObservableProperty]
+    public partial string DarknessLabel { get; set; } = ShellBackground.AmountLabel(ShellBackground.DefaultDarkness);
+
+    [ObservableProperty]
+    public partial double Blur { get; set; } = ShellBackground.DefaultBlur;
+
+    [ObservableProperty]
+    public partial string BlurLabel { get; set; } = ShellBackground.AmountLabel(ShellBackground.DefaultBlur);
+
+    [ObservableProperty]
+    public partial bool TintEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial string TintHex { get; set; } = ShellBackground.DefaultTintHex;
+
     public async Task LoadAsync()
     {
         using var _ = _load.Begin();
@@ -111,6 +138,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedTheme = stored is "Light" or "Dark" or "System" ? stored : "System";
         ApplyTheme(SelectedTheme);
         LoadPeakOverride();
+        LoadShellBackground();
         OneDriveClientId = _cloud.OneDriveClientId;
         DropboxAppKey = _cloud.DropboxAppKey;
         RedirectUri = _cloud.RedirectUriDisplay;
@@ -146,6 +174,40 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    partial void OnDarknessChanged(double value)
+    {
+        DarknessLabel = ShellBackground.AmountLabel(value);
+        if (!_load.IsLoading)
+        {
+            PersistShellBackground();
+        }
+    }
+
+    partial void OnBlurChanged(double value)
+    {
+        BlurLabel = ShellBackground.AmountLabel(value);
+        if (!_load.IsLoading)
+        {
+            PersistShellBackground();
+        }
+    }
+
+    partial void OnTintEnabledChanged(bool value)
+    {
+        if (!_load.IsLoading)
+        {
+            PersistShellBackground();
+        }
+    }
+
+    partial void OnTintHexChanged(string value)
+    {
+        if (!_load.IsLoading)
+        {
+            PersistShellBackground();
+        }
+    }
+
     private void LoadPeakOverride()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
@@ -157,6 +219,20 @@ public partial class SettingsViewModel : ObservableObject
         PeakOverrideLabel = GalleryPresent.PeakNitsLabel(GalleryPeak.Nits);
     }
 
+    private void LoadShellBackground()
+    {
+        AppServices.LoadShellBackground();
+        WallpaperPath = ShellBackground.WallpaperPath ?? "";
+        HasWallpaper = ShellBackground.HasWallpaper;
+        WallpaperLabel = ShellBackground.WallpaperLabel;
+        Darkness = ShellBackground.Darkness;
+        DarknessLabel = ShellBackground.AmountLabel(Darkness);
+        Blur = ShellBackground.Blur;
+        BlurLabel = ShellBackground.AmountLabel(Blur);
+        TintEnabled = ShellBackground.TintEnabled;
+        TintHex = ShellBackground.TintHex;
+    }
+
     private void PersistPeakOverride()
     {
         GalleryPeak.Apply(PeakOverrideEnabled, (float)PeakOverrideNits);
@@ -164,6 +240,104 @@ public partial class SettingsViewModel : ObservableObject
         values[GalleryPeak.EnabledKey] = PeakOverrideEnabled;
         values[GalleryPeak.NitsKey] = PeakOverrideNits;
         PeakOverrideLabel = GalleryPresent.PeakNitsLabel(GalleryPeak.Nits);
+    }
+
+    private void PersistShellBackground(bool reloadWallpaper = false)
+    {
+        ShellBackground.Apply(WallpaperPath, Darkness, Blur, TintEnabled, TintHex, reloadWallpaper);
+        var values = ApplicationData.Current.LocalSettings.Values;
+        values[ShellBackground.WallpaperPathKey] = ShellBackground.WallpaperPath ?? "";
+        values[ShellBackground.WallpaperNameKey] = ShellBackground.WallpaperName ?? "";
+        values[ShellBackground.DarknessKey] = ShellBackground.Darkness;
+        values[ShellBackground.BlurKey] = ShellBackground.Blur;
+        values[ShellBackground.TintEnabledKey] = ShellBackground.TintEnabled;
+        values[ShellBackground.TintKey] = ShellBackground.TintHex;
+        HasWallpaper = ShellBackground.HasWallpaper;
+        WallpaperLabel = ShellBackground.WallpaperLabel;
+        DarknessLabel = ShellBackground.AmountLabel(ShellBackground.Darkness);
+        BlurLabel = ShellBackground.AmountLabel(ShellBackground.Blur);
+        TintHex = ShellBackground.TintHex;
+    }
+
+    [RelayCommand]
+    private Task PickWallpaperAsync() =>
+        ErrorReporter.RunAsync("Choose wallpaper", Notify, async () =>
+        {
+            var file = await _access.PickImageFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var previous = ShellBackground.WallpaperPath;
+            var previousName = ShellBackground.WallpaperName;
+            ShellBackground.ReleaseDisplay();
+            StorageFile? dest = null;
+            try
+            {
+                dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
+                    ShellBackground.NewWallpaperFileName(Path.GetExtension(file.Name)),
+                    CreationCollisionOption.ReplaceExisting);
+                await file.CopyAndReplaceAsync(dest);
+                WallpaperPath = dest.Path;
+                ShellBackground.SetWallpaperName(file.Name);
+                PersistShellBackground(reloadWallpaper: true);
+                await TryDeleteStoredWallpaperAsync(previous);
+                StatusText = "Wallpaper updated.";
+            }
+            catch
+            {
+                if (dest is not null && !string.Equals(ShellBackground.WallpaperPath, dest.Path, StringComparison.OrdinalIgnoreCase))
+                {
+                    await TryDeleteStoredWallpaperAsync(dest.Path);
+                }
+
+                ShellBackground.SetWallpaperName(previousName);
+                ShellBackground.RestoreDisplay();
+                throw;
+            }
+        });
+
+    [RelayCommand]
+    private Task ClearWallpaperAsync() =>
+        ErrorReporter.RunAsync("Clear wallpaper", Notify, async () =>
+        {
+            var path = ShellBackground.WallpaperPath;
+            var name = ShellBackground.WallpaperName;
+            ShellBackground.ReleaseDisplay();
+            try
+            {
+                WallpaperPath = "";
+                ShellBackground.SetWallpaperName(null);
+                PersistShellBackground(reloadWallpaper: true);
+                await TryDeleteStoredWallpaperAsync(path);
+                StatusText = "Using the default gradient.";
+            }
+            catch
+            {
+                WallpaperPath = path ?? "";
+                ShellBackground.SetWallpaperName(name);
+                ShellBackground.RestoreDisplay();
+                throw;
+            }
+        });
+
+    private static async Task TryDeleteStoredWallpaperAsync(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !ShellBackground.IsStoredWallpaperName(path))
+        {
+            return;
+        }
+
+        try
+        {
+            var stored = await StorageFile.GetFileFromPathAsync(path);
+            await stored.DeleteAsync();
+        }
+        catch
+        {
+            // Local copy may already be gone or still flushing.
+        }
     }
 
     partial void OnOneDriveClientIdChanged(string value)
@@ -453,5 +627,6 @@ public partial class SettingsViewModel : ObservableObject
             "Dark" => Microsoft.UI.Xaml.ElementTheme.Dark,
             _ => Microsoft.UI.Xaml.ElementTheme.Default
         };
+        ShellBackground.Refresh();
     }
 }

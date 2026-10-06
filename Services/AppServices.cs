@@ -33,6 +33,7 @@ public static class AppServices
     {
         LocalRoot = ApplicationData.Current.LocalFolder.Path;
         LoadPeakOverride();
+        LoadShellBackground();
         var dbPath = Path.Combine(LocalRoot, "palace.db");
         var thumbs = Path.Combine(LocalRoot, "thumbs");
         Directory.CreateDirectory(thumbs);
@@ -114,6 +115,18 @@ public static class AppServices
         GalleryPeak.Apply(
             GalleryPeak.ParseEnabled(values[GalleryPeak.EnabledKey]),
             GalleryPeak.ParseNits(values[GalleryPeak.NitsKey]));
+    }
+
+    internal static void LoadShellBackground()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        ShellBackground.SetWallpaperName(ShellBackground.ParsePath(values[ShellBackground.WallpaperNameKey]));
+        ShellBackground.Apply(
+            ShellBackground.ParsePath(values[ShellBackground.WallpaperPathKey]),
+            ShellBackground.ParseDarkness(values[ShellBackground.DarknessKey]),
+            ShellBackground.ParseBlur(values[ShellBackground.BlurKey]),
+            ShellBackground.ParseEnabled(values[ShellBackground.TintEnabledKey]),
+            ShellBackground.ParseTint(values[ShellBackground.TintKey]));
     }
 
     private static async Task RestoreCurrentProjectAsync()

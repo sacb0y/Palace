@@ -18,6 +18,21 @@ public sealed class AccessService
     public static IReadOnlyList<string> FilterCopyPaths(IEnumerable<string> paths, out int skippedOnlineOnly) =>
         CloudFile.FilterLocalPaths(paths, out skippedOnlineOnly);
 
+    public async Task<StorageFile?> PickImageFileAsync()
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.PicturesLibrary
+        };
+        foreach (var ext in (string[])[".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"])
+        {
+            picker.FileTypeFilter.Add(ext);
+        }
+
+        InitializeWithWindow.Initialize(picker, App.WindowHandle);
+        return await picker.PickSingleFileAsync();
+    }
+
     public async Task<StorageFolder?> PickFolderAsync()
     {
         var picker = new FolderPicker

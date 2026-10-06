@@ -9,7 +9,8 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
     xmlns:pages="using:Palace.Pages"
-    mc:Ignorable="d">
+    mc:Ignorable="d"
+    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
 
     <Grid Padding="16" ColumnSpacing="16" RowSpacing="12">
         <Grid.ColumnDefinitions>
