@@ -202,8 +202,75 @@ public static class GalleryMedia
         && !isOrphan
         && (isOnlineOnly || hasCloudItemId || isCloudBacked);
 
+    /// <summary>
+    /// API sources (<see cref="SourceKind.OneDrive"/> / Dropbox) and local
+    /// Files On-Demand roots. Never opens a stream.
+    /// </summary>
+    public static bool SourceFolderIsCloud(SourceKind kind, string? sourcePath) =>
+        kind is SourceKind.OneDrive or SourceKind.Dropbox
+        || CloudFile.IsCloudBackedFolder(sourcePath);
+
+    /// <summary>
+    /// Stamp <c>AssetItem.IsCloudBacked</c> from the source folder plus
+    /// <see cref="CloudFile.IsCloudBacked"/> — not only <c>IsOnlineOnly</c>,
+    /// so hydrated JPEGs still get the corner glyph.
+    /// </summary>
+    public static bool StampIsCloudBacked(
+        bool isOnlineOnly,
+        bool hasCloudItemId,
+        bool sourceFolderIsCloud,
+        bool pathIsCloudBacked) =>
+        isOnlineOnly || hasCloudItemId || sourceFolderIsCloud || pathIsCloudBacked;
+
     public static string CloudBadgeAutomationId(string? assetId) =>
-        "IcnCloudBadge_" + string.Concat((assetId ?? "").Where(char.IsLetterOrDigit));
+        MosaicBadgeAutomationId("IcnCloudBadge_", assetId);
+
+    public static bool ShowVideoBadge(bool isFolderHeader, bool isOrphan, AssetKind kind) =>
+        ShowKindBadge(isFolderHeader, isOrphan, kind == AssetKind.Video);
+
+    public static bool ShowGifBadge(bool isFolderHeader, bool isOrphan, AssetKind kind) =>
+        ShowKindBadge(isFolderHeader, isOrphan, kind == AssetKind.Gif);
+
+    /// <summary>
+    /// HDR glyph from catalog / header already on the row. Never Open or
+    /// recall the original — <paramref name="catalogHdr"/> is scan-time
+    /// header probe; Radiance <c>.hdr</c> is the path on the catalog row.
+    /// </summary>
+    public static bool ShowHdrBadge(
+        bool isFolderHeader,
+        bool isOrphan,
+        string? path,
+        bool catalogHdr) =>
+        ShowKindBadge(isFolderHeader, isOrphan, catalogHdr || PathSafe.IsRadiance(path));
+
+    /// <summary>
+    /// Scan / hydrate only. Mosaic mapping must pass the catalog flag —
+    /// never call this while building tiles.
+    /// </summary>
+    public static bool CatalogHdrFromHeader(string? path, bool mayReadOriginalHeader)
+    {
+        if (PathSafe.IsRadiance(path))
+        {
+            return true;
+        }
+
+        return mayReadOriginalHeader && HdrFile.ProbePath(path).IsHdr;
+    }
+
+    public static bool ShowKindBadge(bool isFolderHeader, bool isOrphan, bool matches) =>
+        !isFolderHeader && !isOrphan && matches;
+
+    public static string VideoBadgeAutomationId(string? assetId) =>
+        MosaicBadgeAutomationId("IcnVideoBadge_", assetId);
+
+    public static string GifBadgeAutomationId(string? assetId) =>
+        MosaicBadgeAutomationId("IcnGifBadge_", assetId);
+
+    public static string HdrBadgeAutomationId(string? assetId) =>
+        MosaicBadgeAutomationId("IcnHdrBadge_", assetId);
+
+    private static string MosaicBadgeAutomationId(string prefix, string? assetId) =>
+        prefix + string.Concat((assetId ?? "").Where(char.IsLetterOrDigit));
 
     /// <summary>
     /// True when <paramref name="path"/> can be shown without opening an

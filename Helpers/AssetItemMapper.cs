@@ -10,14 +10,14 @@ namespace Palace.Helpers;
 /// </summary>
 public static class AssetItemMapper
 {
-    public static AssetItem FromAsset(Asset asset, ThumbnailService thumbs)
+    public static AssetItem FromAsset(Asset asset, ThumbnailService thumbs, bool sourceFolderIsCloud = false)
     {
         var item = new AssetItem();
-        Apply(item, asset, thumbs);
+        Apply(item, asset, thumbs, sourceFolderIsCloud);
         return item;
     }
 
-    public static void Apply(AssetItem item, Asset asset, ThumbnailService thumbs)
+    public static void Apply(AssetItem item, Asset asset, ThumbnailService thumbs, bool sourceFolderIsCloud = false)
     {
         item.Id = asset.Id;
         item.SourceFolderId = asset.SourceFolderId;
@@ -33,17 +33,21 @@ public static class AssetItemMapper
         item.Width = asset.Width;
         item.Height = asset.Height;
         item.FileSize = asset.FileSize;
-        ApplyCloud(item, asset);
+        // Catalog / extension only — never HdrFile.ProbePath / Open the original.
+        item.IsHdr = asset.IsHdr || PathSafe.IsRadiance(asset.Path);
+        ApplyCloud(item, asset, sourceFolderIsCloud);
     }
 
-    public static void ApplyCloud(AssetItem item, Asset asset)
+    public static void ApplyCloud(AssetItem item, Asset asset, bool sourceFolderIsCloud = false)
     {
         item.IsOnlineOnly = asset.IsOnlineOnly;
         item.CloudItemId = asset.CloudItemId;
-        // GetAttributes only — never File.Exists or a stream on the original.
-        item.IsCloudBacked = asset.IsOnlineOnly
-            || !string.IsNullOrEmpty(asset.CloudItemId)
-            || CloudFile.IsCloudBacked(asset.Path);
+        // GetAttributes on the file + source folder kind/root — never a stream.
+        item.IsCloudBacked = GalleryMedia.StampIsCloudBacked(
+            asset.IsOnlineOnly,
+            !string.IsNullOrEmpty(asset.CloudItemId),
+            sourceFolderIsCloud,
+            CloudFile.IsCloudBacked(asset.Path));
     }
 
     public static bool IsApiOnly(Asset asset) =>

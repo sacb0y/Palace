@@ -33,6 +33,7 @@ public partial class LibraryViewModel : ObservableObject
     private bool _applyingPreview;
     private string? _previewAssetId;
     private int _busyDepth;
+    private Dictionary<string, bool> _sourceIsCloud = new(StringComparer.Ordinal);
     private const int MosaicChunkSize = 80;
 
     public LibraryViewModel(
@@ -402,6 +403,7 @@ public partial class LibraryViewModel : ObservableObject
         {
             var projectId = AppServices.CurrentProject.Id;
             var sources = await _catalog.GetSourceFoldersAsync(projectId);
+            StampSourceCloud(sources);
             var assets = await _catalog.GetAssetsAsync(projectId: projectId);
             var tags = await _catalog.GetTagsAsync();
             var memberships = await _catalog.GetMembershipsAsync();
@@ -1946,7 +1948,19 @@ public partial class LibraryViewModel : ObservableObject
             FileName = group.Title
         };
 
-    private AssetItem ToItem(Asset asset) => AssetItemMapper.FromAsset(asset, _thumbs);
+    private AssetItem ToItem(Asset asset)
+    {
+        _sourceIsCloud.TryGetValue(asset.SourceFolderId, out var sourceCloud);
+        return AssetItemMapper.FromAsset(asset, _thumbs, sourceCloud);
+    }
+
+    private void StampSourceCloud(IReadOnlyList<SourceFolder> sources)
+    {
+        _sourceIsCloud = sources.ToDictionary(
+            source => source.Id,
+            source => GalleryMedia.SourceFolderIsCloud(source.Kind, source.Path),
+            StringComparer.Ordinal);
+    }
 
     private void ReplaceFolderTree(IReadOnlyList<FolderNode> roots)
     {

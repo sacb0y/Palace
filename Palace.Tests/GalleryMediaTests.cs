@@ -157,6 +157,47 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void StampIsCloudBacked_UsesSourceFolderNotOnlyOnlineOnly()
+    {
+        Assert.True(GalleryMedia.StampIsCloudBacked(false, false, true, false));
+        Assert.True(GalleryMedia.StampIsCloudBacked(false, false, false, true));
+        Assert.True(GalleryMedia.StampIsCloudBacked(true, false, false, false));
+        Assert.True(GalleryMedia.StampIsCloudBacked(false, true, false, false));
+        Assert.False(GalleryMedia.StampIsCloudBacked(false, false, false, false));
+        Assert.True(GalleryMedia.SourceFolderIsCloud(SourceKind.OneDrive, @"C:\Photos"));
+        Assert.True(GalleryMedia.SourceFolderIsCloud(SourceKind.Dropbox, null));
+        Assert.False(GalleryMedia.SourceFolderIsCloud(SourceKind.Local, null));
+        Assert.True(GalleryMedia.ShowCloudBadge(
+            false,
+            false,
+            false,
+            false,
+            GalleryMedia.StampIsCloudBacked(false, false, true, false)));
+    }
+
+    [Fact]
+    public void KindBadges_SkipHeadersAndOrphans()
+    {
+        Assert.True(GalleryMedia.ShowVideoBadge(false, false, AssetKind.Video));
+        Assert.False(GalleryMedia.ShowVideoBadge(false, false, AssetKind.Image));
+        Assert.False(GalleryMedia.ShowVideoBadge(true, false, AssetKind.Video));
+        Assert.False(GalleryMedia.ShowVideoBadge(false, true, AssetKind.Video));
+        Assert.True(GalleryMedia.ShowGifBadge(false, false, AssetKind.Gif));
+        Assert.False(GalleryMedia.ShowGifBadge(false, false, AssetKind.Video));
+        Assert.False(GalleryMedia.ShowGifBadge(true, false, AssetKind.Gif));
+        Assert.True(GalleryMedia.ShowHdrBadge(false, false, @"D:\shots\sky.hdr", false));
+        Assert.True(GalleryMedia.ShowHdrBadge(false, false, @"D:\shots\a.jpg", true));
+        Assert.False(GalleryMedia.ShowHdrBadge(false, false, @"D:\shots\a.jpg", false));
+        Assert.False(GalleryMedia.ShowHdrBadge(true, false, @"D:\shots\sky.hdr", true));
+        Assert.False(GalleryMedia.ShowHdrBadge(false, true, @"D:\shots\sky.hdr", true));
+        Assert.False(GalleryMedia.CatalogHdrFromHeader(@"D:\shots\a.jpg", mayReadOriginalHeader: false));
+        Assert.True(GalleryMedia.CatalogHdrFromHeader(@"D:\shots\sky.hdr", mayReadOriginalHeader: false));
+        Assert.Equal("IcnVideoBadge_abc123", GalleryMedia.VideoBadgeAutomationId("abc-123"));
+        Assert.Equal("IcnGifBadge_clip", GalleryMedia.GifBadgeAutomationId("clip"));
+        Assert.Equal("IcnHdrBadge_", GalleryMedia.HdrBadgeAutomationId(null));
+    }
+
+    [Fact]
     public void IsLiveOnlineOnly_StaleCatalogFlagYieldsToLocalPreview()
     {
         Assert.False(GalleryMedia.IsLiveOnlineOnly(true, false, false, canShowPreview: true));

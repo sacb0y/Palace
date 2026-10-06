@@ -1278,9 +1278,9 @@ public sealed class CatalogService
         cmd.CommandText = """
             INSERT INTO Asset (Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-                               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId)
+                               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr)
             VALUES ($id, $source, $path, $name, $hash, $kind, $w, $h, $dur, $orphan, $model, $seed, $prompt, $neg,
-                    $json, $err, $rating, $notes, $added, $mod, $size, $online, $cloud)
+                    $json, $err, $rating, $notes, $added, $mod, $size, $online, $cloud, $hdr)
             ON CONFLICT(Path) DO UPDATE SET
                 SourceFolderId = excluded.SourceFolderId,
                 FileName = excluded.FileName,
@@ -1298,7 +1298,8 @@ public sealed class CatalogService
                 DateModified = excluded.DateModified,
                 FileSize = excluded.FileSize,
                 IsOnlineOnly = excluded.IsOnlineOnly,
-                CloudItemId = excluded.CloudItemId
+                CloudItemId = excluded.CloudItemId,
+                IsHdr = excluded.IsHdr
             RETURNING RowId, Id;
             """;
         cmd.Parameters.AddWithValue("$id", asset.Id);
@@ -1324,6 +1325,7 @@ public sealed class CatalogService
         cmd.Parameters.AddWithValue("$size", (object?)asset.FileSize ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$online", asset.IsOnlineOnly ? 1 : 0);
         cmd.Parameters.AddWithValue("$cloud", (object?)asset.CloudItemId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$hdr", asset.IsHdr ? 1 : 0);
         using var reader = cmd.ExecuteReader();
         if (reader.Read())
         {
@@ -1396,7 +1398,7 @@ public sealed class CatalogService
     private const string SelectAssetSql = """
         SELECT RowId, Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId
+               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr
         FROM Asset
         """ + "\n";
 
@@ -1459,7 +1461,8 @@ public sealed class CatalogService
                 DateModified = reader.IsDBNull(20) ? null : reader.GetString(20),
                 FileSize = reader.IsDBNull(21) ? null : reader.GetInt64(21),
                 IsOnlineOnly = reader.FieldCount > 22 && !reader.IsDBNull(22) && reader.GetInt32(22) != 0,
-                CloudItemId = reader.FieldCount > 23 && !reader.IsDBNull(23) ? reader.GetString(23) : null
+                CloudItemId = reader.FieldCount > 23 && !reader.IsDBNull(23) ? reader.GetString(23) : null,
+                IsHdr = reader.FieldCount > 24 && !reader.IsDBNull(24) && reader.GetInt32(24) != 0
             });
         }
 

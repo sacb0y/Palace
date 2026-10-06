@@ -144,6 +144,7 @@ public sealed class ScanService
         asset.DateModified = info.LastWriteTimeUtc.ToString("O");
         asset.FileSize = info.Length;
         asset.IsOnlineOnly = onlineOnly;
+        asset.IsHdr = GalleryMedia.CatalogHdrFromHeader(file, ScanContent.MayReadOriginal(attrs));
 
         if (!ScanContent.MayReadOriginal(attrs))
         {
@@ -315,6 +316,8 @@ public sealed class ScanService
         asset.DateModified = modified.ToString("O");
         asset.FileSize = entry.Size;
         asset.ContentHash = KeepOrStubHash(existing, displayPath, size, modified);
+        // Display path only — never download / Open the original to decide HDR.
+        asset.IsHdr = GalleryMedia.CatalogHdrFromHeader(displayPath, mayReadOriginalHeader: false);
 
         if (_thumbs.ExistingPathForHash(asset.ContentHash) is null)
         {

@@ -126,6 +126,36 @@ public static class CloudFile
             return false;
         }
 
+        return HasCloudSignals(attributes);
+    }
+
+    /// <summary>
+    /// Source folder (file or directory) is OneDrive / Dropbox backed.
+    /// Directories are excluded from <see cref="IsCloudBacked"/> so a sync
+    /// root still stamps every tile in that source.
+    /// </summary>
+    public static bool IsCloudBackedFolder(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            return HasCloudSignals(File.GetAttributes(path));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool IsCloudBackedFolder(FileAttributes attributes) =>
+        HasCloudSignals(attributes);
+
+    private static bool HasCloudSignals(FileAttributes attributes)
+    {
         const FileAttributes cloudSignals =
             RecallMask | Pinned | Unpinned | Offline | FileAttributes.ReparsePoint | FileAttributes.SparseFile;
         return (attributes & cloudSignals) != 0;
