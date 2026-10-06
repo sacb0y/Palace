@@ -30,8 +30,9 @@ internal readonly record struct HdrStats(
     int Height);
 
 /// <summary>
-/// Local HDR still → linear scRGB. AVIF/HEIF uses WIC P010/NV12 + CICP
-/// YUV→RGB (SKIV’s libavif step). Never online-only.
+/// Local HDR still → linear scRGB. HDR AVIF prefers libavif (identity
+/// GBR). HEIF / other stills use WIC P010/NV12/YUY2 or packed RGB-as-YUV.
+/// Never online-only.
 /// </summary>
 internal static class HdrWicDecode
 {
@@ -57,6 +58,29 @@ internal static class HdrWicDecode
         if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
         {
             return await Task.Run(() => FromRadiance(path), cancellation).ConfigureAwait(false);
+        }
+
+        if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
+        {
+            try
+            {
+                var avif = await Task.Run(
+                    () => HdrAvifDecode.TryLoad(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (avif is not null)
+                {
+                    return avif;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Native libavif load/throw — fall through to WIC.
+            }
         }
 
         try
@@ -126,6 +150,29 @@ internal static class HdrWicDecode
             return null;
         }
 
+        if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
+        {
+            try
+            {
+                var avif = await Task.Run(
+                    () => HdrAvifDecode.TryMeasure(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (avif is not null)
+                {
+                    return avif;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Native libavif load/throw — fall through to WIC.
+            }
+        }
+
         if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
         {
             return await Task.Run(
@@ -177,24 +224,7 @@ internal static class HdrWicDecode
             cancellation.ThrowIfCancellationRequested();
             var packed = pixels.Value;
             return await Task.Run(
-                () =>
-                {
-                    var converted = Convert(
-                        packed.Data, packed.Format, decodeW, decodeH, probe,
-                        wantRgba: false, checkLumaOnly: true, cancellation);
-                    if (converted is null)
-                    {
-                        return (HdrStats?)null;
-                    }
-
-                    return new HdrStats(
-                        converted.Value.MaxNits,
-                        (float)(converted.Value.SumNits / (decodeW * decodeH)),
-                        converted.Value.MinNits,
-                        converted.Value.MaxScrgb,
-                        nativeW,
-                        nativeH);
-                },
+                () => Measure(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe, cancellation),
                 cancellation).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -258,17 +288,17 @@ internal static class HdrWicDecode
             transform.InterpolationMode = BitmapInterpolationMode.Linear;
         }
 
-        const ExifOrientationMode orientation = ExifOrientationMode.RespectExifOrientation;
         if (preferYuv)
         {
             foreach (var (wic, packed) in new[]
             {
                 (BitmapPixelFormat.P010, HdrPackedFormat.P010),
-                (BitmapPixelFormat.Nv12, HdrPackedFormat.Nv12)
+                (BitmapPixelFormat.Nv12, HdrPackedFormat.Nv12),
+                (BitmapPixelFormat.Yuy2, HdrPackedFormat.Yuy2)
             })
             {
                 cancellation.ThrowIfCancellationRequested();
-                var yuv = await TryYuvAsync(decoder, wic, packed, transform, orientation, width, height).ConfigureAwait(false);
+                var yuv = await TryYuvAsync(decoder, wic, packed, transform, width, height).ConfigureAwait(false);
                 if (yuv is not null)
                 {
                     return yuv;
@@ -290,7 +320,7 @@ internal static class HdrWicDecode
                     wic,
                     BitmapAlphaMode.Premultiplied,
                     transform,
-                    orientation,
+                    ExifOrientationMode.RespectExifOrientation,
                     ColorManagementMode.DoNotColorManage).AsTask().ConfigureAwait(false);
                 return (data.DetachPixelData(), packed);
             }
@@ -308,7 +338,6 @@ internal static class HdrWicDecode
         BitmapPixelFormat wic,
         HdrPackedFormat packed,
         BitmapTransform transform,
-        ExifOrientationMode orientation,
         int width,
         int height)
     {
@@ -318,7 +347,7 @@ internal static class HdrWicDecode
                 wic,
                 BitmapAlphaMode.Ignore,
                 transform,
-                orientation,
+                ExifOrientationMode.RespectExifOrientation,
                 ColorManagementMode.DoNotColorManage).AsTask().ConfigureAwait(false);
             var bytes = data.DetachPixelData();
             if (HdrPixels.HasPackedData(bytes, packed, width, height))
@@ -337,7 +366,7 @@ internal static class HdrWicDecode
                 wic,
                 BitmapAlphaMode.Ignore,
                 transform,
-                orientation,
+                ExifOrientationMode.RespectExifOrientation,
                 ColorManagementMode.DoNotColorManage).AsTask().ConfigureAwait(false);
             var tight = CopyYuvPlanes(bitmap, packed);
             if (tight is not null && HdrPixels.HasPackedData(tight, packed, width, height))
@@ -402,7 +431,7 @@ internal static class HdrWicDecode
         int nativeHeight,
         HdrProbe probe)
     {
-        var converted = Convert(data, format, width, height, probe, wantRgba: true, checkLumaOnly: true, default);
+        var converted = Convert(data, format, width, height, probe, wantRgba: true, default);
         if (converted is null)
         {
             return null;
@@ -416,20 +445,41 @@ internal static class HdrWicDecode
             NativeWidth = nativeWidth,
             NativeHeight = nativeHeight,
             MaxNits = converted.Value.MaxNits,
-            AvgNits = (float)(converted.Value.SumNits / (width * height)),
+            AvgNits = converted.Value.AvgNits,
             MinNits = converted.Value.MinNits,
             MaxScrgb = converted.Value.MaxScrgb
         };
     }
 
-    private static (float[]? Rgba, float MaxNits, double SumNits, float MinNits, float MaxScrgb)? Convert(
+    private static HdrStats? Measure(
+        byte[] data,
+        HdrPackedFormat format,
+        int width,
+        int height,
+        int nativeWidth,
+        int nativeHeight,
+        HdrProbe probe,
+        CancellationToken cancellation)
+    {
+        var converted = Convert(data, format, width, height, probe, wantRgba: false, cancellation);
+        return converted is null
+            ? null
+            : new HdrStats(
+                converted.Value.MaxNits,
+                converted.Value.AvgNits,
+                converted.Value.MinNits,
+                converted.Value.MaxScrgb,
+                nativeWidth,
+                nativeHeight);
+    }
+
+    private static (float[]? Rgba, float MaxNits, float AvgNits, float MinNits, float MaxScrgb)? Convert(
         byte[] data,
         HdrPackedFormat format,
         int width,
         int height,
         HdrProbe probe,
         bool wantRgba,
-        bool checkLumaOnly,
         CancellationToken cancellation)
     {
         var count = width * height;
@@ -438,10 +488,14 @@ internal static class HdrWicDecode
             return null;
         }
 
-        var yuv = HdrPixels.IsYuv(format);
-        if (checkLumaOnly && !yuv && HdrColor.NeedsYuvConvert(probe.Kind) && IsRgbLumaOnly(data, format, count))
+        var identity = HdrColor.IsIdentityMatrix(probe.CicpMatrix);
+        var yuv = HdrPixels.TreatAsYuv(format, HdrColor.NeedsYuvConvert(probe.Kind), identity);
+        if (yuv && !HdrPixels.IsYuv(format) && IsRgbLumaOnly(data, format, count))
         {
-            // Y in R, G=B=0 — chroma is gone. Do not present Isiac’s red tint.
+            // Y in R, G=B=0 — WIC dropped chroma (common for matrix=0
+            // 4:4:4: P010/Yuy2 unavailable, Rgba16 is luma-only). Do not
+            // present Isiac’s red tint, or identity GBR’s green (Y→G).
+            // Fall back to SDR preview until a real 3-channel buffer exists.
             return null;
         }
 
@@ -466,7 +520,7 @@ internal static class HdrWicDecode
             {
                 var x = i % width;
                 var y = i / width;
-                HdrPixels.ReadYuv(data, width, height, x, y, format, out var luma, out var u, out var v);
+                HdrPixels.ReadYuvPackedRgb(data, width, height, x, y, format, out var luma, out var u, out var v);
                 HdrColor.YuvToRgb(
                     luma,
                     u,
@@ -510,7 +564,7 @@ internal static class HdrWicDecode
             minY = 0;
         }
 
-        return (rgba, maxY, sumY, minY, maxScrgb);
+        return (rgba, maxY, (float)(sumY / count), minY, maxScrgb);
     }
 
     /// <summary>
@@ -552,26 +606,9 @@ internal static class HdrWicDecode
 
     private static bool IsRgbLumaOnly(byte[] data, HdrPackedFormat format, int count)
     {
-        SampleMaxRgb(data, format, count, out var maxR, out var maxG, out var maxB);
-        return HdrColor.IsLumaInRedOnly([maxR], [maxG], [maxB]);
-    }
-
-    private static void SampleMaxRgb(
-        byte[] data,
-        HdrPackedFormat format,
-        int count,
-        out float maxR,
-        out float maxG,
-        out float maxB)
-    {
-        maxR = 0f;
-        maxG = 0f;
-        maxB = 0f;
-        if (HdrPixels.IsYuv(format))
-        {
-            return;
-        }
-
+        var maxR = 0f;
+        var maxG = 0f;
+        var maxB = 0f;
         var step = Math.Max(1, count / 4096);
         for (var i = 0; i < count; i += step)
         {
@@ -580,6 +617,8 @@ internal static class HdrWicDecode
             maxG = Math.Max(maxG, g);
             maxB = Math.Max(maxB, b);
         }
+
+        return HdrColor.IsLumaInRedOnly([maxR], [maxG], [maxB]);
     }
 
     [ComImport]

@@ -49,7 +49,8 @@ MIT allows copying if we kept the notice. That is not the blocker. The blocker i
 | MinHook, SKIF/Special K load, gamepad, updater, tray | **Do not copy.** |
 | Desktop / region / window capture + global hotkeys | **Do not copy.** Palace is not a snipping tool. |
 | Encode / transcode (AVIF / JXL / JXR / HDR PNG writers) | **Do not copy.** Catalog + preview first. |
-| OpenEXR + libjxl + libavif + Ultra HDR native DLLs | **Do not vendor.** Same MSIX risk as Magick. |
+| OpenEXR + libjxl + Ultra HDR native DLLs | **Do not vendor.** Same MSIX risk as Magick. |
+| libavif (`avif.dll` via `Starward.Codec`) | **Landed for HDR AVIF present.** Strip other Starward natives (JXL/UHDR/VP9). |
 | DirectXTex HDR / TGA I/O (MIT) | **Idea only.** A later decoder spike may use this class of library *if* it packages; not a reason to start now. |
 | PQ / ICtCp / Rec.709↔2020 / P3 matrices (`image.h`) | **Color-science reference** when a SwapChainPanel path exists. Reimplement; do not paste the ImGui app. |
 | Tonemap types + heatmap / gamut / SDR viz | **UX reference** for overlay / gallery, after a real HDR present exists. |
@@ -147,7 +148,7 @@ Then, and only then:
 - Header-only `ImageDimensions` where cheap (Radiance, EXR); otherwise store dims after a **local** Open/scan decode
 - Scan: if online-only, same cloud rules — stub hash, no decode, provider thumb or a dedicated “HDR / cloud” tile
 - PSD/TGA are catalog-nice; they are not the HDR present problem. Do not block Phase B on them
-- JXL: prefer inbox WIC codecs when present; do not vendor libjxl. AVIF already uses inbox WIC (`PathSafe` + `AvifFile`); do not vendor libavif
+- JXL: prefer inbox WIC codecs when present; do not vendor libjxl. HDR AVIF present uses libavif (`Starward.Codec` → `avif.dll` only); SDR AVIF stays inbox WIC
 
 ### Explicitly later or never (unless asked)
 
@@ -173,7 +174,7 @@ Isiac’s sequence. HDR present on files we can already decode is **Library now*
 6. **Then — Gamedev.** Markdown, audio with loops, 3D, Unity folder on the Palace **project** (not the Library catalog), `.unitypackage`.
 7. **Later — AI.** Tagging, organization, and similar.
 
-Until Magick / Phase C lands, treat EXR / Radiance / TGA / PSD / JXL as **out of the catalog on purpose**. AVIF is in via inbox WIC (no libavif). WIC overlay / HDR PNG + HDR AVIF present stays current Library work.
+Until Magick / Phase C lands, treat EXR / Radiance / TGA / PSD / JXL as **out of the catalog on purpose**. AVIF is in the catalog; SDR opens via inbox WIC, HDR present via libavif. WIC overlay / HDR PNG + HDR AVIF present stays current Library work.
 
 ---
 
@@ -186,6 +187,6 @@ PR: [Palace #12](https://github.com/sacb0y/Palace/pull/12) on `cursor/gallery-hd
 - Bugbot on #12: `CurrentProbe` before path, DXGI vtable 24/27, scRGB color space 1, `ScpHdr` inside `ScrStill` so 1:1 can pan, cached `HdrFrame` on resize/scale, `HdrPixels` Rgba8 vs Bgra8, present uses layout DIPs (not Collapsed 0), hide HDR when the still is not `item.Path`, oriented WIC size, window-monitor peak, `StillRevision` one refresh per item, `Bind(null)` cancels epoch, Actual 1:1 ignores unoriented catalog size
 - Follow-up (same-scene SDR vs dark HDR PNG): PQ/HLG only when cICP says so; present **clips to a real display peak**, not MaxCLL (that crushed `KalanLiraDuo` vs `_SDR`) and not 203 paper white. 1:1 is one device pixel per image pixel. Fill covers and pans overflow. 1:1 / Fill also left-click-drag pan like touch. Prompt/negative scroll instead of growing the overlay. Optional Peak toggle + nits slider. Optional top-left Info toggle (Ctrl+D, on to match the SKIV shot) shows file / size / **file** resolution / color / CIE-Y luminance / MaxCLL scRGB / display luminance — not Save As / Export / Copy, and not catalog 512×512 or “Display peak: 203”.
 - Open speed: first HDR paint is a **viewport** WIC decode (no second `BitmapImage` of the original). Native min/avg/max / MaxCLL scRGB refine after first present. DXGI probe is cached. 203 is never the auto clip.
-- `.avif` is in the catalog. SDR AVIF opens through WIC/`BitmapImage`. HDR AVIF (cICP 16/18 or 10-bit) presents scRGB **after YUV→RGB** (WIC `P010`/`Nv12` + CICP matrix, then PQ/HLG). Do **not** treat WIC `Rgba16` luma-in-R as RGB — that is Isiac’s red tint (MaxCLL scRGB 207.561). No libavif / Magick.
+- `.avif` is in the catalog. SDR AVIF opens through WIC/`BitmapImage`. HDR AVIF (cICP 16/18 or 10-bit) presents scRGB via **libavif** (`HdrAvifDecode` / `Starward.Codec` `avif.dll`: `avifDecoderNextImage` → `avifImageYUVToRGB` → PQ/HLG → scRGB), same class as SKIV. Identity matrix 0 is GBR. Apply HEIF `irot`/`imir` (else EXIF Orientation; irot angle 1 = EXIF 8, angle 3 = EXIF 6) so upright size matches WIC `RespectExifOrientation`. EXIF offset must be `< size` — libavif OK + offset==size means no tag. Native libavif failures return null and fall through to WIC — do not throw past the WIC try. Inbox WIC is the fallback only; do **not** treat WIC `Rgba16` luma-in-R as RGB or as identity GBR — red tint (MaxCLL scRGB 207.561) or green (Y→G). Package only `avif.dll` from Starward (strip JXL/UltraHDR/VP9 natives). No Magick.
 - SKIV-class stills now catalog without Magick: `.heic` `.heif` `.jxr` `.wdp` `.hdp` `.jxl` `.hdr` `.psd` `.dds`. Radiance is C# RGBE (`RadianceFile`). JXR float HDR stays BitmapImage (WinRT has no float pixel format). JXL HDR probe reads `ImageMetadata` + container `colr` CICP; `CanPresentHdr` is PQ/HLG only (10-bit sRGB JXL stays SDR). JXL P3 primaries are `11`. AVIF/HEIF `av1C` continues through `color_range` (limited is not full). YUV Info CIE Y is source-primary nits before 2020→709 (PNG path). EXR / TGA / Magick still deferred. No SKIV port.
 - Peak clip is app-wide Settings (`GalleryPeak` / `HdrPeakOverrideEnabled` / `HdrPeakOverrideNits`). Do not add overlay/gallery peak sliders.

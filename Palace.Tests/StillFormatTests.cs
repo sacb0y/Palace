@@ -201,6 +201,12 @@ public sealed class StillFormatTests
         var probe = AvifFile.ToHdrProbe(info);
         Assert.Equal(9, probe.CicpMatrix);
         Assert.True(probe.FullRange);
+
+        var identity = AvifWith(32, 32, 9, 16, matrix: 0, fullRange: true);
+        var identityInfo = AvifFile.Probe(identity);
+        Assert.Equal(0, identityInfo.CicpMatrix);
+        Assert.True(identityInfo.FullRange);
+        Assert.Equal(0, AvifFile.ToHdrProbe(identityInfo).CicpMatrix);
     }
 
     [Fact]

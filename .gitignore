@@ -72,3 +72,7 @@ thumbnails/
 screenshots/
 test-results.json
 test-screenshot.png
+
+# Exclusive packaged-run lock (agents)
+palace-app.lock
+palace-app.lock.holder

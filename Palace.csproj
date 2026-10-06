@@ -14,6 +14,7 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Version>0.0.3</Version>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**</DefaultItemExcludes>
@@ -52,6 +53,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="FluentIcons.WinUI" Version="2.2.339.1" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.6.1" />
+    <PackageReference Include="Starward.Codec" Version="0.5.2" />
   </ItemGroup>
 
   <!--
@@ -70,4 +72,24 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
+
+  <!--
+    Starward.Codec ships libavif plus JXL/UltraHDR/VP9 natives. Palace only
+    needs avif.dll for HDR AVIF present — drop the rest from output/publish.
+  -->
+  <PropertyGroup>
+    <_PalaceStarwardExtraNatives>jxl.dll;jxl_cms.dll;jxl_threads.dll;uhdr.dll;brotlicommon.dll;brotlidec.dll;brotlienc.dll;lcms2.dll;VP9DecoderMFT.dll;avifdec.exe;avifenc.exe;avifgainmaputil.exe;cjxl.exe;djxl.exe;jxlinfo.exe</_PalaceStarwardExtraNatives>
+  </PropertyGroup>
+  <Target Name="PalaceStripStarwardExtras" AfterTargets="CopyFilesToOutputDirectory">
+    <ItemGroup>
+      <_PalaceExtra Include="$(_PalaceStarwardExtraNatives)" />
+      <_PalaceDrop Include="$(OutDir)%(_PalaceExtra.Identity)" />
+    </ItemGroup>
+    <Delete Files="@(_PalaceDrop)" ContinueOnError="true" />
+  </Target>
+  <Target Name="PalaceStripStarwardFromPublish" BeforeTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'jxl.dll' OR '%(Filename)%(Extension)' == 'jxl_cms.dll' OR '%(Filename)%(Extension)' == 'jxl_threads.dll' OR '%(Filename)%(Extension)' == 'uhdr.dll' OR '%(Filename)%(Extension)' == 'brotlicommon.dll' OR '%(Filename)%(Extension)' == 'brotlidec.dll' OR '%(Filename)%(Extension)' == 'brotlienc.dll' OR '%(Filename)%(Extension)' == 'lcms2.dll' OR '%(Filename)%(Extension)' == 'VP9DecoderMFT.dll' OR '%(Filename)%(Extension)' == 'avifdec.exe' OR '%(Filename)%(Extension)' == 'avifenc.exe' OR '%(Filename)%(Extension)' == 'avifgainmaputil.exe' OR '%(Filename)%(Extension)' == 'cjxl.exe' OR '%(Filename)%(Extension)' == 'djxl.exe' OR '%(Filename)%(Extension)' == 'jxlinfo.exe'" />
+    </ItemGroup>
+  </Target>
 </Project>

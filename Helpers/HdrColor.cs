@@ -20,6 +20,15 @@ public static class HdrColor
     /// </summary>
     public const float YuvAsRedScrgbPeak = 1.660491f * PqToScrgb;
 
+    /// <summary>
+    /// CICP <c>matrix_coefficients</c> 0 is Identity: planes are GBR
+    /// (Y=G, Cb=B, Cr=R). No chroma offset.
+    /// </summary>
+    public static bool IsIdentityMatrix(int? matrix) => matrix == 0;
+
+    public static float LumaRange(float sample, bool fullRange) =>
+        fullRange ? sample : Math.Clamp((sample - (16f / 255f)) / (219f / 255f), 0, 1);
+
     public static void YuvToRgb(
         float y,
         float u,
@@ -30,17 +39,21 @@ public static class HdrColor
         out float g,
         out float b)
     {
-        var yf = fullRange ? y : Math.Clamp((y - (16f / 255f)) / (219f / 255f), 0, 1);
+        if (IsIdentityMatrix(matrix))
+        {
+            // GBR: scale like luma on every plane; never subtract 0.5.
+            r = LumaRange(v, fullRange);
+            g = LumaRange(y, fullRange);
+            b = LumaRange(u, fullRange);
+            return;
+        }
+
+        var yf = LumaRange(y, fullRange);
         var uf = fullRange ? u - 0.5f : (u - (128f / 255f)) / (224f / 255f);
         var vf = fullRange ? v - 0.5f : (v - (128f / 255f)) / (224f / 255f);
 
         switch (matrix)
         {
-            case 0:
-                r = y;
-                g = u;
-                b = v;
-                return;
             case 5:
             case 6:
                 r = yf + (1.402f * vf);
