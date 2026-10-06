@@ -160,11 +160,55 @@ public static class GalleryPresent
         displayLuminance > 220;
 
     /// <summary>
-    /// DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 (scRGB), G2084 HDR10, studio HDR10.
-    /// G22 sRGB (0) is SDR even when MaxLuminance is the dummy 270.
+    /// DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 (scRGB), G2084 HDR10, studio
+    /// HDR10 / HLG. G22 sRGB (0) is not advanced color by itself — desktop
+    /// composition often stays G22 while Windows HDR is on.
     /// </summary>
     public static bool IsAdvancedColor(int dxgiColorSpace) =>
-        dxgiColorSpace is 1 or 12 or 16;
+        dxgiColorSpace is 1 or 12 or 13 or 16 or 18 or 20 or 21;
+
+    /// <summary>
+    /// Dummy SDR EDID peak DXGI reports as 270 nits (8-bit G22).
+    /// </summary>
+    public static bool IsDummySdrLuminance(float nits) =>
+        nits > 265 && nits < 275;
+
+    /// <summary>
+    /// Windows HDR vs SDR for present. Advanced color spaces are HDR.
+    /// G22 is not automatically SDR: laptops often keep ColorSpace 0 with
+    /// a real HDR peak and 10-bit. Dummy 270 at 8-bit stays SDR. Do not
+    /// treat 203 paper white as a display peak.
+    /// </summary>
+    public static bool IsHdrOutput(
+        int dxgiColorSpace,
+        float maxLuminance,
+        float maxFullFrameLuminance,
+        int bitsPerColor)
+    {
+        if (IsAdvancedColor(dxgiColorSpace))
+        {
+            return true;
+        }
+
+        var peak = ProbedDisplayLuminance(maxLuminance, maxFullFrameLuminance);
+        if (peak <= 0)
+        {
+            return false;
+        }
+
+        if (bitsPerColor >= 10 && IsHdrDisplay(peak))
+        {
+            return true;
+        }
+
+        return peak > 270 && !IsDummySdrLuminance(peak);
+    }
+
+    /// <summary>
+    /// IDXGISwapChain3::CheckColorSpaceSupport PRESENT bit.
+    /// </summary>
+    public static bool ColorSpaceSupportsPresent(uint supportFlags) =>
+        (supportFlags & 1) != 0;
 
     /// <summary>
     /// G22 DWM composition white is scRGB 1.0 (80 nits). DXGI EDID luminance

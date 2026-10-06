@@ -110,6 +110,10 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, false, true, avif));
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrRadiance, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrJxr, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000)));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, true, false, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, true, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Gif, false, false, false, true, hdr));
@@ -137,6 +141,18 @@ public sealed class HdrFileTests
         Assert.Equal(
             "HDR AVIF · tonemap SDR 80 nits",
             GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), true, false));
+        Assert.Equal(
+            "HDR AVIF · presenting scRGB",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), true, true));
+        Assert.Equal(
+            "HDR JPEG XR · presenting scRGB",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), true, true));
+        Assert.Equal(
+            "HDR JPEG XR — SDR preview",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), false, true));
+        Assert.Equal(
+            "HDR JPEG XR · tonemap SDR 80 nits",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), true, false));
         Assert.Null(GalleryPresent.StatusLine(HdrProbe.None, false, false));
     }
 
@@ -176,7 +192,36 @@ public sealed class HdrFileTests
         Assert.False(GalleryPresent.IsAdvancedColor(0));
         Assert.True(GalleryPresent.IsAdvancedColor(1));
         Assert.True(GalleryPresent.IsAdvancedColor(12));
+        Assert.True(GalleryPresent.IsAdvancedColor(13));
         Assert.True(GalleryPresent.IsAdvancedColor(16));
+        Assert.True(GalleryPresent.IsAdvancedColor(18));
+        Assert.True(GalleryPresent.IsAdvancedColor(20));
+        Assert.True(GalleryPresent.IsAdvancedColor(21));
+        Assert.False(GalleryPresent.IsAdvancedColor(19));
+        Assert.True(GalleryPresent.ColorSpaceSupportsPresent(1));
+        Assert.False(GalleryPresent.ColorSpaceSupportsPresent(0));
+
+        // G22 desktop composition while Windows HDR is on (10-bit HDR400).
+        Assert.True(GalleryPresent.IsHdrOutput(0, 400, 400, 10));
+        Assert.True(GalleryPresent.IsHdrOutput(0, 1499, 1000, 10));
+        Assert.True(GalleryPresent.IsHdrOutput(12, 400, 400, 10));
+        Assert.True(GalleryPresent.IsHdrOutput(1, 80, 80, 8));
+        // Dummy 270 at 8-bit G22 is SDR; 203 is paper white, not a peak.
+        Assert.False(GalleryPresent.IsHdrOutput(0, 270, 270, 8));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 203, 203, 8));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 120, 80, 8));
+        Assert.True(GalleryPresent.IsDummySdrLuminance(270));
+        Assert.False(GalleryPresent.IsDummySdrLuminance(400));
+        // 8-bit G22 with a real HDR peak (not dummy 270) is still HDR.
+        Assert.True(GalleryPresent.IsHdrOutput(0, 400, 400, 8));
+        var g22Hdr = GalleryPresent.PresentMap(
+            GalleryPresent.IsHdrOutput(0, 400, 400, 10), 1000, 400);
+        Assert.Equal(1f, g22Hdr.Scale);
+        Assert.Equal(400f / 80f, g22Hdr.ClipScrgb, 3);
+        var dummySdr = GalleryPresent.PresentMap(
+            GalleryPresent.IsHdrOutput(0, 270, 270, 8), 1000, 80);
+        Assert.Equal(0.08f, dummySdr.Scale, 3);
+        Assert.Equal(1f, dummySdr.ClipScrgb, 3);
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(0, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(203, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(270, 270));

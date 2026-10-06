@@ -242,7 +242,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                 var hr = CallGetDesc1(output6, ref desc);
                                 if (hr >= 0)
                                 {
-                                    DisplayIsHdr = GalleryPresent.IsAdvancedColor(desc.ColorSpace);
+                                    DisplayIsHdr = GalleryPresent.IsHdrOutput(
+                                        desc.ColorSpace,
+                                        desc.MaxLuminance,
+                                        desc.MaxFullFrameLuminance,
+                                        (int)desc.BitsPerColor);
                                     if (DisplayIsHdr)
                                     {
                                         var peak = GalleryPresent.ProbedDisplayLuminance(
@@ -413,14 +417,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 throw new InvalidOperationException("CreateSwapChainForComposition failed.");
             }
 
-            var hrColor = CallSetColorSpace1(_swapChain, DxgiColorSpaceRgbFullG10NoneP709);
-            if (hrColor < 0)
-            {
-                Release(ref _swapChain);
-                throw new InvalidOperationException("SetColorSpace1 scRGB failed.");
-            }
-
+            // Attach first. SetColorSpace1 before SetSwapChain often returns
+            // DXGI_ERROR_INVALID_CALL on HDR outputs and aborted present
+            // (Info stayed “SDR preview”).
             AttachPanel();
+            TrySetScrgbColorSpace(_swapChain);
             _bufferW = width;
             _bufferH = height;
         }
@@ -579,6 +580,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     {
         var fn = Marshal.GetDelegateForFunctionPointer<CreateSwapChainForCompositionDelegate>(Vtbl(factory, VtblCreateSwapChainForComposition));
         return fn(factory, device, ref desc, output, out swapChain);
+    }
+
+    private static void TrySetScrgbColorSpace(IntPtr swapChain)
+    {
+        _ = CallSetColorSpace1(swapChain, DxgiColorSpaceRgbFullG10NoneP709);
     }
 
     private static int CallSetColorSpace1(IntPtr swapChain, int colorSpace)

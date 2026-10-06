@@ -89,6 +89,10 @@ public sealed class HdrPresentOffThreadTests
         var hdr = GalleryPresent.PresentMap(true, 1000f, 0);
         Assert.Equal(1f, hdr.Scale);
         Assert.Equal(125f, hdr.ClipScrgb);
+        Assert.True(GalleryPresent.IsHdrOutput(0, 400, 400, 10));
+        var g22Hdr = GalleryPresent.PresentMap(GalleryPresent.IsHdrOutput(0, 400, 400, 10), 1000f, 400f);
+        Assert.Equal(1f, g22Hdr.Scale);
+        Assert.Equal(5f, g22Hdr.ClipScrgb, 3);
     }
 
     [Fact]
