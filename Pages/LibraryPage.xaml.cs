@@ -596,6 +596,16 @@ public sealed partial class LibraryPage : Page
     {
         if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
         {
+            if (_rangeSelect.IsActive)
+            {
+                var from = _rangeSelect.AnchorIndex;
+                var to = _rangeSelect.EndIndex;
+                var indexes = RangeSelect.ContiguousIndexes(MosaicHeaderFlags(), from, to);
+                EndRangeSelect(null);
+                ApplyRangeIndexes(indexes, liveDrag: false, from, to);
+                return;
+            }
+
             EndRangeSelect(null);
         }
     }
@@ -689,22 +699,23 @@ public sealed partial class LibraryPage : Page
 
     private void EndRangeSelect(Pointer? pointer)
     {
-        if (pointer is not null || _rangePointer is not null)
+        var release = pointer ?? _rangePointer;
+        _rangeSelect = null;
+        _rangePointerId = 0;
+        _rangePointer = null;
+        _rangeCaptured = false;
+
+        if (release is not null)
         {
             try
             {
-                GrdAssets.ReleasePointerCapture(pointer ?? _rangePointer!);
+                GrdAssets.ReleasePointerCapture(release);
             }
             catch (ArgumentException)
             {
                 // Not captured.
             }
         }
-
-        _rangeSelect = null;
-        _rangePointerId = 0;
-        _rangePointer = null;
-        _rangeCaptured = false;
     }
 
     private void FolderGroupHeader_Tapped(object sender, TappedRoutedEventArgs e)
