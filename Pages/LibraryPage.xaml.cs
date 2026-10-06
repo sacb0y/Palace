@@ -548,6 +548,33 @@ public sealed partial class LibraryPage : Page
         {
             _mosaicArrow = e.Key;
         }
+
+        if (GalleryScale.ClosesOverlay(ViewModel.IsGalleryOverlayOpen, (int)e.Key))
+        {
+            ViewModel.CloseOverlayCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (!GalleryMedia.ShouldOpenOverlayFromSpace(
+                ViewModel.IsGalleryOverlayOpen,
+                FocusIsTextInput(e.OriginalSource),
+                false,
+                (int)e.Key))
+        {
+            return;
+        }
+
+        var item = FindAssetItem(e.OriginalSource)
+            ?? ViewModel.SelectedAsset
+            ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
+        if (item is null || item.IsFolderHeader)
+        {
+            return;
+        }
+
+        OpenOverlayFor(item);
+        e.Handled = true;
     }
 
     private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -674,6 +701,11 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        if (GalleryScale.PassesViewerSpace(true, (int)e.Key))
+        {
+            return;
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Escape:
@@ -693,10 +725,21 @@ public sealed partial class LibraryPage : Page
 
     private void GalleryOverlay_BackdropPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (e.OriginalSource == sender)
+        ViewModel.CloseOverlayCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    private static bool FocusIsTextInput(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            ViewModel.CloseOverlayCommand.Execute(null);
+            if (current is TextBox or RichEditBox or PasswordBox or AutoSuggestBox)
+            {
+                return true;
+            }
         }
+
+        return false;
     }
 
     private void EnsureSelectedForContext(AssetItem item)

@@ -126,6 +126,12 @@ public partial class TagsViewModel : ObservableObject
 
     public Func<IReadOnlyList<TagPath>, Task<OrganizeChoice?>>? RequestOrganizeChoice { get; set; }
     public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
+    [ObservableProperty]
+    public partial GalleryViewModel? OverlayGallery { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsGalleryOverlayOpen { get; set; }
+
     public Action<GalleryViewModel>? RequestOpenGallery { get; set; }
     public Action? RequestShowLibrary { get; set; }
     public Action? RequestFocusRename { get; set; }
@@ -521,19 +527,32 @@ public partial class TagsViewModel : ObservableObject
     [RelayCommand]
     private void OpenAsset(AssetItem? item)
     {
-        if (item is null || Assets.Count == 0)
+        if (item is null || item.IsFolderHeader || Assets.Count == 0)
         {
             return;
         }
 
-        var snapshot = Assets.ToList();
+        var snapshot = Assets.Where(asset => !asset.IsFolderHeader).ToList();
+        if (!GalleryMedia.CanOpen(snapshot.Count, true))
+        {
+            Notify("Select an asset first.");
+            return;
+        }
+
         var index = GalleryMedia.StartIndex(snapshot.Select(a => a.Id).ToList(), item.Id);
-        var gallery = new GalleryViewModel(snapshot, index < 0 ? 0 : index, _catalog);
-        RequestOpenGallery?.Invoke(gallery);
+        OverlayGallery = new GalleryViewModel(snapshot, index < 0 ? 0 : index, _catalog);
+        IsGalleryOverlayOpen = true;
         if (AccessService.WouldHydrateOnOpen(item.Path))
         {
             _ = AppServices.Hydration.HydrateAfterOpenAsync(item.Id);
         }
+    }
+
+    [RelayCommand]
+    private void CloseOverlay()
+    {
+        IsGalleryOverlayOpen = false;
+        OverlayGallery = null;
     }
 
     [RelayCommand]

@@ -775,6 +775,31 @@ Test-UI 'Right then Left changes overlay file; Esc closes' {
     }
 }
 
+Test-UI 'Space opens overlay on focused mosaic tile' {
+    Bind-MainWindow
+    $assets = Get-LibraryAssets
+    if ($assets.Count -lt 1) { throw 'Need a mosaic asset for Space overlay' }
+    $sel = $assets[0].selector
+    if (-not $sel) { $sel = $assets[0].name }
+    Select-LibraryAsset $assets[0]
+    winapp ui focus $sel @(WinArgs) | Out-Null
+    winapp ui focus 'GrdAssets' @(WinArgs) | Out-Null
+    winapp ui send-keys 'space' @(WinArgs) --via send-input | Out-Null
+    Start-Sleep -Milliseconds 250
+    if (-not (Test-GalleryOverlayOpen)) {
+        throw 'Gallery overlay did not open from Space'
+    }
+    winapp ui wait-for 'GrdGalleryBackdrop' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'GrdGalleryBackdrop missing after Space overlay' }
+    winapp ui send-keys 'esc' @(WinArgs) --via send-input
+    winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 4000
+    if ($LASTEXITCODE -ne 0) {
+        winapp ui invoke 'BtnGalleryClose' @(WinArgs)
+        winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 3000
+        if ($LASTEXITCODE -ne 0) { throw 'Esc did not close Space overlay' }
+    }
+}
+
 # ─── Gallery window ───
 Test-UI 'Open in new window then close' {
     $asset = Get-LibraryAssets | Select-Object -First 1

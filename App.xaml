@@ -10,6 +10,12 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <res:RoomTemplates />
             </ResourceDictionary.MergedDictionaries>
+            <AcrylicBrush
+                x:Key="GalleryOverlayBackdropBrush"
+                FallbackColor="{ThemeResource SmokeFillColorDefault}"
+                TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                TintLuminosityOpacity="0.55"
+                TintOpacity="0.35" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

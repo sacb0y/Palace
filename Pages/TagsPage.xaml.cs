@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -8,8 +9,11 @@ using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
+using Windows.Media.Core;
+using Windows.Storage;
 using Windows.System;
 using Windows.UI;
+using Windows.UI.Core;
 
 namespace Palace.Pages;
 
@@ -24,6 +28,8 @@ public sealed partial class TagsPage : Page
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private AssetItem? _selectedMosaicAsset;
+    private GalleryViewModel? _hookedOverlay;
+    private int _overlayMediaEpoch;
 
     public TagsPage()
     {
@@ -34,10 +40,23 @@ public sealed partial class TagsPage : Page
         ViewModel.RequestFocusRename = FocusRenameBox;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(TagsViewModel.OverlayGallery) or nameof(TagsViewModel.IsGalleryOverlayOpen))
+            {
+                HookOverlayGallery();
+                UpdateOverlayMedia();
+                if (ViewModel.IsGalleryOverlayOpen)
+                {
+                    GrdGalleryOverlay.Focus(FocusState.Programmatic);
+                }
+            }
+        };
         Loaded += async (_, _) =>
         {
             GrdTagAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdTagAssets_KeyDown), true);
             RefreshRealizedTiles();
+            HookOverlayGallery();
             await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
             ArmMosaicSortCombo();
         };
@@ -48,6 +67,12 @@ public sealed partial class TagsPage : Page
             {
                 ViewModel.MosaicReset = null;
                 ViewModel.MosaicChunkAppended = null;
+            }
+
+            if (_hookedOverlay is not null)
+            {
+                _hookedOverlay.PropertyChanged -= OverlayGallery_PropertyChanged;
+                _hookedOverlay = null;
             }
         };
     }
@@ -441,14 +466,22 @@ public sealed partial class TagsPage : Page
             return;
         }
 
+        if (!GalleryMedia.ShouldOpenOverlayFromDoubleTap(item.IsFolderHeader, -1))
+        {
+            e.Handled = true;
+            return;
+        }
+
         OpenTagAsset(item);
         e.Handled = true;
     }
 
     private void GrdTagAssets_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (e.Key != VirtualKey.Enter)
+        if (GalleryScale.ClosesOverlay(ViewModel.IsGalleryOverlayOpen, (int)e.Key))
         {
+            ViewModel.CloseOverlayCommand.Execute(null);
+            e.Handled = true;
             return;
         }
 
@@ -457,6 +490,27 @@ public sealed partial class TagsPage : Page
             ?? FindAssetItem(focused)
             ?? _selectedMosaicAsset
             ?? ViewModel.Assets.FirstOrDefault(asset => asset.IsSelected);
+        var isHeader = item?.IsFolderHeader == true;
+        if (GalleryMedia.ShouldOpenOverlayFromSpace(
+                ViewModel.IsGalleryOverlayOpen,
+                FocusIsTextInput(e.OriginalSource),
+                isHeader,
+                (int)e.Key))
+        {
+            if (item is not null)
+            {
+                OpenTagAsset(item);
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (e.Key != VirtualKey.Enter || ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
         if (item is null)
         {
             return;
@@ -489,6 +543,11 @@ public sealed partial class TagsPage : Page
 
     private void OpenTagAsset(AssetItem item)
     {
+        if (item.IsFolderHeader)
+        {
+            return;
+        }
+
         EnsureSelectedForContext(item);
         ViewModel.OpenAssetCommand.Execute(item);
     }
@@ -678,5 +737,142 @@ public sealed partial class TagsPage : Page
             FolderSegments = path.Slugs,
             KeepOriginalFileName = true
         };
+    }
+
+    private void HookOverlayGallery()
+    {
+        if (_hookedOverlay is not null)
+        {
+            _hookedOverlay.PropertyChanged -= OverlayGallery_PropertyChanged;
+        }
+
+        _hookedOverlay = ViewModel.OverlayGallery;
+        if (_hookedOverlay is not null)
+        {
+            _hookedOverlay.PropertyChanged += OverlayGallery_PropertyChanged;
+        }
+    }
+
+    private void OverlayGallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
+            or nameof(GalleryViewModel.IsVideo)
+            or nameof(GalleryViewModel.IsImage))
+        {
+            UpdateOverlayMedia();
+        }
+    }
+
+    private async void UpdateOverlayMedia()
+    {
+        var epoch = Interlocked.Increment(ref _overlayMediaEpoch);
+        var gallery = ViewModel.OverlayGallery;
+        SrfOverlayStill.Bind(ViewModel.IsGalleryOverlayOpen && gallery is { IsImage: true } ? gallery : null);
+
+        if (gallery is { IsVideo: true, CurrentPath: not null } video
+            && !AccessService.WouldHydrateOnOpen(video.CurrentPath))
+        {
+            BtnGalleryPlay.Visibility = Visibility.Visible;
+            try
+            {
+                EnsureOverlayPlayer();
+                var file = await StorageFile.GetFileFromPathAsync(video.CurrentPath);
+                if (epoch != _overlayMediaEpoch)
+                {
+                    return;
+                }
+
+                MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
+            }
+            catch
+            {
+                if (epoch == _overlayMediaEpoch)
+                {
+                    MpeOverlay.Source = null;
+                }
+            }
+        }
+        else
+        {
+            BtnGalleryPlay.Visibility = Visibility.Collapsed;
+            MpeOverlay.Source = null;
+        }
+    }
+
+    private void EnsureOverlayPlayer()
+    {
+        if (MpeOverlay.MediaPlayer is null)
+        {
+            MpeOverlay.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
+        }
+    }
+
+    private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)
+    {
+        EnsureOverlayPlayer();
+        var player = MpeOverlay.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
+        player.Play();
+        BtnGalleryPlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (ViewModel.OverlayGallery is null)
+        {
+            return;
+        }
+
+        var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (ViewModel.OverlayGallery.TryHandleViewerShortcut(control, (int)e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (GalleryScale.PassesViewerSpace(true, (int)e.Key))
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case VirtualKey.Escape:
+                ViewModel.CloseOverlayCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case VirtualKey.Left:
+                ViewModel.OverlayGallery.GoPreviousCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case VirtualKey.Right:
+                ViewModel.OverlayGallery.GoNextCommand.Execute(null);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void GalleryOverlay_BackdropPressed(object sender, PointerRoutedEventArgs e)
+    {
+        ViewModel.CloseOverlayCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    private static bool FocusIsTextInput(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is TextBox or RichEditBox or PasswordBox or AutoSuggestBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

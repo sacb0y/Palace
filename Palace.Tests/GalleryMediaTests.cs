@@ -98,6 +98,10 @@ public sealed class GalleryMediaTests
         Assert.False(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, GalleryMedia.MosaicDoubleClickMs - 1));
         Assert.True(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, -1));
         Assert.True(GalleryMedia.ShouldOpenOverlayFromDoubleTap(false, GalleryMedia.MosaicDoubleClickMs));
+        Assert.True(GalleryMedia.ShouldOpenOverlayFromSpace(false, false, false, 32));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromSpace(false, false, true, 32));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromSpace(true, false, false, 32));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromSpace(false, true, false, 32));
     }
 
     [Fact]

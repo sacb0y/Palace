@@ -13,14 +13,13 @@
     Title="{x:Bind Gallery.Title, Mode=OneWay}"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
-        <MicaBackdrop />
+        <DesktopAcrylicBackdrop />
     </Window.SystemBackdrop>
 
     <Grid
         x:Name="GrdGalleryWindow"
         AutomationProperties.AutomationId="GrdGalleryWindow"
         AutomationProperties.Name="Gallery window"
-        Background="{ThemeResource LayerFillColorDefaultBrush}"
         IsTabStop="True"
         PreviewKeyDown="GalleryRoot_PreviewKeyDown">
         <Grid.RowDefinitions>
@@ -44,6 +43,10 @@
             </Grid.ColumnDefinitions>
 
             <Grid Grid.Column="0">
+                <Border
+                    Background="{ThemeResource SmokeFillColorDefaultBrush}"
+                    IsHitTestVisible="False"
+                    Opacity="0.28" />
                 <controls:GalleryStillSurface
                     x:Name="SrfWindowStill"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />

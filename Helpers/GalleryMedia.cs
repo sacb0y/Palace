@@ -122,6 +122,13 @@ public static class GalleryMedia
             || millisecondsSinceHeaderGesture >= MosaicDoubleClickMs;
     }
 
+    public static bool ShouldOpenOverlayFromSpace(
+        bool overlayOpen,
+        bool isTyping,
+        bool isFolderHeader,
+        int keyCode) =>
+        GalleryScale.OpensOverlay(overlayOpen, isTyping, keyCode) && !isFolderHeader;
+
     public static bool ShouldLoadTileThumb(
         bool isOrphan,
         bool alreadyStarted,
