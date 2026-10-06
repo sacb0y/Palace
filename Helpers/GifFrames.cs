@@ -152,6 +152,67 @@ public static class GifFrames
         }
     }
 
+    /// <summary>
+    /// One pass over the file — composites every frame. Overlay autoplay
+    /// must use this cache instead of <see cref="TryRenderFrame"/> per tick.
+    /// </summary>
+    public static IReadOnlyList<Raster>? TryRenderAll(string? path)
+    {
+        if (!MayOpen(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = new FileStream(path!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return TryRenderAll(stream);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static IReadOnlyList<Raster>? TryRenderAll(Stream stream)
+    {
+        try
+        {
+            var file = Parse(stream, renderIndex: null, renderAll: true);
+            if (file?.Composites is null || file.Composites.Count == 0)
+            {
+                return null;
+            }
+
+            var frames = new Raster[file.Composites.Count];
+            for (var i = 0; i < file.Composites.Count; i++)
+            {
+                frames[i] = new Raster(file.Width, file.Height, file.Composites[i]);
+            }
+
+            return frames;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static Raster? PickCached(IReadOnlyList<Raster> frames, int index)
+    {
+        if (frames.Count == 0)
+        {
+            return null;
+        }
+
+        return frames[ClampIndex(index, frames.Count)];
+    }
+
+    public static bool CacheMatchesPath(string? cachePath, string? path) =>
+        !string.IsNullOrEmpty(cachePath)
+        && !string.IsNullOrEmpty(path)
+        && string.Equals(cachePath, path, StringComparison.OrdinalIgnoreCase);
+
     private static bool MayOpen(string? path) =>
         !string.IsNullOrWhiteSpace(path)
         && CloudFile.Exists(path)
@@ -164,9 +225,10 @@ public static class GifFrames
         public int FrameCount;
         public List<int> DelaysCs = [];
         public byte[]? Composite;
+        public List<byte[]>? Composites;
     }
 
-    private static Parsed? Parse(Stream stream, int? renderIndex)
+    private static Parsed? Parse(Stream stream, int? renderIndex, bool renderAll = false)
     {
         if (!stream.CanSeek || stream.Length < 14)
         {
@@ -208,6 +270,8 @@ public static class GifFrames
         var delays = new List<int>();
         var want = renderIndex is null ? -1 : ClampIndex(renderIndex.Value, int.MaxValue);
         byte[]? composite = null;
+        List<byte[]>? composites = renderAll ? [] : null;
+        var decode = renderAll || renderIndex is not null;
         Span<byte> desc = stackalloc byte[9];
 
         while (stream.Position < stream.Length)
@@ -246,7 +310,7 @@ public static class GifFrames
             if (intro != 0x2C)
             {
                 return frameCount > 0
-                    ? Finish(width, height, frameCount, delays, composite)
+                    ? Finish(width, height, frameCount, delays, composite, composites)
                     : null;
             }
 
@@ -270,7 +334,7 @@ public static class GifFrames
                 break;
             }
 
-            if (renderIndex is null)
+            if (!decode)
             {
                 SkipSubBlocks(stream);
             }
@@ -290,9 +354,17 @@ public static class GifFrames
                         palette, transparent, interlace);
                 }
 
-                if (frameCount == want)
+                if (renderAll || frameCount == want)
                 {
-                    composite = (byte[])canvas.Clone();
+                    var copy = (byte[])canvas.Clone();
+                    if (renderAll)
+                    {
+                        composites!.Add(copy);
+                    }
+                    else
+                    {
+                        composite = copy;
+                    }
                 }
 
                 ApplyDisposal(
@@ -305,26 +377,32 @@ public static class GifFrames
             delay = 10;
             transparent = -1;
 
-            if (renderIndex is not null && frameCount > want && composite is not null)
+            if (!renderAll && renderIndex is not null && frameCount > want && composite is not null)
             {
                 break;
             }
         }
 
         return frameCount > 0
-            ? Finish(width, height, frameCount, delays, composite)
+            ? Finish(width, height, frameCount, delays, composite, composites)
             : null;
     }
 
     private static Parsed Finish(
-        int width, int height, int frameCount, List<int> delays, byte[]? composite) =>
+        int width,
+        int height,
+        int frameCount,
+        List<int> delays,
+        byte[]? composite,
+        List<byte[]>? composites) =>
         new()
         {
             Width = width,
             Height = height,
             FrameCount = frameCount,
             DelaysCs = delays,
-            Composite = composite
+            Composite = composite,
+            Composites = composites
         };
 
     private static byte[] ReadPalette(Stream stream, int count)

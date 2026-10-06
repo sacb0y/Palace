@@ -75,6 +75,28 @@ public sealed class GifFramesTests
     }
 
     [Fact]
+    public void TryRenderAll_OnePassMatchesPerFrame()
+    {
+        var bytes = TwoFrameGif();
+        using var allStream = new MemoryStream(bytes);
+        var all = GifFrames.TryRenderAll(allStream);
+        Assert.NotNull(all);
+        Assert.Equal(2, all!.Count);
+        using var a = new MemoryStream(bytes);
+        var first = GifFrames.TryRenderFrame(a, 0);
+        using var b = new MemoryStream(bytes);
+        var second = GifFrames.TryRenderFrame(b, 1);
+        Assert.Equal(first!.Value.Bgra, all[0].Bgra);
+        Assert.Equal(second!.Value.Bgra, all[1].Bgra);
+        Assert.Equal(all[1].Bgra, GifFrames.PickCached(all, 99)!.Value.Bgra);
+        Assert.Equal(all[0].Bgra, GifFrames.PickCached(all, -3)!.Value.Bgra);
+        Assert.Null(GifFrames.PickCached(Array.Empty<GifFrames.Raster>(), 0));
+        Assert.True(GifFrames.CacheMatchesPath(@"D:\loop.gif", @"d:\loop.gif"));
+        Assert.False(GifFrames.CacheMatchesPath(@"D:\a.gif", @"D:\b.gif"));
+        Assert.False(GifFrames.CacheMatchesPath(null, @"D:\loop.gif"));
+    }
+
+    [Fact]
     public void TryRenderFrame_KeepsTransparentPixelsClear()
     {
         var bytes = TransparentThenPartialGif();
