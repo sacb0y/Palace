@@ -73,14 +73,39 @@ public static class MosaicSortOrder
         return 0;
     }
 
-    public static MosaicSort FromIndex(int index)
+    public static MosaicSort FromIndex(int index) =>
+        TryFromIndex(index, out var sort) ? sort : Default;
+
+    /// <summary>
+    /// ComboBox TwoWay <c>SelectedIndex</c> writes <c>-1</c> on init and
+    /// <c>Frame.Navigate</c> unload. That is not a user sort.
+    /// </summary>
+    public static bool TryFromIndex(int index, out MosaicSort sort)
     {
         if (index < 0 || index >= Choices.Count)
         {
-            return Default;
+            sort = Default;
+            return false;
         }
 
-        return Choices[index].Key;
+        sort = Choices[index].Key;
+        return true;
+    }
+
+    /// <summary>
+    /// True when <paramref name="index"/> is a real choice different from
+    /// <paramref name="current"/>. False for <c>-1</c> / out of range / no-op.
+    /// </summary>
+    public static bool ShouldApplyIndex(int index, MosaicSort current, out MosaicSort next)
+    {
+        current = Normalize(current);
+        if (!TryFromIndex(index, out next) || next == current)
+        {
+            next = current;
+            return false;
+        }
+
+        return true;
     }
 
     public static string Label(MosaicSort sort)

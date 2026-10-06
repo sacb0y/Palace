@@ -87,6 +87,7 @@ public sealed partial class LibraryPage : Page
             _suppressBrowseChrome = true;
             SyncBrowseChromeFromViewModel();
             _suppressBrowseChrome = false;
+            await ErrorReporter.RunAsync("Reload mosaic sort", null, ViewModel.ReloadMosaicSortAsync);
             await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
             UpdatePreview();
             MosaicLayout.InvalidateItemsInfo();

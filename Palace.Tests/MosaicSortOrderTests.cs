@@ -56,9 +56,33 @@ public sealed class MosaicSortOrderTests
             Assert.Equal(MosaicSortOrder.Choices[i].Label, MosaicSortOrder.Label(key));
         }
 
+        Assert.False(MosaicSortOrder.TryFromIndex(-1, out _));
+        Assert.False(MosaicSortOrder.TryFromIndex(80, out _));
         Assert.Equal(MosaicSort.DateNewest, MosaicSortOrder.FromIndex(-1));
         Assert.Equal(MosaicSort.DateNewest, MosaicSortOrder.FromIndex(80));
         Assert.Equal(0, MosaicSortOrder.IndexOf((MosaicSort)99));
+    }
+
+    [Fact]
+    public void ShouldApplyIndex_IgnoresComboBoxUnset()
+    {
+        Assert.False(MosaicSortOrder.ShouldApplyIndex(-1, MosaicSort.Name, out var kept));
+        Assert.Equal(MosaicSort.Name, kept);
+        Assert.False(MosaicSortOrder.ShouldApplyIndex(-1, MosaicSort.Size, out kept));
+        Assert.Equal(MosaicSort.Size, kept);
+        Assert.False(MosaicSortOrder.ShouldApplyIndex(80, MosaicSort.Rating, out kept));
+        Assert.Equal(MosaicSort.Rating, kept);
+        Assert.False(MosaicSortOrder.ShouldApplyIndex(
+            MosaicSortOrder.IndexOf(MosaicSort.Name),
+            MosaicSort.Name,
+            out kept));
+        Assert.Equal(MosaicSort.Name, kept);
+
+        Assert.True(MosaicSortOrder.ShouldApplyIndex(
+            MosaicSortOrder.IndexOf(MosaicSort.Size),
+            MosaicSort.Name,
+            out var next));
+        Assert.Equal(MosaicSort.Size, next);
     }
 
     [Fact]

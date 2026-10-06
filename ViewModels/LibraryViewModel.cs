@@ -111,8 +111,7 @@ public partial class LibraryViewModel : ObservableObject
         get => MosaicSortOrder.IndexOf(MosaicSort);
         set
         {
-            var next = MosaicSortOrder.FromIndex(value);
-            if (next == MosaicSort)
+            if (!MosaicSortOrder.ShouldApplyIndex(value, MosaicSort, out var next))
             {
                 return;
             }
@@ -2150,6 +2149,13 @@ public partial class LibraryViewModel : ObservableObject
             int i => Math.Clamp(i, 96, 280),
             _ => 140
         };
+    }
+
+    public Task ReloadMosaicSortAsync()
+    {
+        var previous = MosaicSort;
+        LoadMosaicSort();
+        return MosaicSort == previous ? Task.CompletedTask : ApplyFilterAsync();
     }
 
     private void LoadMosaicSort()

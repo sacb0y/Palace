@@ -89,8 +89,7 @@ public partial class TagsViewModel : ObservableObject
         get => MosaicSortOrder.IndexOf(MosaicSort);
         set
         {
-            var next = MosaicSortOrder.FromIndex(value);
-            if (next == MosaicSort)
+            if (!MosaicSortOrder.ShouldApplyIndex(value, MosaicSort, out var next))
             {
                 return;
             }
