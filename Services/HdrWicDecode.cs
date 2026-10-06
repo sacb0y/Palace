@@ -338,11 +338,12 @@ internal static class HdrWicDecode
     }
 
     /// <summary>
-    /// Packaged JXR: <c>CreateAsync(stream)</c> (no decoder ID) then
-    /// <c>GetSoftwareBitmapAsync</c> + <c>LockBuffer</c>. Hop to the
-    /// UI thread on <c>RPC_E_WRONG_THREAD</c>. Do not QI into WIC
-    /// CopyPixels — that stamps a fake <c>winrt 80004002</c>.
-    /// Filename / handle / memory stay as unpackaged fallback.
+    /// JXR: native WIC float / half / <c>1010102XR</c> first so HDR values above 1.0
+    /// survive. The WinRT <c>CreateAsync(stream)</c> + <c>GetSoftwareBitmapAsync</c>
+    /// path only offers unorm <c>Rgba16</c> / <c>Rgba8</c> / <c>Bgra8</c> (clamps to
+    /// scRGB 1.0), so it is a fallback only. Hop to the UI thread on
+    /// <c>RPC_E_WRONG_THREAD</c>. Do not QI into WIC CopyPixels from WinRT objects —
+    /// that stamps a fake <c>winrt 80004002</c>.
     /// </summary>
     private static async Task<HdrFrame?> TryLoadJxrAsync(
         string path,
@@ -355,7 +356,25 @@ internal static class HdrWicDecode
         CancellationToken cancellation)
     {
         LastWicError = null;
-        string? sniffError = null;
+        var bytes = await TryReadLocalBytesAsync(path, cancellation).ConfigureAwait(false);
+        var native = await Task.Run(
+            () => FromWicFloat(
+                path,
+                bytes,
+                probe,
+                viewportPixelWidth,
+                viewportPixelHeight,
+                scaling,
+                wantRgba,
+                measure,
+                cancellation),
+            cancellation).ConfigureAwait(false);
+        if (native is not null)
+        {
+            return native;
+        }
+
+        var nativeError = LastWicError;
         try
         {
             var winrt = await TryLoadJxrWinrtAsync(
@@ -371,8 +390,6 @@ internal static class HdrWicDecode
             {
                 return winrt;
             }
-
-            sniffError = LastWicError;
         }
         catch (OperationCanceledException)
         {
@@ -383,28 +400,14 @@ internal static class HdrWicDecode
             LastWicError ??= WicNative.WicDecoderOpen.Failed(
                 WicNative.WicDecoderOpen.CreateAsync,
                 ex);
-            sniffError = LastWicError;
         }
 
-        var bytes = await TryReadLocalBytesAsync(path, cancellation).ConfigureAwait(false);
-        var unpacked = await Task.Run(
-            () => FromWicFloat(
-                path,
-                bytes,
-                probe,
-                viewportPixelWidth,
-                viewportPixelHeight,
-                scaling,
-                wantRgba,
-                measure,
-                cancellation),
-            cancellation).ConfigureAwait(false);
-        if (unpacked is null && !string.IsNullOrEmpty(sniffError))
+        if (string.IsNullOrEmpty(LastWicError))
         {
-            LastWicError = sniffError;
+            LastWicError = nativeError;
         }
 
-        return unpacked;
+        return null;
     }
 
     private static async Task<HdrFrame?> TryLoadJxrWinrtAsync(
