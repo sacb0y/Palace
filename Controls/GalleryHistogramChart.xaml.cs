@@ -26,7 +26,7 @@ public sealed partial class GalleryHistogramChart : UserControl
         nameof(ShowRgb),
         typeof(bool),
         typeof(GalleryHistogramChart),
-        new PropertyMetadata(false, OnChartChanged));
+        new PropertyMetadata(GalleryHistogram.DefaultShowRgb, OnChartChanged));
 
     public static readonly DependencyProperty IdPrefixProperty = DependencyProperty.Register(
         nameof(IdPrefix),
@@ -106,9 +106,9 @@ public sealed partial class GalleryHistogramChart : UserControl
         AutomationProperties.SetAutomationId(PnlHistogram, $"Pnl{prefix}Histogram");
         AutomationProperties.SetName(PnlHistogram, "Histogram");
         AutomationProperties.SetAutomationId(BtnHistogramLuma, $"Btn{prefix}HistogramLuma");
-        AutomationProperties.SetName(BtnHistogramLuma, "CIE Y");
+        AutomationProperties.SetName(BtnHistogramLuma, "Luma");
         AutomationProperties.SetAutomationId(BtnHistogramRgb, $"Btn{prefix}HistogramRgb");
-        AutomationProperties.SetName(BtnHistogramRgb, "scRGB channels");
+        AutomationProperties.SetName(BtnHistogramRgb, "RGB");
         AutomationProperties.SetAutomationId(TxtHistogram, $"Txt{prefix}Histogram");
         AutomationProperties.SetName(TxtHistogram, "Histogram");
         AutomationProperties.SetAutomationId(CnvHistogram, $"Cnv{prefix}Histogram");
@@ -125,7 +125,7 @@ public sealed partial class GalleryHistogramChart : UserControl
         var compact = Compact;
         PnlHistogramModes.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         CnvHistogram.Height = compact ? 48 : 96;
-        var rgb = !compact && ShowRgb;
+        var rgb = ShowRgb;
         var (lumaOn, rgbOn) = GalleryHistogram.ExclusiveModeChecks(rgb);
         BtnHistogramLuma.IsChecked = lumaOn;
         BtnHistogramRgb.IsChecked = rgbOn;

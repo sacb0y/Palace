@@ -180,22 +180,87 @@ public sealed class GalleryHistogramTests
     public void Caption_NamesPresentedFrameNotThumb()
     {
         Assert.Equal(
-            "CIE Y · 64 bins · presented frame",
+            "Luma · 64 bins · presented frame",
             GalleryHistogram.Caption(false, 64, 10));
         Assert.Equal(
-            "scRGB R/G/B · 64 bins · presented frame",
+            "RGB · 64 bins · presented frame",
             GalleryHistogram.Caption(true, 64, 10));
         Assert.Equal("", GalleryHistogram.Caption(false, 64, 0));
+        Assert.Equal(GalleryHistogram.Caption(true, 64, 10), GalleryHistogram.Caption(GalleryHistogram.DefaultShowRgb, 64, 10));
     }
 
     [Fact]
     public void ExclusiveModeChecks_KeepsActiveModeOn()
     {
+        Assert.True(GalleryHistogram.DefaultShowRgb);
         Assert.Equal((true, false), GalleryHistogram.ExclusiveModeChecks(false));
         Assert.Equal((false, true), GalleryHistogram.ExclusiveModeChecks(true));
         Assert.Equal(
+            (false, true),
+            GalleryHistogram.ExclusiveModeChecks(GalleryHistogram.DefaultShowRgb));
+        Assert.Equal(
             GalleryHistogram.ExclusiveModeChecks(false),
             GalleryHistogram.ExclusiveModeChecks(false));
+    }
+
+    [Fact]
+    public void ChannelMax_SdrPaperWhiteIsLastBin_HdrKeepsPqPeak()
+    {
+        Assert.Equal(GalleryHistogram.ChannelMaxScrgb, GalleryHistogram.ChannelMax(true));
+        Assert.Equal(GalleryHistogram.ChannelMaxSdr, GalleryHistogram.ChannelMax(false));
+        Assert.Equal(GalleryHistogram.BinCount - 1, GalleryHistogram.LinearScrgbBin(GalleryHistogram.ChannelMaxSdr, maxScrgb: GalleryHistogram.ChannelMaxSdr));
+        Assert.InRange(
+            GalleryHistogram.LinearScrgbBin(1f, maxScrgb: GalleryHistogram.ChannelMaxSdr),
+            20,
+            30);
+        Assert.Equal(0, GalleryHistogram.LinearScrgbBin(1f));
+        Assert.Equal(GalleryHistogram.BinCount - 1, GalleryHistogram.LinearScrgbBin(GalleryHistogram.ChannelMaxScrgb));
+    }
+
+    [Fact]
+    public void SdrDecodeProbe_StampsBt709WhenUnspecified()
+    {
+        var sdr = GalleryHistogram.SdrDecodeProbe(HdrProbe.None);
+        Assert.Equal(1, sdr.CicpPrimaries);
+        Assert.False(sdr.CanPresentHdr);
+        var hdr = new HdrProbe(HdrKind.HdrPng, null, 16, null);
+        Assert.True(hdr.CanPresentHdr);
+        Assert.Null(GalleryHistogram.SdrDecodeProbe(hdr).CicpPrimaries);
+    }
+
+    [Fact]
+    public void FromScrgb_SdrWhiteFillsLastChannelBin()
+    {
+        HdrColor.EncodedRgbToScrgb(1f, 1f, 1f, HdrTransfer.Srgb, 1, out var sr, out var sg, out var sb);
+        var bins = GalleryHistogram.FromScrgb(
+            ScrgbPixel(sr, sg, sb),
+            1,
+            1,
+            1,
+            GalleryHistogram.BinCount,
+            GalleryHistogram.DefaultMaxSamples,
+            GalleryHistogram.ChannelMaxSdr);
+        Assert.Equal(1, bins.Red[^1]);
+        Assert.Equal(1, bins.Green[^1]);
+        Assert.Equal(1, bins.Blue[^1]);
+        Assert.Equal(1, bins.Luma[GalleryHistogram.LogNitsBin(GalleryPresent.SdrReferenceNits)]);
+    }
+
+    [Fact]
+    public void FromPacked8_WhiteBgraFillsLastRgbBin()
+    {
+        byte[] bgra = [255, 255, 255, 255];
+        var bins = GalleryHistogram.FromPacked8(bgra, 1, 1, HdrPackedFormat.Bgra8);
+        Assert.Equal(1, bins.SampleCount);
+        Assert.Equal(1, bins.Red[^1]);
+        Assert.Equal(1, bins.Green[^1]);
+        Assert.Equal(1, bins.Blue[^1]);
+        Assert.False(GalleryHistogram.FromPacked8([], 0, 0, HdrPackedFormat.Bgra8).HasSamples);
+        byte[] red = [0, 0, 255, 255];
+        var redBins = GalleryHistogram.FromPacked8(red, 1, 1, HdrPackedFormat.Bgra8);
+        Assert.Equal(1, redBins.Red[^1]);
+        Assert.Equal(0, redBins.Green[^1]);
+        Assert.Equal(0, redBins.Blue[^1]);
     }
 
     private static float[] ScrgbPixel(float r, float g, float b) =>

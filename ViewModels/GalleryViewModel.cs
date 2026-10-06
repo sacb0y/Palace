@@ -169,7 +169,7 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool ShowHistogram { get; set; }
 
     [ObservableProperty]
-    public partial bool HistogramShowRgb { get; set; }
+    public partial bool HistogramShowRgb { get; set; } = GalleryHistogram.DefaultShowRgb;
 
     [ObservableProperty]
     public partial string HistogramCaption { get; set; } = "";

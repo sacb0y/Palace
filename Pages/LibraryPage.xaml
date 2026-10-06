@@ -1297,6 +1297,7 @@
                                     Compact="True"
                                     IdPrefix="GalleryOverlay"
                                     Bins="{x:Bind ViewModel.OverlayGallery.Histogram, Mode=OneWay, FallbackValue={x:Null}}"
+                                    ShowRgb="{x:Bind ViewModel.OverlayGallery.HistogramShowRgb, Mode=OneWay, FallbackValue=True}"
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowHistogram), Mode=OneWay, FallbackValue=Collapsed}" />
                             </StackPanel>
                         </Border>
