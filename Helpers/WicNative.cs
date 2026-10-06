@@ -36,21 +36,28 @@ public static class WicNative
     /// <c>E_NOINTERFACE</c> (<c>0x80004002</c>); some WASDK builds
     /// lack <c>BitmapDecoder.JpegXrDecoderId</c>. BitmapImage /
     /// <c>CreateAsync(stream)</c> still opens these files. Packaged
-    /// HDR present: native float CopyPixels first, then QI the WinRT
+    /// HDR present: native float CopyPixels first (filename / handle /
+    /// memory), then <c>CoCreate</c> / <c>DllGetClassObject</c>
+    /// <c>CLSID_WICWmpDecoder</c> + <c>Initialize</c> (<c>wmp</c>) when
+    /// the packaged factory catalog omits HD Photo, then QI the WinRT
     /// decoder/frame (<c>IWinRTObject.ThisPtr</c> +
     /// <c>QueryInterface</c>) for float/half CopyPixels, then
-    /// <c>CreateStreamOverRandomAccessStream</c>. WinRT unorm
-    /// (<c>Rgba16</c>) clamps HDR — do not present it.
-    /// Stamp the exact call on <c>LastWicError</c>.
+    /// <c>CreateStreamOverRandomAccessStream</c> (<c>rasStream</c> /
+    /// <c>rasDecoder</c>). WinRT unorm (<c>Rgba16</c>) clamps HDR — do
+    /// not present it. Stamp the exact call on <c>LastWicError</c>;
+    /// chain prior QI / unorm with RAS via <see cref="Join"/>.
     /// </summary>
     public static class WicDecoderOpen
     {
         public const string Filename = "filename";
         public const string Handle = "handle";
         public const string Memory = "memory";
+        public const string Wmp = "wmp";
         public const string CreateAsync = "CreateAsync";
         public const string Qi = "qi";
         public const string Ras = "ras";
+        public const string RasStream = "rasStream";
+        public const string RasDecoder = "rasDecoder";
         public const string GetSoftwareBitmap = "GetSoftwareBitmap";
         public const string LockBuffer = "LockBuffer";
         public const string GetPixelData = "GetPixelData";
@@ -64,6 +71,8 @@ public static class WicNative
             CreateAsync,
             Qi,
             Ras,
+            RasStream,
+            RasDecoder,
             GetSoftwareBitmap,
             LockBuffer,
             GetPixelData,
@@ -75,9 +84,12 @@ public static class WicNative
             Filename,
             Handle,
             Memory,
+            Wmp,
             CreateAsync,
             Qi,
             Ras,
+            RasStream,
+            RasDecoder,
             GetSoftwareBitmap,
             LockBuffer,
             GetPixelData,
@@ -93,6 +105,25 @@ public static class WicNative
         public static string Failed(string stage, Exception ex) =>
             Failed(stage, ex.HResult != 0 ? ex.HResult : unchecked((int)0x80004005));
 
+        /// <summary>
+        /// Keep the QI / unorm stamp when RAS also fails so Display
+        /// shows both (RAS used to overwrite QI).
+        /// </summary>
+        public static string Join(string? prior, string next)
+        {
+            if (string.IsNullOrEmpty(prior))
+            {
+                return next;
+            }
+
+            if (string.IsNullOrEmpty(next) || prior == next)
+            {
+                return prior;
+            }
+
+            return prior + "; " + next;
+        }
+
         public static bool IsComponentNotFound(int hr) =>
             unchecked((uint)hr) == ComponentNotFound;
 
@@ -104,9 +135,11 @@ public static class WicNative
     }
 
     /// <summary>
-    /// Inbox JPEG XR CLSID. Do not
-    /// <c>CreateAsync(JpegXrDecoderId)</c> or CoCreate this in a
-    /// packaged app (E_NOINTERFACE; property missing on some WASDK).
+    /// Inbox JPEG XR CLSID. Prefer factory open; on packaged catalog
+    /// miss, <c>CoCreate</c> / <c>DllGetClassObject</c> then
+    /// <c>Initialize</c> from memory (<c>wmp</c>). Do not
+    /// <c>CreateAsync(JpegXrDecoderId)</c> (E_NOINTERFACE; property
+    /// missing on some WASDK).
     /// </summary>
     public static readonly Guid ClsidWmpDecoder = new("a26cec36-234c-4950-ae16-e34aace71d0d");
 

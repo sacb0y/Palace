@@ -79,9 +79,12 @@ public sealed class WicNativeTests
                 "filename",
                 "handle",
                 "memory",
+                "wmp",
                 "CreateAsync",
                 "qi",
                 "ras",
+                "rasStream",
+                "rasDecoder",
                 "GetSoftwareBitmap",
                 "LockBuffer",
                 "GetPixelData",
@@ -93,6 +96,8 @@ public sealed class WicNativeTests
                 "CreateAsync",
                 "qi",
                 "ras",
+                "rasStream",
+                "rasDecoder",
                 "GetSoftwareBitmap",
                 "LockBuffer",
                 "GetPixelData",
@@ -102,6 +107,11 @@ public sealed class WicNativeTests
         Assert.Equal(
             "WIC decoder memory",
             WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.Memory));
+        Assert.Equal(
+            "WIC decoder wmp 80004002",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.Wmp,
+                unchecked((int)0x80004002)));
         Assert.Equal(
             "WIC decoder GetSoftwareBitmap 80004002",
             WicNative.WicDecoderOpen.Failed(
@@ -135,6 +145,30 @@ public sealed class WicNativeTests
             WicNative.WicDecoderOpen.Failed(
                 WicNative.WicDecoderOpen.Ras,
                 unchecked((int)0x88982F50)));
+        Assert.Equal(
+            "WIC decoder rasStream 80004005",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.RasStream,
+                unchecked((int)0x80004005)));
+        Assert.Equal(
+            "WIC decoder rasDecoder 88982F50",
+            WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.RasDecoder,
+                unchecked((int)0x88982F50)));
+        Assert.Equal(
+            "WIC decoder qi 80004002; WIC decoder rasDecoder 80004005",
+            WicNative.WicDecoderOpen.Join(
+                WicNative.WicDecoderOpen.Failed(
+                    WicNative.WicDecoderOpen.Qi,
+                    unchecked((int)0x80004002)),
+                WicNative.WicDecoderOpen.Failed(
+                    WicNative.WicDecoderOpen.RasDecoder,
+                    unchecked((int)0x80004005))));
+        Assert.Equal(
+            "WIC decoder unorm",
+            WicNative.WicDecoderOpen.Join(
+                null,
+                WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.UnormClamp)));
         Assert.Equal(
             Guid.Parse("94BC8415-04EA-4B2E-AF13-4DE95AA898EB"),
             WicNative.IidSoftwareBitmapNative);
