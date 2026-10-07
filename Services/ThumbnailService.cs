@@ -13,9 +13,18 @@ public sealed class ThumbnailService
     public const int MaxSide = 512;
     public const string LargePreviewSuffix = "_lg";
 
-    private readonly string _root;
+    private string _root;
 
     public ThumbnailService(string thumbsRoot)
+    {
+        _root = thumbsRoot;
+        Directory.CreateDirectory(_root);
+    }
+
+    /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
+    public string Root => _root;
+
+    public void SetRoot(string thumbsRoot)
     {
         _root = thumbsRoot;
         Directory.CreateDirectory(_root);
@@ -88,6 +97,7 @@ public sealed class ThumbnailService
         var dest = PathForHash(hash);
         if (File.Exists(dest) && !ShouldRegenerate(dest, filePath))
         {
+            TouchLastAccess(dest);
             return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0);
         }
 
@@ -126,6 +136,8 @@ public sealed class ThumbnailService
 
             await using var output = File.Create(dest);
             await jpegOrImage.CopyToAsync(output).ConfigureAwait(false);
+            TouchLastAccess(dest);
+            EnforceCacheBudget();
             var written = ImageDimensions.TryRead(dest);
             return written is { } size
                 ? new ThumbnailInfo(dest, size.Width, size.Height)
@@ -200,6 +212,8 @@ public sealed class ThumbnailService
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
         encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, tw, th, 96, 96, pixels.DetachPixelData());
         await encoder.FlushAsync();
+        TouchLastAccess(dest);
+        EnforceCacheBudget();
         var written = ImageDimensions.TryRead(dest);
         return written is { } size
             ? new ThumbnailInfo(dest, size.Width, size.Height)
@@ -214,10 +228,48 @@ public sealed class ThumbnailService
             return null;
         }
 
+        TouchLastAccess(dest);
         var existing = ImageDimensions.TryRead(dest);
         return existing is { } size
             ? new ThumbnailInfo(dest, size.Width, size.Height)
             : new ThumbnailInfo(dest, 0, 0);
+    }
+
+    private void EnforceCacheBudget()
+    {
+        if (!MediaCache.Enabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var cacheRoot = Directory.GetParent(_root)?.FullName;
+            if (string.IsNullOrEmpty(cacheRoot))
+            {
+                return;
+            }
+
+            // Off UI thread: callers already await Encode/Cache on a pool or
+            // continue from async; keep eviction out of the dispatcher.
+            MediaCache.EnforceMaxSize(cacheRoot);
+        }
+        catch
+        {
+            // Budget enforcement is best-effort.
+        }
+    }
+
+    private static void TouchLastAccess(string path)
+    {
+        try
+        {
+            File.SetLastAccessTimeUtc(path, DateTime.UtcNow);
+        }
+        catch
+        {
+            // Some volumes ignore LastAccessTime.
+        }
     }
 
     private static bool ShouldRegenerate(string dest, string originalPath)

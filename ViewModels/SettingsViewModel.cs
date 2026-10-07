@@ -111,6 +111,24 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string TintHex { get; set; } = ShellBackground.DefaultTintHex;
 
+    [ObservableProperty]
+    public partial bool MediaCacheEnabled { get; set; }
+
+    [ObservableProperty]
+    public partial double MediaCacheMaxMb { get; set; } = MediaCache.DefaultMaxMb;
+
+    [ObservableProperty]
+    public partial string MediaCacheMaxLabel { get; set; } = MediaCache.MaxMbLabel(MediaCache.DefaultMaxMb);
+
+    [ObservableProperty]
+    public partial string MediaCacheUsageLabel { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string MediaCachePathLabel { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool HasCustomCacheFolder { get; set; }
+
     public async Task LoadAsync()
     {
         using var _ = _load.Begin();
@@ -139,6 +157,8 @@ public partial class SettingsViewModel : ObservableObject
         ApplyTheme(SelectedTheme);
         LoadPeakOverride();
         LoadShellBackground();
+        LoadMediaCache();
+        await RefreshMediaCacheUsageAsync();
         OneDriveClientId = _cloud.OneDriveClientId;
         DropboxAppKey = _cloud.DropboxAppKey;
         RedirectUri = _cloud.RedirectUriDisplay;
@@ -208,6 +228,23 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    partial void OnMediaCacheEnabledChanged(bool value)
+    {
+        if (!_load.IsLoading)
+        {
+            PersistMediaCache();
+        }
+    }
+
+    partial void OnMediaCacheMaxMbChanged(double value)
+    {
+        MediaCacheMaxLabel = MediaCache.MaxMbLabel(value);
+        if (!_load.IsLoading)
+        {
+            PersistMediaCache();
+        }
+    }
+
     private void LoadPeakOverride()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
@@ -258,6 +295,128 @@ public partial class SettingsViewModel : ObservableObject
         BlurLabel = ShellBackground.AmountLabel(ShellBackground.Blur);
         TintHex = ShellBackground.TintHex;
     }
+
+    private void LoadMediaCache()
+    {
+        AppServices.LoadMediaCache();
+        MediaCacheEnabled = MediaCache.Enabled;
+        MediaCacheMaxMb = MediaCache.MaxMb;
+        MediaCacheMaxLabel = MediaCache.MaxMbLabel(MediaCache.MaxMb);
+        HasCustomCacheFolder = !string.IsNullOrWhiteSpace(MediaCache.RootPath);
+        MediaCachePathLabel = MediaCache.RootLabel(AppServices.LocalRoot);
+    }
+
+    private void PersistMediaCache()
+    {
+        MediaCache.Apply(
+            MediaCacheEnabled,
+            MediaCacheMaxMb,
+            MediaCache.RootPath,
+            MediaCache.AccessToken);
+        var values = ApplicationData.Current.LocalSettings.Values;
+        values[MediaCache.EnabledKey] = MediaCache.Enabled;
+        values[MediaCache.MaxMbKey] = MediaCache.MaxMb;
+        values[MediaCache.RootPathKey] = MediaCache.RootPath ?? "";
+        values[MediaCache.AccessTokenKey] = MediaCache.AccessToken ?? "";
+        MediaCacheMaxLabel = MediaCache.MaxMbLabel(MediaCache.MaxMb);
+        HasCustomCacheFolder = !string.IsNullOrWhiteSpace(MediaCache.RootPath);
+        MediaCachePathLabel = MediaCache.RootLabel(AppServices.LocalRoot);
+        AppServices.ApplyMediaCacheRoot();
+        _ = RefreshMediaCacheUsageAsync();
+        if (MediaCache.Enabled)
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    MediaCache.EnforceMaxSize(AppServices.ActiveCacheRoot);
+                }
+                catch
+                {
+                    // Best-effort size enforce after Settings change.
+                }
+            });
+        }
+    }
+
+    private Task RefreshMediaCacheUsageAsync() =>
+        ErrorReporter.RunAsync("Measure cache", Notify, async () =>
+        {
+            var root = AppServices.ActiveCacheRoot;
+            var bytes = await Task.Run(() => MediaCache.MeasureBytes(root)).ConfigureAwait(true);
+            MediaCacheUsageLabel = MediaCache.Enabled
+                ? MediaCache.UsageLabel(bytes, MediaCache.MaxBytes)
+                : MediaCache.FormatBytes(bytes);
+            MediaCachePathLabel = MediaCache.RootLabel(AppServices.LocalRoot);
+        });
+
+    [RelayCommand]
+    private Task PickCacheFolderAsync() =>
+        ErrorReporter.RunAsync("Choose cache folder", Notify, async () =>
+        {
+            var folder = await _access.PickFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
+
+            // All projects — watchers cover every SourceFolder path.
+            var sources = (await _catalog.GetSourceFoldersAsync()).Select(s => s.Path);
+            if (!MediaCache.IsAllowedRoot(folder.Path, sources, out var reason))
+            {
+                Notify(reason ?? "That folder cannot be used for cache.");
+                return;
+            }
+
+            var previousToken = MediaCache.AccessToken;
+            var token = _access.Remember(folder);
+            MediaCache.Apply(MediaCacheEnabled, MediaCacheMaxMb, folder.Path, token);
+            if (!string.IsNullOrEmpty(previousToken)
+                && !string.Equals(previousToken, token, StringComparison.Ordinal))
+            {
+                _access.Forget(previousToken);
+            }
+
+            PersistMediaCache();
+            await RefreshMediaCacheUsageAsync();
+            StatusText = "Cache folder updated. Missing thumbs regenerate as you browse.";
+        });
+
+    [RelayCommand]
+    private Task ResetCacheFolderAsync() =>
+        ErrorReporter.RunAsync("Reset cache folder", Notify, async () =>
+        {
+            var previousToken = MediaCache.AccessToken;
+            MediaCache.Apply(MediaCacheEnabled, MediaCacheMaxMb, null, null);
+            if (!string.IsNullOrEmpty(previousToken))
+            {
+                _access.Forget(previousToken);
+            }
+
+            PersistMediaCache();
+            await RefreshMediaCacheUsageAsync();
+            StatusText = "Cache folder reset to the app local folder.";
+        });
+
+    [RelayCommand]
+    private Task ClearCacheAsync() =>
+        ErrorReporter.RunAsync("Clear cache", Notify, async () =>
+        {
+            AppServices.Library.BeginBusy("Clearing cache…");
+            try
+            {
+                var root = AppServices.ActiveCacheRoot;
+                var deleted = await Task.Run(() => MediaCache.Clear(root)).ConfigureAwait(true);
+                await RefreshMediaCacheUsageAsync();
+                StatusText = deleted > 0
+                    ? $"Cleared {MediaCache.FormatBytes(deleted)} from the cache."
+                    : "Cache was already empty.";
+            }
+            finally
+            {
+                AppServices.Library.EndBusy();
+            }
+        });
 
     [RelayCommand]
     private Task PickWallpaperAsync() =>

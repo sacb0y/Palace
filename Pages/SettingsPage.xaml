@@ -149,6 +149,87 @@
                 Text="{x:Bind ViewModel.PeakOverrideLabel, Mode=OneWay}"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}" />
 
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Cache" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ic:FluentIcon Icon="Folder" IconSize="Size16" IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Media cache" />
+            </StackPanel>
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Optional. Speeds mosaic thumbs and later preview decode. Files stay on disk for the library — cache is derived data only. Never fills by recalling online-only originals."
+                TextWrapping="Wrap" />
+            <ToggleSwitch
+                x:Name="TglMediaCache"
+                AutomationProperties.AutomationId="TglMediaCache"
+                AutomationProperties.Name="Enable media cache"
+                Header="Enable media cache"
+                IsOn="{x:Bind ViewModel.MediaCacheEnabled, Mode=TwoWay}"
+                OffContent="Off"
+                OnContent="On" />
+            <Slider
+                x:Name="SldMediaCacheMaxMb"
+                AutomationProperties.AutomationId="SldMediaCacheMaxMb"
+                AutomationProperties.Name="Max cache size"
+                Header="Max cache size (MB)"
+                Maximum="32768"
+                Minimum="256"
+                StepFrequency="256"
+                TickFrequency="2048"
+                TickPlacement="None"
+                Value="{x:Bind ViewModel.MediaCacheMaxMb, Mode=TwoWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
+            <TextBlock
+                x:Name="TxtMediaCacheMaxMb"
+                AutomationProperties.AutomationId="TxtMediaCacheMaxMb"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.MediaCacheMaxLabel, Mode=OneWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
+            <TextBlock
+                x:Name="TxtMediaCacheUsage"
+                AutomationProperties.AutomationId="TxtMediaCacheUsage"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="{x:Bind ViewModel.MediaCacheUsageLabel, Mode=OneWay}"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
+            <TextBlock
+                x:Name="TxtMediaCachePath"
+                AutomationProperties.AutomationId="TxtMediaCachePath"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="{x:Bind ViewModel.MediaCachePathLabel, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
+            <StackPanel
+                Orientation="Horizontal"
+                Spacing="8"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}">
+                <Button
+                    AutomationProperties.AutomationId="BtnPickCacheFolder"
+                    Command="{x:Bind ViewModel.PickCacheFolderCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Choose cache folder" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    AutomationProperties.AutomationId="BtnResetCacheFolder"
+                    Command="{x:Bind ViewModel.ResetCacheFolderCommand}"
+                    IsEnabled="{x:Bind ViewModel.HasCustomCacheFolder, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Reset to default" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    AutomationProperties.AutomationId="BtnClearCache"
+                    Command="{x:Bind ViewModel.ClearCacheCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Clear cache" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Cloud accounts" />
             <TextBlock
                 Style="{StaticResource CaptionTextBlockStyle}"
