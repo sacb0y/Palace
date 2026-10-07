@@ -1,3 +1,6 @@
+<img width="1571" height="959" alt="image" src="https://github.com/user-attachments/assets/a5bbfdab-2738-4c88-b824-eed219e4af7a" />
+
+
 # Palace
 
 Packaged WinUI 3 / Windows App SDK digital asset manager. Files stay on disk. SQLite + FTS5 is the catalog index. The metaphor is a mind palace: **Library** (catalog) and **Rooms** (moodboard / mindmap).
