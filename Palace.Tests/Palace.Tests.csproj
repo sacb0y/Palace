@@ -16,6 +16,7 @@
     <Compile Include="..\Helpers\FolderGroups.cs" Link="FolderGroups.cs" />
     <Compile Include="..\Helpers\GalleryMedia.cs" Link="GalleryMedia.cs" />
     <Compile Include="..\Helpers\GalleryHistogram.cs" Link="GalleryHistogram.cs" />
+    <Compile Include="..\Helpers\GalleryChrome.cs" Link="GalleryChrome.cs" />
     <Compile Include="..\Helpers\GalleryPeak.cs" Link="GalleryPeak.cs" />
     <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />
     <Compile Include="..\Helpers\DisplayHdr.cs" Link="DisplayHdr.cs" />
