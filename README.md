@@ -10,19 +10,19 @@ https://github.com/sacb0y/Palace
 
 Library browsing, mosaic, overlay/gallery (images, GIF, video, HDR present), tags, watch folders, and FTS are the focus of this slice.
 
-**Rooms** (product “palace” rooms — moodboard / mindmap) and **Organization** (on-disk organize / auto-organize) are in their infancy. Expect stubs and early flows, not finished features. Cloud (Dropbox / OneDrive) is a bonus capability already present in 0.0.x, not the next numbered slice.
+**Rooms** (product “palace” rooms — moodboard / mindmap) and **Organization** (on-disk organize / auto-organize) are in their infancy. Expect stubs and early flows, not finished features. Cloud (Dropbox / OneDrive) is a bonus capability already present in 0.0.x, also very early.
 
 Agent / PR contract (version rules, Library-first, what not to invent): see [`AGENTS.md`](./AGENTS.md).
 
 ## Goals
 
-**Now — 0.0 Library and tagging.** Image and video viewing must be solid (HDR overlay work is this slice, not a later one). The tagging system must be good. Watch folders, browse a mosaic, tag and search, organize on disk when asked.
+**Now — 0.0 Per "Project" Library and tagging** Image and video viewing must be solid (HDR support a later focus). The tagging system must be good. Watch folders, browse a mosaic, tag and search, organize on disk when asked. Optional caching for faster loading and previews.
 
-**Next — 0.1 Rooms.** Moodboard (a board of images to look at) plus mindmap (lines, diagrams, notes). Support current and later formats. [Kanvaz](https://github.com/p4inz-code/kanvaz) is a UX reference only — not a port.
+**Next — 0.1 Rooms** Moodboard (a board of images to look at) plus mindmap (lines, diagrams, notes). Support current and later formats. [Kanvaz](https://github.com/p4inz-code/kanvaz) and PureRef as inspirations but to expand beyond images.
 
-**Bonus — Cloud.** Not the next main slice. View and manage Dropbox and OneDrive via OAuth. Some of this already works in 0.0.
+**Bonus — Cloud** View and manage Dropbox and OneDrive via OAuth. Some of this already works in 0.0.
 
-**Then — 0.2 Gamedev.** More formats and viewers:
+**Then — 0.2 Gamedev focus** More formats and viewers:
 
 - Markdown reading
 - Audio (with loops)
@@ -40,7 +40,7 @@ Identity on main for this preview is **0.0.4 · Library core · initial public p
 
 - **Library mosaic** — watched folders, FTS search, overlay / gallery for images, GIF, and video, dry-run organize, Recycle Bin delete. Top-level folder browse groups tiles by child folders.
 - **Tags board** — Eagle-style board; groups and child tags sit in two columns; hierarchy, Any / All / None filter, implications
-- **Cloud** — bonus capability already in 0.0: On-Demand detection from file attributes; no hash or decode of online-only originals; hydrate only on explicit Open
+- **Cloud** — Can handle "Cloud Only" files in dropbox and onedrive without mass redownloading (currently may not generate thumbnails), preliminary cloud storage support.
 - **Rooms** — infancy: create, list, and sectioned pin grids. Not a freeform moodboard or mindmap yet
 - **Organization** — infancy: dry-run organize and optional auto-organize exist; not a finished organization product
 
