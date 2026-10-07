@@ -796,7 +796,7 @@ internal static class HdrWicDecode
                     return null;
                 }
 
-                Buffer.BlockCopy(raw, src, dest, row * stride, stride);
+                System.Buffer.BlockCopy(raw, src, dest, row * stride, stride);
             }
 
             LastWicError = null;
@@ -1135,13 +1135,13 @@ internal static class HdrWicDecode
         for (var row = 0; row < yDesc.Height; row++)
         {
             var src = yDesc.StartIndex + (row * yDesc.Stride);
-            Buffer.BlockCopy(raw, src, dest, row * yStride, yStride);
+            System.Buffer.BlockCopy(raw, src, dest, row * yStride, yStride);
         }
 
         for (var row = 0; row < uvDesc.Height; row++)
         {
             var src = uvDesc.StartIndex + (row * uvDesc.Stride);
-            Buffer.BlockCopy(raw, src, dest, yBytes + (row * uvStride), uvStride);
+            System.Buffer.BlockCopy(raw, src, dest, yBytes + (row * uvStride), uvStride);
         }
 
         return dest;

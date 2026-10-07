@@ -131,7 +131,7 @@
                                     HorizontalAlignment="Left"
                                     ItemsSource="{x:Bind Chips, Mode=OneWay}">
                                     <ItemsRepeater.Layout>
-                                        <WrapLayout
+                                        <helpers:ChipWrapLayout
                                             HorizontalSpacing="6"
                                             VerticalSpacing="6" />
                                     </ItemsRepeater.Layout>
