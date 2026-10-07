@@ -131,6 +131,15 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasCustomCacheFolder { get; set; }
 
+    [ObservableProperty]
+    public partial string CatalogPathLabel { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool CatalogUsesCustomRoot { get; set; }
+
+    [ObservableProperty]
+    public partial string CatalogRestartHint { get; set; } = "";
+
     public async Task LoadAsync()
     {
         using var _ = _load.Begin();
@@ -160,12 +169,25 @@ public partial class SettingsViewModel : ObservableObject
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
+        LoadCatalogStore();
         await RefreshMediaCacheUsageAsync();
         OneDriveClientId = _cloud.OneDriveClientId;
         DropboxAppKey = _cloud.DropboxAppKey;
         RedirectUri = _cloud.RedirectUriDisplay;
         await RefreshCloudStatusAsync();
         StatusText = Sources.Count == 0 ? "No watched folders yet." : $"{Sources.Count} watched folders.";
+    }
+
+    private void LoadCatalogStore()
+    {
+        CatalogPathLabel = CatalogStore.RootLabel(CatalogStore.ActiveRoot);
+        CatalogUsesCustomRoot = !string.Equals(
+            CatalogStore.ActiveRoot,
+            CatalogStore.DefaultRoot(),
+            StringComparison.OrdinalIgnoreCase);
+        CatalogRestartHint = CatalogStore.MigratedFromLocalState
+            ? "Catalog was moved out of package LocalState so unregister will not wipe it."
+            : "";
     }
 
     partial void OnSelectedThemeChanged(string value)
@@ -398,6 +420,122 @@ public partial class SettingsViewModel : ObservableObject
             PersistMediaCache();
             await RefreshMediaCacheUsageAsync();
             StatusText = "Cache folder reset to the app local folder.";
+        });
+
+    [RelayCommand]
+    private Task PickCatalogFolderAsync() =>
+        ErrorReporter.RunAsync("Choose catalog folder", Notify, async () =>
+        {
+            var folder = await _access.PickFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
+
+            var root = CatalogStore.NormalizeRoot(folder.Path);
+            if (root is null)
+            {
+                Notify("That folder path is invalid.");
+                return;
+            }
+
+            Directory.CreateDirectory(root);
+            if (CatalogStore.ActiveRoot is { } active
+                && !string.Equals(active, root, StringComparison.OrdinalIgnoreCase)
+                && CatalogStore.ActiveDbPath is { } activeDb
+                && File.Exists(activeDb))
+            {
+                CatalogStore.CopyCatalogFiles(active, root);
+            }
+
+            CatalogStore.WritePointer(root);
+            ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey] = root;
+            var token = _access.Remember(folder);
+            ApplicationData.Current.LocalSettings.Values[CatalogStore.AccessTokenKey] = token;
+            CatalogPathLabel = CatalogStore.RootLabel(root);
+            CatalogUsesCustomRoot = !string.Equals(root, CatalogStore.DefaultRoot(), StringComparison.OrdinalIgnoreCase);
+            CatalogRestartHint = "Restart Palace to open the catalog in the new folder.";
+            StatusText = "Catalog folder saved. Restart Palace to use it.";
+        });
+
+    [RelayCommand]
+    private Task ResetCatalogFolderAsync() =>
+        ErrorReporter.RunAsync("Reset catalog folder", Notify, async () =>
+        {
+            await Task.CompletedTask;
+            var root = CatalogStore.DefaultRoot();
+            Directory.CreateDirectory(root);
+            if (CatalogStore.ActiveRoot is { } active
+                && !string.Equals(active, root, StringComparison.OrdinalIgnoreCase)
+                && CatalogStore.ActiveDbPath is { } activeDb
+                && File.Exists(activeDb))
+            {
+                CatalogStore.CopyCatalogFiles(active, root);
+            }
+
+            CatalogStore.WritePointer(root);
+            ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey] = root;
+            ApplicationData.Current.LocalSettings.Values[CatalogStore.AccessTokenKey] = "";
+            CatalogPathLabel = CatalogStore.RootLabel(root);
+            CatalogUsesCustomRoot = false;
+            CatalogRestartHint = "Restart Palace to open the default durable catalog folder.";
+            StatusText = "Catalog folder reset to the durable default. Restart Palace to use it.";
+        });
+
+    [RelayCommand]
+    private Task ExportCatalogCopyAsync() =>
+        ErrorReporter.RunAsync("Export catalog copy", Notify, async () =>
+        {
+            var source = CatalogStore.ActiveDbPath;
+            if (string.IsNullOrEmpty(source) || !File.Exists(source))
+            {
+                Notify("No catalog database is open.");
+                return;
+            }
+
+            var folder = await _access.PickFolderAsync();
+            if (folder is null)
+            {
+                return;
+            }
+
+            var name = $"palace-catalog-{DateTime.Now:yyyyMMdd-HHmmss}.db";
+            var path = Path.Combine(folder.Path, name);
+            await Task.Run(() => File.Copy(source, path, overwrite: true));
+            StatusText = $"Catalog copy saved to {path}";
+        });
+
+    [RelayCommand]
+    private Task ExportTagsAsync() =>
+        ErrorReporter.RunAsync("Export tags", Notify, async () =>
+        {
+            var json = await _catalog.ExportTagsJsonAsync();
+            var file = await _access.PickSaveJsonAsync(
+                $"palace-tags-{DateTime.Now:yyyyMMdd}",
+                "Palace tags");
+            if (file is null)
+            {
+                return;
+            }
+
+            await FileIO.WriteTextAsync(file, json);
+            StatusText = $"Exported tags to {file.Path}";
+        });
+
+    [RelayCommand]
+    private Task ImportTagsAsync() =>
+        ErrorReporter.RunAsync("Import tags", Notify, async () =>
+        {
+            var file = await _access.PickOpenJsonAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var json = await FileIO.ReadTextAsync(file);
+            var plan = await _catalog.ImportTagsJsonAsync(json);
+            await AppServices.Tags.RefreshAsync();
+            StatusText = "Imported tags. " + plan.Summary;
         });
 
     [RelayCommand]

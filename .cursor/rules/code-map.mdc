@@ -9,6 +9,8 @@ alwaysApply: false
 | Area | Where |
 |---|---|
 | Schema / migrate | `Data/PalaceDb.cs` |
+| Durable catalog path | `Helpers/CatalogStore.cs` (default `%LOCALAPPDATA%\Palace\catalog\palace.db` outside MSIX Packages; pointer `%LOCALAPPDATA%\Palace\catalog-root.txt` survives `winapp unregister`; LocalSettings `CatalogRootPath` / `CatalogAccessToken` are a cache only. Startup migrates a non-empty LocalState `palace.db` into the durable root. Settings `TxtCatalogPath` / `BtnPickCatalogFolder` / `BtnResetCatalogFolder` / `BtnExportCatalogCopy`. **Unregister wipes LocalState** — never treat package LocalState as the only copy of user data.) |
+| Tag export / import | `Helpers/TagPortable.cs` + `CatalogService.ExportTagsJsonAsync` / `ImportTagsJsonAsync` (schema `palace-tags/1`; upsert by name; cycle-safe parents/implicits; does not wipe unrelated tags). Settings `BtnExportTags` / `BtnImportTags`. Tags stay **global**. |
 | Catalog queries | `Services/CatalogService.cs` |
 | Scan / index | `Services/ScanService.cs` |
 | Thumbs | `Services/ThumbnailService.cs` |
