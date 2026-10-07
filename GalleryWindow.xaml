@@ -93,6 +93,28 @@
                                 <TextBlock VerticalAlignment="Center" Text="Details" />
                             </StackPanel>
                         </ToggleButton>
+                        <Border
+                            Padding="8,5"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="IcnGalleryWindowHdr"
+                            AutomationProperties.Name="HDR"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                            CornerRadius="4"
+                            IsHitTestVisible="False"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHdrBadge), Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <ic:FluentIcon
+                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                    Icon="Hdr"
+                                    IconSize="Size24"
+                                    IconVariant="Regular" />
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="HDR" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     <Border
                         x:Name="BrdGalleryWindowImageInfo"

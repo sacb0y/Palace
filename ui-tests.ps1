@@ -442,6 +442,7 @@ Test-UI 'Undo organize exists' { winapp ui wait-for 'BtnUndoOrganize' -a $AppPid
 Test-UI 'Search exists' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 3000 }
 Test-UI 'Mosaic sort combo exists' { winapp ui wait-for 'CmbMosaicSort' -a $AppPid -t 3000 }
 Test-UI 'Asset mosaic exists' { winapp ui wait-for 'GrdAssets' -a $AppPid -t 3000 }
+Test-UI 'Shell wallpaper layer exists' { winapp ui wait-for 'GrdShellBackdrop' -a $AppPid -t 4000 }
 Test-UI 'Row height slider exists' { winapp ui wait-for 'SldRowHeight' -a $AppPid -t 3000 }
 Test-UI 'Select-mode toggle exists' { winapp ui wait-for 'TglSelectMode' -a $AppPid -t 3000 }
 Test-UI 'Browse selector exists' { winapp ui wait-for 'SelBrowseMode' -a $AppPid -t 3000 }

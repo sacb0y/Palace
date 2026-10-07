@@ -16,6 +16,11 @@
                 TintColor="{ThemeResource SolidBackgroundFillColorBase}"
                 TintLuminosityOpacity="0.55"
                 TintOpacity="0.35" />
+            <!-- Wallpaper lives in MainWindow; do not paint a solid content sheet. -->
+            <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
+            <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="AcrylicInAppFillColorDefaultBrush" />
+            <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="AcrylicInAppFillColorDefaultBrush" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
