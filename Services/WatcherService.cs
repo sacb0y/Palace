@@ -68,7 +68,7 @@ public sealed class WatcherService : IDisposable
             watcher.Created += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Created);
             watcher.Changed += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Changed);
             watcher.Deleted += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Deleted);
-            watcher.Renamed += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Renamed);
+            watcher.Renamed += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Renamed, e.OldFullPath);
             _watchers.Add(watcher);
         }
         catch
@@ -77,7 +77,7 @@ public sealed class WatcherService : IDisposable
         }
     }
 
-    private void Debounce(string path, WatcherChangeKinds change)
+    private void Debounce(string path, WatcherChangeKinds change, string? oldPath = null)
     {
         if (IsSuppressed)
         {
@@ -86,7 +86,7 @@ public sealed class WatcherService : IDisposable
 
         lock (_gate)
         {
-            var key = path + "\0" + (int)change;
+            var key = path + "\0" + (int)change + "\0" + (oldPath ?? "");
             if (_debounce.TryGetValue(key, out var existing))
             {
                 existing.Cancel();
@@ -95,11 +95,15 @@ public sealed class WatcherService : IDisposable
 
             var cts = new CancellationTokenSource();
             _debounce[key] = cts;
-            _ = HandleLaterAsync(path, change, cts.Token);
+            _ = HandleLaterAsync(path, change, cts.Token, oldPath);
         }
     }
 
-    private async Task HandleLaterAsync(string path, WatcherChangeKinds change, CancellationToken ct)
+    private async Task HandleLaterAsync(
+        string path,
+        WatcherChangeKinds change,
+        CancellationToken ct,
+        string? oldPath = null)
     {
         try
         {
@@ -109,7 +113,7 @@ public sealed class WatcherService : IDisposable
                 return;
             }
 
-            if (await HandleAsync(path, change).ConfigureAwait(false))
+            if (await HandleAsync(path, change, oldPath).ConfigureAwait(false))
             {
                 ScheduleNotify(path);
             }
@@ -125,9 +129,14 @@ public sealed class WatcherService : IDisposable
     }
 
     /// <returns>True when catalog state changed and the UI should refresh.</returns>
-    private async Task<bool> HandleAsync(string path, WatcherChangeKinds change)
+    private async Task<bool> HandleAsync(string path, WatcherChangeKinds change, string? oldPath = null)
     {
         var source = await _catalog.FindSourceByPathAsync(path);
+        if (source is null && !string.IsNullOrEmpty(oldPath))
+        {
+            source = await _catalog.FindSourceByPathAsync(oldPath);
+        }
+
         if (source is null)
         {
             return false;
@@ -141,8 +150,26 @@ public sealed class WatcherService : IDisposable
                 return false;
             }
 
+            // Renamed folder: old prefix is gone — orphan it, then index the new subtree.
+            if (change == WatcherChangeKinds.Renamed
+                && !string.IsNullOrEmpty(oldPath)
+                && !string.Equals(oldPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                await OrphanGonePathAsync(source, oldPath);
+            }
+
             await _scan.ScanDirectoryAsync(source, path);
             return true;
+        }
+
+        var changed = false;
+        if (change == WatcherChangeKinds.Renamed
+            && !string.IsNullOrEmpty(oldPath)
+            && !string.Equals(oldPath, path, StringComparison.OrdinalIgnoreCase)
+            && !Helpers.CloudFile.Exists(oldPath)
+            && !Directory.Exists(oldPath))
+        {
+            changed = await OrphanGonePathAsync(source, oldPath);
         }
 
         var asset = await _catalog.GetAssetByPathAsync(path);
@@ -161,16 +188,35 @@ public sealed class WatcherService : IDisposable
                 return true;
             }
 
-            return false;
+            return changed;
         }
 
         if (!Helpers.PathSafe.IsCatalogExt(Path.GetExtension(path)))
         {
-            return false;
+            return changed;
         }
 
         await _scan.IndexFileAsync(source, path, autoOrganize: source.AutoOrganizeNewFiles);
         return true;
+    }
+
+    /// <summary>Mark a missing file or deleted/renamed-away directory prefix as orphan.</summary>
+    private async Task<bool> OrphanGonePathAsync(SourceFolder source, string gonePath)
+    {
+        var asset = await _catalog.GetAssetByPathAsync(gonePath);
+        if (asset is not null)
+        {
+            await _catalog.MarkOrphanAsync(asset.Id, true);
+            return true;
+        }
+
+        if (MosaicDelete.LooksLikeDeletedDirectory(gonePath, hadMatchingAsset: false))
+        {
+            await _catalog.MarkOrphansUnderPrefixAsync(source.Id, gonePath);
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>Coalesce bursty file events into one UI refresh.</summary>
@@ -238,7 +284,7 @@ public sealed class WatcherService : IDisposable
         }
     }
 
-        private sealed class SuppressScope : IDisposable
+    private sealed class SuppressScope : IDisposable
     {
         private WatcherService? _owner;
 

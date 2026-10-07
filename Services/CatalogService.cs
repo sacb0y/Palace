@@ -347,12 +347,19 @@ public sealed class CatalogService
 
                 var inList = string.Join(",", names);
                 rows.CommandText = $"SELECT RowId FROM Asset WHERE Id IN ({inList})";
+                // Materialize first — shared connection cannot DeleteFtsRow while the reader is open.
+                var ftsRows = new List<long>(chunk.Count);
                 using (var reader = rows.ExecuteReader())
                 {
                     while (reader.Read())
                     {
-                        DeleteFtsRow(conn, reader.GetInt64(0), tx);
+                        ftsRows.Add(reader.GetInt64(0));
                     }
+                }
+
+                foreach (var rowId in ftsRows)
+                {
+                    DeleteFtsRow(conn, rowId, tx);
                 }
 
                 using (var batch = conn.CreateCommand())

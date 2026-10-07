@@ -17,12 +17,13 @@ public static class MosaicDelete
     /// <summary>
     /// True when a watcher path that is not an existing file/dir should be treated
     /// as a deleted directory prefix (orphan everything under it) rather than a
-    /// single missing file.
+    /// single missing catalog file. Dotted folder names (<c>shots.backup</c>,
+    /// <c>.cache</c>) still count — only catalog media extensions are files.
     /// </summary>
     public static bool LooksLikeDeletedDirectory(string path, bool hadMatchingAsset) =>
         !hadMatchingAsset
         && !string.IsNullOrWhiteSpace(path)
-        && string.IsNullOrEmpty(Path.GetExtension(path));
+        && !PathSafe.IsCatalogExt(PathSafe.Extension(path));
 
     /// <summary>Drop assets whose ids were deleted; strip empty folder headers.</summary>
     public static List<T> PruneItems<T>(

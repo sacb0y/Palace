@@ -24,14 +24,19 @@ public sealed class MosaicDeleteTests
         bool expected) =>
         Assert.Equal(expected, MosaicDelete.ShouldIndexDirectory(change, exists));
 
-    [Fact]
-    public void LooksLikeDeletedDirectory_NeedsNoExtensionAndNoAsset()
-    {
-        Assert.True(MosaicDelete.LooksLikeDeletedDirectory(@"C:\lib\shots", hadMatchingAsset: false));
-        Assert.False(MosaicDelete.LooksLikeDeletedDirectory(@"C:\lib\a.png", hadMatchingAsset: false));
-        Assert.False(MosaicDelete.LooksLikeDeletedDirectory(@"C:\lib\shots", hadMatchingAsset: true));
-        Assert.False(MosaicDelete.LooksLikeDeletedDirectory("", hadMatchingAsset: false));
-    }
+    [Theory]
+    [InlineData(@"C:\lib\shots", false, true)]
+    [InlineData(@"C:\lib\shots.backup", false, true)]
+    [InlineData(@"C:\lib\.cache", false, true)]
+    [InlineData(@"C:\lib\a.png", false, false)]
+    [InlineData(@"C:\lib\clip.mp4", false, false)]
+    [InlineData(@"C:\lib\shots", true, false)]
+    [InlineData("", false, false)]
+    public void LooksLikeDeletedDirectory_UsesCatalogExtNotGetExtension(
+        string path,
+        bool hadAsset,
+        bool expected) =>
+        Assert.Equal(expected, MosaicDelete.LooksLikeDeletedDirectory(path, hadAsset));
 
     [Fact]
     public void PruneItems_RemovesAssetsAndEmptyHeaders()
