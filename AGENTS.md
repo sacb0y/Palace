@@ -26,7 +26,7 @@ Human-facing overview: root `README.md`. Bug reports: Settings → About (`TxtAp
 - Official skills: `C:\Users\iadag\.cursor\skills\winui-*` — load `winui-dev-workflow`, `winui-design`, `winui-packaging`, `winui-code-review`, `winui-ui-testing` as needed.
 - Domain-reload-disabled is a Unity habit. It does not apply here.
 - `Palace.Tests` is a separate `net10.0` project (`Palace.csproj` excludes `Palace.Tests\**`). Keep tests off WinUI / WinRT. Do not reference `FluentIcons.WinUI` from tests.
-- Debug vs Release of the **same source** share one version number. Debug is not an older tree — it is untrimmed. Release is trimmed and currently crashes on `ItemsSource` COM wrappers; daily run is Debug (`.\BuildAndRun.ps1 . --arch x64`).
+- Debug vs Release of the **same source** share one version number. Daily run is Debug (`.\BuildAndRun.ps1 . --arch x64`). `PublishTrimmed` is **off** for both until Release trim stops crashing on `ItemsSource` COM wrappers; re-enable trim only with `SelfContained` + `WindowsAppSDKSelfContained` (else `NETSDK1102`). Title bar: set `AppTitleBar.Title` to `AppVersion.TitleBarTitle` (`Palace {version}`) and `Subtitle` to `AppVersion.TitleBar` — do not leave Title hardcoded `Palace` alone.
 
 ## Icons
 
@@ -191,7 +191,7 @@ MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once
 | **0.3.x** | **AI** | **Later.** Expand asset management with AI (tagging, organization, etc.). Not the same as prompt-token suggestions. |
 | **1.0.0** | **Ship** | Release/trim fixed, Magick formats if packaging is clean, `winui-packaging` / Store. |
 
-Leave Revision at `0` unless you need a same-patch rebuild identity. Debug and Release of one commit share the number; the suffix is which binary you launched. **Release trim currently crashes** on `ItemsSource` COM wrappers — daily and preview binaries are packaged **Debug** until that is fixed.
+Leave Revision at `0` unless you need a same-patch rebuild identity. Debug and Release of one commit share the number; the suffix is which binary you launched. Packaged Release is buildable with trim off (`winapp run . --arch x64 -c Release`); re-enable trim only after the ItemsSource COM crash is fixed.
 
 ## Tests
 

@@ -41,5 +41,9 @@ public static class AppVersion
 
     public static string Display => $"Palace {Numeric} ({Configuration}) · {Milestone}";
 
+    /// <summary>Primary TitleBar title — version must appear here (Subtitle alone is easy to miss).</summary>
+    public static string TitleBarTitle => $"Palace {Numeric}";
+
+    /// <summary>TitleBar subtitle — config + preview; keep in lockstep with About.</summary>
     public static string TitleBar => $"{Numeric} {Configuration} · preview";
 }

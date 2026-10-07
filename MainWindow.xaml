@@ -37,7 +37,10 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TitleBar x:Name="AppTitleBar" Title="Palace">
+        <TitleBar
+            x:Name="AppTitleBar"
+            AutomationProperties.AutomationId="AppTitleBar"
+            Title="Palace">
             <TitleBar.IconSource>
                 <ImageIconSource ImageSource="Assets/AppIcon.ico" />
             </TitleBar.IconSource>
