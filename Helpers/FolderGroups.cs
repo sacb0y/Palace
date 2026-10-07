@@ -9,7 +9,7 @@ public sealed class FolderGroup<T>
 }
 
 /// <summary>
-/// Library mosaic groups for a top-level (source) folder.
+/// Library mosaic groups for a folder browse prefix (source root or nested).
 /// Titles are <c>Selected / Sub / Sub</c> using the first 1–2 child folders.
 /// Path math only — no disk probes.
 /// </summary>
@@ -59,8 +59,11 @@ public static class FolderGroups
         return -1;
     }
 
-    public static bool ShouldGroup(bool isTagBrowse, bool hasSearch, bool isTopLevelFolder) =>
-        !isTagBrowse && !hasSearch && isTopLevelFolder;
+    /// <summary>
+    /// Group when browsing a folder prefix. Search, tag browse, and all-library stay flat.
+    /// </summary>
+    public static bool ShouldGroup(bool isTagBrowse, bool hasSearch, bool hasFolderPath) =>
+        !isTagBrowse && !hasSearch && hasFolderPath;
 
     public static bool IsTopLevelFolder(IEnumerable<string> rootPaths, string? selectedPath)
     {
