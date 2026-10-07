@@ -6,10 +6,19 @@ namespace Palace.Tests;
 public sealed class SelectModeTests
 {
     [Fact]
-    public void ClickTogglesTile_IsTheOnlyMultiSelectPath()
+    public void ClickTogglesTile_WhileSelectModeIsOn()
     {
         Assert.False(SelectMode.ClickTogglesTile(false));
         Assert.True(SelectMode.ClickTogglesTile(true));
+    }
+
+    [Fact]
+    public void EnterFromHold_WhenOff_NotOverlay_NotHeader()
+    {
+        Assert.True(SelectMode.EnterFromHold(false, false, false));
+        Assert.False(SelectMode.EnterFromHold(true, false, false));
+        Assert.False(SelectMode.EnterFromHold(false, true, false));
+        Assert.False(SelectMode.EnterFromHold(false, false, true));
     }
 
     [Theory]

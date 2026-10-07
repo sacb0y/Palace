@@ -690,6 +690,31 @@ public sealed partial class TagsPage : Page
 
     private void GrdTagAssets_RangeHolding(object sender, HoldingRoutedEventArgs e)
     {
+        if (ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
+        if (!ViewModel.IsSelectMode)
+        {
+            if (e.HoldingState != HoldingState.Started)
+            {
+                return;
+            }
+
+            var holdItem = FindAssetItem(e.OriginalSource);
+            if (holdItem is null
+                || !SelectMode.EnterFromHold(false, ViewModel.IsGalleryOverlayOpen, holdItem.IsFolderHeader))
+            {
+                return;
+            }
+
+            ViewModel.IsSelectMode = true;
+            ViewModel.SetMosaicSelection([holdItem]);
+            e.Handled = true;
+            return;
+        }
+
         if (_rangeSelect is null)
         {
             return;
@@ -1009,6 +1034,11 @@ public sealed partial class TagsPage : Page
         {
             UpdateOverlayMedia();
         }
+
+        if (e.PropertyName is nameof(GalleryViewModel.LoopVideo))
+        {
+            ApplyOverlayLoop();
+        }
     }
 
     private async void UpdateOverlayMedia()
@@ -1053,6 +1083,19 @@ public sealed partial class TagsPage : Page
         {
             MpeOverlay.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
         }
+
+        ApplyOverlayLoop();
+    }
+
+    private void ApplyOverlayLoop()
+    {
+        var player = MpeOverlay.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
+        player.IsLoopingEnabled = ViewModel.OverlayGallery?.LoopVideo ?? GalleryChrome.DefaultLoopVideo;
     }
 
     private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)

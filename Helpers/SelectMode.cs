@@ -13,6 +13,14 @@ public static class SelectMode
     /// </summary>
     public static bool ClickTogglesTile(bool selectMode) => selectMode;
 
+    /// <summary>
+    /// Press-and-hold / click-and-hold on a mosaic tile (not a folder header,
+    /// not while the overlay is open) enters select mode and selects that tile.
+    /// Does not open the overlay — double-click / Enter / context Open still do.
+    /// </summary>
+    public static bool EnterFromHold(bool selectMode, bool overlayOpen, bool isFolderHeader) =>
+        !selectMode && !overlayOpen && !isFolderHeader;
+
     /// <summary>Count line beside the toggle. Empty when select mode is off and nothing is selected.</summary>
     public static string Summary(bool selectMode, int selectedCount)
     {

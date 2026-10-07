@@ -19,6 +19,10 @@ public static class BindHelpers
     public static Visibility StringToVisibility(string? value) =>
         string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>Accent outline thickness for selected tag-board rows (no face "On" label).</summary>
+    public static Thickness SelectedBorder(bool selected) =>
+        selected ? new Thickness(2) : new Thickness(0);
+
     public static Stretch ImageStretch(ImageScaling scaling) =>
         scaling switch
         {

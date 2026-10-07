@@ -10,6 +10,7 @@ public sealed class GalleryChromeTests
     {
         Assert.Equal("GalleryShowDetails", GalleryChrome.ShowDetailsKey);
         Assert.Equal("GalleryShowImageInfo", GalleryChrome.ShowImageInfoKey);
+        Assert.Equal("GalleryLoopVideo", GalleryChrome.LoopVideoKey);
     }
 
     [Fact]
@@ -34,6 +35,18 @@ public sealed class GalleryChromeTests
         Assert.False(GalleryChrome.ParseShowImageInfo(false));
         Assert.True(GalleryChrome.ParseShowImageInfo("true"));
         Assert.False(GalleryChrome.ParseShowImageInfo("false"));
+    }
+
+    [Fact]
+    public void ParseLoopVideo_DefaultsOn()
+    {
+        Assert.True(GalleryChrome.DefaultLoopVideo);
+        Assert.True(GalleryChrome.ParseLoopVideo(null));
+        Assert.True(GalleryChrome.ParseLoopVideo("nope"));
+        Assert.True(GalleryChrome.ParseLoopVideo(true));
+        Assert.False(GalleryChrome.ParseLoopVideo(false));
+        Assert.True(GalleryChrome.ParseLoopVideo("true"));
+        Assert.False(GalleryChrome.ParseLoopVideo("false"));
     }
 
     [Fact]

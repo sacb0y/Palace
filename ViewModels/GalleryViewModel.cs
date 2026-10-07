@@ -214,6 +214,9 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool ShowDetails { get; set; } = GalleryChrome.DefaultShowDetails;
 
     [ObservableProperty]
+    public partial bool LoopVideo { get; set; } = GalleryChrome.DefaultLoopVideo;
+
+    [ObservableProperty]
     public partial string ImageInfoText { get; set; } = "";
 
     [ObservableProperty]
@@ -332,11 +335,20 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
+    partial void OnLoopVideoChanged(bool value)
+    {
+        if (_chromeReady)
+        {
+            ApplicationData.Current.LocalSettings.Values[GalleryChrome.LoopVideoKey] = value;
+        }
+    }
+
     private void LoadChromeSettings()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
         ShowImageInfo = GalleryChrome.ParseShowImageInfo(values[GalleryChrome.ShowImageInfoKey]);
         ShowDetails = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
+        LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
         _chromeReady = true;
     }
 
