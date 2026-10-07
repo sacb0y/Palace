@@ -89,8 +89,11 @@ public sealed class FolderGroupsTests
         var nested = Path.Combine("library", "Photos", "Vacation");
         Assert.Equal(nested, FolderGroups.CombineUnder(nested, []));
         Assert.Equal(
-            Path.Combine(nested, "2024"),
+            Path.Combine(nested, "2024", "July"),
             FolderGroups.CombineUnder(nested, ["2024", "July", "extra"]));
+        Assert.Equal(
+            Path.Combine(nested, "2024"),
+            FolderGroups.CombineUnder(nested, ["2024"]));
         Assert.Equal(@"D:\Photos\Vacation\2024", FolderGroups.CombineUnder(@"D:\Photos\Vacation", ["2024"]));
         Assert.Equal(
             "cloud/dropbox/Ada/Root/Vacation/2024",
