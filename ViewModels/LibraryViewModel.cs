@@ -525,6 +525,12 @@ public partial class LibraryViewModel : ObservableObject
                 return;
             }
 
+            if (!MediaCache.IsAllowedSource(folder.Path, AppServices.ActiveCacheRoot, out var cacheReason))
+            {
+                Notify(cacheReason ?? "That folder overlaps the media cache.");
+                return;
+            }
+
             var source = new SourceFolder
             {
                 Id = PalaceDb.NewId(),

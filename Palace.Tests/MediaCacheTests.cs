@@ -63,7 +63,9 @@ public sealed class MediaCacheTests
         Assert.True(MediaCache.IsAllowedRoot("", ["C:\\Photos"], out _));
 
         var source = Path.Combine(Path.GetTempPath(), "palace-src-" + Guid.NewGuid().ToString("N"));
+        var otherProjectSource = Path.Combine(Path.GetTempPath(), "palace-src2-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(source);
+        Directory.CreateDirectory(otherProjectSource);
         try
         {
             var nested = Path.Combine(source, "cache");
@@ -71,11 +73,16 @@ public sealed class MediaCacheTests
             Assert.False(MediaCache.IsAllowedRoot(nested, [source], out var reason));
             Assert.Contains("source", reason!, StringComparison.OrdinalIgnoreCase);
 
+            // All-project list: overlap with another project's source is refused.
+            var underOther = Path.Combine(otherProjectSource, "cache");
+            Directory.CreateDirectory(underOther);
+            Assert.False(MediaCache.IsAllowedRoot(underOther, [source, otherProjectSource], out _));
+
             var outside = Path.Combine(Path.GetTempPath(), "palace-cache-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(outside);
             try
             {
-                Assert.True(MediaCache.IsAllowedRoot(outside, [source], out _));
+                Assert.True(MediaCache.IsAllowedRoot(outside, [source, otherProjectSource], out _));
             }
             finally
             {
@@ -85,6 +92,106 @@ public sealed class MediaCacheTests
         finally
         {
             Directory.Delete(source, recursive: true);
+            Directory.Delete(otherProjectSource, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void IsAllowedSource_RefusesOverlapWithCacheRoot()
+    {
+        var cache = Path.Combine(Path.GetTempPath(), "palace-cache-src-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(cache);
+        try
+        {
+            Assert.False(MediaCache.IsAllowedSource(cache, cache, out var same));
+            Assert.Contains("cache", same!, StringComparison.OrdinalIgnoreCase);
+
+            var nested = Path.Combine(cache, "photos");
+            Directory.CreateDirectory(nested);
+            Assert.False(MediaCache.IsAllowedSource(nested, cache, out _));
+
+            var parent = Path.GetDirectoryName(cache)!;
+            Assert.False(MediaCache.IsAllowedSource(parent, cache, out _));
+
+            var outside = Path.Combine(Path.GetTempPath(), "palace-ok-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(outside);
+            try
+            {
+                Assert.True(MediaCache.IsAllowedSource(outside, cache, out _));
+            }
+            finally
+            {
+                Directory.Delete(outside, recursive: true);
+            }
+        }
+        finally
+        {
+            Directory.Delete(cache, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void EnsureRoots_FallsBackWhenCustomRootUnwritable()
+    {
+        var local = Path.Combine(Path.GetTempPath(), "palace-local-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(local);
+        // A file where the cache root should be — CreateDirectory fails.
+        var blocked = Path.Combine(Path.GetTempPath(), "palace-blocked-" + Guid.NewGuid().ToString("N"));
+        File.WriteAllText(blocked, "not-a-dir");
+        try
+        {
+            MediaCache.Apply(true, MediaCache.DefaultMaxMb, blocked, null);
+            var used = MediaCache.EnsureRoots(local, out var thumbs, out var fellBack);
+            Assert.True(fellBack);
+            Assert.True(MediaCache.UsingLocalFallback);
+            Assert.Equal(Path.GetFullPath(local), Path.GetFullPath(used));
+            Assert.Equal(
+                Path.GetFullPath(Path.Combine(local, MediaCache.ThumbsFolderName)),
+                Path.GetFullPath(thumbs));
+            Assert.True(Directory.Exists(thumbs));
+            Assert.Contains("unavailable", MediaCache.RootLabel(local), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            File.Delete(blocked);
+            if (Directory.Exists(local))
+            {
+                Directory.Delete(local, recursive: true);
+            }
+
+            MediaCache.Apply(false, MediaCache.DefaultMaxMb, null, null);
+        }
+    }
+
+    [Fact]
+    public void EnsureRoots_UsesCustomWhenWritable()
+    {
+        var local = Path.Combine(Path.GetTempPath(), "palace-local2-" + Guid.NewGuid().ToString("N"));
+        var custom = Path.Combine(Path.GetTempPath(), "palace-custom-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(local);
+        try
+        {
+            MediaCache.Apply(true, MediaCache.DefaultMaxMb, custom, "tok");
+            var used = MediaCache.EnsureRoots(local, out var thumbs, out var fellBack);
+            Assert.False(fellBack);
+            Assert.False(MediaCache.UsingLocalFallback);
+            Assert.Equal(Path.GetFullPath(custom), Path.GetFullPath(used));
+            Assert.True(Directory.Exists(thumbs));
+            Assert.True(Directory.Exists(Path.Combine(custom, MediaCache.PreviewFolderName)));
+        }
+        finally
+        {
+            if (Directory.Exists(local))
+            {
+                Directory.Delete(local, recursive: true);
+            }
+
+            if (Directory.Exists(custom))
+            {
+                Directory.Delete(custom, recursive: true);
+            }
+
+            MediaCache.Apply(false, MediaCache.DefaultMaxMb, null, null);
         }
     }
 

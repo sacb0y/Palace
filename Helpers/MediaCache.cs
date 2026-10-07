@@ -36,6 +36,18 @@ public static class MediaCache
 
     public static string? AccessToken { get; private set; }
 
+    /// <summary>
+    /// Root actually used after <see cref="EnsureRoots"/> (LocalFolder when the
+    /// custom drive is missing). Null until the first ensure.
+    /// </summary>
+    public static string? EffectiveRoot { get; private set; }
+
+    /// <summary>
+    /// True when a custom root was configured but <see cref="EnsureRoots"/>
+    /// fell back to LocalFolder because create failed.
+    /// </summary>
+    public static bool UsingLocalFallback { get; private set; }
+
     public static event EventHandler? Changed;
 
     public static void Apply(bool enabled, double maxMb, string? rootPath, string? accessToken = null)
@@ -55,6 +67,8 @@ public static class MediaCache
         MaxMb = maxMb;
         RootPath = rootPath;
         AccessToken = accessToken;
+        EffectiveRoot = null;
+        UsingLocalFallback = false;
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
@@ -125,7 +139,9 @@ public static class MediaCache
     }
 
     /// <summary>
-    /// Active cache root: custom path when enabled and set, else LocalFolder.
+    /// Preferred cache root from settings: custom path when enabled and set,
+    /// else LocalFolder. Prefer <see cref="EnsureRoots"/> / <see cref="EffectiveRoot"/>
+    /// for IO — this does not create directories.
     /// </summary>
     public static string ResolveRoot(string localRoot)
     {
@@ -143,16 +159,64 @@ public static class MediaCache
     public static string ResolvePreviewRoot(string localRoot) =>
         Path.Combine(ResolveRoot(localRoot), PreviewFolderName);
 
+    /// <summary>
+    /// Create <c>thumbs/</c> and <c>preview/</c> under the preferred root.
+    /// If a custom drive/folder is missing, fall back to LocalFolder so startup
+    /// never fails. Sets <see cref="EffectiveRoot"/> and
+    /// <see cref="UsingLocalFallback"/>.
+    /// </summary>
+    public static string EnsureRoots(string localRoot, out string thumbsRoot, out bool usedLocalFallback)
+    {
+        usedLocalFallback = false;
+        var preferred = ResolveRoot(localRoot);
+        if (TryCreateRoots(preferred, out thumbsRoot))
+        {
+            EffectiveRoot = preferred;
+            UsingLocalFallback = false;
+            return preferred;
+        }
+
+        if (!PathsEqual(preferred, localRoot) && TryCreateRoots(localRoot, out thumbsRoot))
+        {
+            usedLocalFallback = true;
+            EffectiveRoot = localRoot;
+            UsingLocalFallback = true;
+            return localRoot;
+        }
+
+        // LocalFolder create is the last resort — surface the exception.
+        thumbsRoot = Path.Combine(localRoot, ThumbsFolderName);
+        Directory.CreateDirectory(thumbsRoot);
+        Directory.CreateDirectory(Path.Combine(localRoot, PreviewFolderName));
+        EffectiveRoot = localRoot;
+        UsingLocalFallback = !PathsEqual(preferred, localRoot);
+        usedLocalFallback = UsingLocalFallback;
+        return localRoot;
+    }
+
     public static string DefaultRootLabel(string localRoot) =>
         string.IsNullOrWhiteSpace(localRoot) ? "App local folder" : localRoot;
 
-    public static string RootLabel(string localRoot) =>
-        Enabled && !string.IsNullOrWhiteSpace(RootPath)
+    public static string RootLabel(string localRoot)
+    {
+        if (UsingLocalFallback && Enabled && !string.IsNullOrWhiteSpace(RootPath))
+        {
+            return $"{RootPath} (unavailable — using app local folder)";
+        }
+
+        if (!string.IsNullOrWhiteSpace(EffectiveRoot))
+        {
+            return EffectiveRoot!;
+        }
+
+        return Enabled && !string.IsNullOrWhiteSpace(RootPath)
             ? RootPath!
             : DefaultRootLabel(localRoot);
+    }
 
     /// <summary>
-    /// Refuse watched sources and On-Demand / cloud-sync roots. Empty path means default LocalFolder (allowed).
+    /// Refuse watched sources (any project) and On-Demand / cloud-sync roots.
+    /// Empty path means default LocalFolder (allowed).
     /// </summary>
     public static bool IsAllowedRoot(
         string? candidate,
@@ -204,6 +268,70 @@ public static class MediaCache
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Refuse adding a Library source that overlaps the active cache root
+    /// (cache under source, or source under / equal to cache).
+    /// </summary>
+    public static bool IsAllowedSource(
+        string? candidateSource,
+        string? cacheRoot,
+        out string? reason)
+    {
+        reason = null;
+        if (string.IsNullOrWhiteSpace(candidateSource) || string.IsNullOrWhiteSpace(cacheRoot))
+        {
+            return true;
+        }
+
+        try
+        {
+            if (PathSafe.IsUnderRoot(candidateSource, cacheRoot)
+                || PathSafe.IsUnderRoot(cacheRoot, candidateSource))
+            {
+                reason = "That folder overlaps the media cache. Choose another folder or move the cache in Settings.";
+                return false;
+            }
+        }
+        catch
+        {
+            reason = "That folder path is not valid.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryCreateRoots(string cacheRoot, out string thumbsRoot)
+    {
+        thumbsRoot = Path.Combine(cacheRoot, ThumbsFolderName);
+        var previewRoot = Path.Combine(cacheRoot, PreviewFolderName);
+        try
+        {
+            Directory.CreateDirectory(thumbsRoot);
+            Directory.CreateDirectory(previewRoot);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool PathsEqual(string a, string b)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     public static long MeasureBytes(string cacheRoot)

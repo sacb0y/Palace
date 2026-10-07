@@ -36,9 +36,8 @@ public static class AppServices
         LoadShellBackground();
         LoadMediaCache();
         var dbPath = Path.Combine(LocalRoot, "palace.db");
-        var thumbs = MediaCache.ResolveThumbsRoot(LocalRoot);
-        Directory.CreateDirectory(thumbs);
-        Directory.CreateDirectory(MediaCache.ResolvePreviewRoot(LocalRoot));
+        // Custom cache drive may be unplugged — fall back to LocalFolder thumbs.
+        MediaCache.EnsureRoots(LocalRoot, out var thumbs, out _);
 
         Db = await Task.Run(() => new PalaceDb(dbPath));
         Catalog = new CatalogService(Db);
@@ -144,7 +143,8 @@ public static class AppServices
     /// <summary>
     /// Re-point the live <see cref="ThumbnailService"/> at the resolved thumbs
     /// root after Settings changes. Does not move existing JPEGs — missing
-    /// files regenerate lazily.
+    /// files regenerate lazily. Falls back to LocalFolder when the custom
+    /// root cannot be created.
     /// </summary>
     public static void ApplyMediaCacheRoot()
     {
@@ -153,14 +153,22 @@ public static class AppServices
             return;
         }
 
-        var thumbs = MediaCache.ResolveThumbsRoot(LocalRoot);
-        Directory.CreateDirectory(thumbs);
-        Directory.CreateDirectory(MediaCache.ResolvePreviewRoot(LocalRoot));
+        MediaCache.EnsureRoots(LocalRoot, out var thumbs, out _);
         Thumbnails.SetRoot(thumbs);
     }
 
-    public static string ActiveCacheRoot =>
-        string.IsNullOrEmpty(LocalRoot) ? "" : MediaCache.ResolveRoot(LocalRoot);
+    public static string ActiveCacheRoot
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(MediaCache.EffectiveRoot))
+            {
+                return MediaCache.EffectiveRoot!;
+            }
+
+            return string.IsNullOrEmpty(LocalRoot) ? "" : MediaCache.ResolveRoot(LocalRoot);
+        }
+    }
 
     private static async Task RestoreCurrentProjectAsync()
     {

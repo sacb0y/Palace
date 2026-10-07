@@ -360,7 +360,8 @@ public partial class SettingsViewModel : ObservableObject
                 return;
             }
 
-            var sources = Sources.Select(s => s.Path);
+            // All projects — watchers cover every SourceFolder path.
+            var sources = (await _catalog.GetSourceFoldersAsync()).Select(s => s.Path);
             if (!MediaCache.IsAllowedRoot(folder.Path, sources, out var reason))
             {
                 Notify(reason ?? "That folder cannot be used for cache.");
