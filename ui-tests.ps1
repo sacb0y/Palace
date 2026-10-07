@@ -442,6 +442,7 @@ Test-UI 'Undo organize exists' { winapp ui wait-for 'BtnUndoOrganize' -a $AppPid
 Test-UI 'Search exists' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 3000 }
 Test-UI 'Mosaic sort combo exists' { winapp ui wait-for 'CmbMosaicSort' -a $AppPid -t 3000 }
 Test-UI 'Asset mosaic exists' { winapp ui wait-for 'GrdAssets' -a $AppPid -t 3000 }
+Test-UI 'Shell wallpaper layer exists' { winapp ui wait-for 'GrdShellBackdrop' -a $AppPid -t 4000 }
 Test-UI 'Row height slider exists' { winapp ui wait-for 'SldRowHeight' -a $AppPid -t 3000 }
 Test-UI 'Select-mode toggle exists' { winapp ui wait-for 'TglSelectMode' -a $AppPid -t 3000 }
 Test-UI 'Browse selector exists' { winapp ui wait-for 'SelBrowseMode' -a $AppPid -t 3000 }
@@ -725,8 +726,12 @@ Test-UI 'Double-click opens gallery overlay' {
     winapp ui wait-for 'BtnGalleryClose' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryClose missing' }
     winapp ui wait-for 'LstGalleryOverlayTags' @(WinArgs) -t 2000
+    winapp ui wait-for 'BtnGalleryScaleActual' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleActual missing' }
     winapp ui wait-for 'BtnGalleryScaleFit' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleFit missing' }
+    winapp ui wait-for 'BtnGalleryScaleFill' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleFill missing' }
     winapp ui wait-for 'BtnGalleryImageInfo' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryImageInfo missing' }
     winapp ui wait-for 'BtnGalleryDetails' @(WinArgs) -t 2000
@@ -821,6 +826,12 @@ Test-UI 'Open in new window then close' {
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowClose missing' }
     winapp ui wait-for 'BtnGalleryWindowDetails' -a $AppPid -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowDetails missing' }
+    winapp ui wait-for 'BtnGalleryWindowScaleActual' -a $AppPid -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowScaleActual missing' }
+    winapp ui wait-for 'BtnGalleryWindowScaleFit' -a $AppPid -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowScaleFit missing' }
+    winapp ui wait-for 'BtnGalleryWindowScaleFill' -a $AppPid -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowScaleFill missing' }
     winapp ui wait-for 'ScrGalleryWindowDetails' -a $AppPid -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'ScrGalleryWindowDetails missing' }
     winapp ui wait-for 'LstGalleryWindowTags' -a $AppPid -t 3000

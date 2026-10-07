@@ -136,6 +136,39 @@ public sealed class GalleryScaleTests
         Assert.Equal(23, composed.Vertical, 3);
         var staleDrag = GalleryScale.DragPan(10, 0, 4, -3, 200, 100);
         Assert.NotEqual(composed.Horizontal, staleDrag.Horizontal);
+        Assert.True(GalleryScale.UsesManipulationGesture(isTouch: true, isPen: false, isMouse: false, leftButton: false));
+        Assert.True(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: true, isMouse: false, leftButton: false));
+        Assert.True(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: false, isMouse: true, leftButton: false));
+        Assert.False(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: false, isMouse: true, leftButton: true));
+        Assert.False(GalleryScale.HandlesManipulationDelta(
+            isInertial: true, isTouch: true, isPen: false, isMouse: false, leftButton: false));
+        Assert.True(GalleryScale.HandlesManipulationDelta(
+            isInertial: false, isTouch: true, isPen: false, isMouse: false, leftButton: false));
+        Assert.True(GalleryScale.HandlesManipulationDelta(
+            isInertial: false, isTouch: false, isPen: false, isMouse: true, leftButton: false));
+        Assert.False(GalleryScale.HandlesManipulationDelta(
+            isInertial: false, isTouch: false, isPen: false, isMouse: true, leftButton: true));
+        Assert.False(GalleryScale.ShowsScrollBars());
+        Assert.True(GalleryScale.ShouldResetView(stillChanged: true, scalingChanged: false, viewportChanged: false));
+        Assert.True(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: true, viewportChanged: false));
+        Assert.True(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: true));
+        Assert.False(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: false));
+        Assert.True(GalleryScale.UsesWheelPinch(controlDown: true, wheelDelta: 120));
+        Assert.False(GalleryScale.UsesWheelPinch(controlDown: false, wheelDelta: 120));
+        Assert.False(GalleryScale.UsesWheelPinch(controlDown: true, wheelDelta: 0));
+        Assert.True(GalleryScale.UsesWheelPan(scrolls: true, controlDown: false, wheelDelta: -120));
+        Assert.False(GalleryScale.UsesWheelPan(scrolls: false, controlDown: false, wheelDelta: -120));
+        Assert.False(GalleryScale.UsesWheelPan(scrolls: true, controlDown: true, wheelDelta: -120));
+        Assert.True(GalleryScale.NeedsHandledWheelListener(hidesScrollBars: true));
+        Assert.False(GalleryScale.NeedsHandledWheelListener(hidesScrollBars: false));
+        Assert.Equal(1.1, GalleryScale.WheelPinchFactor(120), 5);
+        Assert.Equal(1 / 1.1, GalleryScale.WheelPinchFactor(-120), 5);
+        Assert.Equal(1.0, GalleryScale.WheelPinchFactor(0), 5);
+        Assert.Equal(30, GalleryScale.WheelToPanDelta(120), 3);
+        var wheelPan = GalleryScale.DragPan(40, 40, 0, GalleryScale.WheelToPanDelta(120), 100, 100);
+        Assert.Equal(40, wheelPan.Horizontal, 3);
+        Assert.Equal(10, wheelPan.Vertical, 3);
+        Assert.Equal(3.0, GalleryScale.PinchZoom(GalleryScale.PinchZoom(1, 2), 1.5), 3);
     }
 
     [Fact]

@@ -6,19 +6,25 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
-    <Grid x:Name="GrdStillHost" SizeChanged="GrdStillHost_SizeChanged">
+    <Grid
+        x:Name="GrdStillHost"
+        SizeChanged="GrdStillHost_SizeChanged">
         <ScrollViewer
             x:Name="ScrStill"
-            HorizontalScrollBarVisibility="Disabled"
-            ManipulationDelta="ScrStill_ManipulationDelta"
-            ManipulationMode="TranslateX,TranslateY,Scale,TranslateInertia"
+            HorizontalScrollBarVisibility="Hidden"
+            HorizontalScrollMode="Disabled"
+            ManipulationMode="None"
             PointerCaptureLost="ScrStill_PointerCaptureLost"
             PointerMoved="ScrStill_PointerMoved"
             PointerPressed="ScrStill_PointerPressed"
             PointerReleased="ScrStill_PointerReleased"
-            VerticalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Hidden"
+            VerticalScrollMode="Disabled"
             ZoomMode="Disabled">
-            <Grid x:Name="GrdStillContent">
+            <Grid
+                x:Name="GrdStillContent"
+                ManipulationDelta="GrdStillContent_ManipulationDelta"
+                ManipulationMode="TranslateX,TranslateY,Scale">
                 <Image
                     x:Name="ImgStill"
                     HorizontalAlignment="Stretch"

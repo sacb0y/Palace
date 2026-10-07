@@ -9,7 +9,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
     mc:Ignorable="d"
-    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+    Background="Transparent">
 
     <ScrollViewer>
         <StackPanel

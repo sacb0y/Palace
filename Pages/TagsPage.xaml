@@ -11,7 +11,7 @@
     xmlns:models="using:Palace.Models"
     xmlns:pages="using:Palace.Pages"
     mc:Ignorable="d"
-    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+    Background="Transparent">
 
     <Grid>
     <Grid
@@ -127,7 +127,9 @@
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"
                                     Text="{x:Bind Header, Mode=OneWay}" />
-                                <ItemsRepeater ItemsSource="{x:Bind Chips, Mode=OneWay}">
+                                <ItemsRepeater
+                                    HorizontalAlignment="Left"
+                                    ItemsSource="{x:Bind Chips, Mode=OneWay}">
                                     <ItemsRepeater.Layout>
                                         <WrapLayout
                                             HorizontalSpacing="6"
@@ -137,9 +139,13 @@
                                         <DataTemplate x:DataType="models:TagChipItem">
                                             <Button
                                                 MinWidth="0"
-                                                Padding="8,4"
+                                                MinHeight="0"
+                                                Padding="0"
                                                 HorizontalAlignment="Left"
                                                 HorizontalContentAlignment="Left"
+                                                VerticalAlignment="Top"
+                                                Background="{ThemeResource ControlFillColorTransparentBrush}"
+                                                BorderThickness="0"
                                                 AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                 AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
                                                 Click="TagChip_Click"
@@ -218,33 +224,33 @@
                                                         </MenuFlyoutItem>
                                                     </MenuFlyout>
                                                 </Button.ContextFlyout>
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <Border
-                                                        Width="10"
-                                                        Height="10"
-                                                        VerticalAlignment="Center"
-                                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                        BorderThickness="1"
-                                                        CornerRadius="5" />
-                                                    <TextBlock
-                                                        MaxWidth="140"
-                                                        VerticalAlignment="Center"
-                                                        Text="{x:Bind Name, Mode=OneWay}"
-                                                        TextTrimming="CharacterEllipsis" />
-                                                    <ic:FluentIcon
-                                                        VerticalAlignment="Center"
-                                                        Icon="Star"
-                                                        IconSize="Size12"
-                                                        IconVariant="Regular"
-                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}" />
-                                                    <TextBlock
-                                                        VerticalAlignment="Center"
-                                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                                        Text="On"
-                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
-                                                </StackPanel>
+                                                <Border
+                                                    Padding="10,4"
+                                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="{StaticResource ControlCornerRadius}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                            Text="{x:Bind Name, Mode=OneWay}"
+                                                            TextWrapping="NoWrap" />
+                                                        <ic:FluentIcon
+                                                            VerticalAlignment="Center"
+                                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                            Icon="Star"
+                                                            IconSize="Size12"
+                                                            IconVariant="Regular"
+                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}" />
+                                                        <TextBlock
+                                                            VerticalAlignment="Center"
+                                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
+                                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                                            Text="On"
+                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
+                                                    </StackPanel>
+                                                </Border>
                                             </Button>
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
@@ -467,17 +473,24 @@
                                                             IconVariant="Regular" />
                                                     </Border>
                                                     <Border
-                                                        Padding="4"
+                                                        Padding="8,5"
                                                         AutomationProperties.AutomationId="{x:Bind HdrBadgeAutomationId, Mode=OneWay}"
                                                         AutomationProperties.Name="HDR"
-                                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                                        Background="{ThemeResource AccentFillColorDefaultBrush}"
                                                         CornerRadius="4"
                                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowHdrBadge), Mode=OneWay}">
-                                                        <ic:FluentIcon
-                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
-                                                            Icon="Hdr"
-                                                            IconSize="Size16"
-                                                            IconVariant="Regular" />
+                                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                                            <ic:FluentIcon
+                                                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                                Icon="Hdr"
+                                                                IconSize="Size24"
+                                                                IconVariant="Regular" />
+                                                            <TextBlock
+                                                                VerticalAlignment="Center"
+                                                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                Text="HDR" />
+                                                        </StackPanel>
                                                     </Border>
                                                 </StackPanel>
                                                 <Border
@@ -870,6 +883,67 @@
                                     <TextBlock VerticalAlignment="Center" Text="Details" />
                                 </StackPanel>
                             </ToggleButton>
+                            <Button
+                                x:Name="BtnGalleryScaleActual"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryScaleActual"
+                                AutomationProperties.Name="Actual size"
+                                Command="{x:Bind ViewModel.OverlayGallery.SetScaleActualCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                                IsEnabled="{x:Bind ViewModel.OverlayGallery.CanScale, Mode=OneWay, FallbackValue=True}"
+                                ToolTipService.ToolTip="1:1 (Ctrl+1)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="1:1" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                x:Name="BtnGalleryScaleFit"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryScaleFit"
+                                AutomationProperties.Name="Fit"
+                                Command="{x:Bind ViewModel.OverlayGallery.SetScaleFitCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                                IsEnabled="{x:Bind ViewModel.OverlayGallery.CanScale, Mode=OneWay, FallbackValue=True}"
+                                ToolTipService.ToolTip="Fit (Ctrl+2)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="ArrowFit" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Fit" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                x:Name="BtnGalleryScaleFill"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryScaleFill"
+                                AutomationProperties.Name="Fill"
+                                Command="{x:Bind ViewModel.OverlayGallery.SetScaleFillCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                                IsEnabled="{x:Bind ViewModel.OverlayGallery.CanScale, Mode=OneWay, FallbackValue=True}"
+                                ToolTipService.ToolTip="Fill (Ctrl+3)">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="ArrowMaximize" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Fill" />
+                                </StackPanel>
+                            </Button>
+<Border
+                                Padding="8,5"
+                                VerticalAlignment="Center"
+                                AutomationProperties.AutomationId="IcnGalleryOverlayHdr"
+                                AutomationProperties.Name="HDR"
+                                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                CornerRadius="4"
+                                IsHitTestVisible="False"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowHdrBadge), Mode=OneWay, FallbackValue=Collapsed}">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <ic:FluentIcon
+                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                        Icon="Hdr"
+                                        IconSize="Size24"
+                                        IconVariant="Regular" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="HDR" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                         <Border
                             x:Name="BrdGalleryImageInfo"
@@ -950,7 +1024,6 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock
                                 MaxWidth="280"
@@ -1000,49 +1073,6 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <StackPanel
-                                Grid.Column="2"
-                                VerticalAlignment="Center"
-                                Orientation="Horizontal"
-                                Spacing="6"
-                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.CanScale), Mode=OneWay, FallbackValue=Collapsed}">
-                                <Button
-                                    x:Name="BtnGalleryScaleActual"
-                                    Padding="8,4"
-                                    AutomationProperties.AutomationId="BtnGalleryScaleActual"
-                                    AutomationProperties.Name="Actual size"
-                                    Command="{x:Bind ViewModel.OverlayGallery.SetScaleActualCommand, Mode=OneWay, FallbackValue={x:Null}}"
-                                    ToolTipService.ToolTip="1:1 (Ctrl+1)">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size16" IconVariant="Regular" />
-                                        <TextBlock VerticalAlignment="Center" Text="1:1" />
-                                    </StackPanel>
-                                </Button>
-                                <Button
-                                    x:Name="BtnGalleryScaleFit"
-                                    Padding="8,4"
-                                    AutomationProperties.AutomationId="BtnGalleryScaleFit"
-                                    AutomationProperties.Name="Fit"
-                                    Command="{x:Bind ViewModel.OverlayGallery.SetScaleFitCommand, Mode=OneWay, FallbackValue={x:Null}}"
-                                    ToolTipService.ToolTip="Fit (Ctrl+2)">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <ic:FluentIcon Icon="ArrowFit" IconSize="Size16" IconVariant="Regular" />
-                                        <TextBlock VerticalAlignment="Center" Text="Fit" />
-                                    </StackPanel>
-                                </Button>
-                                <Button
-                                    x:Name="BtnGalleryScaleFill"
-                                    Padding="8,4"
-                                    AutomationProperties.AutomationId="BtnGalleryScaleFill"
-                                    AutomationProperties.Name="Fill"
-                                    Command="{x:Bind ViewModel.OverlayGallery.SetScaleFillCommand, Mode=OneWay, FallbackValue={x:Null}}"
-                                    ToolTipService.ToolTip="Fill (Ctrl+3)">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <ic:FluentIcon Icon="ArrowMaximize" IconSize="Size16" IconVariant="Regular" />
-                                        <TextBlock VerticalAlignment="Center" Text="Fill" />
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock
