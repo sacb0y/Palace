@@ -6,7 +6,7 @@ namespace Palace.Tests;
 public sealed class FolderGroupsTests
 {
     [Fact]
-    public void ShouldGroup_OnlyTopLevelFolderBrowse()
+    public void ShouldGroup_AnyFolderBrowse_NotSearchOrTagOrAllLibrary()
     {
         Assert.True(FolderGroups.ShouldGroup(false, false, true));
         Assert.False(FolderGroups.ShouldGroup(true, false, true));
@@ -84,6 +84,23 @@ public sealed class FolderGroupsTests
     }
 
     [Fact]
+    public void CombineUnder_NestedPrefix_JoinsImmediateChildren()
+    {
+        var nested = Path.Combine("library", "Photos", "Vacation");
+        Assert.Equal(nested, FolderGroups.CombineUnder(nested, []));
+        Assert.Equal(
+            Path.Combine(nested, "2024", "July"),
+            FolderGroups.CombineUnder(nested, ["2024", "July", "extra"]));
+        Assert.Equal(
+            Path.Combine(nested, "2024"),
+            FolderGroups.CombineUnder(nested, ["2024"]));
+        Assert.Equal(@"D:\Photos\Vacation\2024", FolderGroups.CombineUnder(@"D:\Photos\Vacation", ["2024"]));
+        Assert.Equal(
+            "cloud/dropbox/Ada/Root/Vacation/2024",
+            FolderGroups.CombineUnder("cloud/dropbox/Ada/Root/Vacation", ["2024"]));
+    }
+
+    [Fact]
     public void GroupByTopFolders_CapsAtTwoSubsAndKeepsFileOrder()
     {
         var root = Path.Combine("library", "Photos");
@@ -113,6 +130,39 @@ public sealed class FolderGroupsTests
     }
 
     [Fact]
+    public void GroupByTopFolders_NestedPrefix_GroupsImmediateChildren()
+    {
+        var nested = Path.Combine("library", "Photos", "Vacation");
+        var items = new[]
+        {
+            Path.Combine(nested, "loose.jpg"),
+            Path.Combine(nested, "2024", "July", "a.jpg"),
+            Path.Combine(nested, "2024", "b.jpg"),
+            Path.Combine(nested, "Archive", "old.jpg"),
+            Path.Combine(nested, "2025", "c.jpg")
+        };
+
+        var groups = FolderGroups.GroupByTopFolders(items, "Vacation", nested, path => path);
+
+        Assert.Equal(
+            [
+                "Vacation",
+                "Vacation / 2024",
+                "Vacation / 2024 / July",
+                "Vacation / 2025",
+                "Vacation / Archive"
+            ],
+            groups.Select(g => g.Title).ToArray());
+        Assert.Equal([Path.Combine(nested, "loose.jpg")], groups[0].Items);
+        Assert.Equal([Path.Combine(nested, "2024", "b.jpg")], groups[1].Items);
+        Assert.Equal([Path.Combine(nested, "2024", "July", "a.jpg")], groups[2].Items);
+        Assert.Equal(
+            Path.Combine(nested, "2024", "July"),
+            FolderGroups.CombineUnder(nested, groups[2].RelativeSegments));
+        Assert.True(FolderGroups.NeedsHeaders(groups));
+    }
+
+    [Fact]
     public void NeedsHeaders_FalseWhenEverythingIsInTheSelectedFolder()
     {
         var root = Path.Combine("library", "Photos");
@@ -120,6 +170,19 @@ public sealed class FolderGroupsTests
             [Path.Combine(root, "a.jpg"), Path.Combine(root, "b.jpg")],
             "Photos",
             root,
+            path => path);
+
+        Assert.False(FolderGroups.NeedsHeaders(groups));
+    }
+
+    [Fact]
+    public void NeedsHeaders_FalseWhenEverythingIsInNestedPrefix()
+    {
+        var nested = Path.Combine("library", "Photos", "Vacation");
+        var groups = FolderGroups.GroupByTopFolders(
+            [Path.Combine(nested, "a.jpg"), Path.Combine(nested, "b.jpg")],
+            "Vacation",
+            nested,
             path => path);
 
         Assert.False(FolderGroups.NeedsHeaders(groups));

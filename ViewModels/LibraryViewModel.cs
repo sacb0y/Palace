@@ -1339,8 +1339,7 @@ public partial class LibraryViewModel : ObservableObject
             var tagBrowse = IsTagBrowse && filterIds.Count > 0;
             var folderPath = !IsTagBrowse ? SelectedFolder?.Path : null;
             var matchMode = TagFilterMode;
-            var rootPaths = FolderTree.Select(node => node.Path).ToList();
-            var isTopLevel = FolderGroups.IsTopLevelFolder(rootPaths, folderPath);
+            var hasFolderPath = !string.IsNullOrWhiteSpace(folderPath);
 
             IReadOnlyList<Asset> assets;
             if (IsTagBrowse && filterIds.Count > 0)
@@ -1375,7 +1374,7 @@ public partial class LibraryViewModel : ObservableObject
 
             var items = await Task.Run(() => BuildMosaicItems(
                 assets,
-                FolderGroups.ShouldGroup(tagBrowse, !string.IsNullOrWhiteSpace(search), isTopLevel),
+                FolderGroups.ShouldGroup(tagBrowse, !string.IsNullOrWhiteSpace(search), hasFolderPath),
                 folderName ?? "",
                 folderPath ?? ""));
             if (epoch != _filterEpoch)
