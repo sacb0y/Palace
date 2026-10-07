@@ -168,7 +168,7 @@ public sealed partial class LibraryPage : Page
 
     public static IRelayCommand GetDeleteFilesCommand() => AppServices.Library.DeleteFilesCommand;
 
-    public static BitmapImage? FileToImage(string? path, bool ignoreImageCache = false)
+    public static BitmapImage? FileToImage(string? path)
     {
         if (string.IsNullOrEmpty(path) || !CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
@@ -189,15 +189,11 @@ public sealed partial class LibraryPage : Page
             }
 
             var decode = (int)Math.Clamp(Math.Round(rowHeight * Math.Min(Math.Max(scale, 1.0), 2.0)), 96, 560);
-            var created = new BitmapImage
+            return new BitmapImage
             {
                 DecodePixelHeight = decode,
-                CreateOptions = ignoreImageCache
-                    ? BitmapCreateOptions.IgnoreImageCache
-                    : BitmapCreateOptions.None
+                UriSource = new Uri(path, UriKind.Absolute)
             };
-            created.UriSource = new Uri(path, UriKind.Absolute);
-            return created;
         }
         catch
         {
@@ -1321,14 +1317,14 @@ public sealed partial class LibraryPage : Page
         return false;
     }
 
-    private BitmapImage? CreateTileBitmap(string? path, bool ignoreImageCache = false)
+    private BitmapImage? CreateTileBitmap(string? path)
     {
         if (string.IsNullOrEmpty(path))
         {
             return null;
         }
 
-        if (!ignoreImageCache && TryGetCachedTileBitmap(path, out var cached))
+        if (TryGetCachedTileBitmap(path, out var cached))
         {
             return cached;
         }
@@ -1350,25 +1346,14 @@ public sealed partial class LibraryPage : Page
             var created = new BitmapImage
             {
                 DecodePixelHeight = decode,
-                CreateOptions = ignoreImageCache
-                    ? BitmapCreateOptions.IgnoreImageCache
-                    : BitmapCreateOptions.None
+                UriSource = new Uri(path, UriKind.Absolute)
             };
-            created.UriSource = new Uri(path, UriKind.Absolute);
             _tileBitmapCache[path] = new WeakReference<BitmapImage>(created);
             return created;
         }
         catch
         {
             return null;
-        }
-    }
-
-    private void InvalidateTileBitmap(string? path)
-    {
-        if (!string.IsNullOrEmpty(path))
-        {
-            _tileBitmapCache.Remove(path);
         }
     }
 
@@ -1561,57 +1546,6 @@ public sealed partial class LibraryPage : Page
         BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
     }
 
-    private async void BtnGallerySetThumb_Click(object sender, RoutedEventArgs e)
-    {
-        var gallery = ViewModel.OverlayGallery;
-        if (gallery is null || !gallery.CanSetVideoThumb)
-        {
-            return;
-        }
-
-        await ErrorReporter.RunAsync(
-            "Set mosaic thumbnail",
-            msg =>
-            {
-                ViewModel.InfoMessage = msg;
-                ViewModel.ShowInfo = true;
-                ViewModel.StatusText = msg;
-            },
-            async () =>
-            {
-                EnsureOverlayPlayer();
-                var item = gallery.Current;
-                var path = gallery.CurrentPath;
-                var hash = item?.ContentHash;
-                if (item is null || string.IsNullOrEmpty(path) || string.IsNullOrEmpty(hash))
-                {
-                    throw new InvalidOperationException(gallery.SetVideoThumbTooltip);
-                }
-
-                var info = await VideoFrameThumb.CaptureMosaicAsync(
-                    MpeOverlay.MediaPlayer,
-                    path,
-                    hash,
-                    AppServices.Thumbnails,
-                    item.Width,
-                    item.Height);
-                if (info is null)
-                {
-                    throw new InvalidOperationException("Could not capture a frame from this video.");
-                }
-
-                await UiDispatch.RunAsync(() =>
-                {
-                    InvalidateTileBitmap(info.Value.Path);
-                    var image = CreateTileBitmap(info.Value.Path, ignoreImageCache: true);
-                    gallery.ApplyMosaicThumb(info.Value.Path, image);
-                    ViewModel.InfoMessage = "Mosaic thumbnail updated.";
-                    ViewModel.ShowInfo = true;
-                    ViewModel.StatusText = ViewModel.InfoMessage;
-                });
-            });
-    }
-
     private async Task<OrganizeChoice?> AskOrganizeChoiceAsync()
     {
         var inSource = new RadioButton { Content = "Stay in the current source folders", IsChecked = true, GroupName = "org" };
@@ -1731,4 +1665,68 @@ public sealed partial class LibraryPage : Page
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary ? list.SelectedItem as Room : null;
     }
+
+    private async void BtnGallerySetThumb_Click(object sender, RoutedEventArgs e)
+    {
+        var gallery = ViewModel.OverlayGallery;
+        if (gallery is null || !gallery.CanSetVideoThumb)
+        {
+            return;
+        }
+
+        await ErrorReporter.RunAsync(
+            "Set mosaic thumbnail",
+            msg =>
+            {
+                ViewModel.InfoMessage = msg;
+                ViewModel.ShowInfo = true;
+                ViewModel.StatusText = msg;
+            },
+            async () =>
+            {
+                EnsureOverlayPlayer();
+                var item = gallery.Current;
+                var path = gallery.CurrentPath;
+                var hash = item?.ContentHash;
+                if (item is null || string.IsNullOrEmpty(path) || string.IsNullOrEmpty(hash))
+                {
+                    throw new InvalidOperationException(gallery.SetVideoThumbTooltip);
+                }
+
+                var info = await VideoFrameThumb.CaptureMosaicAsync(
+                    MpeOverlay.MediaPlayer,
+                    path,
+                    hash,
+                    AppServices.Thumbnails,
+                    item.Width,
+                    item.Height);
+                if (info is null)
+                {
+                    throw new InvalidOperationException("Could not capture a frame from this video.");
+                }
+
+                await UiDispatch.RunAsync(() =>
+                {
+                    BitmapImage? image = null;
+                    try
+                    {
+                        image = new BitmapImage
+                        {
+                            CreateOptions = BitmapCreateOptions.IgnoreImageCache,
+                            UriSource = new Uri(info.Value.Path, UriKind.Absolute)
+                        };
+                    }
+                    catch
+                    {
+                        image = null;
+                    }
+
+                    gallery.ApplyMosaicThumb(info.Value.Path, image);
+                    ViewModel.InfoMessage = "Mosaic thumbnail updated.";
+                    ViewModel.ShowInfo = true;
+                    ViewModel.StatusText = ViewModel.InfoMessage;
+                });
+            });
+    }
+
 }

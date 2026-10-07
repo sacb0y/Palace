@@ -1111,49 +1111,6 @@ public sealed partial class TagsPage : Page
         BtnGalleryPlay.Visibility = Visibility.Collapsed;
     }
 
-    private async void BtnGallerySetThumb_Click(object sender, RoutedEventArgs e)
-    {
-        var gallery = ViewModel.OverlayGallery;
-        if (gallery is null || !gallery.CanSetVideoThumb)
-        {
-            return;
-        }
-
-        await ErrorReporter.RunAsync(
-            "Set mosaic thumbnail",
-            msg => ViewModel.StatusText = msg,
-            async () =>
-            {
-                EnsureOverlayPlayer();
-                var item = gallery.Current;
-                var path = gallery.CurrentPath;
-                var hash = item?.ContentHash;
-                if (item is null || string.IsNullOrEmpty(path) || string.IsNullOrEmpty(hash))
-                {
-                    throw new InvalidOperationException(gallery.SetVideoThumbTooltip);
-                }
-
-                var info = await VideoFrameThumb.CaptureMosaicAsync(
-                    MpeOverlay.MediaPlayer,
-                    path,
-                    hash,
-                    AppServices.Thumbnails,
-                    item.Width,
-                    item.Height);
-                if (info is null)
-                {
-                    throw new InvalidOperationException("Could not capture a frame from this video.");
-                }
-
-                await UiDispatch.RunAsync(() =>
-                {
-                    var image = LibraryPage.FileToImage(info.Value.Path, ignoreImageCache: true);
-                    gallery.ApplyMosaicThumb(info.Value.Path, image);
-                    ViewModel.StatusText = "Mosaic thumbnail updated.";
-                });
-            });
-    }
-
     private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (ViewModel.OverlayGallery is null)
@@ -1228,4 +1185,61 @@ public sealed partial class TagsPage : Page
 
         return false;
     }
+
+    private async void BtnGallerySetThumb_Click(object sender, RoutedEventArgs e)
+    {
+        var gallery = ViewModel.OverlayGallery;
+        if (gallery is null || !gallery.CanSetVideoThumb)
+        {
+            return;
+        }
+
+        await ErrorReporter.RunAsync(
+            "Set mosaic thumbnail",
+            msg => ViewModel.StatusText = msg,
+            async () =>
+            {
+                EnsureOverlayPlayer();
+                var item = gallery.Current;
+                var path = gallery.CurrentPath;
+                var hash = item?.ContentHash;
+                if (item is null || string.IsNullOrEmpty(path) || string.IsNullOrEmpty(hash))
+                {
+                    throw new InvalidOperationException(gallery.SetVideoThumbTooltip);
+                }
+
+                var info = await VideoFrameThumb.CaptureMosaicAsync(
+                    MpeOverlay.MediaPlayer,
+                    path,
+                    hash,
+                    AppServices.Thumbnails,
+                    item.Width,
+                    item.Height);
+                if (info is null)
+                {
+                    throw new InvalidOperationException("Could not capture a frame from this video.");
+                }
+
+                await UiDispatch.RunAsync(() =>
+                {
+                    Microsoft.UI.Xaml.Media.Imaging.BitmapImage? image = null;
+                    try
+                    {
+                        image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
+                        {
+                            CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
+                            UriSource = new Uri(info.Value.Path, UriKind.Absolute)
+                        };
+                    }
+                    catch
+                    {
+                        image = null;
+                    }
+
+                    gallery.ApplyMosaicThumb(info.Value.Path, image);
+                    ViewModel.StatusText = "Mosaic thumbnail updated.";
+                });
+            });
+    }
+
 }

@@ -905,10 +905,10 @@
                                 AutomationProperties.Name="Set mosaic thumbnail"
                                 Click="BtnGallerySetThumb_Click"
                                 IsEnabled="{x:Bind ViewModel.OverlayGallery.CanSetVideoThumb, Mode=OneWay, FallbackValue=False}"
-                                ToolTipService.ToolTip="{x:Bind ViewModel.OverlayGallery.SetVideoThumbTooltip, Mode=OneWay, FallbackValue='Set Library mosaic thumbnail from this frame'}"
-                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowSetVideoThumb), Mode=OneWay, FallbackValue=Collapsed}">
+                                ToolTipService.ToolTip="Set Library mosaic thumbnail from this frame"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="ImageCopy" IconSize="Size16" IconVariant="Regular" />
+                                    <ic:FluentIcon Icon="Image" IconSize="Size16" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Set thumb" />
                                 </StackPanel>
                             </Button>
