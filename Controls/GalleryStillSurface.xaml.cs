@@ -22,6 +22,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private int _histEpoch;
     private CancellationTokenSource? _hdrLoadCts;
     private CancellationTokenSource? _presentCts;
+    private CancellationTokenSource? _histCts;
     private readonly HdrPresentCoalescer _presentQueue = new();
     private bool _panning;
     private double _panLastX;
@@ -46,19 +47,11 @@ public sealed partial class GalleryStillSurface : UserControl
     private WriteableBitmap?[]? _gifBitmaps;
     private CancellationTokenSource? _gifLoadCts;
 
-    private readonly PointerEventHandler _wheelHandler;
-
     public GalleryStillSurface()
     {
-        _wheelHandler = ScrStill_PointerWheelChanged;
         InitializeComponent();
-        // Hidden ScrollViewer marks wheel handled (native pan/zoom no-op with
-        // ZoomMode Disabled). Learn trackpad pinch is this event — listen even
-        // after it is handled so Ctrl+wheel still zooms.
-        ScrStill.AddHandler(UIElement.PointerWheelChangedEvent, _wheelHandler, handledEventsToo: true);
         Unloaded += (_, _) =>
         {
-            ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
             UnhookPeak();
             _gallery?.StopGifPlayback();
             CancelInFlight();
@@ -86,7 +79,8 @@ public sealed partial class GalleryStillSurface : UserControl
         CancelInFlight();
         ClearHdrCache();
         ClearGifCache();
-        ResetView();
+        ResetScrollTracking();
+        ResetPinchTracking();
         _gallery = gallery;
         if (_gallery is not null)
         {
@@ -132,6 +126,7 @@ public sealed partial class GalleryStillSurface : UserControl
         Interlocked.Increment(ref _histEpoch);
         _hdrLoadCts?.Cancel();
         _presentCts?.Cancel();
+        _histCts?.Cancel();
         _gifLoadCts?.Cancel();
     }
 
@@ -139,11 +134,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         if (e.PropertyName is nameof(GalleryViewModel.Scaling))
         {
-            if (GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: true, viewportChanged: false))
-            {
-                ResetView();
-            }
-
+            ResetPinchTracking();
             ApplyScaleLayout();
             if (_hdrFrame is not null && _gallery is { } g)
             {
@@ -185,31 +176,13 @@ public sealed partial class GalleryStillSurface : UserControl
         if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
             or nameof(GalleryViewModel.CanScrubGif))
         {
-            if (GalleryScale.ShouldResetView(
-                    stillChanged: e.PropertyName == nameof(GalleryViewModel.StillRevision),
-                    scalingChanged: false,
-                    viewportChanged: false))
-            {
-                ResetView();
-            }
-            else
-            {
-                ResetPinchTracking();
-            }
-
+            ResetPinchTracking();
             _ = RefreshAsync();
         }
     }
 
     private void GrdStillHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        var viewportChanged = !NearlyEqual(e.PreviousSize.Width, e.NewSize.Width)
-            || !NearlyEqual(e.PreviousSize.Height, e.NewSize.Height);
-        if (GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged))
-        {
-            ResetView();
-        }
-
         ApplyScaleLayout();
         if (_gallery is { IsImage: true } gallery && _hdrFrame is not null)
         {
@@ -249,7 +222,6 @@ public sealed partial class GalleryStillSurface : UserControl
             ClearHdrCache();
             HideHdr();
             gallery.SetHdrPresentResult(false, false);
-            gallery.ClearHistogram();
             await ShowGifScrubAsync(gallery);
             return;
         }
@@ -297,12 +269,21 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (!attempt || still is null)
+        if (still is null)
         {
             ClearHdrCache();
             HideHdr();
             gallery.SetHdrPresentResult(false, false);
             gallery.ClearHistogram();
+            return;
+        }
+
+        if (!attempt)
+        {
+            ClearHdrCache();
+            HideHdr();
+            gallery.SetHdrPresentResult(false, false);
+            QueueFileHistogram(gallery, still, hdr: false);
             return;
         }
 
@@ -357,14 +338,8 @@ public sealed partial class GalleryStillSurface : UserControl
                 ClearHdrCache();
                 HideHdr();
                 ImgStill.Source = ToStillImage(still);
-                var wic = HdrWicDecode.LastWicError;
-                gallery.SetHdrPresentResult(
-                    false,
-                    GalleryPresent.UnknownDisplayPresentsHdr(gallery.CurrentProbe),
-                    displayProbe: string.IsNullOrWhiteSpace(wic)
-                        ? DisplayHdr.Describe()
-                        : $"JXR {wic} · {DisplayHdr.Describe()}");
-                gallery.ClearHistogram();
+                gallery.SetHdrPresentResult(false, false);
+                QueueFileHistogram(gallery, still, hdr: false);
                 return;
             }
 
@@ -383,7 +358,7 @@ public sealed partial class GalleryStillSurface : UserControl
             _hdrFramePath = still;
             _hdrFrameProbe = gallery.CurrentProbe;
             ApplyScaleLayout();
-            QueueHistogram(gallery, frame, gallery.CurrentProbe);
+            QueueHistogram(gallery, frame, gallery.CurrentProbe, hdr: true);
             RequestPresent(HdrPresentCoalescer.ImmediateMs);
             if (!GalleryPresent.IsNativeDecode(frame.Width, frame.Height, frame.NativeWidth, frame.NativeHeight))
             {
@@ -577,8 +552,7 @@ public sealed partial class GalleryStillSurface : UserControl
         try
         {
             outcome = await presenterRef.TryPresentAsync(
-                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token,
-                galleryRef.CurrentProbe);
+                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token);
         }
         finally
         {
@@ -617,16 +591,12 @@ public sealed partial class GalleryStillSurface : UserControl
                     frameRef.NativeWidth,
                     frameRef.NativeHeight,
                     GalleryPresent.IsNativeDecode(
-                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
-                    presenterRef.DisplayProbeText);
+                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight));
                 return;
             }
 
             HideHdr();
-            galleryRef.SetHdrPresentResult(
-                false,
-                presenterRef.DisplayIsHdr,
-                displayProbe: presenterRef.DisplayProbeText);
+            galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
         });
     }
     private (double Width, double Height) HdrPanelDips()
@@ -650,7 +620,7 @@ public sealed partial class GalleryStillSurface : UserControl
         return (ScrStill.ActualWidth, ScrStill.ActualHeight);
     }
 
-    private void QueueHistogram(GalleryViewModel gallery, HdrFrame frame, HdrProbe probe)
+    private void QueueHistogram(GalleryViewModel gallery, HdrFrame frame, HdrProbe probe, bool hdr)
     {
         var item = gallery.Current;
         var original = item is not null
@@ -678,12 +648,139 @@ public sealed partial class GalleryStillSurface : UserControl
         var width = frame.Width;
         var height = frame.Height;
         var primaries = probe.CicpPrimaries;
+        var channelMax = GalleryHistogram.ChannelMax(hdr);
         _ = Task.Run(() =>
         {
             GalleryHistogramBins bins;
             try
             {
-                bins = GalleryHistogram.FromScrgb(rgba, width, height, primaries);
+                bins = GalleryHistogram.FromScrgb(
+                    rgba, width, height, primaries, GalleryHistogram.BinCount, GalleryHistogram.DefaultMaxSamples, channelMax);
+            }
+            catch
+            {
+                bins = GalleryHistogramBins.Empty;
+            }
+
+            return UiDispatch.RunAsync(() =>
+            {
+                if (epoch != Volatile.Read(ref _histEpoch) || !ReferenceEquals(_gallery, gallery))
+                {
+                    return;
+                }
+
+                gallery.SetHistogram(bins);
+            });
+        });
+    }
+
+    private void QueueFileHistogram(GalleryViewModel gallery, string path, bool hdr)
+    {
+        var item = gallery.Current;
+        var original = item is not null
+            && string.Equals(path, item.Path, StringComparison.OrdinalIgnoreCase);
+        var onlineOnly = item is null
+            || GalleryMedia.IsLiveOnlineOnly(
+                item.IsOnlineOnly,
+                CloudFile.IsOnlineOnly(item.Path),
+                AssetItemMapper.IsApiOnly(item),
+                GalleryMedia.CanShowPreview(item.Path));
+        if (!GalleryHistogram.ShouldBuild(
+                gallery.IsImage,
+                onlineOnly,
+                item is not null && AssetItemMapper.IsApiOnly(item),
+                item?.IsOrphan ?? true,
+                original)
+            || !CloudFile.Exists(path)
+            || CloudFile.IsOnlineOnly(path))
+        {
+            Interlocked.Increment(ref _histEpoch);
+            gallery.ClearHistogram();
+            return;
+        }
+
+        var epoch = Interlocked.Increment(ref _histEpoch);
+        _histCts?.Cancel();
+        _histCts = new CancellationTokenSource();
+        var token = _histCts.Token;
+        var probe = hdr ? gallery.CurrentProbe : GalleryHistogram.SdrDecodeProbe(gallery.CurrentProbe);
+        var raster = XamlRoot?.RasterizationScale ?? 1.0;
+        var (dipW, dipH) = HdrPanelDips();
+        var viewPxW = (int)Math.Round(Math.Max(dipW, 0) * raster);
+        var viewPxH = (int)Math.Round(Math.Max(dipH, 0) * raster);
+        var scaling = gallery.Scaling;
+        _ = Task.Run(async () =>
+        {
+            GalleryHistogramBins bins;
+            try
+            {
+                var frame = await HdrWicDecode.TryLoadAsync(
+                    path, probe, viewPxW, viewPxH, scaling, token).ConfigureAwait(false);
+                bins = frame is null
+                    ? GalleryHistogramBins.Empty
+                    : GalleryHistogram.FromScrgb(
+                        frame.ScrgbRgba,
+                        frame.Width,
+                        frame.Height,
+                        probe.CicpPrimaries,
+                        GalleryHistogram.BinCount,
+                        GalleryHistogram.DefaultMaxSamples,
+                        GalleryHistogram.ChannelMax(probe.CanPresentHdr));
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch
+            {
+                bins = GalleryHistogramBins.Empty;
+            }
+
+            await UiDispatch.RunAsync(() =>
+            {
+                if (epoch != Volatile.Read(ref _histEpoch) || !ReferenceEquals(_gallery, gallery))
+                {
+                    return;
+                }
+
+                gallery.SetHistogram(bins);
+            });
+        }, token);
+    }
+
+    private void QueuePackedHistogram(GalleryViewModel gallery, GifFrames.Raster raster)
+    {
+        var item = gallery.Current;
+        var original = item is not null
+            && string.Equals(gallery.CurrentPath, item.Path, StringComparison.OrdinalIgnoreCase);
+        var onlineOnly = item is null
+            || GalleryMedia.IsLiveOnlineOnly(
+                item.IsOnlineOnly,
+                CloudFile.IsOnlineOnly(item.Path),
+                AssetItemMapper.IsApiOnly(item),
+                GalleryMedia.CanShowPreview(item.Path));
+        if (!GalleryHistogram.ShouldBuild(
+                gallery.IsImage,
+                onlineOnly,
+                item is not null && AssetItemMapper.IsApiOnly(item),
+                item?.IsOrphan ?? true,
+                original))
+        {
+            Interlocked.Increment(ref _histEpoch);
+            gallery.ClearHistogram();
+            return;
+        }
+
+        var epoch = Interlocked.Increment(ref _histEpoch);
+        var bgra = raster.Bgra;
+        var width = raster.Width;
+        var height = raster.Height;
+        _ = Task.Run(() =>
+        {
+            GalleryHistogramBins bins;
+            try
+            {
+                bins = GalleryHistogram.FromPacked8(bgra, width, height, HdrPackedFormat.Bgra8);
             }
             catch
             {
@@ -720,11 +817,12 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
         var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
-        var bars = GalleryScale.ShowsScrollBars()
+        ScrStill.HorizontalScrollBarVisibility = scrolls
             ? ScrollBarVisibility.Auto
-            : ScrollBarVisibility.Hidden;
-        ScrStill.HorizontalScrollBarVisibility = bars;
-        ScrStill.VerticalScrollBarVisibility = bars;
+            : ScrollBarVisibility.Disabled;
+        ScrStill.VerticalScrollBarVisibility = scrolls
+            ? ScrollBarVisibility.Auto
+            : ScrollBarVisibility.Disabled;
         ImgStill.Stretch = BindHelpers.ImageStretch(scaling);
 
         var align = scrolls ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
@@ -833,13 +931,6 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.ChangeView(horizontal, vertical, null, true);
     }
 
-    private void ResetView()
-    {
-        _panning = false;
-        ResetScrollTracking();
-        ResetPinchTracking();
-    }
-
     private void ResetScrollTracking()
     {
         _scrollRevision = int.MinValue;
@@ -893,23 +984,6 @@ public sealed partial class GalleryStillSurface : UserControl
         return (0, 0);
     }
 
-    private void ApplyPinchFrame(
-        double originX,
-        double originY,
-        double nextZoom,
-        double panX,
-        double panY)
-    {
-        _preservePinchPan = true;
-        _pinchOriginX = originX;
-        _pinchOriginY = originY;
-        _pinchOldZoom = _pinchZoom;
-        _pinchZoom = nextZoom;
-        _coalescedPanX = panX;
-        _coalescedPanY = panY;
-        ApplyScaleLayout();
-    }
-
     private void ImgStill_ImageOpened(object sender, RoutedEventArgs e)
     {
         if (_gallery?.Scaling is ImageScaling.Actual or ImageScaling.Fill)
@@ -922,7 +996,6 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var type = e.Pointer.PointerDeviceType;
         var point = e.GetCurrentPoint(ScrStill);
-        CancelScrollViewerDirectManipulation();
         if (!GalleryScale.UsesPointerCapturePan(
                 GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit, _pinchZoom),
                 type == PointerDeviceType.Mouse,
@@ -983,23 +1056,9 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.ReleasePointerCapture(pointer);
     }
 
-    private void CancelScrollViewerDirectManipulation()
+    private void ScrStill_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
     {
-        // Learn: pointer events inside a ScrollViewer are swallowed by
-        // DirectManipulation unless the child cancels it.
-        GrdStillContent.CancelDirectManipulations();
-        ImgStill.CancelDirectManipulations();
-        ScpHdr.CancelDirectManipulations();
-    }
-
-    private void GrdStillContent_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
-    {
-        CancelScrollViewerDirectManipulation();
-        var isTouch = e.PointerDeviceType == PointerDeviceType.Touch;
-        var isPen = e.PointerDeviceType == PointerDeviceType.Pen;
-        var isMouse = e.PointerDeviceType == PointerDeviceType.Mouse;
-        if (!GalleryScale.HandlesManipulationDelta(
-                e.IsInertial, isTouch, isPen, isMouse, leftButton: _panning))
+        if (e.PointerDeviceType is not (PointerDeviceType.Touch or PointerDeviceType.Pen))
         {
             return;
         }
@@ -1014,7 +1073,14 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (didPinch)
         {
-            ApplyPinchFrame(e.Position.X, e.Position.Y, nextZoom, deltaX, deltaY);
+            _preservePinchPan = true;
+            _pinchOriginX = e.Position.X;
+            _pinchOriginY = e.Position.Y;
+            _pinchOldZoom = _pinchZoom;
+            _pinchZoom = nextZoom;
+            _coalescedPanX = deltaX;
+            _coalescedPanY = deltaY;
+            ApplyScaleLayout();
             e.Handled = true;
             return;
         }
@@ -1029,45 +1095,6 @@ public sealed partial class GalleryStillSurface : UserControl
             ScrStill.VerticalOffset,
             deltaX,
             deltaY,
-            ScrStill.ScrollableWidth,
-            ScrStill.ScrollableHeight);
-        ScrStill.ChangeView(horizontal, vertical, null, true);
-        e.Handled = true;
-    }
-
-    private void ScrStill_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(ScrStill);
-        var delta = point.Properties.MouseWheelDelta;
-        CancelScrollViewerDirectManipulation();
-        var controlDown = e.KeyModifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control);
-        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
-        var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
-
-        if (GalleryScale.UsesWheelPinch(controlDown, delta))
-        {
-            var nextZoom = GalleryScale.PinchZoom(_pinchZoom, GalleryScale.WheelPinchFactor(delta));
-            if (Math.Abs(nextZoom - _pinchZoom) > 0.0001)
-            {
-                ApplyPinchFrame(point.Position.X, point.Position.Y, nextZoom, 0, 0);
-            }
-
-            e.Handled = true;
-            return;
-        }
-
-        if (!GalleryScale.UsesWheelPan(scrolls, controlDown, delta))
-        {
-            return;
-        }
-
-        var pan = GalleryScale.WheelToPanDelta(delta);
-        var horizontalWheel = point.Properties.IsHorizontalMouseWheel;
-        var (horizontal, vertical) = GalleryScale.DragPan(
-            ScrStill.HorizontalOffset,
-            ScrStill.VerticalOffset,
-            horizontalWheel ? pan : 0,
-            horizontalWheel ? 0 : pan,
             ScrStill.ScrollableWidth,
             ScrStill.ScrollableHeight);
         ScrStill.ChangeView(horizontal, vertical, null, true);
@@ -1115,6 +1142,7 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             ClearGifCache();
             ImgStill.Source = ToStillImage(gallery.PreviewImageUri ?? gallery.CurrentPath);
+            gallery.ClearHistogram();
             return;
         }
 
@@ -1130,6 +1158,11 @@ public sealed partial class GalleryStillSurface : UserControl
 
             ApplyCachedGifFrame(gallery);
             gallery.NotifyGifCompositeReady();
+            if (GifFrames.PickCached(_gifRasters, GifFrames.ClampIndex((int)Math.Round(gallery.GifFrameIndex), _gifRasters!.Count)) is { } cached)
+            {
+                QueuePackedHistogram(gallery, cached);
+            }
+
             return;
         }
 
@@ -1184,6 +1217,11 @@ public sealed partial class GalleryStillSurface : UserControl
                 _gifBitmaps = new WriteableBitmap?[frames.Count];
                 ApplyCachedGifFrame(gallery);
                 gallery.NotifyGifCompositeReady();
+                if (GifFrames.PickCached(frames, GifFrames.ClampIndex((int)Math.Round(gallery.GifFrameIndex), frames.Count)) is { } loaded)
+                {
+                    QueuePackedHistogram(gallery, loaded);
+                }
+
                 return;
             }
 
@@ -1197,6 +1235,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
             ImgStill.Source = ToStillImage(path, animateGif: GifFrames.ShouldAnimateGifFallback(abandon));
             ApplyScaleLayout();
+            QueueFileHistogram(gallery, path, hdr: false);
         });
     }
 

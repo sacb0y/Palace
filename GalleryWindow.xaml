@@ -137,6 +137,7 @@
                                 Compact="True"
                                 IdPrefix="GalleryWindowInfo"
                                 Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
+                                ShowRgb="{x:Bind Gallery.HistogramShowRgb, Mode=OneWay}"
                                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
                         </StackPanel>
                     </Border>
