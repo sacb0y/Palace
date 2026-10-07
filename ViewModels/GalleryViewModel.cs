@@ -6,6 +6,7 @@ using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.Services.Cloud;
+using Windows.Storage;
 
 namespace Palace.ViewModels;
 
@@ -14,6 +15,7 @@ public partial class GalleryViewModel : ObservableObject
     private readonly CatalogService _catalog;
     private readonly IReadOnlyList<AssetItem> _items;
     private int _loadEpoch;
+    private bool _chromeReady;
 
     public GalleryViewModel(IReadOnlyList<AssetItem> items, int startIndex, CatalogService catalog)
     {
@@ -21,6 +23,7 @@ public partial class GalleryViewModel : ObservableObject
         _items = items.Count == 0 ? [] : items.ToList();
         var last = Math.Max(0, _items.Count - 1);
         CurrentIndex = _items.Count == 0 ? 0 : Math.Clamp(startIndex, 0, last);
+        LoadChromeSettings();
         _ = LoadCurrentAsync();
     }
 
@@ -154,10 +157,10 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool ShowGeneration { get; set; }
 
     [ObservableProperty]
-    public partial bool ShowImageInfo { get; set; } = true;
+    public partial bool ShowImageInfo { get; set; } = GalleryChrome.DefaultShowImageInfo;
 
     [ObservableProperty]
-    public partial bool ShowDetails { get; set; } = true;
+    public partial bool ShowDetails { get; set; } = GalleryChrome.DefaultShowDetails;
 
     [ObservableProperty]
     public partial string ImageInfoText { get; set; } = "";
@@ -261,6 +264,30 @@ public partial class GalleryViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleDetails() => ShowDetails = !ShowDetails;
+
+    partial void OnShowImageInfoChanged(bool value)
+    {
+        if (_chromeReady)
+        {
+            ApplicationData.Current.LocalSettings.Values[GalleryChrome.ShowImageInfoKey] = value;
+        }
+    }
+
+    partial void OnShowDetailsChanged(bool value)
+    {
+        if (_chromeReady)
+        {
+            ApplicationData.Current.LocalSettings.Values[GalleryChrome.ShowDetailsKey] = value;
+        }
+    }
+
+    private void LoadChromeSettings()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        ShowImageInfo = GalleryChrome.ParseShowImageInfo(values[GalleryChrome.ShowImageInfoKey]);
+        ShowDetails = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
+        _chromeReady = true;
+    }
 
     partial void OnGifFrameIndexChanged(double value)
     {
