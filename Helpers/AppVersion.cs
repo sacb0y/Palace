@@ -6,7 +6,11 @@ namespace Palace.Helpers;
 public static class AppVersion
 {
     /// <summary>Current 0.x slice name. Keep in lockstep with the Version table in AGENTS.md.</summary>
-    public const string Milestone = "Library core";
+    public const string Milestone = "Library core · initial public preview";
+
+    /// <summary>Honest status for Settings → About. Rooms and Organization are not finished.</summary>
+    public const string InfancyNote =
+        "Rooms and Organization features are in their infancy — preview only, not finished.";
 
     public static string Configuration =>
 #if DEBUG
@@ -37,5 +41,5 @@ public static class AppVersion
 
     public static string Display => $"Palace {Numeric} ({Configuration}) · {Milestone}";
 
-    public static string TitleBar => $"{Numeric} {Configuration}";
+    public static string TitleBar => $"{Numeric} {Configuration} · preview";
 }

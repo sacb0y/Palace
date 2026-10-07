@@ -4,6 +4,20 @@ Palace is a packaged WinUI 3 / Windows App SDK digital asset manager (images, GI
 
 Keep this file current. When you change a convention (scan, thumbs, UI thread, cloud, packaging, tests), update the matching section here in the same change.
 
+## PR / agent goals (read first)
+
+Any PR agent (Cursor, Copilot, human) should treat this as the product contract:
+
+1. **Library-first.** Current slice is **0.0.x Library + tagging**. Ship Library browsing, mosaic, overlay/gallery, tags, watch folders, FTS, and solid image/video (including HDR present). Do not open **0.1 Rooms**, **0.2 Gamedev**, or **0.3 AI** as a new minor unless Isiac asks.
+2. **Version / slice rules.** Source of truth: `Package.appxmanifest` `Identity Version` + matching `<Version>` in `Palace.csproj` + `Helpers/AppVersion.cs` `Milestone`. Stay on **0.0.x** while Library is the slice — bump **patch** for drops inside the slice (e.g. `0.0.3.0` → `0.0.4.0`), Revision `0`. Do **not** jump to `1.0.0` or `0.1.x` because something “feels ready.” See **Version** below.
+3. **Do not invent ahead of the slice.** No freeform Rooms canvas / moodboard-mindmap, no gamedev viewers (3D/audio/markdown Unity assign), no AI tagging/organization features until that minor is opened. Existing Rooms and Organization (on-disk organize / auto-organize) are **infancy** — polish only if the task names them; do not claim they are finished.
+4. **Cloud is bonus.** Dropbox / OneDrive OAuth and On-Demand already live in 0.0.x. Further cloud work can land inside the current identity; it is **not** the next numbered slice and must not download originals.
+5. **Maintainer preferences (hands-off).** Prefer small, reviewable PRs on a branch from current `main`. Packaged Debug only for daily runs (`.\BuildAndRun.ps1 . --arch x64`). Never unpackaged. Never change GitHub visibility or add secrets. Do not resume paused Magick / TGA / EXR spikes unless asked. Fix trivial CI/Bugbot blockers; skip speculative refactors.
+6. **Tests.** `dotnet test .\Palace.Tests\Palace.Tests.csproj` on every change that touches helpers/services. On Windows Main-Desktop, packaged Debug via `BuildAndRun.ps1` when UI is in scope. Linux Cloud Agents: tests only — no WinUI build. Self-hosted Windows worker for live UI.
+7. **Linux vs Windows.** Cloud Agent VMs are Linux → `Palace.Tests` only. WinUI / `winapp` / screenshots need a Windows worker (e.g. Main-Desktop). See **Cursor Cloud specific instructions**.
+
+Human-facing overview: root `README.md`. Bug reports: Settings → About (`TxtAppVersion`).
+
 ## Stack (locked)
 
 - Packaged `winui-mvvm` only. CommunityToolkit.Mvvm, `{x:Bind}` with explicit `Mode`, `AutomationProperties.AutomationId` on interactive controls, `ThemeResource` (not hardcoded brushes).
@@ -70,7 +84,7 @@ Chrome icons come from `FluentIcons.WinUI` (`xmlns:ic="using:FluentIcons.WinUI"`
 | Library select mode | `Helpers/SelectMode.cs` (`ClickTogglesTile` → `Multiple` vs `Single`, never Extended; `EnterFromHold` press-and-hold / click-and-hold on a mosaic tile enters select mode and selects that tile without opening overlay; `Summary` count text, `ShowBatchTagCta`; `TglSelectMode` / `TxtSelectionCount` / `BtnTagSelected` / `CmbMosaicSort` in the same cluster) |
 | Mosaic sort | `Helpers/MosaicSortOrder.cs` (`MosaicSort` enum → allowlisted `ORDER BY`; `ShouldApplyIndex` ignores ComboBox `-1`; `CmbMosaicSort` / `CmbTagMosaicSort` OneWay + armed SelectionChanged; LocalSettings `MosaicSort_{projectId}`; Library `Loaded` `ReloadMosaicSortAsync`) |
 | Multi-delete prune | `Helpers/MosaicDelete.cs` (in-place mosaic/`_allAssets` prune + empty folder-header strip; watcher directory Created/Renamed only — Renamed orphans old prefix then `ScanDirectoryAsync` on new; `LooksLikeDeletedDirectory` uses catalog ext so `shots.backup` / `.cache` still orphan-clean; `ChunkIds` for batched `DeleteAssetsAsync` — materialize FTS rowids before `DeleteFtsRow`; Library `DeleteFilesAsync` + `WatcherService.SuppressNotifications`) |
-| Shortcut cheatsheet | `Helpers/ShortcutCheatsheet.cs` (Settings → About; `LstShortcuts` / `TxtShortcut*`; keep `TxtAppVersion`) |
+| Shortcut cheatsheet | `Helpers/ShortcutCheatsheet.cs` (Settings → About; `LstShortcuts` / `TxtShortcut*`; keep `TxtAppVersion` / `TxtInfancyNote`) |
 | Mosaic range select | `Helpers/RangeSelect.cs` (contiguous first→last, skip headers; touch hold then `CapturePointer`; hit-test uses window coords via `ToWindowPoint`; live drag skips `LoadPreviewAsync`; `TglTagSelectMode` / `TxtTagSelectionCount` on Tags) |
 | Cloud source paths | `Helpers/CloudSourcePath.cs` |
 | Room icon ids | `Helpers/RoomIcons.cs` |
@@ -164,20 +178,20 @@ Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDriv
 
 Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from Isiac’s sequence (table below). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
 
-**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.3.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.3 (Debug) · Library core`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays **0.0.3.0** / milestone **Library core** while this is still the Library + tagging slice.
+**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.4.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.4 (Debug) · Library core · initial public preview`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays **0.0.4.0** / milestone **Library core · initial public preview** while this is still the Library + tagging slice. About also shows `AppVersion.InfancyNote` (`TxtInfancyNote`): Rooms (moodboard/mindmap) and Organization (on-disk organize / auto-organize) are in their infancy — do not claim they are finished.
 
 MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
 
 | Version | Slice | Isiac sequence |
 |---|---|---|
-| **0.0.x** *(now 0.0.3)* | **Library + tagging** | **Now.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. |
-| **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. |
+| **0.0.x** *(now 0.0.4)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
+| **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. Stub Rooms UI in 0.0.x is infancy — not this slice’s finished work. |
 | **bonus** | **Cloud** | **Not a numbered main slice** and not the next increment. View and manage Dropbox / OneDrive via OAuth. On-Demand + API sources already exist in 0.0.x; do not download originals. Further cloud work can land inside the current identity. |
 | **0.2.x** | **Gamedev** | **Then.** Markdown reading, audio (with loops), 3D viewing, assign a Unity folder to the Palace **project** for asset management (**not** the Library catalog), parse `.unitypackage` and extract needed assets. |
 | **0.3.x** | **AI** | **Later.** Expand asset management with AI (tagging, organization, etc.). Not the same as prompt-token suggestions. |
 | **1.0.0** | **Ship** | Release/trim fixed, Magick formats if packaging is clean, `winui-packaging` / Store. |
 
-Leave Revision at `0` unless you need a same-patch rebuild identity. Debug and Release of one commit share the number; the suffix is which binary you launched.
+Leave Revision at `0` unless you need a same-patch rebuild identity. Debug and Release of one commit share the number; the suffix is which binary you launched. **Release trim currently crashes** on `ItemsSource` COM wrappers — daily and preview binaries are packaged **Debug** until that is fixed.
 
 ## Tests
 
