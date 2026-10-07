@@ -7,6 +7,8 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI.Core;
 using Palace.Helpers;
+using Palace.Pages;
+using Palace.Services;
 using Palace.ViewModels;
 using Windows.Graphics;
 using Windows.Media.Core;
@@ -76,6 +78,51 @@ public sealed partial class GalleryWindow : Window
     }
 
     private void BtnGalleryWindowClose_Click(object sender, RoutedEventArgs e) => Close();
+
+    private async void BtnGalleryWindowSetThumb_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Gallery.CanSetVideoThumb)
+        {
+            return;
+        }
+
+        await ErrorReporter.RunAsync(
+            "Set mosaic thumbnail",
+            null,
+            async () =>
+            {
+                if (MpeGallery.MediaPlayer is null)
+                {
+                    MpeGallery.SetMediaPlayer(new MediaPlayer());
+                }
+
+                var item = Gallery.Current;
+                var path = Gallery.CurrentPath;
+                var hash = item?.ContentHash;
+                if (item is null || string.IsNullOrEmpty(path) || string.IsNullOrEmpty(hash))
+                {
+                    throw new InvalidOperationException(Gallery.SetVideoThumbTooltip);
+                }
+
+                var info = await VideoFrameThumb.CaptureMosaicAsync(
+                    MpeGallery.MediaPlayer,
+                    path,
+                    hash,
+                    AppServices.Thumbnails,
+                    item.Width,
+                    item.Height);
+                if (info is null)
+                {
+                    throw new InvalidOperationException("Could not capture a frame from this video.");
+                }
+
+                await UiDispatch.RunAsync(() =>
+                {
+                    var image = LibraryPage.FileToImage(info.Value.Path, ignoreImageCache: true);
+                    Gallery.ApplyMosaicThumb(info.Value.Path, image);
+                });
+            });
+    }
 
     private void GalleryRoot_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
