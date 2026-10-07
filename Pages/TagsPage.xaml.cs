@@ -384,7 +384,13 @@ public sealed partial class TagsPage : Page
         }
 
         _realizedTiles[image] = item;
-        _ = LoadTileThumbAsync(item);
+        // Defer off Measure/ProcessBindings — same stowed-exception trap as Library
+        // mosaic (StorageFile.GetFileFromPathAsync on UI STA during layout).
+        var pending = item;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _ = LoadTileThumbAsync(pending);
+        });
     }
 
     private async Task LoadTileThumbAsync(AssetItem item)
