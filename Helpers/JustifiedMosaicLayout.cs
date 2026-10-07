@@ -23,7 +23,13 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         nameof(CaptionHeight),
         typeof(double),
         typeof(JustifiedMosaicLayout),
-        new PropertyMetadata(22d, OnLayoutPropertyChanged));
+        new PropertyMetadata(0d, OnLayoutPropertyChanged));
+
+    public static readonly DependencyProperty HeaderHeightProperty = DependencyProperty.Register(
+        nameof(HeaderHeight),
+        typeof(double),
+        typeof(JustifiedMosaicLayout),
+        new PropertyMetadata(GalleryMedia.FolderHeaderHeight, OnLayoutPropertyChanged));
 
     public double RowHeight
     {
@@ -42,6 +48,18 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         get => (double)GetValue(CaptionHeightProperty);
         set => SetValue(CaptionHeightProperty, value);
     }
+
+    public double HeaderHeight
+    {
+        get => (double)GetValue(HeaderHeightProperty);
+        set => SetValue(HeaderHeightProperty, value);
+    }
+
+    /// <summary>
+    /// WASDK 2.4 keeps Layout.InvalidateMeasure protected.
+    /// LibraryPage calls this instead of reaching into Layout.
+    /// </summary>
+    public void Relayout() => InvalidateMeasure();
 
     protected override void InitializeForContextCore(VirtualizingLayoutContext context)
     {
@@ -119,63 +137,34 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
             return;
         }
 
-        var targetHeight = Math.Clamp(RowHeight, 96, 280);
-        var spacing = ItemSpacing;
-        var caption = CaptionHeight;
-        var usable = Math.Max(1, width);
-        var row = new List<(int Index, double Aspect)>();
-        var rowAspect = 0d;
-        var y = 0d;
-
-        void Flush(bool justify)
-        {
-            if (row.Count == 0)
-            {
-                return;
-            }
-
-            var gaps = spacing * Math.Max(0, row.Count - 1);
-            var height = justify
-                ? (usable - gaps) / rowAspect
-                : targetHeight;
-            var natural = height * rowAspect + gaps;
-            if (natural > usable)
-            {
-                height = (usable - gaps) / rowAspect;
-            }
-
-            var x = 0d;
-            foreach (var (index, aspect) in row)
-            {
-                var itemWidth = Math.Max(1, height * aspect);
-                state.Rects.Add(new Rect(x, y, itemWidth, height + caption));
-                x += itemWidth + spacing;
-            }
-
-            y += height + caption + spacing;
-            row.Clear();
-            rowAspect = 0;
-        }
-
+        var specs = new (bool IsHeader, double Aspect)[count];
         for (var i = 0; i < count; i++)
         {
-            var aspect = AspectOf(context, i);
-            var nextAspect = rowAspect + aspect;
-            var nextWidth = targetHeight * nextAspect + spacing * row.Count;
-            if (row.Count > 0 && nextWidth > usable)
-            {
-                Flush(justify: true);
-            }
-
-            row.Add((i, aspect));
-            rowAspect += aspect;
+            specs[i] = SpecOf(context, i);
         }
 
-        Flush(justify: false);
-        state.ExtentHeight = Math.Max(0, y - spacing);
+        var slots = MosaicRows.Layout(
+            specs,
+            width,
+            RowHeight,
+            ItemSpacing,
+            HeaderHeight,
+            CaptionHeight);
+        foreach (var slot in slots)
+        {
+            state.Rects.Add(new Rect(slot.X, slot.Y, slot.Width, slot.Height));
+        }
+
         while (state.Rects.Count < count)
         {
-            state.Rects.Add(new Rect(0, state.ExtentHeight, 1, targetHeight + caption));
+            state.Rects.Add(new Rect(0, state.ExtentHeight, 1, HeaderHeight));
+        }
+
+        state.ExtentHeight = MosaicRows.ExtentHeight(slots, ItemSpacing);
+        if (state.Rects.Count > 0)
+        {
+            var last = state.Rects[^1];
+            state.ExtentHeight = Math.Max(state.ExtentHeight, last.Y + last.Height);
         }
     }
 
@@ -222,20 +211,20 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     private static bool Intersects(Rect a, Rect b) =>
         a.Left < b.Right && a.Right > b.Left && a.Top < b.Bottom && a.Bottom > b.Top;
 
-    private static double AspectOf(VirtualizingLayoutContext context, int index)
+    private static (bool IsHeader, double Aspect) SpecOf(VirtualizingLayoutContext context, int index)
     {
         try
         {
             if (context.GetItemAt(index) is AssetItem asset)
             {
-                return Math.Max(0.15, asset.AspectRatio);
+                return (asset.IsFolderHeader, Math.Max(0.15, asset.AspectRatio));
             }
         }
         catch (ArgumentOutOfRangeException)
         {
         }
 
-        return 1;
+        return (false, 1);
     }
 
     private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

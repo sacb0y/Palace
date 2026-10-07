@@ -73,7 +73,7 @@ public sealed partial class LibraryPage : Page
 
             if (e.PropertyName is nameof(LibraryViewModel.MosaicRowHeight))
             {
-                MosaicLayout.InvalidateItemsInfo();
+                InvalidateMosaicLayout();
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.OverlayGallery) or nameof(LibraryViewModel.IsGalleryOverlayOpen))
@@ -102,7 +102,7 @@ public sealed partial class LibraryPage : Page
             ArmMosaicSortCombo();
             await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
             UpdatePreview();
-            MosaicLayout.InvalidateItemsInfo();
+            InvalidateMosaicLayout();
             HookOverlayGallery();
             GrdAssets.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(GrdAssets_DoubleTapped), true);
             GrdAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdAssets_KeyDown), true);
@@ -162,6 +162,8 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand GetFocusAssignTagCommand() => AppServices.Library.FocusAssignTagCommand;
 
     public static IRelayCommand<TagChipItem> GetRemoveFilterTagCommand() => AppServices.Library.RemoveFilterTagCommand;
+
+    public static IRelayCommand<TagChipItem> GetToggleFilterChipCommand() => AppServices.Library.ToggleFilterChipCommand;
 
     public static IRelayCommand<TagChipItem> GetToggleAssignChipCommand() => AppServices.Library.ToggleAssignChipCommand;
 
@@ -230,51 +232,11 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    private void MosaicLayout_ItemsInfoRequested(LinedFlowLayout sender, LinedFlowLayoutItemsInfoRequestedEventArgs args)
-    {
-        var assets = ViewModel.Assets;
-        var start = Math.Max(0, args.ItemsRangeStartIndex);
-        if (start >= assets.Count)
-        {
-            return;
-        }
-
-        var available = assets.Count - start;
-        var length = GalleryMedia.MosaicAspectCount(args.ItemsRangeRequestedLength, available);
-        if (length <= 0)
-        {
-            return;
-        }
-
-        var ratios = new double[length];
-        for (var i = 0; i < length; i++)
-        {
-            if (i >= available)
-            {
-                ratios[i] = 1.0;
-                continue;
-            }
-
-            var item = assets[start + i];
-            ratios[i] = GalleryMedia.MosaicAspect(item.IsFolderHeader, item.AspectRatio);
-        }
-
-        args.SetDesiredAspectRatios(ratios);
-    }
-
     private void TreFolders_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
         if (args.InvokedItem is FolderNode node)
         {
             ViewModel.SelectedFolder = node;
-        }
-    }
-
-    private void TreTagsBrowse_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
-    {
-        if (args.InvokedItem is TagTreeNode node)
-        {
-            ViewModel.ToggleFilterTag(node);
         }
     }
 
@@ -360,12 +322,48 @@ public sealed partial class LibraryPage : Page
         ViewModel.RebuildAssignPanelPublic();
     }
 
+    private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
+
     private void TglSelectMode_Changed(object sender, RoutedEventArgs e)
     {
         var on = (sender as ToggleButton)?.IsChecked == true;
-        GrdAssets.SelectionMode = SelectMode.ClickTogglesTile(on)
-            ? ItemsViewSelectionMode.Multiple
-            : ItemsViewSelectionMode.Extended;
+        _suppressMosaicSelection = true;
+        try
+        {
+            GrdAssets.SelectionMode = SelectMode.ClickTogglesTile(on)
+                ? ItemsViewSelectionMode.Multiple
+                : ItemsViewSelectionMode.Single;
+            if (on)
+            {
+                RestoreMosaicSelectionHighlights();
+            }
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+    }
+
+    private void RestoreMosaicSelectionHighlights()
+    {
+        var assets = ViewModel.Assets;
+        for (var i = 0; i < assets.Count; i++)
+        {
+            var want = !assets[i].IsFolderHeader && assets[i].IsSelected;
+            if (want == GrdAssets.IsSelected(i))
+            {
+                continue;
+            }
+
+            if (want)
+            {
+                GrdAssets.Select(i);
+            }
+            else
+            {
+                GrdAssets.Deselect(i);
+            }
+        }
     }
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)
@@ -1080,7 +1078,7 @@ public sealed partial class LibraryPage : Page
         _thumbsMayUpgrade = false;
         Interlocked.Increment(ref _thumbUpgradeEpoch);
         _realizedTiles.Clear();
-        MosaicLayout.InvalidateItemsInfo();
+        InvalidateMosaicLayout();
     }
 
     private void OnMosaicChunkAppended()
@@ -1090,7 +1088,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        MosaicLayout.InvalidateItemsInfo();
+        InvalidateMosaicLayout();
         RefreshRealizedTiles();
         if (ViewModel.Assets.Count == 0)
         {

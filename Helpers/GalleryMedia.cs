@@ -87,14 +87,15 @@ public static class GalleryMedia
     }
 
     /// <summary>
-    /// Folder headers take a full mosaic line (LinedFlowLayout has no break-before),
-    /// so a group never starts mid-row after the previous group's leftover tiles.
-    /// The caption itself stays compact in the tile template.
+    /// Compact folder-header row height in DIPs. Headers are caption rows
+    /// (<see cref="MosaicRows"/>), not asset mosaic tiles / LinedFlow aspect.
     /// </summary>
-    public const double FolderHeaderAspect = 32.0;
+    public const double FolderHeaderHeight = 28.0;
+
+    public static bool UsesAssetTileLayout(bool isFolderHeader) => !isFolderHeader;
 
     public static double MosaicAspect(bool isFolderHeader, double assetAspect) =>
-        isFolderHeader ? FolderHeaderAspect : assetAspect;
+        isFolderHeader ? 0 : assetAspect;
 
     /// <summary>
     /// Asset commands stay on tiles. Headers cancel <c>ContextRequested</c>

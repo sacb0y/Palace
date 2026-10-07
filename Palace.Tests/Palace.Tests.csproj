@@ -24,6 +24,8 @@
     <Compile Include="..\Helpers\GenerationFields.cs" Link="GenerationFields.cs" />
     <Compile Include="..\Helpers\LoadGate.cs" Link="LoadGate.cs" />
     <Compile Include="..\Helpers\MosaicSortOrder.cs" Link="MosaicSortOrder.cs" />
+    <Compile Include="..\Helpers\MosaicRows.cs" Link="MosaicRows.cs" />
+    <Compile Include="..\Helpers\ChipWrap.cs" Link="ChipWrap.cs" />
     <Compile Include="..\Helpers\PreviewPersist.cs" Link="PreviewPersist.cs" />
     <Compile Include="..\Helpers\AvifFile.cs" Link="AvifFile.cs" />
     <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />
@@ -45,6 +47,7 @@
     <Compile Include="..\Helpers\ShellBackground.cs" Link="ShellBackground.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />
     <Compile Include="..\Helpers\TagBoardExpand.cs" Link="TagBoardExpand.cs" />
+    <Compile Include="..\Helpers\TagBrowseMosaic.cs" Link="TagBrowseMosaic.cs" />
     <Compile Include="..\Helpers\AssignedTagChrome.cs" Link="AssignedTagChrome.cs" />
     <Compile Include="..\Helpers\TagChipChrome.cs" Link="TagChipChrome.cs" />
     <Compile Include="..\Helpers\TagAlphaIndex.cs" Link="TagAlphaIndex.cs" />

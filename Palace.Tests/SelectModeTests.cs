@@ -6,10 +6,10 @@ namespace Palace.Tests;
 public sealed class SelectModeTests
 {
     [Fact]
-    public void ClickTogglesTile_FollowsMode()
+    public void ClickTogglesTile_IsTheOnlyMultiSelectPath()
     {
-        Assert.True(SelectMode.ClickTogglesTile(true));
         Assert.False(SelectMode.ClickTogglesTile(false));
+        Assert.True(SelectMode.ClickTogglesTile(true));
     }
 
     [Theory]
