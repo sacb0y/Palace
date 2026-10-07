@@ -413,6 +413,13 @@
                 AutomationProperties.Name="App version"
                 Style="{StaticResource CaptionTextBlockStyle}"
                 Text="{x:Bind ViewModel.AppVersionText, Mode=OneWay}" />
+            <TextBlock
+                x:Name="TxtInfancyNote"
+                AutomationProperties.AutomationId="TxtInfancyNote"
+                AutomationProperties.Name="Feature status"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.InfancyNoteText, Mode=OneWay}"
+                TextWrapping="WrapWholeWords" />
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <ic:FluentIcon Icon="Keyboard" IconSize="Size16" IconVariant="Regular" />
                 <TextBlock VerticalAlignment="Center" Text="Shortcuts" />

@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Isiac files bugs here. This Project checks issues daily.
+        Sacb0y files bugs here. This Project checks issues daily.
         Pick **one area** and **one priority**. Add **needs-repro** if you cannot write steps yet.
         Version is Settings → About (`TxtAppVersion`).
 

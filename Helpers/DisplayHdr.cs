@@ -23,7 +23,7 @@ public static class DisplayHdr
 
     /// <summary>
     /// Win10/11 <c>DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO</c> bit 1
-    /// (<c>advancedColorEnabled</c>). Isiac’s SAM713F reports this as 1
+    /// (<c>advancedColorEnabled</c>). Sacb0y’s SAM713F reports this as 1
     /// with <c>HDREnabled=1</c> while DXGI stays G22 / dummy 270.
     /// </summary>
     public static bool WindowsHdrEnabledFromInfo(uint value) =>

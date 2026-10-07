@@ -21,7 +21,7 @@ public sealed class HdrColorTests
     }
 
     [Fact]
-    public void YAsRed_Pq2020_IsIsiacs207Peak()
+    public void YAsRed_Pq2020_IsSacb0ys207Peak()
     {
         HdrColor.EncodedRgbToScrgb(1f, 0f, 0f, HdrTransfer.Pq, 9, out var sr, out var sg, out var sb);
         Assert.Equal(HdrColor.YuvAsRedScrgbPeak, sr, 3);

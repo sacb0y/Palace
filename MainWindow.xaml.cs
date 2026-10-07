@@ -17,7 +17,11 @@ public sealed partial class MainWindow : Window
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
+        // Version in Title (not only Subtitle) — Subtitle alone was easy to miss / looked unchanged.
+        AppTitleBar.Title = AppVersion.TitleBarTitle;
         AppTitleBar.Subtitle = AppVersion.TitleBar;
+        AppWindow.Title = AppVersion.TitleBarTitle;
+        Title = AppVersion.TitleBarTitle;
         AppWindow.SetIcon("Assets/AppIcon.ico");
 
         var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
