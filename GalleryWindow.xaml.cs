@@ -14,6 +14,7 @@ using Windows.Media.Playback;
 using Windows.Storage;
 using Windows.System;
 
+using Palace.Services;
 namespace Palace;
 
 public sealed partial class GalleryWindow : Window
@@ -45,6 +46,11 @@ public sealed partial class GalleryWindow : Window
                 or nameof(GalleryViewModel.IsImage))
             {
                 UpdateMedia();
+            }
+
+            if (e.PropertyName is nameof(GalleryViewModel.LoopVideo))
+            {
+                ApplyLoop();
             }
         };
 
@@ -143,6 +149,7 @@ public sealed partial class GalleryWindow : Window
                     MpeGallery.SetMediaPlayer(new MediaPlayer());
                 }
 
+                ApplyLoop();
                 var file = await StorageFile.GetFileFromPathAsync(Gallery.CurrentPath);
                 if (epoch != _mediaEpoch)
                 {
@@ -164,4 +171,74 @@ public sealed partial class GalleryWindow : Window
             MpeGallery.Source = null;
         }
     }
+
+    private void ApplyLoop()
+    {
+        var player = MpeGallery.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
+        player.IsLoopingEnabled = Gallery.LoopVideo;
+    }
+
+    private async void BtnGalleryWindowSetThumb_Click(object sender, RoutedEventArgs e)
+    {
+        if (!Gallery.CanSetVideoThumb)
+        {
+            return;
+        }
+
+        await ErrorReporter.RunAsync(
+            "Set mosaic thumbnail",
+            null,
+            async () =>
+            {
+                if (MpeGallery.MediaPlayer is null)
+                {
+                    MpeGallery.SetMediaPlayer(new MediaPlayer());
+                }
+
+                var item = Gallery.Current;
+                var path = Gallery.CurrentPath;
+                var hash = item?.ContentHash;
+                if (item is null || string.IsNullOrEmpty(path) || string.IsNullOrEmpty(hash))
+                {
+                    throw new InvalidOperationException(Gallery.SetVideoThumbTooltip);
+                }
+
+                var info = await VideoFrameThumb.CaptureMosaicAsync(
+                    MpeGallery.MediaPlayer,
+                    path,
+                    hash,
+                    AppServices.Thumbnails,
+                    item.Width,
+                    item.Height);
+                if (info is null)
+                {
+                    throw new InvalidOperationException("Could not capture a frame from this video.");
+                }
+
+                await UiDispatch.RunAsync(() =>
+                {
+                    Microsoft.UI.Xaml.Media.Imaging.BitmapImage? image = null;
+                    try
+                    {
+                        image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
+                        {
+                            CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
+                            UriSource = new Uri(info.Value.Path, UriKind.Absolute)
+                        };
+                    }
+                    catch
+                    {
+                        image = null;
+                    }
+
+                    Gallery.ApplyMosaicThumb(info.Value.Path, image);
+                });
+            });
+    }
+
 }

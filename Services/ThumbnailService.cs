@@ -150,6 +150,17 @@ public sealed class ThumbnailService
     }
 
     /// <summary>
+    /// Decode any image stream, scale to <see cref="MaxSide"/>, and replace the
+    /// mosaic JPEG for <paramref name="hash"/> under the thumb cache (never
+    /// beside the source). Used for video-frame posters.
+    /// </summary>
+    public Task<ThumbnailInfo?> CacheScaledJpegAsync(string hash, IRandomAccessStream imageStream, string? suffix = null)
+    {
+        var dest = PathForHash(hash, suffix);
+        return EncodeScaledJpegAsync(imageStream, dest, hash);
+    }
+
+    /// <summary>
     /// Windows shell / provider poster. Local video / AVIF / HEIC / PSD
     /// only — never the online-only path (HEIF/AVIF handlers open the original).
     /// </summary>

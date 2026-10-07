@@ -690,6 +690,31 @@ public sealed partial class TagsPage : Page
 
     private void GrdTagAssets_RangeHolding(object sender, HoldingRoutedEventArgs e)
     {
+        if (ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
+        if (!ViewModel.IsSelectMode)
+        {
+            if (e.HoldingState != HoldingState.Started)
+            {
+                return;
+            }
+
+            var holdItem = FindAssetItem(e.OriginalSource);
+            if (holdItem is null
+                || !SelectMode.EnterFromHold(false, ViewModel.IsGalleryOverlayOpen, holdItem.IsFolderHeader))
+            {
+                return;
+            }
+
+            ViewModel.IsSelectMode = true;
+            ViewModel.SetMosaicSelection([holdItem]);
+            e.Handled = true;
+            return;
+        }
+
         if (_rangeSelect is null)
         {
             return;
@@ -1009,6 +1034,11 @@ public sealed partial class TagsPage : Page
         {
             UpdateOverlayMedia();
         }
+
+        if (e.PropertyName is nameof(GalleryViewModel.LoopVideo))
+        {
+            ApplyOverlayLoop();
+        }
     }
 
     private async void UpdateOverlayMedia()
@@ -1053,6 +1083,19 @@ public sealed partial class TagsPage : Page
         {
             MpeOverlay.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
         }
+
+        ApplyOverlayLoop();
+    }
+
+    private void ApplyOverlayLoop()
+    {
+        var player = MpeOverlay.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
+        player.IsLoopingEnabled = ViewModel.OverlayGallery?.LoopVideo ?? GalleryChrome.DefaultLoopVideo;
     }
 
     private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)
@@ -1142,4 +1185,61 @@ public sealed partial class TagsPage : Page
 
         return false;
     }
+
+    private async void BtnGallerySetThumb_Click(object sender, RoutedEventArgs e)
+    {
+        var gallery = ViewModel.OverlayGallery;
+        if (gallery is null || !gallery.CanSetVideoThumb)
+        {
+            return;
+        }
+
+        await ErrorReporter.RunAsync(
+            "Set mosaic thumbnail",
+            msg => ViewModel.StatusText = msg,
+            async () =>
+            {
+                EnsureOverlayPlayer();
+                var item = gallery.Current;
+                var path = gallery.CurrentPath;
+                var hash = item?.ContentHash;
+                if (item is null || string.IsNullOrEmpty(path) || string.IsNullOrEmpty(hash))
+                {
+                    throw new InvalidOperationException(gallery.SetVideoThumbTooltip);
+                }
+
+                var info = await VideoFrameThumb.CaptureMosaicAsync(
+                    MpeOverlay.MediaPlayer,
+                    path,
+                    hash,
+                    AppServices.Thumbnails,
+                    item.Width,
+                    item.Height);
+                if (info is null)
+                {
+                    throw new InvalidOperationException("Could not capture a frame from this video.");
+                }
+
+                await UiDispatch.RunAsync(() =>
+                {
+                    Microsoft.UI.Xaml.Media.Imaging.BitmapImage? image = null;
+                    try
+                    {
+                        image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
+                        {
+                            CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
+                            UriSource = new Uri(info.Value.Path, UriKind.Absolute)
+                        };
+                    }
+                    catch
+                    {
+                        image = null;
+                    }
+
+                    gallery.ApplyMosaicThumb(info.Value.Path, image);
+                    ViewModel.StatusText = "Mosaic thumbnail updated.";
+                });
+            });
+    }
+
 }

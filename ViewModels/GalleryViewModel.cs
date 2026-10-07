@@ -94,6 +94,25 @@ public partial class GalleryViewModel : ObservableObject
             Current?.Path,
             Current?.IsHdr == true || CurrentProbe.IsHdr);
 
+    /// <summary>
+    /// Set-mosaic-thumb chrome: visible only for a playable local MediaPlayer
+    /// video. Online-only / API stay hidden (no hydrate-for-poster).
+    /// </summary>
+    public bool ShowSetVideoThumb => VideoMosaicThumb.IsActionVisible(IsVideo);
+
+    public bool CanSetVideoThumb =>
+        VideoMosaicThumb.CanSet(IsVideo, Current?.ContentHash, CurrentPath);
+
+    public string SetVideoThumbTooltip =>
+        VideoMosaicThumb.DisabledReason(
+            IsVideo,
+            Current?.ContentHash,
+            CurrentPath,
+            isOnlineOnly: Current?.IsOnlineOnly == true
+                && !GalleryMedia.CanShowPreview(CurrentPath ?? Current?.Path),
+            apiOnly: Current is not null && AssetItemMapper.IsApiOnly(Current))
+        ?? "Set Library mosaic thumbnail from this frame";
+
     [ObservableProperty]
     public partial bool CanScale { get; set; }
 
@@ -109,9 +128,41 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial HdrProbe CurrentProbe { get; set; } = HdrProbe.None;
 
-    partial void OnCurrentChanged(AssetItem? value) => OnPropertyChanged(nameof(ShowHdrBadge));
+    partial void OnCurrentChanged(AssetItem? value)
+    {
+        OnPropertyChanged(nameof(ShowHdrBadge));
+        NotifySetVideoThumbChrome();
+    }
 
     partial void OnCurrentProbeChanged(HdrProbe value) => OnPropertyChanged(nameof(ShowHdrBadge));
+
+    partial void OnIsVideoChanged(bool value) => NotifySetVideoThumbChrome();
+
+    partial void OnCurrentPathChanged(string? value) => NotifySetVideoThumbChrome();
+
+    private void NotifySetVideoThumbChrome()
+    {
+        OnPropertyChanged(nameof(ShowSetVideoThumb));
+        OnPropertyChanged(nameof(CanSetVideoThumb));
+        OnPropertyChanged(nameof(SetVideoThumbTooltip));
+    }
+
+    /// <summary>
+    /// Stamp the mosaic cache path onto the live <see cref="AssetItem"/> so
+    /// Library / Tags tiles refresh without a rescan. Caller supplies a fresh
+    /// <see cref="Microsoft.UI.Xaml.Media.ImageSource"/> (IgnoreImageCache).
+    /// </summary>
+    public void ApplyMosaicThumb(string thumbPath, Microsoft.UI.Xaml.Media.ImageSource? thumbImage)
+    {
+        if (Current is null || string.IsNullOrEmpty(thumbPath))
+        {
+            return;
+        }
+
+        Current.ThumbPath = thumbPath;
+        Current.ThumbImage = thumbImage;
+        Current.ThumbLoadStarted = thumbImage is not null;
+    }
 
     /// <summary>
     /// Bumped once after Current / probe / path / preview / IsImage are all
@@ -161,6 +212,9 @@ public partial class GalleryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool ShowDetails { get; set; } = GalleryChrome.DefaultShowDetails;
+
+    [ObservableProperty]
+    public partial bool LoopVideo { get; set; } = GalleryChrome.DefaultLoopVideo;
 
     [ObservableProperty]
     public partial string ImageInfoText { get; set; } = "";
@@ -281,11 +335,20 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
+    partial void OnLoopVideoChanged(bool value)
+    {
+        if (_chromeReady)
+        {
+            ApplicationData.Current.LocalSettings.Values[GalleryChrome.LoopVideoKey] = value;
+        }
+    }
+
     private void LoadChromeSettings()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
         ShowImageInfo = GalleryChrome.ParseShowImageInfo(values[GalleryChrome.ShowImageInfoKey]);
         ShowDetails = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
+        LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
         _chromeReady = true;
     }
 
