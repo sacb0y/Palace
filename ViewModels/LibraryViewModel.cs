@@ -1019,37 +1019,111 @@ public partial class LibraryViewModel : ObservableObject
                 return;
             }
 
+            // Suppress watcher scan/refresh flood (parent LastWrite + N× RefreshQuiet).
+            // Recycle + catalog delete, then prune mosaic in place — no ScanSource / full reload.
+            BeginBusy(targets.Count == 1 ? "Deleting…" : $"Deleting {targets.Count}…");
             var removed = new List<string>();
-            foreach (var asset in targets)
+            try
             {
-                if (CloudFile.Exists(asset.Path))
+                using (_watchers.SuppressNotifications())
                 {
-                    try
+                    foreach (var asset in targets)
                     {
-                        var file = await StorageFile.GetFileFromPathAsync(asset.Path);
-                        await file.DeleteAsync(StorageDeleteOption.Default);
+                        if (CloudFile.Exists(asset.Path))
+                        {
+                            try
+                            {
+                                // StorageFile.DeleteAsync recycles without hydrating On-Demand
+                                // placeholders (same as single-file delete). Do not Open/read.
+                                var file = await StorageFile.GetFileFromPathAsync(asset.Path);
+                                await file.DeleteAsync(StorageDeleteOption.Default);
+                            }
+                            catch (Exception ex)
+                            {
+                                Notify($"Could not delete {asset.FileName}: {ex.Message}");
+                                continue;
+                            }
+                        }
+
+                        _thumbs.TryDelete(asset.ContentHash);
+                        removed.Add(asset.Id);
                     }
-                    catch (Exception ex)
+
+                    if (removed.Count > 0)
                     {
-                        Notify($"Could not delete {asset.FileName}: {ex.Message}");
-                        continue;
+                        await _catalog.DeleteAssetsAsync(removed);
+                        await RemoveDeletedFromUiAsync(removed);
                     }
                 }
 
-                _thumbs.TryDelete(asset.ContentHash);
-                removed.Add(asset.Id);
-            }
+                CloseOverlay();
+                if (removed.Count > 0)
+                {
+                    await AppServices.Rooms.RefreshAsync();
+                }
 
-            if (removed.Count > 0)
+                Notify(removed.Count == 0 ? "Nothing deleted." : $"Deleted {removed.Count} file(s).");
+            }
+            finally
             {
-                await _catalog.DeleteAssetsAsync(removed);
+                EndBusy();
+            }
+        });
+
+    /// <summary>
+    /// Drop deleted ids from <see cref="_allAssets"/> and the visible mosaic without
+    /// re-querying the whole project or walking source folders.
+    /// </summary>
+    private async Task RemoveDeletedFromUiAsync(IReadOnlyList<string> removedIds)
+    {
+        if (removedIds.Count == 0)
+        {
+            return;
+        }
+
+        var remove = new HashSet<string>(removedIds, StringComparer.Ordinal);
+        _allAssets = MosaicDelete.ExceptIds(_allAssets, a => a.Id, remove);
+
+        await UiDispatch.RunAsync(() =>
+        {
+            var pruned = MosaicDelete.PruneItems(
+                Assets,
+                item => item.IsFolderHeader,
+                item => item.Id,
+                remove);
+
+            var changed = pruned.Count != Assets.Count;
+            if (changed)
+            {
+                // Prefer RemoveAt so ItemsView keeps realized tiles that stay.
+                var keep = new HashSet<AssetItem>(pruned);
+                for (var i = Assets.Count - 1; i >= 0; i--)
+                {
+                    if (!keep.Contains(Assets[i]))
+                    {
+                        Assets.RemoveAt(i);
+                    }
+                }
             }
 
-            CloseOverlay();
-            await RefreshQuietAsync();
-            await AppServices.Rooms.RefreshAsync();
-            Notify(removed.Count == 0 ? "Nothing deleted." : $"Deleted {removed.Count} file(s).");
+            ClearSelection();
+            if (changed)
+            {
+                MosaicChunkAppended?.Invoke();
+            }
+
+            var assetCount = Assets.Count(item => !item.IsFolderHeader);
+            StatusText = !string.IsNullOrWhiteSpace(SearchQuery)
+                ? $"{assetCount} search results"
+                : IsTagBrowse && SelectedFilterTags.Count > 0
+                    ? $"{assetCount} tagged"
+                    : SelectedFolder is not null
+                        ? $"{assetCount} in {SelectedFolder.Name}"
+                        : assetCount == 0
+                            ? "Add a folder to start your library."
+                            : $"{assetCount} assets";
         });
+    }
 
     [RelayCommand]
     private void FocusAssignTag()
