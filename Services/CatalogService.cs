@@ -501,6 +501,113 @@ public sealed class CatalogService
     public Task<IReadOnlyList<TagImplication>> GetImplicationsAsync() =>
         _db.ReadAsync(conn => (IReadOnlyList<TagImplication>)LoadImplications(conn));
 
+    /// <summary>Export the global tag catalog to portable JSON (Sacb0y).</summary>
+    public Task<string> ExportTagsJsonAsync() =>
+        _db.ReadAsync(conn =>
+        {
+            var tags = LoadTags(conn)
+                .Select(t => new TagPortableTagSource
+                {
+                    Id = t.Id,
+                    Name = t.Name,
+                    Priority = t.Priority,
+                    Color = t.Color,
+                    IsStarred = t.IsStarred
+                })
+                .ToList();
+            var memberships = LoadMemberships(conn)
+                .Select(m => new TagPortableEdge { FromId = m.ParentId, ToId = m.ChildId })
+                .ToList();
+            var implications = LoadImplications(conn)
+                .Select(i => new TagPortableEdge { FromId = i.TagId, ToId = i.ImpliedTagId })
+                .ToList();
+            return TagPortable.Serialize(TagPortable.FromCatalog(tags, memberships, implications));
+        });
+
+    /// <summary>
+    /// Merge a portable tag JSON into the global catalog. Upsert by name;
+    /// does not delete unrelated tags. Cycle-safe for parents and implicits.
+    /// </summary>
+    public Task<TagMergePlan> ImportTagsJsonAsync(string json) =>
+        _db.WriteAsync(conn =>
+        {
+            var document = TagPortable.Parse(json);
+            var existing = LoadTags(conn)
+                .Select(t => new TagPortableTagSource
+                {
+                    Id = t.Id,
+                    Name = t.Name,
+                    Priority = t.Priority,
+                    Color = t.Color,
+                    IsStarred = t.IsStarred
+                })
+                .ToList();
+            var memberships = LoadMemberships(conn)
+                .Select(m => new TagPortableEdge { FromId = m.ParentId, ToId = m.ChildId })
+                .ToList();
+            var implications = LoadImplications(conn)
+                .Select(i => new TagPortableEdge { FromId = i.TagId, ToId = i.ImpliedTagId })
+                .ToList();
+            var plan = TagPortable.PlanMerge(existing, memberships, implications, document);
+
+            // Apply creates first so name→id resolves to real SQLite ids.
+            var idByName = existing.ToDictionary(t => t.Name, t => t.Id, StringComparer.OrdinalIgnoreCase);
+            foreach (var create in plan.Creates)
+            {
+                var tag = InsertTag(conn, create.Name, create.Priority);
+                ApplyTagFields(conn, tag.Id, create.Priority, create.Color, create.Starred);
+                idByName[create.Name] = tag.Id;
+            }
+
+            foreach (var update in plan.Updates)
+            {
+                ApplyTagFields(conn, update.Id, update.Priority, update.Color, update.Starred);
+            }
+
+            foreach (var edge in plan.Memberships)
+            {
+                if (!idByName.TryGetValue(edge.ParentName, out var parentId)
+                    || !idByName.TryGetValue(edge.ChildName, out var childId))
+                {
+                    continue;
+                }
+
+                TryAddMembership(conn, parentId, childId);
+            }
+
+            foreach (var edge in plan.Implications)
+            {
+                // ParentName = tag, ChildName = implied (see TagPortable).
+                if (!idByName.TryGetValue(edge.ParentName, out var tagId)
+                    || !idByName.TryGetValue(edge.ChildName, out var impliedId))
+                {
+                    continue;
+                }
+
+                TryAddImplication(conn, tagId, impliedId);
+            }
+
+            return plan;
+        });
+
+    private static void ApplyTagFields(
+        SqliteConnection conn,
+        string id,
+        int priority,
+        string? color,
+        bool starred)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE Tag SET Priority = $p, Color = $c, IsStarred = $s WHERE Id = $id
+            """;
+        cmd.Parameters.AddWithValue("$p", priority);
+        cmd.Parameters.AddWithValue("$c", (object?)TagColor.Normalize(color) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$s", starred ? 1 : 0);
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
     public Task<IReadOnlyList<Tag>> GetImpliedTagsAsync(string tagId) =>
         _db.ReadAsync(conn =>
         {

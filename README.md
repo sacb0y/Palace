@@ -44,6 +44,14 @@ Identity on main for this preview is **0.0.4 · Library core · initial public p
 - **Rooms** — infancy: create, list, and sectioned pin grids. Not a freeform moodboard or mindmap yet
 - **Organization** — infancy: dry-run organize and optional auto-organize exist; not a finished organization product
 
+## Where data lives
+
+- **Catalog** (`palace.db` — projects, tags, sources, rooms, asset index): durable folder outside the MSIX package, default `%LOCALAPPDATA%\Palace\catalog\`. A pointer at `%LOCALAPPDATA%\Palace\catalog-root.txt` survives `winapp unregister` / re-register. Settings → Catalog data can change the folder, export a `.db` copy, or export/import tags as JSON.
+- **Package LocalState** (`%LOCALAPPDATA%\Packages\C20A7629-*\LocalState\`): thumbs / preview cache, error logs, and (legacy) catalogs that have not migrated yet. **`winapp unregister` deletes LocalState.** Do not rely on it as the only copy of projects or tags.
+- **Tags** are global (not per-project). Use Settings → Export tags / Import tags for a portable JSON backup.
+
+Requested after a LocalState wipe on Main-Desktop (Sacb0y).
+
 ## Build and run
 
 Windows only. **Packaged** Debug (never the unpackaged `.exe`):

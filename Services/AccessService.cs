@@ -44,6 +44,29 @@ public sealed class AccessService
         return await picker.PickSingleFolderAsync();
     }
 
+    public async Task<StorageFile?> PickSaveJsonAsync(string suggestedFileName, string fileTypeName)
+    {
+        var picker = new FileSavePicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+            SuggestedFileName = suggestedFileName
+        };
+        picker.FileTypeChoices.Add(fileTypeName, [".json"]);
+        InitializeWithWindow.Initialize(picker, App.WindowHandle);
+        return await picker.PickSaveFileAsync();
+    }
+
+    public async Task<StorageFile?> PickOpenJsonAsync()
+    {
+        var picker = new FileOpenPicker
+        {
+            SuggestedStartLocation = PickerLocationId.DocumentsLibrary
+        };
+        picker.FileTypeFilter.Add(".json");
+        InitializeWithWindow.Initialize(picker, App.WindowHandle);
+        return await picker.PickSingleFileAsync();
+    }
+
     public string Remember(StorageFolder folder)
     {
         var token = $"palace_{Guid.NewGuid():N}";

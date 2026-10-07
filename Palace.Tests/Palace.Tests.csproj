@@ -63,6 +63,8 @@
     <Compile Include="..\Helpers\ThumbFileName.cs" Link="ThumbFileName.cs" />
     <Compile Include="..\Helpers\VideoMosaicThumb.cs" Link="VideoMosaicThumb.cs" />
     <Compile Include="..\Helpers\MediaCache.cs" Link="MediaCache.cs" />
+    <Compile Include="..\Helpers\CatalogStore.cs" Link="CatalogStore.cs" />
+    <Compile Include="..\Helpers\TagPortable.cs" Link="TagPortable.cs" />
     <Compile Include="..\Helpers\WicNative.cs" Link="WicNative.cs" />
     <Compile Include="..\Models\Entities.cs" Link="Entities.cs" />
     <Compile Include="..\Models\Enums.cs" Link="Enums.cs" />

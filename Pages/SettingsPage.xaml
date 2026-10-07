@@ -149,6 +149,87 @@
                 Text="{x:Bind ViewModel.PeakOverrideLabel, Mode=OneWay}"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}" />
 
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Catalog data" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ic:FluentIcon Icon="Database" IconSize="Size16" IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Durable catalog" />
+            </StackPanel>
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Projects, tags, sources, and rooms live in palace.db. Keep it outside package LocalState so winapp unregister does not wipe your library. LocalState may still hold thumbs/cache."
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="TxtCatalogPath"
+                AutomationProperties.AutomationId="TxtCatalogPath"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="{x:Bind ViewModel.CatalogPathLabel, Mode=OneWay}"
+                TextWrapping="Wrap" />
+            <TextBlock
+                x:Name="TxtCatalogRestartHint"
+                AutomationProperties.AutomationId="TxtCatalogRestartHint"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.CatalogRestartHint, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.CatalogRestartHint), Mode=OneWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="BtnPickCatalogFolder"
+                    Command="{x:Bind ViewModel.PickCatalogFolderCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Choose catalog folder" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    AutomationProperties.AutomationId="BtnResetCatalogFolder"
+                    Command="{x:Bind ViewModel.ResetCatalogFolderCommand}"
+                    IsEnabled="{x:Bind ViewModel.CatalogUsesCustomRoot, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Reset to durable default" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    AutomationProperties.AutomationId="BtnExportCatalogCopy"
+                    Command="{x:Bind ViewModel.ExportCatalogCopyCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Save" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Export catalog copy" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Tags" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="Export / import tags" />
+            </StackPanel>
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Tags are global. Export writes a portable JSON (names, groups, colors, priority, star, implicits). Import merges by name — it does not wipe unrelated tags."
+                TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button
+                    AutomationProperties.AutomationId="BtnExportTags"
+                    Command="{x:Bind ViewModel.ExportTagsCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowExport" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Export tags" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    AutomationProperties.AutomationId="BtnImportTags"
+                    Command="{x:Bind ViewModel.ImportTagsCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowImport" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Import tags" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Cache" />
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <ic:FluentIcon Icon="Folder" IconSize="Size16" IconVariant="Regular" />
