@@ -136,16 +136,21 @@ public static class GalleryPresent
 
     /// <summary>
     /// Prefer DXGI full-frame luminance (SKIV “display luminance”) when it
-    /// looks like a real HDR peak. Never substitute 203 paper white.
+    /// looks like a real HDR peak. Dummy 270 is unknown (Windows HDR-on
+    /// lie) — return 0 so rasterize uses 10 000, not 203 paper white.
     /// </summary>
     public static float ProbedDisplayLuminance(float maxLuminance, float maxFullFrameLuminance)
     {
-        if (IsHdrDisplay(maxFullFrameLuminance) && maxFullFrameLuminance <= 10000)
+        if (IsHdrDisplay(maxFullFrameLuminance)
+            && !IsDummySdrLuminance(maxFullFrameLuminance)
+            && maxFullFrameLuminance <= 10000)
         {
             return maxFullFrameLuminance;
         }
 
-        if (IsHdrDisplay(maxLuminance) && maxLuminance <= 10000)
+        if (IsHdrDisplay(maxLuminance)
+            && !IsDummySdrLuminance(maxLuminance)
+            && maxLuminance <= 10000)
         {
             return maxLuminance;
         }
@@ -160,11 +165,114 @@ public static class GalleryPresent
         displayLuminance > 220;
 
     /// <summary>
-    /// DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 (scRGB), G2084 HDR10, studio HDR10.
-    /// G22 sRGB (0) is SDR even when MaxLuminance is the dummy 270.
+    /// DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 (scRGB), G2084 HDR10, studio
+    /// HDR10 / HLG. G22 sRGB (0) is not advanced color by itself — desktop
+    /// composition often stays G22 while Windows HDR is on.
     /// </summary>
     public static bool IsAdvancedColor(int dxgiColorSpace) =>
-        dxgiColorSpace is 1 or 12 or 16;
+        dxgiColorSpace is 1 or 12 or 13 or 16 or 18 or 20 or 21;
+
+    /// <summary>
+    /// Dummy SDR EDID peak DXGI reports as 270 nits (8-bit G22).
+    /// </summary>
+    public static bool IsDummySdrLuminance(float nits) =>
+        nits > 265 && nits < 275;
+
+    /// <summary>
+    /// Windows HDR vs SDR for present. <paramref name="windowsHdrEnabled"/>
+    /// true is DisplayConfig HDR (<c>AdvancedColorEnabled</c> / INFO_2).
+    /// DXGI ColorSpace often stays G22 with dummy 270 while that toggle is
+    /// on — that is HDR, not SDR tonemap. Peak &gt;220 (including dummy
+    /// 270) is HDR even when CCD parse fails. 203 paper white and 80–220
+    /// stay SDR. Unknown dummy peak does not clip to 203.
+    /// </summary>
+    public static bool IsHdrOutput(
+        int dxgiColorSpace,
+        float maxLuminance,
+        float maxFullFrameLuminance,
+        int bitsPerColor,
+        bool? windowsHdrEnabled = null)
+    {
+        _ = bitsPerColor;
+        if (windowsHdrEnabled == true)
+        {
+            return true;
+        }
+
+        if (IsAdvancedColor(dxgiColorSpace))
+        {
+            return true;
+        }
+
+        var raw = Math.Max(maxLuminance, maxFullFrameLuminance);
+        return IsHdrDisplay(raw);
+    }
+
+    public static string FormatDisplayProbe(
+        int colorSpace,
+        float maxLuminance,
+        float maxFullFrameLuminance,
+        int bitsPerColor,
+        bool? windowsHdrEnabled,
+        bool displayHdr,
+        string? ccd = null)
+    {
+        var win = windowsHdrEnabled is null ? "?" : windowsHdrEnabled.Value ? "1" : "0";
+        var line =
+            $"DXGI cs={colorSpace} max={maxLuminance:0} ff={maxFullFrameLuminance:0} bits={bitsPerColor} winHdr={win} displayHdr={(displayHdr ? 1 : 0)}";
+        if (!string.IsNullOrWhiteSpace(ccd))
+        {
+            line += " · " + ccd.Trim();
+        }
+
+        return line;
+    }
+
+    /// <summary>
+    /// WinRT <c>BitmapPixelFormat</c> has no float (only Rgba16/Rgba8/Bgra8
+    /// unorm, etc.). Those clamp HDR JXR (linear scRGB) to 1.0 / 80 nits —
+    /// do not present them as scRGB. Packaged apps also cannot activate
+    /// <c>CLSID_WICWmpDecoder</c> for native float CopyPixels
+    /// (<c>wmp</c>/<c>qi</c> <c>E_NOINTERFACE</c>, <c>rasDecoder</c>
+    /// <c>E_FAIL</c>) — that is a packaging wall, not another CLSID retry.
+    /// <c>BitmapImage</c> UriSource is the same SDR pipeline.
+    /// </summary>
+    public static bool JxrWinrtClampsHdr(HdrPackedFormat format) =>
+        format is HdrPackedFormat.Rgba16 or HdrPackedFormat.Rgba8 or HdrPackedFormat.Bgra8;
+
+    /// <summary>
+    /// When DXGI / CCD cannot be read, PQ / HLG / HDR JPEG XR still present
+    /// scRGB at unknown peak (10 000), not 80-nit SDR tonemap.
+    /// </summary>
+    public static bool UnknownDisplayPresentsHdr(HdrProbe probe)
+    {
+        if (!probe.CanPresentHdr)
+        {
+            return false;
+        }
+
+        return probe.IsPq
+            || probe.IsHlg
+            || probe.Transfer is HdrTransfer.Pq or HdrTransfer.Hlg
+            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance;
+    }
+
+    public static string FormatUnknownDisplayProbe(string reason, bool assumeHdr, string? ccd = null)
+    {
+        var line = $"DXGI {reason} · assumeHdr={(assumeHdr ? 1 : 0)} displayHdr={(assumeHdr ? 1 : 0)}";
+        if (!string.IsNullOrWhiteSpace(ccd))
+        {
+            line += " · " + ccd.Trim();
+        }
+
+        return line;
+    }
+
+    /// <summary>
+    /// IDXGISwapChain3::CheckColorSpaceSupport PRESENT bit.
+    /// </summary>
+    public static bool ColorSpaceSupportsPresent(uint supportFlags) =>
+        (supportFlags & 1) != 0;
 
     /// <summary>
     /// G22 DWM composition white is scRGB 1.0 (80 nits). DXGI EDID luminance
@@ -320,6 +428,11 @@ public static class GalleryPresent
         if (info.DisplayLuminanceNits is > 0)
         {
             lines.Add($"Display luminance: {FormatNits(info.DisplayLuminanceNits.Value)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.DisplayProbe))
+        {
+            lines.Add($"Display: {info.DisplayProbe.Trim()}");
         }
 
         return string.Join('\n', lines);
@@ -740,6 +853,7 @@ public readonly record struct GalleryImageInfo(
     float? AvgLuminanceNits,
     float? MinLuminanceNits,
     float? DisplayLuminanceNits,
-    float? MaxScrgb = null);
+    float? MaxScrgb = null,
+    string? DisplayProbe = null);
 
 public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);

@@ -110,6 +110,10 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, false, true, avif));
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrRadiance, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrJxr, 1, null, null)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000)));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, true, false, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, true, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Gif, false, false, false, true, hdr));
@@ -137,6 +141,18 @@ public sealed class HdrFileTests
         Assert.Equal(
             "HDR AVIF · tonemap SDR 80 nits",
             GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), true, false));
+        Assert.Equal(
+            "HDR AVIF · presenting scRGB",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), true, true));
+        Assert.Equal(
+            "HDR JPEG XR · presenting scRGB",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), true, true));
+        Assert.Equal(
+            "HDR JPEG XR — SDR preview",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), false, true));
+        Assert.Equal(
+            "HDR JPEG XR · tonemap SDR 80 nits",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), true, false));
         Assert.Null(GalleryPresent.StatusLine(HdrProbe.None, false, false));
     }
 
@@ -176,7 +192,94 @@ public sealed class HdrFileTests
         Assert.False(GalleryPresent.IsAdvancedColor(0));
         Assert.True(GalleryPresent.IsAdvancedColor(1));
         Assert.True(GalleryPresent.IsAdvancedColor(12));
+        Assert.True(GalleryPresent.IsAdvancedColor(13));
         Assert.True(GalleryPresent.IsAdvancedColor(16));
+        Assert.True(GalleryPresent.IsAdvancedColor(18));
+        Assert.True(GalleryPresent.IsAdvancedColor(20));
+        Assert.True(GalleryPresent.IsAdvancedColor(21));
+        Assert.False(GalleryPresent.IsAdvancedColor(19));
+        Assert.True(GalleryPresent.ColorSpaceSupportsPresent(1));
+        Assert.False(GalleryPresent.ColorSpaceSupportsPresent(0));
+
+        // G22 desktop composition while Windows HDR is on (10-bit HDR400).
+        Assert.True(GalleryPresent.IsHdrOutput(0, 400, 400, 10));
+        Assert.True(GalleryPresent.IsHdrOutput(0, 1499, 1000, 10));
+        Assert.True(GalleryPresent.IsHdrOutput(12, 400, 400, 10));
+        Assert.True(GalleryPresent.IsHdrOutput(1, 80, 80, 8));
+        // Dummy 270 G22 is HDR (Windows HDR-on lie). 203 / 80–220 stay SDR.
+        Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 203, 203, 8));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 120, 80, 8));
+        Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: true));
+        Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: false));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 0, 0, 8));
+        Assert.Equal(0f, GalleryPresent.ProbedDisplayLuminance(270, 270));
+        var mainDesktop = GalleryPresent.PresentMap(
+            GalleryPresent.IsHdrOutput(0, 270, 270, 8, true), 1000, 0);
+        Assert.Equal(1f, mainDesktop.Scale);
+        Assert.Equal(125f, mainDesktop.ClipScrgb, 3);
+        Assert.True(DisplayHdr.WindowsHdrEnabledFromInfo(2));
+        Assert.False(DisplayHdr.WindowsHdrEnabledFromInfo(1));
+        Assert.True(DisplayHdr.WindowsHdrEnabledFromInfo2(1u << 5));
+        Assert.False(DisplayHdr.WindowsHdrEnabledFromInfo2(2));
+        Assert.True(DisplayHdr.IsHdrColorMode(DisplayHdr.ColorModeHdr));
+        Assert.False(DisplayHdr.IsHdrColorMode(DisplayHdr.ColorModeWcg));
+        Assert.True(DisplayHdr.CombineWindowsHdr(true, DisplayHdr.ColorModeSdr, false));
+        Assert.True(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, true));
+        Assert.True(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeHdr, false));
+        Assert.False(DisplayHdr.CombineWindowsHdr(false, DisplayHdr.ColorModeWcg, false));
+        Assert.False(DisplayHdr.WindowsHdrForNamedOutput(false, anyPathHdr: true));
+        Assert.Null(DisplayHdr.WindowsHdrForNamedOutput(null, anyPathHdr: true));
+        Assert.True(DisplayHdr.WindowsHdrForNamedOutput(true, anyPathHdr: false));
+        Assert.True(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Rgba16));
+        Assert.True(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Rgba8));
+        Assert.True(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Bgra8));
+        Assert.False(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.RgbaFloat));
+        Assert.False(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.RgbaHalf));
+        Assert.False(GalleryPresent.JxrWinrtClampsHdr(HdrPackedFormat.Rgba1010102Xr));
+        var sizes = DisplayHdr.NativeLayoutSizes();
+        Assert.Equal(DisplayHdr.NativeHeaderBytes, sizes.Header);
+        Assert.Equal(DisplayHdr.NativePathBytes, sizes.Path);
+        Assert.Equal(DisplayHdr.NativeModeBytes, sizes.Mode);
+        Assert.Equal(DisplayHdr.NativeInfoBytes, sizes.Info);
+        Assert.Equal(DisplayHdr.NativeInfo2Bytes, sizes.Info2);
+        Assert.Equal(DisplayHdr.NativeSourceNameBytes, sizes.SourceName);
+        Assert.True(GalleryPresent.IsDummySdrLuminance(270));
+        Assert.False(GalleryPresent.IsDummySdrLuminance(400));
+        // 8-bit G22 with a real HDR peak (not dummy 270) is still HDR.
+        Assert.True(GalleryPresent.IsHdrOutput(0, 400, 400, 8));
+        var g22Hdr = GalleryPresent.PresentMap(
+            GalleryPresent.IsHdrOutput(0, 400, 400, 10), 1000, 400);
+        Assert.Equal(1f, g22Hdr.Scale);
+        Assert.Equal(400f / 80f, g22Hdr.ClipScrgb, 3);
+        var dummyHdr = GalleryPresent.PresentMap(
+            GalleryPresent.IsHdrOutput(0, 270, 270, 8),
+            1000,
+            GalleryPresent.ProbedDisplayLuminance(270, 270));
+        Assert.Equal(1f, dummyHdr.Scale, 3);
+        Assert.Equal(125f, dummyHdr.ClipScrgb, 3);
+        var paperSdr = GalleryPresent.PresentMap(
+            GalleryPresent.IsHdrOutput(0, 203, 203, 8), 1000, 80);
+        Assert.Equal(0.08f, paperSdr.Scale, 3);
+        Assert.Equal(1f, paperSdr.ClipScrgb, 3);
+        var described = DisplayHdr.Describe();
+        Assert.Contains("CCD", described, StringComparison.Ordinal);
+        Assert.Contains("DXGI", described, StringComparison.Ordinal);
+        var probeLine = GalleryPresent.FormatDisplayProbe(0, 270, 270, 8, null, true, "CCD ACE=1");
+        Assert.Contains("displayHdr=1", probeLine);
+        Assert.Contains("ACE=1", probeLine);
+        var pq = new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000);
+        var hlg = new HdrProbe(HdrKind.HdrHeif, 9, 18, null);
+        var jxr = new HdrProbe(HdrKind.HdrJxr, 1, null, null);
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(pq));
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(hlg));
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(jxr));
+        Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(HdrProbe.None));
+        Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(new HdrProbe(HdrKind.UltraHdrJpeg, 1, 13, null)));
+        var unknown = GalleryPresent.PresentMap(GalleryPresent.UnknownDisplayPresentsHdr(pq), 1000, 0);
+        Assert.Equal(1f, unknown.Scale);
+        Assert.Equal(125f, unknown.ClipScrgb, 3);
+        Assert.Contains("assumeHdr=1", GalleryPresent.FormatUnknownDisplayProbe("throw NullReferenceException", true));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(0, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(203, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(270, 270));
@@ -325,6 +428,20 @@ public sealed class HdrFileTests
         Assert.Contains("Avg luminance: 25.9 nits", text);
         Assert.Contains("Min luminance: 0.1 nits", text);
         Assert.Contains("Display luminance: 1499 nits", text);
+        var withProbe = GalleryPresent.ImageInfoText(new GalleryImageInfo(
+            "shot.png",
+            1_572_864,
+            3840,
+            2160,
+            probe,
+            "HDR PNG · presenting scRGB",
+            1682,
+            25.9f,
+            0.1f,
+            1499,
+            32.156f,
+            "DXGI cs=0 max=270 ff=270 bits=8 winHdr=? displayHdr=1"));
+        Assert.Contains("Display: DXGI cs=0", withProbe);
         Assert.DoesNotContain("Display peak: 203", text);
         Assert.DoesNotContain("MaxCLL: 1000 nits", text);
         Assert.DoesNotContain("Save As", text, StringComparison.OrdinalIgnoreCase);
@@ -578,6 +695,30 @@ public sealed class HdrFileTests
         Assert.Equal(1f, aF);
         Assert.True(HdrPixels.HasPackedData(floatPx, HdrPackedFormat.RgbaFloat, 1, 1));
         Assert.True(HdrPixels.HasPackedData(halfPx, HdrPackedFormat.RgbaHalf, 1, 1));
+
+        Assert.True(HdrPixels.TryMapWicPixelFormat(HdrPixels.GuidRgba1010102Xr, out var xrFmt));
+        Assert.Equal(HdrPackedFormat.Rgba1010102Xr, xrFmt);
+        Assert.True(HdrPixels.TryMapWicPixelFormat(HdrPixels.GuidRgbaFloat, out var fFmt));
+        Assert.Equal(HdrPackedFormat.RgbaFloat, fFmt);
+        Assert.Equal(0f, HdrPixels.Xr10ToLinear(384), 3);
+        Assert.Equal(1f, HdrPixels.Xr10ToLinear(894), 3);
+        var xr = new byte[4];
+        var xrPack = 384 | (894 << 10) | (384 << 20) | (3 << 30);
+        xr[0] = (byte)xrPack;
+        xr[1] = (byte)(xrPack >> 8);
+        xr[2] = (byte)(xrPack >> 16);
+        xr[3] = (byte)(xrPack >> 24);
+        HdrPixels.Read(xr, 0, HdrPackedFormat.Rgba1010102Xr, out var xrR, out var xrG, out var xrB, out var xrA);
+        Assert.Equal(0f, xrR, 3);
+        Assert.Equal(1f, xrG, 3);
+        Assert.Equal(0f, xrB, 3);
+        Assert.Equal(1f, xrA, 3);
+
+        var scaled = HdrPixels.BoxScaleScrgb(
+            [1f, 0f, 0f, 1f, 3f, 0f, 0f, 1f, 1f, 0f, 0f, 1f, 3f, 0f, 0f, 1f],
+            2, 2, 1, 1);
+        Assert.Equal(2f, scaled[0], 3);
+        Assert.Equal(1f, scaled[3], 3);
     }
 
     [Fact]

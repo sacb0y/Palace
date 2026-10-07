@@ -18,6 +18,7 @@
     <Compile Include="..\Helpers\GalleryHistogram.cs" Link="GalleryHistogram.cs" />
     <Compile Include="..\Helpers\GalleryPeak.cs" Link="GalleryPeak.cs" />
     <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />
+    <Compile Include="..\Helpers\DisplayHdr.cs" Link="DisplayHdr.cs" />
     <Compile Include="..\Helpers\GalleryScale.cs" Link="GalleryScale.cs" />
     <Compile Include="..\Helpers\GifFrames.cs" Link="GifFrames.cs" />
     <Compile Include="..\Helpers\GenerationFields.cs" Link="GenerationFields.cs" />

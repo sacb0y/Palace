@@ -357,7 +357,13 @@ public sealed partial class GalleryStillSurface : UserControl
                 ClearHdrCache();
                 HideHdr();
                 ImgStill.Source = ToStillImage(still);
-                gallery.SetHdrPresentResult(false, false);
+                var wic = HdrWicDecode.LastWicError;
+                gallery.SetHdrPresentResult(
+                    false,
+                    GalleryPresent.UnknownDisplayPresentsHdr(gallery.CurrentProbe),
+                    displayProbe: string.IsNullOrWhiteSpace(wic)
+                        ? DisplayHdr.Describe()
+                        : $"JXR {wic} · {DisplayHdr.Describe()}");
                 gallery.ClearHistogram();
                 return;
             }
@@ -571,7 +577,8 @@ public sealed partial class GalleryStillSurface : UserControl
         try
         {
             outcome = await presenterRef.TryPresentAsync(
-                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token);
+                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token,
+                galleryRef.CurrentProbe);
         }
         finally
         {
@@ -610,12 +617,16 @@ public sealed partial class GalleryStillSurface : UserControl
                     frameRef.NativeWidth,
                     frameRef.NativeHeight,
                     GalleryPresent.IsNativeDecode(
-                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight));
+                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
+                    presenterRef.DisplayProbeText);
                 return;
             }
 
             HideHdr();
-            galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
+            galleryRef.SetHdrPresentResult(
+                false,
+                presenterRef.DisplayIsHdr,
+                displayProbe: presenterRef.DisplayProbeText);
         });
     }
     private (double Width, double Height) HdrPanelDips()
