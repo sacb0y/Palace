@@ -8,12 +8,12 @@
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}">
+    Background="Transparent">
 
     <NavigationView
         x:Name="NavMain"
         AutomationProperties.AutomationId="NavMain"
-        Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+        Background="Transparent"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
         OpenPaneLength="248"
@@ -104,6 +104,6 @@
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.FooterMenuItems>
-        <Frame x:Name="ContentFrame" />
+        <Frame x:Name="ContentFrame" Background="Transparent" />
     </NavigationView>
 </Page>
