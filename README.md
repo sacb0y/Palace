@@ -52,7 +52,7 @@ Windows only. **Packaged** Debug (never the unpackaged `.exe`):
 .\BuildAndRun.ps1 . --arch x64
 ```
 
-Daily run is Debug. Release of the same source shares the version number but is trimmed and currently crashes on `ItemsSource` COM wrappers — use Debug for the preview binary.
+Daily run is Debug. Packaged Release works with trim off (`winapp run . --arch x64 -c Release`); re-enable `PublishTrimmed` only after the ItemsSource COM crash is fixed.
 
 Settings → About shows `TxtAppVersion` (e.g. `Palace 0.0.4 (Debug) · Library core · initial public preview`) and the Rooms / Organization infancy note.
 
