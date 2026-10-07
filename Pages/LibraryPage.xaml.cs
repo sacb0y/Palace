@@ -1187,7 +1187,14 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        _ = LoadTileThumbAsync(item);
+        // Never start StorageFile / shell-thumb work during ItemsRepeater Measure
+        // (Tag bind → OnTileTagChanged). GetFileFromPathAsync pumps the STA and
+        // WinUI FailFastWithStowedExceptions (0xc000027b) — see dump PID 155568.
+        var pending = item;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _ = LoadTileThumbAsync(pending);
+        });
         ScheduleViewportUpgrade();
     }
 

@@ -113,8 +113,8 @@ public sealed class ThumbnailService
 
         try
         {
-            var file = await StorageFile.GetFileFromPathAsync(filePath);
-            using var stream = await file.OpenAsync(FileAccessMode.Read);
+            var file = await StorageFile.GetFileFromPathAsync(filePath).AsTask().ConfigureAwait(false);
+            using var stream = await file.OpenAsync(FileAccessMode.Read).AsTask().ConfigureAwait(false);
             return await EncodeScaledJpegAsync(stream, dest, hash).ConfigureAwait(false);
         }
         catch
@@ -163,8 +163,8 @@ public sealed class ThumbnailService
 
         try
         {
-            var file = await StorageFile.GetFileFromPathAsync(filePath);
-            using var thumb = await file.GetThumbnailAsync(ThumbnailMode.PicturesView, MaxSide);
+            var file = await StorageFile.GetFileFromPathAsync(filePath).AsTask().ConfigureAwait(false);
+            using var thumb = await file.GetThumbnailAsync(ThumbnailMode.PicturesView, MaxSide).AsTask().ConfigureAwait(false);
             if (thumb is null || !GalleryMedia.AcceptsProviderThumbnail(thumb.Type == ThumbnailType.Image))
             {
                 return null;
