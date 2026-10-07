@@ -34,9 +34,11 @@ public static class AppServices
         LocalRoot = ApplicationData.Current.LocalFolder.Path;
         LoadPeakOverride();
         LoadShellBackground();
+        LoadMediaCache();
         var dbPath = Path.Combine(LocalRoot, "palace.db");
-        var thumbs = Path.Combine(LocalRoot, "thumbs");
+        var thumbs = MediaCache.ResolveThumbsRoot(LocalRoot);
         Directory.CreateDirectory(thumbs);
+        Directory.CreateDirectory(MediaCache.ResolvePreviewRoot(LocalRoot));
 
         Db = await Task.Run(() => new PalaceDb(dbPath));
         Catalog = new CatalogService(Db);
@@ -128,6 +130,37 @@ public static class AppServices
             ShellBackground.ParseEnabled(values[ShellBackground.TintEnabledKey]),
             ShellBackground.ParseTint(values[ShellBackground.TintKey]));
     }
+
+    internal static void LoadMediaCache()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        MediaCache.Apply(
+            MediaCache.ParseEnabled(values[MediaCache.EnabledKey]),
+            MediaCache.ParseMaxMb(values[MediaCache.MaxMbKey]),
+            MediaCache.ParsePath(values[MediaCache.RootPathKey]),
+            MediaCache.ParsePath(values[MediaCache.AccessTokenKey]));
+    }
+
+    /// <summary>
+    /// Re-point the live <see cref="ThumbnailService"/> at the resolved thumbs
+    /// root after Settings changes. Does not move existing JPEGs — missing
+    /// files regenerate lazily.
+    /// </summary>
+    public static void ApplyMediaCacheRoot()
+    {
+        if (string.IsNullOrEmpty(LocalRoot) || Thumbnails is null)
+        {
+            return;
+        }
+
+        var thumbs = MediaCache.ResolveThumbsRoot(LocalRoot);
+        Directory.CreateDirectory(thumbs);
+        Directory.CreateDirectory(MediaCache.ResolvePreviewRoot(LocalRoot));
+        Thumbnails.SetRoot(thumbs);
+    }
+
+    public static string ActiveCacheRoot =>
+        string.IsNullOrEmpty(LocalRoot) ? "" : MediaCache.ResolveRoot(LocalRoot);
 
     private static async Task RestoreCurrentProjectAsync()
     {
