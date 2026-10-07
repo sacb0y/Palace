@@ -531,7 +531,33 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeHolding(object sender, HoldingRoutedEventArgs e)
     {
-        if (_rangeSelect is null || ViewModel.IsGalleryOverlayOpen)
+        if (ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
+        if (!ViewModel.IsSelectMode)
+        {
+            if (e.HoldingState != HoldingState.Started)
+            {
+                return;
+            }
+
+            var holdItem = FindAssetItem(e.OriginalSource);
+            if (holdItem is null
+                || !SelectMode.EnterFromHold(false, ViewModel.IsGalleryOverlayOpen, holdItem.IsFolderHeader))
+            {
+                return;
+            }
+
+            ViewModel.SelectAsset(holdItem, toggle: false);
+            ViewModel.IsSelectMode = true;
+            RestoreMosaicSelectionHighlights();
+            e.Handled = true;
+            return;
+        }
+
+        if (_rangeSelect is null)
         {
             return;
         }
@@ -1405,11 +1431,16 @@ public sealed partial class LibraryPage : Page
 
     private void OverlayGallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-            if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
+        if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
             or nameof(GalleryViewModel.IsVideo)
             or nameof(GalleryViewModel.IsImage))
         {
             UpdateOverlayMedia();
+        }
+
+        if (e.PropertyName is nameof(GalleryViewModel.LoopVideo))
+        {
+            ApplyOverlayLoop();
         }
     }
 
@@ -1487,6 +1518,19 @@ public sealed partial class LibraryPage : Page
         {
             MpeOverlay.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
         }
+
+        ApplyOverlayLoop();
+    }
+
+    private void ApplyOverlayLoop()
+    {
+        var player = MpeOverlay.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
+        player.IsLoopingEnabled = ViewModel.OverlayGallery?.LoopVideo ?? GalleryChrome.DefaultLoopVideo;
     }
 
     private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)

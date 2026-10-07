@@ -46,6 +46,11 @@ public sealed partial class GalleryWindow : Window
             {
                 UpdateMedia();
             }
+
+            if (e.PropertyName is nameof(GalleryViewModel.LoopVideo))
+            {
+                ApplyLoop();
+            }
         };
 
         OpenWindows.Add(this);
@@ -143,6 +148,7 @@ public sealed partial class GalleryWindow : Window
                     MpeGallery.SetMediaPlayer(new MediaPlayer());
                 }
 
+                ApplyLoop();
                 var file = await StorageFile.GetFileFromPathAsync(Gallery.CurrentPath);
                 if (epoch != _mediaEpoch)
                 {
@@ -163,5 +169,16 @@ public sealed partial class GalleryWindow : Window
         {
             MpeGallery.Source = null;
         }
+    }
+
+    private void ApplyLoop()
+    {
+        var player = MpeGallery.MediaPlayer;
+        if (player is null)
+        {
+            return;
+        }
+
+        player.IsLoopingEnabled = Gallery.LoopVideo;
     }
 }

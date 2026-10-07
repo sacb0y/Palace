@@ -68,6 +68,12 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
                     Spacing="8">
+                    <Border
+                        Padding="6,4"
+                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{StaticResource OverlayCornerRadius}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ToggleButton
                             x:Name="BtnGalleryWindowImageInfo"
@@ -93,6 +99,19 @@
                                 <TextBlock VerticalAlignment="Center" Text="Details" />
                             </StackPanel>
                         </ToggleButton>
+                        <ToggleButton
+                            x:Name="BtnGalleryWindowLoop"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowLoop"
+                            AutomationProperties.Name="Loop video"
+                            IsChecked="{x:Bind Gallery.LoopVideo, Mode=TwoWay, FallbackValue=True}"
+                            ToolTipService.ToolTip="Loop video"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="ArrowRepeatAll" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Loop" />
+                            </StackPanel>
+                        </ToggleButton>
                         <Border
                             Padding="8,5"
                             VerticalAlignment="Center"
@@ -116,6 +135,7 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+                    </Border>
                     <Border
                         x:Name="BrdGalleryWindowImageInfo"
                         MaxWidth="360"
@@ -401,23 +421,20 @@
                             Text="{x:Bind Gallery.PreviewStatus, Mode=OneWay}"
                             TextWrapping="Wrap"
                             Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.PreviewStatus), Mode=OneWay}" />
-                        <ItemsControl
+                        <ItemsRepeater
                             x:Name="LstGalleryWindowTags"
                             AutomationProperties.AutomationId="LstGalleryWindowTags"
                             AutomationProperties.Name="Tags"
                             ItemsSource="{x:Bind Gallery.Tags, Mode=OneWay}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <VariableSizedWrapGrid
-                                        ItemHeight="32"
-                                        MaximumRowsOrColumns="0"
-                                        Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
+                            <ItemsRepeater.Layout>
+                                <helpers:ChipWrapLayout HorizontalSpacing="8" VerticalSpacing="8" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="models:AssignedTagItem">
                                     <Border
+                                        MinWidth="0"
                                         Padding="8,4"
+                                        HorizontalAlignment="Left"
                                         Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
                                         BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                         BorderThickness="1"
@@ -437,8 +454,8 @@
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
                         <StackPanel
                             AutomationProperties.AutomationId="PnlGalleryWindowGeneration"
                             Spacing="8"

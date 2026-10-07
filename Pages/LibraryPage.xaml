@@ -648,24 +648,20 @@
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.AssignedTagsSummary, Mode=OneWay}"
                     TextWrapping="Wrap" />
-                <ItemsControl
+                <ItemsRepeater
                     x:Name="LstTags"
                     AutomationProperties.AutomationId="LstTags"
                     AutomationProperties.Name="Assigned"
                     ItemsSource="{x:Bind ViewModel.AssignedTags, Mode=OneWay}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <VariableSizedWrapGrid
-                                ItemHeight="36"
-                                MaximumRowsOrColumns="0"
-                                Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
+                    <ItemsRepeater.Layout>
+                        <helpers:ChipWrapLayout HorizontalSpacing="8" VerticalSpacing="8" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:AssignedTagItem">
                             <Border
-                                Margin="0,0,8,8"
+                                MinWidth="0"
                                 Padding="8,4"
+                                HorizontalAlignment="Left"
                                 AutomationProperties.Name="{x:Bind ChipAutomationName, Mode=OneWay}"
                                 Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
                                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -705,8 +701,8 @@
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
                 <Button
                     x:Name="BtnBrowseTags"
                     AutomationProperties.AutomationId="BtnBrowseTags"
@@ -1181,6 +1177,12 @@
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
                         Spacing="8">
+                        <Border
+                            Padding="6,4"
+                            Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource OverlayCornerRadius}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ToggleButton
                                 x:Name="BtnGalleryImageInfo"
@@ -1204,6 +1206,19 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="TextDescription" IconSize="Size16" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Details" />
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton
+                                x:Name="BtnGalleryLoop"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryLoop"
+                                AutomationProperties.Name="Loop video"
+                                IsChecked="{x:Bind ViewModel.OverlayGallery.LoopVideo, Mode=TwoWay, FallbackValue=True}"
+                                ToolTipService.ToolTip="Loop video"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="ArrowRepeatAll" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Loop" />
                                 </StackPanel>
                             </ToggleButton>
                             <Button
@@ -1268,6 +1283,7 @@
                                 </StackPanel>
                             </Border>
                         </StackPanel>
+                        </Border>
                         <Border
                             x:Name="BrdGalleryImageInfo"
                             MaxWidth="360"
@@ -1465,25 +1481,22 @@
                             Style="{StaticResource BodyStrongTextBlockStyle}"
                             Text="{x:Bind ViewModel.OverlayGallery.Title, Mode=OneWay, FallbackValue=''}"
                             TextTrimming="CharacterEllipsis" />
-                        <ItemsControl
+                        <ItemsRepeater
                             x:Name="LstGalleryOverlayTags"
                             Grid.Column="1"
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="LstGalleryOverlayTags"
                             AutomationProperties.Name="Tags"
                             ItemsSource="{x:Bind ViewModel.OverlayGallery.Tags, Mode=OneWay, FallbackValue={x:Null}}">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <VariableSizedWrapGrid
-                                        ItemHeight="28"
-                                        MaximumRowsOrColumns="0"
-                                        Orientation="Horizontal" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
+                            <ItemsRepeater.Layout>
+                                <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="4" />
+                            </ItemsRepeater.Layout>
+                            <ItemsRepeater.ItemTemplate>
                                 <DataTemplate x:DataType="models:AssignedTagItem">
                                     <Border
+                                        MinWidth="0"
                                         Padding="6,2"
+                                        HorizontalAlignment="Left"
                                         Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
                                         BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                         BorderThickness="1"
@@ -1503,8 +1516,8 @@
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </ItemsRepeater.ItemTemplate>
+                        </ItemsRepeater>
                     </Grid>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock
