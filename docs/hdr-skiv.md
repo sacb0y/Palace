@@ -2,7 +2,7 @@
 
 **Recommendation: do not port SKIV.** Use it as a UX and color-science reference only. Grow Palace’s existing overlay and `GalleryWindow` in packaged WinUI 3. No ImGui host, no Direct3D viewer process, no Special K / MinHook, no gamedev slice.
 
-HDR viewing is **part of making image viewing solid**. It lives in **Library + tagging (0.0.x)**, not a later slice. Isiac’s order: Library + tagging now (image / video viewing solid; tagging good) → Rooms moodboard / mindmap next → Cloud bonus → gamedev formats → AI last. Do not wait on Rooms or Cloud to keep overlay / gallery honest. Magick.NET / new EXR-class extensions still wait on packaging, not on Rooms. This plan does not change scan, hydrate, On-Demand, tagging, or Rooms.
+HDR viewing is **part of making image viewing solid**. It lives in **Library + tagging (0.0.x)**, not a later slice. Sacb0y’s order: Library + tagging now (image / video viewing solid; tagging good) → Rooms moodboard / mindmap next → Cloud bonus → gamedev formats → AI last. Do not wait on Rooms or Cloud to keep overlay / gallery honest. Magick.NET / new EXR-class extensions still wait on packaging, not on Rooms. This plan does not change scan, hydrate, On-Demand, tagging, or Rooms.
 
 Magick.NET / TGA / EXR / Radiance HDR / PSD stay **deferred until packaging is clean**. SKIV’s native decode stack (OpenEXR, libjxl, libavif, Ultra HDR, DirectXTex) has the same class of MSIX problem. Do not start a large Magick port from this evaluation.
 
@@ -164,7 +164,7 @@ Then, and only then:
 
 ## Suggested order of work
 
-Isiac’s sequence. HDR present on files we can already decode is **Library now**.
+Sacb0y’s sequence. HDR present on files we can already decode is **Library now**.
 
 1. **Now — Library + tagging.** Image and video viewing must be solid (Phase A chrome, then Phase B HDR present on Open for the WIC path). Tagging must be good. Do not download originals.
 2. **Next — Rooms.** Moodboard / mindmap. Kanvaz is UX only. Do not block Rooms on Magick or SKIV.

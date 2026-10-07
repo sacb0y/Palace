@@ -15,7 +15,7 @@ public static class HdrColor
     public const float HlgToScrgb = 12.5f;
 
     /// <summary>
-    /// Palace MaxCLL 207.561 on Isiac’s AVIF: PQ peak in R only, then
+    /// Palace MaxCLL 207.561 on Sacb0y’s AVIF: PQ peak in R only, then
     /// BT.2020→scRGB. That is Y-as-R (WIC left YUV), not SKIV RGB.
     /// </summary>
     public const float YuvAsRedScrgbPeak = 1.660491f * PqToScrgb;

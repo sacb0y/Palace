@@ -8,7 +8,7 @@ Keep this file current. When you change a convention (scan, thumbs, UI thread, c
 
 Any PR agent (Cursor, Copilot, human) should treat this as the product contract:
 
-1. **Library-first.** Current slice is **0.0.x Library + tagging**. Ship Library browsing, mosaic, overlay/gallery, tags, watch folders, FTS, and solid image/video (including HDR present). Do not open **0.1 Rooms**, **0.2 Gamedev**, or **0.3 AI** as a new minor unless Isiac asks.
+1. **Library-first.** Current slice is **0.0.x Library + tagging**. Ship Library browsing, mosaic, overlay/gallery, tags, watch folders, FTS, and solid image/video (including HDR present). Do not open **0.1 Rooms**, **0.2 Gamedev**, or **0.3 AI** as a new minor unless Sacb0y asks.
 2. **Version / slice rules.** Source of truth: `Package.appxmanifest` `Identity Version` + matching `<Version>` in `Palace.csproj` + `Helpers/AppVersion.cs` `Milestone`. Stay on **0.0.x** while Library is the slice — bump **patch** for drops inside the slice (e.g. `0.0.3.0` → `0.0.4.0`), Revision `0`. Do **not** jump to `1.0.0` or `0.1.x` because something “feels ready.” See **Version** below.
 3. **Do not invent ahead of the slice.** No freeform Rooms canvas / moodboard-mindmap, no gamedev viewers (3D/audio/markdown Unity assign), no AI tagging/organization features until that minor is opened. Existing Rooms and Organization (on-disk organize / auto-organize) are **infancy** — polish only if the task names them; do not claim they are finished.
 4. **Cloud is bonus.** Dropbox / OneDrive OAuth and On-Demand already live in 0.0.x. Further cloud work can land inside the current identity; it is **not** the next numbered slice and must not download originals.
@@ -176,13 +176,13 @@ Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDriv
 
 ## Version
 
-Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from Isiac’s sequence (table below). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
+Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from Sacb0y’s sequence (table below). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
 
 **Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.4.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.4 (Debug) · Library core · initial public preview`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays **0.0.4.0** / milestone **Library core · initial public preview** while this is still the Library + tagging slice. About also shows `AppVersion.InfancyNote` (`TxtInfancyNote`): Rooms (moodboard/mindmap) and Organization (on-disk organize / auto-organize) are in their infancy — do not claim they are finished.
 
 MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
 
-| Version | Slice | Isiac sequence |
+| Version | Slice | Sacb0y sequence |
 |---|---|---|
 | **0.0.x** *(now 0.0.4)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
 | **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. Stub Rooms UI in 0.0.x is infancy — not this slice’s finished work. |

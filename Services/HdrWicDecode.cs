@@ -1219,7 +1219,7 @@ internal static class HdrWicDecode
         {
             // Y in R, G=B=0 — WIC dropped chroma (common for matrix=0
             // 4:4:4: P010/Yuy2 unavailable, Rgba16 is luma-only). Do not
-            // present Isiac’s red tint, or identity GBR’s green (Y→G).
+            // present Sacb0y’s red tint, or identity GBR’s green (Y→G).
             // Fall back to SDR preview until a real 3-channel buffer exists.
             return null;
         }
@@ -1293,7 +1293,7 @@ internal static class HdrWicDecode
     }
 
     /// <summary>
-    /// PNG path stays EncodedToNits + BT.2020→709 (Isiac: HDR PNGs look
+    /// PNG path stays EncodedToNits + BT.2020→709 (Sacb0y: HDR PNGs look
     /// right). AVIF/JXL/JXR/other use SKIV EncodedRgbToScrgb (JXR is
     /// already linear scRGB).
     /// </summary>
