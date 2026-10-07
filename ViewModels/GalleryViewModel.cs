@@ -80,6 +80,17 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial string HdrStatus { get; set; } = "";
 
+    /// <summary>
+    /// Overlay / GalleryWindow corner chip. Catalog <c>IsHdr</c> or live
+    /// probe — never Open the original from the VM. Fluent parse stays in XAML.
+    /// </summary>
+    public bool ShowHdrBadge =>
+        GalleryMedia.ShowHdrBadge(
+            isFolderHeader: false,
+            Current?.IsOrphan == true,
+            Current?.Path,
+            Current?.IsHdr == true || CurrentProbe.IsHdr);
+
     [ObservableProperty]
     public partial bool CanScale { get; set; }
 
@@ -94,6 +105,10 @@ public partial class GalleryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial HdrProbe CurrentProbe { get; set; } = HdrProbe.None;
+
+    partial void OnCurrentChanged(AssetItem? value) => OnPropertyChanged(nameof(ShowHdrBadge));
+
+    partial void OnCurrentProbeChanged(HdrProbe value) => OnPropertyChanged(nameof(ShowHdrBadge));
 
     /// <summary>
     /// Bumped once after Current / probe / path / preview / IsImage are all
