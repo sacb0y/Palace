@@ -1,18 +1,16 @@
 # Palace
 
-Packaged WinUI 3 / Windows App SDK digital asset manager. Files stay on disk. SQLite + FTS5 is the catalog index.
-
-https://github.com/sacb0y/palace
+Packaged WinUI 3 / Windows App SDK digital asset manager. Files stay in place on disk. SQLite + FTS5 is the catalog index. 
 
 ## Goals
 
-**Now — 0.0 Library and tagging.** Image and video viewing must be solid (HDR overlay work is this slice, not a later one). The tagging system must be good. Watch folders, browse a mosaic, tag and search, organize on disk when asked.
+**Now — 0.0 Per "Project" Library and tagging** Image and video viewing must be solid (HDR support a later focus). The tagging system must be good. Watch folders, browse a mosaic, tag and search, organize on disk when asked. Optional caching for faster loading and previews.
 
-**Next — 0.1 Rooms.** Moodboard (a board of images to look at) plus mindmap (lines, diagrams, notes). Support current and later formats. [Kanvaz](https://github.com/p4inz-code/kanvaz) is a UX reference only — not a port.
+**Next — 0.1 Rooms** Moodboard (a board of images to look at) plus mindmap (lines, diagrams, notes). Support current and later formats. [Kanvaz](https://github.com/p4inz-code/kanvaz) and PureRef as inspirations but to expand beyond images.
 
-**Bonus — Cloud.** Not the next main slice. View and manage Dropbox and OneDrive via OAuth. Some of this already works in 0.0.
+**Bonus — Cloud** View and manage Dropbox and OneDrive via OAuth. Some of this already works in 0.0.
 
-**Then — 0.2 Gamedev.** More formats and viewers:
+**Then — 0.2 Gamedev focus** More formats and viewers:
 
 - Markdown reading
 - Audio (with loops)
@@ -26,12 +24,12 @@ https://github.com/sacb0y/palace
 
 ## What works today
 
-Identity on main is **0.0.3 · Library core**.
+V **0.0.3 · Library core**.
 
-- **Library mosaic** — watched folders, FTS search, overlay / gallery for images, GIF, and video, dry-run organize, Recycle Bin delete. Top-level folder browse groups tiles by child folders.
-- **Tags board** — Eagle-style board; groups and child tags sit in two columns ([#18](https://github.com/sacb0y/palace/pull/18)); hierarchy, Any / All / None filter, implications
-- **Cloud** — bonus capability already in 0.0: On-Demand detection from file attributes; no hash or decode of online-only originals; hydrate only on explicit Open
-- **Rooms** — infancy: create, list, and sectioned pin grids. Not a freeform moodboard or mindmap yet
+- **Library mosaic** — Watched folders per project, FTS search, overlay / gallery for images, GIF, and video.
+- **Tags board** — Global Tag groups and child tags sit in two columns; hierarchy, Any / All / None filter; Support for implied tags similar to booru sites
+- **Cloud** — Can handle "Cloud Only" files in dropbox and onedrive without mass redownloading (currently may not generate thumbnails), preliminary cloud storage support.
+- **Rooms** — Will soon be moodboard/mindmap backed by image tagging
 
 ## Run
 
@@ -40,8 +38,6 @@ Windows, packaged Debug (keep the process attached while the app is open):
 ```powershell
 .\BuildAndRun.ps1 . --arch x64
 ```
-
-Daily run is Debug. Release of the same source shares the version number but is trimmed and currently crashes.
 
 Linux Cloud Agents cannot build or run the WinUI app. Tests only:
 
