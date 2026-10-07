@@ -1,3 +1,4 @@
+using Palace.Helpers;
 using Palace.Models;
 
 namespace Palace.Services;
@@ -10,6 +11,12 @@ public sealed class WatcherService : IDisposable
     private readonly Dictionary<string, CancellationTokenSource> _debounce = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
     private Action<string>? _onChanged;
+    private CancellationTokenSource? _notifyCts;
+    private int _suppressDepth;
+    private long _quietUntilTick;
+
+    /// <summary>Linger after intentional delete so late LastWrite events do not RefreshQuiet.</summary>
+    public static readonly TimeSpan SuppressLinger = TimeSpan.FromMilliseconds(1500);
 
     public WatcherService(CatalogService catalog, ScanService scan)
     {
@@ -18,6 +25,21 @@ public sealed class WatcherService : IDisposable
     }
 
     public void SetCallback(Action<string> onChanged) => _onChanged = onChanged;
+
+    /// <summary>
+    /// Suppress watcher catalog work and UI refresh (intentional Library delete).
+    /// Disk events still fire; they are ignored until dispose (+ linger) so multi-delete
+    /// does not queue a full source scan or N× RefreshQuietAsync.
+    /// </summary>
+    public IDisposable SuppressNotifications()
+    {
+        Interlocked.Increment(ref _suppressDepth);
+        return new SuppressScope(this);
+    }
+
+    public bool IsSuppressed =>
+        Volatile.Read(ref _suppressDepth) > 0
+        || Environment.TickCount64 < Volatile.Read(ref _quietUntilTick);
 
     public async Task RestartAsync()
     {
@@ -43,10 +65,10 @@ public sealed class WatcherService : IDisposable
                 NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
                 EnableRaisingEvents = true
             };
-            watcher.Created += (_, e) => Debounce(e.FullPath);
-            watcher.Changed += (_, e) => Debounce(e.FullPath);
-            watcher.Deleted += (_, e) => Debounce(e.FullPath);
-            watcher.Renamed += (_, e) => Debounce(e.FullPath);
+            watcher.Created += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Created);
+            watcher.Changed += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Changed);
+            watcher.Deleted += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Deleted);
+            watcher.Renamed += (_, e) => Debounce(e.FullPath, WatcherChangeKinds.Renamed);
             _watchers.Add(watcher);
         }
         catch
@@ -55,29 +77,42 @@ public sealed class WatcherService : IDisposable
         }
     }
 
-    private void Debounce(string path)
+    private void Debounce(string path, WatcherChangeKinds change)
     {
+        if (IsSuppressed)
+        {
+            return;
+        }
+
         lock (_gate)
         {
-            if (_debounce.TryGetValue(path, out var existing))
+            var key = path + "\0" + (int)change;
+            if (_debounce.TryGetValue(key, out var existing))
             {
                 existing.Cancel();
                 existing.Dispose();
             }
 
             var cts = new CancellationTokenSource();
-            _debounce[path] = cts;
-            _ = HandleLaterAsync(path, cts.Token);
+            _debounce[key] = cts;
+            _ = HandleLaterAsync(path, change, cts.Token);
         }
     }
 
-    private async Task HandleLaterAsync(string path, CancellationToken ct)
+    private async Task HandleLaterAsync(string path, WatcherChangeKinds change, CancellationToken ct)
     {
         try
         {
             await Task.Delay(400, ct).ConfigureAwait(false);
-            await HandleAsync(path).ConfigureAwait(false);
-            _onChanged?.Invoke(path);
+            if (IsSuppressed)
+            {
+                return;
+            }
+
+            if (await HandleAsync(path, change).ConfigureAwait(false))
+            {
+                ScheduleNotify(path);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -89,18 +124,25 @@ public sealed class WatcherService : IDisposable
         }
     }
 
-    private async Task HandleAsync(string path)
+    /// <returns>True when catalog state changed and the UI should refresh.</returns>
+    private async Task<bool> HandleAsync(string path, WatcherChangeKinds change)
     {
         var source = await _catalog.FindSourceByPathAsync(path);
         if (source is null)
         {
-            return;
+            return false;
         }
 
         if (Directory.Exists(path))
         {
-            await _scan.ScanSourceAsync(source);
-            return;
+            // Parent LastWrite on multi-delete must not ScanSourceAsync the whole tree.
+            if (!MosaicDelete.ShouldIndexDirectory(change, directoryExists: true))
+            {
+                return false;
+            }
+
+            await _scan.ScanDirectoryAsync(source, path);
+            return true;
         }
 
         var asset = await _catalog.GetAssetByPathAsync(path);
@@ -109,17 +151,62 @@ public sealed class WatcherService : IDisposable
             if (asset is not null)
             {
                 await _catalog.MarkOrphanAsync(asset.Id, true);
+                return true;
             }
 
-            return;
+            if (change == WatcherChangeKinds.Deleted
+                && MosaicDelete.LooksLikeDeletedDirectory(path, hadMatchingAsset: false))
+            {
+                await _catalog.MarkOrphansUnderPrefixAsync(source.Id, path);
+                return true;
+            }
+
+            return false;
         }
 
         if (!Helpers.PathSafe.IsCatalogExt(Path.GetExtension(path)))
         {
-            return;
+            return false;
         }
 
         await _scan.IndexFileAsync(source, path, autoOrganize: source.AutoOrganizeNewFiles);
+        return true;
+    }
+
+    /// <summary>Coalesce bursty file events into one UI refresh.</summary>
+    private void ScheduleNotify(string path)
+    {
+        if (IsSuppressed || _onChanged is null)
+        {
+            return;
+        }
+
+        lock (_gate)
+        {
+            _notifyCts?.Cancel();
+            _notifyCts?.Dispose();
+            var cts = new CancellationTokenSource();
+            _notifyCts = cts;
+            _ = NotifyLaterAsync(path, cts.Token);
+        }
+    }
+
+    private async Task NotifyLaterAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(500, ct).ConfigureAwait(false);
+            if (IsSuppressed)
+            {
+                return;
+            }
+
+            _onChanged?.Invoke(path);
+        }
+        catch (OperationCanceledException)
+        {
+            // superseded
+        }
     }
 
     private void DisposeWatchers()
@@ -145,6 +232,31 @@ public sealed class WatcherService : IDisposable
             }
 
             _debounce.Clear();
+            _notifyCts?.Cancel();
+            _notifyCts?.Dispose();
+            _notifyCts = null;
+        }
+    }
+
+        private sealed class SuppressScope : IDisposable
+    {
+        private WatcherService? _owner;
+
+        public SuppressScope(WatcherService owner) => _owner = owner;
+
+        public void Dispose()
+        {
+            var owner = Interlocked.Exchange(ref _owner, null);
+            if (owner is null)
+            {
+                return;
+            }
+
+            Interlocked.Decrement(ref owner._suppressDepth);
+            // Late parent LastWrite / Deleted events often arrive after Recycle returns.
+            Volatile.Write(
+                ref owner._quietUntilTick,
+                Environment.TickCount64 + (long)SuppressLinger.TotalMilliseconds);
         }
     }
 }

@@ -333,35 +333,63 @@ public sealed class CatalogService
             }
 
             using var tx = conn.BeginTransaction();
-            foreach (var id in ids)
+            foreach (var chunk in Helpers.MosaicDelete.ChunkIds(ids))
             {
-                using var row = conn.CreateCommand();
-                row.Transaction = tx;
-                row.CommandText = "SELECT RowId FROM Asset WHERE Id = $id";
-                row.Parameters.AddWithValue("$id", id);
-                var rowId = row.ExecuteScalar();
-                if (rowId is not null and not DBNull)
+                var names = new List<string>(chunk.Count);
+                using var rows = conn.CreateCommand();
+                rows.Transaction = tx;
+                for (var i = 0; i < chunk.Count; i++)
                 {
-                    DeleteFtsRow(conn, Convert.ToInt64(rowId), tx);
+                    var p = $"$id{i}";
+                    names.Add(p);
+                    rows.Parameters.AddWithValue(p, chunk[i]);
                 }
 
-                using var batch = conn.CreateCommand();
-                batch.Transaction = tx;
-                batch.CommandText = "DELETE FROM OrganizeBatchItem WHERE AssetId = $id";
-                batch.Parameters.AddWithValue("$id", id);
-                batch.ExecuteNonQuery();
+                var inList = string.Join(",", names);
+                rows.CommandText = $"SELECT RowId FROM Asset WHERE Id IN ({inList})";
+                using (var reader = rows.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        DeleteFtsRow(conn, reader.GetInt64(0), tx);
+                    }
+                }
 
-                using var ai = conn.CreateCommand();
-                ai.Transaction = tx;
-                ai.CommandText = "DELETE FROM AiJob WHERE AssetId = $id";
-                ai.Parameters.AddWithValue("$id", id);
-                ai.ExecuteNonQuery();
+                using (var batch = conn.CreateCommand())
+                {
+                    batch.Transaction = tx;
+                    batch.CommandText = $"DELETE FROM OrganizeBatchItem WHERE AssetId IN ({inList})";
+                    for (var i = 0; i < chunk.Count; i++)
+                    {
+                        batch.Parameters.AddWithValue(names[i], chunk[i]);
+                    }
 
-                using var del = conn.CreateCommand();
-                del.Transaction = tx;
-                del.CommandText = "DELETE FROM Asset WHERE Id = $id";
-                del.Parameters.AddWithValue("$id", id);
-                del.ExecuteNonQuery();
+                    batch.ExecuteNonQuery();
+                }
+
+                using (var ai = conn.CreateCommand())
+                {
+                    ai.Transaction = tx;
+                    ai.CommandText = $"DELETE FROM AiJob WHERE AssetId IN ({inList})";
+                    for (var i = 0; i < chunk.Count; i++)
+                    {
+                        ai.Parameters.AddWithValue(names[i], chunk[i]);
+                    }
+
+                    ai.ExecuteNonQuery();
+                }
+
+                using (var del = conn.CreateCommand())
+                {
+                    del.Transaction = tx;
+                    del.CommandText = $"DELETE FROM Asset WHERE Id IN ({inList})";
+                    for (var i = 0; i < chunk.Count; i++)
+                    {
+                        del.Parameters.AddWithValue(names[i], chunk[i]);
+                    }
+
+                    del.ExecuteNonQuery();
+                }
             }
 
             tx.Commit();
@@ -376,6 +404,45 @@ public sealed class CatalogService
             cmd.Parameters.AddWithValue("$id", assetId);
             cmd.ExecuteNonQuery();
         });
+
+    /// <summary>
+    /// Mark catalog rows under a deleted directory prefix as orphan (watcher folder delete).
+    /// Does not delete rows — user Recycle delete uses <see cref="DeleteAssetsAsync"/>.
+    /// </summary>
+    public Task MarkOrphansUnderPrefixAsync(string sourceId, string directoryPath) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(directoryPath))
+            {
+                return;
+            }
+
+            var trimmed = directoryPath.TrimEnd(
+                Path.DirectorySeparatorChar,
+                Path.AltDirectorySeparatorChar);
+            if (trimmed.Length == 0)
+            {
+                return;
+            }
+
+            var prefix = trimmed + Path.DirectorySeparatorChar;
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                UPDATE Asset SET IsOrphan = 1
+                WHERE SourceFolderId = $source
+                  AND (Path = $exact OR Path LIKE $like ESCAPE '\')
+                """;
+            cmd.Parameters.AddWithValue("$source", sourceId);
+            cmd.Parameters.AddWithValue("$exact", trimmed);
+            cmd.Parameters.AddWithValue("$like", EscapeLikePrefix(prefix) + "%");
+            cmd.ExecuteNonQuery();
+        });
+
+    private static string EscapeLikePrefix(string value) =>
+        value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
 
     public Task SetOrganizeErrorAsync(string assetId, string? error) =>
         _db.WriteAsync(conn =>

@@ -118,6 +118,61 @@ public sealed class ScanService
         return report;
     }
 
+    /// <summary>
+    /// Index catalog files under one directory (watcher Created/Renamed folder).
+    /// Does not walk the whole source or orphan-check siblings — multi-delete
+    /// parent LastWrite must never call <see cref="ScanSourceAsync"/>.
+    /// </summary>
+    public async Task<ScanReport> ScanDirectoryAsync(
+        SourceFolder source,
+        string directory,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        var report = new ScanReport();
+        if (source.Kind != SourceKind.Local || !Directory.Exists(directory))
+        {
+            return report;
+        }
+
+        IEnumerable<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(directory, "*.*", SearchOption.AllDirectories)
+                .Where(p => PathSafe.IsCatalogExt(Path.GetExtension(p)));
+        }
+        catch
+        {
+            report.Errors++;
+            return report;
+        }
+
+        foreach (var file in files)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(file);
+            try
+            {
+                var created = await IndexFileAsync(source, file, autoOrganize: source.AutoOrganizeNewFiles, ct)
+                    .ConfigureAwait(false);
+                if (created)
+                {
+                    report.Added++;
+                }
+                else
+                {
+                    report.Updated++;
+                }
+            }
+            catch
+            {
+                report.Errors++;
+            }
+        }
+
+        return report;
+    }
+
     public async Task<bool> IndexFileAsync(SourceFolder source, string file, bool autoOrganize, CancellationToken ct = default)
     {
         if (!CloudFile.TryGetAttributes(file, out var attrs))

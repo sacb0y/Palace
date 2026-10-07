@@ -24,6 +24,7 @@
     <Compile Include="..\Helpers\GenerationFields.cs" Link="GenerationFields.cs" />
     <Compile Include="..\Helpers\LoadGate.cs" Link="LoadGate.cs" />
     <Compile Include="..\Helpers\MosaicSortOrder.cs" Link="MosaicSortOrder.cs" />
+    <Compile Include="..\Helpers\MosaicDelete.cs" Link="MosaicDelete.cs" />
     <Compile Include="..\Helpers\MosaicRows.cs" Link="MosaicRows.cs" />
     <Compile Include="..\Helpers\ChipWrap.cs" Link="ChipWrap.cs" />
     <Compile Include="..\Helpers\PreviewPersist.cs" Link="PreviewPersist.cs" />
