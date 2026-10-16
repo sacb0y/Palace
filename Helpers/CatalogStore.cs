@@ -196,7 +196,16 @@ public static class CatalogStore
 
         try
         {
-            if (File.Exists(dest))
+            if (File.Exists(dest) && !sameFolder && LooksLikeCatalog(localDb) && !HasUserData(dest) && HasUserData(localDb))
+            {
+                // Durable catalog is schema-only (e.g. created on a launch right after a wipe) but
+                // LocalState holds real data again: set the empty one aside and migrate.
+                SetAsideCatalog(normalized, "empty-durable");
+                BackupRawCatalog(localStateRoot, normalized, "localstate-premigrate");
+                SnapshotDatabase(localDb, dest);
+                MigratedFromLocalState = true;
+            }
+            else if (File.Exists(dest))
             {
                 // Both exist: open the durable one, never overwrite it, and keep a raw
                 // copy of the LocalState catalog so nothing is silently orphaned.
@@ -331,6 +340,57 @@ public static class CatalogStore
             Directory.CreateDirectory(dir);
             File.Move(path, Path.Combine(dir, name));
         }
+    }
+
+    /// <summary>True when the catalog has any assets, tags or watched folders. Errors count as data (never discard).</summary>
+    public static bool HasUserData(string dbPath)
+    {
+        try
+        {
+            using var conn = new SqliteConnection(new SqliteConnectionStringBuilder
+                { DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+            conn.Open();
+            foreach (var table in new[] { "Asset", "Tag", "SourceFolder" })
+            {
+                using var exists = conn.CreateCommand();
+                exists.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $n";
+                exists.Parameters.AddWithValue("$n", table);
+                if (Convert.ToInt64(exists.ExecuteScalar()) == 0)
+                {
+                    continue;
+                }
+
+                using var any = conn.CreateCommand();
+                any.CommandText = $"SELECT EXISTS(SELECT 1 FROM {table})";
+                if (Convert.ToInt64(any.ExecuteScalar()) != 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    /// <summary>Move palace.db and its sidecars into backups/&lt;label&gt;-&lt;ticks&gt;.</summary>
+    public static string SetAsideCatalog(string root, string label)
+    {
+        var dir = Path.Combine(root, BackupsFolderName, $"{label}-{DateTime.UtcNow.Ticks}");
+        Directory.CreateDirectory(dir);
+        foreach (var name in new[] { DbFileName, DbFileName + "-wal", DbFileName + "-shm", DbFileName + "-journal" })
+        {
+            var path = Path.Combine(root, name);
+            if (File.Exists(path))
+            {
+                File.Move(path, Path.Combine(dir, name));
+            }
+        }
+
+        return dir;
     }
 
     /// <summary>Copy palace.db (+ wal/shm if present) into <paramref name="destRoot"/>. Never overwrites.</summary>

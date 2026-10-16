@@ -164,6 +164,45 @@ public sealed class CatalogStoreTests
         }
     }
 
+    [Fact]
+    public void ResolveDbPath_ReplacesSchemaOnlyDurableWithRestoredLocalState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "palace-empty-durable-" + Guid.NewGuid().ToString("N"));
+        var local = Path.Combine(root, "local");
+        var durable = Path.Combine(root, "durable");
+        Directory.CreateDirectory(local);
+        Directory.CreateDirectory(durable);
+        try
+        {
+            var localDb = Path.Combine(local, CatalogStore.DbFileName);
+            MakeDb(localDb, "local", pad: 64_000);
+            Exec(localDb, "CREATE TABLE Tag(Id TEXT); INSERT INTO Tag VALUES ('t1');");
+            var durableDb = Path.Combine(durable, CatalogStore.DbFileName);
+            MakeDb(durableDb, "durable");
+            Exec(durableDb, "CREATE TABLE Tag(Id TEXT);");
+
+            var resolved = CatalogStore.ResolveDbPath(local, settingsRoot: null, overrideRoot: durable);
+            Assert.True(CatalogStore.MigratedFromLocalState);
+            Assert.Equal("local", ReadMarker(resolved!));
+            Assert.Contains(
+                Directory.GetDirectories(Path.Combine(durable, CatalogStore.BackupsFolderName)),
+                d => Path.GetFileName(d).StartsWith("empty-durable-") && File.Exists(Path.Combine(d, CatalogStore.DbFileName)));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    private static void Exec(string path, string sql)
+    {
+        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
+    }
+
     private static void MakeDb(string path, string marker, int pad = 0)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
