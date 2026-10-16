@@ -37,7 +37,7 @@ public static class TgaFile
                 palette = new byte[h.ColorMapLength * 4];
                 for (var i = 0; i < h.ColorMapLength; i++)
                 {
-                    ReadColor(data.Slice(pos + i * entryBytes, entryBytes), h.ColorMapBits, palette.AsSpan(i * 4, 4), true);
+                    ReadColor(data.Slice(pos + i * entryBytes, entryBytes), h.ColorMapBits, palette.AsSpan(i * 4, 4), (h.Descriptor & 0x0F) > 0 || h.ColorMapBits == 32);
                 }
 
                 pos += mapLen;

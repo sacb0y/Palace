@@ -15,11 +15,13 @@ public sealed class ThumbnailService
     public const string LargePreviewSuffix = "_lg";
 
     private string _root;
+    private DateTime _generationStartUtc;
 
     public ThumbnailService(string thumbsRoot)
     {
         _root = thumbsRoot;
         Directory.CreateDirectory(_root);
+        _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root);
     }
 
     /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
@@ -29,6 +31,52 @@ public sealed class ThumbnailService
     {
         _root = thumbsRoot;
         Directory.CreateDirectory(_root);
+        _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root);
+    }
+
+    /// <summary>
+    /// Formats Palace decodes itself (EXR/HDR/TGA/Clip/PSD/JXL or a
+    /// not-an-image file) must be shown from the cached large preview —
+    /// <c>BitmapImage</c> would be blank or need a Store codec. Returns the
+    /// path to display, or null while that preview doesn't exist yet.
+    /// </summary>
+    public string? DisplayPathFor(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || GalleryMedia.IsRemoteUri(path))
+        {
+            return path;
+        }
+
+        var lg = ExistingLargePreviewForPath(path);
+        if (lg is not null)
+        {
+            return lg;
+        }
+
+        // JXL without a decoded preview falls back to the WIC codec, if any.
+        return StillDecode.HandlesPath(path) ? null : path;
+    }
+
+    private bool IsStaleGeneration(string dest, string filePath)
+    {
+        try
+        {
+            var written = File.GetLastWriteTimeUtc(dest);
+            if (written >= _generationStartUtc)
+            {
+                return false;
+            }
+
+            var ext = PathSafe.Extension(filePath);
+            var hdrCandidate = ext is ".png" or ".jxr" or ".wdp" or ".hdp" or ".avif" or ".heic" or ".heif"
+                && HdrFile.ProbePath(filePath) is { IsHdr: true, Kind: not HdrKind.UltraHdrJpeg };
+            return ThumbCacheVersion.IsStale(written, _generationStartUtc,
+                ThumbCacheVersion.RenderingChanged(filePath, hdrCandidate));
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public string PathForHash(string hash, string? suffix = null) =>
@@ -45,14 +93,21 @@ public sealed class ThumbnailService
         return File.Exists(path) ? path : null;
     }
 
-    public void TryDelete(string? hash)
+    public void TryDelete(string? hash, string? filePath = null)
     {
-        if (string.IsNullOrEmpty(hash))
+        var paths = new List<string>();
+        if (!string.IsNullOrEmpty(hash))
         {
-            return;
+            paths.Add(PathForHash(hash));
+            paths.Add(PathForHash(hash, LargePreviewSuffix));
         }
 
-        foreach (var path in new[] { PathForHash(hash), PathForHash(hash, LargePreviewSuffix) })
+        if (LargePreviewPathFor(filePath) is { } lg)
+        {
+            paths.Add(lg);
+        }
+
+        foreach (var path in paths)
         {
             try
             {
@@ -96,7 +151,9 @@ public sealed class ThumbnailService
         }
 
         var dest = PathForHash(hash);
-        if (File.Exists(dest) && !ShouldRegenerate(dest, filePath))
+        if (File.Exists(dest) && !ShouldRegenerate(dest, filePath)
+            && !(kind == Models.AssetKind.Image && IsStaleGeneration(dest, filePath))
+            && !NeedsLargePreviewBackfill(kind, filePath))
         {
             TouchLastAccess(dest);
             return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0);
@@ -113,7 +170,27 @@ public sealed class ThumbnailService
 
         if (GalleryMedia.UsesShellThumbnail(kind, filePath))
         {
-            return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
+            var shell = await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
+            if (shell is null && kind == Models.AssetKind.Video && FfmpegPoster.IsAvailable)
+            {
+                // No system codec (MKV H.264 4:4:4, WebM VP9/AV1 …): bundled ffmpeg.
+                var tmp = dest + ".ff.jpg";
+                if (await FfmpegPoster.TryExtractAsync(filePath, tmp, MaxSide).ConfigureAwait(false))
+                {
+                    try
+                    {
+                        File.Move(tmp, dest, overwrite: true);
+                        var size = ImageDimensions.TryRead(dest);
+                        return Finish(dest, size?.Width ?? 0, size?.Height ?? 0);
+                    }
+                    catch (IOException)
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            return shell;
         }
 
         if (!GalleryMedia.MayOpenOriginalForThumb(onlineOnly, kind, filePath))
@@ -252,9 +329,25 @@ public sealed class ThumbnailService
     public string? ExistingLargePreviewForPath(string? filePath)
     {
         var path = LargePreviewPathFor(filePath);
-        return path is not null && File.Exists(path) ? path : null;
+        if (path is null || !File.Exists(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            // Stale once the source changes; regenerated under the same name.
+            return !File.Exists(filePath) || File.GetLastWriteTimeUtc(path) >= File.GetLastWriteTimeUtc(filePath!)
+                ? path
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
+    /// <summary>Keyed by path only, so it can be found (and deleted) without the file or its hash.</summary>
     private string? LargePreviewPathFor(string? filePath)
     {
         if (string.IsNullOrEmpty(filePath))
@@ -262,18 +355,15 @@ public sealed class ThumbnailService
             return null;
         }
 
-        try
-        {
-            var info = new FileInfo(filePath);
-            var key = $"{filePath.ToUpperInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
-            var digest = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
-            return PathForHash("p" + digest, LargePreviewSuffix);
-        }
-        catch
-        {
-            return null;
-        }
+        var digest = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+            System.Text.Encoding.UTF8.GetBytes(filePath.ToUpperInvariant())));
+        return PathForHash("p" + digest, LargePreviewSuffix);
     }
+
+    private bool NeedsLargePreviewBackfill(Models.AssetKind kind, string filePath) =>
+        kind == Models.AssetKind.Image
+        && StillDecode.HandlesPath(filePath)
+        && ExistingLargePreviewForPath(filePath) is null;
 
     /// <summary>
     /// Custom still paths: EXR / Radiance / TGA / Clip decoders, HDR stills
@@ -309,6 +399,7 @@ public sealed class ThumbnailService
                 {
                     var ph = StillDecode.Placeholder();
                     await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
+                    await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
                     return Finish(dest, ph.Width, ph.Height);
                 }
 
@@ -335,6 +426,20 @@ public sealed class ThumbnailService
                     : StillDecode.BoxScaleBgra(large.Bgra!, large.Width, large.Height, tw, th);
                 await EncodeBgraJpegAsync(small, tw, th, dest).ConfigureAwait(false);
                 return Finish(dest, tw, th);
+            }
+
+            if (PathSafe.IsJxl(filePath))
+            {
+                var jxl = await Task.Run(() => JxlDecode.TryDecodeFile(filePath)).ConfigureAwait(false);
+                if (jxl is not null)
+                {
+                    var lgJ = await Task.Run(() => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide)).ConfigureAwait(false);
+                    await EncodeBgraJpegAsync(lgJ.Bgra!, lgJ.Width, lgJ.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
+                    var (jw, jh) = StillDecode.Fit(lgJ.Width, lgJ.Height, MaxSide);
+                    var smallJ = jw == lgJ.Width && jh == lgJ.Height ? lgJ.Bgra! : StillDecode.BoxScaleBgra(lgJ.Bgra!, lgJ.Width, lgJ.Height, jw, jh);
+                    await EncodeBgraJpegAsync(smallJ, jw, jh, dest).ConfigureAwait(false);
+                    return Finish(dest, jw, jh);
+                }
             }
 
             var probe = HdrFile.ProbePath(filePath);

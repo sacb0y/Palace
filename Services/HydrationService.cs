@@ -76,7 +76,7 @@ public sealed class HydrationService
         await _catalog.UpsertAssetAsync(asset, "").ConfigureAwait(false);
         if (!string.Equals(previousHash, hash, StringComparison.OrdinalIgnoreCase))
         {
-            _thumbs.TryDelete(previousHash);
+            _thumbs.TryDelete(previousHash, asset.Path);
         }
 
         return asset;
