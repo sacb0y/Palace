@@ -1,81 +1,117 @@
-<img width="1571" height="959" alt="image" src="https://github.com/user-attachments/assets/4742f83a-6d70-49b7-b995-6d1e8dfdde50" />
-
-
-
 # Palace
 
-Packaged WinUI 3 / Windows App SDK digital asset manager. Files stay on disk. SQLite + FTS5 is the catalog index. The metaphor is a mind palace: **Library** (catalog) and **Rooms** (moodboard / mindmap).
+Palace is a Windows app for managing images, references and game assets. Your files stay where they are on disk. Palace watches the folders you point it at, keeps a searchable catalog, and lets you browse, preview, tag and organize everything in one place.
 
-https://github.com/sacb0y/Palace
+It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the catalog index. The name comes from the "mind palace" idea: the **Library** is the catalog, and **Rooms** will be moodboards and mind maps.
 
-## Status
+> **Status: 0.0.4, early public preview.** The Library (browsing, previews, tags, watched folders, search) is the focus right now. Rooms, on-disk organization and cloud support exist but are early.
 
-**0.0.4 · Library core · initial public preview.**
+![Library view with watched folders, the thumbnail mosaic and the side panel](docs/images/library.png)
 
-Library browsing, mosaic, overlay/gallery (images, GIF, video, HDR present), tags, watch folders, and FTS are the focus of this slice.
+## Features
 
-**Rooms** (product “palace” rooms — moodboard / mindmap) and **Organization** (on-disk organize / auto-organize) are in their infancy. Expect stubs and early flows, not finished features. Cloud (Dropbox / OneDrive) is a bonus capability already present in 0.0.x, also very early.
+- **Projects.** Each project has its own library of watched folders. Switch or create projects from the sidebar.
+- **Watched folders.** Add a folder and Palace scans it and keeps it up to date as files change. Files are never moved or copied unless you ask.
+- **Library mosaic.** A thumbnail grid with adjustable row height, grouped by subfolder, plus a full-screen gallery/overlay viewer for images, GIFs and video.
+- **Search.** Full-text search over file names, tags, prompts and model metadata.
+- **Global tags.** Tags are shared across all projects. Tags can be grouped and nested, filtered with Any / All / None, starred and colored.
+- **Implied tags.** Give a tag implications so that assigning it also applies the implied tags automatically.
+- **Tag export and import.** Back up your tag set as JSON from Settings and merge it back in later.
+- **HDR.** HDR files are detected and badged, presented in HDR on HDR displays, and tone-mapped for thumbnails. Supported HDR kinds include Ultra HDR JPEG, HDR PNG, HDR AVIF/HEIF, JPEG XR, JPEG XL and Radiance `.hdr`.
+- **Durable catalog.** The catalog lives outside the app package, so reinstalling Palace does not wipe your projects and tags (see [Where your data lives](#where-your-data-lives)).
+- **Early features:** Rooms (create rooms and pin assets into sectioned grids), dry-run and optional auto organize with undo, Recycle Bin delete, and Dropbox / OneDrive "online-only" files without mass re-downloading.
 
-Agent / PR contract (version rules, Library-first, what not to invent): see [`AGENTS.md`](./AGENTS.md).
+![Tags page with tag groups and an implied tag](docs/images/tags.png)
 
-## Goals
+### Supported formats
 
-**Now — 0.0 Per "Project" Library and tagging** Image and video viewing must be solid (HDR support a later focus). The tagging system must be good. Watch folders, browse a mosaic, tag and search, organize on disk when asked. Optional caching for faster loading and previews.
+| Kind | Extensions |
+| --- | --- |
+| Images | `.jpg` `.jpeg` `.png` `.webp` `.bmp` `.tif` `.tiff` `.avif` `.heic` `.heif` `.jxr` `.wdp` `.hdp` `.jxl` `.hdr` `.psd` `.psb` `.dds` `.exr` `.tga` `.ico` `.clip` (Clip Studio Paint) |
+| Animated | `.gif` |
+| Video | `.mp4` `.mov` `.mkv` `.webm` `.avi` |
 
-**Next — 0.1 Rooms** Moodboard (a board of images to look at) plus mindmap (lines, diagrams, notes). Support current and later formats. [Kanvaz](https://github.com/p4inz-code/kanvaz) and PureRef as inspirations but to expand beyond images.
+EXR, TGA, ICO, PSD/PSB, JPEG XL and Clip Studio files are decoded by Palace itself, so they don't need extra Windows codecs. Files with an image extension that aren't really images get a placeholder tile. MKV/WebM thumbnails use a bundled ffmpeg when it is present at build time (see [Build](#build-and-run)); otherwise they fall back to Windows shell thumbnails.
 
-**Bonus — Cloud** View and manage Dropbox and OneDrive via OAuth. Some of this already works in 0.0.
+![HDR image in the full-screen viewer](docs/images/hdr-preview.jpg)
 
-**Then — 0.2 Gamedev focus** More formats and viewers:
+## Requirements
 
-- Markdown reading
-- Audio (with loops)
-- 3D asset viewing
-- Assign a Unity folder to the Palace **project** (asset management, not the Library catalog)
-- Parse `.unitypackage` and extract needed assets
+- Windows 10 version 1809 (build 17763) or later, x64
+- An HDR-capable display is optional, for HDR presentation
 
-**Later — 0.3 AI.** Expand asset management with AI (tagging, organization, and similar).
+## Install
 
-**1.0 Ship.** Release / trim, packaging / Store.
+**Microsoft Store:** coming soon.
 
-## What works today
-
-Identity on main for this preview is **0.0.4 · Library core · initial public preview**.
-
-- **Library mosaic** — watched folders, FTS search, overlay / gallery for images, GIF, and video, dry-run organize, Recycle Bin delete. Top-level folder browse groups tiles by child folders.
-- **Tags board** — Eagle-style board; groups and child tags sit in two columns; hierarchy, Any / All / None filter, implications
-- **Cloud** — Can handle "Cloud Only" files in dropbox and onedrive without mass redownloading (currently may not generate thumbnails), preliminary cloud storage support.
-- **Rooms** — infancy: create, list, and sectioned pin grids. Not a freeform moodboard or mindmap yet
-- **Organization** — infancy: dry-run organize and optional auto-organize exist; not a finished organization product
-
-## Where data lives
-
-- **Catalog** (`palace.db` — projects, tags, sources, rooms, asset index): durable folder outside the MSIX package, default `%LOCALAPPDATA%\Palace\catalog\`. A pointer at `%LOCALAPPDATA%\Palace\catalog-root.txt` survives `winapp unregister` / re-register. Settings → Catalog data can change the folder, export a `.db` copy, or export/import tags as JSON.
-- **Package LocalState** (`%LOCALAPPDATA%\Packages\C20A7629-*\LocalState\`): thumbs / preview cache, error logs, and (legacy) catalogs that have not migrated yet. **`winapp unregister` deletes LocalState.** Do not rely on it as the only copy of projects or tags.
-- **Tags** are global (not per-project). Use Settings → Export tags / Import tags for a portable JSON backup.
-
-Requested after a LocalState wipe on Main-Desktop (Sacb0y).
+**Developer build:** build and run from source as described below.
 
 ## Build and run
 
-Windows only. **Packaged** Debug (never the unpackaged `.exe`):
+You need:
+
+- Windows, x64
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- WinApp CLI (`winget install --id Microsoft.WinAppCli`) for packaged runs
+
+Palace is a packaged app. Always run the packaged Debug build, not the raw `.exe`:
 
 ```powershell
 .\BuildAndRun.ps1 . --arch x64
 ```
 
-Daily run is Debug. Packaged Release works with trim off (`winapp run . --arch x64 -c Release`); re-enable `PublishTrimmed` only after the ItemsSource COM crash is fixed.
-
-Settings → About shows `TxtAppVersion` (e.g. `Palace 0.0.4 (Debug) · Library core · initial public preview`) and the Rooms / Organization infancy note.
-
-Linux Cloud Agents cannot build or run the WinUI app. Tests only:
-
-```bash
-dotnet test ./Palace.Tests/Palace.Tests.csproj
-```
-
-On Windows:
+Optional: to get MKV/WebM thumbnails without system codecs, fetch the pinned LGPL ffmpeg build before building. When `ThirdParty\ffmpeg` exists it is packaged with the app automatically.
 
 ```powershell
-dotnet test .\Palace.Tests\Palace.Tests.csproj
+.\tools\Get-Ffmpeg.ps1
 ```
+
+### Build and test (same as CI)
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on `windows-latest` with .NET 10:
+
+```powershell
+dotnet restore Palace.csproj -p:Platform=x64
+dotnet restore Palace.Tests/Palace.Tests.csproj
+dotnet build Palace.csproj -c Debug -p:Platform=x64 --no-restore
+dotnet test Palace.Tests/Palace.Tests.csproj -c Debug --no-restore
+```
+
+The test project targets plain `net10.0`, so `dotnet test ./Palace.Tests/Palace.Tests.csproj` also runs on Linux and macOS. The WinUI app itself only builds on Windows.
+
+## Where your data lives
+
+- **Catalog** (`palace.db`: projects, tags, sources, rooms and the asset index) is stored outside the app package, by default in `%LOCALAPPDATA%\Palace\catalog\`. A pointer file, `%LOCALAPPDATA%\Palace\catalog-root.txt`, records the location so it survives uninstall and reinstall. In **Settings → Catalog data** you can move the catalog, export a `.db` copy, or export/import tags as JSON.
+- **Package LocalState** (`%LOCALAPPDATA%\Packages\<Palace package>\LocalState\`) holds the thumbnail and preview cache and error logs. It is deleted when the app is uninstalled, so don't rely on it for anything you want to keep.
+
+## Project structure
+
+```
+Pages/           Library, Tags, Rooms and Settings pages
+Controls/        Reusable UI controls
+ViewModels/      Page view models
+Models/          UI and data models
+Services/        Catalog, scanning, folder watching, thumbnails, HDR, cloud
+Helpers/         Format decoders (EXR, PSD, TGA, Clip, ...), HDR helpers, path rules
+Data/            SQLite database layer
+Palace.Tests/    Unit tests (cross-platform)
+tools/           Helper scripts (e.g. Get-Ffmpeg.ps1)
+docs/            Design notes and README images
+Assets/          App icons and package art
+```
+
+## Roadmap
+
+- **0.0** Per-project library and tagging, solid image and video viewing
+- **0.1** Rooms: moodboards and mind maps
+- **0.2** Game dev focus: Markdown, audio, 3D assets, Unity project folders, `.unitypackage` parsing
+- **0.3** AI-assisted tagging and organization
+- **1.0** Release and Microsoft Store
+
+## Contributing
+
+Issues and pull requests are welcome. Before you start, read [`AGENTS.md`](AGENTS.md). It covers the versioning rules, the Library-first priority, testing expectations and what not to invent, and it applies to people and coding agents alike. Topic-specific notes live in [`.cursor/rules/`](.cursor/rules/).
+
+## License
+
+[MIT](LICENSE)
