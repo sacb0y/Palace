@@ -72,7 +72,8 @@ public static class PathSafe
             ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff",
             ".avif", ".heic", ".heif",
             ".jxr", ".wdp", ".hdp",
-            ".jxl", ".hdr", ".psd", ".dds"
+            ".jxl", ".hdr", ".psd", ".psb", ".dds",
+            ".exr", ".tga", ".ico", ".clip"
         };
 
     public static readonly HashSet<string> GifExt =
@@ -102,8 +103,20 @@ public static class PathSafe
     public static bool IsRadiance(string? pathOrExt) =>
         ExtensionEquals(pathOrExt, ".hdr");
 
+    public static bool IsExr(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".exr");
+
+    public static bool IsTga(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".tga");
+
+    public static bool IsClip(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".clip");
+
     public static bool IsPsd(string? pathOrExt) =>
-        ExtensionEquals(pathOrExt, ".psd");
+        ExtensionEquals(pathOrExt, ".psd") || ExtensionEquals(pathOrExt, ".psb");
+
+    public static bool IsIco(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".ico");
 
     public static bool IsJxl(string? pathOrExt) =>
         ExtensionEquals(pathOrExt, ".jxl");

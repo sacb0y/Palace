@@ -77,11 +77,12 @@
   </PropertyGroup>
 
   <!--
-    Starward.Codec ships libavif plus JXL/UltraHDR/VP9 natives. Palace only
-    needs avif.dll for HDR AVIF present — drop the rest from output/publish.
+    Starward.Codec ships libavif plus JXL/UltraHDR/VP9 natives. Palace uses
+    avif.dll (HDR AVIF present) and libjxl (jxl, jxl_cms, jxl_threads,
+    brotli*; BSD-3 / MIT) for built-in JPEG XL decode — drop the rest.
   -->
   <PropertyGroup>
-    <_PalaceStarwardExtraNatives>jxl.dll;jxl_cms.dll;jxl_threads.dll;uhdr.dll;brotlicommon.dll;brotlidec.dll;brotlienc.dll;lcms2.dll;VP9DecoderMFT.dll;avifdec.exe;avifenc.exe;avifgainmaputil.exe;cjxl.exe;djxl.exe;jxlinfo.exe</_PalaceStarwardExtraNatives>
+    <_PalaceStarwardExtraNatives>uhdr.dll;lcms2.dll;VP9DecoderMFT.dll;avifdec.exe;avifenc.exe;avifgainmaputil.exe;cjxl.exe;djxl.exe;jxlinfo.exe</_PalaceStarwardExtraNatives>
   </PropertyGroup>
   <Target Name="PalaceStripStarwardExtras" AfterTargets="CopyFilesToOutputDirectory">
     <ItemGroup>
@@ -92,7 +93,19 @@
   </Target>
   <Target Name="PalaceStripStarwardFromPublish" BeforeTargets="ComputeFilesToPublish">
     <ItemGroup>
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'jxl.dll' OR '%(Filename)%(Extension)' == 'jxl_cms.dll' OR '%(Filename)%(Extension)' == 'jxl_threads.dll' OR '%(Filename)%(Extension)' == 'uhdr.dll' OR '%(Filename)%(Extension)' == 'brotlicommon.dll' OR '%(Filename)%(Extension)' == 'brotlidec.dll' OR '%(Filename)%(Extension)' == 'brotlienc.dll' OR '%(Filename)%(Extension)' == 'lcms2.dll' OR '%(Filename)%(Extension)' == 'VP9DecoderMFT.dll' OR '%(Filename)%(Extension)' == 'avifdec.exe' OR '%(Filename)%(Extension)' == 'avifenc.exe' OR '%(Filename)%(Extension)' == 'avifgainmaputil.exe' OR '%(Filename)%(Extension)' == 'cjxl.exe' OR '%(Filename)%(Extension)' == 'djxl.exe' OR '%(Filename)%(Extension)' == 'jxlinfo.exe'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'uhdr.dll' OR '%(Filename)%(Extension)' == 'lcms2.dll' OR '%(Filename)%(Extension)' == 'VP9DecoderMFT.dll' OR '%(Filename)%(Extension)' == 'avifdec.exe' OR '%(Filename)%(Extension)' == 'avifenc.exe' OR '%(Filename)%(Extension)' == 'avifgainmaputil.exe' OR '%(Filename)%(Extension)' == 'cjxl.exe' OR '%(Filename)%(Extension)' == 'djxl.exe' OR '%(Filename)%(Extension)' == 'jxlinfo.exe'" />
     </ItemGroup>
   </Target>
+
+  <!--
+    Optional bundled LGPL ffmpeg for codec-free video posters (MKV/WebM/etc.).
+    Run tools/Get-Ffmpeg.ps1 to fetch the pinned build into ThirdParty/ffmpeg;
+    when present it is packaged as ffmpeg\*. Absent = shell thumbnails only.
+  -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)ThirdParty\ffmpeg\bin\ffmpeg.exe')">
+    <Content Include="ThirdParty\ffmpeg\bin\*.exe;ThirdParty\ffmpeg\bin\*.dll;ThirdParty\ffmpeg\LICENSE.txt">
+      <Link>ffmpeg\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

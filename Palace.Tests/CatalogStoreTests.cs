@@ -203,6 +203,80 @@ public sealed class CatalogStoreTests
         cmd.ExecuteNonQuery();
     }
 
+    [Fact]
+    public void Tests_NeverTouchRealLocalAppDataPalace()
+    {
+        var real = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            CatalogStore.ProductFolderName);
+        var realPointer = System.IO.Path.Combine(real, CatalogStore.PointerFileName);
+        var before = File.Exists(realPointer) ? File.ReadAllBytes(realPointer) : null;
+        var beforeTime = File.Exists(realPointer) ? File.GetLastWriteTimeUtc(realPointer) : default;
+
+        Assert.Equal(TestDataDir.Path, CatalogStore.DataDir());
+        Assert.False(CatalogStore.PointerPath().StartsWith(real + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        Assert.False(CatalogStore.DefaultRoot().StartsWith(real + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+
+        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "palace-guard-" + Guid.NewGuid().ToString("N"));
+        var local = System.IO.Path.Combine(root, "local");
+        Directory.CreateDirectory(local);
+        try
+        {
+            CatalogStore.ResolveDbPath(local, settingsRoot: null, overrideRoot: System.IO.Path.Combine(root, "durable"));
+            Assert.True(File.Exists(CatalogStore.PointerPath()));
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
+        }
+
+        var after = File.Exists(realPointer) ? File.ReadAllBytes(realPointer) : null;
+        Assert.Equal(before, after);
+        if (before is not null)
+        {
+            Assert.Equal(beforeTime, File.GetLastWriteTimeUtc(realPointer));
+        }
+    }
+
+    [Fact]
+    public void DataDir_HonorsEnvVarWhenNoOverride()
+    {
+        var saved = CatalogStore.DataDirOverride;
+        var env = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "palace-env-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CatalogStore.DataDirOverride = null;
+            Environment.SetEnvironmentVariable(CatalogStore.DataDirEnvVar, env);
+            Assert.Equal(System.IO.Path.GetFullPath(env), CatalogStore.DataDir());
+            Assert.Equal(System.IO.Path.Combine(System.IO.Path.GetFullPath(env), CatalogStore.PointerFileName), CatalogStore.PointerPath());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(CatalogStore.DataDirEnvVar, null);
+            CatalogStore.DataDirOverride = saved;
+        }
+    }
+
+    [Theory]
+    [InlineData(CatalogStore.ReleasePackageName, false)]
+    [InlineData("c20a7629-6bde-449f-958a-5aaf8bce88f3", false)]
+    [InlineData("PalaceSxsTest.Grok", true)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsolatedDataDirFor_OnlyNonReleasePackagesAreIsolated(string? name, bool isolated)
+    {
+        var local = Path.Combine(Path.GetTempPath(), "pkg-local");
+        var dir = CatalogStore.IsolatedDataDirFor(name, local);
+        if (isolated)
+        {
+            Assert.Equal(Path.Combine(local, "palace-data"), dir);
+        }
+        else
+        {
+            Assert.Null(dir);
+        }
+    }
+
     private static void MakeDb(string path, string marker, int pad = 0)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());

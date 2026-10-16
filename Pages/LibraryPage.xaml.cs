@@ -220,9 +220,16 @@ public sealed partial class LibraryPage : Page
                 return null;
             }
 
+            // EXR / HDR / TGA / Clip / PSD / JXL: Palace's decoded large preview.
+            var shown = AppServices.Thumbnails is { } thumbs ? thumbs.DisplayPathFor(path) : path;
+            if (shown is null)
+            {
+                return null;
+            }
+
             return new BitmapImage
             {
-                UriSource = new Uri(path, UriKind.Absolute)
+                UriSource = new Uri(shown, UriKind.Absolute)
             };
         }
         catch

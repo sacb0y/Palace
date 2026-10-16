@@ -33,17 +33,48 @@ public static class CatalogStore
     /// <summary>User-facing reason when falling back (missing drive, etc.).</summary>
     public static string? FallbackReason { get; private set; }
 
-    public static string DefaultRoot()
+    /// <summary>Env var that relocates the whole Palace data folder (pointer + default catalog).</summary>
+    public const string DataDirEnvVar = "PALACE_DATA_DIR";
+
+    /// <summary>
+    /// Injectable base folder (tests set this to a temp dir). Takes precedence over
+    /// <see cref="DataDirEnvVar"/>; null means use the env var or %LOCALAPPDATA%\Palace.
+    /// </summary>
+    public static string? DataDirOverride { get; set; }
+
+    /// <summary>Package identity name of the real Palace install.</summary>
+    public const string ReleasePackageName = "C20A7629-6BDE-449F-958A-5AAF8BCE88F3";
+
+    /// <summary>
+    /// A side-by-side / test package (any identity other than
+    /// <see cref="ReleasePackageName"/>) keeps its pointer and default catalog
+    /// under its own LocalFolder so it can never open the real catalog.
+    /// Returns null for the real identity or when unpackaged.
+    /// </summary>
+    public static string? IsolatedDataDirFor(string? packageName, string? packageLocalFolder) =>
+        string.IsNullOrWhiteSpace(packageName)
+        || string.IsNullOrWhiteSpace(packageLocalFolder)
+        || string.Equals(packageName, ReleasePackageName, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : Path.Combine(packageLocalFolder, "palace-data");
+
+    /// <summary>Folder holding the pointer file and the default catalog.</summary>
+    public static string DataDir()
     {
+        var custom = NormalizeRoot(DataDirOverride)
+            ?? NormalizeRoot(Environment.GetEnvironmentVariable(DataDirEnvVar));
+        if (custom is not null)
+        {
+            return custom;
+        }
+
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, ProductFolderName, DefaultCatalogFolderName);
+        return Path.Combine(localAppData, ProductFolderName);
     }
 
-    public static string PointerPath()
-    {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, ProductFolderName, PointerFileName);
-    }
+    public static string DefaultRoot() => Path.Combine(DataDir(), DefaultCatalogFolderName);
+
+    public static string PointerPath() => Path.Combine(DataDir(), PointerFileName);
 
     public static string DbPathIn(string root) =>
         Path.Combine(NormalizeRoot(root) ?? "", DbFileName);

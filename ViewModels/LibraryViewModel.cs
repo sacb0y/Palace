@@ -1045,7 +1045,7 @@ public partial class LibraryViewModel : ObservableObject
                             }
                         }
 
-                        _thumbs.TryDelete(asset.ContentHash);
+                        _thumbs.TryDelete(asset.ContentHash, asset.Path);
                         removed.Add(asset.Id);
                     }
 

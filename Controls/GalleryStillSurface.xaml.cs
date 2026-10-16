@@ -1220,6 +1220,14 @@ public sealed partial class GalleryStillSurface : UserControl
                 return null;
             }
 
+            // EXR / Radiance / TGA / Clip / PSD / JXL / non-image: show Palace's
+            // decoded large preview; BitmapImage would be blank or need a codec.
+            var shown = AppServices.Thumbnails is { } thumbs ? thumbs.DisplayPathFor(path) : path;
+            if (!string.Equals(shown, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return shown is null ? null : new BitmapImage { UriSource = new Uri(shown, UriKind.Absolute) };
+            }
+
             return new BitmapImage
             {
                 UriSource = new Uri(path, UriKind.Absolute),
