@@ -1201,10 +1201,6 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
-    /// <summary>A cached large preview exists only for files we decoded ourselves (e.g. not-an-image placeholders).</summary>
-    private static bool NeedsCachedPreview(string path) =>
-        AppServices.Thumbnails?.ExistingLargePreviewForPath(path) is not null;
-
     private static BitmapImage? ToStillImage(string? path, bool animateGif = false)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -1224,11 +1220,12 @@ public sealed partial class GalleryStillSurface : UserControl
                 return null;
             }
 
-            // EXR / Radiance / TGA / Clip / non-image: BitmapImage shows blank.
-            if (StillDecode.HandlesPath(path) || NeedsCachedPreview(path))
+            // EXR / Radiance / TGA / Clip / PSD / JXL / non-image: show Palace's
+            // decoded large preview; BitmapImage would be blank or need a codec.
+            var shown = AppServices.Thumbnails is { } thumbs ? thumbs.DisplayPathFor(path) : path;
+            if (!string.Equals(shown, path, StringComparison.OrdinalIgnoreCase))
             {
-                var lg = AppServices.Thumbnails?.ExistingLargePreviewForPath(path);
-                return lg is null ? null : new BitmapImage { UriSource = new Uri(lg, UriKind.Absolute) };
+                return shown is null ? null : new BitmapImage { UriSource = new Uri(shown, UriKind.Absolute) };
             }
 
             return new BitmapImage

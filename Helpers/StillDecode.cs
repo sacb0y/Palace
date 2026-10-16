@@ -11,13 +11,27 @@ public static class StillDecode
     public sealed record Result(byte[]? Bgra, int Width, int Height, byte[]? EncodedImage, bool ToneMapped);
 
     public static bool HandlesPath(string? path) =>
-        PathSafe.IsExr(path) || PathSafe.IsRadiance(path) || PathSafe.IsTga(path) || PathSafe.IsClip(path);
+        PathSafe.IsExr(path) || PathSafe.IsRadiance(path) || PathSafe.IsTga(path) || PathSafe.IsClip(path)
+        || PathSafe.IsPsd(path);
+
+    /// <summary>Above this, a PSD/PSB only yields its embedded thumbnail (composite not loaded).</summary>
+    public const long PsdCompositeMaxBytes = 768L * 1024 * 1024;
 
     public static Result? TryDecodeFile(string path, int maxSide)
     {
         byte[] data;
         try
         {
+            if (PathSafe.IsPsd(path) && new FileInfo(path).Length > PsdCompositeMaxBytes)
+            {
+                // Huge PSB: header + resources only (thumbnail lives there).
+                using var fs = File.OpenRead(path);
+                data = new byte[32 * 1024 * 1024];
+                data = data[..fs.ReadAtLeast(data, data.Length, throwOnEndOfStream: false)];
+                var jpeg = PsdFile.TryExtractThumbnailJpeg(data);
+                return jpeg is null ? null : new Result(null, 0, 0, jpeg, false);
+            }
+
             data = File.ReadAllBytes(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -34,6 +48,21 @@ public static class StillDecode
         {
             var png = ClipFile.TryExtractPreview(data);
             return png is null ? null : new Result(null, 0, 0, png, false);
+        }
+
+        if (PathSafe.IsPsd(ext))
+        {
+            var psd = PsdFile.TryDecodeComposite(data);
+            var thumb = PsdFile.TryExtractThumbnailJpeg(data);
+            if (psd is null || (thumb is not null && IsUniform(psd.Bgra)))
+            {
+                // No / placeholder composite (saved without "Maximize compatibility").
+                return thumb is null ? null : new Result(null, 0, 0, thumb, false);
+            }
+
+            var (pw, ph) = Fit(psd.Width, psd.Height, maxSide);
+            var ppx = pw == psd.Width && ph == psd.Height ? psd.Bgra : BoxScaleBgra(psd.Bgra, psd.Width, psd.Height, pw, ph);
+            return new Result(ppx, pw, ph, null, false);
         }
 
         if (PathSafe.IsTga(ext))
@@ -70,6 +99,20 @@ public static class StillDecode
         }
 
         return rgba is null ? null : FromScrgb(rgba, sw, sh, maxSide);
+    }
+
+    private static bool IsUniform(byte[] bgra)
+    {
+        var first = BitConverter.ToUInt32(bgra, 0);
+        for (var i = 4; i < bgra.Length; i += 4)
+        {
+            if (BitConverter.ToUInt32(bgra, i) != first)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Scale linear scRGB to fit <paramref name="maxSide"/>, then tone map to BGRA8.</summary>

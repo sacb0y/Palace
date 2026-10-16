@@ -110,6 +110,16 @@ public sealed class StillFormatDecodeTests
     }
 
     [Fact]
+    public void Tga_ColorMapped16_NoAttributeBits_IsOpaque()
+    {
+        // 15/16-bit palette entry 0x7C00 = pure red with bit 15 clear; descriptor has 0 alpha bits.
+        var hdr = TgaHeader(1, 1, 1, 8, 0x20, cmapType: 1, cmapLen: 1, cmapBits: 16);
+        var img = TgaFile.TryDecode([.. hdr, 0x00, 0x7C, 0])!;
+        Assert.Equal(255, img.Bgra[3]);
+        Assert.True(img.Bgra[2] > 240);
+    }
+
+    [Fact]
     public void Tga_RejectsGarbage()
     {
         Assert.Null(TgaFile.TryDecode(Encoding.ASCII.GetBytes("this is not a targa file at all")));

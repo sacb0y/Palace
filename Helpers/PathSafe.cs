@@ -72,7 +72,7 @@ public static class PathSafe
             ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff",
             ".avif", ".heic", ".heif",
             ".jxr", ".wdp", ".hdp",
-            ".jxl", ".hdr", ".psd", ".dds",
+            ".jxl", ".hdr", ".psd", ".psb", ".dds",
             ".exr", ".tga", ".ico", ".clip"
         };
 
@@ -113,7 +113,10 @@ public static class PathSafe
         ExtensionEquals(pathOrExt, ".clip");
 
     public static bool IsPsd(string? pathOrExt) =>
-        ExtensionEquals(pathOrExt, ".psd");
+        ExtensionEquals(pathOrExt, ".psd") || ExtensionEquals(pathOrExt, ".psb");
+
+    public static bool IsIco(string? pathOrExt) =>
+        ExtensionEquals(pathOrExt, ".ico");
 
     public static bool IsJxl(string? pathOrExt) =>
         ExtensionEquals(pathOrExt, ".jxl");
