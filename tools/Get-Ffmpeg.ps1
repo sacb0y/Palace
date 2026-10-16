@@ -8,7 +8,7 @@
 #>
 param(
     [string]$Url = 'https://github.com/sacb0y/Palace/releases/download/ffmpeg-8.1.3-palace1/palace-ffmpeg-8.1.3-win64-lgpl.zip',
-    [string]$Sha256 = '__SHA256__'
+    [string]$Sha256 = '8aa1e8f4520e3533cb646221a5a34ff316705712ec9f74ae53d886e9bd9b8484'
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'  # PS 5.1 progress bar makes downloads crawl
