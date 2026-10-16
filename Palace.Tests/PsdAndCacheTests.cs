@@ -83,8 +83,9 @@ public sealed class PsdAndCacheTests
     [Fact]
     public void Psd_Gray16WithAlpha()
     {
-        var gray = new byte[] { 0x80, 0x00, 0xFF, 0xFF };
-        var alpha = new byte[] { 0xFF, 0xFF, 0x40, 0x00 };
+        // Photoshop 16-bit range is 0..32768: 0x4000 = mid grey, 0x8000 = white.
+        var gray = new byte[] { 0x40, 0x00, 0x80, 0x00 };
+        var alpha = new byte[] { 0x80, 0x00, 0x20, 0x00 };
         var img = PsdFile.TryDecodeComposite(Psd(1, 16, 2, 1, [gray, alpha], rle: true))!;
         Assert.Equal(new byte[] { 128, 128, 128, 255, 255, 255, 255, 64 }, img.Bgra);
     }
@@ -139,6 +140,17 @@ public sealed class PsdAndCacheTests
         var r = StillDecode.TryDecode(data, ".psd", 512)!;
         Assert.Null(r.EncodedImage);
         Assert.Equal(new byte[] { 0, 0, 255, 255, 255, 0, 0, 255 }, r.Bgra);
+    }
+
+    [Fact]
+    public void Psd_ThumbnailFoundInTruncatedHugeFile()
+    {
+        // Only header + resources present (the 32 MB head read of a huge PSB).
+        var jpeg = new byte[] { 0xFF, 0xD8, 0xFF, 0xD9 };
+        var full = Psd(3, 8, 64, 64, [new byte[4096], new byte[4096], new byte[4096]], rle: false, resources: ThumbResource(jpeg));
+        var head = full[..(full.Length - 4096 * 3 - 6)];
+        Assert.Equal(jpeg, PsdFile.TryExtractThumbnailJpeg(head));
+        Assert.Null(PsdFile.TryDecodeComposite(head));
     }
 
     [Fact]

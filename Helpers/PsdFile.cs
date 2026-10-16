@@ -21,7 +21,7 @@ public static class PsdFile
     {
         try
         {
-            if (!TryLayout(data, out var l))
+            if (!TryLayout(data, out var l, requireImageData: false))
             {
                 return null;
             }
@@ -188,7 +188,8 @@ public static class PsdFile
     private static byte Sample(byte[] plane, int i, int depth, int w) => depth switch
     {
         8 => plane[i],
-        16 => plane[i * 2],
+        // Photoshop 16-bit is 0..32768 (0x8000 = white).
+        16 => (byte)Math.Min(255, (BinaryPrimitives.ReadUInt16BigEndian(plane.AsSpan(i * 2)) * 255 + 16384) / 32768),
         32 => ToSrgbByte(BinaryPrimitives.ReadSingleBigEndian(plane.AsSpan(i * 4))),
         _ => 0
     };
@@ -236,7 +237,7 @@ public static class PsdFile
         bool IsPsb, int Channels, int Height, int Width, int Depth, int Mode,
         int ColorModeStart, int ColorModeLength, int ResourcesStart, int ResourcesLength, int ImageDataStart);
 
-    private static bool TryLayout(ReadOnlySpan<byte> data, out Layout layout)
+    private static bool TryLayout(ReadOnlySpan<byte> data, out Layout layout, bool requireImageData = true)
     {
         layout = default;
         if (data.Length < 26 || !IsPsd(data))
@@ -257,6 +258,18 @@ public static class PsdFile
         var resLen = (int)BinaryPrimitives.ReadUInt32BigEndian(data[p..]);
         var resStart = p + 4;
         p = resStart + resLen;
+        if (!requireImageData)
+        {
+            // Thumbnail-only read of a huge PSB: header + resources are enough.
+            if (channels is < 1 or > 56 || w <= 0 || h <= 0 || cmLen < 0 || resLen < 0 || p > data.Length)
+            {
+                return false;
+            }
+
+            layout = new Layout(psb, channels, h, w, depth, mode, cmStart, cmLen, resStart, resLen, -1);
+            return true;
+        }
+
         long lmLen = psb ? (long)BinaryPrimitives.ReadUInt64BigEndian(data[p..]) : BinaryPrimitives.ReadUInt32BigEndian(data[p..]);
         p += psb ? 8 : 4;
         var imageStart = p + lmLen;
