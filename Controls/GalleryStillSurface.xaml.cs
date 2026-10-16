@@ -1201,6 +1201,10 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
+    /// <summary>A cached large preview exists only for files we decoded ourselves (e.g. not-an-image placeholders).</summary>
+    private static bool NeedsCachedPreview(string path) =>
+        AppServices.Thumbnails?.ExistingLargePreviewForPath(path) is not null;
+
     private static BitmapImage? ToStillImage(string? path, bool animateGif = false)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -1218,6 +1222,13 @@ public sealed partial class GalleryStillSurface : UserControl
             if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
             {
                 return null;
+            }
+
+            // EXR / Radiance / TGA / Clip / non-image: BitmapImage shows blank.
+            if (StillDecode.HandlesPath(path) || NeedsCachedPreview(path))
+            {
+                var lg = AppServices.Thumbnails?.ExistingLargePreviewForPath(path);
+                return lg is null ? null : new BitmapImage { UriSource = new Uri(lg, UriKind.Absolute) };
             }
 
             return new BitmapImage

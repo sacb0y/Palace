@@ -599,7 +599,7 @@ public sealed class HdrFileTests
         Assert.True(PathSafe.IsAvif(".avif"));
         Assert.Equal(AssetKind.Image, PathSafe.KindFromExt(".avif"));
         Assert.True(PathSafe.IsCatalogExt(".jxl"));
-        Assert.False(PathSafe.IsCatalogExt(".exr"));
+        Assert.True(PathSafe.IsCatalogExt(".exr"));
     }
 
     [Fact]

@@ -65,6 +65,11 @@
     <Compile Include="..\Helpers\MediaCache.cs" Link="MediaCache.cs" />
     <Compile Include="..\Helpers\CatalogStore.cs" Link="CatalogStore.cs" />
     <Compile Include="..\Helpers\TagPortable.cs" Link="TagPortable.cs" />
+    <Compile Include="..\Helpers\ToneMap.cs" Link="ToneMap.cs" />
+    <Compile Include="..\Helpers\TgaFile.cs" Link="TgaFile.cs" />
+    <Compile Include="..\Helpers\ExrFile.cs" Link="ExrFile.cs" />
+    <Compile Include="..\Helpers\ClipFile.cs" Link="ClipFile.cs" />
+    <Compile Include="..\Helpers\StillDecode.cs" Link="StillDecode.cs" />
     <Compile Include="..\Helpers\WicNative.cs" Link="WicNative.cs" />
     <Compile Include="..\Models\Entities.cs" Link="Entities.cs" />
     <Compile Include="..\Models\Enums.cs" Link="Enums.cs" />

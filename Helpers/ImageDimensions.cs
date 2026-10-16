@@ -12,6 +12,13 @@ internal static class ImageDimensions
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            if (PathSafe.IsTga(path))
+            {
+                // TGA has no magic; trust the extension.
+                Span<byte> hdr = stackalloc byte[18];
+                return stream.Read(hdr) == 18 ? TgaFile.TryReadSize(hdr) : null;
+            }
+
             return TryRead(stream);
         }
         catch
@@ -71,6 +78,15 @@ internal static class ImageDimensions
         if (AvifFile.IsHeif(buf[..n]))
         {
             return AvifFile.TryReadSize(stream);
+        }
+
+        if (ExrFile.IsExr(buf[..n]))
+        {
+            stream.Position = 0;
+            var take = (int)Math.Min(stream.Length, 64 * 1024);
+            var exr = new byte[take];
+            var read = stream.Read(exr, 0, take);
+            return ExrFile.TryReadSize(exr.AsSpan(0, read));
         }
 
         if (RadianceFile.IsRadiance(buf[..n]))

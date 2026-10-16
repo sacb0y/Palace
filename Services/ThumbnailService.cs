@@ -2,6 +2,7 @@ using Palace.Helpers;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.FileProperties;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Storage.Streams;
 
 namespace Palace.Services;
@@ -101,6 +102,15 @@ public sealed class ThumbnailService
             return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0);
         }
 
+        if (kind == Models.AssetKind.Image)
+        {
+            var custom = await TryCustomStillThumbAsync(filePath, dest, hash).ConfigureAwait(false);
+            if (custom is not null)
+            {
+                return custom;
+            }
+        }
+
         if (GalleryMedia.UsesShellThumbnail(kind, filePath))
         {
             return await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
@@ -190,7 +200,7 @@ public sealed class ThumbnailService
         }
     }
 
-    private async Task<ThumbnailInfo?> EncodeScaledJpegAsync(IRandomAccessStream stream, string dest, string hash)
+    private async Task<ThumbnailInfo?> EncodeScaledJpegAsync(IRandomAccessStream stream, string dest, string hash, int maxSide = MaxSide)
     {
         var decoder = await BitmapDecoder.CreateAsync(stream);
         var width = decoder.PixelWidth;
@@ -200,7 +210,7 @@ public sealed class ThumbnailService
             return null;
         }
 
-        var scale = Math.Min(MaxSide / (double)width, MaxSide / (double)height);
+        var scale = Math.Min(maxSide / (double)width, maxSide / (double)height);
         scale = Math.Min(scale, 1.0);
         var tw = Math.Max(1u, (uint)Math.Round(width * scale));
         var th = Math.Max(1u, (uint)Math.Round(height * scale));
@@ -229,6 +239,159 @@ public sealed class ThumbnailService
         return written is { } size
             ? new ThumbnailInfo(dest, size.Width, size.Height)
             : new ThumbnailInfo(dest, (int)width, (int)height);
+    }
+
+    /// <summary>Side of the cached full-view JPEG for stills Windows cannot show.</summary>
+    public const int LargePreviewMaxSide = 2048;
+
+    /// <summary>
+    /// Cached full-view JPEG for EXR / Radiance / TGA / Clip / non-image
+    /// stills that <c>BitmapImage</c> cannot decode. Keyed by path, size and
+    /// mtime so the gallery can resolve it without the content hash.
+    /// </summary>
+    public string? ExistingLargePreviewForPath(string? filePath)
+    {
+        var path = LargePreviewPathFor(filePath);
+        return path is not null && File.Exists(path) ? path : null;
+    }
+
+    private string? LargePreviewPathFor(string? filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var info = new FileInfo(filePath);
+            var key = $"{filePath.ToUpperInvariant()}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+            var digest = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(key)));
+            return PathForHash("p" + digest, LargePreviewSuffix);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Custom still paths: EXR / Radiance / TGA / Clip decoders, HDR stills
+    /// tone-mapped from scRGB (WinRT unorm decode shows HDR PNG/JXR/AVIF as
+    /// clipped red), and a placeholder tile for files that are not images.
+    /// Returns null to fall through to the WinRT / shell thumbnail.
+    /// </summary>
+    private async Task<ThumbnailInfo?> TryCustomStillThumbAsync(string filePath, string dest, string hash)
+    {
+        try
+        {
+            byte[] head;
+            await using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                head = new byte[64];
+                var n = await fs.ReadAsync(head).ConfigureAwait(false);
+                Array.Resize(ref head, n);
+            }
+
+            var ext = PathSafe.Extension(filePath);
+            if (StillDecode.IsNotAnImage(head, ext))
+            {
+                var ph = StillDecode.Placeholder();
+                await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
+                await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
+                return Finish(dest, ph.Width, ph.Height);
+            }
+
+            if (StillDecode.HandlesPath(filePath))
+            {
+                var large = await Task.Run(() => StillDecode.TryDecodeFile(filePath, LargePreviewMaxSide)).ConfigureAwait(false);
+                if (large is null)
+                {
+                    var ph = StillDecode.Placeholder();
+                    await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
+                    return Finish(dest, ph.Width, ph.Height);
+                }
+
+                if (large.EncodedImage is { } encoded)
+                {
+                    // Clip Studio canvas preview (PNG) — let WinRT decode it.
+                    using var ras = new InMemoryRandomAccessStream();
+                    await ras.WriteAsync(encoded.AsBuffer());
+                    ras.Seek(0);
+                    var lgPath = LargePreviewPathFor(filePath);
+                    if (lgPath is not null)
+                    {
+                        await EncodeScaledJpegAsync(ras, lgPath, hash, LargePreviewMaxSide).ConfigureAwait(false);
+                        ras.Seek(0);
+                    }
+
+                    return await EncodeScaledJpegAsync(ras, dest, hash).ConfigureAwait(false);
+                }
+
+                await EncodeBgraJpegAsync(large.Bgra!, large.Width, large.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
+                var (tw, th) = StillDecode.Fit(large.Width, large.Height, MaxSide);
+                var small = tw == large.Width && th == large.Height
+                    ? large.Bgra!
+                    : StillDecode.BoxScaleBgra(large.Bgra!, large.Width, large.Height, tw, th);
+                await EncodeBgraJpegAsync(small, tw, th, dest).ConfigureAwait(false);
+                return Finish(dest, tw, th);
+            }
+
+            var probe = HdrFile.ProbePath(filePath);
+            if (probe.IsHdr && probe.Kind != HdrKind.UltraHdrJpeg)
+            {
+                var frame = await HdrWicDecode.TryLoadAsync(filePath, probe, MaxSide, MaxSide, ImageScaling.Fit, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (frame is not null && frame.Width > 0 && frame.Height > 0)
+                {
+                    var r = await Task.Run(() => StillDecode.FromScrgb(frame.ScrgbRgba, frame.Width, frame.Height, MaxSide)).ConfigureAwait(false);
+                    await EncodeBgraJpegAsync(r.Bgra!, r.Width, r.Height, dest).ConfigureAwait(false);
+                    return Finish(dest, r.Width, r.Height);
+                }
+            }
+        }
+        catch
+        {
+            // Fall back to WinRT / shell thumbnail.
+        }
+
+        return null;
+    }
+
+    private ThumbnailInfo Finish(string dest, int w, int h)
+    {
+        TouchLastAccess(dest);
+        EnforceCacheBudget();
+        return new ThumbnailInfo(dest, w, h);
+    }
+
+    private async Task EncodeBgraJpegAsync(byte[] bgra, int width, int height, string? dest)
+    {
+        if (dest is null)
+        {
+            return;
+        }
+
+        // JPEG has no alpha: composite straight alpha over the dark tile colour.
+        var flat = new byte[bgra.Length];
+        for (var i = 0; i < bgra.Length; i += 4)
+        {
+            var a = bgra[i + 3];
+            for (var c = 0; c < 3; c++)
+            {
+                flat[i + c] = (byte)((bgra[i + c] * a + 32 * (255 - a) + 127) / 255);
+            }
+
+            flat[i + 3] = 255;
+        }
+
+        Directory.CreateDirectory(_root);
+        var folder = await StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(dest)!);
+        var outFile = await folder.CreateFileAsync(Path.GetFileName(dest), CreationCollisionOption.ReplaceExisting);
+        using var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite);
+        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
+        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, (uint)width, (uint)height, 96, 96, flat);
+        await encoder.FlushAsync();
     }
 
     private ThumbnailInfo? ReadCached(string hash, string? suffix = null)
