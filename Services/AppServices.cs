@@ -38,8 +38,12 @@ public static class AppServices
         var settingsRoot = CatalogStore.ParsePath(
             ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey]);
         var dbPath = CatalogStore.ResolveDbPath(LocalRoot, settingsRoot);
-        ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey] =
-            CatalogStore.ActiveRoot ?? "";
+        // Don't overwrite the saved root with a fallback; the next launch should retry it.
+        if (CatalogStore.FallbackReason is null)
+        {
+            ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey] =
+                CatalogStore.ActiveRoot ?? "";
+        }
         // Custom cache drive may be unplugged — fall back to LocalFolder thumbs.
         MediaCache.EnsureRoots(LocalRoot, out var thumbs, out _);
 

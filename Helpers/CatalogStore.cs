@@ -136,17 +136,24 @@ public static class CatalogStore
             DefaultRoot()
         };
 
+        var preferredFailed = false;
         foreach (var root in candidates.Where(r => !string.IsNullOrEmpty(r)).Distinct(StringComparer.OrdinalIgnoreCase))
         {
             if (TryPrepareRoot(root!, localStateRoot, out var dbPath, out var reason))
             {
                 ActiveRoot = root;
                 ActiveDbPath = dbPath;
-                WritePointer(root!);
+                // Only persist the pointer when the preferred root opened. If a custom
+                // root failed (unplugged drive), keep the pointer so the next launch retries it.
+                if (!preferredFailed)
+                {
+                    WritePointer(root!);
+                }
                 return dbPath!;
             }
 
             FallbackReason = reason;
+            preferredFailed = true;
         }
 
         // Last resort: LocalState (legacy). Still writable after unregister wipe.
