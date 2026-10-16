@@ -106,6 +106,7 @@ cp "$WORK/dav1d-${DAV1D_VER}/COPYING" "$PKG/LICENSE-dav1d.txt"
 cp "$HERE/build-ffmpeg.sh" "$PKG/build-ffmpeg.sh"
 ZIP="$OUT/palace-ffmpeg-${FFMPEG_VER}-win64-lgpl.zip"
 rm -f "$ZIP"
+export TZ=UTC  # zip stores local-time DOS stamps: pin the zone so the hash is stable
 find "$PKG" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
 (cd "$PKG" && find . -type f | LC_ALL=C sort | zip -X -q -@ "$ZIP")
 (cd "$OUT" && sha256sum "$(basename "$ZIP")" | tee "$(basename "$ZIP").sha256")
