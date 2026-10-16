@@ -5,7 +5,7 @@ namespace Palace.Services;
 
 /// <summary>
 /// Video poster frames without system codecs: runs a bundled LGPL ffmpeg
-/// (<c>ffmpeg\ffmpeg.exe</c> next to Palace.exe, fetched by
+/// (<c>ffmpeg\ffmpeg.exe</c> next to Palace.exe: slim static LGPL build from tools/build-ffmpeg.sh, fetched on build by
 /// <c>tools/Get-Ffmpeg.ps1</c>) when the shell/Media Foundation can't make a
 /// thumbnail (e.g. MKV with H.264 4:4:4, WebM VP9/AV1 without the Store
 /// extensions). Never runs for online-only files; output only goes to the
