@@ -1,0 +1,37 @@
+---
+description: "Cloud files: On-Demand and API sources, never download/hydrate originals except explicit Open"
+globs: Services/Cloud/**,Services/CloudAccountService.cs,Services/HydrationService.cs,Services/HashService.cs,Services/ScanService.cs,Services/ThumbnailService.cs,Services/AccessService.cs,Helpers/CloudFile.cs,Helpers/CloudSourcePath.cs,Helpers/ScanContent.cs,Helpers/GenerationFields.cs,Helpers/PreviewPersist.cs,Helpers/MediaCache.cs,Pages/SettingsPage.*
+alwaysApply: false
+---
+
+## Cloud files — do not download the original
+
+Two source kinds:
+
+1. **Local + Files On-Demand** (OneDrive/Dropbox sync folders added with the normal folder picker).
+2. **API sources** (`SourceKind.OneDrive` / `Dropbox`) after Settings → Connect. Connect opens the cloud-folder picker for the **current project**. Index via Graph / Dropbox `list_folder`. Store `CloudItemId` (`SourceFolder.CloudRootItemId`) + display path (`CloudSourcePath.Build`). Path stays UNIQUE across projects.
+
+Detect On-Demand with `CloudFile.IsOnlineOnly` (`File.GetAttributes` only — not `File.Exists`, never a stream): `RecallOnDataAccess` (`0x00400000`) and `RecallOnOpen` mean hydrate-on-read. `FILE_ATTRIBUTE_PINNED` is local. **Dropbox** Files On-Demand placeholders are `SparseFile` + `ReparsePoint` and often omit Recall bits — those are online-only (`ScanContent.MayReadOriginal` is false). Hydrated OneDrive/Dropbox files keep `ReparsePoint` and may still show leftover `Offline` **without** Sparse — those are local and must be hashed/thumbnailed normally. Bare `Offline` (legacy HSM, or tests that stamp `FILE_ATTRIBUTE_OFFLINE`) is online-only. `CloudFile.IsCloudBacked` is the file badge signal (Recall / Pinned / Unpinned / Offline / Reparse / Sparse). `CloudFile.IsCloudBackedFolder` is the same signals on a **source root** (directories are not `IsCloudBacked`). Stamp tile `IsCloudBacked` with `GalleryMedia.StampIsCloudBacked` / `SourceFolderIsCloud` (API `SourceKind` or On-Demand root) plus the file flags — not only `IsOnlineOnly`. Use `CloudFile.Exists` / `TryGetAttributes` on user asset paths so placeholders are visible. `ImageDimensions.TryRead` refuses online-only paths. `HashService.HashFileAsync` is local files and explicit Open hydration only — never a cloud-vs-local probe, and never scan-on-placeholder.
+
+On scan, if online-only:
+
+- Do **not** `HashFileAsync`, metadata `Extract`, `BitmapDecoder`, or `ImageDimensions.TryRead` on the original.
+- Identity: `HashService.CloudStubHash` (`cloud:` + path/size/mtime) until the file is local.
+- Set `Asset.IsOnlineOnly`. `FileInfo.Length` / last-write are safe.
+- Do **not** generate thumbs (`GetThumbnailAsync` / `EnsureThumbnailAsync` / WIC `Open` + `BitmapDecoder`). Dropbox/OneDrive provider thumbs — especially AVIF/HEIF — still open the original. Leave no JPEG — mosaic and preview show a kind **icon tile** (`ShowCloudTile` / `ShowPlaceholderTile`), not a blank image. Mosaic must **not** request thumbs for online-only (`ShouldRequestMosaicThumb` is false when `IsOnlineOnly`). `.avif` / `.heic` / `.heif` / `.psd` are catalog stills (`PathSafe.ImageExt`) but thumbs never `Open` the original: local video/AVIF/HEIC/PSD use `GetThumbnailAsync` only; if that fails, no JPEG. Never `GetThumbnailAsync` on online-only placeholders (HEIF handlers recall Dropbox). `ShouldRegenerate` / `UpgradeThumbsAsync` never `ImageDimensions.TryRead` / `AvifFile` the original (size-only `AvifFile.TryReadSize` stops at `ispe`). Cache JPEGs only under the media cache thumbs root (`ThumbFileName` / `MediaCache.ResolveThumbsRoot`), never beside the source. Library / Tags tiles show a Fluent `Cloud` badge (`ShowCloudBadge` / `IcnCloudBadge_`) on On-Demand, API, and hydrated cloud copies so a local-looking JPEG still reads as cloud. Kind badges (`ShowVideoBadge` / `ShowGifBadge` / `ShowHdrBadge`, `IcnVideoBadge_` / `IcnGifBadge_` / `IcnHdrBadge_`) skip folder headers. HDR is catalog `Asset.IsHdr` (scan/hydrate header probe when `MayReadOriginal`) or Radiance `.hdr` on the row — mosaic `ToItem` never `HdrFile.ProbePath` / Open. Online-only / API rescan must keep a prior `IsHdr` (`CatalogHdrFromHeader` existing flag) so the badge does not vanish until the next Open.
+- Watchers skip non-`Local` sources. Local + On-Demand folders still watch; `IndexFileAsync` must use `ScanContent` so a Created placeholder does not hash.
+
+GIF overlay scrub (`GifFrames.TryRead` / `TryRenderFrame`) opens the original only when `CanScrub` is true (hydrated local `.gif`). Do not parse or composite On-Demand placeholders.
+
+Hydrate **only** on explicit Open (Library overlay / new window / Gallery). `HydrationService.HydrateAfterOpenAsync` fully reads the original first when it is still online-only **and** larger than 32MB (`HashService.RecallFullyAsync`) — prefix-hash only reads 8MB and would leave recall flags set. Then re-hash, extract, replace the stub thumb. Do not apply empty Extract over existing Prompt/Model while still online-only. The inverse leak is the details pane: empty catalog/Extract must replace prior Prompt/Model (`GenerationFields.ForPreview`); hide Generation / Prompt / Negative / Seed when `HasAny` is false (`ShowGeneration`). `LoadPreviewAsync` uses `_previewEpoch` and clears those fields before the catalog await so a late AI fetch cannot stick. Overlay chrome owns generation; do not call `LoadPreviewAsync` from `OverlayGallery` while `Current` is still null. `PreviewPersist.ShouldWriteNotes` blocks `ClearPreview` and apply from persisting empty notes/rating onto `SelectedAsset`. Preview uses `GalleryMedia.CanShowPreview` (local hydrated file or remote URL), not a non-empty catalog Path. Catalog `IsOnlineOnly` is stale after hydration — `GalleryMedia.IsLiveOnlineOnly` lets a showable original win so the details pane uses the file (and video play) instead of the thumb / Online tile. API-only items use a provider large preview URL, not the original, unless the user chooses Download or Open in Explorer.
+
+Clipboard copy must not recall files:
+
+```csharp
+var paths = AccessService.FilterCopyPaths(targets.Select(t => t.Path), out var skipped);
+if (skipped > 0) Notify(AccessService.OnlineOnlyCopyWarning);
+```
+
+`File.Move` of a placeholder usually stays a placeholder — organize may keep working.
+
+Settings Connect smoke IDs (no live OAuth in `ui-tests.ps1`): `BtnConnectOneDrive`, `BtnConnectDropbox`, `BtnAddOneDriveFolder`, `BtnAddDropboxFolder`, `TxtCloudRedirectUri`. Cache: `TglMediaCache` / `SldMediaCacheMaxMb` / `TxtMediaCacheMaxMb` / `TxtMediaCacheUsage` / `TxtMediaCachePath` / `BtnPickCacheFolder` / `BtnResetCacheFolder` / `BtnClearCache`. About: `TxtAppVersion`, `LstShortcuts`, `TxtShortcutActual` / `TxtShortcutFit` / `TxtShortcutFill` / `TxtShortcutInfo` / `TxtShortcutDetails` / `TxtShortcutSpace` / `TxtShortcutEsc`. Capability: `internetClient`.
