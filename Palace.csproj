@@ -112,10 +112,12 @@
   <Target Name="PalaceFetchFfmpeg" BeforeTargets="AssignTargetPaths" Condition="'$(PalaceBundleFfmpeg)' == 'true'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\Get-Ffmpeg.ps1&quot;" />
     <ItemGroup>
-      <Content Include="$(PalaceFfmpegDir)bin\ffmpeg.exe;$(PalaceFfmpegDir)LICENSE.txt;$(PalaceFfmpegDir)LICENSE-dav1d.txt;$(PalaceFfmpegDir)SOURCE.txt">
-        <Link>ffmpeg\%(Filename)%(Extension)</Link>
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
+      <!-- Explicit Links: %(Filename) inside a target would batch over every Content item. -->
+      <Content Remove="$(PalaceFfmpegDir)**" />
+      <Content Include="$(PalaceFfmpegDir)bin\ffmpeg.exe" Link="ffmpeg\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" />
+      <Content Include="$(PalaceFfmpegDir)LICENSE.txt" Link="ffmpeg\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+      <Content Include="$(PalaceFfmpegDir)LICENSE-dav1d.txt" Link="ffmpeg\LICENSE-dav1d.txt" CopyToOutputDirectory="PreserveNewest" />
+      <Content Include="$(PalaceFfmpegDir)SOURCE.txt" Link="ffmpeg\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 </Project>
