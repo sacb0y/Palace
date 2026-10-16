@@ -531,6 +531,24 @@ public partial class SettingsViewModel : ObservableObject
 
             var json = await FileIO.ReadTextAsync(file);
             var plan = await _catalog.ImportTagsJsonAsync(json);
+            // Imported implications apply to assets that already carry the source tag.
+            if (plan.Implications.Count > 0)
+            {
+                var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var tag in await _catalog.GetTagsAsync())
+                {
+                    idByName.TryAdd(tag.Name, tag.Id);
+                }
+
+                foreach (var name in plan.Implications.Select(e => e.ParentName).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (idByName.TryGetValue(name, out var sourceId))
+                    {
+                        await _catalog.BackfillImplicationAddedAsync(sourceId);
+                    }
+                }
+            }
+
             await AppServices.Tags.RefreshAsync();
             StatusText = "Imported tags. " + plan.Summary;
         });
