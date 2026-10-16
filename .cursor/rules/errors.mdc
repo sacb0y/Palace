@@ -1,0 +1,15 @@
+---
+description: "Error handling: log and Notify, never crash"
+globs: App.xaml.cs,Helpers/Error*.cs,Helpers/LoadGate.cs,MainWindow.xaml.cs,ViewModels/**,Pages/**
+alwaysApply: false
+---
+
+## Errors — log and Notify, do not crash
+
+Unhandled and command failures must stay recoverable.
+
+- `App` installs `Application.UnhandledException`, `TaskScheduler.UnobservedTaskException`, and `AppDomain.UnhandledException` in the constructor. Non-fatal UI faults set `e.Handled = true`, append to LocalFolder `error-log.txt` (beside `startup-error.txt`), and show `InfAppError` via `MainWindow.ShowError`. Unobserved tasks are observed and logged without spamming the InfoBar. Fatal corruption (`OutOfMemoryException`, `AccessViolationException`, `AppDomainUnloadedException`) is logged only and not swallowed.
+- Startup failures still write `startup-error.txt`, also append via `ErrorReporter`, and call `ShowStartupFailure` instead of rethrowing (keeps the window alive with a paused spinner).
+- Shared policy lives in `Helpers/ErrorReporter.cs` (no WinUI). `OperationCanceledException` / `TaskCanceledException` (and aggregates that are only those) are **not** errors — no log, no Notify. Wire `ErrorReporter.RunAsync` / `Run` around RelayCommand `Task` methods and `async void` handlers (Tags color/star, cloud-folder picker, Rooms `OnNavigatedFrom`, Settings source property saves, etc.). Prefer the page/VM `Notify` when one exists; otherwise the global presenter.
+- `ErrorLog` is append-only, size-capped (~512 KB with one `.1` rotation). `ErrorThrottle` drops repeat unhandled keys inside a short window so a faulting layout pass cannot flood the log or InfoBar.
+- `Palace.Tests` covers `ErrorReporter` / `ErrorLog` / `ErrorThrottle` (linked compile, off WinUI). Do not put WinRT types in those helpers.

@@ -1,0 +1,14 @@
+---
+description: "Catalog / SQLite: schema migrations, SQL fragments, PalaceDb async gating, cloud token storage"
+globs: Data/**,Services/CatalogService.cs,Services/ScanService.cs,Services/CloudAccountService.cs,Services/Cloud/**,Helpers/MosaicSortOrder.cs
+alwaysApply: false
+---
+
+`SourceFolder.AccessToken` is the **FutureAccessList** token. Do not store OAuth there. Cloud OAuth lives in `PasswordVault` via `CloudTokenStore`. App IDs (`OneDriveClientId`, `DropboxAppKey`) live in LocalSettings — no hardcoded secrets.
+
+Schema: add cloud columns (`EnsureCloudColumns`) **before** indexes that mention them (`IX_Asset_CloudItem`). Add `Asset.IsHdr` (`EnsureColumn`) for mosaic HDR badges. SQL fragment constants that are concatenated (`SelectSourceSql + " WHERE …"`) must end with a newline or space — `"""WHERE` became `SourceFolderWHERE` and crashed launch.
+
+DB access and folder-query rules (also in library-ui.mdc):
+
+- DB access: `PalaceDb.ReadAsync` / `WriteAsync` run the work on a thread-pool thread (`Task.Run`) while holding the single-connection gate, so `CatalogService` queries never execute on the UI thread. They take an optional `CancellationToken` (cancels the gate wait / a not-yet-started run, not work already inside SQLite). There is no sync `Read` / `Write` — never block on the gate. The `work` lambda runs off the UI thread: no `UiDispatch`, XAML, or `ObservableObject` mutation inside it, and no nested `ReadAsync` / `WriteAsync` (deadlock on the gate). Callers resume on their own context, so UI mutations after an await still go through `UiDispatch` when you are on a background thread.
+- Folder browse: `GetAssetsAsync(folderPrefix:)` — do not load the whole project and filter in process. Folder grouping (source or nested prefix) runs on that prefix result (`FolderGroups`), not a whole-catalog in-process filter. Mosaic sort is the same query’s `ORDER BY` (`MosaicSortOrder.OrderBySql`); all-library and tag-browse mosaics also re-query instead of sorting `_allAssets` in process.
