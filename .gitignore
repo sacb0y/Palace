@@ -76,3 +76,6 @@ test-screenshot.png
 # Exclusive packaged-run lock (agents)
 palace-app.lock
 palace-app.lock.holder
+
+# Fetched by tools/Get-Ffmpeg.ps1 (large, not committed)
+ThirdParty/ffmpeg/

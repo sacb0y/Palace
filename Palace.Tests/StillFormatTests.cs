@@ -8,7 +8,7 @@ namespace Palace.Tests;
 public sealed class StillFormatTests
 {
     [Fact]
-    public void PathSafe_IndexesSkivStills_NotExr()
+    public void PathSafe_IndexesSkivStillsAndExr()
     {
         foreach (var ext in new[]
                  {
@@ -20,8 +20,9 @@ public sealed class StillFormatTests
             Assert.Equal(AssetKind.Image, PathSafe.KindFromExt(ext));
         }
 
-        Assert.False(PathSafe.IsCatalogExt(".exr"));
-        Assert.False(PathSafe.IsCatalogExt(".tga"));
+        Assert.True(PathSafe.IsCatalogExt(".exr"));
+        Assert.True(PathSafe.IsCatalogExt(".tga"));
+        Assert.False(PathSafe.IsCatalogExt(".txt"));
         Assert.True(PathSafe.IsHeif(".heic"));
         Assert.True(PathSafe.IsRadiance(@"D:\a.hdr"));
         Assert.True(PathSafe.IsPsd(".psd"));

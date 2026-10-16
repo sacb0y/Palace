@@ -257,6 +257,26 @@ public sealed class CatalogStoreTests
         }
     }
 
+    [Theory]
+    [InlineData(CatalogStore.ReleasePackageName, false)]
+    [InlineData("c20a7629-6bde-449f-958a-5aaf8bce88f3", false)]
+    [InlineData("PalaceSxsTest.Grok", true)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsolatedDataDirFor_OnlyNonReleasePackagesAreIsolated(string? name, bool isolated)
+    {
+        var local = Path.Combine(Path.GetTempPath(), "pkg-local");
+        var dir = CatalogStore.IsolatedDataDirFor(name, local);
+        if (isolated)
+        {
+            Assert.Equal(Path.Combine(local, "palace-data"), dir);
+        }
+        else
+        {
+            Assert.Null(dir);
+        }
+    }
+
     private static void MakeDb(string path, string marker, int pad = 0)
     {
         using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
