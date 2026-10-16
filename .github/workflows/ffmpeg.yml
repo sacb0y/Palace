@@ -1,8 +1,9 @@
 name: ffmpeg (slim LGPL build)
 
-# Builds the slim LGPL ffmpeg.exe Palace bundles and publishes it as a release
-# asset (tag ffmpeg-<ver>-palace<N>). Bump RELEASE_TAG (and the pin in
-# tools/Get-Ffmpeg.ps1) when tools/build-ffmpeg.sh changes.
+# Builds the slim LGPL ffmpeg.exe Palace bundles. Every run uploads a workflow
+# artifact; only main (or a deliberate manual dispatch) publishes the release
+# asset (tag ffmpeg-<ver>-palace<N>) that tools/Get-Ffmpeg.ps1 pins by SHA-256.
+# Bump RELEASE_TAG (and the pin) when tools/build-ffmpeg.sh changes.
 on:
   workflow_dispatch:
   push:
@@ -29,7 +30,8 @@ jobs:
         with:
           name: palace-ffmpeg
           path: out/*
-      - name: Publish release (once per tag; never overwritten)
+      - name: Publish release (main / manual only; once per tag, never overwritten)
+        if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
