@@ -189,7 +189,9 @@ public partial class SettingsViewModel : ObservableObject
             ? $"Preferred catalog folder unavailable ({reason}). Using a fallback catalog for this session; changes made now stay there and Palace will retry the preferred folder next launch."
             : CatalogStore.MigratedFromLocalState
                 ? "Catalog was moved out of package LocalState so unregister will not wipe it."
-                : "";
+                : CatalogStore.UnmergedLocalStateBackup is { } unmerged
+                    ? $"Package LocalState also had a catalog; it was not merged. A copy is kept at {unmerged}."
+                    : "";
     }
 
     partial void OnSelectedThemeChanged(string value)
