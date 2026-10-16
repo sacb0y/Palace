@@ -551,7 +551,12 @@ public sealed class CatalogService
             var plan = TagPortable.PlanMerge(existing, memberships, implications, document);
 
             // Apply creates first so name→id resolves to real SQLite ids.
-            var idByName = existing.ToDictionary(t => t.Name, t => t.Id, StringComparer.OrdinalIgnoreCase);
+            // Tag.Name isn't unique; first match wins instead of throwing on duplicates.
+            var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in existing)
+            {
+                idByName.TryAdd(t.Name, t.Id);
+            }
             foreach (var create in plan.Creates)
             {
                 var tag = InsertTag(conn, create.Name, create.Priority);
