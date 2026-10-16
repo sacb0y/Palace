@@ -342,7 +342,7 @@ public static class CatalogStore
         }
     }
 
-    /// <summary>True when the catalog has any assets, tags or watched folders. Errors count as data (never discard).</summary>
+    /// <summary>True when the catalog has assets, watched folders, tag assignments/implications, or non-seed tags. Errors count as data (never discard).</summary>
     public static bool HasUserData(string dbPath)
     {
         try
@@ -350,7 +350,17 @@ public static class CatalogStore
             using var conn = new SqliteConnection(new SqliteConnectionStringBuilder
                 { DataSource = dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
             conn.Open();
-            foreach (var table in new[] { "Asset", "Tag", "SourceFolder" })
+            // PalaceDb.SeedDefaults inserts these on every fresh catalog; they are not user data.
+            const string seededTags = "'Subject','Character','Clothing','Shot','Style','Prompt'";
+            var probes = new (string Table, string Sql)[]
+            {
+                ("Asset", "SELECT EXISTS(SELECT 1 FROM Asset)"),
+                ("SourceFolder", "SELECT EXISTS(SELECT 1 FROM SourceFolder)"),
+                ("AssetTag", "SELECT EXISTS(SELECT 1 FROM AssetTag)"),
+                ("TagImplication", "SELECT EXISTS(SELECT 1 FROM TagImplication)"),
+                ("Tag", $"SELECT EXISTS(SELECT 1 FROM Tag WHERE Name NOT IN ({seededTags}))")
+            };
+            foreach (var (table, sql) in probes)
             {
                 using var exists = conn.CreateCommand();
                 exists.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $n";
@@ -361,7 +371,7 @@ public static class CatalogStore
                 }
 
                 using var any = conn.CreateCommand();
-                any.CommandText = $"SELECT EXISTS(SELECT 1 FROM {table})";
+                any.CommandText = sql;
                 if (Convert.ToInt64(any.ExecuteScalar()) != 0)
                 {
                     return true;

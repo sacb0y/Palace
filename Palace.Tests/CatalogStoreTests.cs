@@ -176,10 +176,10 @@ public sealed class CatalogStoreTests
         {
             var localDb = Path.Combine(local, CatalogStore.DbFileName);
             MakeDb(localDb, "local", pad: 64_000);
-            Exec(localDb, "CREATE TABLE Tag(Id TEXT); INSERT INTO Tag VALUES ('t1');");
+            Exec(localDb, "CREATE TABLE Tag(Id TEXT, Name TEXT); INSERT INTO Tag VALUES ('t1', 'Alice');");
             var durableDb = Path.Combine(durable, CatalogStore.DbFileName);
             MakeDb(durableDb, "durable");
-            Exec(durableDb, "CREATE TABLE Tag(Id TEXT);");
+            Exec(durableDb, "CREATE TABLE Tag(Id TEXT, Name TEXT); INSERT INTO Tag VALUES ('s1', 'Subject'), ('s2', 'Prompt');");
 
             var resolved = CatalogStore.ResolveDbPath(local, settingsRoot: null, overrideRoot: durable);
             Assert.True(CatalogStore.MigratedFromLocalState);
