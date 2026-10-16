@@ -31,7 +31,7 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 | Animated | `.gif` |
 | Video | `.mp4` `.mov` `.mkv` `.webm` `.avi` |
 
-EXR, TGA, ICO, PSD/PSB, JPEG XL and Clip Studio files are decoded by Palace itself, so they don't need extra Windows codecs. Files with an image extension that aren't really images get a placeholder tile. MKV/WebM thumbnails use a bundled ffmpeg when it is present at build time (see [Build](#build-and-run)); otherwise they fall back to Windows shell thumbnails.
+EXR, TGA, ICO, PSD/PSB, JPEG XL and Clip Studio files are decoded by Palace itself, so they don't need extra Windows codecs. Files with an image extension that aren't really images get a placeholder tile. Video thumbnails that Windows can't make itself (for example MKV with H.264 4:4:4, or WebM/AV1 without the Store codec extensions) come from a small bundled LGPL ffmpeg.
 
 ![HDR image in the full-screen viewer](docs/images/hdr-preview.jpg)
 
@@ -60,10 +60,10 @@ Palace is a packaged app. Always run the packaged Debug build, not the raw `.exe
 .\BuildAndRun.ps1 . --arch x64
 ```
 
-Optional: to get MKV/WebM thumbnails without system codecs, fetch the pinned LGPL ffmpeg build before building. When `ThirdParty\ffmpeg` exists it is packaged with the app automatically.
+The build downloads a slim, static LGPL ffmpeg (about 12 MB) for video thumbnails and packages it with the app. The download comes from this repo's GitHub releases and is checked against a pinned SHA-256 by `tools/Get-Ffmpeg.ps1`. `tools/build-ffmpeg.sh` rebuilds it from source; its license and source offer ship next to it as `ffmpeg\LICENSE.txt` and `ffmpeg\SOURCE.txt`. To build without it (shell thumbnails only):
 
 ```powershell
-.\tools\Get-Ffmpeg.ps1
+dotnet build Palace.csproj -c Debug -p:Platform=x64 -p:PalaceBundleFfmpeg=false
 ```
 
 ### Build and test (same as CI)
@@ -95,7 +95,7 @@ Services/        Catalog, scanning, folder watching, thumbnails, HDR, cloud
 Helpers/         Format decoders (EXR, PSD, TGA, Clip, ...), HDR helpers, path rules
 Data/            SQLite database layer
 Palace.Tests/    Unit tests (cross-platform)
-tools/           Helper scripts (e.g. Get-Ffmpeg.ps1)
+tools/           Helper scripts (e.g. Get-Ffmpeg.ps1, build-ffmpeg.sh)
 docs/            Design notes and README images
 Assets/          App icons and package art
 ```
