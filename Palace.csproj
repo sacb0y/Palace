@@ -98,14 +98,24 @@
   </Target>
 
   <!--
-    Optional bundled LGPL ffmpeg for codec-free video posters (MKV/WebM/etc.).
-    Run tools/Get-Ffmpeg.ps1 to fetch the pinned build into ThirdParty/ffmpeg;
-    when present it is packaged as ffmpeg\*. Absent = shell thumbnails only.
+    Bundled slim LGPL ffmpeg.exe (static, ~thumbnail-only decoders) for codec-free
+    video posters (MKV/WebM/MP4/MOV/AVI; H.264 incl. 4:4:4, HEVC, VP8/9, AV1, MPEG-4).
+    Built by tools/build-ffmpeg.sh (.github/workflows/ffmpeg.yml) and published as a
+    GitHub release; tools/Get-Ffmpeg.ps1 downloads the pinned asset (SHA-256 checked)
+    into ThirdParty/ffmpeg on first build. Packaged as ffmpeg\* with its LGPL notice
+    and source offer. Opt out with -p:PalaceBundleFfmpeg=false (shell thumbnails only).
   -->
-  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)ThirdParty\ffmpeg\bin\ffmpeg.exe')">
-    <Content Include="ThirdParty\ffmpeg\bin\*.exe;ThirdParty\ffmpeg\bin\*.dll;ThirdParty\ffmpeg\LICENSE.txt">
-      <Link>ffmpeg\%(Filename)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+  <PropertyGroup>
+    <PalaceBundleFfmpeg Condition="'$(PalaceBundleFfmpeg)' == ''">true</PalaceBundleFfmpeg>
+    <PalaceFfmpegDir>$(MSBuildThisFileDirectory)ThirdParty\ffmpeg\</PalaceFfmpegDir>
+  </PropertyGroup>
+  <Target Name="PalaceFetchFfmpeg" BeforeTargets="AssignTargetPaths" Condition="'$(PalaceBundleFfmpeg)' == 'true'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\Get-Ffmpeg.ps1&quot;" />
+    <ItemGroup>
+      <Content Include="$(PalaceFfmpegDir)bin\ffmpeg.exe;$(PalaceFfmpegDir)LICENSE.txt;$(PalaceFfmpegDir)LICENSE-dav1d.txt;$(PalaceFfmpegDir)SOURCE.txt">
+        <Link>ffmpeg\%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
 </Project>
