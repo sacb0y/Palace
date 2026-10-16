@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Palace.Helpers;
 using Xunit;
 
@@ -49,13 +50,17 @@ public sealed class CatalogStoreTests
         try
         {
             var localDb = Path.Combine(local, CatalogStore.DbFileName);
-            File.WriteAllBytes(localDb, new byte[64_000]);
+            MakeDb(localDb, "local");
 
             var resolved = CatalogStore.ResolveDbPath(local, settingsRoot: null, overrideRoot: durable);
             Assert.Equal(CatalogStore.DbPathIn(durable), resolved);
             Assert.True(File.Exists(resolved));
             Assert.True(CatalogStore.MigratedFromLocalState);
-            Assert.Equal(64_000, new FileInfo(resolved!).Length);
+            Assert.Equal("local", ReadMarker(resolved!));
+            Assert.True(File.Exists(localDb)); // LocalState left untouched
+            var backups = Directory.GetDirectories(Path.Combine(durable, CatalogStore.BackupsFolderName));
+            Assert.Single(backups);
+            Assert.True(File.Exists(Path.Combine(backups[0], CatalogStore.DbFileName)));
         }
         finally
         {
@@ -73,13 +78,19 @@ public sealed class CatalogStoreTests
         Directory.CreateDirectory(durable);
         try
         {
-            File.WriteAllBytes(Path.Combine(local, CatalogStore.DbFileName), new byte[64_000]);
-            File.WriteAllBytes(Path.Combine(durable, CatalogStore.DbFileName), new byte[20_000]);
+            MakeDb(Path.Combine(local, CatalogStore.DbFileName), "local", pad: 64_000);
+            MakeDb(Path.Combine(durable, CatalogStore.DbFileName), "durable");
 
             var resolved = CatalogStore.ResolveDbPath(local, settingsRoot: null, overrideRoot: durable);
             Assert.Equal(CatalogStore.DbPathIn(durable), resolved);
             Assert.False(CatalogStore.MigratedFromLocalState);
-            Assert.Equal(20_000, new FileInfo(resolved!).Length);
+            Assert.Equal("durable", ReadMarker(resolved!));
+            Assert.NotNull(CatalogStore.UnmergedLocalStateBackup);
+            Assert.Equal("local", ReadMarker(Path.Combine(CatalogStore.UnmergedLocalStateBackup!, CatalogStore.DbFileName)));
+
+            // A second launch does not pile up duplicate backups.
+            CatalogStore.ResolveDbPath(local, settingsRoot: null, overrideRoot: durable);
+            Assert.Single(Directory.GetDirectories(Path.Combine(durable, CatalogStore.BackupsFolderName)));
         }
         finally
         {
@@ -106,5 +117,70 @@ public sealed class CatalogStoreTests
         {
             try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
         }
+    }
+
+    [Fact]
+    public void SnapshotDatabase_RefusesToOverwrite()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "palace-snap-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var src = Path.Combine(root, "a.db");
+            var dst = Path.Combine(root, "b.db");
+            MakeDb(src, "a");
+            MakeDb(dst, "b");
+            Assert.Throws<IOException>(() => CatalogStore.SnapshotDatabase(src, dst));
+            Assert.Equal("b", ReadMarker(dst));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    [Fact]
+    public void ResolveDbPath_MovesStaleSidecarsBeforeMigrating()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "palace-stale-" + Guid.NewGuid().ToString("N"));
+        var local = Path.Combine(root, "local");
+        var durable = Path.Combine(root, "durable");
+        Directory.CreateDirectory(local);
+        Directory.CreateDirectory(durable);
+        try
+        {
+            MakeDb(Path.Combine(local, CatalogStore.DbFileName), "local");
+            File.WriteAllText(Path.Combine(durable, CatalogStore.DbFileName + "-wal"), "stale");
+            var resolved = CatalogStore.ResolveDbPath(local, settingsRoot: null, overrideRoot: durable);
+            Assert.False(File.Exists(Path.Combine(durable, CatalogStore.DbFileName + "-wal")) &&
+                         File.ReadAllText(Path.Combine(durable, CatalogStore.DbFileName + "-wal")) == "stale");
+            Assert.Equal("local", ReadMarker(resolved));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            try { Directory.Delete(root, recursive: true); } catch { /* best-effort */ }
+        }
+    }
+
+    private static void MakeDb(string path, string marker, int pad = 0)
+    {
+        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Pooling = false }.ToString());
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "CREATE TABLE M(v TEXT, pad BLOB); INSERT INTO M VALUES ($v, zeroblob($p));";
+        cmd.Parameters.AddWithValue("$v", marker);
+        cmd.Parameters.AddWithValue("$p", pad);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static string ReadMarker(string path)
+    {
+        using var c = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString());
+        c.Open();
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT v FROM M";
+        return (string)cmd.ExecuteScalar()!;
     }
 }

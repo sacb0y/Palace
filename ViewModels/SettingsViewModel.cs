@@ -442,10 +442,9 @@ public partial class SettingsViewModel : ObservableObject
             Directory.CreateDirectory(root);
             if (CatalogStore.ActiveRoot is { } active
                 && !string.Equals(active, root, StringComparison.OrdinalIgnoreCase)
-                && CatalogStore.ActiveDbPath is { } activeDb
-                && File.Exists(activeDb))
+                && !await Task.Run(() => CatalogStore.TryCopyActiveCatalogTo(root)))
             {
-                CatalogStore.CopyCatalogFiles(active, root);
+                Notify("That folder already has a Palace catalog. It was not overwritten; Palace will open it after restart. Your current catalog stays where it is.");
             }
 
             CatalogStore.WritePointer(root);
@@ -462,15 +461,13 @@ public partial class SettingsViewModel : ObservableObject
     private Task ResetCatalogFolderAsync() =>
         ErrorReporter.RunAsync("Reset catalog folder", Notify, async () =>
         {
-            await Task.CompletedTask;
             var root = CatalogStore.DefaultRoot();
             Directory.CreateDirectory(root);
             if (CatalogStore.ActiveRoot is { } active
                 && !string.Equals(active, root, StringComparison.OrdinalIgnoreCase)
-                && CatalogStore.ActiveDbPath is { } activeDb
-                && File.Exists(activeDb))
+                && !await Task.Run(() => CatalogStore.TryCopyActiveCatalogTo(root)))
             {
-                CatalogStore.CopyCatalogFiles(active, root);
+                Notify("That folder already has a Palace catalog. It was not overwritten; Palace will open it after restart. Your current catalog stays where it is.");
             }
 
             CatalogStore.WritePointer(root);
@@ -501,7 +498,7 @@ public partial class SettingsViewModel : ObservableObject
 
             var name = $"palace-catalog-{DateTime.Now:yyyyMMdd-HHmmss}.db";
             var path = Path.Combine(folder.Path, name);
-            await Task.Run(() => File.Copy(source, path, overwrite: true));
+            await Task.Run(() => CatalogStore.SnapshotDatabase(source, path));
             StatusText = $"Catalog copy saved to {path}";
         });
 

@@ -1,3 +1,5 @@
+using Microsoft.Data.Sqlite;
+
 namespace Palace.Helpers;
 
 /// <summary>
@@ -14,6 +16,10 @@ public static class CatalogStore
     public const string PointerFileName = "catalog-root.txt";
     public const string ProductFolderName = "Palace";
     public const string DefaultCatalogFolderName = "catalog";
+    public const string BackupsFolderName = "backups";
+
+    /// <summary>Set when LocalState still held a catalog next to an existing durable one; a raw copy was kept here.</summary>
+    public static string? UnmergedLocalStateBackup { get; private set; }
 
     /// <summary>Directory that currently holds the open catalog (set by Resolve).</summary>
     public static string? ActiveRoot { get; private set; }
@@ -120,6 +126,7 @@ public static class CatalogStore
     {
         MigratedFromLocalState = false;
         FallbackReason = null;
+        UnmergedLocalStateBackup = null;
 
         var candidates = new List<string?>
         {
@@ -178,26 +185,148 @@ public static class CatalogStore
 
         var dest = DbPathIn(normalized);
         var localDb = Path.Combine(localStateRoot, DbFileName);
+        var sameFolder = string.Equals(NormalizeRoot(localStateRoot), normalized, StringComparison.OrdinalIgnoreCase);
 
-        if (!File.Exists(dest) && LooksLikeCatalog(localDb))
+        try
         {
-            try
+            if (File.Exists(dest))
             {
-                CopyCatalogFiles(localStateRoot, normalized);
+                // Both exist: open the durable one, never overwrite it, and keep a raw
+                // copy of the LocalState catalog so nothing is silently orphaned.
+                if (!sameFolder && LooksLikeCatalog(localDb))
+                {
+                    UnmergedLocalStateBackup = BackupRawCatalog(localStateRoot, normalized, "localstate-unmerged");
+                }
+            }
+            else if (!sameFolder && File.Exists(localDb) && new FileInfo(localDb).Length > 0)
+            {
+                // Keep an untouched raw backup first, then snapshot into place.
+                BackupRawCatalog(localStateRoot, normalized, "localstate-premigrate");
+                MoveStaleSidecars(normalized);
+                SnapshotDatabase(localDb, dest);
                 MigratedFromLocalState = true;
             }
-            catch (Exception ex)
-            {
-                reason = "Could not migrate LocalState catalog: " + ex.Message;
-                return false;
-            }
+        }
+        catch (Exception ex)
+        {
+            reason = "Could not migrate LocalState catalog: " + ex.Message;
+            return false;
         }
 
         dbPath = dest;
         return true;
     }
 
-    /// <summary>Copy palace.db (+ wal/shm if present) into <paramref name="destRoot"/>.</summary>
+    /// <summary>
+    /// Copy a SQLite catalog (including any WAL content) to <paramref name="destDb"/> using the
+    /// SQLite online backup API, into a temp file that is renamed into place only when complete.
+    /// Never overwrites an existing destination. Safe while the source is open.
+    /// </summary>
+    public static void SnapshotDatabase(string sourceDb, string destDb)
+    {
+        if (File.Exists(destDb))
+        {
+            throw new IOException($"Refusing to overwrite existing catalog at {destDb}.");
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(destDb)!);
+        var tmp = destDb + ".partial";
+        if (File.Exists(tmp))
+        {
+            File.Delete(tmp);
+        }
+
+        try
+        {
+            using (var src = new SqliteConnection(new SqliteConnectionStringBuilder
+                   { DataSource = sourceDb, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+            using (var dst = new SqliteConnection(new SqliteConnectionStringBuilder
+                   { DataSource = tmp, Pooling = false }.ToString()))
+            {
+                src.Open();
+                dst.Open();
+                src.BackupDatabase(dst);
+            }
+
+            File.Move(tmp, destDb);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort */ }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Copy the active catalog into <paramref name="destRoot"/> for a folder switch.
+    /// Returns false (and copies nothing) when the destination already has a catalog.
+    /// </summary>
+    public static bool TryCopyActiveCatalogTo(string destRoot)
+    {
+        var dest = DbPathIn(destRoot);
+        if (File.Exists(dest))
+        {
+            return false;
+        }
+
+        if (ActiveDbPath is { } active && File.Exists(active))
+        {
+            MoveStaleSidecars(NormalizeRoot(destRoot)!);
+            SnapshotDatabase(active, dest);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Raw copy of palace.db (+ wal/shm) into <c>&lt;root&gt;\backups\&lt;label&gt;-&lt;ticks&gt;</c>, once per
+    /// source write time. Returns the backup folder, or null when there was nothing to copy.
+    /// </summary>
+    public static string? BackupRawCatalog(string sourceRoot, string catalogRoot, string label)
+    {
+        var srcDb = Path.Combine(sourceRoot, DbFileName);
+        if (!File.Exists(srcDb))
+        {
+            return null;
+        }
+
+        var stamp = File.GetLastWriteTimeUtc(srcDb).Ticks;
+        var dir = Path.Combine(catalogRoot, BackupsFolderName, $"{label}-{stamp}");
+        if (File.Exists(Path.Combine(dir, DbFileName)))
+        {
+            return dir;
+        }
+
+        CopyCatalogFiles(sourceRoot, dir);
+        return dir;
+    }
+
+    /// <summary>
+    /// A leftover -wal/-shm without its db would be applied to a freshly migrated db; move them aside.
+    /// </summary>
+    public static void MoveStaleSidecars(string root)
+    {
+        if (File.Exists(DbPathIn(root)))
+        {
+            return;
+        }
+
+        string? dir = null;
+        foreach (var name in new[] { DbFileName + "-wal", DbFileName + "-shm", DbFileName + "-journal" })
+        {
+            var path = Path.Combine(root, name);
+            if (!File.Exists(path))
+            {
+                continue;
+            }
+
+            dir ??= Path.Combine(root, BackupsFolderName, $"stale-sidecars-{DateTime.UtcNow.Ticks}");
+            Directory.CreateDirectory(dir);
+            File.Move(path, Path.Combine(dir, name));
+        }
+    }
+
+    /// <summary>Copy palace.db (+ wal/shm if present) into <paramref name="destRoot"/>. Never overwrites.</summary>
     public static void CopyCatalogFiles(string sourceRoot, string destRoot)
     {
         Directory.CreateDirectory(destRoot);
@@ -209,7 +338,7 @@ public static class CatalogStore
                 continue;
             }
 
-            File.Copy(src, Path.Combine(destRoot, name), overwrite: true);
+            File.Copy(src, Path.Combine(destRoot, name), overwrite: false);
         }
     }
 
