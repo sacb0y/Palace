@@ -35,7 +35,15 @@ public static class AppServices
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
-        var dbPath = Path.Combine(LocalRoot, "palace.db");
+        var settingsRoot = CatalogStore.ParsePath(
+            ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey]);
+        var dbPath = CatalogStore.ResolveDbPath(LocalRoot, settingsRoot);
+        // Don't overwrite the saved root with a fallback; the next launch should retry it.
+        if (CatalogStore.FallbackReason is null)
+        {
+            ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey] =
+                CatalogStore.ActiveRoot ?? "";
+        }
         // Custom cache drive may be unplugged — fall back to LocalFolder thumbs.
         MediaCache.EnsureRoots(LocalRoot, out var thumbs, out _);
 
