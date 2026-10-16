@@ -185,9 +185,11 @@ public partial class SettingsViewModel : ObservableObject
             CatalogStore.ActiveRoot,
             CatalogStore.DefaultRoot(),
             StringComparison.OrdinalIgnoreCase);
-        CatalogRestartHint = CatalogStore.MigratedFromLocalState
-            ? "Catalog was moved out of package LocalState so unregister will not wipe it."
-            : "";
+        CatalogRestartHint = CatalogStore.FallbackReason is { } reason
+            ? $"Preferred catalog folder unavailable ({reason}). Using a fallback catalog for this session; changes made now stay there and Palace will retry the preferred folder next launch."
+            : CatalogStore.MigratedFromLocalState
+                ? "Catalog was moved out of package LocalState so unregister will not wipe it."
+                : "";
     }
 
     partial void OnSelectedThemeChanged(string value)
