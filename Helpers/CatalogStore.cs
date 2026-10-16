@@ -42,6 +42,22 @@ public static class CatalogStore
     /// </summary>
     public static string? DataDirOverride { get; set; }
 
+    /// <summary>Package identity name of the real Palace install.</summary>
+    public const string ReleasePackageName = "C20A7629-6BDE-449F-958A-5AAF8BCE88F3";
+
+    /// <summary>
+    /// A side-by-side / test package (any identity other than
+    /// <see cref="ReleasePackageName"/>) keeps its pointer and default catalog
+    /// under its own LocalFolder so it can never open the real catalog.
+    /// Returns null for the real identity or when unpackaged.
+    /// </summary>
+    public static string? IsolatedDataDirFor(string? packageName, string? packageLocalFolder) =>
+        string.IsNullOrWhiteSpace(packageName)
+        || string.IsNullOrWhiteSpace(packageLocalFolder)
+        || string.Equals(packageName, ReleasePackageName, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : Path.Combine(packageLocalFolder, "palace-data");
+
     /// <summary>Folder holding the pointer file and the default catalog.</summary>
     public static string DataDir()
     {

@@ -35,6 +35,17 @@ public static class AppServices
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
+        // Side-by-side/test packages must never open the real catalog.
+        try
+        {
+            CatalogStore.DataDirOverride ??= CatalogStore.IsolatedDataDirFor(
+                Windows.ApplicationModel.Package.Current.Id.Name, LocalRoot);
+        }
+        catch (InvalidOperationException)
+        {
+            // Unpackaged: keep PALACE_DATA_DIR / %LOCALAPPDATA%\Palace.
+        }
+
         var settingsRoot = CatalogStore.ParsePath(
             ApplicationData.Current.LocalSettings.Values[CatalogStore.RootPathKey]);
         var dbPath = CatalogStore.ResolveDbPath(LocalRoot, settingsRoot);
