@@ -114,10 +114,10 @@
     <ItemGroup>
       <!-- Explicit Links: %(Filename) inside a target would batch over every Content item. -->
       <Content Remove="$(PalaceFfmpegDir)**" />
-      <Content Include="$(PalaceFfmpegDir)bin\ffmpeg.exe" Link="ffmpeg\ffmpeg.exe" CopyToOutputDirectory="PreserveNewest" />
-      <Content Include="$(PalaceFfmpegDir)LICENSE.txt" Link="ffmpeg\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
-      <Content Include="$(PalaceFfmpegDir)LICENSE-dav1d.txt" Link="ffmpeg\LICENSE-dav1d.txt" CopyToOutputDirectory="PreserveNewest" />
-      <Content Include="$(PalaceFfmpegDir)SOURCE.txt" Link="ffmpeg\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
+      <Content Include="$(PalaceFfmpegDir)bin\ffmpeg.exe" Link="ffmpeg\ffmpeg.exe" CopyToOutputDirectory="Always" />
+      <Content Include="$(PalaceFfmpegDir)LICENSE.txt" Link="ffmpeg\LICENSE.txt" CopyToOutputDirectory="Always" />
+      <Content Include="$(PalaceFfmpegDir)LICENSE-dav1d.txt" Link="ffmpeg\LICENSE-dav1d.txt" CopyToOutputDirectory="Always" />
+      <Content Include="$(PalaceFfmpegDir)SOURCE.txt" Link="ffmpeg\SOURCE.txt" CopyToOutputDirectory="Always" />
     </ItemGroup>
   </Target>
 </Project>

@@ -23,7 +23,7 @@ trap '[ -n "${KEEP_WORK:-}" ] || rm -rf "$WORK"' EXIT
 HOST=x86_64-w64-mingw32
 PREFIX="$WORK/prefix"
 JOBS="$(nproc)"
-export SOURCE_DATE_EPOCH=1767225600  # fixed timestamps in the zip
+export SOURCE_DATE_EPOCH=1767225600 TZ=UTC  # fixed timestamps in the zip
 
 fetch() { # url sha256 file
   curl -sSfL --retry 3 -o "$WORK/$3" "$1"
