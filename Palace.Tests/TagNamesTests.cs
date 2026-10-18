@@ -138,6 +138,38 @@ public sealed class TagNamesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_padded_survivor_and_padded_singles_are_stored_trimmed()
+    {
+        using (var first = new PalaceDb(DbPath))
+        {
+            await first.WriteAsync(conn =>
+            {
+                Exec(conn, $"DROP INDEX {TagNames.UniqueIndexName}");
+                Exec(conn, "INSERT INTO SourceFolder (Id, Path) VALUES ('s1', '/lib')");
+                Exec(conn, "INSERT INTO Asset (Id, SourceFolderId, Path, FileName, Kind, DateAdded) VALUES ('a1', 's1', '/lib/a1.png', 'a1.png', 'Image', '2026-01-01')");
+                // The padded tag has the assignment, so it survives the merge.
+                InsertTag(conn, "padded", " Dog ");
+                InsertTag(conn, "plain", "dog");
+                InsertTag(conn, "lonely", "  Bird");
+                Assign(conn, "a1", "padded", "Manual");
+            });
+        }
+
+        SqliteConnection.ClearAllPools();
+        using var db = new PalaceDb(DbPath);
+        Assert.Null(db.TagNameMergeError);
+        Assert.Equal(["padded"], db.TagNameMerge.SurvivorIds);
+        await db.ReadAsync(conn =>
+        {
+            Assert.True(IndexExists(conn));
+            Assert.Equal("Dog", Text(conn, "SELECT Name FROM Tag WHERE Id = 'padded'"));
+            Assert.Equal("Bird", Text(conn, "SELECT Name FROM Tag WHERE Id = 'lonely'"));
+            Assert.Equal(0L, Scalar(conn, "SELECT COUNT(*) FROM Tag WHERE Id = 'plain'"));
+            return 0;
+        });
+    }
+
+    [Fact]
     public async Task Non_ascii_duplicates_that_nocase_misses_are_merged_too()
     {
         using (var first = new PalaceDb(DbPath))
