@@ -70,24 +70,25 @@ public sealed partial class CatalogService
             var plan = TagPortable.PlanMerge(existing, memberships, implications, document);
 
             // Apply creates first so name→id resolves to real SQLite ids.
-            // Names are unique ignoring case (TagNames); TryAdd stays defensive.
+            // Names are unique ignoring case and padding (TagNames); keys are trimmed so a
+            // stored " cat " still matches the trimmed edge names PlanMerge emits.
             var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var t in existing)
             {
-                idByName.TryAdd(t.Name, t.Id);
+                idByName.TryAdd(TagNames.Normalize(t.Name), t.Id);
             }
             foreach (var create in plan.Creates)
             {
                 // e.g. " cat " in the file vs "cat" here: reuse instead of creating a duplicate.
                 if (TagNames.FindId(conn, create.Name) is { } existingId)
                 {
-                    idByName[create.Name] = existingId;
+                    idByName[TagNames.Normalize(create.Name)] = existingId;
                     continue;
                 }
 
                 var tag = InsertTag(conn, create.Name, create.Priority);
                 ApplyTagFields(conn, tag.Id, create.Priority, create.Color, create.Starred);
-                idByName[create.Name] = tag.Id;
+                idByName[TagNames.Normalize(create.Name)] = tag.Id;
             }
 
             foreach (var update in plan.Updates)
@@ -97,8 +98,8 @@ public sealed partial class CatalogService
 
             foreach (var edge in plan.Memberships)
             {
-                if (!idByName.TryGetValue(edge.ParentName, out var parentId)
-                    || !idByName.TryGetValue(edge.ChildName, out var childId))
+                if (!idByName.TryGetValue(TagNames.Normalize(edge.ParentName), out var parentId)
+                    || !idByName.TryGetValue(TagNames.Normalize(edge.ChildName), out var childId))
                 {
                     continue;
                 }
@@ -109,8 +110,8 @@ public sealed partial class CatalogService
             foreach (var edge in plan.Implications)
             {
                 // ParentName = tag, ChildName = implied (see TagPortable).
-                if (!idByName.TryGetValue(edge.ParentName, out var tagId)
-                    || !idByName.TryGetValue(edge.ChildName, out var impliedId))
+                if (!idByName.TryGetValue(TagNames.Normalize(edge.ParentName), out var tagId)
+                    || !idByName.TryGetValue(TagNames.Normalize(edge.ChildName), out var impliedId))
                 {
                     continue;
                 }
