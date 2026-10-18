@@ -35,15 +35,19 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # The .msixupload container task needs full-framework MSBuild (Visual Studio);
+      # under the dotnet CLI it fails to load System.Security.Permissions.
+      - uses: microsoft/setup-msbuild@v2
+
       - name: Build Release MSIX upload package (x64, unsigned)
         shell: pwsh
         run: |
           $out = Join-Path $PWD 'AppPackages\'
           $extra = @()
           if ('${{ inputs.store_submission }}' -eq 'true') { $extra += '-p:PalaceStoreSubmission=true' }
-          dotnet build Palace.csproj -c Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
+          msbuild Palace.csproj -restore -m -v:minimal -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
             -p:GenerateAppxPackageOnBuild=true -p:UapAppxPackageBuildMode=StoreUpload `
-            -p:AppxBundle=Never -p:AppxPackageSigningEnabled=false `
+            -p:AppxBundle=Never -p:AppxPackageSigningEnabled=false -p:AppxSymbolPackageEnabled=false `
             "-p:AppxPackageDir=$out" @extra
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           Get-ChildItem $out -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
