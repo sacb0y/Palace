@@ -281,9 +281,9 @@ public sealed partial class CatalogService
         cmd.CommandText = """
             INSERT INTO Asset (Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-                               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr)
+                               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr, IndexVersion)
             VALUES ($id, $source, $path, $name, $hash, $kind, $w, $h, $dur, $orphan, $model, $seed, $prompt, $neg,
-                    $json, $err, $rating, $notes, $added, $mod, $size, $online, $cloud, $hdr)
+                    $json, $err, $rating, $notes, $added, $mod, $size, $online, $cloud, $hdr, $iv)
             ON CONFLICT(Path) DO UPDATE SET
                 SourceFolderId = excluded.SourceFolderId,
                 FileName = excluded.FileName,
@@ -302,7 +302,8 @@ public sealed partial class CatalogService
                 FileSize = excluded.FileSize,
                 IsOnlineOnly = excluded.IsOnlineOnly,
                 CloudItemId = excluded.CloudItemId,
-                IsHdr = excluded.IsHdr
+                IsHdr = excluded.IsHdr,
+                IndexVersion = excluded.IndexVersion
             RETURNING RowId, Id;
             """;
         cmd.Parameters.AddWithValue("$id", asset.Id);
@@ -329,6 +330,7 @@ public sealed partial class CatalogService
         cmd.Parameters.AddWithValue("$online", asset.IsOnlineOnly ? 1 : 0);
         cmd.Parameters.AddWithValue("$cloud", (object?)asset.CloudItemId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$hdr", asset.IsHdr ? 1 : 0);
+        cmd.Parameters.AddWithValue("$iv", asset.IndexVersion);
         using var reader = cmd.ExecuteReader();
         if (reader.Read())
         {
@@ -352,7 +354,7 @@ public sealed partial class CatalogService
     private const string SelectAssetSql = """
         SELECT RowId, Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr
+               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr, IndexVersion
         FROM Asset
         """ + "\n";
 
@@ -388,7 +390,8 @@ public sealed partial class CatalogService
                 FileSize = reader.IsDBNull(21) ? null : reader.GetInt64(21),
                 IsOnlineOnly = reader.FieldCount > 22 && !reader.IsDBNull(22) && reader.GetInt32(22) != 0,
                 CloudItemId = reader.FieldCount > 23 && !reader.IsDBNull(23) ? reader.GetString(23) : null,
-                IsHdr = reader.FieldCount > 24 && !reader.IsDBNull(24) && reader.GetInt32(24) != 0
+                IsHdr = reader.FieldCount > 24 && !reader.IsDBNull(24) && reader.GetInt32(24) != 0,
+                IndexVersion = reader.FieldCount > 25 && !reader.IsDBNull(25) ? reader.GetInt32(25) : 0
             });
         }
 
