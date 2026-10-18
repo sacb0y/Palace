@@ -238,9 +238,29 @@ public sealed class PalaceDb : IDisposable
         EnsureColumn("Tag", "IsStarred", "INTEGER NOT NULL DEFAULT 0");
         EnsureCloudColumns();
         EnsureColumn("Asset", "IsHdr", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("Asset", "IndexVersion", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Collection", "Icon", "TEXT");
+        EnsureUniqueTagNames();
         SeedDefaults();
         EnsureDefaultProject();
+    }
+
+    /// <summary>Survivors of the startup duplicate-name merge; their implications may need a backfill.</summary>
+    public TagNameMergeResult TagNameMerge { get; private set; } = TagNameMergeResult.None;
+
+    /// <summary>Set when the duplicate-name merge failed; the catalog still opens and the C# guards still apply.</summary>
+    public Exception? TagNameMergeError { get; private set; }
+
+    private void EnsureUniqueTagNames()
+    {
+        try
+        {
+            TagNameMerge = TagNames.EnsureUnique(_connection);
+        }
+        catch (SqliteException ex)
+        {
+            TagNameMergeError = ex;
+        }
     }
 
     private void EnsureCloudColumns()

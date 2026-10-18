@@ -1293,7 +1293,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
             ApplyCachedGifFrame(gallery);
             gallery.NotifyGifCompositeReady();
-            if (GifFrames.PickCached(_gifRasters, GifFrames.ClampIndex((int)Math.Round(gallery.GifFrameIndex), _gifRasters!.Count)) is { } cached)
+            if (GifFrames.PickCached(_gifRasters!, GifFrames.ClampIndex((int)Math.Round(gallery.GifFrameIndex), _gifRasters!.Count)) is { } cached)
             {
                 QueuePackedHistogram(gallery, cached);
             }

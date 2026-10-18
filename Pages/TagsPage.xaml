@@ -657,7 +657,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Name, Mode=OneWay}" />
+                                <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Name, Mode=OneTime}" />
                                 <Button
                                     Grid.Column="1"
                                     AutomationProperties.Name="Remove from group"
@@ -705,7 +705,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Name, Mode=OneWay}" />
+                                <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Name, Mode=OneTime}" />
                                 <Button
                                     Grid.Column="1"
                                     AutomationProperties.Name="Remove implicit tag"
@@ -731,7 +731,7 @@
                     UpdateTextOnSelect="True">
                     <AutoSuggestBox.ItemTemplate>
                         <DataTemplate x:DataType="models:TagGroupPick">
-                            <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                            <TextBlock Text="{x:Bind Name, Mode=OneTime}" />
                         </DataTemplate>
                     </AutoSuggestBox.ItemTemplate>
                 </AutoSuggestBox>

@@ -1,6 +1,6 @@
 ---
 description: "Catalog / SQLite: schema migrations, SQL fragments, PalaceDb async gating, cloud token storage"
-globs: Data/**,Services/CatalogService.cs,Services/ScanService.cs,Services/CloudAccountService.cs,Services/Cloud/**,Helpers/MosaicSortOrder.cs
+globs: Data/**,Services/CatalogService*.cs,Services/ScanService.cs,Services/CloudAccountService.cs,Services/Cloud/**,Helpers/MosaicSortOrder.cs
 alwaysApply: false
 ---
 
@@ -12,3 +12,7 @@ DB access and folder-query rules (also in library-ui.mdc):
 
 - DB access: `PalaceDb.ReadAsync` / `WriteAsync` run the work on a thread-pool thread (`Task.Run`) while holding the single-connection gate, so `CatalogService` queries never execute on the UI thread. They take an optional `CancellationToken` (cancels the gate wait / a not-yet-started run, not work already inside SQLite). There is no sync `Read` / `Write` — never block on the gate. The `work` lambda runs off the UI thread: no `UiDispatch`, XAML, or `ObservableObject` mutation inside it, and no nested `ReadAsync` / `WriteAsync` (deadlock on the gate). Callers resume on their own context, so UI mutations after an await still go through `UiDispatch` when you are on a background thread.
 - Folder browse: `GetAssetsAsync(folderPrefix:)` — do not load the whole project and filter in process. Folder grouping (source or nested prefix) runs on that prefix result (`FolderGroups`), not a whole-catalog in-process filter. Mosaic sort is the same query’s `ORDER BY` (`MosaicSortOrder.OrderBySql`); all-library and tag-browse mosaics also re-query instead of sorting `_allAssets` in process.
+
+Tag names are global (all projects) and unique ignoring case and surrounding whitespace (`Data/TagNames.cs`). Use `TagNames.FindId` / `CatalogService.FindTagByName` for lookups and `GetOrCreateTagAsync` for find-or-create; `CreateTagAsync` throws `DuplicateTagNameException`, `RenameTagAsync` returns false on a clash. `PalaceDb` merges legacy duplicates on open (assignments, groups and implications move to the survivor) and then creates the `UX_Tag_Name_NoCase` unique index; never insert into `Tag` without the guard.
+
+Scan fast path (`Helpers/ScanFastPath.cs`): a local file whose size + write time match its row, indexed at the current `ScanFastPath.IndexVersion`, with a current cached thumb (`ThumbnailService.IsCachedThumbCurrent`), is not re-hashed / re-extracted / re-written on rescan. **Bump `IndexVersion`** whenever scan-time extraction changes (metadata fields, HDR probe, kind mapping) so every file is indexed once more. `Asset.IndexVersion` is written by the full local index only; cloud rows stay 0. Scan progress is throttled to one report per 150 ms.

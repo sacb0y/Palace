@@ -14,6 +14,9 @@ public sealed class SourceFolder
     public SourceKind Kind { get; set; } = SourceKind.Local;
     public string? CloudAccountId { get; set; }
     public string? CloudRootItemId { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Path;
 }
 
 public sealed class Asset
@@ -44,6 +47,8 @@ public sealed class Asset
     public string? CloudItemId { get; set; }
     /// <summary>Header probe from scan/hydrate — mosaic must not Open the original.</summary>
     public bool IsHdr { get; set; }
+    /// <summary><c>ScanFastPath.IndexVersion</c> of the last full local index; 0 = never / older build.</summary>
+    public int IndexVersion { get; set; }
 }
 
 public sealed class CloudAccount
@@ -63,6 +68,9 @@ public sealed class Tag
     public string Slug { get; set; } = "";
     public string? Color { get; set; }
     public bool IsStarred { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class TagCreateBatchResult
@@ -147,6 +155,9 @@ public sealed class Room
     public string? Icon { get; set; }
     public int SortOrder { get; set; }
     public string? ProjectId { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class RoomItem
@@ -161,6 +172,9 @@ public sealed class Project
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class PromptSuggestion
@@ -169,12 +183,87 @@ public sealed class PromptSuggestion
     public string? ExistingTagId { get; set; }
     public string? ExistingTagName { get; set; }
     public bool IsKnown => ExistingTagId is not null;
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => ExistingTagName ?? Token;
 }
 
 public sealed class ScanReport
 {
+    /// <summary>Per-category cap on remembered paths; counts are always exact.</summary>
+    public const int MaxListed = 20;
+
     public int Added { get; set; }
     public int Updated { get; set; }
     public int Orphaned { get; set; }
     public int Errors { get; set; }
+
+    /// <summary>Files left out because Palace does not catalog their format (see <c>PathSafe.IsCatalogExt</c>).</summary>
+    public int Skipped { get; set; }
+
+    /// <summary>Skipped files by lower-case extension (<c>""</c> = no extension).</summary>
+    public Dictionary<string, int> SkippedByExtension { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Indexed, but the content could not be decoded (placeholder tile).</summary>
+    public int Undecodable { get; set; }
+    public List<string> UndecodablePaths { get; } = [];
+
+    /// <summary>Files that threw while indexing (also counted in <see cref="Errors"/>).</summary>
+    public List<string> ErrorPaths { get; } = [];
+    public List<string> ErrorReasons { get; } = [];
+
+    /// <summary>Folders that could not be opened (also counted in <see cref="Errors"/>).</summary>
+    public int InaccessibleFolders { get; set; }
+
+    public void NoteSkipped(string path)
+    {
+        Skipped++;
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        SkippedByExtension[ext] = SkippedByExtension.GetValueOrDefault(ext) + 1;
+    }
+
+    public void NoteUndecodable(string path)
+    {
+        Undecodable++;
+        if (UndecodablePaths.Count < MaxListed)
+        {
+            UndecodablePaths.Add(path);
+        }
+    }
+
+    public void NoteError(string path, Exception exception)
+    {
+        Errors++;
+        if (ErrorPaths.Count < MaxListed)
+        {
+            ErrorPaths.Add(path);
+            ErrorReasons.Add(exception.Message);
+        }
+    }
+
+    public void NoteInaccessibleFolders(int count)
+    {
+        InaccessibleFolders += count;
+        Errors += count;
+    }
+
+    public void Add(ScanReport other)
+    {
+        Added += other.Added;
+        Updated += other.Updated;
+        Orphaned += other.Orphaned;
+        Errors += other.Errors;
+        Skipped += other.Skipped;
+        foreach (var (ext, count) in other.SkippedByExtension)
+        {
+            SkippedByExtension[ext] = SkippedByExtension.GetValueOrDefault(ext) + count;
+        }
+
+        Undecodable += other.Undecodable;
+        UndecodablePaths.AddRange(other.UndecodablePaths.Take(MaxListed - UndecodablePaths.Count));
+        var room = MaxListed - ErrorPaths.Count;
+        ErrorPaths.AddRange(other.ErrorPaths.Take(room));
+        ErrorReasons.AddRange(other.ErrorReasons.Take(room));
+        InaccessibleFolders += other.InaccessibleFolders;
+    }
 }
