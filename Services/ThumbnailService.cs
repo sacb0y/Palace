@@ -7,7 +7,8 @@ using Windows.Storage.Streams;
 
 namespace Palace.Services;
 
-public readonly record struct ThumbnailInfo(string Path, int Width, int Height);
+/// <param name="IsPlaceholder">The content could not be decoded; the cached JPEG is the placeholder tile.</param>
+public readonly record struct ThumbnailInfo(string Path, int Width, int Height, bool IsPlaceholder = false);
 
 public sealed class ThumbnailService
 {
@@ -389,7 +390,7 @@ public sealed class ThumbnailService
                 var ph = StillDecode.Placeholder();
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
-                return Finish(dest, ph.Width, ph.Height);
+                return Finish(dest, ph.Width, ph.Height) with { IsPlaceholder = true };
             }
 
             if (StillDecode.HandlesPath(filePath))
@@ -400,7 +401,7 @@ public sealed class ThumbnailService
                     var ph = StillDecode.Placeholder();
                     await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
-                    return Finish(dest, ph.Width, ph.Height);
+                    return Finish(dest, ph.Width, ph.Height) with { IsPlaceholder = true };
                 }
 
                 if (large.EncodedImage is { } encoded)

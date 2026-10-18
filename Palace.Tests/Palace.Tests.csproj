@@ -44,6 +44,8 @@
     <Compile Include="..\Helpers\RecentTags.cs" Link="RecentTags.cs" />
     <Compile Include="..\Helpers\RoomIcons.cs" Link="RoomIcons.cs" />
     <Compile Include="..\Helpers\ScanContent.cs" Link="ScanContent.cs" />
+    <Compile Include="..\Helpers\ScanNotice.cs" Link="ScanNotice.cs" />
+    <Compile Include="..\Helpers\ScanWalk.cs" Link="ScanWalk.cs" />
     <Compile Include="..\Helpers\SelectMode.cs" Link="SelectMode.cs" />
     <Compile Include="..\Helpers\ShortcutCheatsheet.cs" Link="ShortcutCheatsheet.cs" />
     <Compile Include="..\Helpers\RangeSelect.cs" Link="RangeSelect.cs" />

@@ -37,10 +37,7 @@ public sealed class ScanService
         {
             ct.ThrowIfCancellationRequested();
             var part = await ScanSourceAsync(source, progress, ct).ConfigureAwait(false);
-            report.Added += part.Added;
-            report.Updated += part.Updated;
-            report.Orphaned += part.Orphaned;
-            report.Errors += part.Errors;
+            report.Add(part);
         }
 
         return report;
@@ -66,40 +63,11 @@ public sealed class ScanService
         }
 
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        IEnumerable<string> files;
-        try
+        await IndexTreeAsync(source, source.Path, report, found, progress, ct).ConfigureAwait(false);
+        if (report.InaccessibleFolders > 0)
         {
-            files = Directory.EnumerateFiles(source.Path, "*.*", SearchOption.AllDirectories)
-                .Where(p => PathSafe.IsCatalogExt(Path.GetExtension(p)));
-        }
-        catch
-        {
-            report.Errors++;
+            // Files under a folder we could not list are not missing; do not orphan them.
             return report;
-        }
-
-        foreach (var file in files)
-        {
-            ct.ThrowIfCancellationRequested();
-            found.Add(file);
-            progress?.Report(file);
-            try
-            {
-                var created = await IndexFileAsync(source, file, autoOrganize: source.AutoOrganizeNewFiles, ct)
-                    .ConfigureAwait(false);
-                if (created)
-                {
-                    report.Added++;
-                }
-                else
-                {
-                    report.Updated++;
-                }
-            }
-            catch
-            {
-                report.Errors++;
-            }
         }
 
         foreach (var known in await _catalog.GetIndexedPathsAsync(source.Id))
@@ -135,25 +103,43 @@ public sealed class ScanService
             return report;
         }
 
-        IEnumerable<string> files;
-        try
-        {
-            files = Directory.EnumerateFiles(directory, "*.*", SearchOption.AllDirectories)
-                .Where(p => PathSafe.IsCatalogExt(Path.GetExtension(p)));
-        }
-        catch
-        {
-            report.Errors++;
-            return report;
-        }
+        await IndexTreeAsync(source, directory, report, found: null, progress, ct).ConfigureAwait(false);
+        return report;
+    }
 
-        foreach (var file in files)
+    /// <summary>
+    /// Index every catalog file under <paramref name="root"/>. Unsupported formats, files that
+    /// fail or cannot be decoded, and folders that cannot be opened are recorded on
+    /// <paramref name="report"/> for <see cref="ScanNotice"/> instead of disappearing silently.
+    /// </summary>
+    private async Task IndexTreeAsync(
+        SourceFolder source,
+        string root,
+        ScanReport report,
+        HashSet<string>? found,
+        IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        var inaccessible = 0;
+        foreach (var entry in ScanWalk.Files(root, n => inaccessible = n))
         {
             ct.ThrowIfCancellationRequested();
+            var file = entry.Path;
+            if (!PathSafe.IsCatalogExt(Path.GetExtension(file)))
+            {
+                if (!ScanNotice.IsIgnorable(file, entry.Attributes))
+                {
+                    report.NoteSkipped(file);
+                }
+
+                continue;
+            }
+
+            found?.Add(file);
             progress?.Report(file);
             try
             {
-                var created = await IndexFileAsync(source, file, autoOrganize: source.AutoOrganizeNewFiles, ct)
+                var (created, decoded) = await IndexFileCoreAsync(source, file, autoOrganize: source.AutoOrganizeNewFiles, ct)
                     .ConfigureAwait(false);
                 if (created)
                 {
@@ -163,22 +149,37 @@ public sealed class ScanService
                 {
                     report.Updated++;
                 }
+
+                if (!decoded)
+                {
+                    report.NoteUndecodable(file);
+                }
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                report.Errors++;
+                report.NoteError(file, ex);
             }
         }
 
-        return report;
+        report.NoteInaccessibleFolders(inaccessible);
     }
 
-    public async Task<bool> IndexFileAsync(SourceFolder source, string file, bool autoOrganize, CancellationToken ct = default)
+    public async Task<bool> IndexFileAsync(SourceFolder source, string file, bool autoOrganize, CancellationToken ct = default) =>
+        (await IndexFileCoreAsync(source, file, autoOrganize, ct).ConfigureAwait(false)).Created;
+
+    /// <summary>Created: a new catalog row. Decoded: false when a local thumbnail could not be made from the content.</summary>
+    private async Task<(bool Created, bool Decoded)> IndexFileCoreAsync(
+        SourceFolder source,
+        string file,
+        bool autoOrganize,
+        CancellationToken ct)
     {
         if (!CloudFile.TryGetAttributes(file, out var attrs))
         {
-            return false;
+            return (false, true);
         }
+
+        var decoded = true;
 
         var info = new FileInfo(file);
         var existing = await _catalog.GetAssetByPathAsync(file);
@@ -228,11 +229,17 @@ public sealed class ScanService
                 {
                     asset.Width = localThumb.Width;
                     asset.Height = localThumb.Height;
+                    decoded = !localThumb.IsPlaceholder;
                 }
                 else if (ImageDimensions.TryRead(file) is { } size)
                 {
                     asset.Width = size.Width;
                     asset.Height = size.Height;
+                    decoded = thumb is not { IsPlaceholder: true };
+                }
+                else
+                {
+                    decoded = false;
                 }
             }
         }
@@ -244,7 +251,7 @@ public sealed class ScanService
             await _organize.AutoOrganizeNewFileAsync(source, asset);
         }
 
-        return isNew;
+        return (isNew, decoded);
     }
 
     private async Task<ScanReport> ScanCloudSourceAsync(
@@ -322,6 +329,11 @@ public sealed class ScanService
 
             if (!PathSafe.IsCatalogExt(Path.GetExtension(child.Name)))
             {
+                if (!ScanNotice.IsIgnorable(child.Name, 0))
+                {
+                    report.NoteSkipped(child.Name);
+                }
+
                 continue;
             }
 
@@ -339,9 +351,9 @@ public sealed class ScanService
                     report.Updated++;
                 }
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                report.Errors++;
+                report.NoteError(display, ex);
             }
         }
     }
