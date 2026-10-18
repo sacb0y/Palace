@@ -595,8 +595,7 @@ public partial class LibraryViewModel : ObservableObject
                 string tagName;
                 if (match is null)
                 {
-                    var existing = await _catalog.FindTagByNameAsync(query);
-                    var created = existing ?? await _catalog.CreateTagAsync(query);
+                    var created = await _catalog.GetOrCreateTagAsync(query);
                     tagId = created.Id;
                     tagName = created.Name;
                 }
@@ -643,8 +642,7 @@ public partial class LibraryViewModel : ObservableObject
 
             foreach (var name in names)
             {
-                var existing = await _catalog.FindTagByNameAsync(name);
-                var tag = existing ?? await _catalog.CreateTagAsync(name);
+                var tag = await _catalog.GetOrCreateTagAsync(name);
                 await AssignToSelectionAsync(targets, tag.Id, tag.Name, TagSource.Manual);
             }
 
@@ -693,7 +691,7 @@ public partial class LibraryViewModel : ObservableObject
             }
             else
             {
-                var created = await _catalog.CreateTagAsync(suggestion.Token);
+                var created = await _catalog.GetOrCreateTagAsync(suggestion.Token);
                 tagId = created.Id;
                 tagName = created.Name;
             }

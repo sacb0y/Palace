@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <Compile Include="..\Data\PalaceDb.cs" Link="PalaceDb.cs" />
+    <Compile Include="..\Data\TagNames.cs" Link="TagNames.cs" />
     <Compile Include="..\Helpers\CloudFile.cs" Link="CloudFile.cs" />
     <Compile Include="..\Helpers\CloudSourcePath.cs" Link="CloudSourcePath.cs" />
     <Compile Include="..\Helpers\ErrorLog.cs" Link="ErrorLog.cs" />
