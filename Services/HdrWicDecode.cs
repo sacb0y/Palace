@@ -1666,7 +1666,7 @@ internal static class HdrWicDecode
             try
             {
                 var id = iid;
-                hr = Marshal.QueryInterface(unk, ref id, out var ppv);
+                hr = Marshal.QueryInterface(unk, in id, out var ppv);
                 if (hr < 0 || ppv == IntPtr.Zero)
                 {
                     return null;

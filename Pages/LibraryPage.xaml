@@ -186,7 +186,7 @@
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="models:FolderNode">
                         <TreeViewItem
-                            Content="{x:Bind Name, Mode=OneWay}"
+                            Content="{x:Bind Name, Mode=OneTime}"
                             IsExpanded="True"
                             ItemsSource="{x:Bind Children, Mode=OneWay}" />
                     </DataTemplate>
@@ -310,7 +310,7 @@
                 ItemsSource="{x:Bind ViewModel.Breadcrumbs, Mode=OneWay}">
                 <BreadcrumbBar.ItemTemplate>
                     <DataTemplate x:DataType="models:PathCrumb">
-                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
+                        <TextBlock Text="{x:Bind Name, Mode=OneTime}" />
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
@@ -949,14 +949,14 @@
                                     Width="12"
                                     Height="12"
                                     VerticalAlignment="Center"
-                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneTime}"
                                     BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                     BorderThickness="1"
                                     CornerRadius="2" />
                                 <TextBlock
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
-                                    Text="{x:Bind Display, Mode=OneWay}" />
+                                    Text="{x:Bind Display, Mode=OneTime}" />
                             </Grid>
                         </DataTemplate>
                     </AutoSuggestBox.ItemTemplate>
@@ -1002,7 +1002,7 @@
                                 </Grid.ColumnDefinitions>
                                 <TextBlock
                                     Style="{StaticResource BodyTextBlockStyle}"
-                                    Text="{x:Bind Token, Mode=OneWay}" />
+                                    Text="{x:Bind Token, Mode=OneTime}" />
                                 <Button
                                     Grid.Column="1"
                                     AutomationProperties.Name="Accept suggestion"

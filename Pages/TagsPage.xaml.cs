@@ -265,7 +265,7 @@ public sealed partial class TagsPage : Page
                 {
                     Chip = chip,
                     GroupId = group.TagId,
-                    GroupName = group.Name
+                    GroupName = group.Name ?? ""
                 }
             };
             AutomationProperties.SetAutomationId(
