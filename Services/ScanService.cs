@@ -263,7 +263,8 @@ public sealed class ScanService
         var library = await _cloudLibraries.ForSourceAsync(source, ct).ConfigureAwait(false);
         if (library is null)
         {
-            report.Errors++;
+            // Account signed out / provider unavailable: the source itself can't be listed.
+            report.NoteInaccessibleFolders(1);
             return report;
         }
 
@@ -275,7 +276,13 @@ public sealed class ScanService
         }
         catch
         {
-            report.Errors++;
+            report.NoteInaccessibleFolders(1);
+            return report;
+        }
+
+        if (report.InaccessibleFolders > 0)
+        {
+            // Items under a folder we could not list are not missing; do not orphan them.
             return report;
         }
 
@@ -312,7 +319,7 @@ public sealed class ScanService
         }
         catch
         {
-            report.Errors++;
+            report.NoteInaccessibleFolders(1);
             return;
         }
 
