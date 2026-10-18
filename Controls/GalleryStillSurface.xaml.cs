@@ -140,6 +140,19 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void Gallery_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName is nameof(GalleryViewModel.VizMode))
+        {
+            // Heatmap on/off over a presented HDR still: re-raster the cached
+            // frame, no new decode. A new still resets CanShowHeatmap first;
+            // its own present picks the mode up.
+            if (_gallery?.CanShowHeatmap == true)
+            {
+                PresentCached(HdrPresentCoalescer.ImmediateMs);
+            }
+
+            return;
+        }
+
         if (e.PropertyName is nameof(GalleryViewModel.Scaling))
         {
             if (GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: true, viewportChanged: false))
@@ -528,6 +541,8 @@ public sealed partial class GalleryStillSurface : UserControl
         var scale = 1.0;
         float? peakOverride = null;
         var mapMaxNits = 0f;
+        var viz = HdrVizMode.None;
+        int? vizPrimaries = null;
         ImageScaling scaling = ImageScaling.Fit;
         await UiDispatch.RunAsync(() =>
         {
@@ -539,6 +554,10 @@ public sealed partial class GalleryStillSurface : UserControl
             gallery = g;
             frame = f;
             scaling = g.Scaling;
+            // Heatmap applies once an HDR present exists; the first present of
+            // a still is normal, and VizMode re-presents when it turns on.
+            viz = g.ShowHeatmap && g.CanShowHeatmap ? HdrVizMode.Heatmap : HdrVizMode.None;
+            vizPrimaries = _hdrFrameProbe.CicpPrimaries;
             epoch = Volatile.Read(ref _epoch);
             _presenter ??= new HdrSwapchainPresenter(ScpHdr);
             presenter = _presenter;
@@ -582,7 +601,8 @@ public sealed partial class GalleryStillSurface : UserControl
         try
         {
             outcome = await presenterRef.TryPresentAsync(
-                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token);
+                frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token,
+                viz: viz, vizPrimaries: vizPrimaries);
         }
         finally
         {
@@ -678,18 +698,17 @@ public sealed partial class GalleryStillSurface : UserControl
         var width = frame.Width;
         var height = frame.Height;
         var primaries = probe.CicpPrimaries;
-        var channelMax = GalleryHistogram.ChannelMax(hdr);
         _ = Task.Run(() =>
         {
-            GalleryHistogramBins bins;
+            HdrAnalysisResult bins;
             try
             {
-                bins = GalleryHistogram.FromScrgb(
-                    rgba, width, height, primaries, GalleryHistogram.BinCount, GalleryHistogram.DefaultMaxSamples, channelMax);
+                // One shared pass: histogram + light stats + gamut + CIE.
+                bins = HdrAnalysis.Analyze(rgba, width, height, primaries, hdr);
             }
             catch
             {
-                bins = GalleryHistogramBins.Empty;
+                bins = HdrAnalysisResult.Empty;
             }
 
             return UiDispatch.RunAsync(() =>
@@ -699,7 +718,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     return;
                 }
 
-                gallery.SetHistogram(bins);
+                gallery.SetAnalysis(bins);
             });
         });
     }
@@ -741,21 +760,19 @@ public sealed partial class GalleryStillSurface : UserControl
         var scaling = gallery.Scaling;
         _ = Task.Run(async () =>
         {
-            GalleryHistogramBins bins;
+            HdrAnalysisResult bins;
             try
             {
                 var frame = await HdrWicDecode.TryLoadAsync(
                     path, probe, viewPxW, viewPxH, scaling, token).ConfigureAwait(false);
                 bins = frame is null
-                    ? GalleryHistogramBins.Empty
-                    : GalleryHistogram.FromScrgb(
+                    ? HdrAnalysisResult.Empty
+                    : HdrAnalysis.Analyze(
                         frame.ScrgbRgba,
                         frame.Width,
                         frame.Height,
                         probe.CicpPrimaries,
-                        GalleryHistogram.BinCount,
-                        GalleryHistogram.DefaultMaxSamples,
-                        GalleryHistogram.ChannelMax(probe.CanPresentHdr));
+                        probe.CanPresentHdr);
             }
             catch (OperationCanceledException)
             {
@@ -763,7 +780,7 @@ public sealed partial class GalleryStillSurface : UserControl
             }
             catch
             {
-                bins = GalleryHistogramBins.Empty;
+                bins = HdrAnalysisResult.Empty;
             }
 
             await UiDispatch.RunAsync(() =>
@@ -773,7 +790,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     return;
                 }
 
-                gallery.SetHistogram(bins);
+                gallery.SetAnalysis(bins);
             });
         }, token);
     }
@@ -807,14 +824,14 @@ public sealed partial class GalleryStillSurface : UserControl
         var height = raster.Height;
         _ = Task.Run(() =>
         {
-            GalleryHistogramBins bins;
+            HdrAnalysisResult bins;
             try
             {
-                bins = GalleryHistogram.FromPacked8(bgra, width, height, HdrPackedFormat.Bgra8);
+                bins = HdrAnalysis.AnalyzePacked8(bgra, width, height, HdrPackedFormat.Bgra8);
             }
             catch
             {
-                bins = GalleryHistogramBins.Empty;
+                bins = HdrAnalysisResult.Empty;
             }
 
             return UiDispatch.RunAsync(() =>
@@ -824,7 +841,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     return;
                 }
 
-                gallery.SetHistogram(bins);
+                gallery.SetAnalysis(bins);
             });
         });
     }

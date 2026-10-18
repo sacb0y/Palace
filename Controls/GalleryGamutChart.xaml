@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Palace.Controls.GalleryGamutChart"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <StackPanel x:Name="PnlGamut" Spacing="6">
+        <TextBlock
+            x:Name="TxtGamutTitle"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            Text="Gamut · CIE 1931 xy" />
+        <Grid ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource ControlCornerRadius}">
+                <Image
+                    x:Name="ImgCie"
+                    Width="160"
+                    Height="160"
+                    Stretch="Uniform" />
+            </Border>
+            <StackPanel
+                x:Name="PnlGamutLegend"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Spacing="2" />
+        </Grid>
+        <TextBlock
+            x:Name="TxtGamut"
+            Style="{StaticResource CaptionTextBlockStyle}"
+            TextWrapping="Wrap"
+            Visibility="Collapsed" />
+    </StackPanel>
+</UserControl>

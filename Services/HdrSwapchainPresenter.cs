@@ -43,7 +43,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         float contentMaxNits,
         Func<bool> stillCurrent,
         CancellationToken cancellation,
-        HdrProbe contentProbe = default)
+        HdrProbe contentProbe = default,
+        HdrVizMode viz = HdrVizMode.None,
+        int? vizPrimaries = null)
     {
         // UI thread only for COM / XAML: layout, device, DXGI probe, resize,
         // upload and Present. The half-float raster runs on the thread pool
@@ -87,6 +89,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             // recreate COM objects that Dispose will not release again.
             float clip = 0;
             float scale = 1f;
+            var displayHdr = false;
             ushort[]? half = null;
             await UiDispatch.RunAsync(() =>
             {
@@ -120,6 +123,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                     DisplayPeakNits);
                 clip = map.ClipScrgb;
                 scale = map.Scale;
+                displayHdr = DisplayIsHdr;
                 half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
             });
             if (_disposed)
@@ -133,7 +137,16 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             }
 
             await Task.Run(
-                () => HdrRasterize.Fill(frame.ScrgbRgba, frame.Width, frame.Height, scaling, vw, vh, clip, half, cancellation, scale),
+                () => HdrRasterize.Fill(
+                    frame.ScrgbRgba,
+                    frame.Width,
+                    frame.Height,
+                    scaling,
+                    vw,
+                    vh,
+                    HdrPixelMap.From(new HdrPresentMap(scale, clip), viz, displayHdr, vizPrimaries),
+                    half,
+                    cancellation),
                 cancellation).ConfigureAwait(false);
 
             if (_disposed || cancellation.IsCancellationRequested || !stillCurrent())

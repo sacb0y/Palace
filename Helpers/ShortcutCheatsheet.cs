@@ -31,6 +31,7 @@ public static class ShortcutCheatsheet
         new("Ctrl+3", "Fill", "TxtShortcutFill"),
         new("Ctrl+D", "Image information", "TxtShortcutInfo"),
         new("Ctrl+I", "Details", "TxtShortcutDetails"),
+        new("Ctrl+H", "Luminance heatmap (HDR)", "TxtShortcutHeatmap"),
         new("Space", "Open overlay on the focused or selected tile", "TxtShortcutSpace"),
         new("Esc", "Close overlay", "TxtShortcutEsc")
     ];

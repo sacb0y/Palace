@@ -886,6 +886,20 @@
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton
+                                x:Name="BtnGalleryHeatmap"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryHeatmap"
+                                AutomationProperties.Name="Luminance heatmap"
+                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowHeatmap, Mode=TwoWay, FallbackValue=False}"
+                                IsEnabled="{x:Bind ViewModel.OverlayGallery.CanShowHeatmap, Mode=OneWay, FallbackValue=False}"
+                                ToolTipService.ToolTip="Luminance heatmap, HDR stills (Ctrl+H)"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="Temperature" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Heatmap" />
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton
                                 x:Name="BtnGalleryLoop"
                                 Padding="8,4"
                                 AutomationProperties.AutomationId="BtnGalleryLoop"

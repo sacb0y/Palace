@@ -100,6 +100,20 @@
                             </StackPanel>
                         </ToggleButton>
                         <ToggleButton
+                            x:Name="BtnGalleryWindowHeatmap"
+                            Padding="8,4"
+                            AutomationProperties.AutomationId="BtnGalleryWindowHeatmap"
+                            AutomationProperties.Name="Luminance heatmap"
+                            IsChecked="{x:Bind Gallery.ShowHeatmap, Mode=TwoWay, FallbackValue=False}"
+                            IsEnabled="{x:Bind Gallery.CanShowHeatmap, Mode=OneWay, FallbackValue=False}"
+                            ToolTipService.ToolTip="Luminance heatmap, HDR stills (Ctrl+H)"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <ic:FluentIcon Icon="Temperature" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Heatmap" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ToggleButton
                             x:Name="BtnGalleryWindowLoop"
                             Padding="8,4"
                             AutomationProperties.AutomationId="BtnGalleryWindowLoop"
@@ -171,6 +185,9 @@
                                 Compact="True"
                                 IdPrefix="GalleryWindowInfo"
                                 Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
+                                Details="{x:Bind Gallery.DetailsRows, Mode=OneWay}"
+                                Heatmap="{x:Bind Gallery.HeatmapActive, Mode=OneWay}"
+                                ShowLuma="{x:Bind Gallery.HistogramShowLuma, Mode=OneWay}"
                                 ShowRgb="{x:Bind Gallery.HistogramShowRgb, Mode=OneWay}"
                                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
                         </StackPanel>
@@ -427,8 +444,16 @@
                             Compact="False"
                             IdPrefix="GalleryWindow"
                             Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
+                            Details="{x:Bind Gallery.DetailsRows, Mode=OneWay}"
+                            Heatmap="{x:Bind Gallery.HeatmapActive, Mode=OneWay}"
+                            ShowLuma="{x:Bind Gallery.HistogramShowLuma, Mode=TwoWay}"
                             ShowRgb="{x:Bind Gallery.HistogramShowRgb, Mode=TwoWay}"
                             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
+                        <controls:GalleryGamutChart
+                            Analysis="{x:Bind Gallery.Analysis, Mode=OneWay}"
+                            Compact="False"
+                            IdPrefix="GalleryWindow"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowGamut), Mode=OneWay}" />
                         <TextBlock
                             AutomationProperties.AutomationId="TxtGalleryPreviewStatus"
                             Style="{StaticResource CaptionTextBlockStyle}"

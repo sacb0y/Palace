@@ -373,8 +373,9 @@ public static class GalleryPresent
         $"{ClampPeakNits(nits):0} nits";
 
     /// <summary>
-    /// SKIV-style info box: file / size / resolution / color / luminance.
-    /// No Save As, Export, Copy, gamut triangle, or output-format radios.
+    /// SKIV-style info box: file / size / resolution / color / luminance,
+    /// plus the <see cref="HdrAnalysis"/> figures (MaxCLL channel, P99,
+    /// Palace's FALL, share above SDR white, gamut coverage).
     /// </summary>
     public static string ImageInfoText(GalleryImageInfo info)
     {
@@ -407,7 +408,9 @@ public static class GalleryPresent
 
         if (info.MaxScrgb is > 0)
         {
-            lines.Add($"MaxCLL (scRGB): {info.MaxScrgb.Value:0.###}");
+            lines.Add(info.MaxCllChannel is 'R' or 'G' or 'B'
+                ? $"MaxCLL (scRGB): {info.MaxScrgb.Value:0.###} ({info.MaxCllChannel})"
+                : $"MaxCLL (scRGB): {info.MaxScrgb.Value:0.###}");
         }
 
         if (info.MaxLuminanceNits is > 0)
@@ -423,6 +426,27 @@ public static class GalleryPresent
         if (info.MinLuminanceNits is >= 0 && info.MaxLuminanceNits is > 0)
         {
             lines.Add($"Min luminance: {FormatNits(info.MinLuminanceNits.Value)}");
+        }
+
+        if (info.P99Nits is > 0)
+        {
+            lines.Add($"P99 luminance: {FormatNits(info.P99Nits.Value)}");
+        }
+
+        if (info.FallNits is > 0)
+        {
+            // Not a SKIV figure: Palace's frame-average of max(R,G,B).
+            lines.Add($"FALL (Palace, avg of max RGB): {FormatNits(info.FallNits.Value)}");
+        }
+
+        if (info.AboveSdrWhitePercent is > 0)
+        {
+            lines.Add($"Above SDR white: {info.AboveSdrWhitePercent.Value:0.#}%");
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.Gamut))
+        {
+            lines.Add($"Gamut: {info.Gamut.Trim()}");
         }
 
         if (info.DisplayLuminanceNits is > 0)
@@ -854,6 +878,11 @@ public readonly record struct GalleryImageInfo(
     float? MinLuminanceNits,
     float? DisplayLuminanceNits,
     float? MaxScrgb = null,
-    string? DisplayProbe = null);
+    string? DisplayProbe = null,
+    char? MaxCllChannel = null,
+    float? P99Nits = null,
+    float? FallNits = null,
+    double? AboveSdrWhitePercent = null,
+    string? Gamut = null);
 
 public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);
