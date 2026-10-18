@@ -49,10 +49,11 @@ public static class TagNames
         return null;
     }
 
-    /// <summary>Merge legacy duplicates, then add the unique index. Safe to run on every open.</summary>
+    /// <summary>Merge legacy duplicates, trim padded names, then add the unique index. Safe to run on every open.</summary>
     public static TagNameMergeResult EnsureUnique(SqliteConnection conn)
     {
         var result = MergeDuplicates(conn);
+        TrimPaddedNames(conn);
         using var index = conn.CreateCommand();
         index.CommandText = $"CREATE UNIQUE INDEX IF NOT EXISTS {UniqueIndexName} ON Tag(Name COLLATE NOCASE)";
         index.ExecuteNonQuery();
@@ -100,6 +101,49 @@ public static class TagNames
 
         tx.Commit();
         return new TagNameMergeResult(merged, survivors, skipped);
+    }
+
+    /// <summary>
+    /// Store every tag name trimmed. A padded legacy name (" Cat ") can be the merge survivor, and
+    /// name lookups such as tag import key on the trimmed form. Runs after the merge, so no two
+    /// trimmed names can collide. Whitespace-only names are left alone. Returns how many changed.
+    /// </summary>
+    public static int TrimPaddedNames(SqliteConnection conn)
+    {
+        var padded = new List<(string Id, string Name)>();
+        using (var read = conn.CreateCommand())
+        {
+            read.CommandText = "SELECT Id, Name FROM Tag";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                var name = reader.GetString(1);
+                var trimmed = Normalize(name);
+                if (trimmed.Length > 0 && !string.Equals(trimmed, name, StringComparison.Ordinal))
+                {
+                    padded.Add((reader.GetString(0), trimmed));
+                }
+            }
+        }
+
+        if (padded.Count == 0)
+        {
+            return 0;
+        }
+
+        using var tx = conn.BeginTransaction();
+        foreach (var (id, name) in padded)
+        {
+            using var update = conn.CreateCommand();
+            update.Transaction = tx;
+            update.CommandText = "UPDATE Tag SET Name = $name WHERE Id = $id";
+            update.Parameters.AddWithValue("$name", name);
+            update.Parameters.AddWithValue("$id", id);
+            update.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        return padded.Count;
     }
 
     private static int MergeInto(SqliteConnection conn, SqliteTransaction tx, TagRow loser, TagRow survivor)

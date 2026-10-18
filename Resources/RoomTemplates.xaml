@@ -10,13 +10,13 @@
         <StackPanel Orientation="Horizontal" Spacing="8">
             <ic:FluentIcon
                 VerticalAlignment="Center"
-                Icon="{x:Bind helpers:FluentGlyph.Parse(Icon), Mode=OneWay}"
+                Icon="{x:Bind helpers:FluentGlyph.Parse(Icon), Mode=OneTime}"
                 IconSize="Size20"
                 IconVariant="Regular" />
             <TextBlock
                 VerticalAlignment="Center"
                 Style="{StaticResource BodyTextBlockStyle}"
-                Text="{x:Bind Name, Mode=OneWay}" />
+                Text="{x:Bind Name, Mode=OneTime}" />
         </StackPanel>
     </DataTemplate>
 </ResourceDictionary>

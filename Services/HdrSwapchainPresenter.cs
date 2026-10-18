@@ -223,7 +223,6 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         DisplayProbeText = "";
         _autoDisplayNits = 0;
         DisplayPeakNits = 0;
-        string? fail = null;
         try
         {
             var dxgiDevice = TryQuery(_device, IidDxgiDevice);
