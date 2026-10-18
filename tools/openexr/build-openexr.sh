@@ -32,9 +32,8 @@ CMAKE_ARGS=(
   -DOPENEXR_INSTALL=OFF -DOPENEXR_ENABLE_THREADING=OFF
   -DOPENEXR_FORCE_INTERNAL_DEFLATE=ON -DOPENEXR_FORCE_INTERNAL_OPENJPH=ON
   -DOPENEXR_FORCE_INTERNAL_ZSTD=ON -DOPENEXR_FORCE_INTERNAL_IMATH=ON
-  "-DCMAKE_C_FLAGS=-ffile-prefix-map=$WORK=."
-  "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=$WORK=."
 )
+EXTRA_FLAGS=""
 if [ "$TARGET" = win64 ]; then
   CC=x86_64-w64-mingw32-gcc
   cat > "$WORK/mingw.cmake" <<TC
@@ -50,9 +49,16 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 TC
   CMAKE_ARGS+=("-DCMAKE_TOOLCHAIN_FILE=$WORK/mingw.cmake")
+  # Older mingw-w64 headers (Ubuntu 24.04) reach strsafe.h before windows.h in
+  # OpenEXRCore's win32 file code; its deprecation macros then break winbase.h.
+  EXTRA_FLAGS=" -DSTRSAFE_NO_DEPRECATE"
 else
   CC=gcc
 fi
+CMAKE_ARGS+=(
+  "-DCMAKE_C_FLAGS=-ffile-prefix-map=$WORK=.$EXTRA_FLAGS"
+  "-DCMAKE_CXX_FLAGS=-ffile-prefix-map=$WORK=.$EXTRA_FLAGS"
+)
 
 BUILD="$WORK/build-$TARGET"
 cmake -S "$SRC" -B "$BUILD" "${CMAKE_ARGS[@]}"
