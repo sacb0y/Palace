@@ -11,12 +11,18 @@ public sealed class FolderNode
     public string Path { get; set; } = "";
     public string? SourceFolderId { get; set; }
     public ObservableCollection<FolderNode> Children { get; } = [];
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class PathCrumb
 {
     public string Name { get; set; } = "";
     public string Path { get; set; } = "";
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public partial class AssetItem : ObservableObject
@@ -183,6 +189,9 @@ public partial class AssetItem : ObservableObject
     }
 
     public double AspectHintWidth => Math.Clamp(AspectRatio, 0.15, 6.0) * 100;
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => MosaicItemName;
 }
 
 public partial class AssignedTagItem : ObservableObject
@@ -237,6 +246,9 @@ public partial class AssignedTagItem : ObservableObject
     partial void OnSourceChanged(TagSource value) => OnPropertyChanged(nameof(ChromeOpacity));
 
     partial void OnIsPartialChanged(bool value) => OnPropertyChanged(nameof(ChromeOpacity));
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => ChipAutomationName;
 }
 
 public partial class OrganizePreviewItem : ObservableObject
@@ -257,6 +269,9 @@ public partial class OrganizePreviewItem : ObservableObject
 
     [ObservableProperty]
     public partial string Note { get; set; } = "";
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => FileName;
 }
 
 public partial class SourceFolderItem : ObservableObject
@@ -287,12 +302,18 @@ public partial class SourceFolderItem : ObservableObject
     public string? CloudAccountId { get; set; }
 
     public string? CloudRootItemId { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Path;
 }
 
 public partial class RoomSection : ObservableObject
 {
     public string Title { get; set; } = "Pins";
     public ObservableCollection<AssetItem> Items { get; } = [];
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Title;
 }
 
 public sealed class TagPickItem
@@ -301,6 +322,9 @@ public sealed class TagPickItem
     public string Name { get; set; } = "";
     public string Display { get; set; } = "";
     public string? EffectiveColor { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => string.IsNullOrEmpty(Display) ? Name : Display;
 }
 
 public partial class TagChipItem : ObservableObject
@@ -338,6 +362,9 @@ public partial class TagChipItem : ObservableObject
 
     public string AutomationId =>
         AutomationPrefix + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public partial class TagBoardGroup : ObservableObject
@@ -370,6 +397,9 @@ public partial class TagBoardGroup : ObservableObject
     public ObservableCollection<TagChipItem> Chips { get; } = [];
 
     public ObservableCollection<TagLetterSection> Letters { get; } = [];
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => CountLabel;
 }
 
 public partial class TagLetterSection : ObservableObject
@@ -379,6 +409,9 @@ public partial class TagLetterSection : ObservableObject
     public ObservableCollection<TagChipItem> Chips { get; } = [];
 
     public string Header => $"{Letter} ({Chips.Count})";
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Header;
 }
 
 public partial class TagMosaicSection : ObservableObject
@@ -393,6 +426,9 @@ public partial class TagMosaicSection : ObservableObject
     public string CountLabel => $"{Header} ({Assets.Count})";
 
     public void NotifyCount() => OnPropertyChanged(nameof(CountLabel));
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => CountLabel;
 }
 
 public partial class TagTreeNode : ObservableObject
@@ -419,12 +455,18 @@ public partial class TagTreeNode : ObservableObject
     public partial bool IsStarred { get; set; }
 
     public ObservableCollection<TagTreeNode> Children { get; } = [];
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class TagGroupPick
 {
     public string TagId { get; set; } = "";
     public string Name { get; set; } = "";
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class TagChipGroupMove
@@ -432,4 +474,7 @@ public sealed class TagChipGroupMove
     public TagChipItem Chip { get; set; } = new();
     public string GroupId { get; set; } = "";
     public string GroupName { get; set; } = "";
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => GroupName;
 }
