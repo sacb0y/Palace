@@ -1,6 +1,6 @@
 ---
 description: "Product rules: projects, delete, organize, Tags board, Library mosaic grouping, sort and select mode"
-globs: Pages/LibraryPage.*,Pages/TagsPage.*,ViewModels/LibraryViewModel.cs,ViewModels/TagsViewModel.cs,Helpers/Tag*.cs,Helpers/Mosaic*.cs,Helpers/SelectMode.cs,Helpers/RangeSelect.cs,Helpers/FolderGroups.cs,Services/WatcherService.cs,Services/Organize*.cs
+globs: Pages/LibraryPage.*,Pages/TagsPage.*,ViewModels/LibraryViewModel*.cs,ViewModels/TagsViewModel.cs,Helpers/Tag*.cs,Helpers/Mosaic*.cs,Helpers/SelectMode.cs,Helpers/RangeSelect.cs,Helpers/FolderGroups.cs,Services/WatcherService.cs,Services/Organize*.cs
 alwaysApply: false
 ---
 
