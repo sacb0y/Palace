@@ -293,6 +293,21 @@ public partial class SourceFolderItem : ObservableObject
     [ObservableProperty]
     public partial string DestinationPolicy { get; set; } = nameof(Models.DestinationPolicy.InSource);
 
+    /// <summary>Settings picker index for <see cref="DestinationPolicy"/> (friendly labels, stored name). -1 is ignored.</summary>
+    public int DestinationPolicyIndex
+    {
+        get => DestinationPolicyChoice.IndexOf(DestinationPolicy);
+        set
+        {
+            if (DestinationPolicyChoice.NameAt(value) is { } name)
+            {
+                DestinationPolicy = name;
+            }
+        }
+    }
+
+    partial void OnDestinationPolicyChanged(string value) => OnPropertyChanged(nameof(DestinationPolicyIndex));
+
     [ObservableProperty]
     public partial string? DestinationPath { get; set; }
 
