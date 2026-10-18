@@ -64,6 +64,7 @@ public partial class LibraryViewModel
                     projectId: AppServices.CurrentProject.Id);
                 await RefreshQuietAsync();
                 StatusText = $"Indexed {report.Added} new, {report.Updated} updated, {report.Orphaned} missing.";
+                ShowScanNotice(report);
             }
             finally
             {
@@ -79,10 +80,22 @@ public partial class LibraryViewModel
             var report = await _scan.ScanSourceAsync(source);
             await RefreshQuietAsync(source.Path);
             StatusText = $"Indexed {report.Added} files from {Path.GetFileName(source.Path)}.";
+            ShowScanNotice(report);
         }
         finally
         {
             EndBusy();
+        }
+    }
+
+    /// <summary>Opens the status InfoBar when the scan skipped or could not decode files.</summary>
+    private void ShowScanNotice(ScanReport report)
+    {
+        if (ScanNotice.Describe(report) is { } notice)
+        {
+            var summary = StatusText;
+            Notify(notice);
+            StatusText = summary + " " + notice;
         }
     }
 }
