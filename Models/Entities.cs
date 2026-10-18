@@ -14,6 +14,9 @@ public sealed class SourceFolder
     public SourceKind Kind { get; set; } = SourceKind.Local;
     public string? CloudAccountId { get; set; }
     public string? CloudRootItemId { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Path;
 }
 
 public sealed class Asset
@@ -65,6 +68,9 @@ public sealed class Tag
     public string Slug { get; set; } = "";
     public string? Color { get; set; }
     public bool IsStarred { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class TagCreateBatchResult
@@ -149,6 +155,9 @@ public sealed class Room
     public string? Icon { get; set; }
     public int SortOrder { get; set; }
     public string? ProjectId { get; set; }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class RoomItem
@@ -163,6 +172,9 @@ public sealed class Project
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
 }
 
 public sealed class PromptSuggestion
@@ -171,6 +183,9 @@ public sealed class PromptSuggestion
     public string? ExistingTagId { get; set; }
     public string? ExistingTagName { get; set; }
     public bool IsKnown => ExistingTagId is not null;
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => ExistingTagName ?? Token;
 }
 
 public sealed class ScanReport
