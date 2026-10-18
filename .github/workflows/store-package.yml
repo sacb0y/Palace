@@ -29,15 +29,15 @@ jobs:
   msixupload:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
 
       # The .msixupload container task needs full-framework MSBuild (Visual Studio);
       # under the dotnet CLI it fails to load System.Security.Permissions.
-      - uses: microsoft/setup-msbuild@v2
+      - uses: microsoft/setup-msbuild@v3
 
       - name: Build Release MSIX upload package (x64, unsigned)
         shell: pwsh
@@ -58,6 +58,7 @@ jobs:
           $upload = Get-ChildItem AppPackages -Recurse -Filter *.msixupload | Select-Object -First 1
           if (-not $upload) { throw 'no .msixupload produced' }
           $msix = Get-ChildItem AppPackages -Recurse -Filter 'Palace_*.msix' | Select-Object -First 1
+          if (-not $msix) { throw 'no Palace_*.msix produced' }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $z = [IO.Compression.ZipFile]::OpenRead($msix.FullName)
           try {
@@ -72,7 +73,7 @@ jobs:
           "{0}  {1:N1} MB" -f $upload.Name, ($upload.Length / 1MB)
           "{0}  {1:N1} MB" -f $msix.Name, ($msix.Length / 1MB)
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: palace-msixupload
           path: |

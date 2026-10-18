@@ -21,12 +21,12 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Toolchain
         run: sudo apt-get update && sudo apt-get install -y mingw-w64 nasm meson ninja-build pkg-config make xz-utils zip
       - name: Build
         run: tools/build-ffmpeg.sh out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: palace-ffmpeg
           path: out/*
