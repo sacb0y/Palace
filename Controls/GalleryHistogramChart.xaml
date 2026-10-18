@@ -10,6 +10,7 @@
             Orientation="Horizontal"
             Spacing="8">
             <ToggleButton
+                AutomationProperties.Name="Luma (luminance)"
                 x:Name="BtnHistogramLuma"
                 Padding="8,4"
                 Click="BtnHistogramLuma_Click"
@@ -20,6 +21,7 @@
                 </StackPanel>
             </ToggleButton>
             <ToggleButton
+                AutomationProperties.Name="RGB channels"
                 x:Name="BtnHistogramRgb"
                 Padding="8,4"
                 Click="BtnHistogramRgb_Click"

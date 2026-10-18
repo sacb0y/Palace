@@ -44,6 +44,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnPickWallpaper"
+                    AutomationProperties.Name="Choose wallpaper"
                     Command="{x:Bind ViewModel.PickWallpaperCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Image" IconSize="Size16" IconVariant="Regular" />
@@ -52,6 +53,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnClearWallpaper"
+                    AutomationProperties.Name="Use default gradient"
                     Command="{x:Bind ViewModel.ClearWallpaperCommand}"
                     IsEnabled="{x:Bind ViewModel.HasWallpaper, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -176,6 +178,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnPickCatalogFolder"
+                    AutomationProperties.Name="Choose catalog folder"
                     Command="{x:Bind ViewModel.PickCatalogFolderCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
@@ -184,6 +187,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnResetCatalogFolder"
+                    AutomationProperties.Name="Reset to durable default"
                     Command="{x:Bind ViewModel.ResetCatalogFolderCommand}"
                     IsEnabled="{x:Bind ViewModel.CatalogUsesCustomRoot, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -193,6 +197,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnExportCatalogCopy"
+                    AutomationProperties.Name="Export catalog copy"
                     Command="{x:Bind ViewModel.ExportCatalogCopyCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Save" IconSize="Size16" IconVariant="Regular" />
@@ -214,6 +219,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnExportTags"
+                    AutomationProperties.Name="Export tags"
                     Command="{x:Bind ViewModel.ExportTagsCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="ArrowExport" IconSize="Size16" IconVariant="Regular" />
@@ -222,6 +228,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnImportTags"
+                    AutomationProperties.Name="Import tags"
                     Command="{x:Bind ViewModel.ImportTagsCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="ArrowImport" IconSize="Size16" IconVariant="Regular" />
@@ -286,6 +293,7 @@
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}">
                 <Button
                     AutomationProperties.AutomationId="BtnPickCacheFolder"
+                    AutomationProperties.Name="Choose cache folder"
                     Command="{x:Bind ViewModel.PickCacheFolderCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
@@ -294,6 +302,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnResetCacheFolder"
+                    AutomationProperties.Name="Reset to default cache folder"
                     Command="{x:Bind ViewModel.ResetCacheFolderCommand}"
                     IsEnabled="{x:Bind ViewModel.HasCustomCacheFolder, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -303,6 +312,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnClearCache"
+                    AutomationProperties.Name="Clear cache"
                     Command="{x:Bind ViewModel.ClearCacheCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
@@ -323,6 +333,7 @@
                 Text="{x:Bind ViewModel.RedirectUri, Mode=OneWay}" />
             <Button
                 AutomationProperties.AutomationId="BtnCopyRedirectUri"
+                AutomationProperties.Name="Copy redirect URI"
                 Command="{x:Bind ViewModel.CopyRedirectUriCommand}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
@@ -343,6 +354,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnConnectOneDrive"
+                    AutomationProperties.Name="Connect OneDrive"
                     Command="{x:Bind ViewModel.ConnectOneDriveCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Cloud" IconSize="Size16" IconVariant="Regular" />
@@ -351,6 +363,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnDisconnectOneDrive"
+                    AutomationProperties.Name="Disconnect OneDrive"
                     Command="{x:Bind ViewModel.DisconnectOneDriveCommand}"
                     IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -360,6 +373,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnAddOneDriveFolder"
+                    AutomationProperties.Name="Add OneDrive folder"
                     Command="{x:Bind ViewModel.AddOneDriveFolderCommand}"
                     IsEnabled="{x:Bind ViewModel.IsOneDriveConnected, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -382,6 +396,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnConnectDropbox"
+                    AutomationProperties.Name="Connect Dropbox"
                     Command="{x:Bind ViewModel.ConnectDropboxCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Cloud" IconSize="Size16" IconVariant="Regular" />
@@ -390,6 +405,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnDisconnectDropbox"
+                    AutomationProperties.Name="Disconnect Dropbox"
                     Command="{x:Bind ViewModel.DisconnectDropboxCommand}"
                     IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -399,6 +415,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnAddDropboxFolder"
+                    AutomationProperties.Name="Add Dropbox folder"
                     Command="{x:Bind ViewModel.AddDropboxFolderCommand}"
                     IsEnabled="{x:Bind ViewModel.IsDropboxConnected, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -424,6 +441,7 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnAddSource"
+                    AutomationProperties.Name="Add folder"
                     Command="{x:Bind ViewModel.AddSourceCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
@@ -432,6 +450,7 @@
                 </Button>
                 <Button
                     AutomationProperties.AutomationId="BtnRemoveSource"
+                    AutomationProperties.Name="Remove folder"
                     Command="{x:Bind ViewModel.RemoveSourceCommand}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="FolderArrowLeft" IconSize="Size16" IconVariant="Regular" />
@@ -475,6 +494,7 @@
                 Text="{x:Bind ViewModel.SelectedSource.DestinationPath, Mode=OneWay, FallbackValue=''}" />
             <Button
                 AutomationProperties.AutomationId="BtnPickSourceDestination"
+                AutomationProperties.Name="Pick auto-organize destination"
                 Command="{x:Bind ViewModel.PickDestinationCommand}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />

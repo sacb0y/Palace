@@ -33,6 +33,7 @@
             x:Name="BtnCloudFolderUp"
             Grid.Row="2"
             AutomationProperties.AutomationId="BtnCloudFolderUp"
+            AutomationProperties.Name="Up one level"
             Click="BtnCloudFolderUp_Click"
             IsEnabled="False">
             <StackPanel Orientation="Horizontal" Spacing="8">
