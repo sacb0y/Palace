@@ -49,6 +49,11 @@ public sealed class Asset
     public bool IsHdr { get; set; }
     /// <summary><c>ScanFastPath.IndexVersion</c> of the last full local index; 0 = never / older build.</summary>
     public int IndexVersion { get; set; }
+    /// <summary>
+    /// The last full local index could not decode the content (placeholder tile). Lets an
+    /// incremental rescan, which skips unchanged files, still list them in the scan notice.
+    /// </summary>
+    public bool Undecodable { get; set; }
 }
 
 public sealed class CloudAccount
@@ -188,6 +193,17 @@ public sealed class PromptSuggestion
     public override string ToString() => ExistingTagName ?? Token;
 }
 
+/// <summary>What indexing one file did to the catalog.</summary>
+public enum ScanOutcome
+{
+    /// <summary>New catalog row.</summary>
+    Added,
+    /// <summary>Existing row re-indexed (changed file, stale row or stale thumbnail).</summary>
+    Updated,
+    /// <summary>Nothing changed since the last index; the row was left as it was.</summary>
+    Unchanged
+}
+
 public sealed class ScanReport
 {
     /// <summary>Per-category cap on remembered paths; counts are always exact.</summary>
@@ -195,6 +211,7 @@ public sealed class ScanReport
 
     public int Added { get; set; }
     public int Updated { get; set; }
+    public int Unchanged { get; set; }
     public int Orphaned { get; set; }
     public int Errors { get; set; }
 
@@ -214,6 +231,16 @@ public sealed class ScanReport
 
     /// <summary>Folders that could not be opened (also counted in <see cref="Errors"/>).</summary>
     public int InaccessibleFolders { get; set; }
+
+    public void NoteIndexed(ScanOutcome outcome)
+    {
+        switch (outcome)
+        {
+            case ScanOutcome.Added: Added++; break;
+            case ScanOutcome.Updated: Updated++; break;
+            default: Unchanged++; break;
+        }
+    }
 
     public void NoteSkipped(string path)
     {
@@ -251,6 +278,7 @@ public sealed class ScanReport
     {
         Added += other.Added;
         Updated += other.Updated;
+        Unchanged += other.Unchanged;
         Orphaned += other.Orphaned;
         Errors += other.Errors;
         Skipped += other.Skipped;
