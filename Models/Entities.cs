@@ -47,6 +47,8 @@ public sealed class Asset
     public string? CloudItemId { get; set; }
     /// <summary>Header probe from scan/hydrate — mosaic must not Open the original.</summary>
     public bool IsHdr { get; set; }
+    /// <summary><c>ScanFastPath.IndexVersion</c> of the last full local index; 0 = never / older build.</summary>
+    public int IndexVersion { get; set; }
 }
 
 public sealed class CloudAccount

@@ -238,6 +238,7 @@ public sealed class PalaceDb : IDisposable
         EnsureColumn("Tag", "IsStarred", "INTEGER NOT NULL DEFAULT 0");
         EnsureCloudColumns();
         EnsureColumn("Asset", "IsHdr", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("Asset", "IndexVersion", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Collection", "Icon", "TEXT");
         EnsureUniqueTagNames();
         SeedDefaults();

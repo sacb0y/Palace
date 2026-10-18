@@ -121,6 +121,7 @@ public sealed class ScanService
         CancellationToken ct)
     {
         var inaccessible = 0;
+        long lastProgress = 0;
         foreach (var entry in ScanWalk.Files(root, n => inaccessible = n))
         {
             ct.ThrowIfCancellationRequested();
@@ -136,7 +137,10 @@ public sealed class ScanService
             }
 
             found?.Add(file);
-            progress?.Report(file);
+            if (progress is not null && ScanFastPath.ShouldReport(ref lastProgress, Environment.TickCount64))
+            {
+                progress.Report(file);
+            }
             try
             {
                 var (created, decoded) = await IndexFileCoreAsync(source, file, autoOrganize: source.AutoOrganizeNewFiles, ct)
@@ -186,6 +190,15 @@ public sealed class ScanService
         var isNew = existing is null;
         var onlineOnly = CloudFile.IsOnlineOnly(attrs);
         var kind = PathSafe.KindFromExt(info.Extension);
+        if (ScanFastPath.IsUnchanged(existing, info.Length, info.LastWriteTimeUtc, onlineOnly)
+            && existing!.Kind == kind
+            && (!ScanContent.MayGenerateScanThumbnail(attrs)
+                || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
+        {
+            // Unchanged since the last full index: skip hash / metadata / thumb / write.
+            return (false, true);
+        }
+
         var asset = existing ?? new Asset
         {
             Id = PalaceDb.NewId(),
@@ -197,7 +210,7 @@ public sealed class ScanService
         asset.FileName = info.Name;
         asset.Kind = kind;
         asset.IsOrphan = false;
-        asset.DateModified = info.LastWriteTimeUtc.ToString("O");
+        asset.DateModified = ScanFastPath.Stamp(info.LastWriteTimeUtc);
         asset.FileSize = info.Length;
         asset.IsOnlineOnly = onlineOnly;
         asset.IsHdr = GalleryMedia.CatalogHdrFromHeader(
@@ -217,6 +230,7 @@ public sealed class ScanService
             var hash = await HashService.HashFileAsync(file, info.Length, ct).ConfigureAwait(false);
             var meta = _metadata.Extract(file);
             asset.ContentHash = hash;
+            asset.IndexVersion = ScanFastPath.IndexVersion;
             asset.Model = meta.Model;
             asset.Seed = meta.Seed;
             asset.Prompt = meta.Prompt;
