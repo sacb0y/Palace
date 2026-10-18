@@ -512,10 +512,10 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="helpers:ShortcutHint">
                         <TextBlock
-                            AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                            AutomationProperties.Name="{x:Bind Line, Mode=OneWay}"
+                            AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneTime}"
+                            AutomationProperties.Name="{x:Bind Line, Mode=OneTime}"
                             Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind Line, Mode=OneWay}" />
+                            Text="{x:Bind Line, Mode=OneTime}" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
