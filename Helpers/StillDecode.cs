@@ -32,6 +32,14 @@ public static class StillDecode
                 return jpeg is null ? null : new Result(null, 0, 0, jpeg, false);
             }
 
+            if (PathSafe.IsRadiance(path))
+            {
+                // Stream + box-filter to the thumb size: a 16384x8192 pano
+                // never loads its 344 MB file or 2 GB float frame at once.
+                using var hs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16);
+                return TryDecodeRadiance(hs, maxSide);
+            }
+
             data = File.ReadAllBytes(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -91,14 +99,27 @@ public static class StillDecode
         else if (PathSafe.IsRadiance(ext))
         {
             using var ms = new MemoryStream(data, writable: false);
-            var hdr = RadianceFile.TryDecode(ms);
-            if (hdr is not null)
-            {
-                (rgba, sw, sh) = (hdr.ScrgbRgba, hdr.Width, hdr.Height);
-            }
+            return TryDecodeRadiance(ms, maxSide);
         }
 
         return rgba is null ? null : FromScrgb(rgba, sw, sh, maxSide);
+    }
+
+    /// <summary>Radiance at thumb size: streamed box filter, then tone map.</summary>
+    private static Result? TryDecodeRadiance(Stream stream, int maxSide)
+    {
+        var size = RadianceFile.TryReadSize(stream);
+        if (size is null)
+        {
+            return null;
+        }
+
+        var (w, h) = Fit(size.Value.Width, size.Value.Height, maxSide);
+        stream.Position = 0;
+        var hdr = RadianceFile.TryDecode(stream, w, h);
+        return hdr is null
+            ? null
+            : new Result(ToneMap.ScrgbToBgra8(hdr.ScrgbRgba, hdr.Width, hdr.Height), hdr.Width, hdr.Height, null, true);
     }
 
     private static bool IsUniform(byte[] bgra)

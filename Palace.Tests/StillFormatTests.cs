@@ -108,6 +108,29 @@ public sealed class StillFormatTests
     }
 
     [Fact]
+    public void Radiance_StillDecodeThumb_StreamsToThumbSize()
+    {
+        const int w = 7, h = 5;
+        using var ms = new MemoryStream();
+        ms.Write(Encoding.ASCII.GetBytes($"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {h} +X {w}\n"));
+        for (var i = 0; i < w * h; i++)
+        {
+            ms.Write([(byte)(40 + (i * 5)), (byte)(200 - (i * 3)), (byte)(10 + i), 129]);
+        }
+
+        var bytes = ms.ToArray();
+        var native = RadianceFile.TryDecode(new MemoryStream(bytes))!;
+        var expected = StillDecode.FromScrgb(native.ScrgbRgba, w, h, 3);
+        var thumb = StillDecode.TryDecode(bytes, ".hdr", 3)!;
+        Assert.True(thumb.ToneMapped);
+        Assert.Equal((expected.Width, expected.Height), (thumb.Width, thumb.Height));
+        for (var i = 0; i < expected.Bgra!.Length; i++)
+        {
+            Assert.InRange(thumb.Bgra![i] - expected.Bgra[i], -1, 1);
+        }
+    }
+
+    [Fact]
     public void Psd_8bpsSize()
     {
         var psd = PsdHeader(200, 100);
