@@ -120,4 +120,27 @@
       <Content Include="$(PalaceFfmpegDir)SOURCE.txt" Link="ffmpeg\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
+
+  <!--
+    Store submission guard. The Store identity lives only in Package.appxmanifest (see the
+    STORE IDENTITY block there). Building with -p:PalaceStoreSubmission=true (the Store
+    upload workflow's "store_submission" input) fails while the dev placeholders remain,
+    so a placeholder package can never be submitted by accident.
+  -->
+  <Target Name="PalaceCheckStoreIdentity" BeforeTargets="BeforeBuild" Condition="'$(PalaceStoreSubmission)' == 'true'">
+    <PropertyGroup>
+      <_PalaceManifestNs>&lt;Namespace Prefix='f' Uri='http://schemas.microsoft.com/appx/manifest/foundation/windows10' /&gt;</_PalaceManifestNs>
+    </PropertyGroup>
+    <XmlPeek XmlInputPath="$(MSBuildThisFileDirectory)Package.appxmanifest" Query="/f:Package/f:Identity/@Name" Namespaces="$(_PalaceManifestNs)">
+      <Output TaskParameter="Result" PropertyName="_PalaceIdentityName" />
+    </XmlPeek>
+    <XmlPeek XmlInputPath="$(MSBuildThisFileDirectory)Package.appxmanifest" Query="/f:Package/f:Identity/@Publisher" Namespaces="$(_PalaceManifestNs)">
+      <Output TaskParameter="Result" PropertyName="_PalacePublisher" />
+    </XmlPeek>
+    <XmlPeek XmlInputPath="$(MSBuildThisFileDirectory)Package.appxmanifest" Query="/f:Package/f:Properties/f:PublisherDisplayName/text()" Namespaces="$(_PalaceManifestNs)">
+      <Output TaskParameter="Result" PropertyName="_PalacePublisherDisplayName" />
+    </XmlPeek>
+    <Error Condition="'$(_PalaceIdentityName)' == 'C20A7629-6BDE-449F-958A-5AAF8BCE88F3' or '$(_PalacePublisher)' == 'CN=AppPublisher' or '$(_PalacePublisherDisplayName)' == 'AppPublisher'"
+           Text="Package.appxmanifest still has placeholder Store identity (Name=$(_PalaceIdentityName), Publisher=$(_PalacePublisher), PublisherDisplayName=$(_PalacePublisherDisplayName)). Copy the reserved values from Partner Center > Product identity into the STORE IDENTITY block." />
+  </Target>
 </Project>

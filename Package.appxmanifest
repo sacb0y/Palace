@@ -2,22 +2,33 @@
 
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
-  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
   xmlns:desktop6="http://schemas.microsoft.com/appx/manifest/desktop/windows10/6"
-  IgnorableNamespaces="uap rescap systemai desktop6">
+  IgnorableNamespaces="uap rescap desktop6">
 
+  <!--
+    ===================== STORE IDENTITY (the only place to edit) =====================
+    PLACEHOLDERS until the name "Palace" is reserved in Partner Center (Individual account).
+    Copy the three values from Partner Center > Apps and games > Palace >
+    Product management > Product identity:
+      Identity/@Name                  "Package/Identity/Name"            (e.g. 12345YourName.Palace)
+      Identity/@Publisher             "Package/Identity/Publisher"       (CN=<GUID>)
+      Properties/PublisherDisplayName "Package/Properties/PublisherDisplayName"
+    Then add the new Name to CatalogStore.ReleasePackageNames (a unit test fails until
+    you do), so the Store build keeps using the durable catalog in %LOCALAPPDATA%\Palace.
+    Release/Store packaging with -p:PalaceStoreSubmission=true fails while the
+    placeholders below are still present. Keep the 4th Version part at 0.
+    ===================================================================================
+  -->
   <Identity
     Name="C20A7629-6BDE-449F-958A-5AAF8BCE88F3"
     Publisher="CN=AppPublisher"
-        Version="0.0.4.0" />
-
-  <mp:PhoneIdentity PhoneProductId="C20A7629-6BDE-449F-958A-5AAF8BCE88F3" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+    Version="0.0.4.0" />
 
   <Properties>
     <DisplayName>Palace</DisplayName>
+    <!-- STORE IDENTITY: placeholder; see the block above Identity. -->
     <PublisherDisplayName>AppPublisher</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <!-- Write %LOCALAPPDATA%\Palace for real (not package LocalCache) so the durable catalog survives unregister. -->
@@ -25,7 +36,6 @@
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
   </Dependencies>
 
@@ -54,6 +64,5 @@
     <rescap:Capability Name="runFullTrust" />
     <rescap:Capability Name="broadFileSystemAccess" />
     <rescap:Capability Name="unvirtualizedResources" />
-    <systemai:Capability Name="systemAIModels"/>
   </Capabilities>
 </Package>
