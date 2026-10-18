@@ -551,7 +551,7 @@ public sealed class CatalogService
             var plan = TagPortable.PlanMerge(existing, memberships, implications, document);
 
             // Apply creates first so name→id resolves to real SQLite ids.
-            // Tag.Name isn't unique; first match wins instead of throwing on duplicates.
+            // Names are unique ignoring case (TagNames); TryAdd stays defensive.
             var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var t in existing)
             {
@@ -559,6 +559,13 @@ public sealed class CatalogService
             }
             foreach (var create in plan.Creates)
             {
+                // e.g. " cat " in the file vs "cat" here: reuse instead of creating a duplicate.
+                if (TagNames.FindId(conn, create.Name) is { } existingId)
+                {
+                    idByName[create.Name] = existingId;
+                    continue;
+                }
+
                 var tag = InsertTag(conn, create.Name, create.Priority);
                 ApplyTagFields(conn, tag.Id, create.Priority, create.Color, create.Starred);
                 idByName[create.Name] = tag.Id;
@@ -638,21 +645,15 @@ public sealed class CatalogService
         });
 
     public Task<Tag?> FindTagByNameAsync(string name) =>
-        _db.ReadAsync(conn =>
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag
-                WHERE Name = $name COLLATE NOCASE
-                LIMIT 1
-                """;
-            cmd.Parameters.AddWithValue("$name", name);
-            var list = ReadTags(cmd);
-            return list.Count > 0 ? list[0] : null;
-        });
+        _db.ReadAsync(conn => FindTagByName(conn, name));
 
+    /// <summary>Creates a tag; throws <see cref="DuplicateTagNameException"/> if the name is taken (any case).</summary>
     public Task<Tag> CreateTagAsync(string name, int priority = 0) =>
         _db.WriteAsync(conn => InsertTag(conn, name, priority));
+
+    /// <summary>Returns the existing tag with this name (any case), or creates it, in one write.</summary>
+    public Task<Tag> GetOrCreateTagAsync(string name) =>
+        _db.WriteAsync(conn => FindTagByName(conn, name) ?? InsertTag(conn, name, 0));
 
     public Task<Tag> CreateChildTagAsync(string parentId, string name, int priority = 0) =>
         _db.WriteAsync(conn =>
@@ -755,9 +756,18 @@ public sealed class CatalogService
             return true;
         });
 
-    public Task RenameTagAsync(string id, string name) =>
+    /// <summary>
+    /// Renames a tag. Returns false (and changes nothing) when another tag already has the name,
+    /// ignoring case; changing only the case of a tag's own name is allowed.
+    /// </summary>
+    public Task<bool> RenameTagAsync(string id, string name) =>
         _db.WriteAsync(conn =>
         {
+            if (TagNames.FindId(conn, name, excludeId: id) is not null)
+            {
+                return false;
+            }
+
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE Tag SET Name = $name, Slug = $slug WHERE Id = $id";
             cmd.Parameters.AddWithValue("$name", name.Trim());
@@ -765,6 +775,7 @@ public sealed class CatalogService
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
             RefreshFtsForTag(conn, id);
+            return true;
         });
 
     public Task SetTagPriorityAsync(string id, int priority) =>
@@ -1708,13 +1719,15 @@ public sealed class CatalogService
 
     private static Tag? FindTagByName(SqliteConnection conn, string name)
     {
+        var id = TagNames.FindId(conn, name);
+        if (id is null)
+        {
+            return null;
+        }
+
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag
-            WHERE Name = $name COLLATE NOCASE
-            LIMIT 1
-            """;
-        cmd.Parameters.AddWithValue("$name", name);
+        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag WHERE Id = $id";
+        cmd.Parameters.AddWithValue("$id", id);
         var list = ReadTags(cmd);
         return list.Count > 0 ? list[0] : null;
     }
@@ -2058,6 +2071,11 @@ public sealed class CatalogService
 
     private static Tag InsertTag(SqliteConnection conn, string name, int priority)
     {
+        if (TagNames.FindId(conn, name) is not null)
+        {
+            throw new DuplicateTagNameException(name);
+        }
+
         var tag = new Tag
         {
             Id = PalaceDb.NewId(),
