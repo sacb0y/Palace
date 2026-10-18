@@ -74,6 +74,7 @@
     <Compile Include="..\Helpers\ExrFile.cs" Link="ExrFile.cs" />
     <Compile Include="..\Helpers\ClipFile.cs" Link="ClipFile.cs" />
     <Compile Include="..\Helpers\StillDecode.cs" Link="StillDecode.cs" />
+    <Compile Include="..\Helpers\SubstanceShelfFile.cs" Link="SubstanceShelfFile.cs" />
     <Compile Include="..\Helpers\PsdFile.cs" Link="PsdFile.cs" />
     <Compile Include="..\Helpers\ThumbCacheVersion.cs" Link="ThumbCacheVersion.cs" />
     <Compile Include="..\Services\FfmpegPoster.cs" Link="FfmpegPoster.cs" />
