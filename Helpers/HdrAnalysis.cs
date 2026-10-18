@@ -438,6 +438,8 @@ public readonly record struct HdrLightStats(
 /// <summary>Everything the histogram, Info card, gamut plot and heatmap need.</summary>
 public sealed class HdrAnalysisResult
 {
+    // No required members: the XAML compiler activates this type (it is a
+    // DependencyProperty value type) with a bare new().
     public static HdrAnalysisResult Empty { get; } = new()
     {
         Histogram = GalleryHistogramBins.Empty,
@@ -446,12 +448,12 @@ public sealed class HdrAnalysisResult
         CieDensity = []
     };
 
-    public required GalleryHistogramBins Histogram { get; init; }
-    public required HdrLightStats Light { get; init; }
-    public required GamutCoverage Gamut { get; init; }
+    public GalleryHistogramBins Histogram { get; init; } = GalleryHistogramBins.Empty;
+    public HdrLightStats Light { get; init; } = HdrLightStats.Empty;
+    public GamutCoverage Gamut { get; init; } = GamutCoverage.Empty;
 
     /// <summary><see cref="CieDiagram.GridSize"/>² sample counts over xy (row 0 = top).</summary>
-    public required int[] CieDensity { get; init; }
+    public int[] CieDensity { get; init; } = [];
 
     public bool IsHdr { get; init; }
     public int SampleCount => Histogram.SampleCount;
