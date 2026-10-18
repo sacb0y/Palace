@@ -29,6 +29,32 @@ public static class AppServices
     public static string LocalRoot { get; private set; } = "";
     public static Project CurrentProject { get; private set; } = null!;
 
+    /// <summary>
+    /// After PalaceDb folded duplicate tag names, survivors may carry implications the merged
+    /// assets have not received yet; backfill them off the UI thread (also refreshes FTS).
+    /// </summary>
+    private static void ReportTagNameMerge()
+    {
+        if (Db.TagNameMergeError is { } error)
+        {
+            ErrorReporter.Report("Merge duplicate tag names", error);
+        }
+
+        var survivors = Db.TagNameMerge.SurvivorIds;
+        if (survivors.Count == 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(() => ErrorReporter.RunAsync("Apply implied tags after merging duplicate names", null, async () =>
+        {
+            foreach (var id in survivors)
+            {
+                await Catalog.BackfillImplicationAddedAsync(id).ConfigureAwait(false);
+            }
+        }));
+    }
+
     public static async Task InitializeAsync()
     {
         LocalRoot = ApplicationData.Current.LocalFolder.Path;
@@ -60,6 +86,7 @@ public static class AppServices
 
         Db = await Task.Run(() => new PalaceDb(dbPath));
         Catalog = new CatalogService(Db);
+        ReportTagNameMerge();
         await RestoreCurrentProjectAsync();
         Access = new AccessService();
         Metadata = new MetadataExtractorService();

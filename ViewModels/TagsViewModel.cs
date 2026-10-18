@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Palace.Data;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -611,7 +612,12 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            await _catalog.RenameTagAsync(SelectedNode.TagId, SelectedName);
+            if (!await _catalog.RenameTagAsync(SelectedNode.TagId, SelectedName))
+            {
+                StatusText = TagNames.DuplicateMessage(SelectedName) + " Choose a different name.";
+                return;
+            }
+
             await _catalog.SetTagPriorityAsync(SelectedNode.TagId, (int)SelectedPriority);
             await RefreshAsync();
             StatusText = "Tag updated.";
@@ -692,8 +698,7 @@ public partial class TagsViewModel : ObservableObject
 
             var sourceId = SelectedNode.TagId;
             var name = ImpliedQuery.Trim();
-            var existing = await _catalog.FindTagByNameAsync(name);
-            var target = existing ?? await _catalog.CreateTagAsync(name);
+            var target = await _catalog.GetOrCreateTagAsync(name);
             var ok = await _catalog.AddImplicationAsync(sourceId, target.Id);
             await UiDispatch.RunAsync(() => ImpliedQuery = "");
             await RefreshAsync();

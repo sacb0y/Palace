@@ -7,7 +7,8 @@ using Windows.Storage.Streams;
 
 namespace Palace.Services;
 
-public readonly record struct ThumbnailInfo(string Path, int Width, int Height);
+/// <param name="IsPlaceholder">The content could not be decoded; the cached JPEG is the placeholder tile.</param>
+public readonly record struct ThumbnailInfo(string Path, int Width, int Height, bool IsPlaceholder = false);
 
 public sealed class ThumbnailService
 {
@@ -78,6 +79,19 @@ public sealed class ThumbnailService
             return false;
         }
     }
+
+    /// <summary>
+    /// True when <see cref="EnsureThumbnailAsync"/> would return the cached thumb as-is (exists,
+    /// right size, current generation, large preview present). Scan fast path uses this so an
+    /// unchanged file still regenerates a stale thumbnail.
+    /// </summary>
+    public bool IsCachedThumbCurrent(string filePath, string hash, Models.AssetKind kind) =>
+        kind == Models.AssetKind.Other || IsCachedCurrent(PathForHash(hash), filePath, kind);
+
+    private bool IsCachedCurrent(string dest, string filePath, Models.AssetKind kind) =>
+        File.Exists(dest) && !ShouldRegenerate(dest, filePath)
+        && !(kind == Models.AssetKind.Image && IsStaleGeneration(dest, filePath))
+        && !NeedsLargePreviewBackfill(kind, filePath);
 
     public string PathForHash(string hash, string? suffix = null) =>
         Path.Combine(_root, ThumbFileName.FileName(hash, suffix));
@@ -151,9 +165,7 @@ public sealed class ThumbnailService
         }
 
         var dest = PathForHash(hash);
-        if (File.Exists(dest) && !ShouldRegenerate(dest, filePath)
-            && !(kind == Models.AssetKind.Image && IsStaleGeneration(dest, filePath))
-            && !NeedsLargePreviewBackfill(kind, filePath))
+        if (IsCachedCurrent(dest, filePath, kind))
         {
             TouchLastAccess(dest);
             return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0);
@@ -389,7 +401,7 @@ public sealed class ThumbnailService
                 var ph = StillDecode.Placeholder();
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
-                return Finish(dest, ph.Width, ph.Height);
+                return Finish(dest, ph.Width, ph.Height) with { IsPlaceholder = true };
             }
 
             if (StillDecode.HandlesPath(filePath))
@@ -400,7 +412,7 @@ public sealed class ThumbnailService
                     var ph = StillDecode.Placeholder();
                     await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
-                    return Finish(dest, ph.Width, ph.Height);
+                    return Finish(dest, ph.Width, ph.Height) with { IsPlaceholder = true };
                 }
 
                 if (large.EncodedImage is { } encoded)
