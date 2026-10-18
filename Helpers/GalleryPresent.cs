@@ -86,10 +86,10 @@ public static class GalleryPresent
         {
             HdrKind.UltraHdrJpeg => "Ultra HDR JPEG — showing the SDR base",
             HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
-                or HdrKind.HdrJxl or HdrKind.HdrRadiance when presented =>
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr when presented =>
                 $"{HdrKindLabel(probe.Kind)} · presenting scRGB",
             HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
-                or HdrKind.HdrJxl or HdrKind.HdrRadiance =>
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr =>
                 $"{HdrKindLabel(probe.Kind)} — SDR preview",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
@@ -108,6 +108,7 @@ public static class GalleryPresent
             HdrKind.HdrJxr => "HDR JPEG XR",
             HdrKind.HdrJxl => "HDR JPEG XL",
             HdrKind.HdrRadiance => "Radiance HDR",
+            HdrKind.HdrExr => "OpenEXR",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
             HdrKind.WideGamutHeif => "Wide-gamut HEIF",
@@ -254,7 +255,7 @@ public static class GalleryPresent
         return probe.IsPq
             || probe.IsHlg
             || probe.Transfer is HdrTransfer.Pq or HdrTransfer.Hlg
-            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance;
+            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance or HdrKind.HdrExr;
     }
 
     public static string FormatUnknownDisplayProbe(string reason, bool assumeHdr, string? ccd = null)
@@ -828,6 +829,37 @@ public static class GalleryPresent
     }
 
     public static float NitsToScrgb(float nits) => nits / ScrgbNits;
+
+    /// <summary>
+    /// HDR / wide-gamut PNG pixel → presented scRGB (linear BT.709, negatives
+    /// kept so out-of-709 colours stay out of 709 for gamut coverage).
+    /// <paramref name="nitsY"/> is source-primary luminance.
+    /// </summary>
+    public static void PngEncodedToScrgb(
+        float r,
+        float g,
+        float b,
+        HdrTransfer transfer,
+        int? cicpPrimaries,
+        out float sr,
+        out float sg,
+        out float sb,
+        out float nitsY)
+    {
+        var nitsR = EncodedToNits(r, transfer);
+        var nitsG = EncodedToNits(g, transfer);
+        var nitsB = EncodedToNits(b, transfer);
+        var bt2020 = cicpPrimaries == 9;
+        nitsY = LuminanceY(nitsR, nitsG, nitsB, bt2020);
+        if (bt2020)
+        {
+            Bt2020ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
+        }
+
+        sr = NitsToScrgb(nitsR);
+        sg = NitsToScrgb(nitsG);
+        sb = NitsToScrgb(nitsB);
+    }
 
     public static (float X, float Y, float W, float H) DestRect(
         ImageScaling scaling,

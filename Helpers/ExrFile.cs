@@ -24,6 +24,34 @@ public static class ExrFile
     public static (int Width, int Height)? TryReadSize(ReadOnlySpan<byte> data) =>
         TryReadHeader(data, out var h, out _) ? (h.Width, h.Height) : null;
 
+    /// <summary>Header says single-part scanline with a compression this reader supports.</summary>
+    public static bool IsDecodable(ReadOnlySpan<byte> data) =>
+        TryReadHeader(data, out var h, out _) && h.Compression <= 3;
+
+    /// <summary>
+    /// Decode to linear scRGB for HDR presentation: non-finite samples become
+    /// 0 (negatives are kept, as scRGB allows), plus Info stats.
+    /// </summary>
+    public static RadianceFrame? TryDecodeScrgb(ReadOnlySpan<byte> data)
+    {
+        var frame = TryDecode(data);
+        if (frame is null)
+        {
+            return null;
+        }
+
+        var rgba = frame.Rgba;
+        for (var i = 0; i < rgba.Length; i++)
+        {
+            if (!float.IsFinite(rgba[i]))
+            {
+                rgba[i] = (i & 3) == 3 ? 1f : 0f;
+            }
+        }
+
+        return RadianceFile.FrameFromScrgb(rgba, frame.Width, frame.Height);
+    }
+
     public static string? CompressionName(int c) => c switch
     {
         0 => "none",

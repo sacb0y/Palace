@@ -294,4 +294,58 @@ public sealed class HdrAnalysisTests
         var co = cell * 4;
         Assert.True(plot[co + 1] > empty[co + 1], "density brightens the cell");
     }
+
+    /// <summary>Inverse ST 2084 (nits → PQ code 0–1).</summary>
+    private static float NitsToPq(float nits)
+    {
+        const double m1 = 0.1593017578125, m2 = 78.84375, c1 = 0.8359375, c2 = 18.8515625, c3 = 18.6875;
+        var y = Math.Pow(Math.Max(nits, 0) / 10000.0, m1);
+        return (float)Math.Pow((c1 + (c2 * y)) / (1 + (c3 * y)), m2);
+    }
+
+    /// <summary>
+    /// Analytic case: a BT.2020 PQ PNG of pure saturated 2020 primaries (plus
+    /// one neutral) must land mostly outside Rec.709, i.e. the decode keeps the
+    /// 2020→709 negatives instead of clipping them back into 709.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Gamut_Bt2020PqSaturatedPrimaries_ReadUnder100PercentRec709(bool skivPath)
+    {
+        var pq = NitsToPq(400f);
+        (float, float, float)[] encoded = [(pq, 0, 0), (0, pq, 0), (0, 0, pq), (pq, pq, pq)];
+        var px = new (float R, float G, float B)[encoded.Length];
+        for (var i = 0; i < encoded.Length; i++)
+        {
+            var (r, g, b) = encoded[i];
+            float sr, sg, sb;
+            if (skivPath)
+            {
+                HdrColor.EncodedRgbToScrgb(r, g, b, HdrTransfer.Pq, 9, out sr, out sg, out sb);
+            }
+            else
+            {
+                GalleryPresent.PngEncodedToScrgb(r, g, b, HdrTransfer.Pq, 9, out sr, out sg, out sb, out _);
+            }
+
+            px[i] = (sr, sg, sb);
+        }
+
+        // 2020 primaries go negative in 709 — negatives must survive the decode.
+        Assert.True(px[0].G < 0 && px[0].B < 0);
+        var result = HdrAnalysis.Analyze(Pixels(px), px.Length, 1, 9, hdr: true);
+        Assert.Equal(25, result.Gamut.Rec709, 1);
+        Assert.Equal(75, result.Gamut.Rec2020, 1);
+    }
+
+    [Fact]
+    public void Gamut_Bt2020PqInside709_ReadsFullRec709()
+    {
+        // A 709 red encoded in a 2020 PQ container stays 100% Rec.709.
+        GalleryPresent.Bt709ToBt2020(200f, 0f, 0f, out var r, out var g, out var b);
+        GalleryPresent.PngEncodedToScrgb(NitsToPq(r), NitsToPq(g), NitsToPq(b), HdrTransfer.Pq, 9, out var sr, out var sg, out var sb, out _);
+        var result = HdrAnalysis.Analyze(Pixels((sr, sg, sb)), 1, 1, 9, hdr: true);
+        Assert.Equal(100, result.Gamut.Rec709, 1);
+    }
 }

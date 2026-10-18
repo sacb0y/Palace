@@ -63,11 +63,17 @@
                     Text="Missing"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsMissing), Mode=OneWay}" />
 
-                <StackPanel
-                    Margin="16,16,0,0"
+                <!-- Grid, not StackPanel: the info card gets a finite height and
+                     scrolls instead of running under the bottom bar. -->
+                <Grid
+                    Margin="16,16,0,72"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
-                    Spacing="8">
+                    RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
                     <Border
                         Padding="6,4"
                         Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
@@ -166,6 +172,7 @@
                     </Border>
                     <Border
                         x:Name="BrdGalleryWindowImageInfo"
+                        Grid.Row="1"
                         MaxWidth="360"
                         Padding="10,6"
                         AutomationProperties.AutomationId="BrdGalleryWindowImageInfo"
@@ -174,25 +181,29 @@
                         BorderThickness="1"
                         CornerRadius="{StaticResource OverlayCornerRadius}"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowImageInfo), Mode=OneWay}">
-                        <StackPanel Spacing="6">
-                            <TextBlock
-                                AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
-                                AutomationProperties.Name="Image information"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
-                                TextWrapping="Wrap" />
-                            <controls:GalleryHistogramChart
-                                Compact="True"
-                                IdPrefix="GalleryWindowInfo"
-                                Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
-                                Details="{x:Bind Gallery.DetailsRows, Mode=OneWay}"
-                                Heatmap="{x:Bind Gallery.HeatmapActive, Mode=OneWay}"
-                                ShowLuma="{x:Bind Gallery.HistogramShowLuma, Mode=OneWay}"
-                                ShowRgb="{x:Bind Gallery.HistogramShowRgb, Mode=OneWay}"
-                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
-                        </StackPanel>
+                        <ScrollViewer
+                            HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollBarVisibility="Auto">
+                            <StackPanel Spacing="6">
+                                <TextBlock
+                                    AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
+                                    AutomationProperties.Name="Image information"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                                <controls:GalleryHistogramChart
+                                    Compact="True"
+                                    IdPrefix="GalleryWindowInfo"
+                                    Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
+                                    Details="{x:Bind Gallery.DetailsRows, Mode=OneWay}"
+                                    Heatmap="{x:Bind Gallery.HeatmapActive, Mode=OneWay}"
+                                    ShowLuma="{x:Bind Gallery.HistogramShowLuma, Mode=OneWay}"
+                                    ShowRgb="{x:Bind Gallery.HistogramShowRgb, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Border>
-                </StackPanel>
+                </Grid>
                 <Button
                     x:Name="BtnGalleryWindowPrev"
                     MinWidth="48"

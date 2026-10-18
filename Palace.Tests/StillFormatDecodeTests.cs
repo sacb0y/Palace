@@ -297,6 +297,58 @@ public sealed class StillFormatDecodeTests
     }
 
     [Fact]
+    public void Exr_ProbesAsPresentableHdr_OnlyWhenDecodable()
+    {
+        var data = ExrFixture(3, 8, 4, 1, (_, _, _) => 2f);
+        var probe = HdrFile.Probe(data);
+        Assert.Equal(HdrKind.HdrExr, probe.Kind);
+        Assert.True(probe.IsHdr);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Equal(HdrTransfer.Scrgb, probe.Transfer);
+
+        // Header-only head (what Probe(Stream) may see) still probes.
+        var headLen = data.AsSpan().IndexOf("lineOrder\0lineOrder\0"u8) + 32;
+        Assert.Equal(HdrKind.HdrExr, HdrFile.Probe(data.AsSpan(0, Math.Min(headLen, data.Length))).Kind);
+
+        var idx = data.AsSpan().IndexOf("compression\0compression\0"u8) + "compression\0compression\0"u8.Length + 4;
+        data[idx] = 4; // PIZ: catalog-thumb only, no HDR present
+        Assert.Equal(HdrKind.None, HdrFile.Probe(data).Kind);
+    }
+
+    [Fact]
+    public void Exr_DecodeScrgb_KeepsLinearValuesAndSanitizesNonFinite()
+    {
+        var data = ExrFixture(0, 4, 2, 2, (x, y, c) => (x, y, c) switch
+        {
+            (0, 0, "R") => float.NaN,
+            (1, 0, "G") => float.PositiveInfinity,
+            (2, 0, "B") => -0.25f,
+            (3, 1, _) => 12.5f, // 1000 nits white
+            _ => 1f,
+        });
+        var f = ExrFile.TryDecodeScrgb(data)!;
+        Assert.Equal((4, 2), (f.Width, f.Height));
+        Assert.All(f.ScrgbRgba, v => Assert.True(float.IsFinite(v)));
+        Assert.Equal(0f, f.ScrgbRgba[0]);
+        Assert.Equal(0f, f.ScrgbRgba[(1 * 4) + 1]);
+        Assert.Equal(-0.25f, f.ScrgbRgba[(2 * 4) + 2]);
+        Assert.Equal(12.5f, f.MaxScrgb, 3);
+        Assert.Equal(1000f, f.MaxNits, 0);
+        Assert.True(f.AvgNits > 80f && f.AvgNits < 1000f);
+    }
+
+    [Fact]
+    public void Radiance_FrameFromScrgb_Stats()
+    {
+        float[] px = [1f, 1f, 1f, 1f, 2f, 2f, 2f, 1f];
+        var f = RadianceFile.FrameFromScrgb(px, 2, 1);
+        Assert.Equal(160f, f.MaxNits, 1);
+        Assert.Equal(80f, f.MinNits, 1);
+        Assert.Equal(120f, f.AvgNits, 1);
+        Assert.Equal(2f, f.MaxScrgb);
+    }
+
+    [Fact]
     public void Exr_ThroughStillDecode_IsToneMappedAndScaled()
     {
         var data = ExrFixture(3, 40, 20, 1, (x, _, _) => x < 20 ? 0.18f : 12f);

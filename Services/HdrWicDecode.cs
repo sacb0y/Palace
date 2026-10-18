@@ -85,9 +85,11 @@ internal static class HdrWicDecode
             return null;
         }
 
-        if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
+        if (IsLinearFloatStill(probe, path))
         {
-            return await Task.Run(() => FromRadiance(path), cancellation).ConfigureAwait(false);
+            return await Task.Run(
+                () => FromLinearFloatStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
+                cancellation).ConfigureAwait(false);
         }
 
         if (probe.Kind == HdrKind.HdrJxr)
@@ -216,12 +218,14 @@ internal static class HdrWicDecode
             }
         }
 
-        if (probe.Kind == HdrKind.HdrRadiance || PathSafe.IsRadiance(path))
+        if (IsLinearFloatStill(probe, path))
         {
             return await Task.Run(
                 () =>
                 {
-                    var frame = FromRadiance(path);
+                    // Stats only: a tiny Fit decode keeps native stats without
+                    // holding a native float frame (Radiance streams).
+                    var frame = FromLinearFloatStill(path, probe, 2, 2, ImageScaling.Fit);
                     return frame is null
                         ? (HdrStats?)null
                         : new HdrStats(
@@ -229,8 +233,8 @@ internal static class HdrWicDecode
                             frame.AvgNits,
                             frame.MinNits,
                             frame.MaxScrgb,
-                            frame.Width,
-                            frame.Height);
+                            frame.NativeWidth,
+                            frame.NativeHeight);
                 },
                 cancellation).ConfigureAwait(false);
         }
@@ -983,12 +987,70 @@ internal static class HdrWicDecode
         }
     }
 
-    private static HdrFrame? FromRadiance(string path)
+    /// <summary>Radiance RGBE and OpenEXR: in-house decoders straight to linear scRGB.</summary>
+    private static bool IsLinearFloatStill(HdrProbe probe, string path) =>
+        probe.Kind is HdrKind.HdrRadiance or HdrKind.HdrExr
+        || PathSafe.IsRadiance(path);
+
+    /// <summary>
+    /// Decode at the present size (as the WIC paths do): Radiance box-filters
+    /// while streaming scanlines, so huge panoramas never hold the native
+    /// float frame; EXR decodes native then box-scales. Stats stay native.
+    /// </summary>
+    private static HdrFrame? FromLinearFloatStill(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        ImageScaling scaling)
     {
         try
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            var frame = RadianceFile.TryDecode(stream);
+            RadianceFrame? frame;
+            int nativeW;
+            int nativeH;
+            if (probe.Kind == HdrKind.HdrExr || PathSafe.IsExr(path))
+            {
+                frame = ExrFile.TryDecodeScrgb(File.ReadAllBytes(path));
+                if (frame is null)
+                {
+                    return null;
+                }
+
+                nativeW = frame.Width;
+                nativeH = frame.Height;
+                var (dw, dh) = GalleryPresent.PresentDecodeSize(
+                    nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
+                if (dw > 0 && dh > 0 && (dw < nativeW || dh < nativeH))
+                {
+                    frame = new RadianceFrame
+                    {
+                        ScrgbRgba = HdrPixels.BoxScaleScrgb(frame.ScrgbRgba, nativeW, nativeH, dw, dh),
+                        Width = dw,
+                        Height = dh,
+                        MaxNits = frame.MaxNits,
+                        AvgNits = frame.AvgNits,
+                        MinNits = frame.MinNits,
+                        MaxScrgb = frame.MaxScrgb
+                    };
+                }
+            }
+            else
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var size = RadianceFile.TryReadSize(stream);
+                if (size is null)
+                {
+                    return null;
+                }
+
+                (nativeW, nativeH) = size.Value;
+                var (dw, dh) = GalleryPresent.PresentDecodeSize(
+                    nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
+                stream.Position = 0;
+                frame = RadianceFile.TryDecode(stream, dw, dh);
+            }
+
             if (frame is null)
             {
                 return null;
@@ -999,8 +1061,8 @@ internal static class HdrWicDecode
                 ScrgbRgba = frame.ScrgbRgba,
                 Width = frame.Width,
                 Height = frame.Height,
-                NativeWidth = frame.Width,
-                NativeHeight = frame.Height,
+                NativeWidth = nativeW,
+                NativeHeight = nativeH,
                 MaxNits = frame.MaxNits,
                 AvgNits = frame.AvgNits,
                 MinNits = frame.MinNits,
@@ -1331,19 +1393,7 @@ internal static class HdrWicDecode
         var transfer = probe.Transfer;
         if (probe.Kind is HdrKind.HdrPng or HdrKind.WideGamutPng)
         {
-            var nitsR = GalleryPresent.EncodedToNits(r, transfer);
-            var nitsG = GalleryPresent.EncodedToNits(g, transfer);
-            var nitsB = GalleryPresent.EncodedToNits(b, transfer);
-            var bt2020 = probe.CicpPrimaries == 9;
-            nitsY = GalleryPresent.LuminanceY(nitsR, nitsG, nitsB, bt2020);
-            if (bt2020)
-            {
-                GalleryPresent.Bt2020ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
-            }
-
-            sr = GalleryPresent.NitsToScrgb(nitsR);
-            sg = GalleryPresent.NitsToScrgb(nitsG);
-            sb = GalleryPresent.NitsToScrgb(nitsB);
+            GalleryPresent.PngEncodedToScrgb(r, g, b, transfer, probe.CicpPrimaries, out sr, out sg, out sb, out nitsY);
             return;
         }
 
