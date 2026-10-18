@@ -5,10 +5,12 @@ using System.Text;
 namespace Palace.Helpers;
 
 /// <summary>
-/// Minimal OpenEXR reader for stills: single-part scanline files with
-/// NONE, RLE, ZIPS or ZIP compression and HALF / FLOAT / UINT channels.
-/// Returns linear RGBA floats (R/G/B/A, or Y as grey). Tiled, deep,
-/// multi-part and PIZ/PXR24/B44/DWA files return null.
+/// OpenEXR stills. <see cref="TryDecode"/> uses the bundled OpenEXR library
+/// (<see cref="ExrNative"/>: every compression, tiled, multi-part) and falls
+/// back to the in-house reader here when that library is unavailable. The
+/// in-house reader handles single-part scanline files with NONE, RLE, ZIPS
+/// or ZIP compression and HALF / FLOAT / UINT channels. Returns linear RGBA
+/// floats (R/G/B/A, or Y as grey).
 /// </summary>
 public static class ExrFile
 {
@@ -22,10 +24,26 @@ public static class ExrFile
         data.Length >= 4 && BinaryPrimitives.ReadInt32LittleEndian(data) == Magic;
 
     public static (int Width, int Height)? TryReadSize(ReadOnlySpan<byte> data) =>
-        TryReadHeader(data, out var h, out _) ? (h.Width, h.Height) : null;
+        TryReadHeader(data, out var h, out _)
+            ? (h.Width, h.Height)
+            : ExrNative.TryInfo(data) is { } info ? (info.Width, info.Height) : null;
 
-    /// <summary>Header says single-part scanline with a compression this reader supports.</summary>
+    /// <summary>
+    /// The header (a probe head is enough) names an image part we can decode:
+    /// anything the bundled OpenEXR reads, else the in-house subset.
+    /// </summary>
     public static bool IsDecodable(ReadOnlySpan<byte> data) =>
+        IsDecodableInHouse(data) || (!HasUnknownCompression(data) && ExrNative.TryInfo(data) is not null);
+
+    /// <summary>
+    /// OpenEXR's lenient header parse skips an invalid compression value and
+    /// assumes ZIP; treat such files as undecodable instead of guessing.
+    /// </summary>
+    private static bool HasUnknownCompression(ReadOnlySpan<byte> data) =>
+        TryReadHeader(data, out var h, out _) && CompressionName(h.Compression) is null;
+
+    /// <summary>Single-part scanline NONE / RLE / ZIPS / ZIP (the in-house reader).</summary>
+    public static bool IsDecodableInHouse(ReadOnlySpan<byte> data) =>
         TryReadHeader(data, out var h, out _) && h.Compression <= 3;
 
     /// <summary>
@@ -64,6 +82,10 @@ public static class ExrFile
         7 => "b44a",
         8 => "dwaa",
         9 => "dwab",
+        10 => "htj2k256",
+        11 => "htj2k32",
+        12 => "lj2k",
+        13 => "zstd",
         _ => null
     };
 
@@ -72,7 +94,10 @@ public static class ExrFile
         public int LinesPerChunk => Compression == 3 ? 16 : 1;
     }
 
-    public static Frame? TryDecode(ReadOnlySpan<byte> data)
+    public static Frame? TryDecode(ReadOnlySpan<byte> data) =>
+        (HasUnknownCompression(data) ? null : ExrNative.TryDecode(data)) ?? TryDecodeInHouse(data);
+
+    public static Frame? TryDecodeInHouse(ReadOnlySpan<byte> data)
     {
         if (!TryReadHeader(data, out var h, out var offset) || h.Compression > 3)
         {

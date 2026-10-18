@@ -66,6 +66,8 @@ The build downloads a slim, static LGPL ffmpeg (about 12 MB) for video thumbnail
 dotnet build Palace.csproj -c Debug -p:Platform=x64 -p:PalaceBundleFfmpeg=false
 ```
 
+OpenEXR files (every compression, including PIZ, PXR24, B44 and DWA, plus tiled and multi-part files) are decoded by a small bundled build of the official OpenEXR library (BSD-3, about 2 MB), committed as `Native/openexr/win-x64/palace_exr.dll`. `tools/openexr/build-openexr.sh` rebuilds it from the pinned OpenEXR source (the `openexr` workflow does the same and uploads it as an artifact); its licenses and source info ship next to the app as `openexr\LICENSE.txt` and `openexr\SOURCE.txt`.
+
 ### Build and test (same as CI)
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on `windows-latest` with .NET 10:
@@ -95,7 +97,7 @@ Services/        Catalog, scanning, folder watching, thumbnails, HDR, cloud
 Helpers/         Format decoders (EXR, PSD, TGA, Clip, ...), HDR helpers, path rules
 Data/            SQLite database layer
 Palace.Tests/    Unit tests (cross-platform)
-tools/           Helper scripts (e.g. Get-Ffmpeg.ps1, build-ffmpeg.sh)
+tools/           Helper scripts (e.g. Get-Ffmpeg.ps1, build-ffmpeg.sh, openexr/)
 docs/            Design notes and README images
 Assets/          App icons and package art
 ```
