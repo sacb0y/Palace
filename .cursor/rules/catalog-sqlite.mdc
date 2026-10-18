@@ -1,6 +1,6 @@
 ---
 description: "Catalog / SQLite: schema migrations, SQL fragments, PalaceDb async gating, cloud token storage"
-globs: Data/**,Services/CatalogService.cs,Services/ScanService.cs,Services/CloudAccountService.cs,Services/Cloud/**,Helpers/MosaicSortOrder.cs
+globs: Data/**,Services/CatalogService*.cs,Services/ScanService.cs,Services/CloudAccountService.cs,Services/Cloud/**,Helpers/MosaicSortOrder.cs
 alwaysApply: false
 ---
 
