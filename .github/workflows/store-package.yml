@@ -57,7 +57,7 @@ jobs:
         run: |
           $upload = Get-ChildItem AppPackages -Recurse -Filter *.msixupload | Select-Object -First 1
           if (-not $upload) { throw 'no .msixupload produced' }
-          $msix = Get-ChildItem AppPackages -Recurse -Filter *.msix | Select-Object -First 1
+          $msix = Get-ChildItem AppPackages -Recurse -Filter 'Palace_*.msix' | Select-Object -First 1
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $z = [IO.Compression.ZipFile]::OpenRead($msix.FullName)
           try {
@@ -77,5 +77,5 @@ jobs:
           name: palace-msixupload
           path: |
             AppPackages/**/*.msixupload
-            AppPackages/**/*.msix
+            AppPackages/*_Test/Palace_*.msix
           if-no-files-found: error
