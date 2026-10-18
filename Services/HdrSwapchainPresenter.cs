@@ -87,6 +87,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             // Re-check _disposed inside the callback: Unloaded may Dispose after
             // the opening guard and before this runs; EnsureDevice must not
             // recreate COM objects that Dispose will not release again.
+            // Robust SDR map peak input, sampled once per frame off the UI thread.
+            var p99Nits = await Task.Run(() => frame.P99MaxRgbNits, cancellation).ConfigureAwait(false);
             float clip = 0;
             float scale = 1f;
             var displayHdr = false;
@@ -119,7 +121,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                     : GalleryPresent.ContentMaxNits(frame.MaxScrgb, frame.MaxNits);
                 var map = GalleryPresent.PresentMap(
                     DisplayIsHdr,
-                    content,
+                    DisplayIsHdr ? content : GalleryPresent.SdrMapPeakNits(content, p99Nits),
                     DisplayPeakNits);
                 clip = map.ClipScrgb;
                 scale = map.Scale;

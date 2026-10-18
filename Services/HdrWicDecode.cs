@@ -20,6 +20,27 @@ internal sealed class HdrFrame
     public required float MaxScrgb { get; init; }
 
     public bool HasStats => MaxNits > 0;
+
+    private float _p99MaxRgbNits = -1f;
+
+    /// <summary>
+    /// Sampled P99 max-RGB in nits for the robust SDR map peak
+    /// (<see cref="GalleryPresent.SdrMapPeakNits"/>). Computed once per frame.
+    /// </summary>
+    public float P99MaxRgbNits
+    {
+        get
+        {
+            var v = Volatile.Read(ref _p99MaxRgbNits);
+            if (v < 0)
+            {
+                v = GalleryPresent.P99MaxRgbNits(ScrgbRgba, Width, Height);
+                Volatile.Write(ref _p99MaxRgbNits, v);
+            }
+
+            return v;
+        }
+    }
 }
 
 internal readonly record struct HdrStats(

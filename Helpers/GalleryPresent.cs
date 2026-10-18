@@ -358,6 +358,54 @@ public static class GalleryPresent
     /// auto-clip to 203 paper white, and never map to an EDID 80–220 peak
     /// (that would present scRGB above 1 on G22 and look overblown).
     /// </summary>
+    /// <summary>Headroom above the P99 max-RGB that the SDR map keeps before clipping.</summary>
+    public const float SdrMapP99Headroom = 2f;
+
+    /// <summary>
+    /// SDR map peak: MaxCLL, capped at <see cref="SdrMapP99Headroom"/> × the
+    /// P99 max-RGB so a tiny extreme highlight (the sun in a 130 000-nit
+    /// panorama) does not scale the whole frame to black. Typical HDR stills
+    /// (P99 within half of MaxCLL) keep the SKIV MaxCLL map unchanged.
+    /// </summary>
+    public static float SdrMapPeakNits(float contentMaxNits, float p99MaxRgbNits)
+    {
+        if (contentMaxNits <= 0 || p99MaxRgbNits <= 0 || !float.IsFinite(p99MaxRgbNits))
+        {
+            return contentMaxNits;
+        }
+
+        return Math.Min(contentMaxNits, Math.Max(ScrgbNits, p99MaxRgbNits * SdrMapP99Headroom));
+    }
+
+    /// <summary>Sampled P99 of max(R,G,B) in nits over a linear scRGB RGBA buffer.</summary>
+    public static float P99MaxRgbNits(float[] rgba, int width, int height, int maxSamples = 65_536)
+    {
+        if (rgba is null || width <= 0 || height <= 0 || maxSamples <= 0)
+        {
+            return 0;
+        }
+
+        long pixelsL = (long)width * height;
+        if (pixelsL > int.MaxValue / 4 || rgba.Length < pixelsL * 4)
+        {
+            return 0;
+        }
+
+        var pixels = (int)pixelsL;
+        var stride = Math.Max(1, pixels / maxSamples);
+        var values = new float[(pixels + stride - 1) / stride];
+        var n = 0;
+        for (var i = 0; i < pixels && n < values.Length; i += stride)
+        {
+            var o = i * 4;
+            // Math.Max propagates NaN, so sanitize each channel first.
+            static float F(float v) => float.IsFinite(v) && v > 0 ? v : 0f;
+            values[n++] = Math.Max(F(rgba[o]), Math.Max(F(rgba[o + 1]), F(rgba[o + 2])));
+        }
+
+        return HdrAnalysis.Percentile(values, n, HdrAnalysis.P99Fraction) * ScrgbNits;
+    }
+
     public static HdrPresentMap PresentMap(bool displayIsHdr, float contentMaxNits, float displayPeakNits)
     {
         if (displayIsHdr)
