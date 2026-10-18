@@ -145,7 +145,10 @@ public sealed partial class GalleryStillSurface : UserControl
             // Heatmap on/off over a presented HDR still: re-raster the cached
             // frame, no new decode. A new still resets CanShowHeatmap first;
             // its own present picks the mode up.
-            if (_gallery?.CanShowHeatmap == true)
+            // VizMode is raised on every CanShowHeatmap change too (each new
+            // HDR still), so only re-present when the mode actually differs
+            // from the one the last present used.
+            if (_gallery is { CanShowHeatmap: true } vg && WantedViz(vg) != _lastPresentedViz)
             {
                 PresentCached(HdrPresentCoalescer.ImmediateMs);
             }
@@ -467,6 +470,12 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void PresentCached(int delayMs) => RequestPresent(delayMs);
 
+    /// <summary>Viz mode the last present started with (UI thread only).</summary>
+    private HdrVizMode _lastPresentedViz = HdrVizMode.None;
+
+    private static HdrVizMode WantedViz(GalleryViewModel g) =>
+        g.ShowHeatmap && g.CanShowHeatmap ? HdrVizMode.Heatmap : HdrVizMode.None;
+
     private void RequestPresent(int delayMs)
     {
         if (_gallery is not { IsImage: true } || _hdrFrame is null)
@@ -556,7 +565,8 @@ public sealed partial class GalleryStillSurface : UserControl
             scaling = g.Scaling;
             // Heatmap applies once an HDR present exists; the first present of
             // a still is normal, and VizMode re-presents when it turns on.
-            viz = g.ShowHeatmap && g.CanShowHeatmap ? HdrVizMode.Heatmap : HdrVizMode.None;
+            viz = WantedViz(g);
+            _lastPresentedViz = viz;
             vizPrimaries = _hdrFrameProbe.CicpPrimaries;
             epoch = Volatile.Read(ref _epoch);
             _presenter ??= new HdrSwapchainPresenter(ScpHdr);

@@ -261,6 +261,12 @@ public sealed class HdrAnalysisTests
         sdr.Apply(v, v, v, out var sr, out _, out _);
         Assert.Equal(1f, sr, 3);
 
+        // A low peak override (tonemap clip below palette white) must not
+        // flatten the heatmap: the palette ignores ClipScrgb.
+        var lowPeak = new HdrPixelMap(0.1f, 0.5f, HdrVizMode.Heatmap, HdrPixelMap.VizWhiteFor(true), 1);
+        lowPeak.Apply(v, v, v, out var lr, out _, out _);
+        Assert.Equal(203f / 80f, lr, 3);
+
         // None = the old scale + clip.
         new HdrPixelMap(0.5f, 1f).Apply(4f, -1f, 1f, out var nr, out var ng, out var nb);
         Assert.Equal((1f, 0f, 0.5f), (nr, ng, nb));

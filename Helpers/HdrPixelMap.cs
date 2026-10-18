@@ -33,11 +33,10 @@ public readonly record struct HdrPixelMap(
         if (Viz == HdrVizMode.Heatmap)
         {
             var nits = HdrAnalysis.PixelNits(r, g, b, CicpPrimaries);
+            // Palette is already bounded by VizWhiteScrgb. Do not apply the
+            // tonemap clip here: a low peak override would flatten the colours
+            // while the histogram still shows the full scale.
             HdrHeatmap.ScrgbAt(nits, VizWhiteScrgb, out or, out og, out ob);
-            var c = Math.Max(ClipScrgb, 0f);
-            or = Math.Min(or, c);
-            og = Math.Min(og, c);
-            ob = Math.Min(ob, c);
             return;
         }
 
