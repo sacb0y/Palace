@@ -253,7 +253,8 @@ public partial class LibraryViewModel
         var generation = Interlocked.Increment(ref _folderTreeGeneration);
         var projectId = AppServices.CurrentProject.Id;
         var sources = await _catalog.GetSourceFoldersAsync(projectId);
-        var assets = _allAssets;
+        // Snapshot so a concurrent rename/move mutating Asset.Path cannot mix old/new paths in one build.
+        var assets = _allAssets.ToList();
         var treeSort = FolderSort;
         var tree = await Task.Run(() => BuildFolderNodes(sources, assets, treeSort));
         await UiDispatch.RunAsync(() =>

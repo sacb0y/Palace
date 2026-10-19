@@ -99,6 +99,12 @@ public partial class LibraryViewModel
 
     private void ReplaceFolderTree(IReadOnlyList<FolderNode> roots)
     {
+        // Keep an in-progress New folder / rename editor; a concurrent refresh must not wipe it.
+        if (HasFolderEditInProgress(FolderTree))
+        {
+            return;
+        }
+
         if (_collapsedFolders.Count > 0)
         {
             ApplyCollapsed(roots, _collapsedFolders);
@@ -109,6 +115,24 @@ public partial class LibraryViewModel
         {
             FolderTree.Add(root);
         }
+    }
+
+    private static bool HasFolderEditInProgress(IEnumerable<FolderNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsEditing || node.IsPending)
+            {
+                return true;
+            }
+
+            if (HasFolderEditInProgress(node.Children))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ApplyCollapsed(IEnumerable<FolderNode> nodes, HashSet<string> collapsed)

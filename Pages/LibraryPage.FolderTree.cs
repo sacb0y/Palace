@@ -88,8 +88,10 @@ public sealed partial class LibraryPage
                     item.IsEnabled = ViewModel.CanAddFolderIn(node);
                     break;
                 case "MnuRenameFolder":
-                case "MnuDeleteFolder":
                     item.IsEnabled = ViewModel.CanEditFolder(node);
+                    break;
+                case "MnuDeleteFolder":
+                    item.IsEnabled = ViewModel.CanDeleteFolder(node);
                     break;
                 case "MnuFolderInExplorer":
                     item.IsEnabled = !node.IsPending;

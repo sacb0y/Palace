@@ -1,4 +1,5 @@
 using Palace.Helpers;
+using Palace.Services;
 using Xunit;
 
 namespace Palace.Tests;
@@ -59,6 +60,28 @@ public sealed class FolderNamesTests
 
         Assert.Equal("New folder (3)", FolderNames.UniqueChild(parent, FolderNames.DefaultNewFolder, taken.Contains));
         Assert.Equal("Other", FolderNames.UniqueChild(parent, "Other", taken.Contains));
+    }
+
+    [Fact]
+    public void UniqueChild_works_with_ChildExists_when_exists_receives_full_paths()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "palace-unique-child-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(parent, "New folder"));
+        Directory.CreateDirectory(Path.Combine(parent, "New folder (2)"));
+        try
+        {
+            // Same wiring as LibraryViewModel.NewFolder: UniqueChild passes full paths;
+            // ChildExists wants the bare name.
+            var name = FolderNames.UniqueChild(
+                parent,
+                FolderNames.DefaultNewFolder,
+                fullPath => FileOpService.ChildExists(parent, Path.GetFileName(fullPath)));
+            Assert.Equal("New folder (3)", name);
+        }
+        finally
+        {
+            try { Directory.Delete(parent, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
     }
 
     [Fact]

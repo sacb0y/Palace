@@ -623,4 +623,63 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.True(File.Exists(two.Path));
         Assert.Null(await _ops.PeekUndoAsync(_projectId));
     }
+
+    [Fact]
+    public async Task RenameFolder_with_emoji_name_rebases_catalog_paths_intact()
+    {
+        var emoji = "🎉";
+        var created = await _ops.CreateFolderAsync(_rootA.Path, emoji, _projectId);
+        Assert.True(created.Ok, created.Message);
+        var asset = await AddAssetAsync(_rootA, Path.Combine(emoji, "shot.png"));
+        var renamed = await _ops.RenameFolderAsync(created.Path!, "Renamed", _projectId);
+
+        Assert.True(renamed.Ok, renamed.Message);
+        var expected = Path.Combine(_rootA.Path, "Renamed", "shot.png");
+        Assert.Equal(expected, (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
+        Assert.True(File.Exists(expected));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(asset.Path, (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
+    }
+
+    [Fact]
+    public async Task Undo_move_recovers_when_file_already_at_old_path_and_catalog_is_stale()
+    {
+        var asset = await AddAssetAsync(_rootA, "stale.png");
+        var dest = Dir(_rootA, "Out");
+        var moved = await _ops.MoveAssetsAsync([asset], dest, _projectId);
+        Assert.True(moved.Ok, moved.Message);
+        var newPath = Path.Combine(dest, "stale.png");
+
+        // Simulate a prior undo that moved the file back but left the catalog on NewPath
+        // (catalog update failed and TryMoveBack also failed).
+        File.Move(newPath, asset.Path);
+        Assert.True(File.Exists(asset.Path));
+        Assert.False(File.Exists(newPath));
+        Assert.Equal(newPath, (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(asset.Path, (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    [Fact]
+    public async Task Undo_move_into_another_projects_nested_root_is_skipped()
+    {
+        var asset = await AddAssetAsync(_rootA, Path.Combine("Zone", "nested-undo.png"));
+        var dest = Dir(_rootA, "Hold");
+        var moved = await _ops.MoveAssetsAsync([asset], dest, _projectId);
+        Assert.True(moved.Ok, moved.Message);
+
+        // After the move, another project watches the original parent as a nested root.
+        // Undo must refuse writing back into that nested root (same gate as forward ops).
+        await AddOtherProjectSourceAsync(Path.Combine(_rootA.Path, "Zone"));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.False(undo.Ok);
+        Assert.Contains("another project", undo.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(Path.Combine(dest, "nested-undo.png")));
+    }
 }
