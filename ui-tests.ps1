@@ -438,9 +438,9 @@ Test-UI 'Rename project exists' { winapp ui wait-for 'BtnRenameProject' -a $AppP
 Test-UI 'Add folder exists' { winapp ui wait-for 'BtnAddFolder' -a $AppPid -t 3000 }
 Test-UI 'Scan exists' { winapp ui wait-for 'BtnScan' -a $AppPid -t 3000 }
 Test-UI 'Organize exists' { winapp ui wait-for 'BtnOrganize' -a $AppPid -t 3000 }
-Test-UI 'Undo organize exists' { winapp ui wait-for 'BtnUndoOrganize' -a $AppPid -t 3000 }
+Test-UI 'Undo exists' { winapp ui wait-for 'BtnUndo' -a $AppPid -t 3000 }
 Test-UI 'Search exists' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 3000 }
-Test-UI 'Mosaic sort combo exists' { winapp ui wait-for 'CmbMosaicSort' -a $AppPid -t 3000 }
+Test-UI 'Mosaic sort button exists' { winapp ui wait-for 'BtnMosaicSort' -a $AppPid -t 3000 }
 Test-UI 'Asset mosaic exists' { winapp ui wait-for 'GrdAssets' -a $AppPid -t 3000 }
 Test-UI 'Shell wallpaper layer exists' { winapp ui wait-for 'GrdShellBackdrop' -a $AppPid -t 4000 }
 Test-UI 'Row height slider exists' { winapp ui wait-for 'SldRowHeight' -a $AppPid -t 3000 }
@@ -461,7 +461,7 @@ Test-UI 'Tags tree loaded' { winapp ui wait-for 'RepTagBoard' -a $AppPid -t 8000
 Test-UI 'Tag scope exists' { winapp ui wait-for 'SelTagScope' -a $AppPid -t 4000 }
 Test-UI 'Tag search exists' { winapp ui wait-for 'AsbTagSearch' -a $AppPid -t 4000 }
 Test-UI 'Tag mosaic exists' { winapp ui wait-for 'GrdTagAssets' -a $AppPid -t 4000 }
-Test-UI 'Tag mosaic sort combo exists' { winapp ui wait-for 'CmbTagMosaicSort' -a $AppPid -t 4000 }
+Test-UI 'Tag mosaic sort button exists' { winapp ui wait-for 'BtnTagMosaicSort' -a $AppPid -t 4000 }
 Test-UI 'Tags select-mode toggle exists' { winapp ui wait-for 'TglTagSelectMode' -a $AppPid -t 4000 }
 Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000 }
 Test-UI 'Set tag name' { winapp ui set-value 'TxtNewTagName' 'Sonic' -a $AppPid }

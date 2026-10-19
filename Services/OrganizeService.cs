@@ -17,11 +17,13 @@ public sealed class OrganizeChoice
 public sealed class OrganizeService
 {
     private readonly CatalogService _catalog;
+    private readonly FileOpService _fileOps;
     private static readonly Regex Token = new(@"\{([^}]+)\}|%([^%]+)%", RegexOptions.Compiled);
 
-    public OrganizeService(CatalogService catalog)
+    public OrganizeService(CatalogService catalog, FileOpService fileOps)
     {
         _catalog = catalog;
+        _fileOps = fileOps;
     }
 
     public async Task<IReadOnlyList<OrganizePreviewItem>> DryRunAsync(
@@ -107,89 +109,48 @@ public sealed class OrganizeService
         return items;
     }
 
-    public async Task<int> ApplyAsync(IReadOnlyList<OrganizePreviewItem> preview)
+    /// <summary>
+    /// Apply a dry-run via <see cref="FileOpService"/> so Organize shares the same Undo journal
+    /// as Move / folder ops (one batch per run). Does <b>not</b> mutate bound
+    /// <see cref="OrganizePreviewItem"/> rows (those fire PropertyChanged onto WinUI) — call
+    /// <see cref="MarkPreviewApplied"/> on the UI thread after this returns.
+    /// </summary>
+    public async Task<FileOpResult> ApplyAsync(string projectId, IReadOnlyList<OrganizePreviewItem> preview)
     {
-        var applied = new List<OrganizeBatchItem>();
-        foreach (var item in preview.Where(p => p.Status is "Ready" or "Collision"))
+        var ready = preview.Where(p => p.Status is "Ready" or "Collision").ToList();
+        if (ready.Count == 0)
         {
-            try
-            {
-                var destDir = Path.GetDirectoryName(item.NewPath);
-                if (!string.IsNullOrEmpty(destDir))
-                {
-                    Directory.CreateDirectory(destDir);
-                }
-
-                if (CloudFile.Exists(item.NewPath))
-                {
-                    item.NewPath = PathSafe.UniquePath(item.NewPath);
-                }
-
-                File.Move(item.OldPath, item.NewPath);
-                await _catalog.UpdateAssetPathAsync(item.AssetId, item.NewPath);
-                await _catalog.SetOrganizeErrorAsync(item.AssetId, null);
-                item.Status = "Applied";
-                applied.Add(new OrganizeBatchItem
-                {
-                    AssetId = item.AssetId,
-                    OldPath = item.OldPath,
-                    NewPath = item.NewPath,
-                    Status = OrganizeItemStatus.Applied
-                });
-            }
-            catch (Exception ex)
-            {
-                item.Status = "Error";
-                item.Note = ex.Message;
-                await _catalog.SetOrganizeErrorAsync(item.AssetId, ex.Message);
-            }
+            return FileOpResult.Fail("Nothing to organize.");
         }
 
-        if (applied.Count > 0)
-        {
-            await _catalog.CreateOrganizeBatchAsync(applied);
-        }
-
-        return applied.Count;
+        var plan = ready
+            .Select(p => new OrganizeApplyItem(p.AssetId, p.FileName, p.OldPath, p.NewPath))
+            .ToList();
+        // ConfigureAwait(false): file work stays off the UI thread. Never touch ObservableObject
+        // preview rows here — that throws RPC_E_WRONG_THREAD when TextBlocks are bound.
+        return await _fileOps.ApplyOrganizeAsync(projectId, plan).ConfigureAwait(false);
     }
 
-    public async Task<int> UndoLastAsync()
+    /// <summary>
+    /// Stamp Applied / NewPath on preview rows after a successful apply. Call on the UI thread
+    /// (Library / Tags RelayCommands resume there).
+    /// </summary>
+    public static void MarkPreviewApplied(IEnumerable<OrganizePreviewItem> preview, FileOpResult result)
     {
-        var batch = await _catalog.GetLastUndoableBatchAsync();
-        if (batch is null)
+        if (!result.Ok || result.Moves.Count == 0)
         {
-            return 0;
+            return;
         }
 
-        var items = await _catalog.GetBatchItemsAsync(batch.Id);
-        var undone = 0;
-        foreach (var item in items.Where(i => i.Status == OrganizeItemStatus.Applied))
+        var byId = result.Moves.ToDictionary(m => m.AssetId, StringComparer.Ordinal);
+        foreach (var item in preview)
         {
-            try
+            if (byId.TryGetValue(item.AssetId, out var moved))
             {
-                if (CloudFile.Exists(item.NewPath))
-                {
-                    var destDir = Path.GetDirectoryName(item.OldPath);
-                    if (!string.IsNullOrEmpty(destDir))
-                    {
-                        Directory.CreateDirectory(destDir);
-                    }
-
-                    var restore = CloudFile.Exists(item.OldPath) ? PathSafe.UniquePath(item.OldPath) : item.OldPath;
-                    File.Move(item.NewPath, restore);
-                    await _catalog.UpdateAssetPathAsync(item.AssetId, restore);
-                }
-
-                undone++;
-            }
-            catch
-            {
-                // Keep remaining items undoable? Mark batch undone anyway after best-effort.
+                item.NewPath = moved.NewPath;
+                item.Status = "Applied";
             }
         }
-
-        await _catalog.MarkBatchUndoneAsync(batch.Id);
-        return undone;
     }
 
     public async Task AutoOrganizeNewFileAsync(SourceFolder source, Asset asset)
@@ -215,7 +176,13 @@ public sealed class OrganizeService
             return;
         }
 
-        await ApplyAsync(ready);
+        var projectId = source.ProjectId;
+        if (string.IsNullOrEmpty(projectId))
+        {
+            return;
+        }
+
+        await ApplyAsync(projectId, ready).ConfigureAwait(false);
     }
 
     public string RenderFolder(string template, Asset asset, IReadOnlyList<AssignedTag> tags)

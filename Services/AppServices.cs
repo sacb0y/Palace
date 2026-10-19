@@ -92,13 +92,16 @@ public static class AppServices
         Access = new AccessService();
         Metadata = new MetadataExtractorService();
         Thumbnails = new ThumbnailService(thumbs);
-        Organize = new OrganizeService(Catalog);
         CloudAccounts = new CloudAccountService(Catalog);
         CloudLibraries = new CloudLibraryFactory(Catalog, CloudAccounts);
         Hydration = new HydrationService(Catalog, Metadata, Thumbnails);
+        // FileOps → Organize → Scan → Watchers. Suppress closes over Watchers once assigned.
+        WatcherService? watchers = null;
+        FileOps = new FileOpService(Catalog, () => watchers!.SuppressNotifications());
+        Organize = new OrganizeService(Catalog, FileOps);
         Scan = new ScanService(Catalog, Metadata, Thumbnails, Organize, CloudLibraries);
         Watchers = new WatcherService(Catalog, Scan);
-        FileOps = new FileOpService(Catalog, Watchers.SuppressNotifications);
+        watchers = Watchers;
         Library = new LibraryViewModel(Catalog, Access, Scan, Organize, Thumbnails, Watchers, FileOps);
         Tags = new TagsViewModel(Catalog, Organize, Access, Thumbnails);
         Rooms = new RoomsViewModel(Catalog, Thumbnails);

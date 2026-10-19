@@ -161,6 +161,7 @@ public sealed class FileOpService
         : batch.Kind switch
         {
             FileOpKind.Move => $"Undo move of {Files(batch.Items.Count(i => i.Step == FileOpStep.MoveFile))}",
+            FileOpKind.Organize => $"Undo organize of {Files(batch.Items.Count(i => i.Step == FileOpStep.MoveFile))}",
             FileOpKind.CreateFolder => $"Undo new folder {DisplayName(batch.Items.LastOrDefault()?.NewPath)}",
             FileOpKind.RenameFolder => $"Undo rename to {DisplayName(batch.Items.LastOrDefault()?.NewPath)}",
             FileOpKind.DeleteFolder => $"Undo delete of {DisplayName(batch.Items.LastOrDefault()?.OldPath)}",
@@ -190,13 +191,18 @@ public sealed class FileOpService
     /// <summary>
     /// Move assets into <paramref name="destinationDir"/> (an existing folder inside a watched source).
     /// Name clashes get a unique name; missing / online-only-across-roots / already-there files are skipped.
+    /// When <paramref name="absorbCreatedFolder"/> is the destination and the newest undoable batch is
+    /// a <see cref="FileOpKind.CreateFolder"/> for that path (Move dialog "New folder" then Move here),
+    /// the create steps are folded into this Move batch so one Undo returns the files and removes the
+    /// empty folder.
     /// </summary>
     public Task<FileOpResult> MoveAssetsAsync(
         IReadOnlyList<Asset> assets,
         string destinationDir,
         string projectId,
-        CancellationToken cancellationToken = default) =>
-        GatedAsync(projectId, () => MoveAssetsCoreAsync(assets, destinationDir, projectId, cancellationToken), cancellationToken);
+        CancellationToken cancellationToken = default,
+        string? absorbCreatedFolder = null) =>
+        GatedAsync(projectId, () => MoveAssetsCoreAsync(assets, destinationDir, projectId, cancellationToken, absorbCreatedFolder), cancellationToken);
 
     /// <summary>Create <paramref name="name"/> under <paramref name="parentDir"/> (inside a watched source).</summary>
     public Task<FileOpResult> CreateFolderAsync(string parentDir, string name, string projectId) =>
@@ -210,12 +216,202 @@ public sealed class FileOpService
     public Task<FileOpResult> DeleteEmptyFolderAsync(string folderPath, string projectId) =>
         GatedAsync(projectId, () => DeleteEmptyFolderCoreAsync(folderPath, projectId));
 
+    /// <summary>
+    /// Apply an Organize dry-run: create missing folders, move files, journal <b>one</b>
+    /// <see cref="FileOpKind.Organize"/> batch so Undo / Ctrl+Z reverses the whole run
+    /// (moves back, then removes empty folders this run created).
+    /// </summary>
+    public Task<FileOpResult> ApplyOrganizeAsync(string projectId, IReadOnlyList<OrganizeApplyItem> items) =>
+        GatedAsync(projectId, () => ApplyOrganizeCoreAsync(projectId, items));
+
     /// <summary>Reverse the newest file operation of the project (see <see cref="UndoLastCoreAsync"/>).</summary>
     public Task<FileOpResult> UndoLastAsync(string projectId) =>
         GatedAsync(projectId, () => UndoLastCoreAsync(projectId));
 
     public Task<FileOpBatch?> PeekUndoAsync(string projectId) =>
         _catalog.GetLastUndoableFileOpAsync(projectId);
+
+    private async Task<FileOpResult> ApplyOrganizeCoreAsync(string projectId, IReadOnlyList<OrganizeApplyItem> planned)
+    {
+        if (planned.Count == 0)
+        {
+            return FileOpResult.Fail("Nothing to organize.");
+        }
+
+        var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
+        var createdDirs = new List<string>();
+        var seenCreated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var moveItems = new List<FileOpItem>();
+        var moves = new List<FileOpMove>();
+        var skipped = new List<string>();
+
+        using (_suppressWatcher?.Invoke())
+        {
+            foreach (var plan in planned)
+            {
+                var destDir = Path.GetDirectoryName(plan.NewPath);
+                if (string.IsNullOrEmpty(destDir))
+                {
+                    skipped.Add($"{plan.FileName}: bad destination");
+                    continue;
+                }
+
+                var destRoot = ResolveWritableRoot(destDir, allSources, projectId, out var destError);
+                if (destRoot is null)
+                {
+                    skipped.Add($"{plan.FileName}: {destError}");
+                    continue;
+                }
+
+                var srcRoot = ResolveWritableRoot(plan.OldPath, allSources, projectId, out var srcError);
+                if (srcRoot is null)
+                {
+                    skipped.Add($"{plan.FileName}: {srcError}");
+                    continue;
+                }
+
+                if (!CloudFile.Exists(plan.OldPath))
+                {
+                    skipped.Add($"{plan.FileName}: file is missing");
+                    continue;
+                }
+
+                try
+                {
+                    foreach (var created in EnsureDirsUnderRoot(destRoot.Path, destDir, seenCreated))
+                    {
+                        createdDirs.Add(created);
+                    }
+
+                    var target = plan.NewPath;
+                    if (CloudFile.Exists(target) || Directory.Exists(target))
+                    {
+                        target = FolderNames.UniqueFilePath(destDir, Path.GetFileName(target), p =>
+                            CloudFile.Exists(p) || Directory.Exists(p));
+                    }
+
+                    File.Move(plan.OldPath, target, overwrite: false);
+                    await _catalog.UpdateAssetLocationAsync(plan.AssetId, target, destRoot.Id).ConfigureAwait(false);
+                    await _catalog.SetOrganizeErrorAsync(plan.AssetId, null).ConfigureAwait(false);
+
+                    moves.Add(new FileOpMove(plan.AssetId, plan.OldPath, target, destRoot.Id));
+                    moveItems.Add(new FileOpItem
+                    {
+                        Step = FileOpStep.MoveFile,
+                        AssetId = plan.AssetId,
+                        OldPath = plan.OldPath,
+                        NewPath = target,
+                        OldSourceId = srcRoot.Id,
+                        NewSourceId = destRoot.Id
+                    });
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+                {
+                    skipped.Add($"{plan.FileName}: {ex.Message}");
+                    await _catalog.SetOrganizeErrorAsync(plan.AssetId, ex.Message).ConfigureAwait(false);
+                }
+            }
+        }
+
+        if (moves.Count == 0)
+        {
+            // Roll back empty dirs we created if nothing moved.
+            foreach (var dir in createdDirs.OrderByDescending(d => d.Length))
+            {
+                TryDeleteEmptyDir(dir);
+            }
+
+            return new FileOpResult
+            {
+                Ok = false,
+                Message = skipped.Count == 1 ? $"Nothing organized. {skipped[0]}." : "Nothing organized.",
+                Skipped = skipped
+            };
+        }
+
+        // Parents before children in the journal so Undo (reverse) deletes children first.
+        var journal = createdDirs
+            .OrderBy(d => d.Length)
+            .Select(d => new FileOpItem { Step = FileOpStep.CreateDir, OldPath = "", NewPath = d })
+            .Concat(moveItems)
+            .ToList();
+
+        var summary = $"Organize {Files(moves.Count)}";
+        var batchId = await LogAsync(projectId, FileOpKind.Organize, summary, journal).ConfigureAwait(false);
+        if (batchId is null)
+        {
+            return JournalFailed();
+        }
+
+        var message = skipped.Count == 0
+            ? $"Organized {Files(moves.Count)}."
+            : $"Organized {Files(moves.Count)}. Skipped {skipped.Count}.";
+        return new FileOpResult
+        {
+            Ok = true,
+            Message = message,
+            BatchId = batchId,
+            Summary = summary,
+            Moves = moves,
+            Skipped = skipped
+        };
+    }
+
+    /// <summary>Create missing directories from <paramref name="root"/> down to <paramref name="dir"/>; return ones created now.</summary>
+    private static List<string> EnsureDirsUnderRoot(string root, string dir, HashSet<string> seenCreated)
+    {
+        var created = new List<string>();
+        var rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var target = Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (!FolderNames.IsSameOrUnder(target, rootFull))
+        {
+            return created;
+        }
+
+        var rel = Path.GetRelativePath(rootFull, target);
+        if (rel == "." || string.IsNullOrEmpty(rel))
+        {
+            return created;
+        }
+
+        var current = rootFull;
+        foreach (var segment in rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (string.IsNullOrEmpty(segment))
+            {
+                continue;
+            }
+
+            current = Path.Combine(current, segment);
+            if (Directory.Exists(current))
+            {
+                continue;
+            }
+
+            Directory.CreateDirectory(current);
+            if (seenCreated.Add(current))
+            {
+                created.Add(current);
+            }
+        }
+
+        return created;
+    }
+
+    private static void TryDeleteEmptyDir(string dir)
+    {
+        try
+        {
+            if (Directory.Exists(dir) && IsEmptyFolder(dir))
+            {
+                Directory.Delete(dir, recursive: false);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort rollback of unused organize folders.
+        }
+    }
 
     /// <summary>
     /// Move assets into <paramref name="destinationDir"/> (an existing folder inside a watched source).
@@ -225,7 +421,8 @@ public sealed class FileOpService
         IReadOnlyList<Asset> assets,
         string destinationDir,
         string projectId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? absorbCreatedFolder = null)
     {
         if (assets.Count == 0)
         {
@@ -362,16 +559,48 @@ public sealed class FileOpService
             };
         }
 
+        // Parents before children so Undo (reverse seq) deletes children first — same as Organize.
+        var journal = new List<FileOpItem>();
+        string? absorbBatchId = null;
+        if (!string.IsNullOrWhiteSpace(absorbCreatedFolder)
+            && FolderNames.SamePath(absorbCreatedFolder, destinationDir))
+        {
+            var peek = await _catalog.GetLastUndoableFileOpAsync(projectId).ConfigureAwait(false);
+            if (peek?.Kind == FileOpKind.CreateFolder
+                && peek.Items.Any(i => i.Step == FileOpStep.CreateDir
+                    && FolderNames.SamePath(i.NewPath, destinationDir)))
+            {
+                absorbBatchId = peek.Id;
+                journal.AddRange(peek.Items
+                    .Where(i => i.Step == FileOpStep.CreateDir)
+                    .OrderBy(i => i.NewPath.Length)
+                    .Select(i => new FileOpItem
+                    {
+                        Step = FileOpStep.CreateDir,
+                        OldPath = i.OldPath,
+                        NewPath = i.NewPath
+                    }));
+            }
+        }
+
+        journal.AddRange(items);
         var summary = MoveSummary(moves.Count, destinationDir);
-        var batchId = await LogAsync(projectId, FileOpKind.Move, summary, items).ConfigureAwait(false);
+        var batchId = await LogAsync(projectId, FileOpKind.Move, summary, journal).ConfigureAwait(false);
         if (batchId is null)
         {
             return JournalFailed();
         }
 
+        if (absorbBatchId is not null)
+        {
+            // Create-folder batch is superseded by this Move (CreateDir steps copied above).
+            await _catalog.MarkFileOpUndoneAsync(absorbBatchId).ConfigureAwait(false);
+        }
+
+        var dest = Quote(DisplayName(destinationDir));
         var message = skipped.Count == 0
-            ? $"Moved {Files(moves.Count)} to {DisplayName(destinationDir)}."
-            : $"Moved {Files(moves.Count)} to {DisplayName(destinationDir)}. Skipped {skipped.Count}.";
+            ? $"Moved {Files(moves.Count)} to {dest}."
+            : $"Moved {Files(moves.Count)} to {dest}. Skipped {skipped.Count}.";
         if (stopped)
         {
             message += $" Stopped before the other {assets.Count - moves.Count - skipped.Count}.";
@@ -438,7 +667,7 @@ public sealed class FileOpService
             return JournalFailed();
         }
 
-        return new FileOpResult { Ok = true, Message = $"Created {cleaned}.", BatchId = batchId, Summary = summary, Path = path };
+        return new FileOpResult { Ok = true, Message = $"Created {Quote(cleaned)}.", BatchId = batchId, Summary = summary, Path = path };
     }
 
     /// <summary>Rename a folder inside a watched source (not a source root) and rebase its catalog rows.</summary>
@@ -522,7 +751,14 @@ public sealed class FileOpService
             return JournalFailed();
         }
 
-        return new FileOpResult { Ok = true, Message = $"Renamed to {cleaned}.", BatchId = batchId, Summary = summary, Path = target };
+        return new FileOpResult
+        {
+            Ok = true,
+            Message = $"Renamed {Quote(DisplayName(folderPath))} to {Quote(cleaned)}.",
+            BatchId = batchId,
+            Summary = summary,
+            Path = target
+        };
     }
 
     /// <summary>
@@ -618,7 +854,14 @@ public sealed class FileOpService
             return JournalFailed();
         }
 
-        return new FileOpResult { Ok = true, Message = $"Deleted {DisplayName(folderPath)}.", BatchId = batchId, Summary = summary, Path = folderPath };
+        return new FileOpResult
+        {
+            Ok = true,
+            Message = $"Deleted folder {Quote(DisplayName(folderPath))}.",
+            BatchId = batchId,
+            Summary = summary,
+            Path = folderPath
+        };
     }
 
     /// <summary>
@@ -1043,4 +1286,7 @@ public sealed class FileOpService
         var name = Path.GetFileName(trimmed);
         return string.IsNullOrEmpty(name) ? path : name;
     }
+
+    /// <summary>Typographic quotes so folder names don't run into toast sentences.</summary>
+    public static string Quote(string name) => $"\u201c{name}\u201d";
 }

@@ -8,6 +8,9 @@ using Windows.Storage;
 
 namespace Palace.ViewModels;
 
+/// <summary>Result of the Move dialog: destination path, and a folder created in that dialog to fold into the Move Undo batch.</summary>
+public readonly record struct MoveDestinationChoice(string Path, string? AbsorbCreatedFolder = null);
+
 /// <summary>
 /// Library: Move to (recent destinations, Move dialog, new folder) and Undo for file operations.
 /// The file work lives in <see cref="FileOpService"/>; this partial only drives the UI and keeps the
@@ -17,9 +20,11 @@ public partial class LibraryViewModel
 {
     private IReadOnlyList<string> _moveRecents = [];
     private int _undoToastEpoch;
+    private CancellationTokenSource? _undoToastHideCts;
+    private int _undoToastPaused;
 
-    /// <summary>Page shows the Move dialog; returns the chosen folder or null.</summary>
-    public Func<Task<string?>>? RequestPickMoveDestination { get; set; }
+    /// <summary>Page shows the Move dialog; returns the chosen folder (and optional create-folder absorb path) or null.</summary>
+    public Func<Task<MoveDestinationChoice?>>? RequestPickMoveDestination { get; set; }
 
     /// <summary>Recent Move destinations that still exist, newest first (context menu "Move to recent").</summary>
     public ObservableCollection<MoveDestinationItem> MoveRecents { get; } = [];
@@ -38,6 +43,10 @@ public partial class LibraryViewModel
 
     [ObservableProperty]
     public partial string UndoToastMessage { get; set; } = "";
+
+    /// <summary>False after an Undo itself (no nested Undo action on the toast).</summary>
+    [ObservableProperty]
+    public partial bool ShowUndoToastAction { get; set; } = true;
 
     /// <summary>Local watched folders of the current project (Move dialog, recents filter).</summary>
     public IReadOnlyList<FolderNode> LocalFolderRoots =>
@@ -58,13 +67,13 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var destination = await RequestPickMoveDestination();
-            if (string.IsNullOrWhiteSpace(destination))
+            var pick = await RequestPickMoveDestination();
+            if (pick is null || string.IsNullOrWhiteSpace(pick.Value.Path))
             {
                 return;
             }
 
-            await MoveSelectionToAsync(destination);
+            await MoveSelectionToAsync(pick.Value.Path, pick.Value.AbsorbCreatedFolder);
         });
 
     [RelayCommand]
@@ -85,11 +94,12 @@ public partial class LibraryViewModel
         {
             var projectId = AppServices.CurrentProject.Id;
             BeginBusy("Undoing…");
+            FileOpResult result = FileOpResult.Fail("Nothing to undo.");
             try
             {
                 ShowUndoToast = false;
                 var peek = await _fileOps.PeekUndoAsync(projectId);
-                var result = await _fileOps.UndoLastAsync(projectId);
+                result = await _fileOps.UndoLastAsync(projectId);
                 if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
                 {
                     await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
@@ -99,11 +109,25 @@ public partial class LibraryViewModel
                     await RefreshQuietAsync();
                 }
 
-                Notify(result.Message);
+                await RefreshUndoStateAsync();
+                if (result.Ok)
+                {
+                    ShowUndoToastFor(result.Message, offerUndo: false);
+                }
+                else
+                {
+                    Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                }
             }
             finally
             {
                 EndBusy();
+                // EndBusy does not clear StatusText; mosaic refresh may leave "Undoing…" stuck.
+                if (StatusText is "Undoing…" or "Undoing.")
+                {
+                    StatusText = result.Ok ? result.Message : "Ready.";
+                }
+
                 await RefreshUndoStateAsync();
             }
         });
@@ -132,7 +156,7 @@ public partial class LibraryViewModel
     private bool HasMoveTargets() =>
         _selection.Any(s => !s.IsFolderHeader) || SelectedAsset is { IsFolderHeader: false };
 
-    private async Task MoveSelectionToAsync(string destinationDir)
+    private async Task MoveSelectionToAsync(string destinationDir, string? absorbCreatedFolder = null)
     {
         // Move acts on picked tiles only — never a whole folder because nothing was selected.
         var ids = _selection.Count > 0
@@ -145,10 +169,13 @@ public partial class LibraryViewModel
         }
 
         var assets = await _catalog.GetAssetsByIdsAsync(ids);
-        await MoveAssetsToAsync(assets, destinationDir);
+        await MoveAssetsToAsync(assets, destinationDir, absorbCreatedFolder);
     }
 
-    private async Task MoveAssetsToAsync(IReadOnlyList<Asset> assets, string destinationDir)
+    private async Task MoveAssetsToAsync(
+        IReadOnlyList<Asset> assets,
+        string destinationDir,
+        string? absorbCreatedFolder = null)
     {
         if (assets.Count == 0)
         {
@@ -157,10 +184,14 @@ public partial class LibraryViewModel
         }
 
         BeginBusy(assets.Count == 1 ? "Moving…" : $"Moving {assets.Count}…");
-        FileOpResult result;
+        FileOpResult? result = null;
         try
         {
-            result = await _fileOps.MoveAssetsAsync(assets, destinationDir, AppServices.CurrentProject.Id);
+            result = await _fileOps.MoveAssetsAsync(
+                assets,
+                destinationDir,
+                AppServices.CurrentProject.Id,
+                absorbCreatedFolder: absorbCreatedFolder);
             if (result.Moves.Count > 0)
             {
                 CloseOverlay();
@@ -170,15 +201,25 @@ public partial class LibraryViewModel
         }
         finally
         {
-            EndBusy();
+            // EndBusy does not clear StatusText. In-place mosaic updates never replace "Moving…",
+            // and a requery can finish on a pool thread — write the outcome on the UI thread.
+            var status = result?.Message;
+            await UiDispatch.RunAsync(() =>
+            {
+                EndBusy();
+                if (!string.IsNullOrWhiteSpace(status))
+                {
+                    StatusText = status;
+                }
+            });
         }
 
         await RefreshUndoStateAsync();
-        if (result.Ok && result.BatchId is not null)
+        if (result is { Ok: true, BatchId: not null })
         {
             ShowUndoToastFor(result.Message);
         }
-        else
+        else if (result is not null)
         {
             Notify(result.Message);
         }
@@ -283,25 +324,68 @@ public partial class LibraryViewModel
         });
     }
 
-    private void ShowUndoToastFor(string message)
+    private void ShowUndoToastFor(string message, bool offerUndo = true)
     {
         var epoch = Interlocked.Increment(ref _undoToastEpoch);
+        _undoToastHideCts?.Cancel();
         _ = UiDispatch.RunAsync(() =>
         {
+            // One toast slot: transient Success replaces a lingering InfoBar.
+            ShowInfo = false;
             UndoToastMessage = message;
+            ShowUndoToastAction = offerUndo && CanUndoFileOp;
             ShowUndoToast = true;
-            StatusText = message;
         });
         _ = HideUndoToastLaterAsync(epoch);
     }
 
+    /// <summary>Pause auto-dismiss while the toast is hovered or focused (WCAG 2.2.1).</summary>
+    public void PauseUndoToastTimer()
+    {
+        Interlocked.Increment(ref _undoToastPaused);
+        _undoToastHideCts?.Cancel();
+    }
+
+    public void ResumeUndoToastTimer()
+    {
+        if (Interlocked.Decrement(ref _undoToastPaused) > 0)
+        {
+            return;
+        }
+
+        Interlocked.Exchange(ref _undoToastPaused, 0);
+        if (ShowUndoToast)
+        {
+            _ = HideUndoToastLaterAsync(Volatile.Read(ref _undoToastEpoch));
+        }
+    }
+
     private async Task HideUndoToastLaterAsync(int epoch)
     {
-        await Task.Delay(TimeSpan.FromSeconds(10));
-        if (epoch == Volatile.Read(ref _undoToastEpoch))
+        _undoToastHideCts?.Cancel();
+        _undoToastHideCts = new CancellationTokenSource();
+        var token = _undoToastHideCts.Token;
+        try
         {
-            await UiDispatch.RunAsync(() => ShowUndoToast = false);
+            await Task.Delay(TimeSpan.FromSeconds(12), token);
         }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (epoch != Volatile.Read(ref _undoToastEpoch) || Volatile.Read(ref _undoToastPaused) > 0)
+        {
+            return;
+        }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch == Volatile.Read(ref _undoToastEpoch))
+            {
+                ShowUndoToast = false;
+            }
+        });
     }
 
     private void LoadMoveRecents()

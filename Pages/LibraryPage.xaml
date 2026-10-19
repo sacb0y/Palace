@@ -27,6 +27,13 @@
                 <TextBlock VerticalAlignment="Center" Text="{x:Bind Display}" />
             </StackPanel>
         </DataTemplate>
+        <DataTemplate x:Key="MoveDestinationHeaderTemplate" x:DataType="pages:MoveDestinationHeader">
+            <TextBlock
+                Margin="0,8,0,4"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind Title}" />
+        </DataTemplate>
     </Page.Resources>
 
     <Grid PreviewKeyDown="LibraryRoot_PreviewKeyDown">
@@ -80,15 +87,6 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
                         <TextBlock VerticalAlignment="Center" Text="Organize" />
-                    </StackPanel>
-                </Button>
-                <Button
-                    AutomationProperties.AutomationId="BtnUndoOrganize"
-                    AutomationProperties.Name="Undo last organize"
-                    Command="{x:Bind ViewModel.UndoOrganizeCommand}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Undo last organize" />
                     </StackPanel>
                 </Button>
                 <Button
@@ -241,7 +239,8 @@
                 <DropDownButton
                     x:Name="BtnFolderSort"
                     Grid.Column="1"
-                    Padding="6,4"
+                    MinWidth="32"
+                    MinHeight="32"
                     AutomationProperties.AutomationId="BtnFolderSort"
                     AutomationProperties.HelpText="{x:Bind ViewModel.FolderSortLabel, Mode=OneWay}"
                     AutomationProperties.Name="Sort folders"
@@ -283,7 +282,8 @@
                 <Button
                     x:Name="BtnTreeNewFolder"
                     Grid.Column="2"
-                    Padding="6,4"
+                    MinWidth="32"
+                    MinHeight="32"
                     AutomationProperties.AutomationId="BtnTreeNewFolder"
                     AutomationProperties.Name="New folder"
                     Command="{x:Bind ViewModel.NewFolderCommand}"
@@ -308,7 +308,7 @@
                     <DataTemplate x:DataType="models:FolderNode">
                         <TreeViewItem
                             HorizontalContentAlignment="Stretch"
-                            AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                            AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
                             IsExpanded="{x:Bind IsExpanded, Mode=OneWay}"
                             ItemsSource="{x:Bind Children, Mode=OneWay}">
                             <TreeViewItem.ContextFlyout>
@@ -337,6 +337,7 @@
                                         AutomationProperties.AutomationId="MnuDeleteFolder"
                                         Command="{x:Bind pages:LibraryPage.GetDeleteFolderCommand()}"
                                         CommandParameter="{x:Bind}"
+                                        KeyboardAcceleratorTextOverride="Del"
                                         Text="Delete empty folder">
                                         <MenuFlyoutItem.Icon>
                                             <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
@@ -467,43 +468,87 @@
                         <TextBlock VerticalAlignment="Center" Text="Select" />
                     </StackPanel>
                 </ToggleButton>
-                <ic:FluentIcon
+                <DropDownButton
+                    x:Name="BtnMosaicSort"
+                    MinWidth="200"
                     VerticalAlignment="Center"
-                    Icon="ArrowSort"
-                    IconSize="Size16"
-                    IconVariant="Regular" />
-                <TextBlock VerticalAlignment="Center" Text="Sort" />
-                <ComboBox
-                    x:Name="CmbMosaicSort"
-                    MinWidth="168"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="CmbMosaicSort"
-                    AutomationProperties.Name="Sort"
-                    ItemsSource="{x:Bind ViewModel.SortLabels, Mode=OneWay}"
-                    SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=OneWay}"
-                    SelectionChanged="CmbMosaicSort_SelectionChanged" />
-                <Button
-                    x:Name="BtnSortDirection"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="BtnSortDirection"
+                    AutomationProperties.AutomationId="BtnMosaicSort"
                     AutomationProperties.HelpText="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}"
-                    AutomationProperties.Name="Sort direction"
-                    Command="{x:Bind ViewModel.ToggleSortDirectionCommand}"
-                    ToolTipService.ToolTip="Reverse sort order">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <ic:FluentIcon
-                            Icon="ArrowDown"
-                            IconSize="Size16"
-                            IconVariant="Regular"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsSortDescending), Mode=OneWay}" />
-                        <ic:FluentIcon
-                            Icon="ArrowUp"
-                            IconSize="Size16"
-                            IconVariant="Regular"
-                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsSortDescending), Mode=OneWay}" />
-                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}" />
+                    AutomationProperties.Name="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowSort" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}" />
                     </StackPanel>
-                </Button>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="Bottom">
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortDateTaken"
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="DateTaken"
+                                GroupName="MosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateTaken'), Mode=OneWay}"
+                                Text="Date taken" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortDateModified"
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="DateModified"
+                                GroupName="MosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateModified'), Mode=OneWay}"
+                                Text="Date modified" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortDateAdded"
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="DateAdded"
+                                GroupName="MosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateAdded'), Mode=OneWay}"
+                                Text="Date added" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortName"
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Name"
+                                GroupName="MosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Name'), Mode=OneWay}"
+                                Text="Name" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortSize"
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Size"
+                                GroupName="MosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Size'), Mode=OneWay}"
+                                Text="Size" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortType"
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Type"
+                                GroupName="MosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Type'), Mode=OneWay}"
+                                Text="Type" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortRating"
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Rating"
+                                GroupName="MosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Rating'), Mode=OneWay}"
+                                Text="Rating" />
+                            <MenuFlyoutSeparator />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="BtnSortDirection"
+                                Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                CommandParameter="true"
+                                GroupName="MosaicSortDir"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort), Mode=OneWay}"
+                                Text="{x:Bind ViewModel.SortDescendingLabel, Mode=OneWay}" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuMosaicSortAsc"
+                                Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                CommandParameter="false"
+                                GroupName="MosaicSortDir"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicAscending(ViewModel.MosaicSort), Mode=OneWay}"
+                                Text="{x:Bind ViewModel.SortAscendingLabel, Mode=OneWay}" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
                 <TextBlock
                     x:Name="TxtSelectionCount"
                     VerticalAlignment="Center"
@@ -870,9 +915,12 @@
                     </Grid>
                 </Border>
                 <TextBlock
+                    x:Name="TxtPreviewFileName"
+                    AutomationProperties.AutomationId="TxtPreviewFileName"
                     Style="{StaticResource BodyTextBlockStyle}"
-                    Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.PreviewFileName), Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis" />
+                    Text="{x:Bind ViewModel.PreviewFileName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasSelection), Mode=OneWay}" />
 
                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Tags" />
                 <TextBlock
@@ -1310,26 +1358,36 @@
             </StackPanel>
         </ScrollViewer>
 
+        <!-- Toast slot overlays the mosaic so opening/closing does not reflow the grid. -->
         <StackPanel
-            Grid.Row="2"
-            Grid.ColumnSpan="3"
+            Grid.Row="1"
+            Grid.Column="1"
+            MaxWidth="720"
+            Margin="0,0,0,12"
+            Padding="8,0"
+            VerticalAlignment="Bottom"
             Spacing="4">
             <InfoBar
                 AutomationProperties.AutomationId="InfStatus"
                 IsOpen="{x:Bind ViewModel.ShowInfo, Mode=TwoWay}"
                 Message="{x:Bind ViewModel.InfoMessage, Mode=OneWay}"
-                Severity="Informational" />
+                Severity="{x:Bind ViewModel.InfoSeverity, Mode=OneWay}" />
             <InfoBar
                 x:Name="InfUndo"
                 AutomationProperties.AutomationId="InfUndo"
+                GotFocus="InfUndo_FocusEntered"
                 IsOpen="{x:Bind ViewModel.ShowUndoToast, Mode=TwoWay}"
+                LostFocus="InfUndo_FocusExited"
                 Message="{x:Bind ViewModel.UndoToastMessage, Mode=OneWay}"
+                PointerEntered="InfUndo_PointerEntered"
+                PointerExited="InfUndo_PointerExited"
                 Severity="Success">
                 <InfoBar.ActionButton>
                     <Button
                         AutomationProperties.AutomationId="BtnUndoToast"
                         Command="{x:Bind ViewModel.UndoFileOpCommand}"
-                        Content="Undo" />
+                        Content="Undo"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowUndoToastAction), Mode=OneWay}" />
                 </InfoBar.ActionButton>
             </InfoBar>
         </StackPanel>
@@ -1376,7 +1434,6 @@
             x:Name="GrdGalleryOverlay"
             AutomationProperties.AutomationId="GrdGalleryOverlay"
             AutomationProperties.Name="Gallery overlay"
-            Canvas.ZIndex="1"
             IsTabStop="True"
             PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">

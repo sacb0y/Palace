@@ -43,14 +43,53 @@ jobs:
 
       - name: Restore
         run: |
-          dotnet restore Palace.csproj -p:Platform=x64
+          dotnet restore Palace.csproj -p:Platform=x64 -r win-x64
           dotnet restore Palace.Tests/Palace.Tests.csproj
 
-      - name: Build Palace (Debug x64, no MSIX package)
-        run: dotnet build Palace.csproj -c Debug -p:Platform=x64 --no-restore
+      # Full MarkupCompile with RID (same XAML path as winapp run / packaged Debug).
+      # --no-incremental forces a clean XAML pass so WMC9999-class failures are not skipped.
+      - name: Build Palace (Debug x64, packaged TFM/RID)
+        run: >
+          dotnet build Palace.csproj -c Debug -p:Platform=x64 -r win-x64
+          --no-restore --no-incremental
+
+      # Packaged path used by BuildAndRun.ps1 / winapp (single-project MSIX).
+      # Unsigned: no cert secret required; still exercises GenerateAppxPackageOnBuild.
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Palace packaged (Debug x64 MSIX, unsigned)
+        run: >
+          msbuild Palace.csproj
+          /p:Configuration=Debug
+          /p:Platform=x64
+          /p:GenerateAppxPackageOnBuild=true
+          /p:AppxPackageSigningEnabled=false
+          /p:AppxBundle=Never
+          /p:UapAppxPackageBuildMode=SideloadOnly
+          /p:AppxPackageDir=Artifacts\Msix\
+          /restore
 
       - name: Test
         run: dotnet test Palace.Tests/Palace.Tests.csproj -c Debug --no-restore --logger "trx;LogFileName=results.trx"
+
+      # Same Appx publish path as `winapp package --no-sign` (Release + PublishAppxPackage).
+      # Catches XAML/compiler breaks that only surface when packaging MSIX.
+      - name: Packaged Appx publish (Release x64, unsigned)
+        run: |
+          $appx = Join-Path $env:RUNNER_TEMP "palace-appx"
+          New-Item -ItemType Directory -Path $appx -Force | Out-Null
+          dotnet restore Palace.csproj -p:Platform=x64 -r win-x64 -p:Configuration=Release
+          dotnet publish Palace.csproj `
+            -c Release -r win-x64 --no-restore -v minimal -tl:off `
+            -p:_IsPublishing=true `
+            -p:Platform=x64 `
+            -p:PublishAppxPackage=true `
+            -p:GenerateAppxPackageOnBuild=false `
+            -p:IncludePublishItemsOutputGroup=true `
+            -p:AppxBundle=Never `
+            -p:AppxPackageSigningEnabled=false `
+            -p:AppxPackageDir="$appx\"
 
       - name: Upload test results
         if: always()

@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Palace.Models;
 
 namespace Palace.Helpers;
 
@@ -14,6 +15,18 @@ public static class BindHelpers
     public static bool Not(bool value) => !value;
 
     public static bool IsFolderSort(FolderTreeSort current, string value) => current.ToString() == value;
+
+    public static bool IsMosaicField(MosaicSort current, string field) =>
+        MosaicSortOrder.FieldOf(current).ToString() == field;
+
+    // WinUI XamlCompiler (WASDK WinUI 2.3.x) can throw opaque WMC9999 when x:Bind
+    // passes bool literals (true/false or x:True/x:False) into a helper. Keep these
+    // unary — do not add a (MosaicSort, bool) overload for RadioMenuFlyoutItem.IsChecked.
+    public static bool IsMosaicDescending(MosaicSort current) =>
+        MosaicSortOrder.IsDescending(current);
+
+    public static bool IsMosaicAscending(MosaicSort current) =>
+        !MosaicSortOrder.IsDescending(current);
 
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;

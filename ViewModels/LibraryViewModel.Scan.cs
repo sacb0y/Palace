@@ -94,7 +94,7 @@ public partial class LibraryViewModel
         if (ScanNotice.Describe(report) is { } notice)
         {
             var summary = StatusText;
-            Notify(notice);
+            Notify(notice, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
             StatusText = summary + " " + notice;
         }
     }

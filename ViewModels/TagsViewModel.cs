@@ -103,11 +103,44 @@ public partial class TagsViewModel : ObservableObject
 
     public bool IsSortDescending => MosaicSortOrder.IsDescending(MosaicSort);
 
-    /// <summary>"Newest first", "A to Z", … for the direction button.</summary>
     public string SortDirectionLabel => MosaicSortOrder.DirectionLabel(MosaicSort);
+    public string SortDescendingLabel =>
+        MosaicSortOrder.DirectionLabel(MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), descending: true));
+    public string SortAscendingLabel =>
+        MosaicSortOrder.DirectionLabel(MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), descending: false));
+    public string SortButtonLabel => MosaicSortOrder.ButtonLabel(MosaicSort);
 
     [RelayCommand]
     private void ToggleSortDirection() => MosaicSort = MosaicSortOrder.ToggleDirection(MosaicSort);
+
+    [RelayCommand]
+    private void SetMosaicSortField(string? fieldName)
+    {
+        if (!Enum.TryParse<MosaicSortField>(fieldName, ignoreCase: true, out var field))
+        {
+            return;
+        }
+
+        if (MosaicSortOrder.FieldOf(MosaicSort) == field)
+        {
+            return;
+        }
+
+        MosaicSort = MosaicSortOrder.Compose(field, MosaicSortOrder.DefaultDescending(field));
+    }
+
+    [RelayCommand]
+    private void SetMosaicSortDescending(string? descending)
+    {
+        var wantDesc = string.Equals(descending, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(descending, "1", StringComparison.OrdinalIgnoreCase);
+        if (IsSortDescending == wantDesc)
+        {
+            return;
+        }
+
+        MosaicSort = MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), wantDesc);
+    }
 
     [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }
@@ -216,6 +249,9 @@ public partial class TagsViewModel : ObservableObject
         OnPropertyChanged(nameof(MosaicSortIndex));
         OnPropertyChanged(nameof(IsSortDescending));
         OnPropertyChanged(nameof(SortDirectionLabel));
+        OnPropertyChanged(nameof(SortDescendingLabel));
+        OnPropertyChanged(nameof(SortAscendingLabel));
+        OnPropertyChanged(nameof(SortButtonLabel));
         if (_suppressMosaicSort)
         {
             return;
@@ -799,9 +835,13 @@ public partial class TagsViewModel : ObservableObject
             IsBusy = true;
             try
             {
-                var applied = await _organize.ApplyAsync(OrganizePreview.ToList());
+                var result = await _organize.ApplyAsync(AppServices.CurrentProject.Id, OrganizePreview.ToList());
+                OrganizeService.MarkPreviewApplied(OrganizePreview, result);
                 await AppServices.Library.RefreshQuietAsync();
-                StatusText = $"Moved {applied} files. Last batch is undoable from Library.";
+                await AppServices.Library.RefreshUndoStateAsync();
+                StatusText = result.Ok
+                    ? $"{result.Message} Undo from Library (Ctrl+Z)."
+                    : result.Message;
             }
             finally
             {

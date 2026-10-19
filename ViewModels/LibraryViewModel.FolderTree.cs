@@ -180,7 +180,10 @@ public partial class LibraryViewModel
             }
 
             if (RequestConfirm is not null
-                && !await RequestConfirm("Delete folder", $"Delete the empty folder {node.Name}? You can undo this.", "Delete"))
+                && !await RequestConfirm(
+                    "Delete folder",
+                    $"Delete the empty folder {FileOpService.Quote(node.Name)}? You can undo this.",
+                    "Delete"))
             {
                 return;
             }
