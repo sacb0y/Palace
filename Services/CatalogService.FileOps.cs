@@ -40,7 +40,9 @@ public sealed partial class CatalogService
 
     /// <summary>
     /// After a folder rename on disk: rewrite every row under <paramref name="oldDir"/> to sit
-    /// under <paramref name="newDir"/>. Returns the number of rows changed.
+    /// under <paramref name="newDir"/>. Rebase is done in C# so non-BMP folder names (emoji) stay
+    /// intact — SQLite <c>substr</c> counts code points while <see cref="string.Length"/> is UTF-16.
+    /// Matching is case-insensitive (Windows paths). Returns the number of rows changed.
     /// </summary>
     public Task<int> RebaseFolderPathsAsync(string oldDir, string newDir) =>
         _db.WriteAsync(conn =>
@@ -52,45 +54,52 @@ public sealed partial class CatalogService
                 return 0;
             }
 
-            var ids = new List<string>();
+            var prefix = oldTrim + Path.DirectorySeparatorChar;
+            var rows = new List<(string Id, string Path)>();
             using (var find = conn.CreateCommand())
             {
-                find.CommandText = "SELECT Id FROM Asset WHERE Path LIKE $like ESCAPE '\\'";
-                find.Parameters.AddWithValue("$like", EscapeLikePrefix(oldTrim + Path.DirectorySeparatorChar) + "%");
+                // COLLATE NOCASE so a casing drift between disk and Asset.Path still finds rows.
+                find.CommandText = "SELECT Id, Path FROM Asset WHERE Path LIKE $like ESCAPE '\\' COLLATE NOCASE";
+                find.Parameters.AddWithValue("$like", EscapeLikePrefix(prefix) + "%");
                 using var reader = find.ExecuteReader();
                 while (reader.Read())
                 {
-                    ids.Add(reader.GetString(0));
+                    rows.Add((reader.GetString(0), reader.GetString(1)));
                 }
             }
 
-            if (ids.Count == 0)
+            if (rows.Count == 0)
             {
                 return 0;
             }
 
             using var tx = conn.BeginTransaction();
-            foreach (var id in ids)
+            foreach (var (id, path) in rows)
             {
+                if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(path, oldTrim, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var rebased = string.Equals(path, oldTrim, StringComparison.OrdinalIgnoreCase)
+                    ? newTrim
+                    : newTrim + path.Substring(oldTrim.Length);
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
-                cmd.CommandText = """
-                    UPDATE Asset SET Path = $new || substr(Path, $len + 1)
-                    WHERE Id = $id
-                    """;
-                cmd.Parameters.AddWithValue("$new", newTrim);
-                cmd.Parameters.AddWithValue("$len", oldTrim.Length);
+                cmd.CommandText = "UPDATE Asset SET Path = $path WHERE Id = $id";
+                cmd.Parameters.AddWithValue("$path", rebased);
                 cmd.Parameters.AddWithValue("$id", id);
                 cmd.ExecuteNonQuery();
             }
 
             tx.Commit();
-            foreach (var id in ids)
+            foreach (var (id, _) in rows)
             {
                 RefreshFts(conn, id);
             }
 
-            return ids.Count;
+            return rows.Count;
         });
 
     public Task<string> AddFileOpBatchAsync(FileOpBatch batch) =>

@@ -63,7 +63,11 @@ public partial class LibraryViewModel
         }
 
         CancelPendingEdits(FolderTree);
-        var name = FolderNames.UniqueChild(parent.Path, "New folder", candidate => FileOpService.ChildExists(parent.Path, candidate));
+        // UniqueChild passes full paths to exists; ChildExists wants a bare name.
+        var name = FolderNames.UniqueChild(
+            parent.Path,
+            "New folder",
+            fullPath => FileOpService.ChildExists(parent.Path, Path.GetFileName(fullPath)));
         var pending = new FolderNode
         {
             Name = name,
@@ -222,6 +226,9 @@ public partial class LibraryViewModel
     /// <summary>Tree menu state for one folder.</summary>
     public bool CanEditFolder(FolderNode? node) => node is { IsPending: false, IsRoot: false } && IsLocalNode(node);
 
+    /// <summary>Delete is empty-only; disable the menu when the tree already shows items under the folder.</summary>
+    public bool CanDeleteFolder(FolderNode? node) => CanEditFolder(node) && node!.AssetCount == 0;
+
     public bool CanAddFolderIn(FolderNode? node) => node is { IsPending: false } && IsLocalNode(node);
 
     /// <summary>Drop target check: a real local folder that isn't a pending row.</summary>
@@ -265,6 +272,17 @@ public partial class LibraryViewModel
         var reselect = selected is not null && FolderNames.IsSameOrUnder(selected, oldDir)
             ? RebasePath(selected, oldDir, newDir)
             : null;
+        // Eagerly rebase selection before any await so an interleaved RefreshQuiet captures the
+        // new path (otherwise FindNode(oldPath) clears SelectedFolder).
+        if (reselect is not null && SelectedFolder is { } sel)
+        {
+            sel.Path = reselect;
+            if (FolderNames.SamePath(reselect, newDir))
+            {
+                sel.Name = FileOpService.DisplayName(newDir);
+            }
+        }
+
         await RebuildFolderTreeAsync(reselect);
         // Always re-filter: visible tiles and folder headers of the renamed subtree (for example
         // while its parent is the current view) still carry the old paths.

@@ -635,7 +635,9 @@ public sealed class FileOpService
             return FileOpResult.Fail("Nothing to undo.");
         }
 
-        var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
+        // All projects' sources so Undo uses the same ResolveWritableRoot gates as forward ops
+        // (refuse another project's nested root / junctions).
+        var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
         var restored = new List<FileOpMove>();
         var notes = new List<string>();
         var retryable = false;
@@ -644,7 +646,7 @@ public sealed class FileOpService
         {
             foreach (var item in batch.Items.OrderByDescending(i => i.Seq))
             {
-                var note = await UndoStepAsync(item, sources, restored).ConfigureAwait(false);
+                var note = await UndoStepAsync(item, allSources, projectId, restored).ConfigureAwait(false);
                 if (note is null)
                 {
                     done++;
@@ -694,29 +696,51 @@ public sealed class FileOpService
         public static UndoNote Retry(string text) => new(text, true);
     }
 
-    private async Task<UndoNote?> UndoStepAsync(FileOpItem item, IReadOnlyList<SourceFolder> sources, List<FileOpMove> restored)
+    private async Task<UndoNote?> UndoStepAsync(
+        FileOpItem item,
+        IReadOnlyList<SourceFolder> allSources,
+        string projectId,
+        List<FileOpMove> restored)
     {
         switch (item.Step)
         {
             case FileOpStep.MoveFile:
             {
-                var oldRoot = ResolveRoot(item.OldPath, sources);
-                if (oldRoot is null || ResolveRoot(item.NewPath, sources) is null)
+                var oldRoot = ResolveWritableRoot(item.OldPath, allSources, projectId, out var oldError);
+                if (oldRoot is null)
                 {
-                    return UndoNote.Skip($"{Path.GetFileName(item.OldPath)}: no longer in a Library folder");
+                    return UndoNote.Skip($"{Path.GetFileName(item.OldPath)}: {oldError}");
+                }
+
+                if (ResolveWritableRoot(item.NewPath, allSources, projectId, out var newError) is null)
+                {
+                    return UndoNote.Skip($"{Path.GetFileName(item.NewPath)}: {newError}");
                 }
 
                 if (!CloudFile.Exists(item.NewPath))
                 {
+                    // A prior undo attempt may have left the file at OldPath while the catalog still
+                    // points at NewPath (catalog update failed and TryMoveBack also failed). Finish
+                    // the catalog side so a retry does not burn the journal as "file is gone".
+                    if (!string.IsNullOrEmpty(item.AssetId) && CloudFile.Exists(item.OldPath))
+                    {
+                        try
+                        {
+                            await _catalog.UpdateAssetLocationAsync(item.AssetId, item.OldPath, item.OldSourceId ?? oldRoot.Id)
+                                .ConfigureAwait(false);
+                            restored.Add(new FileOpMove(item.AssetId, item.NewPath, item.OldPath, item.OldSourceId ?? oldRoot.Id));
+                            return null;
+                        }
+                        catch (Exception ex)
+                        {
+                            return UndoNote.Retry($"{Path.GetFileName(item.OldPath)}: {ex.Message}");
+                        }
+                    }
+
                     return UndoNote.Skip($"{Path.GetFileName(item.NewPath)}: file is gone");
                 }
 
                 var oldDir = Path.GetDirectoryName(item.OldPath)!;
-                if (LinkedFolderBetween(oldRoot.Path, oldDir) is not null)
-                {
-                    return UndoNote.Skip($"{Path.GetFileName(item.OldPath)}: its old folder is now a shortcut (junction or symlink)");
-                }
-
                 try
                 {
                     Directory.CreateDirectory(oldDir);
@@ -742,8 +766,14 @@ public sealed class FileOpService
                     }
                     catch (Exception ex)
                     {
-                        TryMoveBack(moved.Path!, item.NewPath);
-                        return UndoNote.Retry($"{Path.GetFileName(item.NewPath)}: {ex.Message}");
+                        if (TryMoveBack(moved.Path!, item.NewPath))
+                        {
+                            return UndoNote.Retry($"{Path.GetFileName(item.NewPath)}: {ex.Message}");
+                        }
+
+                        // Disk is at moved.Path; catalog still NewPath. Stay retryable so the
+                        // recovery branch above can reconcile on the next Undo.
+                        return UndoNote.Retry($"{Path.GetFileName(item.NewPath)}: {ex.Message} (file is at {moved.Path})");
                     }
 
                     restored.Add(new FileOpMove(item.AssetId, item.NewPath, moved.Path!, item.OldSourceId ?? oldRoot.Id));
@@ -753,9 +783,9 @@ public sealed class FileOpService
             }
 
             case FileOpStep.CreateDir:
-                if (ResolveRoot(item.NewPath, sources) is null)
+                if (ResolveWritableRoot(item.NewPath, allSources, projectId, out var createError) is null)
                 {
-                    return UndoNote.Skip($"{DisplayName(item.NewPath)}: no longer in a Library folder");
+                    return UndoNote.Skip($"{DisplayName(item.NewPath)}: {createError}");
                 }
 
                 if (!Directory.Exists(item.NewPath))
@@ -780,9 +810,14 @@ public sealed class FileOpService
 
             case FileOpStep.RenameDir:
             {
-                if (ResolveRoot(item.OldPath, sources) is null || ResolveRoot(item.NewPath, sources) is null)
+                if (ResolveWritableRoot(item.OldPath, allSources, projectId, out var renameOldError) is null)
                 {
-                    return UndoNote.Skip($"{DisplayName(item.NewPath)}: no longer in a Library folder");
+                    return UndoNote.Skip($"{DisplayName(item.OldPath)}: {renameOldError}");
+                }
+
+                if (ResolveWritableRoot(item.NewPath, allSources, projectId, out var renameNewError) is null)
+                {
+                    return UndoNote.Skip($"{DisplayName(item.NewPath)}: {renameNewError}");
                 }
 
                 if (!Directory.Exists(item.NewPath))
@@ -819,9 +854,9 @@ public sealed class FileOpService
             }
 
             case FileOpStep.DeleteDir:
-                if (ResolveRoot(item.OldPath, sources) is null)
+                if (ResolveWritableRoot(item.OldPath, allSources, projectId, out var deleteError) is null)
                 {
-                    return UndoNote.Skip($"{DisplayName(item.OldPath)}: no longer in a Library folder");
+                    return UndoNote.Skip($"{DisplayName(item.OldPath)}: {deleteError}");
                 }
 
                 try
@@ -942,13 +977,17 @@ public sealed class FileOpService
     }
 
     public const string JournalFailedMessage = "Couldn't record this for Undo, so it was reverted";
+    public const string JournalFailedPartialMessage =
+        "Couldn't record this for Undo; revert was incomplete — rescan if anything looks wrong";
 
     /// <summary>
     /// Journal a completed operation. When the journal write fails, the change is reverted with the
-    /// Undo steps (every operation stays undoable) and null is returned.
+    /// Undo steps (every operation stays undoable) and null is returned. If a revert step fails,
+    /// <see cref="LastJournalPartial"/> is set so the caller does not claim a full revert.
     /// </summary>
     private async Task<string?> LogAsync(string projectId, FileOpKind kind, string summary, List<FileOpItem> items)
     {
+        LastJournalPartial = false;
         try
         {
             return await _catalog.AddFileOpBatchAsync(new FileOpBatch
@@ -961,13 +1000,21 @@ public sealed class FileOpService
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
+            var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
+            var notes = new List<string>();
             for (var i = items.Count - 1; i >= 0; i--)
             {
-                await UndoStepAsync(items[i], sources, []).ConfigureAwait(false);
+                var note = await UndoStepAsync(items[i], allSources, projectId, []).ConfigureAwait(false);
+                if (note is not null)
+                {
+                    notes.Add(note.Text);
+                }
             }
 
-            LastJournalError = ex.Message;
+            LastJournalError = notes.Count == 0
+                ? ex.Message
+                : $"{ex.Message}. {notes[0]}";
+            LastJournalPartial = notes.Count > 0;
             return null;
         }
     }
@@ -975,8 +1022,13 @@ public sealed class FileOpService
     /// <summary>Why the last journal write failed (for the reverted-operation message).</summary>
     public string? LastJournalError { get; private set; }
 
+    /// <summary>True when a journal-failure revert left some steps on disk / in the catalog.</summary>
+    public bool LastJournalPartial { get; private set; }
+
     private FileOpResult JournalFailed() =>
-        FileOpResult.Fail($"{JournalFailedMessage} ({LastJournalError}).");
+        FileOpResult.Fail(LastJournalPartial
+            ? $"{JournalFailedPartialMessage} ({LastJournalError})."
+            : $"{JournalFailedMessage} ({LastJournalError}).");
 
     private static string Files(int count) => count == 1 ? "1 file" : $"{count} files";
 

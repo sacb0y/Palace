@@ -258,7 +258,11 @@ public sealed partial class LibraryPage
                 return;
             }
 
-            if (FileOpService.ResolveRoot(folder.Path, await AppServices.Catalog.GetSourceFoldersAsync(AppServices.CurrentProject.Id)) is null)
+            if (FileOpService.ResolveWritableRoot(
+                    folder.Path,
+                    await AppServices.Catalog.GetSourceFoldersAsync(),
+                    AppServices.CurrentProject.Id,
+                    out _) is null)
             {
                 ShowError("That folder isn't inside your Library folders. Add it to the Library first, or pick a folder inside one.");
                 return;
