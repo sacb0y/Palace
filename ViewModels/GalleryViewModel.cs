@@ -675,7 +675,7 @@ public partial class GalleryViewModel : ObservableObject
             HdrPresented && DisplayIsHdr && DisplayPeakNits > 0 ? DisplayPeakNits : null,
             HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null,
             string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe,
-            hdrFigures ? light.MaxCllChannel : null,
+            hdrFigures ? GalleryPresent.MaxCllChannelFor(light.MaxCllChannel, light.MaxCllScrgb, ContentMaxScrgb) : null,
             hdrFigures && light.P99Nits > 0 ? light.P99Nits : null,
             hdrFigures && light.FallNits > 0 ? light.FallNits : null,
             hdrFigures ? light.AboveSdrWhitePercent : null,

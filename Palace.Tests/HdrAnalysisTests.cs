@@ -340,6 +340,55 @@ public sealed class HdrAnalysisTests
     }
 
     [Fact]
+    public void Gamut_DisplayP3PngPrimaries_ReadOutsideRec709()
+    {
+        // Display P3 (cICP primaries 12) PQ PNG: saturated P3 primaries plus a neutral.
+        var pq = NitsToPq(400f);
+        (float, float, float)[] encoded = [(pq, 0, 0), (0, pq, 0), (0, 0, pq), (pq, pq, pq)];
+        var px = new (float R, float G, float B)[encoded.Length];
+        var nitsY = new float[encoded.Length];
+        for (var i = 0; i < encoded.Length; i++)
+        {
+            var (r, g, b) = encoded[i];
+            GalleryPresent.PngEncodedToScrgb(r, g, b, HdrTransfer.Pq, 12, out var sr, out var sg, out var sb, out nitsY[i]);
+            px[i] = (sr, sg, sb);
+        }
+
+        // P3 red is outside 709: negative green / blue survive.
+        Assert.True(px[0].G < 0 && px[0].B < 0);
+        var probe = new HdrProbe(HdrKind.HdrPng, 12, 16, null);
+        var primaries = GalleryPresent.AnalysisPrimaries(probe);
+        var result = HdrAnalysis.Analyze(Pixels(px), px.Length, 1, primaries, hdr: true);
+        // P3 blue shares Rec.709's blue primary, so blue + neutral stay in 709; red + green do not.
+        // Before the conversion every pixel read as Rec.709 (100%).
+        Assert.Equal(50, result.Gamut.Rec709, 1);
+        // Histogram luma of the presented pixel matches the source-primary CIE Y.
+        for (var i = 0; i < px.Length; i++)
+        {
+            Assert.Equal(nitsY[i], HdrAnalysis.PixelNits(px[i].R, px[i].G, px[i].B, primaries), 0.5f);
+        }
+    }
+
+    [Fact]
+    public void AnalysisPrimaries_OnlyRemapsPngDisplayP3()
+    {
+        Assert.Equal(9, GalleryPresent.AnalysisPrimaries(new HdrProbe(HdrKind.WideGamutPng, 12, 13, null)));
+        Assert.Equal(12, GalleryPresent.AnalysisPrimaries(new HdrProbe(HdrKind.HdrAvif, 12, 16, null)));
+        Assert.Equal(9, GalleryPresent.AnalysisPrimaries(new HdrProbe(HdrKind.HdrPng, 9, 16, null)));
+        Assert.Null(GalleryPresent.AnalysisPrimaries(new HdrProbe(HdrKind.HdrExr, null, null, null)));
+    }
+
+    [Fact]
+    public void MaxCllChannel_ShownOnlyWhenAnalysisPeakMatchesDisplayedPeak()
+    {
+        // 4x4: one red-40 pixel, fifteen blue-20; box-filtered 2x2 makes blue win at a lower peak.
+        Assert.Equal('R', GalleryPresent.MaxCllChannelFor('R', 40f, 40f));
+        Assert.Null(GalleryPresent.MaxCllChannelFor('B', 20f, 40f));
+        Assert.Null(GalleryPresent.MaxCllChannelFor('\0', 40f, 40f));
+        Assert.Null(GalleryPresent.MaxCllChannelFor('G', 40f, 0f));
+    }
+
+    [Fact]
     public void Gamut_Bt2020PqInside709_ReadsFullRec709()
     {
         // A 709 red encoded in a 2020 PQ container stays 100% Rec.709.
