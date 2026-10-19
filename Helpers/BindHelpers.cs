@@ -19,6 +19,9 @@ public static class BindHelpers
     public static bool IsMosaicField(MosaicSort current, string field) =>
         MosaicSortOrder.FieldOf(current).ToString() == field;
 
+    // WinUI XamlCompiler (WASDK WinUI 2.3.x) can throw opaque WMC9999 when x:Bind
+    // passes bool literals (true/false or x:True/x:False) into a helper. Keep these
+    // unary — do not add a (MosaicSort, bool) overload for RadioMenuFlyoutItem.IsChecked.
     public static bool IsMosaicDescending(MosaicSort current) =>
         MosaicSortOrder.IsDescending(current);
 
