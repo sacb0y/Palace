@@ -117,7 +117,8 @@ public partial class LibraryViewModel
         }
     }
 
-    private async Task<IReadOnlyList<Asset>> SelectedAssetsAsync()
+    /// <summary>Resolved selection for Move dialog title and file ops (Library page + VM).</summary>
+    internal async Task<IReadOnlyList<Asset>> SelectedAssetsAsync()
     {
         if (_selection.Count > 0)
         {
