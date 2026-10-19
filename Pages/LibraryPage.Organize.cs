@@ -23,6 +23,12 @@ public sealed partial class LibraryPage
     /// </summary>
     private void LibraryRoot_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (TryHandleNewFolderKey(e) || TryHandleTreeFolderKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != VirtualKey.Z
             || !IsKeyDown(VirtualKey.Control)
             || IsKeyDown(VirtualKey.Shift)

@@ -99,6 +99,9 @@
     <Compile Include="..\Helpers\FolderNames.cs" Link="FolderNames.cs" />
     <Compile Include="..\Helpers\DestinationRecents.cs" Link="DestinationRecents.cs" />
     <Compile Include="..\Helpers\MosaicMove.cs" Link="MosaicMove.cs" />
+    <Compile Include="..\Helpers\FolderTreeBuilder.cs" Link="FolderTreeBuilder.cs" />
+    <Compile Include="..\Helpers\NaturalStringComparer.cs" Link="NaturalStringComparer.cs" />
+    <Compile Include="..\Helpers\AssetDrag.cs" Link="AssetDrag.cs" />
   </ItemGroup>
 
   <ItemGroup>

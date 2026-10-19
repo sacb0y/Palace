@@ -13,6 +13,8 @@ public static class BindHelpers
 
     public static bool Not(bool value) => !value;
 
+    public static bool IsFolderSort(FolderTreeSort current, string value) => current.ToString() == value;
+
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;
 

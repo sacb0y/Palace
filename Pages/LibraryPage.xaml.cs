@@ -113,6 +113,7 @@ public sealed partial class LibraryPage : Page
             GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
             GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
             RefreshRealizedTiles();
+            HookFolderTreeExpansion();
             if (ViewModel.Assets.Count > 0)
             {
                 DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -125,6 +126,7 @@ public sealed partial class LibraryPage : Page
         Unloaded += (_, _) =>
         {
             _mosaicSortArmed = false;
+            UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
@@ -471,6 +473,7 @@ public sealed partial class LibraryPage : Page
     private void GrdAssets_RangePressed(object sender, PointerRoutedEventArgs e)
     {
         _rangeConsumedTap = false;
+        _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -485,6 +488,12 @@ public sealed partial class LibraryPage : Page
         var item = FindAssetItem(e.OriginalSource);
         if (item is null
             || !RangeSelect.AllowsGesture(true, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
+        {
+            return;
+        }
+
+        // Pressing an already selected tile with the mouse drags the selection to a folder instead.
+        if (AssetDrag.YieldsRangeSelect(_lastPressWasMouse, item.IsSelected))
         {
             return;
         }
