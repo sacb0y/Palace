@@ -235,7 +235,7 @@ public sealed class ScanService
             asset.MetadataJson = meta.RawJson;
             if (ScanContent.MayGenerateScanThumbnail(attrs))
             {
-                var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind).ConfigureAwait(false);
+                var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind, requireKnownStatus: true).ConfigureAwait(false);
                 if (thumb is { Width: > 0, Height: > 0 } localThumb)
                 {
                     asset.Width = localThumb.Width;
