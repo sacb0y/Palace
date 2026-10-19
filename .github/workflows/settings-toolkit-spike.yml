@@ -1,0 +1,19 @@
+name: Settings toolkit spike
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [cursor/settings-card-toolkit-4fa8]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Restore
+        run: dotnet restore Palace.csproj -p:Platform=x64
+      - name: Build Palace (Debug x64)
+        run: dotnet build Palace.csproj -c Debug -p:Platform=x64 --no-restore
