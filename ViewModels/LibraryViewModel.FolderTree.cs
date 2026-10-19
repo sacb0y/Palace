@@ -73,6 +73,7 @@ public partial class LibraryViewModel
             IsPending = true
         };
         parent.IsExpanded = true;
+        _collapsedFolders.Remove(parent.Path);
         parent.Children.Insert(0, pending);
         pending.IsEditing = true;
     }

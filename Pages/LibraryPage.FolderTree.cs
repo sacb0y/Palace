@@ -3,6 +3,7 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -100,9 +101,32 @@ public sealed partial class LibraryPage
     {
         if (sender is TextBox box)
         {
-            box.Focus(FocusState.Programmatic);
-            box.SelectAll();
+            FocusEditorSoon(box);
         }
+    }
+
+    /// <summary>After the TreeView finishes its own focus work for the new row.</summary>
+    private void FocusEditorSoon(TextBox box) =>
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (box.XamlRoot is not null && NodeOf(box) is { IsEditing: true })
+            {
+                box.Focus(FocusState.Programmatic);
+                box.SelectAll();
+            }
+        });
+
+    private static bool IsAncestorOf(DependencyObject candidate, DependencyObject element)
+    {
+        for (var current = VisualTreeHelper.GetParent(element); current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async void FolderEditor_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -132,10 +156,39 @@ public sealed partial class LibraryPage
         }
     }
 
+    private void TreFolders_Expanding(TreeView sender, TreeViewExpandingEventArgs args)
+    {
+        if (args.Item is FolderNode node)
+        {
+            ViewModel.NoteFolderExpanded(node, true);
+        }
+    }
+
+    private void TreFolders_Collapsed(TreeView sender, TreeViewCollapsedEventArgs args)
+    {
+        if (args.Item is FolderNode node)
+        {
+            ViewModel.NoteFolderExpanded(node, false);
+        }
+    }
+
     private async void FolderEditor_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (sender is TextBox box && NodeOf(box) is { IsEditing: true } node)
+        // Focus left the window (another app, a screenshot tool): keep the editor open, like Explorer.
+        // Only a focus move inside Palace commits the name.
+        if (sender is TextBox box
+            && box.XamlRoot is { } root
+            && FocusManager.GetFocusedElement(root) is { } focused
+            && !ReferenceEquals(focused, box)
+            && NodeOf(box) is { IsEditing: true } node)
         {
+            if (focused is DependencyObject d && IsAncestorOf(d, box))
+            {
+                // The row's own TreeViewItem took focus (selection / realization): keep editing.
+                FocusEditorSoon(box);
+                return;
+            }
+
             var text = box.Text;
             await ErrorReporter.RunAsync("Folder name", ViewModel.Notify,
                 () => ViewModel.CommitFolderEditAsync(node, text, keepOpenOnError: false));

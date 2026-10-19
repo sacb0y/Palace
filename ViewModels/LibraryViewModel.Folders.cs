@@ -53,33 +53,55 @@ public partial class LibraryViewModel
         }
     }
 
+    /// <summary>Folders the user collapsed; kept across tree rebuilds (new folders, moves, sort).</summary>
+    private readonly HashSet<string> _collapsedFolders = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Tree Expanding / Collapsed. Ignores nodes that are no longer in the tree: tearing down the old
+    /// containers during a rebuild raises Collapsed for them, which must not stick.
+    /// </summary>
+    public void NoteFolderExpanded(FolderNode node, bool expanded)
+    {
+        if (!ContainsNode(FolderTree, node))
+        {
+            return;
+        }
+
+        node.IsExpanded = expanded;
+        if (expanded)
+        {
+            _collapsedFolders.Remove(node.Path);
+        }
+        else
+        {
+            _collapsedFolders.Add(node.Path);
+        }
+    }
+
+    private static bool ContainsNode(IEnumerable<FolderNode> nodes, FolderNode target)
+    {
+        foreach (var node in nodes)
+        {
+            if (ReferenceEquals(node, target) || ContainsNode(node.Children, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void ReplaceFolderTree(IReadOnlyList<FolderNode> roots)
     {
-        // Keep folders the user collapsed collapsed across rebuilds (new folders, moves, sort).
-        var collapsed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        CollectCollapsed(FolderTree, collapsed);
-        if (collapsed.Count > 0)
+        if (_collapsedFolders.Count > 0)
         {
-            ApplyCollapsed(roots, collapsed);
+            ApplyCollapsed(roots, _collapsedFolders);
         }
 
         FolderTree.Clear();
         foreach (var root in roots)
         {
             FolderTree.Add(root);
-        }
-    }
-
-    private static void CollectCollapsed(IEnumerable<FolderNode> nodes, HashSet<string> collapsed)
-    {
-        foreach (var node in nodes)
-        {
-            if (!node.IsExpanded)
-            {
-                collapsed.Add(node.Path);
-            }
-
-            CollectCollapsed(node.Children, collapsed);
         }
     }
 
