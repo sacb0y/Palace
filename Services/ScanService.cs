@@ -201,9 +201,11 @@ public sealed class ScanService
             && existing!.Kind == kind
             && ScanContent.MayReadOriginal(attrs)
             && (!ScanContent.MayGenerateScanThumbnail(attrs)
+                || !ScanFastPath.NeedsCurrentThumb(existing)
                 || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
         {
             // Indexed by version 2, before Date taken: read only the EXIF date (no hash / thumb).
+            // Same thumb rule as the fast path: an undecodable row needs no cached thumb.
             var taken = _metadata.ReadDateTaken(file);
             await _catalog.SetDateTakenAsync(existing.Id, taken, ScanFastPath.IndexVersion);
             return (ScanOutcome.Unchanged, !existing.Undecodable);
