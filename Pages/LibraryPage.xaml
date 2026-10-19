@@ -915,9 +915,12 @@
                     </Grid>
                 </Border>
                 <TextBlock
+                    x:Name="TxtPreviewFileName"
+                    AutomationProperties.AutomationId="TxtPreviewFileName"
                     Style="{StaticResource BodyTextBlockStyle}"
-                    Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.PreviewFileName), Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis" />
+                    Text="{x:Bind ViewModel.PreviewFileName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasSelection), Mode=OneWay}" />
 
                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Tags" />
                 <TextBlock
