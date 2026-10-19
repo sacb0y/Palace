@@ -377,7 +377,7 @@ public partial class TagsViewModel : ObservableObject
                 SelectCreated(result.Tags[^1].Id);
             }
 
-            StatusText = DescribeBatch(result);
+            StatusText = TagCreateCopy.Describe(result);
         });
 
     [RelayCommand]
@@ -399,7 +399,7 @@ public partial class TagsViewModel : ObservableObject
                 SelectCreated(result.Tags[^1].Id);
             }
 
-            StatusText = DescribeBatch(result, " under the selected group");
+            StatusText = TagCreateCopy.Describe(result, " under the selected group");
         });
 
     [RelayCommand]
@@ -705,6 +705,12 @@ public partial class TagsViewModel : ObservableObject
                 RenameError = TagNames.DuplicateMessage(name);
                 OnPropertyChanged(nameof(RenameError));
                 StatusText = RenameError + " Choose a different name.";
+                if (_renameBaseline is not null)
+                {
+                    SelectedName = _renameBaseline;
+                }
+
+                OnPropertyChanged(nameof(CanSaveRename));
                 return;
             }
 
@@ -967,6 +973,29 @@ public partial class TagsViewModel : ObservableObject
         if (node is not null)
         {
             SelectNode(node);
+            return;
+        }
+
+        foreach (var group in Board)
+        {
+            var chip = group.Chips.FirstOrDefault(c => c.TagId == tagId);
+            if (chip is not null)
+            {
+                SelectChip(chip);
+                return;
+            }
+        }
+
+        var tag = _tags.FirstOrDefault(t => t.Id == tagId);
+        if (tag is not null)
+        {
+            SelectNode(new TagTreeNode
+            {
+                TagId = tag.Id,
+                Name = tag.Name,
+                EffectiveColor = tag.Color,
+                IsStarred = tag.IsStarred
+            });
         }
     }
 
@@ -1365,22 +1394,6 @@ public partial class TagsViewModel : ObservableObject
                 chip.IsFilterSelected = chip.TagId == id;
             }
         }
-    }
-
-    private static string DescribeBatch(TagCreateBatchResult result, string? suffix = null)
-    {
-        if (result.Created == 0 && result.Existed == 0)
-        {
-            return "Enter one or more tag names.";
-        }
-
-        var text = $"Created {result.Created}, already existed {result.Existed}{suffix}";
-        if (result.MembershipRejected > 0)
-        {
-            text += $", could not nest {result.MembershipRejected}";
-        }
-
-        return text + ".";
     }
 
     private string? _statusBeforeBusy;

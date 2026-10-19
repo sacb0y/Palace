@@ -190,8 +190,20 @@ public sealed partial class TagsPage : Page
 
     private void FocusRenameBox()
     {
-        DispatcherQueue.TryEnqueue(() =>
+        // Chip context menus steal focus on close; wait a tick so Rename lands in the name box.
+        _ = FocusRenameBoxAfterMenuAsync();
+    }
+
+    private async Task FocusRenameBoxAfterMenuAsync()
+    {
+        await Task.Delay(80);
+        await UiDispatch.RunAsync(() =>
         {
+            if (!ViewModel.ShowDetails || !IsLoaded)
+            {
+                return;
+            }
+
             TxtRenameTag.Focus(FocusState.Programmatic);
             TxtRenameTag.SelectAll();
         });

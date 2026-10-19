@@ -232,18 +232,18 @@ public partial class LibraryViewModel
     private void ApplyTagSuggestionFilter(string? query)
     {
         var q = (query ?? "").Trim();
-        IEnumerable<TagPickItem> source = _tagPicks;
-        if (q.Length > 0)
-        {
-            source = _tagPicks
-                .Select(t => (Item: t, Score: ScoreTagPick(t, q)))
-                .Where(x => x.Score > 0)
-                .OrderBy(x => x.Score)
-                .ThenBy(x => x.Item.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(x => x.Item);
-        }
+        var byId = _tagPicks.ToDictionary(t => t.TagId, StringComparer.Ordinal);
+        var assignedIds = AssignedTags.Select(t => t.TagId);
+        var ranked = TagSuggest.Rank(
+            _tagPicks.Select(t => new TagSuggest.Candidate(t.TagId, t.Name, t.Display)),
+            q,
+            excludeTagIds: assignedIds);
+        var items = ranked
+            .Select(c => byId.GetValueOrDefault(c.TagId))
+            .Where(t => t is not null)
+            .Cast<TagPickItem>()
+            .ToList();
 
-        var items = q.Length == 0 ? new List<TagPickItem>() : source.Take(40).ToList();
         TagSuggestions.Clear();
         foreach (var item in items)
         {
@@ -255,21 +255,6 @@ public partial class LibraryViewModel
             : items.Count == 0
                 ? "No matching tags"
                 : string.Join(", ", items.Select(t => t.Name));
-    }
-
-    private static int ScoreTagPick(TagPickItem tag, string query)
-    {
-        if (tag.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase))
-        {
-            return 1;
-        }
-
-        if (tag.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
-        {
-            return 2;
-        }
-
-        return tag.Display.Contains(query, StringComparison.OrdinalIgnoreCase) ? 3 : 0;
     }
 
     private TagPickItem? FindTagPick(string query)
