@@ -815,6 +815,67 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.Contains(manual, left);
     }
 
+    [Fact]
+    public async Task Undo_partial_fill_leaves_the_item_that_already_had_the_tag()
+    {
+        var kept = await AddAssetAsync(_rootA, "had.png");
+        var a = await AddAssetAsync(_rootA, "a.png");
+        var b = await AddAssetAsync(_rootA, "b.png");
+        var c = await AddAssetAsync(_rootA, "c.png");
+        var tag = PalaceDb.NewId();
+        await _db.WriteAsync(conn =>
+        {
+            InsertTag(conn, tag, "PrGamma");
+            InsertAssetTag(conn, kept.Id, tag, TagSource.Manual);
+            InsertAssetTag(conn, a.Id, tag, TagSource.Manual);
+            InsertAssetTag(conn, b.Id, tag, TagSource.Manual);
+            InsertAssetTag(conn, c.Id, tag, TagSource.Manual);
+        });
+
+        var plans = new (string Id, IReadOnlyList<string> Before)[]
+        {
+            (kept.Id, [tag]),
+            (a.Id, []),
+            (b.Id, []),
+            (c.Id, [])
+        };
+        var items = new List<FileOpItem>();
+        foreach (var (id, before) in plans)
+        {
+            var change = TagAssignUndo.PlanAssign(before, [tag], tag);
+            if (!change.Journal)
+            {
+                continue;
+            }
+
+            items.Add(new FileOpItem
+            {
+                Step = FileOpStep.AssignTag,
+                AssetId = id,
+                OldPath = tag,
+                NewPath = "PrGamma",
+                OldSourceId = TagSource.Manual.ToString(),
+                NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
+            });
+        }
+
+        Assert.Equal(3, items.Count);
+        await _catalog.AddFileOpBatchAsync(new FileOpBatch
+        {
+            ProjectId = _projectId,
+            Kind = FileOpKind.TagAssign,
+            Summary = "Tagged 3 items with PrGamma",
+            Items = items
+        });
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Contains(tag, await TagIdsOn(kept.Id));
+        Assert.DoesNotContain(tag, await TagIdsOn(a.Id));
+        Assert.DoesNotContain(tag, await TagIdsOn(b.Id));
+        Assert.DoesNotContain(tag, await TagIdsOn(c.Id));
+    }
+
     private static void InsertTag(SqliteConnection conn, string id, string name)
     {
         using var cmd = conn.CreateCommand();

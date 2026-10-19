@@ -45,11 +45,12 @@ public sealed partial class CatalogService
     /// Undo helper: remove the assigned tag and any implied tags that assignment added.
     /// Implied extras are deleted only while they are still <see cref="TagSource.Implied"/>.
     /// </summary>
-    public Task RemoveTagForUndoAsync(string assetId, string tagId, IReadOnlyList<string>? impliedAdded = null) =>
+    public Task RemoveTagForUndoAsync(string assetId, string? tagId, IReadOnlyList<string>? impliedAdded = null) =>
         _db.WriteAsync(conn =>
         {
-            using (var cmd = conn.CreateCommand())
+            if (!string.IsNullOrEmpty(tagId))
             {
+                using var cmd = conn.CreateCommand();
                 cmd.CommandText = "DELETE FROM AssetTag WHERE AssetId = $asset AND TagId = $tag";
                 cmd.Parameters.AddWithValue("$asset", assetId);
                 cmd.Parameters.AddWithValue("$tag", tagId);

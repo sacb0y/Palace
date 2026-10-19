@@ -168,7 +168,7 @@ public sealed partial class FileOpService
             FileOpKind.DeleteFolder => $"Undo delete of {DisplayName(batch.Items.LastOrDefault()?.OldPath)}",
             FileOpKind.TagAssign => $"Undo tag on {Items(batch.Items.Count(i => i.Step == FileOpStep.AssignTag))}",
             FileOpKind.TagRemove => $"Undo remove tag from {Items(batch.Items.Count(i => i.Step == FileOpStep.RemoveTag))}",
-            FileOpKind.TagDelete => $"Undo delete of {TagDeleteName(batch)}",
+            FileOpKind.TagDelete => $"Undo delete of “{TagDeleteName(batch)}”",
             _ => "Undo"
         };
 
@@ -1148,7 +1148,7 @@ public sealed partial class FileOpService
                 {
                     await _catalog.RemoveTagForUndoAsync(
                         item.AssetId,
-                        item.OldPath,
+                        TagAssignUndo.TouchesAssignedTag(item.NewSourceId) ? item.OldPath : null,
                         TagAssignUndo.Decode(item.NewSourceId)).ConfigureAwait(false);
                     return null;
                 }
@@ -1165,10 +1165,19 @@ public sealed partial class FileOpService
 
                 try
                 {
-                    var source = Enum.TryParse<TagSource>(item.OldSourceId, out var parsed)
-                        ? parsed
-                        : TagSource.Manual;
-                    await _catalog.AssignTagForUndoAsync(item.AssetId, item.OldPath, source).ConfigureAwait(false);
+                    if (TagAssignUndo.TouchesAssignedTag(item.NewSourceId))
+                    {
+                        var source = Enum.TryParse<TagSource>(item.OldSourceId, out var parsed)
+                            ? parsed
+                            : TagSource.Manual;
+                        await _catalog.AssignTagForUndoAsync(item.AssetId, item.OldPath, source).ConfigureAwait(false);
+                    }
+
+                    foreach (var impliedId in TagAssignUndo.Decode(item.NewSourceId))
+                    {
+                        await _catalog.AssignTagForUndoAsync(item.AssetId, impliedId, TagSource.Implied).ConfigureAwait(false);
+                    }
+
                     return null;
                 }
                 catch (Exception ex)

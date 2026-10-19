@@ -49,10 +49,15 @@ public sealed partial class FileOpService
             var before = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
             await _catalog.AssignTagAsync(assetId, tagId, source).ConfigureAwait(false);
             var after = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
-            var impliedAdded = TagAssignUndo.ImpliedAdded(
+            var change = TagAssignUndo.PlanAssign(
                 before.Select(t => t.TagId),
                 after.Select(t => t.TagId),
                 tagId);
+            if (!change.Journal)
+            {
+                continue;
+            }
+
             items.Add(new FileOpItem
             {
                 Step = FileOpStep.AssignTag,
@@ -60,11 +65,21 @@ public sealed partial class FileOpService
                 OldPath = tagId,
                 NewPath = tagName,
                 OldSourceId = source.ToString(),
-                NewSourceId = TagAssignUndo.Encode(impliedAdded)
+                NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
             });
         }
 
-        var summary = $"Tagged {AssetNouns.Count(ids.Count)} with {tagName}";
+        if (items.Count == 0)
+        {
+            return new FileOpResult
+            {
+                Ok = true,
+                Message = $"{tagName} was already on the selection.",
+                Summary = tagName
+            };
+        }
+
+        var summary = $"Tagged {AssetNouns.Count(items.Count)} with {tagName}";
         var batchId = await LogAsync(projectId, FileOpKind.TagAssign, summary, items).ConfigureAwait(false);
         if (batchId is null)
         {
@@ -89,18 +104,40 @@ public sealed partial class FileOpService
         var items = new List<FileOpItem>();
         foreach (var (assetId, source) in list)
         {
+            var before = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
             await _catalog.RemoveTagAsync(assetId, tagId).ConfigureAwait(false);
+            var after = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
+            var change = TagAssignUndo.PlanRemove(
+                before.Select(t => (t.TagId, t.Source)),
+                after.Select(t => (t.TagId, t.Source)),
+                tagId);
+            if (!change.Journal)
+            {
+                continue;
+            }
+
             items.Add(new FileOpItem
             {
                 Step = FileOpStep.RemoveTag,
                 AssetId = assetId,
                 OldPath = tagId,
                 NewPath = tagName,
-                OldSourceId = source.ToString()
+                OldSourceId = source.ToString(),
+                NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
             });
         }
 
-        var summary = $"Removed {tagName} from {AssetNouns.Count(list.Count)}";
+        if (items.Count == 0)
+        {
+            return new FileOpResult
+            {
+                Ok = true,
+                Message = $"{tagName} was not on the selection.",
+                Summary = tagName
+            };
+        }
+
+        var summary = $"Removed {tagName} from {AssetNouns.Count(items.Count)}";
         var batchId = await LogAsync(projectId, FileOpKind.TagRemove, summary, items).ConfigureAwait(false);
         if (batchId is null)
         {

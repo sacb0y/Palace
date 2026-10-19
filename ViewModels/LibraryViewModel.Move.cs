@@ -111,6 +111,10 @@ public partial class LibraryViewModel
                     if (AppServices.Tags is not null)
                     {
                         await AppServices.Tags.RefreshAsync();
+                        if (result.Ok && peek.Kind == FileOpKind.TagDelete)
+                        {
+                            AppServices.Tags.StatusText = result.Message;
+                        }
                     }
                 }
                 else if (result.BatchId is not null)
