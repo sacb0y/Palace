@@ -47,7 +47,10 @@ public partial class SettingsViewModel : ObservableObject
 
     public Func<ICloudLibrary, Task<CloudEntry?>>? RequestPickCloudFolder { get; set; }
 
-    /// <summary>Confirm dialog: title, body, primary label. Safe option is Cancel (default).</summary>
+    /// <summary>
+    /// Confirm dialog: title, body, primary label. Safe option is Cancel (default).
+    /// Destructive commands fail closed when this is null (see <see cref="SettingsConfirm.ConfirmedAsync"/>).
+    /// </summary>
     public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
 
     [ObservableProperty]
@@ -468,8 +471,8 @@ public partial class SettingsViewModel : ObservableObject
     private Task ResetCatalogFolderAsync() =>
         ErrorReporter.RunAsync("Reset catalog folder", Notify, async () =>
         {
-            if (RequestConfirm is not null
-                && !await RequestConfirm(
+            if (!await SettingsConfirm.ConfirmedAsync(
+                    RequestConfirm,
                     SettingsConfirm.ResetCatalogTitle,
                     SettingsConfirm.ResetCatalogBody(),
                     SettingsConfirm.ResetCatalogPrimary))
@@ -573,8 +576,8 @@ public partial class SettingsViewModel : ObservableObject
     private Task ClearCacheAsync() =>
         ErrorReporter.RunAsync("Clear cache", Notify, async () =>
         {
-            if (RequestConfirm is not null
-                && !await RequestConfirm(
+            if (!await SettingsConfirm.ConfirmedAsync(
+                    RequestConfirm,
                     SettingsConfirm.ClearCacheTitle,
                     SettingsConfirm.ClearCacheBody(),
                     SettingsConfirm.ClearCachePrimary))
@@ -713,8 +716,8 @@ public partial class SettingsViewModel : ObservableObject
             }
 
             var assetCount = await _catalog.CountAssetsForSourceAsync(SelectedSource.Id);
-            if (RequestConfirm is not null
-                && !await RequestConfirm(
+            if (!await SettingsConfirm.ConfirmedAsync(
+                    RequestConfirm,
                     SettingsConfirm.RemoveFolderTitle,
                     SettingsConfirm.RemoveFolderBody(SelectedSource.Path, assetCount),
                     SettingsConfirm.RemoveFolderPrimary))
@@ -804,8 +807,8 @@ public partial class SettingsViewModel : ObservableObject
     private Task DisconnectOneDriveAsync() =>
         ErrorReporter.RunAsync("Disconnect OneDrive", Notify, async () =>
         {
-            if (RequestConfirm is not null
-                && !await RequestConfirm(
+            if (!await SettingsConfirm.ConfirmedAsync(
+                    RequestConfirm,
                     SettingsConfirm.DisconnectTitle("OneDrive"),
                     SettingsConfirm.DisconnectBody("OneDrive"),
                     SettingsConfirm.DisconnectPrimary))
@@ -822,8 +825,8 @@ public partial class SettingsViewModel : ObservableObject
     private Task DisconnectDropboxAsync() =>
         ErrorReporter.RunAsync("Disconnect Dropbox", Notify, async () =>
         {
-            if (RequestConfirm is not null
-                && !await RequestConfirm(
+            if (!await SettingsConfirm.ConfirmedAsync(
+                    RequestConfirm,
                     SettingsConfirm.DisconnectTitle("Dropbox"),
                     SettingsConfirm.DisconnectBody("Dropbox"),
                     SettingsConfirm.DisconnectPrimary))
