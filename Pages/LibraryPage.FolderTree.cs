@@ -1,4 +1,6 @@
+using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -162,6 +164,106 @@ public sealed partial class LibraryPage
         {
             ViewModel.NoteFolderExpanded(node, true);
         }
+    }
+
+    private bool _treeSyncHooked;
+    private bool _treeSyncQueued;
+    private int _treeSyncPasses;
+    private DispatcherQueueTimer? _treeSyncLate;
+
+    private void HookFolderTreeExpansion()
+    {
+        if (!_treeSyncHooked)
+        {
+            ViewModel.FolderTree.CollectionChanged += FolderTree_CollectionChanged;
+            _treeSyncHooked = true;
+        }
+
+        StartTreeExpansionSync();
+    }
+
+    private void UnhookFolderTreeExpansion()
+    {
+        if (_treeSyncHooked)
+        {
+            ViewModel.FolderTree.CollectionChanged -= FolderTree_CollectionChanged;
+            _treeSyncHooked = false;
+        }
+
+        _treeSyncLate?.Stop();
+    }
+
+    private void FolderTree_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => StartTreeExpansionSync();
+
+    /// <summary>
+    /// The TreeView (ItemsSource mode) keeps expansion on its own <see cref="TreeViewNode"/>. After a
+    /// rebuild it recycles containers: one that was already expanded sees no change when x:Bind sets
+    /// IsExpanded = true for the new item, so the new node stays collapsed (the tree came back closed
+    /// after every scan, sort or new folder). Copy <see cref="FolderNode.IsExpanded"/> onto the
+    /// TreeView's nodes, pass by pass as children get realized, plus one late pass.
+    /// </summary>
+    private void StartTreeExpansionSync()
+    {
+        _treeSyncPasses = 0;
+        QueueTreeExpansionSync();
+        _treeSyncLate ??= DispatcherQueue.CreateTimer();
+        _treeSyncLate.Interval = TimeSpan.FromMilliseconds(400);
+        _treeSyncLate.IsRepeating = false;
+        _treeSyncLate.Tick -= TreeSyncLate_Tick;
+        _treeSyncLate.Tick += TreeSyncLate_Tick;
+        _treeSyncLate.Stop();
+        _treeSyncLate.Start();
+    }
+
+    private void TreeSyncLate_Tick(DispatcherQueueTimer sender, object args)
+    {
+        _treeSyncPasses = 0;
+        QueueTreeExpansionSync();
+    }
+
+    private void QueueTreeExpansionSync()
+    {
+        if (_treeSyncQueued)
+        {
+            return;
+        }
+
+        _treeSyncQueued = true;
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            _treeSyncQueued = false;
+            if (SyncTreeExpansion(ViewModel.FolderTree) && ++_treeSyncPasses < 24)
+            {
+                QueueTreeExpansionSync();
+            }
+        });
+    }
+
+    /// <summary>True when any TreeView node was changed (its children may show on the next pass).</summary>
+    private bool SyncTreeExpansion(IEnumerable<FolderNode> nodes)
+    {
+        var changed = false;
+        foreach (var node in nodes)
+        {
+            if (TreFolders.ContainerFromItem(node) is not TreeViewItem container
+                || TreFolders.NodeFromContainer(container) is not { } treeNode)
+            {
+                continue;
+            }
+
+            if (treeNode.IsExpanded != node.IsExpanded)
+            {
+                treeNode.IsExpanded = node.IsExpanded;
+                changed = true;
+            }
+
+            if (node.IsExpanded && SyncTreeExpansion(node.Children))
+            {
+                changed = true;
+            }
+        }
+
+        return changed;
     }
 
     private void TreFolders_Collapsed(TreeView sender, TreeViewCollapsedEventArgs args)

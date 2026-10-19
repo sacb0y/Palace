@@ -113,6 +113,7 @@ public sealed partial class LibraryPage : Page
             GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
             GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
             RefreshRealizedTiles();
+            HookFolderTreeExpansion();
             if (ViewModel.Assets.Count > 0)
             {
                 DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -125,6 +126,7 @@ public sealed partial class LibraryPage : Page
         Unloaded += (_, _) =>
         {
             _mosaicSortArmed = false;
+            UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
