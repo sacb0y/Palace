@@ -185,6 +185,9 @@ public partial class GalleryViewModel : ObservableObject
 
     public float ContentMaxScrgb { get; private set; }
 
+    /// <summary>Native-pixel channel of <see cref="ContentMaxScrgb"/> when the decoder knows it, else '\0'.</summary>
+    private char _contentMaxScrgbChannel;
+
     private int _headerPixelWidth;
     private int _headerPixelHeight;
     private int _nativePixelWidth;
@@ -581,7 +584,8 @@ public partial class GalleryViewModel : ObservableObject
         int pixelWidth = 0,
         int pixelHeight = 0,
         bool statsAreNative = false,
-        string? displayProbe = null)
+        string? displayProbe = null,
+        char maxScrgbChannel = '\0')
     {
         HdrPresented = presented;
         DisplayIsHdr = displayHdr;
@@ -598,6 +602,7 @@ public partial class GalleryViewModel : ObservableObject
             if (maxScrgb > 0 || statsAreNative)
             {
                 ContentMaxScrgb = maxScrgb;
+                _contentMaxScrgbChannel = maxScrgb > 0 ? maxScrgbChannel : '\0';
             }
 
             _nativeHdrStats = statsAreNative && (maxNits > 0 || maxScrgb > 0);
@@ -629,12 +634,13 @@ public partial class GalleryViewModel : ObservableObject
 
     public void ClearHistogram() => SetAnalysis(HdrAnalysisResult.Empty);
 
-    public void SetHdrStats(float maxNits, float avgNits, float minNits, float maxScrgb)
+    public void SetHdrStats(float maxNits, float avgNits, float minNits, float maxScrgb, char maxScrgbChannel = '\0')
     {
         ContentMaxNits = maxNits;
         ContentAvgNits = avgNits;
         ContentMinNits = minNits;
         ContentMaxScrgb = maxScrgb;
+        _contentMaxScrgbChannel = maxScrgb > 0 ? maxScrgbChannel : '\0';
         _nativeHdrStats = maxNits > 0 || maxScrgb > 0;
         RefreshImageInfo();
     }
@@ -659,7 +665,8 @@ public partial class GalleryViewModel : ObservableObject
             _headerPixelWidth,
             _headerPixelHeight,
             item?.Width,
-            item?.Height);
+            item?.Height,
+            item?.Undecodable == true);
         var light = Analysis.Light;
         var hdrFigures = HdrPresented && Analysis.HasSamples && Analysis.IsHdr;
         ImageInfoText = GalleryPresent.ImageInfoText(new GalleryImageInfo(
@@ -675,7 +682,8 @@ public partial class GalleryViewModel : ObservableObject
             HdrPresented && DisplayIsHdr && DisplayPeakNits > 0 ? DisplayPeakNits : null,
             HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null,
             string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe,
-            hdrFigures ? GalleryPresent.MaxCllChannelFor(light.MaxCllChannel, light.MaxCllScrgb, ContentMaxScrgb) : null,
+            hdrFigures ? GalleryPresent.MaxCllChannelFor(
+                light.MaxCllChannel, light.MaxCllScrgb, ContentMaxScrgb, _contentMaxScrgbChannel) : null,
             hdrFigures && light.P99Nits > 0 ? light.P99Nits : null,
             hdrFigures && light.FallNits > 0 ? light.FallNits : null,
             hdrFigures ? light.AboveSdrWhitePercent : null,
@@ -811,6 +819,7 @@ public partial class GalleryViewModel : ObservableObject
                 _nativeHdrStats = false;
                 _displayProbe = "";
                 ContentMaxScrgb = 0;
+                _contentMaxScrgbChannel = '\0';
                 CurrentPath = null;
                 PreviewImageUri = null;
                 Title = "";
@@ -936,6 +945,7 @@ public partial class GalleryViewModel : ObservableObject
             ContentAvgNits = 0;
             ContentMinNits = 0;
             ContentMaxScrgb = 0;
+            _contentMaxScrgbChannel = '\0';
             DisplayPeakNits = 0;
             CurrentPath = playableVideo ? item.Path : stillPath;
             PreviewImageUri = previewUrl ?? stillPath;
@@ -1022,6 +1032,7 @@ public partial class GalleryViewModel : ObservableObject
         current.ThumbPath = AppServices.Thumbnails.ExistingPathForHash(refreshed.ContentHash) ?? current.ThumbPath;
         current.Width = refreshed.Width ?? current.Width;
         current.Height = refreshed.Height ?? current.Height;
+        current.Undecodable = refreshed.Undecodable;
         await LoadCurrentAsync();
     }
 

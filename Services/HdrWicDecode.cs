@@ -19,6 +19,9 @@ internal sealed class HdrFrame
     public required float MinNits { get; init; }
     public required float MaxScrgb { get; init; }
 
+    /// <summary>Native-pixel channel of <see cref="MaxScrgb"/> ('R'/'G'/'B'), or '\0' when unknown.</summary>
+    public char MaxScrgbChannel { get; init; }
+
     public bool HasStats => MaxNits > 0;
 
     private float _p99MaxRgbNits = -1f;
@@ -1031,7 +1034,8 @@ internal static class HdrWicDecode
                         MaxNits = frame.MaxNits,
                         AvgNits = frame.AvgNits,
                         MinNits = frame.MinNits,
-                        MaxScrgb = frame.MaxScrgb
+                        MaxScrgb = frame.MaxScrgb,
+                        MaxScrgbChannel = frame.MaxScrgbChannel
                     };
                 }
             }
@@ -1066,7 +1070,8 @@ internal static class HdrWicDecode
                 MaxNits = frame.MaxNits,
                 AvgNits = frame.AvgNits,
                 MinNits = frame.MinNits,
-                MaxScrgb = frame.MaxScrgb
+                MaxScrgb = frame.MaxScrgb,
+                MaxScrgbChannel = frame.MaxScrgbChannel
             };
         }
         catch

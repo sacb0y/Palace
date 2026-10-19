@@ -195,6 +195,46 @@ public static class ExrFile
     /// <summary>Rec.709 / sRGB primaries and D65 white: the OpenEXR default when <c>chromaticities</c> is absent.</summary>
     public static readonly float[] Rec709Chromaticities = [0.64f, 0.33f, 0.30f, 0.60f, 0.15f, 0.06f, 0.3127f, 0.3290f];
 
+    private static readonly (string Name, float[] Chromaticities)[] KnownPrimaries =
+    [
+        ("BT.709", Rec709Chromaticities),
+        ("BT.2020", [0.708f, 0.292f, 0.170f, 0.797f, 0.131f, 0.046f, 0.3127f, 0.3290f]),
+        ("ACEScg", [0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f]),
+        ("ACES2065-1", [0.7347f, 0.2653f, 0.0f, 1.0f, 0.0001f, -0.0770f, 0.32168f, 0.33767f]),
+        ("Display P3", [0.680f, 0.320f, 0.265f, 0.690f, 0.150f, 0.060f, 0.3127f, 0.3290f]),
+        ("DCI-P3", [0.680f, 0.320f, 0.265f, 0.690f, 0.150f, 0.060f, 0.314f, 0.351f]),
+    ];
+
+    /// <summary>
+    /// Display name of an EXR's source primaries: BT.709 when the attribute is absent
+    /// (the OpenEXR default), a known set (ACEScg, ACES2065-1, BT.2020, Display P3,
+    /// DCI-P3) when every primary and the white point match within 0.002 in xy, else
+    /// "Custom primaries". Palace converts all of them to BT.709 / D65 scRGB on decode.
+    /// </summary>
+    public static string PrimariesName(float[]? chromaticities)
+    {
+        if (chromaticities is not { Length: >= 8 } c)
+        {
+            return "BT.709";
+        }
+
+        foreach (var (name, known) in KnownPrimaries)
+        {
+            var match = true;
+            for (var i = 0; i < 8 && match; i++)
+            {
+                match = MathF.Abs(c[i] - known[i]) <= 0.002f;
+            }
+
+            if (match)
+            {
+                return name;
+            }
+        }
+
+        return "Custom primaries";
+    }
+
     /// <summary>
     /// The first <c>chromaticities</c> attribute (red, green, blue, white xy) in the part headers,
     /// or null when absent or malformed. Walks attributes without the in-house reader's layout limits.

@@ -511,9 +511,22 @@ public static class GalleryPresent
         return string.Join('\n', lines);
     }
 
+    /// <summary>
+    /// Info card colour line. EXRs whose chromaticities are not BT.709 read as
+    /// "&lt;source&gt; → scRGB" (e.g. "ACEScg → scRGB"): Palace converts them on decode.
+    /// <see cref="HdrProbe.SourcePrimaries"/> otherwise overrides the cICP name
+    /// (e.g. "Display P3 (ICC) · sRGB" for an ICC-only P3 PNG).
+    /// </summary>
     public static string? ColorLabel(HdrProbe probe)
     {
-        var primaries = probe.CicpPrimaries switch
+        if (probe.Kind is HdrKind.HdrExr
+            && !string.IsNullOrWhiteSpace(probe.SourcePrimaries)
+            && probe.SourcePrimaries != "BT.709")
+        {
+            return $"{probe.SourcePrimaries} → scRGB";
+        }
+
+        var primaries = !string.IsNullOrWhiteSpace(probe.SourcePrimaries) ? probe.SourcePrimaries : probe.CicpPrimaries switch
         {
             9 => "BT.2020",
             11 => "DCI-P3",
@@ -568,11 +581,20 @@ public static class GalleryPresent
         int? headerWidth,
         int? headerHeight,
         int? catalogWidth,
-        int? catalogHeight)
+        int? catalogHeight,
+        bool undecodable = false)
     {
         if (decodedWidth is > 0 && decodedHeight is > 0)
         {
             return (decodedWidth.Value, decodedHeight.Value);
+        }
+
+        // Files the scan flagged undecodable (e.g. an unsupported BMP variant) show no
+        // resolution unless the gallery itself decoded them: a header or catalog size
+        // there is unverified and suggests the image loaded.
+        if (undecodable)
+        {
+            return null;
         }
 
         if (headerWidth is > 0 && headerHeight is > 0)
@@ -797,13 +819,21 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// The MaxCLL channel letter for Info, or null. The channel comes from the (possibly
-    /// box-filtered) analysis buffer while the displayed MaxCLL can be the native file peak;
-    /// downscaling can change which channel wins, so only name it when both peaks agree.
+    /// The MaxCLL channel letter for Info, or null. Prefer <paramref name="nativeChannel"/>:
+    /// the decoder's channel for the displayed (native) peak, e.g. EXR / Radiance stats taken
+    /// before the box filter. Otherwise the channel comes from the (possibly box-filtered)
+    /// analysis buffer, whose peak is lower than the native one on downscaled files and can
+    /// come from another channel, so it is only named when both peaks agree within 0.5%.
     /// </summary>
-    public static char? MaxCllChannelFor(char channel, float analysisMaxScrgb, float displayedMaxScrgb)
+    public static char? MaxCllChannelFor(
+        char channel, float analysisMaxScrgb, float displayedMaxScrgb, char nativeChannel = '\0')
     {
-        if (channel == '\0' || analysisMaxScrgb <= 0 || displayedMaxScrgb <= 0)
+        if (displayedMaxScrgb > 0 && nativeChannel is 'R' or 'G' or 'B')
+        {
+            return nativeChannel;
+        }
+
+        if (channel is not ('R' or 'G' or 'B') || analysisMaxScrgb <= 0 || displayedMaxScrgb <= 0)
         {
             return null;
         }

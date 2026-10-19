@@ -413,7 +413,8 @@ public sealed partial class GalleryStillSurface : UserControl
                 // 16384².
                 if (frame.MaxNits > 0 || frame.MaxScrgb > 0)
                 {
-                    gallery.SetHdrStats(frame.MaxNits, frame.AvgNits, frame.MinNits, frame.MaxScrgb);
+                    gallery.SetHdrStats(
+                        frame.MaxNits, frame.AvgNits, frame.MinNits, frame.MaxScrgb, frame.MaxScrgbChannel);
                 }
                 else
                 {
@@ -651,7 +652,8 @@ public sealed partial class GalleryStillSurface : UserControl
                     frameRef.NativeWidth,
                     frameRef.NativeHeight,
                     GalleryPresent.IsNativeDecode(
-                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight));
+                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
+                    maxScrgbChannel: frameRef.MaxScrgbChannel);
                 return;
             }
 
