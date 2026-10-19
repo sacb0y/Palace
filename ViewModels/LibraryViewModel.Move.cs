@@ -184,7 +184,7 @@ public partial class LibraryViewModel
         }
 
         BeginBusy(assets.Count == 1 ? "Moving…" : $"Moving {assets.Count}…");
-        FileOpResult result;
+        FileOpResult? result = null;
         try
         {
             result = await _fileOps.MoveAssetsAsync(
@@ -201,15 +201,25 @@ public partial class LibraryViewModel
         }
         finally
         {
-            EndBusy();
+            // EndBusy does not clear StatusText. In-place mosaic updates never replace "Moving…",
+            // and a requery can finish on a pool thread — write the outcome on the UI thread.
+            var status = result?.Message;
+            await UiDispatch.RunAsync(() =>
+            {
+                EndBusy();
+                if (!string.IsNullOrWhiteSpace(status))
+                {
+                    StatusText = status;
+                }
+            });
         }
 
         await RefreshUndoStateAsync();
-        if (result.Ok && result.BatchId is not null)
+        if (result is { Ok: true, BatchId: not null })
         {
             ShowUndoToastFor(result.Message);
         }
-        else
+        else if (result is not null)
         {
             Notify(result.Message);
         }
