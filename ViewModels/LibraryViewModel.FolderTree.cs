@@ -260,15 +260,15 @@ public partial class LibraryViewModel
 
         _moveRecents = DestinationRecents.Rebase(_moveRecents, oldDir, newDir);
         SaveMoveRecents();
+        FolderTreeBuilder.RebasePaths(_collapsedFolders, oldDir, newDir);
         var selected = SelectedFolder?.Path;
         var reselect = selected is not null && FolderNames.IsSameOrUnder(selected, oldDir)
             ? RebasePath(selected, oldDir, newDir)
             : null;
         await RebuildFolderTreeAsync(reselect);
-        if (reselect is not null || IsTagBrowse || !string.IsNullOrWhiteSpace(SearchQuery) || SelectedFolder is null)
-        {
-            await ApplyFilterAsync();
-        }
+        // Always re-filter: visible tiles and folder headers of the renamed subtree (for example
+        // while its parent is the current view) still carry the old paths.
+        await ApplyFilterAsync();
     }
 
     public static string RebasePath(string path, string oldDir, string newDir)

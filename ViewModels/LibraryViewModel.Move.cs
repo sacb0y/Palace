@@ -238,9 +238,14 @@ public partial class LibraryViewModel
         }
     }
 
-    /// <summary>Rebuild the folder tree from the in-memory catalog, keeping the selected folder.</summary>
+    /// <summary>
+    /// Rebuild the folder tree from the in-memory catalog, keeping the selected folder. A result
+    /// overtaken by a newer rebuild or refresh (say a second sort change during a slow disk
+    /// listing) is dropped, so the last request always wins.
+    /// </summary>
     private async Task RebuildFolderTreeAsync(string? selectPath = null)
     {
+        var generation = Interlocked.Increment(ref _folderTreeGeneration);
         var projectId = AppServices.CurrentProject.Id;
         var sources = await _catalog.GetSourceFoldersAsync(projectId);
         var assets = _allAssets;
@@ -248,6 +253,11 @@ public partial class LibraryViewModel
         var tree = await Task.Run(() => BuildFolderNodes(sources, assets, treeSort));
         await UiDispatch.RunAsync(() =>
         {
+            if (generation != Volatile.Read(ref _folderTreeGeneration))
+            {
+                return;
+            }
+
             var selectedPath = selectPath ?? SelectedFolder?.Path;
             _suppressFilter = true;
             ReplaceFolderTree(tree);

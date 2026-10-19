@@ -356,10 +356,14 @@ public partial class LibraryViewModel : ObservableObject
             var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
             var pickItems = BuildTagPicks(tags, memberships);
             var treeSort = FolderSort;
+            Interlocked.Increment(ref _folderTreeGeneration);
             var tree = await Task.Run(() => BuildFolderNodes(sources, assets, treeSort));
+            var resort = false;
 
             await UiDispatch.RunAsync(() =>
             {
+                // The sort changed while this tree was built: show it now, then rebuild in the new order.
+                resort = treeSort != FolderSort;
                 _allAssets = assets;
                 _tags = tags.ToList();
                 _memberships = memberships.ToList();
@@ -385,6 +389,10 @@ public partial class LibraryViewModel : ObservableObject
                 RebuildBreadcrumbs();
             });
             await ApplyFilterAsync();
+            if (resort)
+            {
+                await RebuildFolderTreeAsync();
+            }
         }
         finally
         {

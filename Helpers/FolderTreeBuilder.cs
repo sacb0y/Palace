@@ -45,7 +45,8 @@ public static class FolderTreeBuilder
         IReadOnlyList<FolderTreeSource> sources,
         IEnumerable<(string SourceId, string Path)> assets,
         Func<string, IEnumerable<FolderTreeDir>>? listChildren,
-        FolderTreeSort sort)
+        FolderTreeSort sort,
+        Func<string, bool>? isHiddenDir = null)
     {
         var bySource = assets
             .GroupBy(a => a.SourceId, StringComparer.Ordinal)
@@ -73,6 +74,13 @@ public static class FolderTreeBuilder
                 ScanDisk(root, index, listChildren);
             }
 
+            // Catalog folders follow the same skip rules as the disk listing: dot / $ names always,
+            // and (for disk sources) hidden / system / link folders. Their files count toward the
+            // nearest visible folder so totals stay right.
+            var hiddenCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            Func<string, bool>? hidden = source.ScanDisk && isHiddenDir is not null
+                ? path => hiddenCache.TryGetValue(path, out var h) ? h : hiddenCache[path] = isHiddenDir(path)
+                : null;
             if (bySource.TryGetValue(source.Id, out var paths))
             {
                 foreach (var assetPath in paths)
@@ -83,7 +91,7 @@ public static class FolderTreeBuilder
                         continue;
                     }
 
-                    var node = Ensure(root, index, source.Path, dir);
+                    var node = Ensure(root, index, source.Path, dir, hidden);
                     node.AssetCount++;
                 }
             }
@@ -151,6 +159,20 @@ public static class FolderTreeBuilder
             }
 
             yield return new FolderTreeDir(child.FullName, modified);
+        }
+    }
+
+    /// <summary>
+    /// Path keys (collapsed folders) at or under <paramref name="oldDir"/> follow a folder rename
+    /// to <paramref name="newDir"/>; others stay.
+    /// </summary>
+    public static void RebasePaths(ISet<string> paths, string oldDir, string newDir)
+    {
+        foreach (var path in paths.Where(p => FolderNames.IsSameOrUnder(p, oldDir)).ToList())
+        {
+            paths.Remove(path);
+            var rel = System.IO.Path.GetRelativePath(oldDir, path);
+            paths.Add(rel == "." ? newDir : System.IO.Path.Combine(newDir, rel));
         }
     }
 
@@ -232,7 +254,35 @@ public static class FolderTreeBuilder
         }
     }
 
-    private static FolderTreeEntry Ensure(FolderTreeEntry root, Dictionary<string, FolderTreeEntry> index, string sourcePath, string fullDir)
+    /// <summary>
+    /// Disk check for a catalog folder the listing didn't produce: hidden, system or a
+    /// junction / symlink. Missing folders are not hidden (catalog-only folders still show).
+    /// </summary>
+    public static bool IsHiddenOnDisk(string dir)
+    {
+        try
+        {
+            var info = new DirectoryInfo(dir);
+            if (!info.Exists)
+            {
+                return false;
+            }
+
+            return (info.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0
+                || info.LinkTarget is not null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static FolderTreeEntry Ensure(
+        FolderTreeEntry root,
+        Dictionary<string, FolderTreeEntry> index,
+        string sourcePath,
+        string fullDir,
+        Func<string, bool>? hidden)
     {
         if (index.TryGetValue(Key(fullDir), out var hit))
         {
@@ -247,6 +297,11 @@ public static class FolderTreeBuilder
             acc = System.IO.Path.Combine(acc, part);
             if (!index.TryGetValue(Key(acc), out var next))
             {
+                if (IsSkippedName(part) || (hidden?.Invoke(acc) ?? false))
+                {
+                    break;
+                }
+
                 next = new FolderTreeEntry { Name = part, Path = acc, SourceFolderId = root.SourceFolderId };
                 index[Key(acc)] = next;
                 current.Children.Add(next);

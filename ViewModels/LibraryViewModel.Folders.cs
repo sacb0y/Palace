@@ -56,6 +56,9 @@ public partial class LibraryViewModel
     /// <summary>Folders the user collapsed; kept across tree rebuilds (new folders, moves, sort).</summary>
     private readonly HashSet<string> _collapsedFolders = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Bumped by every tree rebuild / refresh; stale results are not applied.</summary>
+    private int _folderTreeGeneration;
+
     /// <summary>
     /// Tree Expanding / Collapsed. Ignores nodes that are no longer in the tree: tearing down the old
     /// containers during a rebuild raises Collapsed for them, which must not stick.
@@ -128,7 +131,8 @@ public partial class LibraryViewModel
             sources.Select(s => new FolderTreeSource(s.Id, s.Path, s.Kind == SourceKind.Local)).ToList(),
             assets.Select(a => (a.SourceFolderId, a.Path)),
             FolderTreeBuilder.ListDiskChildren,
-            sort);
+            sort,
+            FolderTreeBuilder.IsHiddenOnDisk);
         return entries.Select(ToNode).ToList();
     }
 

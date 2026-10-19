@@ -158,4 +158,68 @@ public sealed class FolderTreeBuilderTests : IDisposable
     [InlineData("99", FolderTreeSort.NameAsc)]
     public void Parse_falls_back_to_name(string? value, FolderTreeSort expected) =>
         Assert.Equal(expected, FolderTreeBuilder.Parse(value));
+
+    [Fact]
+    public void Catalog_files_under_skipped_folders_count_toward_the_nearest_visible_folder()
+    {
+        var a = Dir("A");
+        var root = Assert.Single(FolderTreeBuilder.Build(
+            [new FolderTreeSource("s1", _root, true)],
+            [
+                ("s1", Path.Combine(a, ".git", "objects", "x.png")),
+                ("s1", Path.Combine(a, "$RECYCLE", "y.png")),
+                ("s1", Path.Combine(a, "Hidden", "z.png")),
+                ("s1", Path.Combine(a, "Shown", "w.png"))
+            ],
+            FolderTreeBuilder.ListDiskChildren,
+            FolderTreeSort.NameAsc,
+            dir => dir.EndsWith("Hidden", StringComparison.Ordinal)));
+
+        var folderA = root.Children.Single();
+        Assert.Equal(["Shown"], folderA.Children.Select(c => c.Name));
+        Assert.Equal(4, folderA.AssetCount);
+        Assert.Equal(4, root.AssetCount);
+    }
+
+    [Fact]
+    public void Hidden_check_is_not_used_for_cloud_api_sources()
+    {
+        var called = false;
+        var root = Assert.Single(FolderTreeBuilder.Build(
+            [new FolderTreeSource("s1", _root, false)],
+            [("s1", Path.Combine(_root, "Cloud", "a.png"))],
+            FolderTreeBuilder.ListDiskChildren,
+            FolderTreeSort.NameAsc,
+            _ => called = true));
+
+        Assert.False(called);
+        Assert.Equal(["Cloud"], root.Children.Select(c => c.Name));
+    }
+
+    [Fact]
+    public void IsHiddenOnDisk_is_false_for_missing_and_plain_folders()
+    {
+        Assert.False(FolderTreeBuilder.IsHiddenOnDisk(Path.Combine(_root, "missing")));
+        Assert.False(FolderTreeBuilder.IsHiddenOnDisk(Dir("Plain")));
+    }
+
+    [Fact]
+    public void RebasePaths_moves_keys_under_the_renamed_folder_only()
+    {
+        var old = Path.Combine(_root, "Old");
+        var renamed = Path.Combine(_root, "New");
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            old,
+            Path.Combine(old, "Child"),
+            Path.Combine(_root, "Older"),
+            Path.Combine(_root, "Other")
+        };
+
+        FolderTreeBuilder.RebasePaths(keys, old, renamed);
+
+        Assert.Equal(
+            new[] { renamed, Path.Combine(renamed, "Child"), Path.Combine(_root, "Older"), Path.Combine(_root, "Other") }.OrderBy(k => k),
+            keys.OrderBy(k => k));
+    }
 }
