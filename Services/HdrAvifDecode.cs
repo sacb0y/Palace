@@ -46,7 +46,8 @@ internal static unsafe class HdrAvifDecode
                     MaxNits = packed.MaxNits,
                     AvgNits = packed.AvgNits,
                     MinNits = packed.MinNits,
-                    MaxScrgb = packed.MaxScrgb
+                    MaxScrgb = packed.MaxScrgb,
+                    MaxScrgbChannel = packed.MaxScrgbChannel
                 }
                 : null;
         }
@@ -124,7 +125,8 @@ internal static unsafe class HdrAvifDecode
         float MaxNits,
         float AvgNits,
         float MinNits,
-        float MaxScrgb)? Decode(
+        float MaxScrgb,
+        char MaxScrgbChannel)? Decode(
         string path,
         HdrProbe probe,
         int viewportPixelWidth,
@@ -270,7 +272,8 @@ internal static unsafe class HdrAvifDecode
                         packed.Value.MaxNits,
                         packed.Value.AvgNits,
                         packed.Value.MinNits,
-                        packed.Value.MaxScrgb);
+                        packed.Value.MaxScrgb,
+                        packed.Value.MaxScrgbChannel);
                 }
                 finally
                 {
@@ -320,7 +323,8 @@ internal static unsafe class HdrAvifDecode
         float MaxNits,
         float AvgNits,
         float MinNits,
-        float MaxScrgb)? ToScrgb(
+        float MaxScrgb,
+        char MaxScrgbChannel)? ToScrgb(
         IntPtr pixels,
         int rowBytes,
         int width,
@@ -340,6 +344,9 @@ internal static unsafe class HdrAvifDecode
         var minY = float.MaxValue;
         var sumY = 0.0;
         var maxScrgb = 0f;
+        var maxR = 0f;
+        var maxG = 0f;
+        var maxB = 0f;
         var row = new byte[rowBytes];
         for (var y = 0; y < height; y++)
         {
@@ -365,6 +372,9 @@ internal static unsafe class HdrAvifDecode
                 minY = Math.Min(minY, nitsY);
                 sumY += nitsY;
                 maxScrgb = Math.Max(maxScrgb, Math.Max(sr, Math.Max(sg, sb)));
+                maxR = Math.Max(maxR, sr);
+                maxG = Math.Max(maxG, sg);
+                maxB = Math.Max(maxB, sb);
                 if (rgba is not null)
                 {
                     var i = ((y * width) + x) * 4;
@@ -386,6 +396,7 @@ internal static unsafe class HdrAvifDecode
             minY = 0;
         }
 
-        return (rgba, maxY, (float)(sumY / count), minY, maxScrgb);
+        return (rgba, maxY, (float)(sumY / count), minY, maxScrgb,
+            maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(maxR, maxG, maxB));
     }
 }

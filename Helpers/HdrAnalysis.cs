@@ -260,8 +260,15 @@ public static class HdrHeatmap
 /// <summary>
 /// CIE 1931 xy chromaticity helpers and SKIV's gamut-coverage classes
 /// (Rec.709, DCI-P3, Rec.2020, ACES AP1, ACES AP0, invalid). Classification
-/// is a point-in-triangle test on xy, so it does not depend on each gamut's
-/// white point. Input is linear scRGB (BT.709 primaries, negatives kept).
+/// is a point-in-triangle test on xy of linear scRGB (BT.709 / D65, negatives
+/// kept). Rec.709, P3 and Rec.2020 are D65 gamuts, so their nominal primaries
+/// are used. The ACES gamuts are D60: Palace Bradford-adapts ACES EXRs to D65
+/// on decode (<see cref="ExrFile.ToRec709Matrix"/>), which moves their primaries,
+/// so <see cref="AcesAp1"/> / <see cref="AcesAp0"/> are the same primaries adapted
+/// D60 → D65 (a pure ACEScg primary then reads as AP1, not AP0 / invalid). The
+/// nominal D60 triangles are <see cref="AcesAp1D60"/> / <see cref="AcesAp0D60"/>.
+/// Points within <see cref="EdgeTolerance"/> of an edge count as inside, so
+/// primaries and edge colours survive float / half rounding.
 /// </summary>
 public static class CieGamut
 {
@@ -271,8 +278,21 @@ public static class CieGamut
     public static readonly Primaries Rec709 = new(0.640, 0.330, 0.300, 0.600, 0.150, 0.060);
     public static readonly Primaries DciP3 = new(0.680, 0.320, 0.265, 0.690, 0.150, 0.060);
     public static readonly Primaries Rec2020 = new(0.708, 0.292, 0.170, 0.797, 0.131, 0.046);
-    public static readonly Primaries AcesAp1 = new(0.713, 0.293, 0.165, 0.830, 0.128, 0.044);
-    public static readonly Primaries AcesAp0 = new(0.7347, 0.2653, 0.0, 1.0, 0.0001, -0.0770);
+
+    /// <summary>Nominal ACES AP1 (ACEScg) primaries, white D60.</summary>
+    public static readonly Primaries AcesAp1D60 = new(0.713, 0.293, 0.165, 0.830, 0.128, 0.044);
+
+    /// <summary>Nominal ACES AP0 (ACES2065-1) primaries, white D60.</summary>
+    public static readonly Primaries AcesAp0D60 = new(0.7347, 0.2653, 0.0, 1.0, 0.0001, -0.0770);
+
+    /// <summary>AP1 primaries Bradford-adapted D60 → D65, as they land in Palace's scRGB.</summary>
+    public static readonly Primaries AcesAp1 = new(0.71320, 0.29269, 0.15951, 0.83879, 0.12867, 0.04390);
+
+    /// <summary>AP0 primaries Bradford-adapted D60 → D65, as they land in Palace's scRGB.</summary>
+    public static readonly Primaries AcesAp0 = new(0.73486, 0.26423, -0.00617, 1.01131, 0.01597, -0.06424);
+
+    /// <summary>xy distance from an edge that still counts as inside (rounding at primaries / edges).</summary>
+    public const double EdgeTolerance = 5e-4;
 
     public const double D65X = 0.3127;
     public const double D65Y = 0.3290;
@@ -324,14 +344,24 @@ public static class CieGamut
         return true;
     }
 
-    public static bool Contains(in Primaries p, double x, double y, double eps = 1e-4)
+    /// <summary>
+    /// Point in triangle on xy, counting points within <paramref name="tolerance"/> (xy
+    /// distance) of an edge as inside. Works for either winding.
+    /// </summary>
+    public static bool Contains(in Primaries p, double x, double y, double tolerance = EdgeTolerance)
     {
-        var d1 = Cross(x, y, p.Rx, p.Ry, p.Gx, p.Gy);
-        var d2 = Cross(x, y, p.Gx, p.Gy, p.Bx, p.By);
-        var d3 = Cross(x, y, p.Bx, p.By, p.Rx, p.Ry);
-        var neg = d1 < -eps || d2 < -eps || d3 < -eps;
-        var pos = d1 > eps || d2 > eps || d3 > eps;
+        var d1 = EdgeDistance(x, y, p.Rx, p.Ry, p.Gx, p.Gy);
+        var d2 = EdgeDistance(x, y, p.Gx, p.Gy, p.Bx, p.By);
+        var d3 = EdgeDistance(x, y, p.Bx, p.By, p.Rx, p.Ry);
+        var neg = d1 < -tolerance || d2 < -tolerance || d3 < -tolerance;
+        var pos = d1 > tolerance || d2 > tolerance || d3 > tolerance;
         return !(neg && pos);
+    }
+
+    private static double EdgeDistance(double px, double py, double ax, double ay, double bx, double by)
+    {
+        var len = Math.Sqrt(((ax - bx) * (ax - bx)) + ((ay - by) * (ay - by)));
+        return len > 0 ? Cross(px, py, ax, ay, bx, by) / len : 0;
     }
 
     public static GamutKind Classify(double x, double y)

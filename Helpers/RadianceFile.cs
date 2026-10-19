@@ -17,6 +17,12 @@ public sealed class RadianceFrame
     public required float AvgNits { get; init; }
     public required float MinNits { get; init; }
     public required float MaxScrgb { get; init; }
+
+    /// <summary>
+    /// Channel ('R', 'G' or 'B') that holds <see cref="MaxScrgb"/> over the native pixels,
+    /// or '\0' when unknown. Same tie rule as <see cref="HdrAnalysis"/> (R, then G, then B).
+    /// </summary>
+    public char MaxScrgbChannel { get; init; }
 }
 
 public static class RadianceFile
@@ -186,6 +192,9 @@ public static class RadianceFile
     private sealed class ScrgbStats
     {
         private float _maxScrgb;
+        private float _maxR;
+        private float _maxG;
+        private float _maxB;
         private float _maxY;
         private float _minY = float.MaxValue;
         private double _sumY;
@@ -194,6 +203,9 @@ public static class RadianceFile
         public void Add(float r, float g, float b)
         {
             _maxScrgb = Math.Max(_maxScrgb, Math.Max(r, Math.Max(g, b)));
+            _maxR = Math.Max(_maxR, r);
+            _maxG = Math.Max(_maxG, g);
+            _maxB = Math.Max(_maxB, b);
             var nits = GalleryPresent.LuminanceY(
                 r * GalleryPresent.ScrgbNits,
                 g * GalleryPresent.ScrgbNits,
@@ -213,7 +225,8 @@ public static class RadianceFile
             MaxNits = _maxY,
             AvgNits = _count > 0 ? (float)(_sumY / _count) : 0f,
             MinNits = _maxY <= 0 || _minY == float.MaxValue ? 0f : _minY,
-            MaxScrgb = _maxScrgb
+            MaxScrgb = _maxScrgb,
+            MaxScrgbChannel = _maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(_maxR, _maxG, _maxB)
         };
     }
 
