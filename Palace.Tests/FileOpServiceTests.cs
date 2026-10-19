@@ -876,6 +876,57 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.DoesNotContain(tag, await TagIdsOn(c.Id));
     }
 
+    [Fact]
+    public async Task Undo_remove_restores_each_assets_own_source()
+    {
+        var exr = await AddAssetAsync(_rootA, "shot.exr");
+        var hdr = await AddAssetAsync(_rootA, "shot.hdr");
+        var tag = PalaceDb.NewId();
+        await _db.WriteAsync(conn =>
+        {
+            InsertTag(conn, tag, "PrBeta");
+            InsertAssetTag(conn, exr.Id, tag, TagSource.Implied);
+            InsertAssetTag(conn, hdr.Id, tag, TagSource.Manual);
+        });
+
+        // The merged chip reports Implied for the whole selection.
+        var chip = TagSource.Implied;
+        var items = new List<FileOpItem>();
+        foreach (var assetId in new[] { exr.Id, hdr.Id })
+        {
+            var before = await SourcesOn(assetId);
+            await _catalog.RemoveTagForUndoAsync(assetId, tag);
+            var after = await SourcesOn(assetId);
+            var change = TagAssignUndo.PlanRemove(before, after, tag);
+            Assert.True(change.Journal);
+            Assert.True(change.TouchAssignedTag);
+            items.Add(new FileOpItem
+            {
+                Step = FileOpStep.RemoveTag,
+                AssetId = assetId,
+                OldPath = tag,
+                NewPath = "PrBeta",
+                OldSourceId = TagAssignUndo.RecordedSource(before, tag, chip).ToString(),
+                NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
+            });
+        }
+
+        Assert.Equal(TagSource.Implied.ToString(), items[0].OldSourceId);
+        Assert.Equal(TagSource.Manual.ToString(), items[1].OldSourceId);
+        await _catalog.AddFileOpBatchAsync(new FileOpBatch
+        {
+            ProjectId = _projectId,
+            Kind = FileOpKind.TagRemove,
+            Summary = "Removed PrBeta from 2 items",
+            Items = items
+        });
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(TagSource.Implied, await SourceOf(exr.Id, tag));
+        Assert.Equal(TagSource.Manual, await SourceOf(hdr.Id, tag));
+    }
+
     private static void InsertTag(SqliteConnection conn, string id, string name)
     {
         using var cmd = conn.CreateCommand();
@@ -900,6 +951,35 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         cmd.Parameters.AddWithValue("$tag", tagId);
         cmd.Parameters.AddWithValue("$source", source.ToString());
         cmd.ExecuteNonQuery();
+    }
+
+    private Task<List<(string Id, TagSource Source)>> SourcesOn(string assetId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT TagId, Source FROM AssetTag WHERE AssetId = $asset";
+            cmd.Parameters.AddWithValue("$asset", assetId);
+            var rows = new List<(string Id, TagSource Source)>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add((reader.GetString(0), Enum.Parse<TagSource>(reader.GetString(1))));
+            }
+
+            return rows;
+        });
+
+    private async Task<TagSource?> SourceOf(string assetId, string tagId)
+    {
+        foreach (var row in await SourcesOn(assetId))
+        {
+            if (string.Equals(row.Id, tagId, StringComparison.Ordinal))
+            {
+                return row.Source;
+            }
+        }
+
+        return null;
     }
 
     private Task<List<string>> TagIdsOn(string assetId) =>

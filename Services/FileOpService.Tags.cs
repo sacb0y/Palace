@@ -116,13 +116,17 @@ public sealed partial class FileOpService
                 continue;
             }
 
+            var recorded = TagAssignUndo.RecordedSource(
+                before.Select(t => (t.TagId, t.Source)),
+                tagId,
+                source);
             items.Add(new FileOpItem
             {
                 Step = FileOpStep.RemoveTag,
                 AssetId = assetId,
                 OldPath = tagId,
                 NewPath = tagName,
-                OldSourceId = source.ToString(),
+                OldSourceId = recorded.ToString(),
                 NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
             });
         }

@@ -101,6 +101,27 @@ public static class TagAssignUndo
         return new Change(touch || implied.Count > 0, touch, implied);
     }
 
+    /// <summary>
+    /// Source on this asset's assignment row. A merged chip can show one source
+    /// for a mixed selection; Undo must write each asset's own source back.
+    /// <c>AssetTag</c> stores Source only (no implied-by link).
+    /// </summary>
+    public static TagSource RecordedSource(
+        IEnumerable<(string Id, TagSource Source)> presentBefore,
+        string tagId,
+        TagSource fallback)
+    {
+        foreach (var row in presentBefore)
+        {
+            if (string.Equals(row.Id, tagId, StringComparison.Ordinal))
+            {
+                return row.Source;
+            }
+        }
+
+        return fallback;
+    }
+
     public static string Encode(IReadOnlyList<string> impliedIds, bool touchAssignedTag = true)
     {
         var body = string.Join('\n', impliedIds);

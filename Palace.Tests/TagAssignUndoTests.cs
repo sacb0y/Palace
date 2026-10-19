@@ -68,4 +68,15 @@ public sealed class TagAssignUndoTests
         Assert.True(swept.TouchAssignedTag);
         Assert.Equal(["winter"], swept.ImpliedIds);
     }
+
+    [Fact]
+    public void RecordedSource_uses_each_assets_row_not_the_merged_chip()
+    {
+        var chip = TagSource.Implied;
+        var exr = TagAssignUndo.RecordedSource([("prbeta", TagSource.Implied)], "prbeta", chip);
+        var hdr = TagAssignUndo.RecordedSource([("prbeta", TagSource.Manual)], "prbeta", chip);
+        Assert.Equal(TagSource.Implied, exr);
+        Assert.Equal(TagSource.Manual, hdr);
+        Assert.Equal(chip, TagAssignUndo.RecordedSource([], "prbeta", chip));
+    }
 }

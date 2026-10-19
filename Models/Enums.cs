@@ -129,7 +129,7 @@ public enum FileOpStep
     DeleteDir,
     /// <summary>AssetId + OldPath=tagId + NewPath=tagName + OldSourceId=TagSource.</summary>
     AssignTag,
-    /// <summary>Same fields as <see cref="AssignTag"/>; Undo re-assigns.</summary>
+    /// <summary>Same fields as <see cref="AssignTag"/>. OldSourceId is that asset's own TagSource.</summary>
     RemoveTag,
     /// <summary>OldPath=tagId; NewPath=JSON <c>TagDeleteSnapshot</c>.</summary>
     DeleteTag
