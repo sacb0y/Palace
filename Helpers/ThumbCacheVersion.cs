@@ -5,18 +5,32 @@ namespace Palace.Helpers;
 /// when the current generation started; cached JPEGs for formats whose
 /// rendering changed (HDR stills were clipped red, PSD/JXL/EXR/… had no
 /// built-in decoder) that predate the marker are regenerated on next use.
+/// Each generation keeps its own marker, so a later bump only regenerates
+/// the formats that generation changed.
 /// </summary>
 public static class ThumbCacheVersion
 {
     /// <summary>Bump when thumbnail rendering changes for existing files.</summary>
-    public const int Current = 2;
+    public const int Current = 3;
 
-    public static string MarkerName => $".thumbs-v{Current}";
+    /// <summary>Generation 2: HDR stills, PSD, JXL, EXR, Radiance, TGA, Clip, ICO.</summary>
+    public const int DecodersGeneration = 2;
+
+    /// <summary>Generation 3: BMP / TIFF names that hold Substance Painter shelf metadata with a preview.</summary>
+    public const int ShelfPreviewGeneration = 3;
+
+    public static string MarkerName => MarkerNameFor(Current);
+
+    public static string MarkerNameFor(int generation) => $".thumbs-v{generation}";
 
     /// <summary>Returns the UTC time the current generation started, creating the marker if needed.</summary>
-    public static DateTime EnsureMarker(string thumbsRoot, Func<DateTime>? nowUtc = null)
+    public static DateTime EnsureMarker(string thumbsRoot, Func<DateTime>? nowUtc = null) =>
+        EnsureMarker(thumbsRoot, Current, nowUtc);
+
+    /// <summary>Returns the UTC time <paramref name="generation"/> started, creating its marker if needed.</summary>
+    public static DateTime EnsureMarker(string thumbsRoot, int generation, Func<DateTime>? nowUtc = null)
     {
-        var path = Path.Combine(thumbsRoot, MarkerName);
+        var path = Path.Combine(thumbsRoot, MarkerNameFor(generation));
         try
         {
             if (File.Exists(path) && DateTime.TryParse(File.ReadAllText(path).Trim(), null,
@@ -40,6 +54,13 @@ public static class ThumbCacheVersion
     public static bool RenderingChanged(string path, bool isHdr) =>
         isHdr || StillDecode.HandlesPath(path) || PathSafe.IsJxl(path) || PathSafe.IsPsd(path)
         || PathSafe.IsIco(path);
+
+    /// <summary>
+    /// Formats whose thumbnails changed in generation 3: a BMP / TIFF that is really
+    /// Substance Painter shelf metadata now shows its embedded preview instead of the placeholder.
+    /// </summary>
+    public static bool ShelfPreviewChanged(string path) =>
+        PathSafe.Extension(path).ToLowerInvariant() is ".bmp" or ".tif" or ".tiff";
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;
