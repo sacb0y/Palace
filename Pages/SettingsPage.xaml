@@ -8,6 +8,7 @@
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -17,6 +18,18 @@
             Padding="24"
             Spacing="16">
             <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Settings" />
+
+            <!-- PR1 toolkit spike probe (Collapsed). AutomationId for future UI assert. -->
+            <tk:SettingsCard
+                x:Name="SettingsCardProbe"
+                AutomationProperties.AutomationId="SettingsCardProbe"
+                Description="CommunityToolkit.WinUI.Controls.SettingsControls probe (not shown)."
+                Header="SettingsCard probe"
+                Visibility="Collapsed">
+                <ToggleSwitch
+                    AutomationProperties.AutomationId="TglSettingsCardProbe"
+                    AutomationProperties.Name="SettingsCard probe" />
+            </tk:SettingsCard>
 
             <ComboBox
                 x:Name="CmbTheme"
