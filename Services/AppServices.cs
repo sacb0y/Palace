@@ -19,6 +19,7 @@ public static class AppServices
     public static OrganizeService Organize { get; private set; } = null!;
     public static ScanService Scan { get; private set; } = null!;
     public static WatcherService Watchers { get; private set; } = null!;
+    public static FileOpService FileOps { get; private set; } = null!;
     public static CloudAccountService CloudAccounts { get; private set; } = null!;
     public static ICloudLibraryFactory CloudLibraries { get; private set; } = null!;
     public static HydrationService Hydration { get; private set; } = null!;
@@ -97,7 +98,8 @@ public static class AppServices
         Hydration = new HydrationService(Catalog, Metadata, Thumbnails);
         Scan = new ScanService(Catalog, Metadata, Thumbnails, Organize, CloudLibraries);
         Watchers = new WatcherService(Catalog, Scan);
-        Library = new LibraryViewModel(Catalog, Access, Scan, Organize, Thumbnails, Watchers);
+        FileOps = new FileOpService(Catalog, Watchers.SuppressNotifications);
+        Library = new LibraryViewModel(Catalog, Access, Scan, Organize, Thumbnails, Watchers, FileOps);
         Tags = new TagsViewModel(Catalog, Organize, Access, Thumbnails);
         Rooms = new RoomsViewModel(Catalog, Thumbnails);
         Settings = new SettingsViewModel(Catalog, Access, Scan, Watchers, CloudAccounts, CloudLibraries);

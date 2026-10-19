@@ -19,6 +19,7 @@ public partial class LibraryViewModel : ObservableObject
     private readonly OrganizeService _organize;
     private readonly ThumbnailService _thumbs;
     private readonly WatcherService _watchers;
+    private readonly FileOpService _fileOps;
     private IReadOnlyList<Asset> _allAssets = [];
     private List<Tag> _tags = [];
     private List<TagMembership> _memberships = [];
@@ -34,6 +35,7 @@ public partial class LibraryViewModel : ObservableObject
     private string? _previewAssetId;
     private int _busyDepth;
     private Dictionary<string, bool> _sourceIsCloud = new(StringComparer.Ordinal);
+    private HashSet<string> _localSourceIds = new(StringComparer.Ordinal);
     private const int MosaicChunkSize = 80;
 
     public LibraryViewModel(
@@ -42,7 +44,8 @@ public partial class LibraryViewModel : ObservableObject
         ScanService scan,
         OrganizeService organize,
         ThumbnailService thumbs,
-        WatcherService watchers)
+        WatcherService watchers,
+        FileOpService fileOps)
     {
         _catalog = catalog;
         _access = access;
@@ -50,6 +53,7 @@ public partial class LibraryViewModel : ObservableObject
         _organize = organize;
         _thumbs = thumbs;
         _watchers = watchers;
+        _fileOps = fileOps;
     }
 
     public Func<Task<OrganizeChoice?>>? RequestOrganizeChoice { get; set; }
@@ -325,7 +329,9 @@ public partial class LibraryViewModel : ObservableObject
             LoadRowHeight();
             LoadMosaicSort();
             LoadRecentTags();
+            LoadMoveRecents();
             await RefreshQuietAsync();
+            await RefreshUndoStateAsync();
         }
         finally
         {

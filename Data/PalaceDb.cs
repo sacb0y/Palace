@@ -185,6 +185,28 @@ public sealed class PalaceDb : IDisposable
                 FOREIGN KEY (AssetId) REFERENCES Asset(Id)
             );
 
+            CREATE TABLE IF NOT EXISTS FileOpBatch (
+                Id TEXT PRIMARY KEY,
+                ProjectId TEXT NOT NULL,
+                Kind TEXT NOT NULL,
+                Summary TEXT NOT NULL,
+                CreatedAt TEXT NOT NULL,
+                IsUndone INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS FileOpItem (
+                BatchId TEXT NOT NULL,
+                Seq INTEGER NOT NULL,
+                Step TEXT NOT NULL,
+                AssetId TEXT,
+                OldPath TEXT NOT NULL,
+                NewPath TEXT NOT NULL,
+                OldSourceId TEXT,
+                NewSourceId TEXT,
+                PRIMARY KEY (BatchId, Seq),
+                FOREIGN KEY (BatchId) REFERENCES FileOpBatch(Id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS Collection (
                 Id TEXT PRIMARY KEY,
                 Name TEXT NOT NULL,
@@ -231,6 +253,7 @@ public sealed class PalaceDb : IDisposable
             CREATE INDEX IF NOT EXISTS IX_TagImplication_Implied ON TagImplication(ImpliedTagId);
             CREATE INDEX IF NOT EXISTS IX_SourceFolder_Project ON SourceFolder(ProjectId);
             CREATE INDEX IF NOT EXISTS IX_CloudAccount_Provider ON CloudAccount(Provider);
+            CREATE INDEX IF NOT EXISTS IX_FileOpBatch_Project ON FileOpBatch(ProjectId, IsUndone, CreatedAt);
             """;
         cmd.ExecuteNonQuery();
         MigrateLegacyFacets();
