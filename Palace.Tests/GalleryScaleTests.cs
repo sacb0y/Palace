@@ -30,6 +30,10 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.TogglesDetails(true, GalleryScale.KeyLetterI));
         Assert.False(GalleryScale.TogglesDetails(true, GalleryScale.KeyLetterD));
         Assert.False(GalleryScale.TogglesDetails(false, GalleryScale.KeyLetterI));
+        Assert.Equal(72, GalleryScale.KeyLetterH);
+        Assert.True(GalleryScale.TogglesHeatmap(true, GalleryScale.KeyLetterH));
+        Assert.False(GalleryScale.TogglesHeatmap(false, GalleryScale.KeyLetterH));
+        Assert.False(GalleryScale.TogglesHeatmap(true, GalleryScale.KeyLetterI));
         Assert.Equal(32, GalleryScale.KeySpace);
         Assert.Equal(27, GalleryScale.KeyEscape);
         Assert.True(GalleryScale.OpensOverlay(false, false, GalleryScale.KeySpace));

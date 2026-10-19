@@ -1,0 +1,5 @@
+palace_exr: OpenEXR 3.5.2 (OpenEXRCore, vendored libdeflate, zstd and
+OpenJPH) statically linked with Palace's shim tools/openexr/palace_exr.c.
+Source: https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.5.2.tar.gz
+SHA-256: 85a291b9b8563fabef1aa3f6e912d744ce1d4b9fd5a8f978eda194cd51b15ae9
+Built by tools/openexr/build-openexr.sh (win64).
