@@ -34,7 +34,9 @@ public static class AssetItemMapper
         item.Height = asset.Height;
         item.FileSize = asset.FileSize;
         // Catalog / extension only — never HdrFile.ProbePath / Open the original.
-        item.IsHdr = asset.IsHdr || PathSafe.IsRadiance(asset.Path);
+        // EXR too: rows indexed before EXR presented as HDR keep IsHdr = 0
+        // (the fast rescan skips unchanged files), and EXR is always linear float.
+        item.IsHdr = asset.IsHdr || PathSafe.IsRadiance(asset.Path) || PathSafe.IsExr(asset.Path);
         ApplyCloud(item, asset, sourceFolderIsCloud);
     }
 

@@ -26,6 +26,22 @@ internal static class HdrRasterize
         ushort[] dest,
         CancellationToken cancellation,
         float scale = 1f)
+        => Fill(src, sw, sh, scaling, vw, vh, new HdrPixelMap(scale, clip), dest, cancellation);
+
+    /// <summary>
+    /// Same as above with a full <see cref="HdrPixelMap"/> (tonemap or a
+    /// visualization such as the luminance heatmap).
+    /// </summary>
+    public static void Fill(
+        float[] src,
+        int sw,
+        int sh,
+        ImageScaling scaling,
+        int vw,
+        int vh,
+        HdrPixelMap map,
+        ushort[] dest,
+        CancellationToken cancellation)
     {
         if (sw <= 0 || sh <= 0 || vw <= 0 || vh <= 0)
         {
@@ -50,7 +66,7 @@ internal static class HdrRasterize
             Parallel.For(0, vh, options, y =>
             {
                 var start = y * vw * 4;
-                ConvertRun(src, dest, start, vw, clip, scale);
+                ConvertRun(src, dest, start, vw, map);
             });
             return;
         }
@@ -88,22 +104,24 @@ internal static class HdrRasterize
                 }
 
                 var si = (srcRow + sx) * 4;
-                dest[di] = GalleryPresent.FloatToHalf(Math.Clamp(src[si] * scale, 0, clip));
-                dest[di + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 1] * scale, 0, clip));
-                dest[di + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[si + 2] * scale, 0, clip));
+                map.Apply(src[si], src[si + 1], src[si + 2], out var r, out var g, out var b);
+                dest[di] = GalleryPresent.FloatToHalf(r);
+                dest[di + 1] = GalleryPresent.FloatToHalf(g);
+                dest[di + 2] = GalleryPresent.FloatToHalf(b);
                 dest[di + 3] = GalleryPresent.FloatToHalf(src[si + 3]);
             }
         });
     }
 
-    private static void ConvertRun(float[] src, ushort[] dest, int start, int pixels, float clip, float scale)
+    private static void ConvertRun(float[] src, ushort[] dest, int start, int pixels, HdrPixelMap map)
     {
         var end = start + (pixels * 4);
         for (var i = start; i < end; i += 4)
         {
-            dest[i] = GalleryPresent.FloatToHalf(Math.Clamp(src[i] * scale, 0, clip));
-            dest[i + 1] = GalleryPresent.FloatToHalf(Math.Clamp(src[i + 1] * scale, 0, clip));
-            dest[i + 2] = GalleryPresent.FloatToHalf(Math.Clamp(src[i + 2] * scale, 0, clip));
+            map.Apply(src[i], src[i + 1], src[i + 2], out var r, out var g, out var b);
+            dest[i] = GalleryPresent.FloatToHalf(r);
+            dest[i + 1] = GalleryPresent.FloatToHalf(g);
+            dest[i + 2] = GalleryPresent.FloatToHalf(b);
             dest[i + 3] = GalleryPresent.FloatToHalf(src[i + 3]);
         }
     }

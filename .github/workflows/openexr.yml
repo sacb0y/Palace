@@ -1,0 +1,54 @@
+name: openexr (bundled decoder)
+
+# Rebuilds Native/openexr/win-x64/palace_exr.dll (OpenEXRCore + tools/openexr/
+# palace_exr.c, static mingw, BSD-3 / MIT / BSD-2) and uploads it as an
+# artifact, then runs the fixtures through the Linux build. Commit the artifact
+# over Native/openexr/win-x64/ when tools/openexr changes. Publishes nothing.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/openexr/**
+      - .github/workflows/openexr.yml
+  pull_request:
+    paths:
+      - tools/openexr/**
+      - .github/workflows/openexr.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 cmake ninja-build g++ git
+      - name: Build win64
+        run: bash tools/openexr/build-openexr.sh out-win win64
+      - name: Build linux (fixture check)
+        run: bash tools/openexr/build-openexr.sh out-linux linux
+      - name: Decode every fixture
+        run: |
+          python3 - <<'PY'
+          import ctypes, glob, os
+          lib = ctypes.CDLL(os.path.abspath("out-linux/libpalace_exr.so"))
+          files = sorted(glob.glob("Palace.Tests/Fixtures/exr/*.exr"))
+          assert files, "no fixtures"
+          for f in files:
+              d = open(f, "rb").read()
+              w, h, fl, c = (ctypes.c_int() for _ in range(4))
+              assert lib.pexr_info(d, len(d), *(ctypes.byref(v) for v in (w, h, fl, c))) == 0, f
+              buf = (ctypes.c_float * (w.value * h.value * 4))()
+              assert lib.pexr_decode_rgba(d, len(d), buf, len(buf)) == 0, f
+              print(f"{os.path.basename(f)}: {w.value}x{h.value} comp={c.value} flags={fl.value}")
+          PY
+      - name: Compare with the committed DLL
+        run: |
+          # mingw output is not byte-reproducible; the hashes are for the log.
+          sha256sum out-win/palace_exr.dll Native/openexr/win-x64/palace_exr.dll
+      - uses: actions/upload-artifact@v4
+        with:
+          name: palace-openexr-win-x64
+          path: out-win/*

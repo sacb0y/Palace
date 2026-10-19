@@ -15,7 +15,8 @@ public enum HdrKind
     HdrJxr,
     HdrJxl,
     WideGamutJxl,
-    HdrRadiance
+    HdrRadiance,
+    HdrExr
 }
 
 public readonly record struct HdrProbe(
@@ -30,7 +31,7 @@ public readonly record struct HdrProbe(
     public static HdrProbe None { get; } = new(HdrKind.None, null, null, null);
 
     public bool IsHdr => Kind is HdrKind.UltraHdrJpeg or HdrKind.HdrPng or HdrKind.HdrAvif
-        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance;
+        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr;
 
     /// <summary>
     /// WIC stills + Radiance RGBE (no Magick). Ultra HDR JPEG stays SDR base.
@@ -39,7 +40,7 @@ public readonly record struct HdrProbe(
     /// as HDR PNG — not Magick, not <c>BitmapImage</c>.
     /// </summary>
     public bool CanPresentHdr => Kind is HdrKind.HdrPng or HdrKind.HdrAvif
-        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance;
+        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr;
 
     public bool IsPq => CicpTransfer == 16;
 
@@ -55,7 +56,7 @@ public readonly record struct HdrProbe(
         16 => HdrTransfer.Pq,
         18 => HdrTransfer.Hlg,
         8 => HdrTransfer.Linear,
-        _ when Kind == HdrKind.HdrRadiance || Kind == HdrKind.HdrJxr => HdrTransfer.Scrgb,
+        _ when Kind is HdrKind.HdrRadiance or HdrKind.HdrJxr or HdrKind.HdrExr => HdrTransfer.Scrgb,
         _ when (Kind is HdrKind.HdrAvif or HdrKind.HdrHeif) && CicpTransfer is null or 2 => HdrTransfer.Pq,
         _ => HdrTransfer.Srgb
     };
@@ -157,6 +158,15 @@ public static class HdrFile
         if (RadianceFile.IsRadiance(data))
         {
             return new HdrProbe(HdrKind.HdrRadiance, 1, null, null);
+        }
+
+        if (ExrFile.IsExr(data))
+        {
+            // Linear float scRGB (BT.709, 1.0 = 80 nits), like SKIV's EXR load.
+            // Only files the in-house reader can decode present as HDR.
+            return ExrFile.IsDecodable(data)
+                ? new HdrProbe(HdrKind.HdrExr, 1, null, null)
+                : HdrProbe.None;
         }
 
         if (StillFormats.IsJxl(data))

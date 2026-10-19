@@ -229,6 +229,37 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool HistogramShowRgb { get; set; } = GalleryHistogram.DefaultShowRgb;
 
     [ObservableProperty]
+    public partial bool HistogramShowLuma { get; set; } = GalleryHistogram.DefaultShowLuma;
+
+    /// <summary>Shared analysis pass (histogram, light stats, gamut, CIE) for the presented still.</summary>
+    [ObservableProperty]
+    public partial HdrAnalysisResult Analysis { get; set; } = HdrAnalysisResult.Empty;
+
+    [ObservableProperty]
+    public partial bool ShowGamut { get; set; }
+
+    /// <summary>Format · index · size, then camera EXIF or AI settings (under the histogram).</summary>
+    [ObservableProperty]
+    public partial GalleryDetailsRows DetailsRows { get; set; } = GalleryDetailsRows.Empty;
+
+    /// <summary>Luminance heatmap view (Ctrl+H). Only applies to an HDR swapchain present.</summary>
+    [ObservableProperty]
+    public partial bool ShowHeatmap { get; set; }
+
+    /// <summary>True while an HDR frame is presented, so the heatmap toggle can apply.</summary>
+    [ObservableProperty]
+    public partial bool CanShowHeatmap { get; set; }
+
+    public HdrVizMode VizMode => ShowHeatmap && CanShowHeatmap ? HdrVizMode.Heatmap : HdrVizMode.None;
+
+    /// <summary>Histogram bar shows the heatmap palette only while the heatmap is actually on.</summary>
+    public bool HeatmapActive => VizMode == HdrVizMode.Heatmap;
+
+    private CameraExif _cameraExif = CameraExif.None;
+    private string? _genSampler;
+    private string? _genSteps;
+
+    [ObservableProperty]
     public partial string HistogramCaption { get; set; } = "";
 
     [ObservableProperty]
@@ -310,6 +341,16 @@ public partial class GalleryViewModel : ObservableObject
             return true;
         }
 
+        if (GalleryScale.TogglesHeatmap(controlDown, keyCode))
+        {
+            if (CanShowHeatmap || ShowHeatmap)
+            {
+                ShowHeatmap = !ShowHeatmap;
+            }
+
+            return true;
+        }
+
         return false;
     }
 
@@ -318,6 +359,18 @@ public partial class GalleryViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleDetails() => ShowDetails = !ShowDetails;
+
+    partial void OnShowHeatmapChanged(bool value)
+    {
+        OnPropertyChanged(nameof(VizMode));
+        OnPropertyChanged(nameof(HeatmapActive));
+    }
+
+    partial void OnCanShowHeatmapChanged(bool value)
+    {
+        OnPropertyChanged(nameof(VizMode));
+        OnPropertyChanged(nameof(HeatmapActive));
+    }
 
     partial void OnShowImageInfoChanged(bool value)
     {
@@ -556,25 +609,25 @@ public partial class GalleryViewModel : ObservableObject
             _nativePixelHeight = pixelHeight;
         }
 
+        CanShowHeatmap = presented;
         RefreshHdrStatus();
     }
 
-    public void SetHistogram(GalleryHistogramBins bins)
+    /// <summary>
+    /// One <see cref="HdrAnalysis"/> result feeds the histogram, the Info
+    /// figures (P99, FALL, MaxCLL channel, gamut) and the gamut plot.
+    /// </summary>
+    public void SetAnalysis(HdrAnalysisResult analysis)
     {
-        Histogram = bins.HasSamples ? bins : GalleryHistogramBins.Empty;
+        Analysis = analysis.HasSamples ? analysis : HdrAnalysisResult.Empty;
+        Histogram = Analysis.HasSamples ? Analysis.Histogram : GalleryHistogramBins.Empty;
         ShowHistogram = Histogram.HasSamples;
-        HistogramCaption = GalleryHistogram.Caption(HistogramShowRgb, Histogram.BinCount, Histogram.SampleCount);
+        ShowGamut = Analysis.HasSamples;
+        HistogramCaption = GalleryHistogram.Caption(Histogram);
+        RefreshImageInfo();
     }
 
-    public void ClearHistogram() => SetHistogram(GalleryHistogramBins.Empty);
-
-    partial void OnHistogramShowRgbChanged(bool value)
-    {
-        if (ShowHistogram)
-        {
-            HistogramCaption = GalleryHistogram.Caption(value, Histogram.BinCount, Histogram.SampleCount);
-        }
-    }
+    public void ClearHistogram() => SetAnalysis(HdrAnalysisResult.Empty);
 
     public void SetHdrStats(float maxNits, float avgNits, float minNits, float maxScrgb)
     {
@@ -607,6 +660,8 @@ public partial class GalleryViewModel : ObservableObject
             _headerPixelHeight,
             item?.Width,
             item?.Height);
+        var light = Analysis.Light;
+        var hdrFigures = HdrPresented && Analysis.HasSamples && Analysis.IsHdr;
         ImageInfoText = GalleryPresent.ImageInfoText(new GalleryImageInfo(
             item?.FileName,
             item?.FileSize,
@@ -619,7 +674,25 @@ public partial class GalleryViewModel : ObservableObject
             HdrPresented && ContentMaxNits > 0 ? ContentMinNits : null,
             HdrPresented && DisplayIsHdr && DisplayPeakNits > 0 ? DisplayPeakNits : null,
             HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null,
-            string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe));
+            string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe,
+            hdrFigures ? GalleryPresent.MaxCllChannelFor(light.MaxCllChannel, light.MaxCllScrgb, ContentMaxScrgb) : null,
+            hdrFigures && light.P99Nits > 0 ? light.P99Nits : null,
+            hdrFigures && light.FallNits > 0 ? light.FallNits : null,
+            hdrFigures ? light.AboveSdrWhitePercent : null,
+            Analysis.HasSamples ? Analysis.Gamut.Summary() : null));
+        DetailsRows = GalleryDetails.Build(
+            item?.Path,
+            CurrentProbe,
+            item is null ? -1 : CurrentIndex,
+            _items.Count,
+            pixels?.Width,
+            pixels?.Height,
+            item?.FileSize,
+            _cameraExif,
+            PreviewModel,
+            _genSampler,
+            _genSteps,
+            PreviewSeed);
     }
 
     [RelayCommand]
@@ -727,6 +800,10 @@ public partial class GalleryViewModel : ObservableObject
 
                 Current = null;
                 CurrentProbe = HdrProbe.None;
+                _cameraExif = CameraExif.None;
+                _genSampler = null;
+                _genSteps = null;
+                CanShowHeatmap = false;
                 _headerPixelWidth = 0;
                 _headerPixelHeight = 0;
                 _nativePixelWidth = 0;
@@ -801,10 +878,18 @@ public partial class GalleryViewModel : ObservableObject
 
         var probe = HdrProbe.None;
         (int Width, int Height)? headerPixels = null;
+        var camera = CameraExif.None;
+        string? sampler = null;
+        string? steps = null;
         if (item.Kind == AssetKind.Image && onDisk && !onlineOnly && !apiOnly && !item.IsOrphan)
         {
             probe = HdrFile.ProbePath(item.Path);
             headerPixels = ImageDimensions.TryRead(item.Path);
+            (camera, sampler, steps) = await ReadDetailsMetadataAsync(item.Path, generation.HasAny);
+            if (epoch != _loadEpoch)
+            {
+                return;
+            }
         }
 
         var playableVideo = GalleryMedia.IsPlayableLocalVideo(
@@ -837,6 +922,10 @@ public partial class GalleryViewModel : ObservableObject
 
             Current = item;
             CurrentProbe = probe;
+            _cameraExif = camera;
+            _genSampler = sampler;
+            _genSteps = steps;
+            CanShowHeatmap = false;
             _headerPixelWidth = headerPixels?.Width ?? 0;
             _headerPixelHeight = headerPixels?.Height ?? 0;
             _nativePixelWidth = 0;
@@ -874,8 +963,8 @@ public partial class GalleryViewModel : ObservableObject
             DetailsText = GalleryPresent.DetailsLine(
                 item.FileName, detailsPixels?.Width, detailsPixels?.Height, item.Kind, item.FileSize);
             HdrStatus = GalleryPresent.StatusLine(probe, false, false, GalleryPeak.Enabled, GalleryPeak.Nits) ?? "";
-            RefreshImageInfo();
             ApplyGenerationPreview(generation);
+            RefreshImageInfo();
 
             Tags.Clear();
             foreach (var tag in assigned)
@@ -981,6 +1070,40 @@ public partial class GalleryViewModel : ObservableObject
             return default;
         }
     }
+
+    /// <summary>
+    /// Camera EXIF + sampler / steps (extracted but not stored in the
+    /// catalog) for the details rows. Local, hydrated originals only; the
+    /// caller already excluded online-only / API / orphan.
+    /// </summary>
+    private static Task<(CameraExif Camera, string? Sampler, string? Steps)> ReadDetailsMetadataAsync(
+        string path,
+        bool hasGeneration) =>
+        Task.Run(() =>
+        {
+            try
+            {
+                var metadata = AppServices.Metadata;
+                if (metadata is null)
+                {
+                    return (CameraExif.None, (string?)null, (string?)null);
+                }
+
+                var camera = metadata.ReadCamera(path);
+                if (camera.HasExposureRow || !hasGeneration)
+                {
+                    // Camera row wins; non-AI files skip the PNG text parse.
+                    return (camera, (string?)null, (string?)null);
+                }
+
+                var generation = metadata.Extract(path);
+                return (camera, generation.Sampler, generation.Steps);
+            }
+            catch
+            {
+                return (CameraExif.None, (string?)null, (string?)null);
+            }
+        });
 
     private void ApplyGenerationPreview(GenerationFields.Snapshot generation)
     {

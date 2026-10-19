@@ -22,6 +22,7 @@ public static class GalleryScale
     public const int KeyNumberPad3 = 99;
     public const int KeyLetterD = 68;
     public const int KeyLetterI = 73;
+    public const int KeyLetterH = 72;
     public const int KeySpace = 32;
     public const int KeyEscape = 27;
     public const double MinPinchZoom = 1.0;
@@ -32,6 +33,10 @@ public static class GalleryScale
 
     public static bool TogglesDetails(bool controlDown, int keyCode) =>
         controlDown && keyCode == KeyLetterI;
+
+    /// <summary>Ctrl+H: luminance heatmap view (SKIV's visualization cycle key).</summary>
+    public static bool TogglesHeatmap(bool controlDown, int keyCode) =>
+        controlDown && keyCode == KeyLetterH;
 
     /// <summary>
     /// Space opens the overlay on the focused or selected mosaic tile.

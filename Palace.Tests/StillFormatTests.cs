@@ -67,6 +67,69 @@ public sealed class StillFormatTests
         Assert.Equal((1, 1), ImageDimensions.TryRead(new MemoryStream(bytes)));
     }
 
+    [Theory]
+    [InlineData(3, 2)]
+    [InlineData(7, 1)]
+    [InlineData(1, 5)]
+    public void Radiance_ScaledStreamingDecode_MatchesBoxScaleOfNative(int destW, int destH)
+    {
+        // 7x5 flat (width < 8) scanlines, every pixel distinct.
+        const int w = 7, h = 5;
+        using var ms = new MemoryStream();
+        ms.Write(Encoding.ASCII.GetBytes($"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {h} +X {w}\n"));
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                ms.Write([(byte)(40 + (x * 20)), (byte)(30 + (y * 30)), (byte)(10 + x + y), (byte)(128 + ((x + y) % 4))]);
+            }
+        }
+
+        var bytes = ms.ToArray();
+        var native = RadianceFile.TryDecode(new MemoryStream(bytes))!;
+        var scaled = RadianceFile.TryDecode(new MemoryStream(bytes), destW, destH)!;
+        Assert.Equal((destW, destH), (scaled.Width, scaled.Height));
+        var expected = HdrPixels.BoxScaleScrgb(native.ScrgbRgba, w, h, destW, destH);
+        Assert.Equal(expected.Length, scaled.ScrgbRgba.Length);
+        for (var i = 0; i < expected.Length; i++)
+        {
+            Assert.Equal(expected[i], scaled.ScrgbRgba[i], 4);
+        }
+
+        // Info stats are native, not of the downscaled frame.
+        Assert.Equal(native.MaxNits, scaled.MaxNits);
+        Assert.Equal(native.MinNits, scaled.MinNits);
+        Assert.Equal(native.AvgNits, scaled.AvgNits, 3);
+        Assert.Equal(native.MaxScrgb, scaled.MaxScrgb);
+
+        // Not smaller (or bigger) than native: full decode.
+        Assert.Equal((w, h), (RadianceFile.TryDecode(new MemoryStream(bytes), w, h)!.Width, h));
+        Assert.Equal(w, RadianceFile.TryDecode(new MemoryStream(bytes), 99, 99)!.Width);
+    }
+
+    [Fact]
+    public void Radiance_StillDecodeThumb_StreamsToThumbSize()
+    {
+        const int w = 7, h = 5;
+        using var ms = new MemoryStream();
+        ms.Write(Encoding.ASCII.GetBytes($"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {h} +X {w}\n"));
+        for (var i = 0; i < w * h; i++)
+        {
+            ms.Write([(byte)(40 + (i * 5)), (byte)(200 - (i * 3)), (byte)(10 + i), 129]);
+        }
+
+        var bytes = ms.ToArray();
+        var native = RadianceFile.TryDecode(new MemoryStream(bytes))!;
+        var expected = StillDecode.FromScrgb(native.ScrgbRgba, w, h, 3);
+        var thumb = StillDecode.TryDecode(bytes, ".hdr", 3)!;
+        Assert.True(thumb.ToneMapped);
+        Assert.Equal((expected.Width, expected.Height), (thumb.Width, thumb.Height));
+        for (var i = 0; i < expected.Bgra!.Length; i++)
+        {
+            Assert.InRange(thumb.Bgra![i] - expected.Bgra[i], -1, 1);
+        }
+    }
+
     [Fact]
     public void Psd_8bpsSize()
     {

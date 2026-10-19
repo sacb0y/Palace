@@ -18,6 +18,10 @@
     <Compile Include="..\Helpers\FolderGroups.cs" Link="FolderGroups.cs" />
     <Compile Include="..\Helpers\GalleryMedia.cs" Link="GalleryMedia.cs" />
     <Compile Include="..\Helpers\GalleryHistogram.cs" Link="GalleryHistogram.cs" />
+    <Compile Include="..\Helpers\HdrAnalysis.cs" Link="HdrAnalysis.cs" />
+    <Compile Include="..\Helpers\HdrPixelMap.cs" Link="HdrPixelMap.cs" />
+    <Compile Include="..\Helpers\CieDiagram.cs" Link="CieDiagram.cs" />
+    <Compile Include="..\Helpers\GalleryDetails.cs" Link="GalleryDetails.cs" />
     <Compile Include="..\Helpers\GalleryChrome.cs" Link="GalleryChrome.cs" />
     <Compile Include="..\Helpers\GalleryPeak.cs" Link="GalleryPeak.cs" />
     <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />
@@ -74,8 +78,10 @@
     <Compile Include="..\Helpers\ToneMap.cs" Link="ToneMap.cs" />
     <Compile Include="..\Helpers\TgaFile.cs" Link="TgaFile.cs" />
     <Compile Include="..\Helpers\ExrFile.cs" Link="ExrFile.cs" />
+    <Compile Include="..\Helpers\ExrNative.cs" Link="ExrNative.cs" />
     <Compile Include="..\Helpers\ClipFile.cs" Link="ClipFile.cs" />
     <Compile Include="..\Helpers\StillDecode.cs" Link="StillDecode.cs" />
+    <Compile Include="..\Helpers\SubstanceShelfFile.cs" Link="SubstanceShelfFile.cs" />
     <Compile Include="..\Helpers\PsdFile.cs" Link="PsdFile.cs" />
     <Compile Include="..\Helpers\ThumbCacheVersion.cs" Link="ThumbCacheVersion.cs" />
     <Compile Include="..\Services\FfmpegPoster.cs" Link="FfmpegPoster.cs" />
@@ -98,4 +104,9 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="Fixtures\exr\*.exr" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Native\openexr\win-x64\palace_exr.dll" Link="palace_exr.dll" CopyToOutputDirectory="PreserveNewest" Condition="'$(OS)' == 'Windows_NT'" />
+  </ItemGroup>
+
 </Project>

@@ -44,7 +44,14 @@ public static class RadianceFile
         return width > 0 && height > 0 ? (width, height) : null;
     }
 
-    public static RadianceFrame? TryDecode(Stream stream)
+    /// <summary>
+    /// Decode to linear scRGB. With a smaller <paramref name="destWidth"/> x
+    /// <paramref name="destHeight"/> the scanlines are box-filtered straight
+    /// into that size (same bins as HdrPixels.BoxScaleScrgb),
+    /// so a 16384x8192 panorama never holds its 2 GB native float frame.
+    /// Info stats (CIE Y max / avg / min, scRGB peak) are always native.
+    /// </summary>
+    public static RadianceFrame? TryDecode(Stream stream, int destWidth = 0, int destHeight = 0)
     {
         if (!TryReadHeader(stream, out var width, out var height)
             || width <= 0 || height <= 0
@@ -53,15 +60,102 @@ public static class RadianceFile
             return null;
         }
 
-        var pixels = new byte[checked(width * height * 4)];
+        var scale = destWidth > 0 && destHeight > 0
+            && destWidth <= width && destHeight <= height
+            && (destWidth < width || destHeight < height);
+        var outW = scale ? destWidth : width;
+        var outH = scale ? destHeight : height;
+
+        // One RGBE scanline at a time: no full-size byte[] copy (512 MB for
+        // a 16384x8192 panorama).
+        var rgba = new float[checked((long)outW * outH * 4)];
+        var line = new byte[checked(width * 4)];
+        var stats = new ScrgbStats();
+        int[]? xBin = null;
+        double[]? acc = null;
+        int[]? accN = null;
+        if (scale)
+        {
+            xBin = new int[width];
+            for (var dx = 0; dx < outW; dx++)
+            {
+                var x0 = (int)((long)dx * width / outW);
+                var x1 = Math.Max(x0 + 1, (int)((long)(dx + 1) * width / outW));
+                for (var sx = x0; sx < x1 && sx < width; sx++)
+                {
+                    xBin[sx] = dx;
+                }
+            }
+
+            acc = new double[outW * 3];
+            accN = new int[outW];
+        }
+
         try
         {
+            var dy = 0;
+            var rowEnd = scale ? Math.Max(1, (int)((long)height / outH)) : 1;
             for (var y = 0; y < height; y++)
             {
-                if (!ReadScanline(stream, pixels.AsSpan(y * width * 4, width * 4), width))
+                if (!ReadScanline(stream, line, width))
                 {
                     return null;
                 }
+
+                if (!scale)
+                {
+                    var row = (long)y * width * 4;
+                    for (var x = 0; x < width; x++)
+                    {
+                        RgbeToScrgb(line, x * 4, out var r, out var g, out var b);
+                        stats.Add(r, g, b);
+                        var o = row + (x * 4);
+                        rgba[o] = r;
+                        rgba[o + 1] = g;
+                        rgba[o + 2] = b;
+                        rgba[o + 3] = 1f;
+                    }
+
+                    continue;
+                }
+
+                for (var x = 0; x < width; x++)
+                {
+                    RgbeToScrgb(line, x * 4, out var r, out var g, out var b);
+                    stats.Add(r, g, b);
+                    var bin = xBin![x];
+                    acc![bin * 3] += r;
+                    acc[(bin * 3) + 1] += g;
+                    acc[(bin * 3) + 2] += b;
+                    accN![bin]++;
+                }
+
+                if (y + 1 < rowEnd && y + 1 < height)
+                {
+                    continue;
+                }
+
+                // Flush dest row dy (src rows [dy*h/outH, (dy+1)*h/outH)).
+                var o0 = (long)dy * outW * 4;
+                for (var dx = 0; dx < outW; dx++)
+                {
+                    var n = accN![dx];
+                    var o = o0 + (dx * 4);
+                    rgba[o] = n > 0 ? (float)(acc![dx * 3] / n) : 0f;
+                    rgba[o + 1] = n > 0 ? (float)(acc![(dx * 3) + 1] / n) : 0f;
+                    rgba[o + 2] = n > 0 ? (float)(acc![(dx * 3) + 2] / n) : 0f;
+                    rgba[o + 3] = 1f;
+                }
+
+                Array.Clear(acc!);
+                Array.Clear(accN!);
+                dy++;
+                if (dy >= outH)
+                {
+                    break;
+                }
+
+                rowEnd = Math.Max(y + 2, (int)((long)(dy + 1) * height / outH));
             }
         }
         catch
@@ -69,49 +163,57 @@ public static class RadianceFile
             return null;
         }
 
+        return stats.ToFrame(rgba, outW, outH);
+    }
+
+    /// <summary>
+    /// Wrap a linear scRGB RGBA buffer (Radiance, EXR) with the Info stats:
+    /// CIE Y max / avg / min nits and the scRGB channel peak.
+    /// </summary>
+    public static RadianceFrame FrameFromScrgb(float[] rgba, int width, int height)
+    {
         var count = width * height;
-        var rgba = new float[count * 4];
-        var maxScrgb = 0f;
-        var maxY = 0f;
-        var minY = float.MaxValue;
-        var sumY = 0.0;
+        var stats = new ScrgbStats();
         for (var i = 0; i < count; i++)
         {
-            RgbeToScrgb(pixels, i * 4, out var r, out var g, out var b);
             var o = i * 4;
-            rgba[o] = r;
-            rgba[o + 1] = g;
-            rgba[o + 2] = b;
-            rgba[o + 3] = 1f;
-            maxScrgb = Math.Max(maxScrgb, Math.Max(r, Math.Max(g, b)));
+            stats.Add(rgba[o], rgba[o + 1], rgba[o + 2]);
+        }
+
+        return stats.ToFrame(rgba, width, height);
+    }
+
+    private sealed class ScrgbStats
+    {
+        private float _maxScrgb;
+        private float _maxY;
+        private float _minY = float.MaxValue;
+        private double _sumY;
+        private long _count;
+
+        public void Add(float r, float g, float b)
+        {
+            _maxScrgb = Math.Max(_maxScrgb, Math.Max(r, Math.Max(g, b)));
             var nits = GalleryPresent.LuminanceY(
                 r * GalleryPresent.ScrgbNits,
                 g * GalleryPresent.ScrgbNits,
                 b * GalleryPresent.ScrgbNits,
                 false);
-            maxY = Math.Max(maxY, nits);
-            minY = Math.Min(minY, nits);
-            sumY += nits;
+            _maxY = Math.Max(_maxY, nits);
+            _minY = Math.Min(_minY, nits);
+            _sumY += nits;
+            _count++;
         }
 
-        if (maxY <= 0)
-        {
-            minY = 0;
-        }
-        else if (minY == float.MaxValue)
-        {
-            minY = 0;
-        }
-
-        return new RadianceFrame
+        public RadianceFrame ToFrame(float[] rgba, int width, int height) => new()
         {
             ScrgbRgba = rgba,
             Width = width,
             Height = height,
-            MaxNits = maxY,
-            AvgNits = (float)(sumY / count),
-            MinNits = minY,
-            MaxScrgb = maxScrgb
+            MaxNits = _maxY,
+            AvgNits = _count > 0 ? (float)(_sumY / _count) : 0f,
+            MinNits = _maxY <= 0 || _minY == float.MaxValue ? 0f : _minY,
+            MaxScrgb = _maxScrgb
         };
     }
 

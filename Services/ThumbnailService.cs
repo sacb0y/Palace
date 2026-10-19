@@ -17,12 +17,14 @@ public sealed class ThumbnailService
 
     private string _root;
     private DateTime _generationStartUtc;
+    private DateTime _shelfGenerationStartUtc;
 
     public ThumbnailService(string thumbsRoot)
     {
         _root = thumbsRoot;
         Directory.CreateDirectory(_root);
-        _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root);
+        _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.DecodersGeneration);
+        _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
     }
 
     /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
@@ -32,7 +34,8 @@ public sealed class ThumbnailService
     {
         _root = thumbsRoot;
         Directory.CreateDirectory(_root);
-        _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root);
+        _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.DecodersGeneration);
+        _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
     }
 
     /// <summary>
@@ -63,6 +66,11 @@ public sealed class ThumbnailService
         try
         {
             var written = File.GetLastWriteTimeUtc(dest);
+            if (ThumbCacheVersion.IsStale(written, _shelfGenerationStartUtc, ThumbCacheVersion.ShelfPreviewChanged(filePath)))
+            {
+                return true;
+            }
+
             if (written >= _generationStartUtc)
             {
                 return false;
@@ -381,8 +389,11 @@ public sealed class ThumbnailService
 
     private bool NeedsLargePreviewBackfill(Models.AssetKind kind, string filePath) =>
         kind == Models.AssetKind.Image
-        && StillDecode.HandlesPath(filePath)
-        && ExistingLargePreviewForPath(filePath) is null;
+        && ExistingLargePreviewForPath(filePath) is null
+        && (StillDecode.HandlesPath(filePath)
+            // Shelf metadata under a .bmp/.tif name: full view needs the per-path preview
+            // even when an identical file's hash-keyed mosaic thumb is already cached.
+            || (!CloudFile.IsOnlineOnly(filePath) && SubstanceShelfFile.IsShelfMetadataFile(filePath)));
 
     /// <summary>
     /// Custom still paths: EXR / Radiance / TGA / Clip decoders, HDR stills
@@ -405,6 +416,12 @@ public sealed class ThumbnailService
             var ext = PathSafe.Extension(filePath);
             if (StillDecode.IsNotAnImage(head, ext))
             {
+                if (SubstanceShelfFile.IsShelfMetadata(head)
+                    && await TryShelfPreviewThumbAsync(filePath, dest, hash).ConfigureAwait(false) is { } shelf)
+                {
+                    return shelf;
+                }
+
                 var ph = StillDecode.Placeholder();
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
@@ -480,6 +497,44 @@ public sealed class ThumbnailService
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Substance Painter shelf metadata saved under an image name: thumbnail and full view
+    /// come from its embedded preview. Null when it has none or the preview won't decode.
+    /// </summary>
+    private async Task<ThumbnailInfo?> TryShelfPreviewThumbAsync(string filePath, string dest, string hash)
+    {
+        try
+        {
+            if (new FileInfo(filePath).Length > SubstanceShelfFile.MaxBytes)
+            {
+                return null;
+            }
+
+            var data = await File.ReadAllBytesAsync(filePath).ConfigureAwait(false);
+            var preview = SubstanceShelfFile.TryExtractPreview(data);
+            if (preview is null)
+            {
+                return null;
+            }
+
+            using var ras = new InMemoryRandomAccessStream();
+            await ras.WriteAsync(preview.AsBuffer());
+            ras.Seek(0);
+            if (LargePreviewPathFor(filePath) is { } lgPath)
+            {
+                await EncodeScaledJpegAsync(ras, lgPath, hash, LargePreviewMaxSide).ConfigureAwait(false);
+                ras.Seek(0);
+            }
+
+            return await EncodeScaledJpegAsync(ras, dest, hash).ConfigureAwait(false);
+        }
+        catch
+        {
+            // No WebP codec, truncated preview, …: placeholder.
+            return null;
+        }
     }
 
     private ThumbnailInfo Finish(string dest, int w, int h, bool isPlaceholder = false)
