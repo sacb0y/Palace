@@ -77,5 +77,8 @@ test-screenshot.png
 palace-app.lock
 palace-app.lock.holder
 
+# Prepare-TestIdentity.ps1 backup of release Package.appxmanifest (never commit a test Identity Name)
+Package.appxmanifest.release-backup
+
 # Fetched by tools/Get-Ffmpeg.ps1 (large, not committed)
 ThirdParty/ffmpeg/

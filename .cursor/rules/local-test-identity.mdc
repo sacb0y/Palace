@@ -1,0 +1,29 @@
+---
+description: "HARD: never register/launch/unregister Sacb0y's release identity C20A7629; agents use a copied test manifest + PALACE_DATA_DIR"
+globs: Package.appxmanifest,BuildAndRun.ps1,ui-tests.ps1,scripts/Prepare-TestIdentity.ps1,Helpers/CatalogStore.cs
+alwaysApply: false
+---
+
+## Local / Windows test identity (HARD)
+
+Sacb0y’s installed Palace uses Identity **Name** `C20A7629-6BDE-449F-958A-5AAF8BCE88F3` (see `CatalogStore.ReleasePackageName` and committed `Package.appxmanifest`). Agents must **never** touch that install.
+
+### Always
+
+1. **Separate test identity.** Before any register/launch, use a **copied** `Package.appxmanifest` whose Identity **Name** is **not** `C20A7629-…` (e.g. `PalaceOrganizeTest-5E1F`, `PalacePinkSFW-8913`). Prefer `.\scripts\Prepare-TestIdentity.ps1 -IdentityName <Name>`.
+2. **Launch guard.** `.\BuildAndRun.ps1` **refuses** Identity `C20A7629-…` and exits non-zero. Do not bypass the guard. Do not call `winapp run` / `Add-AppxPackage` yourself against the release manifest.
+3. **`PALACE_DATA_DIR` + temp SFW.** Point data at an isolated temp folder. Use a temp safe-for-work media copy only.
+4. After a test session, restore the **repo file** `Package.appxmanifest` from git / the Prepare backup so the release Name is not committed. That is **not** restoring Sacb0y’s install.
+
+### Never
+
+| Forbidden | Why |
+|---|---|
+| `winapp run` / `.\BuildAndRun.ps1` / `Add-AppxPackage` on release Identity `C20A7629-…` or an unpatched release `Package.appxmanifest` | Overwrites his packaged install |
+| `winapp run … --no-launch` on release Identity | Still **registers layout** and can overwrite his install |
+| `winapp unregister` (or Remove-AppxPackage) on his `C20A7629-…` install | Destroys his install; **agents do not restore it — Sacb0y owns that** |
+| Real catalog, Unity trees, `%TEMP%\palace-vss` | Not agent test data |
+
+### Sacb0y owns C20A7629
+
+If his install is broken or missing, **stop**. Do not re-register `C20A7629-…`. Report the blocker; Sacb0y installs/restores main himself.

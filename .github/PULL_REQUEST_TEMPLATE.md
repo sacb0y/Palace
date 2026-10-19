@@ -21,4 +21,4 @@ Read [`AGENTS.md`](../AGENTS.md) — especially **PR / agent goals** and **Versi
 ## Test plan
 
 - [ ] `dotnet test .\Palace.Tests\Palace.Tests.csproj`
-- [ ] Packaged Debug (if UI): `.\BuildAndRun.ps1 . --arch x64`
+- [ ] Packaged Debug (if UI): test identity via `Prepare-TestIdentity.ps1` then `.\BuildAndRun.ps1` — never `C20A7629`

@@ -39,6 +39,7 @@ EXEMPT_PATH_EXACT = {
     "LICENSE",
     "LICENSE.txt",
     "ui-tests.ps1",
+    "BuildAndRun.ps1",
     ".gitattributes",
     ".gitignore",
     ".editorconfig",

@@ -18,7 +18,7 @@ CI (`version-check` in `.github/workflows/ci.yml`) fails if props and `Package.a
 
 Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.5 (Debug) · Library core · initial public preview`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays on **0.0.x** / milestone **Library core · initial public preview** while this is still the Library + tagging slice. About also shows `AppVersion.InfancyNote` (`TxtInfancyNote`): Rooms (moodboard/mindmap) and Organization (on-disk organize / auto-organize) are in their infancy — do not claim they are finished.
 
-MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
+MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once. **Do not** `winapp unregister` Sacb0y’s release Identity `C20A7629-…` to “fix” a version clash — see `local-test-identity.mdc`; agents use a separate test Identity Name instead.
 
 ### Bump rule (every PR that changes the app)
 

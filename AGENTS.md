@@ -17,6 +17,7 @@ This file is the always-loaded core. Detailed topic rules live in `.cursor/rules
 | `icons-automation.mdc` | FluentIcons, AutomationIds, badges |
 | `code-map.mdc` | Which file owns which area |
 | `versioning-release.mdc` | `PalaceVersion`, bump rules, PR version+summary, slice table, MSIX, trim |
+| `local-test-identity.mdc` | HARD: never touch release Identity `C20A7629`; test manifest + `PALACE_DATA_DIR` |
 | `tests.mdc` | Test commands and `Palace.Tests` coverage |
 
 ## PR / agent goals (read first)
@@ -25,11 +26,12 @@ Any PR agent (Cursor, Copilot, human) should treat this as the product contract:
 
 1. **Library-first.** Current slice is **0.0.x Library + tagging**. Ship Library browsing, mosaic, overlay/gallery, tags, watch folders, FTS, and solid image/video (including HDR present). Do not open **0.1 Rooms**, **0.2 Gamedev**, or **0.3 AI** as a new minor unless Sacb0y asks.
 2. **Version / slice rules.** Source of truth: `<PalaceVersion>` in `Directory.Build.props` (Assembly/File/Informational follow it). Manifest `Identity Version` = `MAJOR.MINOR.PATCH.**0**` — sync with `python3 scripts/sync-appx-version.py`. Every app-changing PR bumps (**MINOR** = feature/user-facing or 0.x breaking; **PATCH** = fix / in-slice drop). Docs/CI/tests-only: no bump (`no-version-bump` label or exempt paths). PR description must state the **new version** and a **one-line user-facing summary** (for Isiac). Stay on **0.0.x** while Library is the slice. Do **not** jump to `1.0.0` or `0.1.x` because something “feels ready.” Keep `Helpers/AppVersion.cs` `Milestone` in lockstep when opening a slice. Details: `.cursor/rules/versioning-release.mdc`.
-3. **Do not invent ahead of the slice.** No freeform Rooms canvas / moodboard-mindmap, no gamedev viewers (3D/audio/markdown Unity assign), no AI tagging/organization features until that minor is opened. Existing Rooms and Organization (on-disk organize / auto-organize) are **infancy** — polish only if the task names them; do not claim they are finished.
-4. **Cloud is bonus.** Dropbox / OneDrive OAuth and On-Demand already live in 0.0.x. Further cloud work can land inside the current identity; it is **not** the next numbered slice and must not download originals.
-5. **Maintainer preferences (hands-off).** Prefer small, reviewable PRs on a branch from current `main`. Packaged Debug only for daily runs (`.\BuildAndRun.ps1 . --arch x64`). Never unpackaged. Never change GitHub visibility or add secrets. Do not resume paused Magick / TGA / EXR spikes unless asked. Fix trivial CI/Bugbot blockers; skip speculative refactors.
-6. **Tests.** `dotnet test .\Palace.Tests\Palace.Tests.csproj` on every change that touches helpers/services. On Windows Main-Desktop, packaged Debug via `BuildAndRun.ps1` when UI is in scope. Linux Cloud Agents: tests only — no WinUI build. Self-hosted Windows worker for live UI.
-7. **Linux vs Windows.** Cloud Agent VMs are Linux → `Palace.Tests` only. WinUI / `winapp` / screenshots need a Windows worker (e.g. Main-Desktop). See **Cursor Cloud specific instructions**.
+3. **Local Windows identity (HARD).** Sacb0y’s install is Identity **Name** `C20A7629-6BDE-449F-958A-5AAF8BCE88F3`. Agents **never** `winapp run`, `BuildAndRun.ps1`, `Add-AppxPackage`, or `winapp run --no-launch` against that release manifest/identity (layout register still overwrites his install). **Never** `winapp unregister` his install — agents do **not** restore `C20A7629`; Sacb0y owns that. Always: copied `Package.appxmanifest` with a **separate** test Identity Name (e.g. `PalaceOrganizeTest-5E1F` via `.\scripts\Prepare-TestIdentity.ps1`), `BuildAndRun.ps1` guard (refuses `C20A7629`), `PALACE_DATA_DIR` + temp SFW copy — never real catalog / Unity / `%TEMP%\palace-vss`. Details: `.cursor/rules/local-test-identity.mdc`.
+4. **Do not invent ahead of the slice.** No freeform Rooms canvas / moodboard-mindmap, no gamedev viewers (3D/audio/markdown Unity assign), no AI tagging/organization features until that minor is opened. Existing Rooms and Organization (on-disk organize / auto-organize) are **infancy** — polish only if the task names them; do not claim they are finished.
+5. **Cloud is bonus.** Dropbox / OneDrive OAuth and On-Demand already live in 0.0.x. Further cloud work can land inside the current identity; it is **not** the next numbered slice and must not download originals.
+6. **Maintainer preferences (hands-off).** Prefer small, reviewable PRs on a branch from current `main`. Packaged Debug only for agent UI runs — **test identity**, never release `C20A7629`. Never unpackaged. Never change GitHub visibility or add secrets. Do not resume paused Magick / TGA / EXR spikes unless asked. Fix trivial CI/Bugbot blockers; skip speculative refactors.
+7. **Tests.** `dotnet test .\Palace.Tests\Palace.Tests.csproj` on every change that touches helpers/services. On Windows Main-Desktop, packaged Debug via `Prepare-TestIdentity.ps1` then `BuildAndRun.ps1` when UI is in scope. Linux Cloud Agents: tests only — no WinUI build. Self-hosted Windows worker for live UI.
+8. **Linux vs Windows.** Cloud Agent VMs are Linux → `Palace.Tests` only. WinUI / `winapp` / screenshots need a Windows worker (e.g. Main-Desktop). See **Cursor Cloud specific instructions**.
 
 Human-facing overview: root `README.md`. Bug reports: Settings → About (`TxtAppVersion`).
 
@@ -37,11 +39,11 @@ Human-facing overview: root `README.md`. Bug reports: Settings → About (`TxtAp
 
 - Packaged `winui-mvvm` only. CommunityToolkit.Mvvm, `{x:Bind}` with explicit `Mode`, `AutomationProperties.AutomationId` on interactive controls, `ThemeResource` (not hardcoded brushes).
 - Never run the unpackaged `.exe`. Never set `WindowsPackageType=None`.
-- Run: `.\BuildAndRun.ps1 . --arch x64` (or `winapp run . --arch x64`; the script forwards to the winui-dev-workflow skill script when present, else runs `winapp run`). Invoke attached runs asynchronously; the command stays attached while the app is open.
+- Run (agents): `.\scripts\Prepare-TestIdentity.ps1 -IdentityName PalaceOrganizeTest-5E1F`, set `PALACE_DATA_DIR` to a temp folder, then `.\BuildAndRun.ps1 . --arch x64`. The script **refuses** release Identity `C20A7629-…`. Never call `winapp run` / `Add-AppxPackage` on the unpatched release manifest (including `--no-launch`). Invoke attached runs asynchronously; the command stays attached while the app is open.
 - Official skills: `C:\Users\iadag\.cursor\skills\winui-*` — load `winui-dev-workflow`, `winui-design`, `winui-packaging`, `winui-code-review`, `winui-ui-testing` as needed.
 - Domain-reload-disabled is a Unity habit. It does not apply here.
 - `Palace.Tests` is a separate `net10.0` project (`Palace.csproj` excludes `Palace.Tests\**`). Keep tests off WinUI / WinRT. Do not reference `FluentIcons.WinUI` from tests.
-- Debug vs Release of the **same source** share one version number. Daily run is Debug (`.\BuildAndRun.ps1 . --arch x64`). `PublishTrimmed` is **off** for both until Release trim stops crashing on `ItemsSource` COM wrappers; re-enable trim only with `SelfContained` + `WindowsAppSDKSelfContained` (else `NETSDK1102`). Title bar: set `AppTitleBar.Title` to `AppVersion.TitleBarTitle` (`Palace {version}`) and `Subtitle` to `AppVersion.TitleBar` — do not leave Title hardcoded `Palace` alone.
+- Debug vs Release of the **same source** share one version number. Agent daily run is Debug under a **test** identity (see goal 3). `PublishTrimmed` is **off** for both until Release trim stops crashing on `ItemsSource` COM wrappers; re-enable trim only with `SelfContained` + `WindowsAppSDKSelfContained` (else `NETSDK1102`). Title bar: set `AppTitleBar.Title` to `AppVersion.TitleBarTitle` (`Palace {version}`) and `Subtitle` to `AppVersion.TitleBar` — do not leave Title hardcoded `Palace` alone.
 
 ## PR descriptions
 
