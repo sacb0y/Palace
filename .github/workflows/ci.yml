@@ -21,6 +21,9 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git fetch --no-tags origin main:refs/remotes/origin/main
 
+      - name: Check PowerShell scripts are ASCII
+        run: python3 scripts/check-ps1-ascii.py
+
       - name: Check version identity
         env:
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}

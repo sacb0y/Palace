@@ -10,7 +10,7 @@ Sacb0y’s installed Palace uses Identity **Name** `C20A7629-6BDE-449F-958A-5AAF
 
 ### Always
 
-1. **Separate test identity.** Before any register/launch, use a **copied** `Package.appxmanifest` whose Identity **Name** is **not** `C20A7629-…` (e.g. `PalaceOrganizeTest-5E1F`, `PalacePinkSFW-8913`). Prefer `.\scripts\Prepare-TestIdentity.ps1 -IdentityName <Name>`.
+1. **Separate test identity.** Before any register/launch, use a **copied** `Package.appxmanifest` whose Identity **Name**, `PhoneProductId`, and `DisplayName` are **not** the release package (Name and PhoneProductId must not be `C20A7629-…`; DisplayName must not stay `Palace`). Prefer `.\scripts\Prepare-TestIdentity.ps1 -IdentityName <Name>` (rewrites all three). `.ps1` files stay ASCII-only so Windows PowerShell 5.1 can parse them.
 2. **Launch guard.** `.\BuildAndRun.ps1` **refuses** Identity `C20A7629-…` and exits non-zero. Do not bypass the guard. Do not call `winapp run` / `Add-AppxPackage` yourself against the release manifest.
 3. **`PALACE_DATA_DIR` + temp SFW.** Point data at an isolated temp folder. Use a temp safe-for-work media copy only.
 4. After a test session, restore the **repo file** `Package.appxmanifest` from git / the Prepare backup so the release Name is not committed. That is **not** restoring Sacb0y’s install.
