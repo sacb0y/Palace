@@ -167,6 +167,53 @@ public sealed class FileOpService
             _ => "Undo"
         };
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// One file operation per project at a time (moves, folder edits, Undo's read / run / mark), so
+    /// batches never interleave and Undo always reverses the batch it read. Shared across instances.
+    /// </summary>
+    private static async Task<T> GatedAsync<T>(string projectId, Func<Task<T>> work, CancellationToken cancellationToken = default)
+    {
+        var gate = Gates.GetOrAdd(projectId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await work().ConfigureAwait(false);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Move assets into <paramref name="destinationDir"/> (an existing folder inside a watched source).
+    /// Name clashes get a unique name; missing / online-only-across-roots / already-there files are skipped.
+    /// </summary>
+    public Task<FileOpResult> MoveAssetsAsync(
+        IReadOnlyList<Asset> assets,
+        string destinationDir,
+        string projectId,
+        CancellationToken cancellationToken = default) =>
+        GatedAsync(projectId, () => MoveAssetsCoreAsync(assets, destinationDir, projectId, cancellationToken), cancellationToken);
+
+    /// <summary>Create <paramref name="name"/> under <paramref name="parentDir"/> (inside a watched source).</summary>
+    public Task<FileOpResult> CreateFolderAsync(string parentDir, string name, string projectId) =>
+        GatedAsync(projectId, () => CreateFolderCoreAsync(parentDir, name, projectId));
+
+    /// <summary>Rename a folder inside a watched source (not a source root) and rebase its catalog rows.</summary>
+    public Task<FileOpResult> RenameFolderAsync(string folderPath, string newName, string projectId) =>
+        GatedAsync(projectId, () => RenameFolderCoreAsync(folderPath, newName, projectId));
+
+    /// <summary>Delete an <b>empty</b> folder inside a watched source (not a source root). Undo recreates it.</summary>
+    public Task<FileOpResult> DeleteEmptyFolderAsync(string folderPath, string projectId) =>
+        GatedAsync(projectId, () => DeleteEmptyFolderCoreAsync(folderPath, projectId));
+
+    /// <summary>Reverse the newest file operation of the project (see <see cref="UndoLastCoreAsync"/>).</summary>
+    public Task<FileOpResult> UndoLastAsync(string projectId) =>
+        GatedAsync(projectId, () => UndoLastCoreAsync(projectId));
+
     public Task<FileOpBatch?> PeekUndoAsync(string projectId) =>
         _catalog.GetLastUndoableFileOpAsync(projectId);
 
@@ -174,7 +221,7 @@ public sealed class FileOpService
     /// Move assets into <paramref name="destinationDir"/> (an existing folder inside a watched source).
     /// Name clashes get a unique name; missing / online-only-across-roots / already-there files are skipped.
     /// </summary>
-    public async Task<FileOpResult> MoveAssetsAsync(
+    private async Task<FileOpResult> MoveAssetsCoreAsync(
         IReadOnlyList<Asset> assets,
         string destinationDir,
         string projectId,
@@ -233,6 +280,13 @@ public sealed class FileOpService
                     continue;
                 }
 
+                // The deepest watched source across all projects owns the file.
+                if (!string.Equals(ResolveRoot(asset.Path, allSources)?.ProjectId, projectId, StringComparison.Ordinal))
+                {
+                    skipped.Add($"{asset.FileName}: inside a Library folder of another project");
+                    continue;
+                }
+
                 if (LinkedFolderBetween(srcRoot.Path, Path.GetDirectoryName(asset.Path)!) is not null)
                 {
                     skipped.Add($"{asset.FileName}: its folder is a shortcut (junction or symlink)");
@@ -270,10 +324,17 @@ public sealed class FileOpService
                 }
                 catch (Exception ex)
                 {
-                    // Keep disk and catalog in step: put the file back.
-                    TryMoveBack(moved.Path!, asset.Path);
-                    skipped.Add($"{asset.FileName}: {ex.Message}");
-                    continue;
+                    // Keep disk and catalog in step: put the file back. If that fails too, stop the
+                    // batch here (journal what already moved) and say so instead of a quiet skip.
+                    if (TryMoveBack(moved.Path!, asset.Path))
+                    {
+                        skipped.Add($"{asset.FileName}: {ex.Message}");
+                        continue;
+                    }
+
+                    skipped.Add($"{asset.FileName}: now at {moved.Path} but the catalog couldn't be updated ({ex.Message}); rescan to fix it");
+                    stopped = true;
+                    break;
                 }
 
                 reserved.Add(moved.Path!);
@@ -303,6 +364,11 @@ public sealed class FileOpService
 
         var summary = MoveSummary(moves.Count, destinationDir);
         var batchId = await LogAsync(projectId, FileOpKind.Move, summary, items).ConfigureAwait(false);
+        if (batchId is null)
+        {
+            return JournalFailed();
+        }
+
         var message = skipped.Count == 0
             ? $"Moved {Files(moves.Count)} to {DisplayName(destinationDir)}."
             : $"Moved {Files(moves.Count)} to {DisplayName(destinationDir)}. Skipped {skipped.Count}.";
@@ -323,7 +389,7 @@ public sealed class FileOpService
     }
 
     /// <summary>Create <paramref name="name"/> under <paramref name="parentDir"/> (inside a watched source).</summary>
-    public async Task<FileOpResult> CreateFolderAsync(string parentDir, string name, string projectId)
+    private async Task<FileOpResult> CreateFolderCoreAsync(string parentDir, string name, string projectId)
     {
         if (!FolderNames.TryValidate(name, out var cleaned, out var error))
         {
@@ -367,11 +433,16 @@ public sealed class FileOpService
         var summary = $"New folder {cleaned}";
         var batchId = await LogAsync(projectId, FileOpKind.CreateFolder, summary,
             [new FileOpItem { Step = FileOpStep.CreateDir, OldPath = "", NewPath = path }]).ConfigureAwait(false);
+        if (batchId is null)
+        {
+            return JournalFailed();
+        }
+
         return new FileOpResult { Ok = true, Message = $"Created {cleaned}.", BatchId = batchId, Summary = summary, Path = path };
     }
 
     /// <summary>Rename a folder inside a watched source (not a source root) and rebase its catalog rows.</summary>
-    public async Task<FileOpResult> RenameFolderAsync(string folderPath, string newName, string projectId)
+    private async Task<FileOpResult> RenameFolderCoreAsync(string folderPath, string newName, string projectId)
     {
         if (!FolderNames.TryValidate(newName, out var cleaned, out var error))
         {
@@ -446,6 +517,11 @@ public sealed class FileOpService
         var summary = $"Rename {DisplayName(folderPath)} to {cleaned}";
         var batchId = await LogAsync(projectId, FileOpKind.RenameFolder, summary,
             [new FileOpItem { Step = FileOpStep.RenameDir, OldPath = folderPath, NewPath = target }]).ConfigureAwait(false);
+        if (batchId is null)
+        {
+            return JournalFailed();
+        }
+
         return new FileOpResult { Ok = true, Message = $"Renamed to {cleaned}.", BatchId = batchId, Summary = summary, Path = target };
     }
 
@@ -492,7 +568,7 @@ public sealed class FileOpService
     }
 
     /// <summary>Delete an <b>empty</b> folder inside a watched source (not a source root). Undo recreates it.</summary>
-    public async Task<FileOpResult> DeleteEmptyFolderAsync(string folderPath, string projectId)
+    private async Task<FileOpResult> DeleteEmptyFolderCoreAsync(string folderPath, string projectId)
     {
         var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
         var root = ResolveRoot(folderPath, allSources.Where(s => string.Equals(s.ProjectId, projectId, StringComparison.Ordinal)));
@@ -537,6 +613,11 @@ public sealed class FileOpService
         var summary = $"Delete folder {DisplayName(folderPath)}";
         var batchId = await LogAsync(projectId, FileOpKind.DeleteFolder, summary,
             [new FileOpItem { Step = FileOpStep.DeleteDir, OldPath = folderPath, NewPath = "" }]).ConfigureAwait(false);
+        if (batchId is null)
+        {
+            return JournalFailed();
+        }
+
         return new FileOpResult { Ok = true, Message = $"Deleted {DisplayName(folderPath)}.", BatchId = batchId, Summary = summary, Path = folderPath };
     }
 
@@ -545,7 +626,7 @@ public sealed class FileOpService
     /// spot is taken), rename folders back, remove created folders that are still empty, recreate
     /// deleted ones. Best effort per step; the batch is marked undone afterwards.
     /// </summary>
-    public async Task<FileOpResult> UndoLastAsync(string projectId)
+    private async Task<FileOpResult> UndoLastCoreAsync(string projectId)
     {
         var batch = await _catalog.GetLastUndoableFileOpAsync(projectId).ConfigureAwait(false);
         if (batch is null)
@@ -697,7 +778,19 @@ public sealed class FileOpService
                     return $"{DisplayName(item.NewPath)}: {error}";
                 }
 
-                await _catalog.RebaseFolderPathsAsync(item.NewPath, item.OldPath).ConfigureAwait(false);
+                try
+                {
+                    await _catalog.RebaseFolderPathsAsync(item.NewPath, item.OldPath).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    // Keep disk and catalog in step: leave the folder under the renamed name.
+                    var back = MoveDirectory(item.OldPath, item.NewPath);
+                    return back is null
+                        ? $"{DisplayName(item.NewPath)}: {ex.Message}"
+                        : $"{DisplayName(item.OldPath)}: renamed back on disk but the catalog couldn't be updated ({ex.Message}); rescan to fix it";
+                }
+
                 return null;
             }
 
@@ -773,18 +866,22 @@ public sealed class FileOpService
         return new MoveOutcome(null, "couldn't find a free name");
     }
 
-    private static void TryMoveBack(string from, string to)
+    /// <summary>Move a file back after a failed catalog write. False when it is still at <paramref name="from"/>.</summary>
+    private static bool TryMoveBack(string from, string to)
     {
         try
         {
             if (CloudFile.Exists(from) && !CloudFile.Exists(to))
             {
                 File.Move(from, to, overwrite: false);
+                return true;
             }
+
+            return !CloudFile.Exists(from) && CloudFile.Exists(to);
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Best effort; the catalog row still points at the old path and a rescan repairs it.
+            return false;
         }
     }
 
@@ -820,14 +917,42 @@ public sealed class FileOpService
         }
     }
 
-    private Task<string> LogAsync(string projectId, FileOpKind kind, string summary, List<FileOpItem> items) =>
-        _catalog.AddFileOpBatchAsync(new FileOpBatch
+    public const string JournalFailedMessage = "Couldn't record this for Undo, so it was reverted";
+
+    /// <summary>
+    /// Journal a completed operation. When the journal write fails, the change is reverted with the
+    /// Undo steps (every operation stays undoable) and null is returned.
+    /// </summary>
+    private async Task<string?> LogAsync(string projectId, FileOpKind kind, string summary, List<FileOpItem> items)
+    {
+        try
         {
-            ProjectId = projectId,
-            Kind = kind,
-            Summary = summary,
-            Items = items
-        });
+            return await _catalog.AddFileOpBatchAsync(new FileOpBatch
+            {
+                ProjectId = projectId,
+                Kind = kind,
+                Summary = summary,
+                Items = items
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
+            for (var i = items.Count - 1; i >= 0; i--)
+            {
+                await UndoStepAsync(items[i], sources, []).ConfigureAwait(false);
+            }
+
+            LastJournalError = ex.Message;
+            return null;
+        }
+    }
+
+    /// <summary>Why the last journal write failed (for the reverted-operation message).</summary>
+    public string? LastJournalError { get; private set; }
+
+    private FileOpResult JournalFailed() =>
+        FileOpResult.Fail($"{JournalFailedMessage} ({LastJournalError}).");
 
     private static string Files(int count) => count == 1 ? "1 file" : $"{count} files";
 
