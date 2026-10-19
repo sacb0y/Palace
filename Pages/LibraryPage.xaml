@@ -21,6 +21,7 @@
                 Spacing="8">
                 <ic:FluentIcon
                     VerticalAlignment="Center"
+                    Foreground="{ThemeResource AccentTextFillColorSecondaryBrush}"
                     Icon="{x:Bind helpers:FluentGlyph.MoveDestinationIcon(IsRecent)}"
                     IconSize="Size16"
                     IconVariant="Regular" />
@@ -73,7 +74,8 @@
                     AutomationProperties.AutomationId="BtnScan"
                     AutomationProperties.Name="Scan"
                     Command="{x:Bind ViewModel.ScanCommand}"
-                    IsEnabled="{x:Bind helpers:BindHelpers.Not(ViewModel.IsBusy), Mode=OneWay}">
+                    IsEnabled="{x:Bind helpers:BindHelpers.Not(ViewModel.IsBusy), Mode=OneWay}"
+                    Style="{x:Bind helpers:BindHelpers.AccentButtonWhen(ViewModel.AccentScan), Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="ArrowSync" IconSize="Size16" IconVariant="Regular" />
                         <TextBlock VerticalAlignment="Center" Text="Scan" />
@@ -83,7 +85,8 @@
                     AutomationProperties.AutomationId="BtnOrganize"
                     AutomationProperties.Name="Organize"
                     Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
-                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                    Style="{x:Bind helpers:BindHelpers.AccentButtonWhen(ViewModel.HasSelection), Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
                         <TextBlock VerticalAlignment="Center" Text="Organize" />
@@ -304,6 +307,27 @@
                 ItemInvoked="TreFolders_ItemInvoked"
                 ItemsSource="{x:Bind ViewModel.FolderTree, Mode=OneWay}"
                 Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
+                <TreeView.Resources>
+                    <ResourceDictionary>
+                        <ResourceDictionary.ThemeDictionaries>
+                            <ResourceDictionary x:Key="Default">
+                                <StaticResource x:Key="TreeViewItemBackgroundSelected" ResourceKey="AccentFillColorTertiaryBrush" />
+                                <StaticResource x:Key="TreeViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                <StaticResource x:Key="TreeViewItemForegroundSelected" ResourceKey="AccentTextFillColorPrimaryBrush" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="Light">
+                                <StaticResource x:Key="TreeViewItemBackgroundSelected" ResourceKey="AccentFillColorTertiaryBrush" />
+                                <StaticResource x:Key="TreeViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                                <StaticResource x:Key="TreeViewItemForegroundSelected" ResourceKey="AccentTextFillColorPrimaryBrush" />
+                            </ResourceDictionary>
+                            <ResourceDictionary x:Key="HighContrast">
+                                <StaticResource x:Key="TreeViewItemBackgroundSelected" ResourceKey="SystemColorHighlightColorBrush" />
+                                <StaticResource x:Key="TreeViewItemBackgroundSelectedPointerOver" ResourceKey="SystemColorHighlightColorBrush" />
+                                <StaticResource x:Key="TreeViewItemForegroundSelected" ResourceKey="SystemColorHighlightTextColorBrush" />
+                            </ResourceDictionary>
+                        </ResourceDictionary.ThemeDictionaries>
+                    </ResourceDictionary>
+                </TreeView.Resources>
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="models:FolderNode">
                         <TreeViewItem
@@ -363,16 +387,25 @@
                                 Drop="FolderItem_Drop"
                                 Tag="{x:Bind}">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <ic:FluentIcon
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource AccentTextFillColorSecondaryBrush}"
+                                    Icon="{x:Bind helpers:FluentGlyph.FolderTreeIcon(IsRoot, IsExpanded), Mode=OneWay}"
+                                    IconSize="Size16"
+                                    IconVariant="Regular" />
                                 <TextBlock
+                                    Grid.Column="1"
                                     VerticalAlignment="Center"
                                     Text="{x:Bind Name, Mode=OneWay}"
                                     TextTrimming="CharacterEllipsis"
                                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsEditing), Mode=OneWay}" />
                                 <TextBox
                                     x:Name="TxtFolderName"
+                                    Grid.Column="1"
                                     x:Load="{x:Bind IsEditing, Mode=OneWay}"
                                     MinWidth="120"
                                     AutomationProperties.AutomationId="TxtFolderName"
@@ -382,12 +415,25 @@
                                     LostFocus="FolderEditor_LostFocus"
                                     Tag="{x:Bind}"
                                     Text="{x:Bind EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Border
+                                    Grid.Column="2"
+                                    Padding="6,0"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource AccentFillColorTertiaryBrush}"
+                                    CornerRadius="8"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}">
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind CountText, Mode=OneWay}" />
+                                </Border>
                                 <TextBlock
-                                    Grid.Column="1"
+                                    Grid.Column="2"
                                     VerticalAlignment="Center"
                                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                     Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind CountText, Mode=OneWay}" />
+                                    Text="{x:Bind CountText, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsSelected), Mode=OneWay}" />
                             </Grid>
                         </TreeViewItem>
                     </DataTemplate>
@@ -553,7 +599,7 @@
                     x:Name="TxtSelectionCount"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="TxtSelectionCount"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.SelectionSummary, Mode=OneWay}" />
                 <Button

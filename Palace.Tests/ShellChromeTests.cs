@@ -39,7 +39,7 @@ public sealed class ShellChromeTests
         Assert.True(ShellChrome.IsThemeChromeFill(ShellChrome.LayerFill));
         Assert.False(ShellChrome.IsThemeChromeFill(ShellChrome.ThroughFill));
         Assert.False(ShellChrome.IsThemeChromeFill(ShellChrome.OpaqueBaseFill));
-        Assert.Equal("AcrylicInAppFillColorDefaultBrush", ShellChrome.PaneFill);
+        Assert.Equal("PalacePaneFillBrush", ShellChrome.PaneFill);
         Assert.Equal("NavigationViewContentBackground", ShellChrome.NavContentBackgroundKey);
     }
 

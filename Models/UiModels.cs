@@ -28,6 +28,10 @@ public sealed partial class FolderNode : ObservableObject
     [ObservableProperty]
     public partial bool IsExpanded { get; set; } = true;
 
+    /// <summary>True when this node is the Library folder selection (count pill).</summary>
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
     /// <summary>Inline name editor shown (new folder or rename).</summary>
     [ObservableProperty]
     public partial bool IsEditing { get; set; }

@@ -28,6 +28,13 @@ public static class BindHelpers
     public static bool IsMosaicAscending(MosaicSort current) =>
         !MosaicSortOrder.IsDescending(current);
 
+    /// <summary>AccentButtonStyle when <paramref name="accent"/>; otherwise null (default button).</summary>
+    public static Style? AccentButtonWhen(bool accent) =>
+        accent
+        && Application.Current?.Resources.TryGetValue("AccentButtonStyle", out var style) == true
+            ? style as Style
+            : null;
+
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;
 

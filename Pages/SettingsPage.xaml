@@ -25,6 +25,19 @@
                 Header="Theme"
                 ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}" />
+            <ComboBox
+                x:Name="CmbAccent"
+                MinWidth="240"
+                AutomationProperties.AutomationId="CmbAccent"
+                AutomationProperties.HelpText="Takes effect after restart"
+                Header="Accent color"
+                ItemsSource="{x:Bind ViewModel.AccentOptions, Mode=OneWay}"
+                SelectedItem="{x:Bind ViewModel.SelectedAccent, Mode=TwoWay}" />
+            <TextBlock
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Follow Windows (default) or Palace pink. Takes effect after restart. High contrast always uses system colors."
+                TextWrapping="Wrap" />
 
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Background" />
             <StackPanel Orientation="Horizontal" Spacing="8">

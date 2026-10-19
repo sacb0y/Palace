@@ -39,6 +39,8 @@ public partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<SourceFolderItem> Sources { get; } = [];
     public IReadOnlyList<string> ThemeOptions { get; } = ["System", "Light", "Dark"];
+    public IReadOnlyList<string> AccentOptions { get; } =
+        [BrandAccent.FollowWindowsLabel, BrandAccent.PalacePinkLabel];
     public string AppVersionText { get; } = AppVersion.Display;
 
     public string InfancyNoteText { get; } = AppVersion.InfancyNote;
@@ -55,6 +57,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string SelectedTheme { get; set; } = "System";
+
+    [ObservableProperty]
+    public partial string SelectedAccent { get; set; } = BrandAccent.FollowWindowsLabel;
 
     [ObservableProperty]
     public partial SourceFolderItem? SelectedSource { get; set; }
@@ -172,6 +177,7 @@ public partial class SettingsViewModel : ObservableObject
         var stored = ApplicationData.Current.LocalSettings.Values["Theme"] as string;
         SelectedTheme = stored is "Light" or "Dark" or "System" ? stored : "System";
         ApplyTheme(SelectedTheme);
+        LoadAccent();
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
@@ -209,6 +215,29 @@ public partial class SettingsViewModel : ObservableObject
 
         ApplicationData.Current.LocalSettings.Values["Theme"] = value;
         ApplyTheme(value);
+    }
+
+    private void LoadAccent()
+    {
+        var mode = BrandAccent.ParseMode(
+            ApplicationData.Current.LocalSettings.Values[BrandAccent.SettingsKey]);
+        SelectedAccent = mode == BrandAccent.ModePalacePink
+            ? BrandAccent.PalacePinkLabel
+            : BrandAccent.FollowWindowsLabel;
+    }
+
+    partial void OnSelectedAccentChanged(string value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        var mode = value == BrandAccent.PalacePinkLabel
+            ? BrandAccent.ModePalacePink
+            : BrandAccent.ModeFollowWindows;
+        ApplicationData.Current.LocalSettings.Values[BrandAccent.SettingsKey] = mode;
+        StatusText = BrandAccent.RestartCaption;
     }
 
     partial void OnPeakOverrideEnabledChanged(bool value)

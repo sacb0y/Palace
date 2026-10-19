@@ -60,6 +60,7 @@
     <Compile Include="..\Helpers\RangeSelect.cs" Link="RangeSelect.cs" />
     <Compile Include="..\Helpers\ShellBackground.cs" Link="ShellBackground.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />
+    <Compile Include="..\Helpers\BrandAccent.cs" Link="BrandAccent.cs" />
     <Compile Include="..\Helpers\TagBoardExpand.cs" Link="TagBoardExpand.cs" />
     <Compile Include="..\Helpers\TagBrowseMosaic.cs" Link="TagBrowseMosaic.cs" />
     <Compile Include="..\Helpers\AssignedTagChrome.cs" Link="AssignedTagChrome.cs" />

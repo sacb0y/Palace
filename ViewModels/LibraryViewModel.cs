@@ -83,7 +83,11 @@ public partial class LibraryViewModel : ObservableObject
     public ObservableCollection<OrganizePreviewItem> OrganizePreview { get; } = [];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccentScan))]
     public partial FolderNode? SelectedFolder { get; set; }
+
+    /// <summary>Scan uses AccentButtonStyle when the library has no folder roots yet.</summary>
+    public bool AccentScan => FolderTree.Count == 0;
 
     [ObservableProperty]
     public partial TagTreeNode? SelectedTag { get; set; }
@@ -279,12 +283,30 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnSelectedFolderChanged(FolderNode? value)
     {
+        StampFolderSelection(value);
         RebuildBreadcrumbs();
         if (!_suppressFilter)
         {
             _ = ApplyFilterAsync();
         }
     }
+
+    private void StampFolderSelection(FolderNode? selected)
+    {
+        void Walk(IEnumerable<FolderNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                node.IsSelected = selected is not null
+                    && string.Equals(node.Path, selected.Path, StringComparison.OrdinalIgnoreCase);
+                Walk(node.Children);
+            }
+        }
+
+        Walk(FolderTree);
+    }
+
+    private void NotifyAccentScan() => OnPropertyChanged(nameof(AccentScan));
 
     partial void OnSelectedTagChanged(TagTreeNode? value)
     {
