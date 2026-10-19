@@ -87,26 +87,75 @@ public sealed partial class CatalogService
             cmd.ExecuteNonQuery();
         });
 
+    public Task<int> CountAssetsForSourceAsync(string sourceFolderId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM Asset WHERE SourceFolderId = $id";
+            cmd.Parameters.AddWithValue("$id", sourceFolderId);
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        });
+
     public Task DeleteSourceFolderAsync(string id) =>
         _db.WriteAsync(conn =>
         {
             using var tx = conn.BeginTransaction();
-            using (var rows = conn.CreateCommand())
+            // OrganizeBatchItem / AiJob have no ON DELETE CASCADE from Asset (unlike AssetTag /
+            // CollectionItem). DeleteAssetsAsync cleans them explicitly; mirror that here before
+            // SourceFolder CASCADE removes the assets, or FK RESTRICT leaves orphans / fails.
+            using (var assets = conn.CreateCommand())
             {
-                rows.Transaction = tx;
-                rows.CommandText = "SELECT RowId FROM Asset WHERE SourceFolderId = $id";
-                rows.Parameters.AddWithValue("$id", id);
-                using var reader = rows.ExecuteReader();
+                assets.Transaction = tx;
+                assets.CommandText = "SELECT Id, RowId FROM Asset WHERE SourceFolderId = $id";
+                assets.Parameters.AddWithValue("$id", id);
+                var assetIds = new List<string>();
                 var rowIds = new List<long>();
-                while (reader.Read())
+                using (var reader = assets.ExecuteReader())
                 {
-                    rowIds.Add(reader.GetInt64(0));
+                    while (reader.Read())
+                    {
+                        assetIds.Add(reader.GetString(0));
+                        rowIds.Add(reader.GetInt64(1));
+                    }
                 }
 
-                reader.Close();
                 foreach (var rowId in rowIds)
                 {
                     DeleteFtsRow(conn, rowId, tx);
+                }
+
+                foreach (var chunk in Helpers.MosaicDelete.ChunkIds(assetIds))
+                {
+                    var names = new List<string>(chunk.Count);
+                    for (var i = 0; i < chunk.Count; i++)
+                    {
+                        names.Add($"$id{i}");
+                    }
+
+                    var inList = string.Join(",", names);
+                    using (var batch = conn.CreateCommand())
+                    {
+                        batch.Transaction = tx;
+                        batch.CommandText = $"DELETE FROM OrganizeBatchItem WHERE AssetId IN ({inList})";
+                        for (var i = 0; i < chunk.Count; i++)
+                        {
+                            batch.Parameters.AddWithValue(names[i], chunk[i]);
+                        }
+
+                        batch.ExecuteNonQuery();
+                    }
+
+                    using (var ai = conn.CreateCommand())
+                    {
+                        ai.Transaction = tx;
+                        ai.CommandText = $"DELETE FROM AiJob WHERE AssetId IN ({inList})";
+                        for (var i = 0; i < chunk.Count; i++)
+                        {
+                            ai.Parameters.AddWithValue(names[i], chunk[i]);
+                        }
+
+                        ai.ExecuteNonQuery();
+                    }
                 }
             }
 

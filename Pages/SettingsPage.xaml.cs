@@ -1,3 +1,4 @@
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Palace.Helpers;
 using Palace.Services;
@@ -19,12 +20,14 @@ public sealed partial class SettingsPage : Page
         Loaded += async (_, _) =>
         {
             ViewModel.RequestPickCloudFolder = PickCloudFolderAsync;
+            ViewModel.RequestConfirm = AskConfirmAsync;
             await ErrorReporter.RunAsync("Load settings", null, ViewModel.LoadAsync);
             SyncTintPicker();
         };
         Unloaded += (_, _) =>
         {
             ViewModel.RequestPickCloudFolder = null;
+            ViewModel.RequestConfirm = null;
             ViewModel.PropertyChanged -= ViewModelOnPropertyChanged;
         };
         ViewModel.PropertyChanged += ViewModelOnPropertyChanged;
@@ -69,5 +72,21 @@ public sealed partial class SettingsPage : Page
         };
         var result = await dialog.ShowAsync();
         return result == ContentDialogResult.Primary ? dialog.Result : null;
+    }
+
+    /// <summary>Destructive Settings confirms: Cancel is the safe default.</summary>
+    private async Task<bool> AskConfirmAsync(string title, string message, string primary)
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = message,
+            PrimaryButtonText = primary,
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close
+        };
+        dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 }
