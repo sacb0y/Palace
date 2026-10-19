@@ -634,6 +634,23 @@ public partial class GalleryViewModel : ObservableObject
 
     public void ClearHistogram() => SetAnalysis(HdrAnalysisResult.Empty);
 
+    /// <summary>
+    /// The gallery decoded the original still (e.g. a file the scan flagged undecodable):
+    /// use its oriented pixel size for Info / Details / the bottom bar.
+    /// </summary>
+    public void SetDecodedPixelSize(int width, int height)
+    {
+        if (width <= 0 || height <= 0 || Current is not { } item)
+        {
+            return;
+        }
+
+        _nativePixelWidth = width;
+        _nativePixelHeight = height;
+        DetailsText = GalleryPresent.DetailsLine(item.FileName, width, height, item.Kind, item.FileSize);
+        RefreshImageInfo();
+    }
+
     public void SetHdrStats(float maxNits, float avgNits, float minNits, float maxScrgb, char maxScrgbChannel = '\0')
     {
         ContentMaxNits = maxNits;

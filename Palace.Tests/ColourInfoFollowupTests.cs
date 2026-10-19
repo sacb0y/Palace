@@ -156,6 +156,29 @@ public sealed class ColourInfoFollowupTests
     }
 
     [Fact]
+    public void Probe_IccCurvWithOverflowingCount_IsRejectedWithoutThrowing()
+    {
+        // curv count 0x80000001: count * 2 wraps a uint; must be rejected as plain PNG.
+        var curv = new byte[12 + 64];
+        "curv"u8.CopyTo(curv);
+        BinaryPrimitives.WriteUInt32BigEndian(curv.AsSpan(8), 0x80000001u);
+        Assert.Null(IccProfile.MatchWideGamut(IccRgb(P3Colorants, curv)));
+        Assert.Equal(HdrKind.None, HdrFile.Probe(Png(("iCCP", Iccp(IccRgb(P3Colorants, curv))))).Kind);
+    }
+
+    [Fact]
+    public void IsOriginalStill_OnlyForTheOriginalPath()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "palace-still");
+        var original = Path.Combine(dir, "alpha 02.bmp");
+        Assert.True(GalleryPresent.IsOriginalStill(original, original));
+        Assert.True(GalleryPresent.IsOriginalStill(Path.Combine(dir, ".", "alpha 02.bmp"), original));
+        Assert.False(GalleryPresent.IsOriginalStill(Path.Combine(dir, "thumbs", "abc_lg.jpg"), original));
+        Assert.False(GalleryPresent.IsOriginalStill(null, original));
+        Assert.False(GalleryPresent.IsOriginalStill(original, null));
+    }
+
+    [Fact]
     public void Probe_CicpWinsOverIcc()
     {
         var probe = HdrFile.Probe(Png(("cICP", [9, 13, 0, 1]), ("iCCP", Iccp(IccRgb(P3Colorants, Para(2.4))))));

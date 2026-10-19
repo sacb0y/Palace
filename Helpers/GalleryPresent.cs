@@ -571,6 +571,27 @@ public static class GalleryPresent
             ? (0.2627f * rNits) + (0.6780f * gNits) + (0.0593f * bNits)
             : (0.2126f * rNits) + (0.7152f * gNits) + (0.0722f * bNits);
 
+    /// <summary>True when <paramref name="shownPath"/> is the original file, not a thumb or preview.</summary>
+    public static bool IsOriginalStill(string? shownPath, string? originalPath)
+    {
+        if (string.IsNullOrWhiteSpace(shownPath) || string.IsNullOrWhiteSpace(originalPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(
+                System.IO.Path.GetFullPath(shownPath),
+                System.IO.Path.GetFullPath(originalPath),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// File pixels: oriented decode, then header, then catalog. Never a
     /// 512 thumb when the header is 3840×2160.

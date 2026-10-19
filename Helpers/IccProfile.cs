@@ -182,7 +182,8 @@ public static class IccProfile
             return gamma is >= 2.1 and <= 2.5;
         }
 
-        if (count < 16 || 12 + (count * 2) > (uint)tag.Length)
+        // Bound count by the bytes present before multiplying (a crafted count must not wrap).
+        if (count < 16 || count > (uint)((tag.Length - 12) / 2))
         {
             return false;
         }

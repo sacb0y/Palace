@@ -1072,6 +1072,16 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             ApplyScaleLayout();
         }
+
+        // A file the scan flagged undecodable shows no resolution until the gallery
+        // itself decodes the original (not a thumb / large-preview substitute).
+        if (_gallery is { Current.Undecodable: true } gallery
+            && ImgStill.Source is BitmapImage { PixelWidth: > 0, PixelHeight: > 0 } bmp
+            && bmp.UriSource is { IsFile: true } uri
+            && GalleryPresent.IsOriginalStill(uri.LocalPath, gallery.CurrentPath))
+        {
+            gallery.SetDecodedPixelSize(bmp.PixelWidth, bmp.PixelHeight);
+        }
     }
 
     private void ScrStill_PointerPressed(object sender, PointerRoutedEventArgs e)
