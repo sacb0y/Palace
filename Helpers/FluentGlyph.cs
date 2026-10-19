@@ -19,4 +19,7 @@ public static class FluentGlyph
         AssetKind.Image => Icon.Image,
         _ => Icon.Document
     };
+
+    /// <summary>Move dialog row: clock for a recent destination, folder otherwise.</summary>
+    public static Icon MoveDestinationIcon(bool isRecent) => isRecent ? Icon.History : Icon.Folder;
 }

@@ -11,7 +11,7 @@ using Windows.Storage;
 
 namespace Palace.ViewModels;
 
-/// <summary>Library: file actions (rooms, Explorer, copy, move, delete).</summary>
+/// <summary>Library: file actions (rooms, Explorer, copy, delete). Move lives in <c>LibraryViewModel.Move</c>.</summary>
 public partial class LibraryViewModel
 {
     [RelayCommand]
@@ -140,57 +140,6 @@ public partial class LibraryViewModel
         });
 
     [RelayCommand]
-    private Task MoveToFolderAsync() =>
-        ErrorReporter.RunAsync("Move to folder", Notify, async () =>
-        {
-            var targets = await SelectedAssetsAsync();
-            if (targets.Count == 0)
-            {
-                Notify("Select assets first.");
-                return;
-            }
-
-            var folder = await _access.PickFolderAsync();
-            if (folder is null)
-            {
-                return;
-            }
-
-            var destRoot = folder.Path;
-            Directory.CreateDirectory(destRoot);
-            var moved = 0;
-            foreach (var asset in targets)
-            {
-                if (!CloudFile.Exists(asset.Path))
-                {
-                    continue;
-                }
-
-                var dest = Path.Combine(destRoot, Path.GetFileName(asset.Path));
-                if (string.Equals(Path.GetFullPath(asset.Path), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                dest = PathSafe.UniquePath(dest);
-                try
-                {
-                    File.Move(asset.Path, dest);
-                    await _catalog.UpdateAssetPathAsync(asset.Id, dest);
-                    moved++;
-                }
-                catch (Exception ex)
-                {
-                    await _catalog.SetOrganizeErrorAsync(asset.Id, ex.Message);
-                }
-            }
-
-            CloseOverlay();
-            await RefreshQuietAsync();
-            StatusText = moved == 0 ? "No files moved." : $"Moved {moved} file(s).";
-        });
-
-    [RelayCommand]
     private Task DeleteFilesAsync() =>
         ErrorReporter.RunAsync("Delete files", Notify, async () =>
         {
@@ -267,7 +216,7 @@ public partial class LibraryViewModel
     /// Drop deleted ids from <see cref="_allAssets"/> and the visible mosaic without
     /// re-querying the whole project or walking source folders.
     /// </summary>
-    private async Task RemoveDeletedFromUiAsync(IReadOnlyList<string> removedIds)
+    private async Task RemoveDeletedFromUiAsync(IReadOnlyList<string> removedIds, bool pruneAllAssets = true)
     {
         if (removedIds.Count == 0)
         {
@@ -275,7 +224,10 @@ public partial class LibraryViewModel
         }
 
         var remove = new HashSet<string>(removedIds, StringComparer.Ordinal);
-        _allAssets = MosaicDelete.ExceptIds(_allAssets, a => a.Id, remove);
+        if (pruneAllAssets)
+        {
+            _allAssets = MosaicDelete.ExceptIds(_allAssets, a => a.Id, remove);
+        }
 
         await UiDispatch.RunAsync(() =>
         {

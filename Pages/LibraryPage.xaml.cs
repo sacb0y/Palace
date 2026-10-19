@@ -56,6 +56,7 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestPickRoom = AskRoomAsync;
+        ViewModel.RequestPickMoveDestination = AskMoveDestinationAsync;
         ViewModel.RequestFocusAssignTag = () =>
             DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
         ViewModel.RequestOpenAssignPanel = () =>
@@ -888,6 +889,12 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (!e.Handled && TryHandleMosaicMoveKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != VirtualKey.Enter || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -993,6 +1000,7 @@ public sealed partial class LibraryPage : Page
         }
 
         EnsureSelectedForContext(item);
+        PopulateMoveRecents(flyout);
     }
 
     private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)

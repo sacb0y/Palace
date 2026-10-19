@@ -295,3 +295,31 @@ public sealed class ScanReport
         InaccessibleFolders += other.InaccessibleFolders;
     }
 }
+
+/// <summary>
+/// A logged file operation (move, new / rename / delete folder) that Undo can reverse.
+/// Lives in the catalog so the app and a future CLI share one undo history.
+/// </summary>
+public sealed class FileOpBatch
+{
+    public string Id { get; set; } = "";
+    public string ProjectId { get; set; } = "";
+    public FileOpKind Kind { get; set; }
+    public string Summary { get; set; } = "";
+    public string CreatedAt { get; set; } = "";
+    public bool IsUndone { get; set; }
+    public List<FileOpItem> Items { get; set; } = [];
+
+    public override string ToString() => Summary;
+}
+
+public sealed class FileOpItem
+{
+    public int Seq { get; set; }
+    public FileOpStep Step { get; set; }
+    public string? AssetId { get; set; }
+    public string OldPath { get; set; } = "";
+    public string NewPath { get; set; } = "";
+    public string? OldSourceId { get; set; }
+    public string? NewSourceId { get; set; }
+}

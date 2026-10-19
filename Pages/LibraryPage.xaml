@@ -13,7 +13,23 @@
     mc:Ignorable="d"
     Background="Transparent">
 
-    <Grid>
+    <Page.Resources>
+        <DataTemplate x:Key="MoveDestinationTemplate" x:DataType="models:MoveDestinationItem">
+            <StackPanel
+                AutomationProperties.Name="{x:Bind Display}"
+                Orientation="Horizontal"
+                Spacing="8">
+                <ic:FluentIcon
+                    VerticalAlignment="Center"
+                    Icon="{x:Bind helpers:FluentGlyph.MoveDestinationIcon(IsRecent)}"
+                    IconSize="Size16"
+                    IconVariant="Regular" />
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind Display}" />
+            </StackPanel>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid PreviewKeyDown="LibraryRoot_PreviewKeyDown">
     <Grid
         Padding="12,8,12,8"
         ColumnSpacing="12"
@@ -73,6 +89,20 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
                         <TextBlock VerticalAlignment="Center" Text="Undo last organize" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    x:Name="BtnUndo"
+                    AutomationProperties.AcceleratorKey="Control+Z"
+                    AutomationProperties.AutomationId="BtnUndo"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.UndoLabel, Mode=OneWay}"
+                    AutomationProperties.Name="Undo"
+                    Command="{x:Bind ViewModel.UndoFileOpCommand}"
+                    IsEnabled="{x:Bind ViewModel.CanUndoFileOp, Mode=OneWay}"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.UndoToolTip, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Undo" />
                     </StackPanel>
                 </Button>
                 <Button
@@ -405,9 +435,17 @@
                                             <ic:FluentIcon Icon="DocumentCopy" IconSize="Size16" IconVariant="Regular" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
+                                    <MenuFlyoutSubItem
+                                        AutomationProperties.AutomationId="MnuMoveToRecent"
+                                        Text="Move to recent">
+                                        <MenuFlyoutSubItem.Icon>
+                                            <ic:FluentIcon Icon="History" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutSubItem.Icon>
+                                    </MenuFlyoutSubItem>
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuMoveToFolder"
                                         Command="{x:Bind pages:LibraryPage.GetMoveToFolderCommand()}"
+                                        KeyboardAcceleratorTextOverride="M"
                                         Text="Move to folder…">
                                         <MenuFlyoutItem.Icon>
                                             <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
@@ -1084,13 +1122,29 @@
             </StackPanel>
         </ScrollViewer>
 
-        <InfoBar
+        <StackPanel
             Grid.Row="2"
             Grid.ColumnSpan="3"
-            AutomationProperties.AutomationId="InfStatus"
-            IsOpen="{x:Bind ViewModel.ShowInfo, Mode=TwoWay}"
-            Message="{x:Bind ViewModel.InfoMessage, Mode=OneWay}"
-            Severity="Informational" />
+            Spacing="4">
+            <InfoBar
+                AutomationProperties.AutomationId="InfStatus"
+                IsOpen="{x:Bind ViewModel.ShowInfo, Mode=TwoWay}"
+                Message="{x:Bind ViewModel.InfoMessage, Mode=OneWay}"
+                Severity="Informational" />
+            <InfoBar
+                x:Name="InfUndo"
+                AutomationProperties.AutomationId="InfUndo"
+                IsOpen="{x:Bind ViewModel.ShowUndoToast, Mode=TwoWay}"
+                Message="{x:Bind ViewModel.UndoToastMessage, Mode=OneWay}"
+                Severity="Success">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="BtnUndoToast"
+                        Command="{x:Bind ViewModel.UndoFileOpCommand}"
+                        Content="Undo" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
         <Grid
             Grid.Row="3"
             Grid.ColumnSpan="3"

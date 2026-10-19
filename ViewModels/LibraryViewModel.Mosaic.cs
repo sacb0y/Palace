@@ -156,6 +156,9 @@ public partial class LibraryViewModel
             source => source.Id,
             source => GalleryMedia.SourceFolderIsCloud(source.Kind, source.Path),
             StringComparer.Ordinal);
+        _localSourceIds = sources.Where(source => source.Kind == SourceKind.Local)
+            .Select(source => source.Id)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private void LoadRowHeight()
