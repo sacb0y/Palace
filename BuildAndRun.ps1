@@ -2,7 +2,7 @@
 .SYNOPSIS
 Builds and runs Palace under a *test* package identity only.
 
-HARD: refuses Identity Name C20A7629-… (Sacb0y's release install). Even
+HARD: refuses Identity Name C20A7629-... (Sacb0y's release install). Even
 `winapp run --no-launch` registers layout and can overwrite that install.
 Prepare a separate identity first:
   .\scripts\Prepare-TestIdentity.ps1 -IdentityName PalaceOrganizeTest-5E1F
@@ -55,17 +55,28 @@ Use .\scripts\Prepare-TestIdentity.ps1 -IdentityName <TestName> first.
         exit 1
     }
     $text = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8
-    if ($text -match 'Name="(C20A7629-6BDE-449F-958A-5AAF8BCE88F3)"') {
+    $reasons = @()
+    if ($text -match 'Name="C20A7629-6BDE-449F-958A-5AAF8BCE88F3"') {
+        $reasons += "Identity Name is $ReleaseIdentity"
+    }
+    if ($text -match 'PhoneProductId="C20A7629-6BDE-449F-958A-5AAF8BCE88F3"') {
+        $reasons += "PhoneProductId is $ReleaseIdentity"
+    }
+    if ($text -match '<DisplayName>\s*Palace\s*</DisplayName>' -or $text -match 'DisplayName="Palace"') {
+        $reasons += 'DisplayName is still Palace'
+    }
+    if ($reasons.Count -gt 0) {
+        $why = $reasons -join '; '
         Write-Error @"
-REFUSED: Package.appxmanifest Identity Name is $ReleaseIdentity (Sacb0y's release install).
+REFUSED: Package.appxmanifest still looks like Sacb0y's release install ($why).
 
 Even ``winapp run --no-launch`` registers layout and can overwrite that install.
-Never Add-AppxPackage / winapp unregister against C20A7629 — agents do not restore it.
+Never Add-AppxPackage / winapp unregister against C20A7629 - agents do not restore it.
 
-Prepare a separate test identity, then retry:
+Prepare a separate test identity (Name, PhoneProductId, and DisplayName), then retry:
   .\scripts\Prepare-TestIdentity.ps1 -IdentityName PalaceOrganizeTest-5E1F
   `$env:PALACE_DATA_DIR = Join-Path `$env:TEMP 'palace-agent-data-organize'
-  # temp SFW copy only — never real catalog / Unity / %TEMP%\palace-vss
+  # temp SFW copy only - never real catalog / Unity / %TEMP%\palace-vss
   .\BuildAndRun.ps1 . --arch x64
 
 See AGENTS.md and .cursor/rules/local-test-identity.mdc.

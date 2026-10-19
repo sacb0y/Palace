@@ -612,7 +612,7 @@ Test-UI 'Implicit tag applied on assign' {
     winapp ui wait-for 'TxtAssignedTags' -a $AppPid --value 'ImpHedgehog' --contains -t 4000
 }
 
-# ─── Mosaic: no filename caption; row height changes tile size ───
+# --- Mosaic: no filename caption; row height changes tile size ---
 Wait-LibraryReady
 Test-UI 'Mosaic tiles have no filename caption' {
     $assets = Get-LibraryAssets
@@ -662,7 +662,7 @@ Test-UI 'Row-height slider changes mosaic tile size' {
     Ok
 }
 
-# ─── Context menu ───
+# --- Context menu ---
 Test-UI 'Context menu lists file operations' {
     $asset = Get-LibraryAssets | Select-Object -First 1
     if (-not $asset) { throw 'No asset for context menu' }
@@ -684,7 +684,7 @@ Test-UI 'Context menu lists file operations' {
     Ok
 }
 
-# ─── Overlay lightbox ───
+# --- Overlay lightbox ---
 Test-UI 'Double-click opens gallery overlay' {
     Bind-MainWindow
     $assets = Get-LibraryAssets
@@ -811,7 +811,7 @@ Test-UI 'Space opens overlay on focused mosaic tile' {
     }
 }
 
-# ─── Gallery window ───
+# --- Gallery window ---
 Test-UI 'Open in new window then close' {
     $asset = Get-LibraryAssets | Select-Object -First 1
     if (-not $asset) { throw 'No asset for gallery window' }
@@ -843,7 +843,7 @@ Test-UI 'Open in new window then close' {
     Bind-MainWindow
 }
 
-# ─── Multi-select tagging ───
+# --- Multi-select tagging ---
 Test-UI 'Multi-select assign applies to both tiles' {
     Bind-MainWindow
     $assets = Get-LibraryAssets
@@ -965,7 +965,7 @@ Test-UI 'Remove partial tag only from tiles that have it' {
     Ok
 }
 
-# ─── Backfill setup: assign source tag before implication ───
+# --- Backfill setup: assign source tag before implication ---
 Test-UI 'Assign BfSource for later backfill' {
     $asset = Get-LibraryAssets | Select-Object -First 1
     if (-not $asset) { throw 'No asset for backfill' }
@@ -978,7 +978,7 @@ Test-UI 'Assign BfSource for later backfill' {
     if ($text -match [regex]::Escape($script:BfImpliedName)) { throw "$($script:BfImpliedName) should not exist yet: $text" }
 }
 
-# ─── Tag colors: Character blue, Sonic inherits, then custom green ───
+# --- Tag colors: Character blue, Sonic inherits, then custom green ---
 Test-UI 'Navigate to Tags for colors' {
     winapp ui invoke 'NavTags' -a $AppPid
     winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000
@@ -1053,7 +1053,7 @@ Test-UI 'Set Sonic color green stays custom' {
 
 winapp ui screenshot -a $AppPid -o 'screenshots/09-tag-color.png' 2>$null
 
-# ─── Implicit backfill ───
+# --- Implicit backfill ---
 Test-UI 'Create BfImplied and add implicit on BfSource' {
     Start-Sleep -Milliseconds 400
     winapp ui set-value 'TxtNewTagName' $script:BfImpliedName @(WinArgs)
@@ -1126,7 +1126,7 @@ Test-UI 'Sonic chip appears on assigned image' {
     Ok
 }
 
-# ─── Online-only scan fixture (skip if attributes cannot be stamped) ───
+# --- Online-only scan fixture (skip if attributes cannot be stamped) ---
 Test-UI 'Scan lists stamped online-only file without changing size' {
     Bind-MainWindow
     winapp ui invoke 'NavSettings' @(WinArgs)
@@ -1183,7 +1183,7 @@ Test-UI 'Scan lists stamped online-only file without changing size' {
     Ok
 }
 
-# ─── Safe delete: dedicated test file only ───
+# --- Safe delete: dedicated test file only ---
 Test-UI 'Delete test file goes to Recycle and leaves mosaic' {
     Bind-MainWindow
     winapp ui invoke 'NavSettings' @(WinArgs)
