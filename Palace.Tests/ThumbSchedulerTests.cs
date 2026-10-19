@@ -41,7 +41,21 @@ public class ThumbSchedulerTests
         Assert.Equal(@"C:\pics\small.jpg", small);
 
         var unknown = ThumbScheduler.PreviewSource(@"C:\pics\fourk.jpg", @"C:\cache\fourk.jpg", 0, 680);
-        Assert.Equal(@"C:\pics\fourk.jpg", unknown);
+        Assert.Equal(@"C:\cache\fourk.jpg", unknown);
+
+        var unknownWithoutThumb = ThumbScheduler.PreviewSource(@"C:\pics\fourk.jpg", null, 0, 680);
+        Assert.Equal(@"C:\pics\fourk.jpg", unknownWithoutThumb);
+    }
+
+    [Fact]
+    public void FitDecodeSize_FitsInsideTheBoxAndNeverReturnsFullResolution()
+    {
+        var fitted = ThumbScheduler.FitDecodeSize(3840, 2160, 510, 330);
+        Assert.True(fitted.Width <= 510);
+        Assert.True(fitted.Height <= 330);
+        Assert.True(fitted.Width < 3840);
+        Assert.True(fitted.Height < 2160);
+        Assert.Equal(510, Math.Max(fitted.Width, fitted.Height));
     }
 
     [Fact]
@@ -124,14 +138,62 @@ public class ThumbSchedulerTests
 
         Assert.Contains("leaving", scrolled.Cancel);
         Assert.Contains("staying", scrolled.Cancel);
-        Assert.Equal(["incoming"], scrolled.Start);
+        Assert.Empty(scrolled.Start);
+        Assert.Equal(2, queue.InFlight);
+
+        queue.Abandon("leaving");
+        queue.Abandon("staying");
+        var freed = queue.Plan(afterScroll, new ThumbRect(0, 800, 800, 400), 280);
+        Assert.Equal(["incoming"], freed.Start);
         Assert.Equal(1, queue.InFlight);
-        Assert.DoesNotContain("leaving", scrolled.Start);
 
         queue.Reset();
         Assert.Equal(0, queue.InFlight);
         var again = queue.Plan(before, View, 280);
         Assert.Equal(["leaving", "staying"], again.Start);
+    }
+
+    [Fact]
+    public async Task Cancel_StopsTheDecodeAndHoldsTheCapUntilItReturns()
+    {
+        var queue = new ThumbLoadQueue(2);
+        var visible = new ThumbTile[]
+        {
+            new("leaving", 0, 10, 100, 80),
+            new("staying", 200, 10, 100, 80)
+        };
+        var started = queue.Plan(visible, View, 280);
+        Assert.Equal(2, started.InFlight);
+
+        using var cts = new CancellationTokenSource();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ranPastCancel = 0;
+        var running = ThumbDecodeRun.RunAsync(cts.Token, async token =>
+        {
+            entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token).ConfigureAwait(false);
+            Interlocked.Increment(ref ranPastCancel);
+        });
+
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var away = new ThumbTile[] { new("incoming", 0, 900, 100, 80) };
+        var scrolled = queue.Plan(away, new ThumbRect(0, 800, 800, 400), 280);
+        Assert.Contains("leaving", scrolled.Cancel);
+        Assert.Contains("staying", scrolled.Cancel);
+        Assert.Empty(scrolled.Start);
+        Assert.Equal(2, queue.InFlight);
+
+        cts.Cancel();
+        var outcome = await running.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(outcome.Cancelled);
+        Assert.Equal(0, ranPastCancel);
+        Assert.True(outcome.Milliseconds >= 0);
+        Assert.Equal(2, queue.InFlight);
+
+        queue.Abandon("leaving");
+        queue.Abandon("staying");
+        var next = queue.Plan(away, new ThumbRect(0, 800, 800, 400), 280);
+        Assert.Equal(["incoming"], next.Start);
     }
 
     [Fact]
@@ -158,13 +220,16 @@ public class ThumbSchedulerTests
         Assert.Contains("queue=1", show, StringComparison.Ordinal);
         Assert.Contains("cap=3", show, StringComparison.Ordinal);
 
-        var preview = ThumbTimingLog.PreviewLine(true, 510, 330, 1.5, "disk-thumb", 3840, 1);
+        var preview = ThumbTimingLog.PreviewLine(true, 510, 330, 1.5, "disk-thumb", 3840, 42, 9, 1);
         Assert.Contains("capped=true", preview, StringComparison.Ordinal);
+        Assert.Contains("ms=42", preview, StringComparison.Ordinal);
         Assert.Contains("size=510x330", preview, StringComparison.Ordinal);
         Assert.Contains("source=disk-thumb", preview, StringComparison.Ordinal);
+        Assert.Contains("decodeThread=9", preview, StringComparison.Ordinal);
 
-        var tile = ThumbTimingLog.TileLine("hit", "hit", 4, 280, 180, 2, 3, 7, 9, 1);
-        Assert.Contains("cache=hit", tile, StringComparison.Ordinal);
+        var tile = ThumbTimingLog.TileLine("decode", "hit", 18, 280, 180, 2, 3, 7, 9, 1);
+        Assert.Contains("ms=18", tile, StringComparison.Ordinal);
+        Assert.Contains("cache=decode", tile, StringComparison.Ordinal);
         Assert.Contains("capped=true", tile, StringComparison.Ordinal);
         Assert.Contains("startThread=7", tile, StringComparison.Ordinal);
         Assert.Contains("ensureThread=9", tile, StringComparison.Ordinal);

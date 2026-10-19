@@ -21,8 +21,8 @@ public static class ThumbTimingLog
     public static string LibraryShowLine(bool pageReused, bool previewKept, int queue, int cap, int cacheCount, int threadId) =>
         $"library-show page={(pageReused ? "reused" : "new")} preview={(previewKept ? "kept" : "assign")} queue={queue} cap={cap} cache={cacheCount} thread={threadId} role=ui";
 
-    public static string PreviewLine(bool capped, int decodeWidth, int decodeHeight, double scale, string source, int sourceLongEdge, int threadId) =>
-        $"preview capped={(capped ? "true" : "false")} size={decodeWidth}x{decodeHeight} scale={scale:0.00} source={source} longEdge={sourceLongEdge} thread={threadId} role=ui";
+    public static string PreviewLine(bool capped, int decodeWidth, int decodeHeight, double scale, string source, int sourceLongEdge, double milliseconds, int decodeThread, int assignThread) =>
+        $"preview capped={(capped ? "true" : "false")} ms={milliseconds:0} size={decodeWidth}x{decodeHeight} scale={scale:0.00} source={source} longEdge={sourceLongEdge} decodeThread={decodeThread} assignThread={assignThread} role=ui";
 
     public static string PlanLine(string reason, int queue, int cap, int start, int cancel, int cacheHits, int threadId) =>
         $"plan reason={reason} queue={queue} cap={cap} start={start} cancel={cancel} cacheHit={cacheHits} thread={threadId} role=ui";

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Palace.Helpers;
 
 /// <summary>Axis-aligned slot in mosaic DIPs. Off WinUI so the queue can be tested.</summary>
@@ -78,8 +80,9 @@ public static class ThumbScheduler
     }
 
     /// <summary>
-    /// A still larger than the preview decode uses the on-disk thumb when one exists.
-    /// Unknown size keeps the original; the caller still sets decode pixels.
+    /// File to pixel-decode for the side preview. Never a <c>BitmapImage.UriSource</c>.
+    /// A still larger than the cap, or an unknown size, uses the on-disk thumb when one exists.
+    /// Otherwise the caller scale-decodes this path down to the preview box.
     /// </summary>
     public static string? PreviewSource(string? originalPath, string? diskThumbPath, int sourceLongEdge, int decodeLongEdge)
     {
@@ -88,15 +91,38 @@ public static class ThumbScheduler
             return null;
         }
 
-        if (sourceLongEdge > 0
-            && decodeLongEdge > 0
-            && sourceLongEdge > decodeLongEdge
-            && !string.IsNullOrEmpty(diskThumbPath))
+        if (!string.IsNullOrEmpty(diskThumbPath)
+            && (sourceLongEdge <= 0 || (decodeLongEdge > 0 && sourceLongEdge > decodeLongEdge)))
         {
             return diskThumbPath;
         }
 
         return originalPath;
+    }
+
+    /// <summary>
+    /// Fit the source inside the preview or tile box. Never upscales, never exceeds
+    /// <see cref="MaxDecodePixels"/>, and never returns the file's full-resolution size
+    /// when that size is larger than the box.
+    /// </summary>
+    public static (int Width, int Height) FitDecodeSize(int sourceWidth, int sourceHeight, int boxWidth, int boxHeight)
+    {
+        var boxW = ClampPixels(boxWidth);
+        var boxH = ClampPixels(boxHeight);
+        if (sourceWidth <= 0 || sourceHeight <= 0)
+        {
+            return (boxW, boxH);
+        }
+
+        var scale = Math.Min(boxW / (double)sourceWidth, boxH / (double)sourceHeight);
+        if (scale > 1)
+        {
+            scale = 1;
+        }
+
+        var width = Math.Max(1, (int)Math.Round(sourceWidth * scale));
+        var height = Math.Max(1, (int)Math.Round(sourceHeight * scale));
+        return (Math.Min(width, MaxDecodePixels), Math.Min(height, MaxDecodePixels));
     }
 
     public static ThumbBand BandOf(ThumbRect tile, ThumbRect viewport, double prefetchDip)
@@ -221,6 +247,9 @@ public sealed class ThumbLoadQueue
             }
         }
 
+        // Cancelled keys stay in flight until the decode task returns and the
+        // caller Abandons them. Dropping them here lets Plan start a replacement
+        // while the cancelled WIC work is still running.
         var cancel = new List<string>();
         foreach (var key in _inFlight)
         {
@@ -228,11 +257,6 @@ public sealed class ThumbLoadQueue
             {
                 cancel.Add(key);
             }
-        }
-
-        foreach (var key in cancel)
-        {
-            _inFlight.Remove(key);
         }
 
         var start = new List<string>();
@@ -253,5 +277,32 @@ public sealed class ThumbLoadQueue
         }
 
         return new ThumbPlan(start, cancel, _inFlight.Count, Cap);
+    }
+}
+
+public readonly record struct ThumbDecodeOutcome(bool Cancelled, double Milliseconds);
+
+/// <summary>
+/// Runs one thumbnail or preview decode. The queue slot stays occupied until this
+/// task returns, including when the token cancels the decode.
+/// </summary>
+public static class ThumbDecodeRun
+{
+    public static async Task<ThumbDecodeOutcome> RunAsync(
+        CancellationToken cancellationToken,
+        Func<CancellationToken, Task> decode)
+    {
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await decode(cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            return new ThumbDecodeOutcome(false, sw.Elapsed.TotalMilliseconds);
+        }
+        catch (OperationCanceledException)
+        {
+            return new ThumbDecodeOutcome(true, sw.Elapsed.TotalMilliseconds);
+        }
     }
 }
