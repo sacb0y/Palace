@@ -95,6 +95,7 @@
     <Compile Include="..\Services\CatalogService.Sources.cs" Link="CatalogService.Sources.cs" />
     <Compile Include="..\Services\CatalogService.Organize.cs" Link="CatalogService.Organize.cs" />
     <Compile Include="..\Services\CatalogService.Search.cs" Link="CatalogService.Search.cs" />
+    <Compile Include="..\Helpers\OrganizeNames.cs" Link="OrganizeNames.cs" />
     <Compile Include="..\Services\CatalogService.FileOps.cs" Link="CatalogService.FileOps.cs" />
     <Compile Include="..\Services\FileOpService.cs" Link="FileOpService.cs" />
     <Compile Include="..\Helpers\FolderNames.cs" Link="FolderNames.cs" />

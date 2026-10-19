@@ -16,7 +16,7 @@ python3 scripts/sync-appx-version.py
 
 CI (`version-check` in `.github/workflows/ci.yml`) fails if props and `Package.appxmanifest` disagree, or if a PR’s version is not **greater than `main`’s** (unless exempt).
 
-Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.5 (Debug) · Library core · initial public preview`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays on **0.0.x** / milestone **Library core · initial public preview** while this is still the Library + tagging slice. About also shows `AppVersion.InfancyNote` (`TxtInfancyNote`): Rooms (moodboard/mindmap) and Organization (on-disk organize / auto-organize) are in their infancy — do not claim they are finished.
+Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.7 (Debug) · Library core · initial public preview`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays on **0.0.x** / milestone **Library core · initial public preview** while this is still the Library + tagging slice. About also shows `AppVersion.InfancyNote` (`TxtInfancyNote`): Rooms (moodboard/mindmap) and Organization (on-disk organize / auto-organize) are in their infancy — do not claim they are finished.
 
 MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once. **Do not** `winapp unregister` Sacb0y’s release Identity `C20A7629-…` to “fix” a version clash — see `local-test-identity.mdc`; agents use a separate test Identity Name instead.
 
@@ -41,7 +41,7 @@ Template fields live in `.github/PULL_REQUEST_TEMPLATE.md`.
 
 | Version | Slice | Sacb0y sequence |
 |---|---|---|
-| **0.0.x** *(now 0.0.5)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
+| **0.0.x** *(now 0.0.7)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
 | **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. Stub Rooms UI in 0.0.x is infancy — not this slice’s finished work. |
 | **bonus** | **Cloud** | **Not a numbered main slice** and not the next increment. View and manage Dropbox / OneDrive via OAuth. On-Demand + API sources already exist in 0.0.x; do not download originals. Further cloud work can land inside the current identity. |
 | **0.2.x** | **Gamedev** | **Then.** Markdown reading, audio (with loops), 3D viewing, assign a Unity folder to the Palace **project** for asset management (**not** the Library catalog), parse `.unitypackage` and extract needed assets. |

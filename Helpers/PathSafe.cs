@@ -164,4 +164,21 @@ public static class PathSafe
         var collapsed = Regex.Replace(name, "-{2,}", "-");
         return collapsed.Trim('-', ' ', ',');
     }
+
+    /// <summary>
+    /// Collapse repeated <c>-</c>, <c>_</c>, and spaces, then drop those plus commas and dots from both ends.
+    /// A name that is only separators becomes empty so organize can fall back to the original stem.
+    /// </summary>
+    public static string TidyNameSeparators(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return "";
+        }
+
+        var collapsed = Regex.Replace(name, "-{2,}", "-");
+        collapsed = Regex.Replace(collapsed, "_{2,}", "_");
+        collapsed = Regex.Replace(collapsed, " {2,}", " ");
+        return collapsed.Trim('-', '_', ' ', ',', '.');
+    }
 }
