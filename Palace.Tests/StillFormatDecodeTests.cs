@@ -316,6 +316,53 @@ public sealed class StillFormatDecodeTests
         Assert.Equal(0.5f, f.Rgba[2], 2);
     }
 
+    // ACES2065-1 (AP0): green x = 0, blue y = -0.077 (outside (0, 1)).
+    private static readonly float[] AcesAp0Chroma = [0.7347f, 0.2653f, 0.0f, 1.0f, 0.0001f, -0.0770f, 0.32168f, 0.33767f];
+
+    [Fact]
+    public void Exr_AcesAp0Chromaticities_ConvertToRec709()
+    {
+        var data = ExrFixture(0, 3, 1, 2, (x, _, c) => (x, c) switch
+        {
+            (0, "R") => 1f,
+            (1, "G") => 1f,
+            (2, _) => 0.5f,
+            _ => 0f
+        }, AcesAp0Chroma);
+        Assert.Equal(AcesAp0Chroma, ExrFile.TryReadChromaticities(data));
+
+        // AP0 -> Rec.709 with Bradford D60 -> D65 (same construction as colour-science).
+        double[] expected = [2.52169, -1.13413, -0.38756, -0.27648, 1.37272, -0.09624, -0.01538, -0.15298, 1.16835];
+        var m = ExrFile.ToRec709Matrix(AcesAp0Chroma)!;
+        for (var i = 0; i < 9; i++)
+        {
+            Assert.Equal(expected[i], m[i], 3);
+        }
+
+        var f = ExrFile.TryDecode(data)!;
+        Assert.Equal(2.5217f, f.Rgba[0], 2);
+        Assert.Equal(-0.2765f, f.Rgba[1], 2);
+        Assert.Equal(-1.1341f, f.Rgba[4], 2);
+        Assert.Equal(1.3727f, f.Rgba[5], 2);
+        // D60 white adapts to neutral D65.
+        Assert.Equal(0.5f, f.Rgba[8], 2);
+        Assert.Equal(0.5f, f.Rgba[9], 2);
+        Assert.Equal(0.5f, f.Rgba[10], 2);
+    }
+
+    [Fact]
+    public void Exr_DegenerateChromaticities_AreIgnored()
+    {
+        float[] zeroY = [0.64f, 0f, 0.30f, 0.60f, 0.15f, 0.06f, 0.3127f, 0.3290f];
+        float[] outOfRange = [1.5f, 0.33f, 0.30f, 0.60f, 0.15f, 0.06f, 0.3127f, 0.3290f];
+        float[] collinear = [0.2f, 0.2f, 0.3f, 0.3f, 0.4f, 0.4f, 0.3127f, 0.3290f];
+        Assert.Null(ExrFile.TryReadChromaticities(ExrFixture(0, 1, 1, 2, (_, _, _) => 1f, zeroY)));
+        Assert.Null(ExrFile.TryReadChromaticities(ExrFixture(0, 1, 1, 2, (_, _, _) => 1f, outOfRange)));
+        var f = ExrFile.TryDecode(ExrFixture(0, 1, 1, 2, (_, _, _) => 0.75f, collinear))!;
+        Assert.Null(ExrFile.ToRec709Matrix(collinear));
+        Assert.Equal([0.75f, 0.75f, 0.75f], f.Rgba[..3]);
+    }
+
     [Fact]
     public void Exr_Rec709OrMissingChromaticities_LeavePixelsUnchanged()
     {

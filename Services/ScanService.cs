@@ -190,6 +190,7 @@ public sealed class ScanService
         if (ScanFastPath.IsUnchanged(existing, info.Length, info.LastWriteTimeUtc, onlineOnly)
             && existing!.Kind == kind
             && (!ScanContent.MayGenerateScanThumbnail(attrs)
+                || !ScanFastPath.NeedsCurrentThumb(existing)
                 || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
         {
             // Unchanged since the last full index: skip hash / metadata / thumb / write.
