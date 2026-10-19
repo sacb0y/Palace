@@ -59,6 +59,9 @@ public partial class LibraryViewModel
     /// <summary>Bumped by every tree rebuild / refresh; stale results are not applied.</summary>
     private int _folderTreeGeneration;
 
+    /// <summary>Bumped by every <see cref="RefreshQuietAsync"/>; only the newest one is applied.</summary>
+    private int _folderRefreshGeneration;
+
     /// <summary>
     /// Tree Expanding / Collapsed. Ignores nodes that are no longer in the tree: tearing down the old
     /// containers during a rebuild raises Collapsed for them, which must not stick.
