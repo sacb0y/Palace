@@ -16,7 +16,7 @@ This file is the always-loaded core. Detailed topic rules live in `.cursor/rules
 | `errors.mdc` | Log and Notify, do not crash |
 | `icons-automation.mdc` | FluentIcons, AutomationIds, badges |
 | `code-map.mdc` | Which file owns which area |
-| `versioning-release.mdc` | Version identity, slice table, MSIX, trim |
+| `versioning-release.mdc` | `PalaceVersion`, bump rules, PR version+summary, slice table, MSIX, trim |
 | `tests.mdc` | Test commands and `Palace.Tests` coverage |
 
 ## PR / agent goals (read first)
@@ -24,7 +24,7 @@ This file is the always-loaded core. Detailed topic rules live in `.cursor/rules
 Any PR agent (Cursor, Copilot, human) should treat this as the product contract:
 
 1. **Library-first.** Current slice is **0.0.x Library + tagging**. Ship Library browsing, mosaic, overlay/gallery, tags, watch folders, FTS, and solid image/video (including HDR present). Do not open **0.1 Rooms**, **0.2 Gamedev**, or **0.3 AI** as a new minor unless Sacb0y asks.
-2. **Version / slice rules.** Source of truth: `Package.appxmanifest` `Identity Version` + matching `<Version>` in `Palace.csproj` + `Helpers/AppVersion.cs` `Milestone`. Stay on **0.0.x** while Library is the slice — bump **patch** for drops inside the slice (e.g. `0.0.3.0` → `0.0.4.0`), Revision `0`. Do **not** jump to `1.0.0` or `0.1.x` because something “feels ready.” See **Version** below.
+2. **Version / slice rules.** Source of truth: `<PalaceVersion>` in `Directory.Build.props` (Assembly/File/Informational follow it). Manifest `Identity Version` = `MAJOR.MINOR.PATCH.**0**` — sync with `python3 scripts/sync-appx-version.py`. Every app-changing PR bumps (**MINOR** = feature/user-facing or 0.x breaking; **PATCH** = fix / in-slice drop). Docs/CI/tests-only: no bump (`no-version-bump` label or exempt paths). PR description must state the **new version** and a **one-line user-facing summary** (for Isiac). Stay on **0.0.x** while Library is the slice. Do **not** jump to `1.0.0` or `0.1.x` because something “feels ready.” Keep `Helpers/AppVersion.cs` `Milestone` in lockstep when opening a slice. Details: `.cursor/rules/versioning-release.mdc`.
 3. **Do not invent ahead of the slice.** No freeform Rooms canvas / moodboard-mindmap, no gamedev viewers (3D/audio/markdown Unity assign), no AI tagging/organization features until that minor is opened. Existing Rooms and Organization (on-disk organize / auto-organize) are **infancy** — polish only if the task names them; do not claim they are finished.
 4. **Cloud is bonus.** Dropbox / OneDrive OAuth and On-Demand already live in 0.0.x. Further cloud work can land inside the current identity; it is **not** the next numbered slice and must not download originals.
 5. **Maintainer preferences (hands-off).** Prefer small, reviewable PRs on a branch from current `main`. Packaged Debug only for daily runs (`.\BuildAndRun.ps1 . --arch x64`). Never unpackaged. Never change GitHub visibility or add secrets. Do not resume paused Magick / TGA / EXR spikes unless asked. Fix trivial CI/Bugbot blockers; skip speculative refactors.
@@ -45,21 +45,12 @@ Human-facing overview: root `README.md`. Bug reports: Settings → About (`TxtAp
 
 ## PR descriptions
 
-Keep them short. Template:
+Keep them short. Use `.github/PULL_REQUEST_TEMPLATE.md`. Every bumping PR must fill:
 
-```
-## What
-One or two sentences.
+- **New version** (matches `Directory.Build.props`)
+- **User-facing summary (one line)** — plain wording for Isiac to pass on
 
-## Why
-One sentence or issue link.
-
-## Tested
-- [ ] dotnet test Palace.Tests
-- [ ] Packaged Debug on Windows (if UI)
-```
-
-No essays, no full verification tables, no screenshots unless the change is visual.
+Also: What / Why / Tested. No essays, no full verification tables, no screenshots unless the change is visual.
 
 ## Cursor Cloud specific instructions
 

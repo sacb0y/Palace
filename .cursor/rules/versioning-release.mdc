@@ -1,24 +1,51 @@
 ---
-description: "Versioning and release: identity, slice table, MSIX identity, trim"
-globs: Package.appxmanifest,Palace.csproj,Helpers/AppVersion.cs
+description: "Versioning and release: single PalaceVersion, bump rules, PR summary, MSIX identity, trim"
+globs: Directory.Build.props,Package.appxmanifest,Palace.csproj,Helpers/AppVersion.cs,.github/workflows/ci.yml,scripts/check-version.py,scripts/sync-appx-version.py,.github/PULL_REQUEST_TEMPLATE.md
 alwaysApply: false
 ---
 
 ## Version
 
-Pre-1.0. Identity is four parts (`Major.Minor.Patch.Revision`); the UI drops Revision. **Minor** is a planned product slice from Sacb0y’s sequence (table below). **Patch** is work inside the current slice. **1.0.0** is ship, not “we have a library.”
+Pre-1.0. Product SemVer is three parts (`Major.Minor.Patch`). MSIX `Identity Version` is four parts: **`Major.Minor.Patch.0`** — the 4th part (Revision) is **always `0`** (Store requirement). The UI drops Revision.
 
-**Source of truth:** `Package.appxmanifest` `Identity Version` (today `0.0.4.0`). Keep `<Version>` in `Palace.csproj` on the same `Major.Minor.Patch`. Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.4 (Debug) · Library core · initial public preview`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays **0.0.4.0** / milestone **Library core · initial public preview** while this is still the Library + tagging slice. About also shows `AppVersion.InfancyNote` (`TxtInfancyNote`): Rooms (moodboard/mindmap) and Organization (on-disk organize / auto-organize) are in their infancy — do not claim they are finished.
+**Single source of truth:** `<PalaceVersion>` in `Directory.Build.props`. That sets `Version` / `AssemblyVersion` / `FileVersion` / `InformationalVersion` for the solution. After every bump, sync the manifest:
+
+```bash
+python3 scripts/sync-appx-version.py
+```
+
+CI (`version-check` in `.github/workflows/ci.yml`) fails if props and `Package.appxmanifest` disagree, or if a PR’s version is not **greater than `main`’s** (unless exempt).
+
+Settings → About (`TxtAppVersion`) and the title-bar subtitle come from `AppVersion` — e.g. `Palace 0.0.5 (Debug) · Library core · initial public preview`. When you open a new slice, bump the minor **and** `AppVersion.Milestone` in the same change. Identity stays on **0.0.x** / milestone **Library core · initial public preview** while this is still the Library + tagging slice. About also shows `AppVersion.InfancyNote` (`TxtInfancyNote`): Rooms (moodboard/mindmap) and Organization (on-disk organize / auto-organize) are in their infancy — do not claim they are finished.
 
 MSIX identities cannot go backwards. This repo already registered `1.0.1.0` once; after dropping to `0.0.1.0`, `winapp unregister` if the next Debug register/launch refuses the older identity.
 
+### Bump rule (every PR that changes the app)
+
+| Change | Bump |
+|---|---|
+| Feature / user-facing | **MINOR** (on **0.x**, breaking changes also → **MINOR**, not MAJOR) |
+| Fix / non-user-facing app change inside the current Library slice | **PATCH** (stay on **0.0.x** while Library is the slice — e.g. `0.0.4` → `0.0.5`) |
+| Docs / CI / tests only | **No bump** — add label `no-version-bump`, **or** keep the diff on exempt paths (see `scripts/check-version.py`: `.cursor/`, `.github/`, `docs/`, `Palace.Tests/`, `scripts/`, `*.md`, `AGENTS.md`, `README.md`, `ui-tests.ps1`, …) |
+
+Stacked / parallel PRs: rebase onto `main` and **re-bump** in merge order so each tip stays greater than `main`.
+
+Do **not** jump to `1.0.0` or `0.1.x` because something “feels ready.” Opening **0.1 Rooms** / **0.2 Gamedev** / **0.3 AI** requires Sacb0y.
+
+### Every bumping PR description must include
+
+1. **New version** (e.g. `0.0.5`)
+2. **One-line user-facing summary** (plain wording for Isiac to pass on — changelog is owned elsewhere)
+
+Template fields live in `.github/PULL_REQUEST_TEMPLATE.md`.
+
 | Version | Slice | Sacb0y sequence |
 |---|---|---|
-| **0.0.x** *(now 0.0.4)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
+| **0.0.x** *(now 0.0.5)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
 | **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. Stub Rooms UI in 0.0.x is infancy — not this slice’s finished work. |
 | **bonus** | **Cloud** | **Not a numbered main slice** and not the next increment. View and manage Dropbox / OneDrive via OAuth. On-Demand + API sources already exist in 0.0.x; do not download originals. Further cloud work can land inside the current identity. |
 | **0.2.x** | **Gamedev** | **Then.** Markdown reading, audio (with loops), 3D viewing, assign a Unity folder to the Palace **project** for asset management (**not** the Library catalog), parse `.unitypackage` and extract needed assets. |
 | **0.3.x** | **AI** | **Later.** Expand asset management with AI (tagging, organization, etc.). Not the same as prompt-token suggestions. |
 | **1.0.0** | **Ship** | Release/trim fixed, Magick formats if packaging is clean, `winui-packaging` / Store. |
 
-Leave Revision at `0` unless you need a same-patch rebuild identity. Debug and Release of one commit share the number; the suffix is which binary you launched. Packaged Release is buildable with trim off (`winapp run . --arch x64 -c Release`); re-enable trim only after the ItemsSource COM crash is fixed.
+Leave Revision at `0`. Debug and Release of one commit share the number; the suffix is which binary you launched. Packaged Release is buildable with trim off (`winapp run . --arch x64 -c Release`); re-enable trim only after the ItemsSource COM crash is fixed.
