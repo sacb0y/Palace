@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices.WindowsRuntime;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
@@ -22,14 +24,23 @@ namespace Palace.Pages;
 public sealed partial class LibraryPage : Page
 {
     private GalleryViewModel? _hookedOverlay;
-    private int _thumbUpgradeEpoch;
     private int _mosaicGeneration;
-    private int _upgradeScheduled;
     private bool _thumbsMayUpgrade;
-    private static readonly SemaphoreSlim TileDecodeGate = new(4);
+    private bool _shellReady;
+    private bool _scrollHooked;
+    private bool _planQueued;
+    private string _planReason = "realize";
+    private long _lastPlanLogMs;
+    private ScrollViewer? _mosaicScrollViewer;
+    private ScrollView? _mosaicScrollView;
+    private readonly ThumbLoadQueue _thumbQueue = new(ThumbScheduler.ConcurrencyCap(Environment.ProcessorCount));
+    private readonly ThumbMemoryCache<ImageSource> _thumbMemory = new(256);
+    private int _previewEpoch;
+    private CancellationTokenSource? _previewCts;
+    private readonly Dictionary<string, CancellationTokenSource> _thumbJobs = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _thumbSkipped = new(StringComparer.Ordinal);
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
-    private readonly Dictionary<string, WeakReference<BitmapImage>> _tileBitmapCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _suppressBrowseChrome;
     private bool _suppressMosaicSelection;
     private VirtualKey _mosaicArrow;
@@ -98,6 +109,22 @@ public sealed partial class LibraryPage : Page
         };
         Loaded += async (_, _) =>
         {
+            // NavigationCacheMode keeps this instance. Loaded still runs when the
+            // page re-enters the tree after Settings. Do not rebuild the preview
+            // or the overlay still on that return.
+            if (_shellReady)
+            {
+                ViewModel.MosaicReset = OnMosaicReset;
+                ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+                HookOverlayGallery();
+                TryHookMosaicScroll();
+                LogLibraryShow(pageReused: true);
+                _thumbsMayUpgrade = true;
+                ScheduleThumbPlan("return");
+                return;
+            }
+
+            _shellReady = true;
             _suppressBrowseChrome = true;
             SyncBrowseChromeFromViewModel();
             _suppressBrowseChrome = false;
@@ -116,12 +143,14 @@ public sealed partial class LibraryPage : Page
             GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
             RefreshRealizedTiles();
             HookFolderTreeExpansion();
+            TryHookMosaicScroll();
+            LogLibraryShow(pageReused: false);
             if (ViewModel.Assets.Count > 0)
             {
                 DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                 {
                     _thumbsMayUpgrade = true;
-                    ScheduleViewportUpgrade();
+                    ScheduleThumbPlan("library-show");
                 });
             }
         };
@@ -205,41 +234,32 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    public static BitmapImage? FileToFullImage(string? path)
+    private static WriteableBitmap? BgraBitmap(byte[] bgra, int width, int height)
     {
-        if (string.IsNullOrEmpty(path))
+        if (width < 1 || height < 1 || bgra.Length < width * height * 4)
         {
             return null;
         }
 
-        try
+        var bitmap = new WriteableBitmap(width, height);
+        using (var stream = bitmap.PixelBuffer.AsStream())
         {
-            if (GalleryMedia.IsRemoteUri(path))
-            {
-                return new BitmapImage { UriSource = new Uri(path, UriKind.Absolute) };
-            }
-
-            if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
-            {
-                return null;
-            }
-
-            // EXR / HDR / TGA / Clip / PSD / JXL: Palace's decoded large preview.
-            var shown = AppServices.Thumbnails is { } thumbs ? thumbs.DisplayPathFor(path) : path;
-            if (shown is null)
-            {
-                return null;
-            }
-
-            return new BitmapImage
-            {
-                UriSource = new Uri(shown, UriKind.Absolute)
-            };
+            stream.Write(bgra, 0, width * height * 4);
         }
-        catch
+
+        bitmap.Invalidate();
+        return bitmap;
+    }
+
+    /// <summary>EXR / HDR / TGA / Clip / PSD / JXL display the cached JPEG, not the original.</summary>
+    private static string? PathForPixelDecode(string? path)
+    {
+        if (string.IsNullOrEmpty(path) || GalleryMedia.IsRemoteUri(path))
         {
             return null;
         }
+
+        return AppServices.Thumbnails is { } thumbs ? thumbs.DisplayPathFor(path) : path;
     }
 
     private void TreFolders_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
@@ -1116,7 +1136,14 @@ public sealed partial class LibraryPage : Page
 
         _mosaicGeneration++;
         _thumbsMayUpgrade = false;
-        Interlocked.Increment(ref _thumbUpgradeEpoch);
+        _thumbSkipped.Clear();
+        foreach (var cts in _thumbJobs.Values)
+        {
+            cts.Cancel();
+        }
+
+        _thumbJobs.Clear();
+        _thumbQueue.Reset();
         _realizedTiles.Clear();
         InvalidateMosaicLayout();
     }
@@ -1145,7 +1172,7 @@ public sealed partial class LibraryPage : Page
 
             RefreshRealizedTiles();
             _thumbsMayUpgrade = true;
-            ScheduleViewportUpgrade();
+            ScheduleThumbPlan("chunk");
         });
     }
 
@@ -1218,216 +1245,462 @@ public sealed partial class LibraryPage : Page
         }
 
         _realizedTiles[image] = item;
-        if (item.ThumbImage is null
-            && !string.IsNullOrEmpty(item.ThumbPath)
-            && TryGetCachedTileBitmap(item.ThumbPath, out var cached))
+        if (item.ThumbImage is not null)
         {
-            item.ThumbImage = cached;
-            item.ThumbLoadStarted = true;
-            ScheduleViewportUpgrade();
+            _thumbQueue.MarkSatisfied(item.Id);
             return;
         }
 
         // Never start StorageFile / shell-thumb work during ItemsRepeater Measure
         // (Tag bind → OnTileTagChanged). GetFileFromPathAsync pumps the STA and
         // WinUI FailFastWithStowedExceptions (0xc000027b) — see dump PID 155568.
-        var pending = item;
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-        {
-            _ = LoadTileThumbAsync(pending);
-        });
-        ScheduleViewportUpgrade();
+        // The queue runs later, off this measure pass, in viewport order.
+        ScheduleThumbPlan("realize");
     }
 
-    private void ScheduleViewportUpgrade()
+    private void ScheduleThumbPlan(string reason)
     {
-        if (!_thumbsMayUpgrade)
+        if (!_thumbsMayUpgrade && reason is not ("return" or "library-show"))
         {
             return;
         }
 
-        var token = Interlocked.Increment(ref _upgradeScheduled);
+        _planReason = reason;
+        if (_planQueued)
+        {
+            return;
+        }
+
+        _planQueued = true;
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
-            if (token != _upgradeScheduled || !_thumbsMayUpgrade)
+            _planQueued = false;
+            if (!_thumbsMayUpgrade && _planReason is not ("return" or "library-show"))
             {
                 return;
             }
 
-            _ = UpgradeThumbsAsync();
+            ApplyThumbPlan(_planReason);
         });
     }
 
-    private async Task LoadTileThumbAsync(AssetItem item)
+    private void ApplyThumbPlan(string reason)
     {
-        if (!GalleryMedia.ShouldLoadTileThumb(
-                item.IsOrphan,
-                item.ThumbLoadStarted,
-                item.ThumbImage is not null,
-                item.ThumbPath,
-                item.ContentHash))
+        if (!_thumbsMayUpgrade && reason != "return")
         {
+            return;
+        }
+
+        TryHookMosaicScroll();
+        var width = GrdAssets.ActualWidth;
+        if (width < 1 || ViewModel.Assets.Count == 0)
+        {
+            return;
+        }
+
+        var scale = RasterScale();
+        var viewport = CurrentThumbViewport();
+        var specs = new (bool IsHeader, double Aspect)[ViewModel.Assets.Count];
+        for (var i = 0; i < ViewModel.Assets.Count; i++)
+        {
+            var asset = ViewModel.Assets[i];
+            specs[i] = (asset.IsFolderHeader, asset.AspectRatio);
+        }
+
+        var slots = MosaicRows.Layout(specs, width, ViewModel.MosaicRowHeight, 8, GalleryMedia.FolderHeaderHeight);
+        var tiles = new List<ThumbTile>();
+        var cacheHits = 0;
+        var count = Math.Min(ViewModel.Assets.Count, slots.Count);
+        for (var i = 0; i < count; i++)
+        {
+            var item = ViewModel.Assets[i];
+            if (item.IsFolderHeader || string.IsNullOrEmpty(item.Id) || _thumbSkipped.Contains(item.Id))
+            {
+                continue;
+            }
+
+            if (item.ThumbImage is not null)
+            {
+                _thumbQueue.MarkSatisfied(item.Id);
+                continue;
+            }
+
+            var slot = slots[i];
+            var (decodeWidth, decodeHeight) = ThumbScheduler.DecodePixels(slot.Width, slot.Height, scale);
+            var cacheKey = ThumbMemoryCache<ImageSource>.KeyFor(item.ThumbPath, decodeWidth, decodeHeight);
+            if (!string.IsNullOrEmpty(cacheKey) && _thumbMemory.TryGet(cacheKey, out var cached) && cached is not null)
+            {
+                item.ThumbImage = cached;
+                item.ThumbLoadStarted = true;
+                _thumbQueue.MarkSatisfied(item.Id);
+                cacheHits++;
+                continue;
+            }
+
+            // ThumbLoadStarted is true while a job is in flight. Keep the tile in
+            // the wanted set so a later plan does not cancel it. The queue will
+            // not start a second copy.
+            if (!GalleryMedia.ShouldLoadTileThumb(
+                    item.IsOrphan,
+                    alreadyStarted: false,
+                    item.ThumbImage is not null,
+                    item.ThumbPath,
+                    item.ContentHash))
+            {
+                continue;
+            }
+
+            tiles.Add(new ThumbTile(item.Id, slot.X, slot.Y, slot.Width, slot.Height));
+        }
+
+        var plan = _thumbQueue.Plan(tiles, viewport, ThumbScheduler.PrefetchBandDip);
+        foreach (var id in plan.Cancel)
+        {
+            CancelThumbJob(id);
+        }
+
+        foreach (var id in plan.Start)
+        {
+            var item = FindAssetById(id);
+            if (item is null)
+            {
+                _thumbQueue.Abandon(id);
+                continue;
+            }
+
+            var index = ViewModel.Assets.IndexOf(item);
+            var slot = (uint)index < (uint)slots.Count
+                ? slots[index]
+                : new MosaicSlot(0, 0, ViewModel.MosaicRowHeight, ViewModel.MosaicRowHeight);
+            StartThumbJob(item, slot, scale);
+        }
+
+        var now = Environment.TickCount64;
+        var interesting = plan.Start.Count > 0 || plan.Cancel.Count > 0 || cacheHits > 0 || reason is "return" or "scroll";
+        if (interesting && (reason != "scroll" || now - _lastPlanLogMs >= 200))
+        {
+            _lastPlanLogMs = now;
+            ThumbTimingLog.Write(ThumbTimingLog.PlanLine(
+                reason,
+                plan.InFlight,
+                plan.Cap,
+                plan.Start.Count,
+                plan.Cancel.Count,
+                cacheHits,
+                Environment.CurrentManagedThreadId));
+        }
+    }
+
+    private void StartThumbJob(AssetItem item, MosaicSlot slot, double scale)
+    {
+        if (_thumbJobs.ContainsKey(item.Id))
+        {
+            return;
+        }
+
+        var (decodeWidth, decodeHeight) = ThumbScheduler.DecodePixels(slot.Width, slot.Height, scale);
+        var cacheKey = ThumbMemoryCache<ImageSource>.KeyFor(item.ThumbPath, decodeWidth, decodeHeight);
+        if (!string.IsNullOrEmpty(cacheKey) && _thumbMemory.TryGet(cacheKey, out var cached) && cached is not null)
+        {
+            item.ThumbImage = cached;
+            item.ThumbLoadStarted = true;
+            _thumbQueue.Complete(item.Id);
+            var thread = Environment.CurrentManagedThreadId;
+            ThumbTimingLog.Write(ThumbTimingLog.TileLine(
+                "hit",
+                "hit",
+                0,
+                decodeWidth,
+                decodeHeight,
+                _thumbQueue.InFlight,
+                _thumbQueue.Cap,
+                thread,
+                thread,
+                thread));
+            ScheduleThumbPlan("cache-hit");
             return;
         }
 
         item.ThumbLoadStarted = true;
-        await TileDecodeGate.WaitAsync();
+        var cts = new CancellationTokenSource();
+        _thumbJobs[item.Id] = cts;
+        var filePath = item.Path;
+        var hash = item.ContentHash;
+        var kind = item.Kind;
+        var orphan = item.IsOrphan;
+        var online = item.IsOnlineOnly || CloudFile.IsOnlineOnly(item.Path);
+        var thumbPath = item.ThumbPath;
+        var job = LoadThumbJobAsync(item, cts, filePath, hash, kind, orphan, online, thumbPath, decodeWidth, decodeHeight);
+        _ = job.ContinueWith(
+            static (_, state) => ((CancellationTokenSource)state!).Dispose(),
+            cts,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private async Task LoadThumbJobAsync(
+        AssetItem item,
+        CancellationTokenSource cts,
+        string filePath,
+        string? hash,
+        AssetKind kind,
+        bool orphan,
+        bool online,
+        string? thumbPath,
+        int decodeWidth,
+        int decodeHeight)
+    {
+        var startThread = Environment.CurrentManagedThreadId;
+        var disk = string.IsNullOrEmpty(thumbPath) ? "generate" : "hit";
+        var decodeMs = 0.0;
+        var decodeThread = startThread;
+        ThumbDecodeOutcome outcome;
         try
         {
-            if (item.ThumbImage is not null)
+            outcome = await ThumbDecodeRun.RunAsync(cts.Token, async token =>
+        {
+            var path = thumbPath;
+            var sw = Stopwatch.StartNew();
+            if (GalleryMedia.ShouldRequestMosaicThumb(orphan, filePath, hash, path, online))
             {
-                return;
+                disk = "generate";
+                var generated = await AppServices.Thumbnails
+                    .EnsureThumbnailAsync(filePath, hash, kind, cancellationToken: token)
+                    .ConfigureAwait(false);
+                path = generated?.Path ?? path;
             }
 
-            var path = item.ThumbPath;
-            if (GalleryMedia.ShouldRequestMosaicThumb(
-                    item.IsOrphan,
-                    item.Path,
-                    item.ContentHash,
-                    path,
-                    item.IsOnlineOnly || CloudFile.IsOnlineOnly(item.Path)))
-            {
-                var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
-                path = generated?.Path;
-                if (!string.IsNullOrEmpty(path))
-                {
-                    item.ThumbPath = path;
-                }
-            }
-
+            token.ThrowIfCancellationRequested();
             if (string.IsNullOrEmpty(path))
             {
-                return;
-            }
-
-            await UiDispatch.RunAsync(() =>
-            {
-                if (item.ThumbImage is not null)
+                await UiDispatch.RunAsync(() =>
                 {
-                    return;
-                }
-
-                item.ThumbImage = CreateTileBitmap(path);
-            });
-        }
-        catch
-        {
-            item.ThumbLoadStarted = false;
-        }
-        finally
-        {
-            TileDecodeGate.Release();
-        }
-    }
-
-    private bool TryGetCachedTileBitmap(string path, out BitmapImage? bitmap)
-    {
-        if (_tileBitmapCache.TryGetValue(path, out var weak) && weak.TryGetTarget(out var cached))
-        {
-            bitmap = cached;
-            return true;
-        }
-
-        bitmap = null;
-        return false;
-    }
-
-    private BitmapImage? CreateTileBitmap(string? path)
-    {
-        if (string.IsNullOrEmpty(path))
-        {
-            return null;
-        }
-
-        if (TryGetCachedTileBitmap(path, out var cached))
-        {
-            return cached;
-        }
-
-        try
-        {
-            var rowHeight = ViewModel.MosaicRowHeight;
-            var scale = 1.0;
-            try
-            {
-                scale = XamlRoot?.RasterizationScale ?? 1.0;
-            }
-            catch
-            {
-                // XamlRoot is unavailable during early bind.
-            }
-
-            var decode = (int)Math.Clamp(Math.Round(rowHeight * Math.Min(Math.Max(scale, 1.0), 2.0)), 96, 560);
-            var created = new BitmapImage
-            {
-                DecodePixelHeight = decode,
-                UriSource = new Uri(path, UriKind.Absolute)
-            };
-            _tileBitmapCache[path] = new WeakReference<BitmapImage>(created);
-            return created;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private async Task UpgradeThumbsAsync()
-    {
-        if (!_thumbsMayUpgrade)
-        {
-            return;
-        }
-
-        var epoch = Interlocked.Increment(ref _thumbUpgradeEpoch);
-        foreach (var item in _realizedTiles.Values.Distinct().ToList())
-        {
-            if (epoch != _thumbUpgradeEpoch)
-            {
-                return;
-            }
-
-            if (item.IsFolderHeader
-                || !GalleryMedia.ShouldUpgradeThumb(
-                    _thumbsMayUpgrade,
-                    CloudFile.IsOnlineOnly(item.Path),
-                    item.IsOrphan,
-                    item.Path,
-                    item.ContentHash,
-                    item.ThumbImage is not null,
-                    item.ThumbPath))
-            {
-                continue;
-            }
-
-            var info = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
-            if (epoch != _thumbUpgradeEpoch || info is null)
-            {
-                continue;
-            }
-
-            var path = info.Value.Path;
-            await UiDispatch.RunAsync(() =>
-            {
-                if (epoch != _thumbUpgradeEpoch)
-                {
-                    return;
-                }
-
-                if (!GalleryMedia.ShouldReplaceTileBitmap(item.ThumbPath, path, item.ThumbImage is not null))
-                {
-                    if (string.IsNullOrEmpty(item.ThumbPath))
+                    if (OwnsThumbJob(item.Id, cts))
                     {
-                        item.ThumbPath = path;
+                        _thumbSkipped.Add(item.Id);
+                    }
+                });
+                return;
+            }
+
+            var shown = PathForPixelDecode(path) ?? path;
+            var decoded = await AppServices.Thumbnails
+                .DecodeCappedBgraAsync(shown, decodeWidth, decodeHeight, token)
+                .ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            decodeMs = sw.Elapsed.TotalMilliseconds;
+            decodeThread = Environment.CurrentManagedThreadId;
+            if (decoded is null)
+            {
+                await UiDispatch.RunAsync(() =>
+                {
+                    if (OwnsThumbJob(item.Id, cts))
+                    {
+                        _thumbSkipped.Add(item.Id);
+                    }
+                });
+                return;
+            }
+
+            var pixels = decoded.Value;
+            await UiDispatch.RunAsync(() =>
+            {
+                if (!OwnsThumbJob(item.Id, cts) || token.IsCancellationRequested || item.ThumbImage is not null)
+                {
+                    if (item.ThumbImage is not null && OwnsThumbJob(item.Id, cts))
+                    {
+                        _thumbJobs.Remove(item.Id);
+                        _thumbQueue.Complete(item.Id);
                     }
 
                     return;
                 }
 
-                item.ThumbPath = path;
-                item.ThumbImage = CreateTileBitmap(path);
+                var bitmap = BgraBitmap(pixels.Bgra, pixels.Width, pixels.Height);
+                if (bitmap is null)
+                {
+                    _thumbSkipped.Add(item.Id);
+                    return;
+                }
+
+                item.ThumbPath = shown;
+                _thumbMemory.Set(ThumbMemoryCache<ImageSource>.KeyFor(shown, decodeWidth, decodeHeight), bitmap);
+                item.ThumbImage = bitmap;
+                item.ThumbLoadStarted = true;
+                _thumbJobs.Remove(item.Id);
+                _thumbQueue.Complete(item.Id);
+                ThumbTimingLog.Write(ThumbTimingLog.TileLine(
+                    "decode",
+                    disk,
+                    decodeMs,
+                    pixels.Width,
+                    pixels.Height,
+                    _thumbQueue.InFlight,
+                    _thumbQueue.Cap,
+                    startThread,
+                    decodeThread,
+                    Environment.CurrentManagedThreadId));
+            });
+            }).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            outcome = new ThumbDecodeOutcome(cts.IsCancellationRequested, 0);
+            await UiDispatch.RunAsync(() =>
+            {
+                if (OwnsThumbJob(item.Id, cts))
+                {
+                    _thumbSkipped.Add(item.Id);
+                    item.ThumbLoadStarted = false;
+                }
             });
         }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (OwnsThumbJob(item.Id, cts))
+            {
+                _thumbJobs.Remove(item.Id);
+                if (item.ThumbImage is null)
+                {
+                    _thumbQueue.Abandon(item.Id);
+                    item.ThumbLoadStarted = false;
+                    if (outcome.Cancelled)
+                    {
+                        ThumbTimingLog.Write(ThumbTimingLog.TileLine(
+                            "cancel",
+                            disk,
+                            outcome.Milliseconds,
+                            decodeWidth,
+                            decodeHeight,
+                            _thumbQueue.InFlight,
+                            _thumbQueue.Cap,
+                            startThread,
+                            decodeThread,
+                            Environment.CurrentManagedThreadId));
+                    }
+                }
+            }
+
+            ScheduleThumbPlan("job-done");
+        });
+    }
+
+    private bool OwnsThumbJob(string id, CancellationTokenSource cts) =>
+        _thumbJobs.TryGetValue(id, out var current) && ReferenceEquals(current, cts);
+
+    private void CancelThumbJob(string id)
+    {
+        // Signal the decode and keep the queue slot until LoadThumbJobAsync returns.
+        if (_thumbJobs.TryGetValue(id, out var cts))
+        {
+            cts.Cancel();
+        }
+    }
+
+    private AssetItem? FindAssetById(string id)
+    {
+        foreach (var asset in ViewModel.Assets)
+        {
+            if (asset.Id == id)
+            {
+                return asset;
+            }
+        }
+
+        return null;
+    }
+
+    private double RasterScale()
+    {
+        try
+        {
+            var scale = XamlRoot?.RasterizationScale ?? 1.0;
+            return scale < 1 ? 1 : scale;
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    private ThumbRect CurrentThumbViewport()
+    {
+        if (_mosaicScrollViewer is not null)
+        {
+            return new ThumbRect(
+                0,
+                _mosaicScrollViewer.VerticalOffset,
+                Math.Max(1, _mosaicScrollViewer.ViewportWidth),
+                Math.Max(1, _mosaicScrollViewer.ViewportHeight));
+        }
+
+        if (_mosaicScrollView is not null)
+        {
+            return new ThumbRect(
+                0,
+                _mosaicScrollView.VerticalOffset,
+                Math.Max(1, _mosaicScrollView.ViewportWidth),
+                Math.Max(1, _mosaicScrollView.ViewportHeight));
+        }
+
+        return new ThumbRect(0, 0, Math.Max(1, GrdAssets.ActualWidth), Math.Max(1, GrdAssets.ActualHeight));
+    }
+
+    private void TryHookMosaicScroll()
+    {
+        if (_scrollHooked)
+        {
+            return;
+        }
+
+        _mosaicScrollViewer = FindDescendant<ScrollViewer>(GrdAssets);
+        if (_mosaicScrollViewer is not null)
+        {
+            _mosaicScrollViewer.ViewChanged += (_, _) => ScheduleThumbPlan("scroll");
+            _scrollHooked = true;
+            return;
+        }
+
+        _mosaicScrollView = FindDescendant<ScrollView>(GrdAssets);
+        if (_mosaicScrollView is not null)
+        {
+            _mosaicScrollView.ViewChanged += (_, _) => ScheduleThumbPlan("scroll");
+            _scrollHooked = true;
+        }
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T found)
+            {
+                return found;
+            }
+
+            var nested = FindDescendant<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private void LogLibraryShow(bool pageReused)
+    {
+        ThumbTimingLog.Write(ThumbTimingLog.LibraryShowLine(
+            pageReused,
+            previewKept: pageReused,
+            _thumbQueue.InFlight,
+            _thumbQueue.Cap,
+            _thumbMemory.Count,
+            Environment.CurrentManagedThreadId));
     }
 
     private void HookOverlayGallery()
@@ -1459,11 +1732,108 @@ public sealed partial class LibraryPage : Page
         }
     }
 
+    private async Task AssignPreviewAsync(
+        int epoch,
+        CancellationToken token,
+        string? decodePath,
+        int decodeWidth,
+        int decodeHeight,
+        double scale,
+        string source,
+        int longEdge)
+    {
+        CappedBgra? decoded = null;
+        var decodeThread = Environment.CurrentManagedThreadId;
+        var outcome = await ThumbDecodeRun.RunAsync(token, async ct =>
+        {
+            if (string.IsNullOrEmpty(decodePath) || AppServices.Thumbnails is null)
+            {
+                return;
+            }
+
+            decoded = await AppServices.Thumbnails
+                .DecodeCappedBgraAsync(decodePath, decodeWidth, decodeHeight, ct)
+                .ConfigureAwait(false);
+            decodeThread = Environment.CurrentManagedThreadId;
+        }).ConfigureAwait(false);
+
+        if (outcome.Cancelled || epoch != Volatile.Read(ref _previewEpoch))
+        {
+            if (outcome.Cancelled)
+            {
+                ThumbTimingLog.Write(ThumbTimingLog.PreviewLine(
+                    capped: true,
+                    decodeWidth,
+                    decodeHeight,
+                    scale,
+                    source,
+                    longEdge,
+                    outcome.Milliseconds,
+                    decodeThread,
+                    decodeThread));
+            }
+
+            return;
+        }
+
+        var frame = decoded;
+        var milliseconds = frame?.Milliseconds ?? outcome.Milliseconds;
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch != _previewEpoch)
+            {
+                return;
+            }
+
+            ImgPreview.Source = frame is { } pixels
+                ? BgraBitmap(pixels.Bgra, pixels.Width, pixels.Height)
+                : null;
+            ThumbTimingLog.Write(ThumbTimingLog.PreviewLine(
+                capped: true,
+                frame?.Width ?? decodeWidth,
+                frame?.Height ?? decodeHeight,
+                scale,
+                source,
+                longEdge,
+                milliseconds,
+                decodeThread,
+                Environment.CurrentManagedThreadId));
+        });
+    }
+
     private async void UpdatePreview()
     {
+        var epoch = Interlocked.Increment(ref _previewEpoch);
+        _previewCts?.Cancel();
+        _previewCts = new CancellationTokenSource();
+        var previewToken = _previewCts.Token;
         if (ViewModel.IsImagePreview && ViewModel.PreviewPath is not null)
         {
-            ImgPreview.Source = FileToFullImage(ViewModel.PreviewPath);
+            var scale = RasterScale();
+            var dipWidth = ImgPreview.ActualWidth > 1 ? ImgPreview.ActualWidth : 340;
+            var dipHeight = ImgPreview.ActualHeight > 1 ? ImgPreview.ActualHeight : 220;
+            var (decodeWidth, decodeHeight) = ThumbScheduler.DecodePixels(dipWidth, dipHeight, scale);
+            var asset = ViewModel.SelectedAsset;
+            var sameFile = asset is not null
+                && string.Equals(asset.Path, ViewModel.PreviewPath, StringComparison.OrdinalIgnoreCase);
+            var longEdge = sameFile ? ThumbScheduler.LongEdge(asset!.Width, asset.Height) : 0;
+            var shown = ThumbScheduler.PreviewSource(
+                ViewModel.PreviewPath,
+                sameFile ? asset!.ThumbPath : null,
+                longEdge,
+                Math.Max(decodeWidth, decodeHeight));
+            if (!string.IsNullOrEmpty(shown)
+                && !string.Equals(shown, ViewModel.PreviewPath, StringComparison.OrdinalIgnoreCase)
+                && (GalleryMedia.IsRemoteUri(shown) || !CloudFile.Exists(shown) || CloudFile.IsOnlineOnly(shown)))
+            {
+                shown = ViewModel.PreviewPath;
+            }
+
+            var source = string.Equals(shown, ViewModel.PreviewPath, StringComparison.OrdinalIgnoreCase)
+                ? "original"
+                : "disk-thumb";
+            var decodePath = PathForPixelDecode(shown);
+            _ = AssignPreviewAsync(epoch, previewToken, decodePath, decodeWidth, decodeHeight, scale, source, longEdge);
         }
         else
         {

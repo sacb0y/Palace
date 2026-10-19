@@ -95,7 +95,9 @@ public partial class App : Application
         ErrorLog? log = null;
         try
         {
-            log = new ErrorLog(Path.Combine(Windows.Storage.ApplicationData.Current.LocalFolder.Path, ErrorLog.FileName));
+            var local = Windows.Storage.ApplicationData.Current.LocalFolder.Path;
+            log = new ErrorLog(Path.Combine(local, ErrorLog.FileName));
+            ThumbTimingLog.Configure(Path.Combine(local, ThumbTimingLog.FileName));
         }
         catch
         {

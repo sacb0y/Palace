@@ -80,6 +80,9 @@
     <Compile Include="..\Helpers\TagSelection.cs" Link="TagSelection.cs" />
     <Compile Include="..\Helpers\TagSiblings.cs" Link="TagSiblings.cs" />
     <Compile Include="..\Helpers\ThumbFileName.cs" Link="ThumbFileName.cs" />
+    <Compile Include="..\Helpers\ThumbMemoryCache.cs" Link="ThumbMemoryCache.cs" />
+    <Compile Include="..\Helpers\ThumbScheduler.cs" Link="ThumbScheduler.cs" />
+    <Compile Include="..\Helpers\ThumbTimingLog.cs" Link="ThumbTimingLog.cs" />
     <Compile Include="..\Helpers\VideoMosaicThumb.cs" Link="VideoMosaicThumb.cs" />
     <Compile Include="..\Helpers\MediaCache.cs" Link="MediaCache.cs" />
     <Compile Include="..\Helpers\CatalogStore.cs" Link="CatalogStore.cs" />

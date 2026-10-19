@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Palace.Helpers;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -9,6 +10,9 @@ namespace Palace.Services;
 
 /// <param name="IsPlaceholder">The content could not be decoded; the cached JPEG is the placeholder tile.</param>
 public readonly record struct ThumbnailInfo(string Path, int Width, int Height, bool IsPlaceholder = false);
+
+/// <summary>BGRA pixels already scaled to the preview or tile box. Produced off the UI thread.</summary>
+public readonly record struct CappedBgra(byte[] Bgra, int Width, int Height, double Milliseconds);
 
 public sealed class ThumbnailService
 {
@@ -158,8 +162,14 @@ public sealed class ThumbnailService
     /// </summary>
     /// <param name="requireKnownStatus">Scan: regenerate a current image thumbnail whose placeholder status
     /// is unknown (cached before <see cref="ThumbStatus"/>), so the catalog's undecodable flag is accurate.</param>
-    public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind, bool requireKnownStatus = false)
+    public async Task<ThumbnailInfo?> EnsureThumbnailAsync(
+        string filePath,
+        string? hash,
+        Models.AssetKind kind,
+        bool requireKnownStatus = false,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrEmpty(hash))
         {
             return null;
@@ -186,7 +196,8 @@ public sealed class ThumbnailService
 
         if (kind == Models.AssetKind.Image)
         {
-            var custom = await TryCustomStillThumbAsync(filePath, dest, hash).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var custom = await TryCustomStillThumbAsync(filePath, dest, hash, cancellationToken).ConfigureAwait(false);
             if (custom is not null)
             {
                 return custom;
@@ -195,9 +206,11 @@ public sealed class ThumbnailService
 
         if (GalleryMedia.UsesShellThumbnail(kind, filePath))
         {
-            var shell = await EnsureShellThumbnailAsync(filePath, hash).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var shell = await EnsureShellThumbnailAsync(filePath, hash, cancellationToken).ConfigureAwait(false);
             if (shell is null && kind == Models.AssetKind.Video && FfmpegPoster.IsAvailable)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 // No system codec (MKV H.264 4:4:4, WebM VP9/AV1 …): bundled ffmpeg.
                 var tmp = dest + ".ff.jpg";
                 if (await FfmpegPoster.TryExtractAsync(filePath, tmp, MaxSide).ConfigureAwait(false))
@@ -225,14 +238,70 @@ public sealed class ThumbnailService
 
         try
         {
-            var file = await StorageFile.GetFileFromPathAsync(filePath).AsTask().ConfigureAwait(false);
-            using var stream = await file.OpenAsync(FileAccessMode.Read).AsTask().ConfigureAwait(false);
-            return await EncodeScaledJpegAsync(stream, dest, hash).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var file = await StorageFile.GetFileFromPathAsync(filePath).AsTask(cancellationToken).ConfigureAwait(false);
+            using var stream = await file.OpenAsync(FileAccessMode.Read).AsTask(cancellationToken).ConfigureAwait(false);
+            return await EncodeScaledJpegAsync(stream, dest, hash, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
             return ReadCached(hash);
         }
+    }
+
+    /// <summary>
+    /// Decode <paramref name="path"/> to BGRA already fitted inside the box.
+    /// Runs off the UI thread. Does not point a <c>BitmapImage</c> at the file.
+    /// </summary>
+    public async Task<CappedBgra?> DecodeCappedBgraAsync(string? path, int boxWidth, int boxHeight, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.IsNullOrEmpty(path) || GalleryMedia.IsRemoteUri(path))
+        {
+            return null;
+        }
+
+        if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
+        {
+            return null;
+        }
+
+        var sw = Stopwatch.StartNew();
+        var file = await StorageFile.GetFileFromPathAsync(path).AsTask(cancellationToken).ConfigureAwait(false);
+        using var stream = await file.OpenAsync(FileAccessMode.Read).AsTask(cancellationToken).ConfigureAwait(false);
+        var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellationToken).ConfigureAwait(false);
+        var sourceWidth = (int)decoder.PixelWidth;
+        var sourceHeight = (int)decoder.PixelHeight;
+        if (sourceWidth <= 0 || sourceHeight <= 0)
+        {
+            return null;
+        }
+
+        var (width, height) = ThumbScheduler.FitDecodeSize(sourceWidth, sourceHeight, boxWidth, boxHeight);
+        var transform = new BitmapTransform
+        {
+            ScaledWidth = (uint)width,
+            ScaledHeight = (uint)height,
+            InterpolationMode = BitmapInterpolationMode.Fant
+        };
+        var pixels = await decoder.GetPixelDataAsync(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Premultiplied,
+            transform,
+            ExifOrientationMode.RespectExifOrientation,
+            ColorManagementMode.ColorManageToSRgb).AsTask(cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        var bgra = pixels.DetachPixelData();
+        if (bgra.Length < width * height * 4)
+        {
+            return null;
+        }
+
+        return new CappedBgra(bgra, width, height, sw.Elapsed.TotalMilliseconds);
     }
 
     public async Task<ThumbnailInfo?> CacheJpegAsync(string hash, Stream jpegOrImage, string? suffix = null)
@@ -277,7 +346,7 @@ public sealed class ThumbnailService
     /// Windows shell / provider poster. Local video / AVIF / HEIC / PSD
     /// only — never the online-only path (HEIF/AVIF handlers open the original).
     /// </summary>
-    private async Task<ThumbnailInfo?> EnsureShellThumbnailAsync(string filePath, string hash)
+    private async Task<ThumbnailInfo?> EnsureShellThumbnailAsync(string filePath, string hash, CancellationToken cancellationToken)
     {
         var cached = ReadCached(hash);
         if (cached is not null)
@@ -287,15 +356,20 @@ public sealed class ThumbnailService
 
         try
         {
-            var file = await StorageFile.GetFileFromPathAsync(filePath).AsTask().ConfigureAwait(false);
-            using var thumb = await file.GetThumbnailAsync(ThumbnailMode.PicturesView, MaxSide).AsTask().ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var file = await StorageFile.GetFileFromPathAsync(filePath).AsTask(cancellationToken).ConfigureAwait(false);
+            using var thumb = await file.GetThumbnailAsync(ThumbnailMode.PicturesView, MaxSide).AsTask(cancellationToken).ConfigureAwait(false);
             if (thumb is null || !GalleryMedia.AcceptsProviderThumbnail(thumb.Type == ThumbnailType.Image))
             {
                 return null;
             }
 
             var dest = PathForHash(hash);
-            return await EncodeScaledJpegAsync(thumb, dest, hash).ConfigureAwait(false);
+            return await EncodeScaledJpegAsync(thumb, dest, hash, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -303,9 +377,15 @@ public sealed class ThumbnailService
         }
     }
 
-    private async Task<ThumbnailInfo?> EncodeScaledJpegAsync(IRandomAccessStream stream, string dest, string hash, int maxSide = MaxSide)
+    private async Task<ThumbnailInfo?> EncodeScaledJpegAsync(
+        IRandomAccessStream stream,
+        string dest,
+        string hash,
+        int maxSide = MaxSide,
+        CancellationToken cancellationToken = default)
     {
-        var decoder = await BitmapDecoder.CreateAsync(stream);
+        cancellationToken.ThrowIfCancellationRequested();
+        var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellationToken).ConfigureAwait(false);
         var width = decoder.PixelWidth;
         var height = decoder.PixelHeight;
         if (width == 0 || height == 0)
@@ -328,14 +408,15 @@ public sealed class ThumbnailService
             BitmapAlphaMode.Premultiplied,
             transform,
             ExifOrientationMode.RespectExifOrientation,
-            ColorManagementMode.ColorManageToSRgb);
+            ColorManagementMode.ColorManageToSRgb).AsTask(cancellationToken).ConfigureAwait(false);
 
-        var folder = await StorageFolder.GetFolderFromPathAsync(_root);
-        var outFile = await folder.CreateFileAsync(Path.GetFileName(dest), CreationCollisionOption.ReplaceExisting);
-        using var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite);
-        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
+        cancellationToken.ThrowIfCancellationRequested();
+        var folder = await StorageFolder.GetFolderFromPathAsync(_root).AsTask(cancellationToken).ConfigureAwait(false);
+        var outFile = await folder.CreateFileAsync(Path.GetFileName(dest), CreationCollisionOption.ReplaceExisting).AsTask(cancellationToken).ConfigureAwait(false);
+        using var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite).AsTask(cancellationToken).ConfigureAwait(false);
+        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream).AsTask(cancellationToken).ConfigureAwait(false);
         encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, tw, th, 96, 96, pixels.DetachPixelData());
-        await encoder.FlushAsync();
+        await encoder.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
         ThumbStatus.Write(dest, isPlaceholder: false);
         TouchLastAccess(dest);
         EnforceCacheBudget();
@@ -401,7 +482,7 @@ public sealed class ThumbnailService
     /// clipped red), and a placeholder tile for files that are not images.
     /// Returns null to fall through to the WinRT / shell thumbnail.
     /// </summary>
-    private async Task<ThumbnailInfo?> TryCustomStillThumbAsync(string filePath, string dest, string hash)
+    private async Task<ThumbnailInfo?> TryCustomStillThumbAsync(string filePath, string dest, string hash, CancellationToken cancellationToken)
     {
         try
         {
@@ -417,7 +498,7 @@ public sealed class ThumbnailService
             if (StillDecode.IsNotAnImage(head, ext))
             {
                 if (SubstanceShelfFile.IsShelfMetadata(head)
-                    && await TryShelfPreviewThumbAsync(filePath, dest, hash).ConfigureAwait(false) is { } shelf)
+                    && await TryShelfPreviewThumbAsync(filePath, dest, hash, cancellationToken).ConfigureAwait(false) is { } shelf)
                 {
                     return shelf;
                 }
@@ -430,7 +511,8 @@ public sealed class ThumbnailService
 
             if (StillDecode.HandlesPath(filePath))
             {
-                var large = await Task.Run(() => StillDecode.TryDecodeFile(filePath, LargePreviewMaxSide)).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var large = await Task.Run(() => StillDecode.TryDecodeFile(filePath, LargePreviewMaxSide), cancellationToken).ConfigureAwait(false);
                 if (large is null)
                 {
                     var ph = StillDecode.Placeholder();
@@ -448,11 +530,11 @@ public sealed class ThumbnailService
                     var lgPath = LargePreviewPathFor(filePath);
                     if (lgPath is not null)
                     {
-                        await EncodeScaledJpegAsync(ras, lgPath, hash, LargePreviewMaxSide).ConfigureAwait(false);
+                        await EncodeScaledJpegAsync(ras, lgPath, hash, LargePreviewMaxSide, cancellationToken).ConfigureAwait(false);
                         ras.Seek(0);
                     }
 
-                    return await EncodeScaledJpegAsync(ras, dest, hash).ConfigureAwait(false);
+                    return await EncodeScaledJpegAsync(ras, dest, hash, cancellationToken: cancellationToken).ConfigureAwait(false);
                 }
 
                 await EncodeBgraJpegAsync(large.Bgra!, large.Width, large.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
@@ -466,7 +548,8 @@ public sealed class ThumbnailService
 
             if (PathSafe.IsJxl(filePath))
             {
-                var jxl = await Task.Run(() => JxlDecode.TryDecodeFile(filePath)).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                var jxl = await Task.Run(() => JxlDecode.TryDecodeFile(filePath), cancellationToken).ConfigureAwait(false);
                 if (jxl is not null)
                 {
                     var lgJ = await Task.Run(() => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide)).ConfigureAwait(false);
@@ -481,7 +564,7 @@ public sealed class ThumbnailService
             var probe = HdrFile.ProbePath(filePath);
             if (probe.IsHdr && probe.Kind != HdrKind.UltraHdrJpeg)
             {
-                var frame = await HdrWicDecode.TryLoadAsync(filePath, probe, MaxSide, MaxSide, ImageScaling.Fit, CancellationToken.None)
+                var frame = await HdrWicDecode.TryLoadAsync(filePath, probe, MaxSide, MaxSide, ImageScaling.Fit, cancellationToken)
                     .ConfigureAwait(false);
                 if (frame is not null && frame.Width > 0 && frame.Height > 0)
                 {
@@ -490,6 +573,10 @@ public sealed class ThumbnailService
                     return Finish(dest, r.Width, r.Height);
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -503,7 +590,7 @@ public sealed class ThumbnailService
     /// Substance Painter shelf metadata saved under an image name: thumbnail and full view
     /// come from its embedded preview. Null when it has none or the preview won't decode.
     /// </summary>
-    private async Task<ThumbnailInfo?> TryShelfPreviewThumbAsync(string filePath, string dest, string hash)
+    private async Task<ThumbnailInfo?> TryShelfPreviewThumbAsync(string filePath, string dest, string hash, CancellationToken cancellationToken)
     {
         try
         {
@@ -512,7 +599,8 @@ public sealed class ThumbnailService
                 return null;
             }
 
-            var data = await File.ReadAllBytesAsync(filePath).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            var data = await File.ReadAllBytesAsync(filePath, cancellationToken).ConfigureAwait(false);
             var preview = SubstanceShelfFile.TryExtractPreview(data);
             if (preview is null)
             {
@@ -524,11 +612,15 @@ public sealed class ThumbnailService
             ras.Seek(0);
             if (LargePreviewPathFor(filePath) is { } lgPath)
             {
-                await EncodeScaledJpegAsync(ras, lgPath, hash, LargePreviewMaxSide).ConfigureAwait(false);
+                await EncodeScaledJpegAsync(ras, lgPath, hash, LargePreviewMaxSide, cancellationToken).ConfigureAwait(false);
                 ras.Seek(0);
             }
 
-            return await EncodeScaledJpegAsync(ras, dest, hash).ConfigureAwait(false);
+            return await EncodeScaledJpegAsync(ras, dest, hash, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
