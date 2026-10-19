@@ -11,7 +11,7 @@ using Windows.Storage;
 
 namespace Palace.ViewModels;
 
-/// <summary>Library: on-disk organize preview / apply / undo.</summary>
+/// <summary>Library: on-disk organize preview / apply (Undo is the shared FileOp journal).</summary>
 public partial class LibraryViewModel
 {
     [RelayCommand]
@@ -59,27 +59,17 @@ public partial class LibraryViewModel
             BeginBusy("Organizing…");
             try
             {
-                var applied = await _organize.ApplyAsync(OrganizePreview.ToList());
+                var result = await _organize.ApplyAsync(AppServices.CurrentProject.Id, OrganizePreview.ToList());
                 await RefreshQuietAsync();
-                StatusText = $"Moved {applied} files. Last batch is undoable.";
-            }
-            finally
-            {
-                EndBusy();
-            }
-        });
-
-    [RelayCommand]
-    private Task UndoOrganizeAsync() =>
-        ErrorReporter.RunAsync("Undo organize", Notify, async () =>
-        {
-            BeginBusy("Undoing…");
-            try
-            {
-                var count = await _organize.UndoLastAsync();
-                await RefreshQuietAsync();
-                StatusText = count == 0 ? "Nothing to undo." : $"Restored {count} files.";
-                ShowOrganizePanel = false;
+                await RefreshUndoStateAsync();
+                if (result.Ok)
+                {
+                    ShowUndoToastFor(result.Message);
+                }
+                else
+                {
+                    Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                }
             }
             finally
             {

@@ -155,6 +155,9 @@ public sealed class OrganizeBatchItem
     public string? Error { get; set; }
 }
 
+/// <summary>WinUI-free plan row for FileOpService.ApplyOrganizeAsync (one Organize Undo entry).</summary>
+public readonly record struct OrganizeApplyItem(string AssetId, string FileName, string OldPath, string NewPath);
+
 public sealed class Room
 {
     public string Id { get; set; } = "";

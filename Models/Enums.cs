@@ -109,7 +109,9 @@ public enum FileOpKind
     Move,
     CreateFolder,
     RenameFolder,
-    DeleteFolder
+    DeleteFolder,
+    /// <summary>One Organize apply: created folders + file moves in a single Undo entry.</summary>
+    Organize
 }
 
 /// <summary>One step inside a <see cref="FileOpKind"/> batch. Undo replays steps in reverse.</summary>

@@ -100,7 +100,7 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.True(File.Exists(newPath));
         Assert.False(File.Exists(asset.Path));
         Assert.Equal(newPath, (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
-        Assert.Equal("Moved 1 file to Sorted.", result.Message);
+        Assert.Equal("Moved 1 file to \u201cSorted\u201d.", result.Message);
         Assert.True(_suppressed > 0);
 
         var peek = await _ops.PeekUndoAsync(_projectId);
@@ -681,5 +681,37 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.False(undo.Ok);
         Assert.Contains("another project", undo.Message, StringComparison.OrdinalIgnoreCase);
         Assert.True(File.Exists(Path.Combine(dest, "nested-undo.png")));
+    }
+
+    [Fact]
+    public async Task Organize_then_move_share_one_undo_stack_newest_first()
+    {
+        var asset = await AddAssetAsync(_rootA, "shot.png");
+        var organizeDest = Path.Combine(_rootA.Path, "Char", "tag", "shot.png");
+        var organized = await _ops.ApplyOrganizeAsync(_projectId,
+        [
+            new OrganizeApplyItem(asset.Id, asset.FileName, asset.Path, organizeDest)
+        ]);
+        Assert.True(organized.Ok, organized.Message);
+        Assert.True(File.Exists(organizeDest));
+        Assert.True(Directory.Exists(Path.Combine(_rootA.Path, "Char", "tag")));
+        Assert.Equal(FileOpKind.Organize, (await _ops.PeekUndoAsync(_projectId))!.Kind);
+
+        var hold = Dir(_rootA, "Hold");
+        var movedAsset = (await _catalog.GetAssetByIdAsync(asset.Id))!;
+        var moved = await _ops.MoveAssetsAsync([movedAsset], hold, _projectId);
+        Assert.True(moved.Ok, moved.Message);
+        Assert.Equal(FileOpKind.Move, (await _ops.PeekUndoAsync(_projectId))!.Kind);
+
+        var undoMove = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoMove.Ok, undoMove.Message);
+        Assert.True(File.Exists(organizeDest));
+        Assert.Equal(FileOpKind.Organize, (await _ops.PeekUndoAsync(_projectId))!.Kind);
+
+        var undoOrganize = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoOrganize.Ok, undoOrganize.Message);
+        Assert.True(File.Exists(asset.Path));
+        Assert.False(Directory.Exists(Path.Combine(_rootA.Path, "Char", "tag")));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
     }
 }

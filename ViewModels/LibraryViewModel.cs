@@ -109,7 +109,7 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
 
-    /// <summary>Sort field choices (the direction is <see cref="ToggleSortDirectionCommand"/>).</summary>
+    /// <summary>Sort field choices (kept for tests / Tags migration; UI uses <see cref="SortButtonLabel"/>).</summary>
     public IReadOnlyList<string> SortLabels => MosaicSortOrder.FieldLabels;
 
     /// <summary>Index into <see cref="SortLabels"/>; picking a field starts in its natural direction.</summary>
@@ -129,11 +129,49 @@ public partial class LibraryViewModel : ObservableObject
 
     public bool IsSortDescending => MosaicSortOrder.IsDescending(MosaicSort);
 
-    /// <summary>"Newest first", "A to Z", … for the direction button.</summary>
+    /// <summary>"Newest first", "A to Z", … for the current direction.</summary>
     public string SortDirectionLabel => MosaicSortOrder.DirectionLabel(MosaicSort);
+
+    public string SortDescendingLabel =>
+        MosaicSortOrder.DirectionLabel(MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), descending: true));
+
+    public string SortAscendingLabel =>
+        MosaicSortOrder.DirectionLabel(MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), descending: false));
+
+    /// <summary>DropDownButton face matching the folder-tree sort pattern.</summary>
+    public string SortButtonLabel => MosaicSortOrder.ButtonLabel(MosaicSort);
 
     [RelayCommand]
     private void ToggleSortDirection() => MosaicSort = MosaicSortOrder.ToggleDirection(MosaicSort);
+
+    [RelayCommand]
+    private void SetMosaicSortField(string? fieldName)
+    {
+        if (!Enum.TryParse<MosaicSortField>(fieldName, ignoreCase: true, out var field))
+        {
+            return;
+        }
+
+        if (MosaicSortOrder.FieldOf(MosaicSort) == field)
+        {
+            return;
+        }
+
+        MosaicSort = MosaicSortOrder.Compose(field, MosaicSortOrder.DefaultDescending(field));
+    }
+
+    [RelayCommand]
+    private void SetMosaicSortDescending(string? descending)
+    {
+        var wantDesc = string.Equals(descending, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(descending, "1", StringComparison.OrdinalIgnoreCase);
+        if (IsSortDescending == wantDesc)
+        {
+            return;
+        }
+
+        MosaicSort = MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), wantDesc);
+    }
 
     [ObservableProperty]
     public partial AssetItem? SelectedAsset { get; set; }
@@ -222,6 +260,11 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowInfo { get; set; }
 
+    /// <summary>Severity for <see cref="ShowInfo"/> (Warning for decode failures, Informational for tips).</summary>
+    [ObservableProperty]
+    public partial Microsoft.UI.Xaml.Controls.InfoBarSeverity InfoSeverity { get; set; } =
+        Microsoft.UI.Xaml.Controls.InfoBarSeverity.Informational;
+
     [ObservableProperty]
     public partial bool CanEditNotes { get; set; }
 
@@ -231,7 +274,8 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsGalleryOverlayOpen { get; set; }
 
-    public bool CanUndo => true;
+    /// <summary>True when the shared FileOp journal has something to reverse (Move, Organize, folders).</summary>
+    public bool CanUndo => CanUndoFileOp;
 
     partial void OnSelectedFolderChanged(FolderNode? value)
     {
@@ -279,6 +323,9 @@ public partial class LibraryViewModel : ObservableObject
         OnPropertyChanged(nameof(MosaicSortIndex));
         OnPropertyChanged(nameof(IsSortDescending));
         OnPropertyChanged(nameof(SortDirectionLabel));
+        OnPropertyChanged(nameof(SortDescendingLabel));
+        OnPropertyChanged(nameof(SortAscendingLabel));
+        OnPropertyChanged(nameof(SortButtonLabel));
         if (_suppressFilter)
         {
             return;
@@ -448,10 +495,22 @@ public partial class LibraryViewModel : ObservableObject
         }
     }
 
-    public void Notify(string message)
+    public void Notify(string message) =>
+        Notify(message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Informational);
+
+    public void Notify(string message, Microsoft.UI.Xaml.Controls.InfoBarSeverity severity)
     {
+        // One toast slot: a status InfoBar replaces the undo toast.
+        ShowUndoToast = false;
         InfoMessage = message;
+        InfoSeverity = severity;
         ShowInfo = true;
-        StatusText = message;
+        // Persistent status (counts, scan) stays on StatusText; don't mirror tips into it.
+        if (severity is Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning
+            or Microsoft.UI.Xaml.Controls.InfoBarSeverity.Error)
+        {
+            StatusText = message;
+        }
     }
+
 }

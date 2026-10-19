@@ -1,6 +1,7 @@
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Palace.Helpers;
@@ -107,40 +108,98 @@ public sealed partial class LibraryPage
         var roots = ViewModel.LocalFolderRoots;
         if (roots.Count == 0)
         {
-            ViewModel.InfoMessage = "Add a local folder to the Library first. Files can only move inside your Library folders.";
-            ViewModel.ShowInfo = true;
+            ViewModel.Notify(
+                "Add a local folder to the Library first. Files can only move inside your Library folders.",
+                InfoBarSeverity.Warning);
             return null;
         }
 
         var rootPaths = roots.Select(r => r.Path).ToList();
         ViewModel.RefreshMoveRecents();
-        var all = new List<MoveDestinationItem>();
-        all.AddRange(ViewModel.MoveRecents);
+        var recents = ViewModel.MoveRecents.ToList();
+        var allFolders = new List<MoveDestinationItem>();
         foreach (var root in roots)
         {
-            AddFolderRows(all, root, rootPaths);
+            AddFolderRows(allFolders, root, rootPaths);
         }
 
-        var shown = new System.Collections.ObjectModel.ObservableCollection<MoveDestinationItem>(all);
+        var shown = new System.Collections.ObjectModel.ObservableCollection<object>();
+        void RebuildShown(string filterText)
+        {
+            shown.Clear();
+            var text = filterText.Trim();
+            bool Match(MoveDestinationItem row) =>
+                text.Length == 0 || row.Display.Contains(text, StringComparison.CurrentCultureIgnoreCase);
+
+            var recentHits = recents.Where(Match).ToList();
+            if (recentHits.Count > 0)
+            {
+                shown.Add(new MoveDestinationHeader("Recent"));
+                foreach (var row in recentHits)
+                {
+                    shown.Add(row);
+                }
+            }
+
+            var folderHits = allFolders.Where(Match).ToList();
+            if (folderHits.Count > 0)
+            {
+                shown.Add(new MoveDestinationHeader("All folders"));
+                foreach (var row in folderHits)
+                {
+                    shown.Add(row);
+                }
+            }
+        }
+
+        RebuildShown("");
+
+        var selection = await ViewModel.SelectedAssetsAsync();
+        var title = selection.Count == 1
+            ? $"Move {FileOpService.Quote(selection[0].FileName)}"
+            : $"Move {selection.Count} items";
+
+        var caption = new TextBlock
+        {
+            Text = "Choose a destination",
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Microsoft.UI.Xaml.Media.Brush
+        };
         var filter = new TextBox { PlaceholderText = "Filter folders" };
         AutomationProperties.SetAutomationId(filter, "TxtMoveFilter");
         AutomationProperties.SetName(filter, "Filter folders");
         var list = new ListView
         {
             ItemsSource = shown,
-            ItemTemplate = Resources["MoveDestinationTemplate"] as DataTemplate,
+            ItemTemplateSelector = new MoveDestinationTemplateSelector
+            {
+                DestinationTemplate = Resources["MoveDestinationTemplate"] as DataTemplate,
+                HeaderTemplate = Resources["MoveDestinationHeaderTemplate"] as DataTemplate
+            },
             SelectionMode = ListViewSelectionMode.Single,
-            Height = 300
+            MinHeight = 120,
+            MaxHeight = 300
         };
         AutomationProperties.SetAutomationId(list, "LstMoveDestinations");
         AutomationProperties.SetName(list, "Destination folders");
 
-        var newName = new TextBox { PlaceholderText = "New folder name", MinWidth = 220 };
+        var newName = new TextBox
+        {
+            PlaceholderText = "New folder name",
+            Description = "Goes inside the selected folder, or the current folder"
+        };
         AutomationProperties.SetAutomationId(newName, "TxtMoveNewFolder");
         AutomationProperties.SetName(newName, "New folder name");
-        var create = new Button { Content = "New folder" };
+        var create = new Button { Content = "New folder", VerticalAlignment = VerticalAlignment.Bottom };
         AutomationProperties.SetAutomationId(create, "BtnMoveNewFolder");
         AutomationProperties.SetName(create, "New folder");
+        var createGrid = new Grid { ColumnSpacing = 8 };
+        createGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        createGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        createGrid.Children.Add(newName);
+        Grid.SetColumn(create, 1);
+        createGrid.Children.Add(create);
+
         var browse = new HyperlinkButton { Content = "Browse…" };
         AutomationProperties.SetAutomationId(browse, "BtnMoveBrowse");
         var error = new TextBlock
@@ -150,29 +209,20 @@ public sealed partial class LibraryPage
             Visibility = Visibility.Collapsed
         };
         AutomationProperties.SetAutomationId(error, "TxtMoveError");
-        AutomationProperties.SetLiveSetting(error, Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Assertive);
+        AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Assertive);
 
-        var createRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        createRow.Children.Add(newName);
-        createRow.Children.Add(create);
-        var hint = new TextBlock
-        {
-            Text = "New folders go inside the selected folder.",
-            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
-            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Microsoft.UI.Xaml.Media.Brush
-        };
         var panel = new StackPanel { Spacing = 8, MinWidth = 420 };
+        panel.Children.Add(caption);
         panel.Children.Add(filter);
         panel.Children.Add(list);
-        panel.Children.Add(createRow);
-        panel.Children.Add(hint);
+        panel.Children.Add(createGrid);
         panel.Children.Add(error);
         panel.Children.Add(browse);
 
         var dialog = new ContentDialog
         {
             XamlRoot = XamlRoot,
-            Title = "Move to folder",
+            Title = title,
             PrimaryButtonText = "Move here",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
@@ -185,6 +235,12 @@ public sealed partial class LibraryPage
         {
             error.Text = message ?? "";
             error.Visibility = string.IsNullOrEmpty(message) ? Visibility.Collapsed : Visibility.Visible;
+            if (!string.IsNullOrEmpty(message))
+            {
+                var peer = FrameworkElementAutomationPeer.FromElement(error)
+                    ?? FrameworkElementAutomationPeer.CreatePeerForElement(error);
+                peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+            }
         }
 
         string? browsed = null;
@@ -202,16 +258,7 @@ public sealed partial class LibraryPage
                 _moveDialogAccepted = true;
             }
         };
-        filter.TextChanged += (_, _) =>
-        {
-            var text = filter.Text.Trim();
-            shown.Clear();
-            foreach (var row in all.Where(r => text.Length == 0
-                         || r.Display.Contains(text, StringComparison.CurrentCultureIgnoreCase)))
-            {
-                shown.Add(row);
-            }
-        };
+        filter.TextChanged += (_, _) => RebuildShown(filter.Text);
 
         async Task CreateAsync()
         {
@@ -225,16 +272,11 @@ public sealed partial class LibraryPage
                 return;
             }
 
-            var parentRow = all.FindIndex(r => !r.IsRecent && FolderNames.SamePath(r.Path, parent));
+            var parentRow = allFolders.FindIndex(r => FolderNames.SamePath(r.Path, parent));
             var row = MoveDestinationItem.For(result.Path, rootPaths, isRecent: false);
-            all.Insert(parentRow >= 0 ? parentRow + 1 : all.Count, row);
+            allFolders.Insert(parentRow >= 0 ? parentRow + 1 : allFolders.Count, row);
             filter.Text = "";
-            shown.Clear();
-            foreach (var r in all)
-            {
-                shown.Add(r);
-            }
-
+            RebuildShown("");
             list.SelectedItem = row;
             list.ScrollIntoView(row);
             newName.Text = "";
@@ -298,4 +340,24 @@ public sealed partial class LibraryPage
             AddFolderRows(rows, child, roots);
         }
     }
+}
+
+/// <summary>Non-selectable section header in the Move dialog list.</summary>
+internal sealed class MoveDestinationHeader
+{
+    public MoveDestinationHeader(string title) => Title = title;
+    public string Title { get; }
+    public override string ToString() => Title;
+}
+
+internal sealed class MoveDestinationTemplateSelector : DataTemplateSelector
+{
+    public DataTemplate? DestinationTemplate { get; set; }
+    public DataTemplate? HeaderTemplate { get; set; }
+
+    protected override DataTemplate? SelectTemplateCore(object item) =>
+        item is MoveDestinationHeader ? HeaderTemplate : DestinationTemplate;
+
+    protected override DataTemplate? SelectTemplateCore(object item, DependencyObject container) =>
+        SelectTemplateCore(item);
 }

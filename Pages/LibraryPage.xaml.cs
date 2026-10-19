@@ -32,7 +32,6 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<string, WeakReference<BitmapImage>> _tileBitmapCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _suppressBrowseChrome;
     private bool _suppressMosaicSelection;
-    private bool _mosaicSortArmed;
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
@@ -99,7 +98,6 @@ public sealed partial class LibraryPage : Page
             SyncBrowseChromeFromViewModel();
             _suppressBrowseChrome = false;
             await ErrorReporter.RunAsync("Reload mosaic sort", null, ViewModel.ReloadMosaicSortAsync);
-            ArmMosaicSortCombo();
             await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
             UpdatePreview();
             InvalidateMosaicLayout();
@@ -125,7 +123,6 @@ public sealed partial class LibraryPage : Page
         };
         Unloaded += (_, _) =>
         {
-            _mosaicSortArmed = false;
             UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
@@ -284,28 +281,17 @@ public sealed partial class LibraryPage : Page
         };
     }
 
-    private void ArmMosaicSortCombo()
-    {
-        _mosaicSortArmed = false;
-        CmbMosaicSort.SelectedIndex = ViewModel.MosaicSortIndex;
-        _mosaicSortArmed = true;
-    }
+    private void InfUndo_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        ViewModel.PauseUndoToastTimer();
 
-    private void CmbMosaicSort_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_mosaicSortArmed)
-        {
-            return;
-        }
+    private void InfUndo_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        ViewModel.ResumeUndoToastTimer();
 
-        var index = CmbMosaicSort.SelectedIndex;
-        if (!MosaicSortOrder.ShouldApplyFieldIndex(index, ViewModel.MosaicSort, out _))
-        {
-            return;
-        }
+    private void InfUndo_FocusEntered(object sender, RoutedEventArgs e) =>
+        ViewModel.PauseUndoToastTimer();
 
-        ViewModel.MosaicSortIndex = index;
-    }
+    private void InfUndo_FocusExited(object sender, RoutedEventArgs e) =>
+        ViewModel.ResumeUndoToastTimer();
 
     private void BtnBrowseTags_Click(object sender, RoutedEventArgs e)
     {

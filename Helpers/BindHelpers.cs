@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
+using Palace.Models;
 
 namespace Palace.Helpers;
 
@@ -14,6 +15,12 @@ public static class BindHelpers
     public static bool Not(bool value) => !value;
 
     public static bool IsFolderSort(FolderTreeSort current, string value) => current.ToString() == value;
+
+    public static bool IsMosaicField(MosaicSort current, string field) =>
+        MosaicSortOrder.FieldOf(current).ToString() == field;
+
+    public static bool IsMosaicDescending(MosaicSort current, bool descending) =>
+        MosaicSortOrder.IsDescending(current) == descending;
 
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;

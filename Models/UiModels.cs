@@ -8,6 +8,7 @@ namespace Palace.Models;
 public sealed partial class FolderNode : ObservableObject
 {
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AutomationName))]
     public partial string Name { get; set; } = "";
 
     public string Path { get; set; } = "";
@@ -19,6 +20,7 @@ public sealed partial class FolderNode : ObservableObject
     /// <summary>Assets in this folder and its sub-folders.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CountText))]
+    [NotifyPropertyChangedFor(nameof(AutomationName))]
     public partial int AssetCount { get; set; }
 
     public DateTime Modified { get; set; }
@@ -36,12 +38,16 @@ public sealed partial class FolderNode : ObservableObject
     /// <summary>A "New folder" row that is not on disk until its name is committed.</summary>
     public bool IsPending { get; set; }
 
-    public string CountText => AssetCount > 0 ? AssetCount.ToString("N0") : "";
+    /// <summary>Always shows a count, including <c>0</c> for empty folders.</summary>
+    public string CountText => AssetCount.ToString("N0");
+
+    /// <summary>UIA name: includes count or "empty" so Narrator is not name-only.</summary>
+    public string AutomationName => AssetCount > 0 ? $"{Name}, {AssetCount} items" : $"{Name}, empty";
 
     public ObservableCollection<FolderNode> Children { get; } = [];
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
-    public override string ToString() => AssetCount > 0 ? $"{Name}, {AssetCount} items" : Name;
+    public override string ToString() => AutomationName;
 }
 
 /// <summary>One row in the Move dialog / "Move to recent" menu: a folder inside a watched source.</summary>

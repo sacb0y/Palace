@@ -137,6 +137,26 @@ public static class MosaicSortOrder
         };
     }
 
+    /// <summary>DropDownButton face: "Sort: Date taken · Newest first".</summary>
+    public static string ButtonLabel(MosaicSort sort)
+    {
+        var field = FieldChoices[FieldIndexOf(sort)].Label;
+        return $"Sort: {field} · {DirectionLabel(sort)}";
+    }
+
+    public static string FieldLabel(MosaicSortField field)
+    {
+        foreach (var (f, label) in FieldChoices)
+        {
+            if (f == field)
+            {
+                return label;
+            }
+        }
+
+        return FieldChoices[0].Label;
+    }
+
     public static MosaicSort Parse(object? stored)
     {
         if (stored is MosaicSort sort && Enum.IsDefined(sort))
