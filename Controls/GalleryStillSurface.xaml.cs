@@ -413,7 +413,8 @@ public sealed partial class GalleryStillSurface : UserControl
                 // 16384².
                 if (frame.MaxNits > 0 || frame.MaxScrgb > 0)
                 {
-                    gallery.SetHdrStats(frame.MaxNits, frame.AvgNits, frame.MinNits, frame.MaxScrgb);
+                    gallery.SetHdrStats(
+                        frame.MaxNits, frame.AvgNits, frame.MinNits, frame.MaxScrgb, frame.MaxScrgbChannel);
                 }
                 else
                 {
@@ -651,7 +652,8 @@ public sealed partial class GalleryStillSurface : UserControl
                     frameRef.NativeWidth,
                     frameRef.NativeHeight,
                     GalleryPresent.IsNativeDecode(
-                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight));
+                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
+                    maxScrgbChannel: frameRef.MaxScrgbChannel);
                 return;
             }
 
@@ -1069,6 +1071,16 @@ public sealed partial class GalleryStillSurface : UserControl
         if (_gallery?.Scaling is ImageScaling.Actual or ImageScaling.Fill)
         {
             ApplyScaleLayout();
+        }
+
+        // A file the scan flagged undecodable shows no resolution until the gallery
+        // itself decodes the original (not a thumb / large-preview substitute).
+        if (_gallery is { Current.Undecodable: true } gallery
+            && ImgStill.Source is BitmapImage { PixelWidth: > 0, PixelHeight: > 0 } bmp
+            && bmp.UriSource is { IsFile: true } uri
+            && GalleryPresent.IsOriginalStill(uri.LocalPath, gallery.CurrentPath))
+        {
+            gallery.SetDecodedPixelSize(bmp.PixelWidth, bmp.PixelHeight);
         }
     }
 

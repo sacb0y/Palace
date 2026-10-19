@@ -202,14 +202,19 @@ public partial class LibraryViewModel
             }
         }
 
+        var viewedBefore = !IsTagBrowse ? SelectedFolder?.Path : null;
         await RebuildFolderTreeAsync();
 
         var viewFolder = !IsTagBrowse ? SelectedFolder?.Path : null;
         var flat = !string.IsNullOrWhiteSpace(SearchQuery) || IsTagBrowse;
+        // The rebuild drops a folder the move emptied and clears the selection; re-run the query so
+        // the mosaic shows what the breadcrumbs now show instead of keeping the old folder's tiles.
         // Undo moves files back to many folders; let the view query decide what is visible.
-        var plan = destinationDir is null
-            ? (flat || viewFolder is null ? MosaicMoveUpdate.UpdateInPlace : MosaicMoveUpdate.Requery)
-            : MosaicMove.Plan(viewFolder, flat, destinationDir);
+        var plan = viewedBefore is not null && viewFolder is null
+            ? MosaicMoveUpdate.Requery
+            : destinationDir is null
+                ? (flat || viewFolder is null ? MosaicMoveUpdate.UpdateInPlace : MosaicMoveUpdate.Requery)
+                : MosaicMove.Plan(viewFolder, flat, destinationDir);
         switch (plan)
         {
             case MosaicMoveUpdate.Prune:
