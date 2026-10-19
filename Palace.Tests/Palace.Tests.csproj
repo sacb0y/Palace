@@ -90,6 +90,19 @@
     <Compile Include="..\Helpers\WicNative.cs" Link="WicNative.cs" />
     <Compile Include="..\Models\Entities.cs" Link="Entities.cs" />
     <Compile Include="..\Models\Enums.cs" Link="Enums.cs" />
+    <Compile Include="..\Services\CatalogService.cs" Link="CatalogService.cs" />
+    <Compile Include="..\Services\CatalogService.Assets.cs" Link="CatalogService.Assets.cs" />
+    <Compile Include="..\Services\CatalogService.Sources.cs" Link="CatalogService.Sources.cs" />
+    <Compile Include="..\Services\CatalogService.Organize.cs" Link="CatalogService.Organize.cs" />
+    <Compile Include="..\Services\CatalogService.Search.cs" Link="CatalogService.Search.cs" />
+    <Compile Include="..\Services\CatalogService.FileOps.cs" Link="CatalogService.FileOps.cs" />
+    <Compile Include="..\Services\FileOpService.cs" Link="FileOpService.cs" />
+    <Compile Include="..\Helpers\FolderNames.cs" Link="FolderNames.cs" />
+    <Compile Include="..\Helpers\DestinationRecents.cs" Link="DestinationRecents.cs" />
+    <Compile Include="..\Helpers\MosaicMove.cs" Link="MosaicMove.cs" />
+    <Compile Include="..\Helpers\FolderTreeBuilder.cs" Link="FolderTreeBuilder.cs" />
+    <Compile Include="..\Helpers\NaturalStringComparer.cs" Link="NaturalStringComparer.cs" />
+    <Compile Include="..\Helpers\AssetDrag.cs" Link="AssetDrag.cs" />
   </ItemGroup>
 
   <ItemGroup>

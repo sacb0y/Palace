@@ -102,3 +102,21 @@ public enum CloudProvider
     OneDrive,
     Dropbox
 }
+
+/// <summary>Kind of a logged, undoable file operation batch (<c>FileOpService</c>).</summary>
+public enum FileOpKind
+{
+    Move,
+    CreateFolder,
+    RenameFolder,
+    DeleteFolder
+}
+
+/// <summary>One step inside a <see cref="FileOpKind"/> batch. Undo replays steps in reverse.</summary>
+public enum FileOpStep
+{
+    MoveFile,
+    CreateDir,
+    RenameDir,
+    DeleteDir
+}

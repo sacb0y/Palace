@@ -53,8 +53,57 @@ public partial class LibraryViewModel
         }
     }
 
+    /// <summary>Folders the user collapsed; kept across tree rebuilds (new folders, moves, sort).</summary>
+    private readonly HashSet<string> _collapsedFolders = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Bumped by every tree rebuild / refresh; stale results are not applied.</summary>
+    private int _folderTreeGeneration;
+
+    /// <summary>Bumped by every <see cref="RefreshQuietAsync"/>; only the newest one is applied.</summary>
+    private int _folderRefreshGeneration;
+
+    /// <summary>
+    /// Tree Expanding / Collapsed. Ignores nodes that are no longer in the tree: tearing down the old
+    /// containers during a rebuild raises Collapsed for them, which must not stick.
+    /// </summary>
+    public void NoteFolderExpanded(FolderNode node, bool expanded)
+    {
+        if (!ContainsNode(FolderTree, node))
+        {
+            return;
+        }
+
+        node.IsExpanded = expanded;
+        if (expanded)
+        {
+            _collapsedFolders.Remove(node.Path);
+        }
+        else
+        {
+            _collapsedFolders.Add(node.Path);
+        }
+    }
+
+    private static bool ContainsNode(IEnumerable<FolderNode> nodes, FolderNode target)
+    {
+        foreach (var node in nodes)
+        {
+            if (ReferenceEquals(node, target) || ContainsNode(node.Children, target))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void ReplaceFolderTree(IReadOnlyList<FolderNode> roots)
     {
+        if (_collapsedFolders.Count > 0)
+        {
+            ApplyCollapsed(roots, _collapsedFolders);
+        }
+
         FolderTree.Clear();
         foreach (var root in roots)
         {
@@ -62,60 +111,51 @@ public partial class LibraryViewModel
         }
     }
 
-    private static List<FolderNode> BuildFolderNodes(IReadOnlyList<SourceFolder> sources, IReadOnlyList<Asset> assets)
+    private static void ApplyCollapsed(IEnumerable<FolderNode> nodes, HashSet<string> collapsed)
     {
-        var roots = new List<FolderNode>();
-        foreach (var source in sources)
+        foreach (var node in nodes)
         {
-            var root = new FolderNode
+            if (collapsed.Contains(node.Path))
             {
-                Name = Path.GetFileName(source.Path.TrimEnd('\\')) is { Length: > 0 } n ? n : source.Path,
-                Path = source.Path,
-                SourceFolderId = source.Id
-            };
-            var dirs = assets.Where(a => a.SourceFolderId == source.Id)
-                .Select(a => Path.GetDirectoryName(a.Path) ?? source.Path)
-                .Where(d => d.StartsWith(source.Path, StringComparison.OrdinalIgnoreCase))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(d => d, StringComparer.OrdinalIgnoreCase);
-            foreach (var dir in dirs)
-            {
-                EnsurePath(root, source.Path, dir);
+                node.IsExpanded = false;
             }
 
-            roots.Add(root);
+            ApplyCollapsed(node.Children, collapsed);
         }
-
-        return roots;
     }
 
-    private static void EnsurePath(FolderNode root, string sourcePath, string fullDir)
+    /// <summary>
+    /// Folder tree from catalog asset folders plus real (possibly empty) directories under local
+    /// sources. Lists disk, so call off the UI thread.
+    /// </summary>
+    private static List<FolderNode> BuildFolderNodes(IReadOnlyList<SourceFolder> sources, IReadOnlyList<Asset> assets, FolderTreeSort sort)
     {
-        if (string.Equals(fullDir, sourcePath, StringComparison.OrdinalIgnoreCase))
+        var entries = FolderTreeBuilder.Build(
+            sources.Select(s => new FolderTreeSource(s.Id, s.Path, s.Kind == SourceKind.Local)).ToList(),
+            assets.Select(a => (a.SourceFolderId, a.Path)),
+            FolderTreeBuilder.ListDiskChildren,
+            sort,
+            FolderTreeBuilder.IsHiddenOnDisk);
+        return entries.Select(ToNode).ToList();
+    }
+
+    private static FolderNode ToNode(FolderTreeEntry entry)
+    {
+        var node = new FolderNode
         {
-            return;
+            Name = entry.Name,
+            Path = entry.Path,
+            SourceFolderId = entry.SourceFolderId,
+            IsRoot = entry.IsRoot,
+            AssetCount = entry.AssetCount,
+            Modified = entry.Modified
+        };
+        foreach (var child in entry.Children)
+        {
+            node.Children.Add(ToNode(child));
         }
 
-        var relative = Path.GetRelativePath(sourcePath, fullDir);
-        if (relative.StartsWith(".."))
-        {
-            return;
-        }
-
-        var current = root;
-        var acc = sourcePath;
-        foreach (var part in relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
-        {
-            acc = Path.Combine(acc, part);
-            var next = current.Children.FirstOrDefault(c => c.Name.Equals(part, StringComparison.OrdinalIgnoreCase));
-            if (next is null)
-            {
-                next = new FolderNode { Name = part, Path = acc, SourceFolderId = root.SourceFolderId };
-                current.Children.Add(next);
-            }
-
-            current = next;
-        }
+        return node;
     }
 
     private void RebuildBreadcrumbs()

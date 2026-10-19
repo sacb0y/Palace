@@ -56,6 +56,7 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestPickRoom = AskRoomAsync;
+        ViewModel.RequestPickMoveDestination = AskMoveDestinationAsync;
         ViewModel.RequestFocusAssignTag = () =>
             DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
         ViewModel.RequestOpenAssignPanel = () =>
@@ -112,6 +113,7 @@ public sealed partial class LibraryPage : Page
             GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
             GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
             RefreshRealizedTiles();
+            HookFolderTreeExpansion();
             if (ViewModel.Assets.Count > 0)
             {
                 DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
@@ -124,6 +126,7 @@ public sealed partial class LibraryPage : Page
         Unloaded += (_, _) =>
         {
             _mosaicSortArmed = false;
+            UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
@@ -470,6 +473,7 @@ public sealed partial class LibraryPage : Page
     private void GrdAssets_RangePressed(object sender, PointerRoutedEventArgs e)
     {
         _rangeConsumedTap = false;
+        _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -484,6 +488,12 @@ public sealed partial class LibraryPage : Page
         var item = FindAssetItem(e.OriginalSource);
         if (item is null
             || !RangeSelect.AllowsGesture(true, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
+        {
+            return;
+        }
+
+        // Pressing an already selected tile with the mouse drags the selection to a folder instead.
+        if (AssetDrag.YieldsRangeSelect(_lastPressWasMouse, item.IsSelected))
         {
             return;
         }
@@ -888,6 +898,12 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (!e.Handled && TryHandleMosaicMoveKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != VirtualKey.Enter || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -993,6 +1009,7 @@ public sealed partial class LibraryPage : Page
         }
 
         EnsureSelectedForContext(item);
+        PopulateMoveRecents(flyout);
     }
 
     private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)

@@ -5,15 +5,78 @@ using Palace.Helpers;
 
 namespace Palace.Models;
 
-public sealed class FolderNode
+public sealed partial class FolderNode : ObservableObject
 {
-    public string Name { get; set; } = "";
+    [ObservableProperty]
+    public partial string Name { get; set; } = "";
+
     public string Path { get; set; } = "";
     public string? SourceFolderId { get; set; }
+
+    /// <summary>Watched source root: cannot be renamed or deleted.</summary>
+    public bool IsRoot { get; set; }
+
+    /// <summary>Assets in this folder and its sub-folders.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CountText))]
+    public partial int AssetCount { get; set; }
+
+    public DateTime Modified { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; } = true;
+
+    /// <summary>Inline name editor shown (new folder or rename).</summary>
+    [ObservableProperty]
+    public partial bool IsEditing { get; set; }
+
+    [ObservableProperty]
+    public partial string EditName { get; set; } = "";
+
+    /// <summary>A "New folder" row that is not on disk until its name is committed.</summary>
+    public bool IsPending { get; set; }
+
+    public string CountText => AssetCount > 0 ? AssetCount.ToString("N0") : "";
+
     public ObservableCollection<FolderNode> Children { get; } = [];
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
-    public override string ToString() => Name;
+    public override string ToString() => AssetCount > 0 ? $"{Name}, {AssetCount} items" : Name;
+}
+
+/// <summary>One row in the Move dialog / "Move to recent" menu: a folder inside a watched source.</summary>
+public sealed class MoveDestinationItem
+{
+    public string Name { get; init; } = "";
+    public string Path { get; init; } = "";
+    /// <summary>"Source / Sub / Sub" so two folders with one name read apart.</summary>
+    public string Display { get; init; } = "";
+    public bool IsRecent { get; init; }
+
+    public static MoveDestinationItem For(string path, IReadOnlyList<string> roots, bool isRecent = true)
+    {
+        var root = roots.Where(r => FolderNames.IsSameOrUnder(path, r)).OrderByDescending(r => r.Length).FirstOrDefault();
+        var name = System.IO.Path.GetFileName(path.TrimEnd('\\', '/'));
+        if (string.IsNullOrEmpty(name))
+        {
+            name = path;
+        }
+
+        var display = name;
+        if (root is not null)
+        {
+            var rootName = System.IO.Path.GetFileName(root.TrimEnd('\\', '/'));
+            var rel = System.IO.Path.GetRelativePath(root, path);
+            display = rel == "."
+                ? rootName
+                : rootName + " / " + string.Join(" / ", rel.Split(System.IO.Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        return new MoveDestinationItem { Name = name, Path = path, Display = display, IsRecent = isRecent };
+    }
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => IsRecent ? $"Recent: {Display}" : Display;
 }
 
 public sealed class PathCrumb
