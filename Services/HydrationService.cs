@@ -57,6 +57,7 @@ public sealed class HydrationService
             asset.Prompt = meta.Prompt;
             asset.NegativePrompt = meta.NegativePrompt;
             asset.MetadataJson = meta.RawJson;
+            asset.DateTaken = meta.DateTaken;
         }
 
         var thumb = await _thumbs.EnsureThumbnailAsync(asset.Path, hash, asset.Kind).ConfigureAwait(false);
