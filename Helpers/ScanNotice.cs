@@ -28,6 +28,13 @@ public static class ScanNotice
             || name.Equals(".dropbox.attr", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Status line after a scan: what changed, and how many files were already up to date.</summary>
+    public static string Summary(ScanReport report, string? sourceName = null)
+    {
+        var counts = $"{report.Added} new, {report.Updated} updated, {report.Unchanged} unchanged, {report.Orphaned} missing.";
+        return string.IsNullOrEmpty(sourceName) ? $"Indexed {counts}" : $"Indexed {sourceName}: {counts}";
+    }
+
     public static string? Describe(ScanReport report)
     {
         var parts = new List<string>();

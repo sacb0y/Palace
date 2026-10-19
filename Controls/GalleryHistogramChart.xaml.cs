@@ -1,6 +1,8 @@
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 using Palace.Helpers;
@@ -8,6 +10,13 @@ using Windows.Foundation;
 
 namespace Palace.Controls;
 
+/// <summary>
+/// Lightroom-style histogram: grey luminance area under translucent R/G/B,
+/// an SDR section then an HDR section in stops (dashed whole-stop lines,
+/// accent tint), a gradient bar (heatmap palette when the heatmap is on),
+/// then format · index · size and camera EXIF / AI settings. No clipping
+/// warning. Geometry comes from <see cref="HistogramScale"/>.
+/// </summary>
 public sealed partial class GalleryHistogramChart : UserControl
 {
     public static readonly DependencyProperty BinsProperty = DependencyProperty.Register(
@@ -28,15 +37,36 @@ public sealed partial class GalleryHistogramChart : UserControl
         typeof(GalleryHistogramChart),
         new PropertyMetadata(GalleryHistogram.DefaultShowRgb, OnChartChanged));
 
+    public static readonly DependencyProperty ShowLumaProperty = DependencyProperty.Register(
+        nameof(ShowLuma),
+        typeof(bool),
+        typeof(GalleryHistogramChart),
+        new PropertyMetadata(GalleryHistogram.DefaultShowLuma, OnChartChanged));
+
+    public static readonly DependencyProperty HeatmapProperty = DependencyProperty.Register(
+        nameof(Heatmap),
+        typeof(bool),
+        typeof(GalleryHistogramChart),
+        new PropertyMetadata(false, OnChartChanged));
+
+    public static readonly DependencyProperty DetailsProperty = DependencyProperty.Register(
+        nameof(Details),
+        typeof(GalleryDetailsRows),
+        typeof(GalleryHistogramChart),
+        new PropertyMetadata(null, OnChartChanged));
+
     public static readonly DependencyProperty IdPrefixProperty = DependencyProperty.Register(
         nameof(IdPrefix),
         typeof(string),
         typeof(GalleryHistogramChart),
         new PropertyMetadata("Gallery", OnIdPrefixChanged));
 
+    private readonly ToolTip _hoverTip = new();
+
     public GalleryHistogramChart()
     {
         InitializeComponent();
+        ToolTipService.SetToolTip(CnvHistogram, _hoverTip);
         Loaded += (_, _) =>
         {
             ApplyIds();
@@ -60,6 +90,25 @@ public sealed partial class GalleryHistogramChart : UserControl
     {
         get => (bool)GetValue(ShowRgbProperty);
         set => SetValue(ShowRgbProperty, value);
+    }
+
+    public bool ShowLuma
+    {
+        get => (bool)GetValue(ShowLumaProperty);
+        set => SetValue(ShowLumaProperty, value);
+    }
+
+    /// <summary>Heatmap view is on: the bar shows the heatmap palette (same function as the image).</summary>
+    public bool Heatmap
+    {
+        get => (bool)GetValue(HeatmapProperty);
+        set => SetValue(HeatmapProperty, value);
+    }
+
+    public GalleryDetailsRows? Details
+    {
+        get => (GalleryDetailsRows?)GetValue(DetailsProperty);
+        set => SetValue(DetailsProperty, value);
     }
 
     public string IdPrefix
@@ -86,19 +135,43 @@ public sealed partial class GalleryHistogramChart : UserControl
 
     private void BtnHistogramLuma_Click(object sender, RoutedEventArgs e)
     {
-        ShowRgb = false;
-        // ToggleButton unchecks itself first. Re-clicking Y must restore
-        // the check even when ShowRgb was already false (no DP change).
+        var (luma, rgb) = GalleryHistogram.ToggleLayer(ShowLuma, ShowRgb, clickedLuma: true);
+        ShowLuma = luma;
+        ShowRgb = rgb;
+        // ToggleButton flips itself first; re-sync even when no DP changed.
         Redraw();
     }
 
     private void BtnHistogramRgb_Click(object sender, RoutedEventArgs e)
     {
-        ShowRgb = true;
+        var (luma, rgb) = GalleryHistogram.ToggleLayer(ShowLuma, ShowRgb, clickedLuma: false);
+        ShowLuma = luma;
+        ShowRgb = rgb;
         Redraw();
     }
 
     private void CnvHistogram_SizeChanged(object sender, SizeChangedEventArgs e) => Redraw();
+
+    private void CnvHistogram_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        var bins = Bins;
+        var width = CnvHistogram.ActualWidth;
+        if (bins is null || !bins.HasSamples || width < 2)
+        {
+            return;
+        }
+
+        var x = Math.Clamp(e.GetCurrentPoint(CnvHistogram).Position.X, 0, width);
+        _hoverTip.Content = HistogramScale.HoverLabel(x / width, bins.StopCount, bins.SdrWhiteNits);
+        LnHover.X1 = x;
+        LnHover.X2 = x;
+        LnHover.Y1 = 0;
+        LnHover.Y2 = CnvHistogram.Height;
+        LnHover.Visibility = Visibility.Visible;
+    }
+
+    private void CnvHistogram_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        LnHover.Visibility = Visibility.Collapsed;
 
     private void ApplyIds()
     {
@@ -113,6 +186,16 @@ public sealed partial class GalleryHistogramChart : UserControl
         AutomationProperties.SetName(TxtHistogram, "Histogram");
         AutomationProperties.SetAutomationId(CnvHistogram, $"Cnv{prefix}Histogram");
         AutomationProperties.SetName(CnvHistogram, "Histogram plot");
+        AutomationProperties.SetAutomationId(TxtHistogramFormat, $"Txt{prefix}HistogramFormat");
+        AutomationProperties.SetName(TxtHistogramFormat, "Format");
+        AutomationProperties.SetAutomationId(TxtHistogramIndex, $"Txt{prefix}HistogramIndex");
+        AutomationProperties.SetName(TxtHistogramIndex, "Position in this view");
+        AutomationProperties.SetAutomationId(TxtHistogramSize, $"Txt{prefix}HistogramSize");
+        AutomationProperties.SetName(TxtHistogramSize, "Pixel size and file size");
+        AutomationProperties.SetAutomationId(TxtHistogramExif, $"Txt{prefix}HistogramExif");
+        AutomationProperties.SetName(TxtHistogramExif, "Camera or generation settings");
+        AutomationProperties.SetAutomationId(TxtHistogramHdr, $"Txt{prefix}HistogramHdr");
+        AutomationProperties.SetName(TxtHistogramHdr, "HDR section");
     }
 
     private void Redraw()
@@ -124,64 +207,148 @@ public sealed partial class GalleryHistogramChart : UserControl
 
         var compact = Compact;
         PnlHistogramModes.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        CnvHistogram.Height = compact ? 48 : 96;
+        CnvHistogram.Height = compact ? 64 : 120;
+        var luma = ShowLuma;
         var rgb = ShowRgb;
-        var (lumaOn, rgbOn) = GalleryHistogram.ExclusiveModeChecks(rgb);
-        BtnHistogramLuma.IsChecked = lumaOn;
-        BtnHistogramRgb.IsChecked = rgbOn;
+        BtnHistogramLuma.IsChecked = luma;
+        BtnHistogramRgb.IsChecked = rgb;
 
         var bins = Bins;
-        var samples = bins?.SampleCount ?? 0;
-        var binCount = bins?.BinCount ?? 0;
-        TxtHistogram.Text = GalleryHistogram.Caption(rgb, binCount, samples);
-
-        PlnLuma.Visibility = rgb ? Visibility.Collapsed : Visibility.Visible;
-        PlnRed.Visibility = rgb ? Visibility.Visible : Visibility.Collapsed;
-        PlnGreen.Visibility = rgb ? Visibility.Visible : Visibility.Collapsed;
-        PlnBlue.Visibility = rgb ? Visibility.Visible : Visibility.Collapsed;
+        TxtHistogram.Text = GalleryHistogram.Caption(bins);
+        ApplyDetails(Details);
 
         var width = CnvHistogram.ActualWidth;
         var height = CnvHistogram.Height;
+        var stops = bins?.StopCount ?? 0;
+        ApplyBar(width, stops, bins?.SdrWhiteNits ?? HistogramScale.SdrWhiteNits, bins?.HasSamples == true);
+        CnvStopLines.Children.Clear();
         if (width < 2 || height < 2 || bins is null || !bins.HasSamples)
         {
-            ClearLine(PlnLuma);
-            ClearLine(PlnRed);
-            ClearLine(PlnGreen);
-            ClearLine(PlnBlue);
+            ClearShapes();
+            RctHdrZone.Visibility = Visibility.Collapsed;
             return;
         }
 
-        if (rgb)
+        var hdrX = HistogramScale.SdrFraction(stops) * width;
+        RctHdrZone.Visibility = stops > 0 ? Visibility.Visible : Visibility.Collapsed;
+        Canvas.SetLeft(RctHdrZone, hdrX);
+        RctHdrZone.Width = Math.Max(0, width - hdrX);
+        RctHdrZone.Height = height;
+
+        SetArea(PlgLuma, null, luma ? bins.Luma : null, stops, width, height);
+        SetArea(PlgRed, PlnRed, rgb ? bins.Red : null, stops, width, height);
+        SetArea(PlgGreen, PlnGreen, rgb ? bins.Green : null, stops, width, height);
+        SetArea(PlgBlue, PlnBlue, rgb ? bins.Blue : null, stops, width, height);
+
+        // SDR white + each whole HDR stop: dashed verticals.
+        for (var s = 0; s <= stops && stops > 0; s++)
         {
-            ClearLine(PlnLuma);
-            SetLine(PlnRed, bins.Red, width, height);
-            SetLine(PlnGreen, bins.Green, width, height);
-            SetLine(PlnBlue, bins.Blue, width, height);
-            return;
+            var x = HistogramScale.StopX01(s, stops) * width;
+            CnvStopLines.Children.Add(new Line
+            {
+                X1 = x,
+                X2 = x,
+                Y1 = 0,
+                Y2 = height,
+                Stroke = PlgLuma.Fill,
+                StrokeThickness = 1,
+                StrokeDashArray = new DoubleCollection { 3, 3 },
+                Opacity = s == 0 ? 0.8 : 0.55
+            });
         }
-
-        ClearLine(PlnRed);
-        ClearLine(PlnGreen);
-        ClearLine(PlnBlue);
-        SetLine(PlnLuma, bins.Luma, width, height);
     }
 
-    private static void ClearLine(Polyline line) => line.Points = [];
-
-    private static void SetLine(Polyline line, int[] counts, double width, double height)
+    private void ApplyDetails(GalleryDetailsRows? rows)
     {
-        var heights = new float[counts.Length];
-        GalleryHistogram.FillHeights(counts, heights);
-        var bars = new (double X, double Width, double Height)[counts.Length];
-        GalleryHistogram.LayoutBars(counts.Length, width, height, heights, bars);
-        var points = new PointCollection();
-        for (var i = 0; i < bars.Length; i++)
+        var show = rows is not null && rows.HasAny;
+        GrdHistogramRows.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        TxtHistogramFormat.Text = rows?.Format ?? "";
+        TxtHistogramIndex.Text = rows?.Index ?? "";
+        TxtHistogramSize.Text = rows?.Size ?? "";
+        TxtHistogramExif.Text = rows?.Settings ?? "";
+        TxtHistogramExif.Visibility = string.IsNullOrEmpty(rows?.Settings) ? Visibility.Collapsed : Visibility.Visible;
+        ToolTipService.SetToolTip(TxtHistogramExif, string.IsNullOrEmpty(rows?.SettingsTooltip) ? null : rows.SettingsTooltip);
+    }
+
+    private void ApplyBar(double width, int stops, float sdrWhite, bool hasSamples)
+    {
+        GrdHistogramBar.Visibility = hasSamples ? Visibility.Visible : Visibility.Collapsed;
+        GrdHistogramBarLabels.Visibility = hasSamples ? Visibility.Visible : Visibility.Collapsed;
+        if (!hasSamples || width < 2)
         {
-            var x = bars[i].X + (bars[i].Width * 0.5);
-            var y = height - bars[i].Height;
-            points.Add(new Point(x, y));
+            return;
         }
 
-        line.Points = points;
+        var sdrW = HistogramScale.SdrFraction(stops) * width;
+        var heatmap = Heatmap;
+        RctHistogramHeatmap.Visibility = heatmap ? Visibility.Visible : Visibility.Collapsed;
+        RctHistogramSdr.Visibility = heatmap ? Visibility.Collapsed : Visibility.Visible;
+        RctHistogramHdr.Visibility = !heatmap && stops > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RctHistogramSdr.Width = Math.Max(0, sdrW - (stops > 0 ? 1 : 0));
+        RctHistogramHdr.Width = Math.Max(0, width - sdrW - 1);
+        if (heatmap)
+        {
+            // Same palette function as the swapchain heatmap, sampled along the axis.
+            var brush = new LinearGradientBrush { StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5) };
+            const int steps = 48;
+            for (var i = 0; i <= steps; i++)
+            {
+                var x01 = i / (double)steps;
+                var (r, g, b) = HdrHeatmap.Srgb8At(HistogramScale.NitsAtX01(x01, stops, sdrWhite));
+                brush.GradientStops.Add(new GradientStop { Offset = x01, Color = ColorHelper.FromArgb(255, r, g, b) });
+            }
+
+            RctHistogramHeatmap.Fill = brush;
+        }
+
+        TxtHistogramHdr.Visibility = stops > 0 ? Visibility.Visible : Visibility.Collapsed;
+        TxtHistogramHdr.Text = stops > 0 ? $"HDR +{stops} stops" : "HDR";
+        TxtHistogramHdr.Margin = new Thickness(sdrW + 2, 0, 0, 0);
+    }
+
+    private void ClearShapes()
+    {
+        PlgLuma.Points = [];
+        PlgRed.Points = [];
+        PlgGreen.Points = [];
+        PlgBlue.Points = [];
+        PlnRed.Points = [];
+        PlnGreen.Points = [];
+        PlnBlue.Points = [];
+    }
+
+    private static void SetArea(Polygon area, Polyline? line, int[]? counts, int stops, double width, double height)
+    {
+        if (counts is null || counts.Length == 0)
+        {
+            area.Points = [];
+            if (line is not null)
+            {
+                line.Points = [];
+            }
+
+            return;
+        }
+
+        var pts = GalleryHistogram.AreaPoints(counts, stops, width, height);
+        var poly = new PointCollection();
+        foreach (var (x, y) in pts)
+        {
+            poly.Add(new Point(x, y));
+        }
+
+        area.Points = poly;
+        if (line is null)
+        {
+            return;
+        }
+
+        var curve = new PointCollection();
+        for (var i = 1; i < pts.Length - 1; i++)
+        {
+            curve.Add(new Point(pts[i].X, pts[i].Y));
+        }
+
+        line.Points = curve;
     }
 }

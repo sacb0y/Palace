@@ -9,10 +9,12 @@ namespace Palace.Helpers;
 /// Re-hashing every unchanged file was the bulk of a rescan (the whole library is read back).
 /// Bump <see cref="IndexVersion"/> whenever scan-time extraction changes (metadata fields, HDR
 /// probe, kind mapping) so every file is indexed once more.
+/// Version 2 records <see cref="Asset.Undecodable"/>, so a rescan that skips an unchanged
+/// placeholder file still lists it in the scan notice.
 /// </summary>
 public static class ScanFastPath
 {
-    public const int IndexVersion = 1;
+    public const int IndexVersion = 2;
 
     /// <summary>Same format the scan stores in <see cref="Asset.DateModified"/>.</summary>
     public static string Stamp(DateTime lastWriteUtc) =>
@@ -30,6 +32,18 @@ public static class ScanFastPath
         && !HashService.IsCloudStub(hash)
         && existing.Width is > 0
         && existing.Height is > 0;
+
+    /// <summary>
+    /// Cloud API rescan: the item's size and modified time match its row, so the rescan only
+    /// re-confirms it (counted unchanged, not updated).
+    /// </summary>
+    public static bool CloudUnchanged(Asset? existing, string displayPath, long? size, DateTimeOffset? modifiedUtc) =>
+        existing is not null
+        && !existing.IsOrphan
+        && modifiedUtc is { } modified
+        && string.Equals(existing.Path, displayPath, StringComparison.Ordinal)
+        && existing.FileSize == (size ?? 0)
+        && string.Equals(existing.DateModified, modified.ToString("O"), StringComparison.Ordinal);
 
     /// <summary>Throttle for per-file scan progress (the UI line), so large scans don't flood the dispatcher.</summary>
     public const int ProgressIntervalMs = 150;

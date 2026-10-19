@@ -56,6 +56,80 @@ public sealed class MetadataExtractorService
         return meta;
     }
 
+    /// <summary>
+    /// Camera EXIF for the details rows (exposure, aperture, ISO, focal
+    /// length, make / model / lens / date). Local files only — never
+    /// recalls an online-only placeholder. Best-effort: missing → None.
+    /// </summary>
+    public Helpers.CameraExif ReadCamera(string path)
+    {
+        if (string.IsNullOrEmpty(path) || Helpers.CloudFile.IsOnlineOnly(path) || !File.Exists(path))
+        {
+            return Helpers.CameraExif.None;
+        }
+
+        try
+        {
+            IReadOnlyList<MetadataExtractor.Directory> dirs = ImageMetadataReader.ReadMetadata(path);
+            var sub = dirs.OfType<ExifSubIfdDirectory>().FirstOrDefault();
+            var ifd0 = dirs.OfType<ExifIfd0Directory>().FirstOrDefault();
+            if (sub is null && ifd0 is null)
+            {
+                return Helpers.CameraExif.None;
+            }
+
+            double? exposure = null;
+            double? fnumber = null;
+            int? iso = null;
+            double? focal = null;
+            DateTime? taken = null;
+            string? lens = null;
+            if (sub is not null)
+            {
+                if (sub.TryGetRational(ExifDirectoryBase.TagExposureTime, out var et) && et.Denominator != 0)
+                {
+                    exposure = et.ToDouble();
+                }
+
+                if (sub.TryGetRational(ExifDirectoryBase.TagFNumber, out var fn) && fn.Denominator != 0)
+                {
+                    fnumber = fn.ToDouble();
+                }
+
+                if (sub.TryGetInt32(ExifDirectoryBase.TagIsoEquivalent, out var isoValue))
+                {
+                    iso = isoValue;
+                }
+
+                if (sub.TryGetRational(ExifDirectoryBase.TagFocalLength, out var fl) && fl.Denominator != 0)
+                {
+                    focal = fl.ToDouble();
+                }
+
+                if (sub.TryGetDateTime(ExifDirectoryBase.TagDateTimeOriginal, out var dt))
+                {
+                    taken = dt;
+                }
+
+                lens = sub.GetString(ExifDirectoryBase.TagLensModel);
+            }
+
+            return new Helpers.CameraExif(
+                exposure,
+                fnumber,
+                iso,
+                focal,
+                ifd0?.GetString(ExifDirectoryBase.TagMake)?.Trim(),
+                ifd0?.GetString(ExifDirectoryBase.TagModel)?.Trim(),
+                string.IsNullOrWhiteSpace(lens) ? null : lens.Trim(),
+                taken);
+        }
+        catch
+        {
+            return Helpers.CameraExif.None;
+        }
+    }
+
     private static void ReadPngText(string path, GenerationMetadata meta)
     {
         using var stream = File.OpenRead(path);

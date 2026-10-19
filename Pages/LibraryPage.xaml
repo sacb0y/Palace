@@ -1184,11 +1184,17 @@
                         Text="Missing"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
 
-                    <StackPanel
-                        Margin="16,16,0,0"
+                    <!-- Grid, not StackPanel: the info card gets a finite height and
+                         scrolls instead of running under the bottom bar. -->
+                    <Grid
+                        Margin="16,16,0,8"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
-                        Spacing="8">
+                        RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
                         <Border
                             Padding="6,4"
                             Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
@@ -1218,6 +1224,20 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="TextDescription" IconSize="Size16" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Details" />
+                                </StackPanel>
+                            </ToggleButton>
+                            <ToggleButton
+                                x:Name="BtnGalleryHeatmap"
+                                Padding="8,4"
+                                AutomationProperties.AutomationId="BtnGalleryHeatmap"
+                                AutomationProperties.Name="Luminance heatmap"
+                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowHeatmap, Mode=TwoWay, FallbackValue=False}"
+                                IsEnabled="{x:Bind ViewModel.OverlayGallery.CanShowHeatmap, Mode=OneWay, FallbackValue=False}"
+                                ToolTipService.ToolTip="Luminance heatmap, HDR stills (Ctrl+H)"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="Temperature" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Heatmap" />
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton
@@ -1312,6 +1332,7 @@
                         </Border>
                         <Border
                             x:Name="BrdGalleryImageInfo"
+                            Grid.Row="1"
                             MaxWidth="360"
                             Padding="10,6"
                             AutomationProperties.AutomationId="BrdGalleryImageInfo"
@@ -1320,22 +1341,34 @@
                             BorderThickness="1"
                             CornerRadius="{StaticResource OverlayCornerRadius}"
                             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowImageInfo), Mode=OneWay, FallbackValue=Collapsed}">
-                            <StackPanel Spacing="6">
-                                <TextBlock
-                                    AutomationProperties.AutomationId="TxtGalleryImageInfo"
-                                    AutomationProperties.Name="Image information"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.OverlayGallery.ImageInfoText, Mode=OneWay, FallbackValue=''}"
-                                    TextWrapping="Wrap" />
-                                <controls:GalleryHistogramChart
-                                    Compact="True"
-                                    IdPrefix="GalleryOverlay"
-                                    Bins="{x:Bind ViewModel.OverlayGallery.Histogram, Mode=OneWay, FallbackValue={x:Null}}"
-                                    ShowRgb="{x:Bind ViewModel.OverlayGallery.HistogramShowRgb, Mode=OneWay, FallbackValue=True}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowHistogram), Mode=OneWay, FallbackValue=Collapsed}" />
-                            </StackPanel>
+                            <ScrollViewer
+                                HorizontalScrollBarVisibility="Disabled"
+                                VerticalScrollBarVisibility="Auto">
+                                <StackPanel Spacing="6">
+                                    <TextBlock
+                                        AutomationProperties.AutomationId="TxtGalleryImageInfo"
+                                        AutomationProperties.Name="Image information"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="{x:Bind ViewModel.OverlayGallery.ImageInfoText, Mode=OneWay, FallbackValue=''}"
+                                        TextWrapping="Wrap" />
+                                    <controls:GalleryHistogramChart
+                                        Compact="True"
+                                        IdPrefix="GalleryOverlay"
+                                        Bins="{x:Bind ViewModel.OverlayGallery.Histogram, Mode=OneWay, FallbackValue={x:Null}}"
+                                        Details="{x:Bind ViewModel.OverlayGallery.DetailsRows, Mode=OneWay, FallbackValue={x:Null}}"
+                                        Heatmap="{x:Bind ViewModel.OverlayGallery.HeatmapActive, Mode=OneWay, FallbackValue=False}"
+                                        ShowLuma="{x:Bind ViewModel.OverlayGallery.HistogramShowLuma, Mode=OneWay, FallbackValue=True}"
+                                        ShowRgb="{x:Bind ViewModel.OverlayGallery.HistogramShowRgb, Mode=OneWay, FallbackValue=True}"
+                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowHistogram), Mode=OneWay, FallbackValue=Collapsed}" />
+                                    <controls:GalleryGamutChart
+                                        Analysis="{x:Bind ViewModel.OverlayGallery.Analysis, Mode=OneWay, FallbackValue={x:Null}}"
+                                        Compact="True"
+                                        IdPrefix="GalleryOverlay"
+                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowGamut), Mode=OneWay, FallbackValue=Collapsed}" />
+                                </StackPanel>
+                            </ScrollViewer>
                         </Border>
-                    </StackPanel>
+                    </Grid>
                     <Button
                         x:Name="BtnGalleryPrev"
                         MinWidth="48"

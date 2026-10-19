@@ -143,16 +143,9 @@ public sealed class ScanService
             }
             try
             {
-                var (created, decoded) = await IndexFileCoreAsync(source, file, autoOrganize: source.AutoOrganizeNewFiles, ct)
+                var (outcome, decoded) = await IndexFileCoreAsync(source, file, autoOrganize: source.AutoOrganizeNewFiles, ct)
                     .ConfigureAwait(false);
-                if (created)
-                {
-                    report.Added++;
-                }
-                else
-                {
-                    report.Updated++;
-                }
+                report.NoteIndexed(outcome);
 
                 if (!decoded)
                 {
@@ -169,10 +162,13 @@ public sealed class ScanService
     }
 
     public async Task<bool> IndexFileAsync(SourceFolder source, string file, bool autoOrganize, CancellationToken ct = default) =>
-        (await IndexFileCoreAsync(source, file, autoOrganize, ct).ConfigureAwait(false)).Created;
+        (await IndexFileCoreAsync(source, file, autoOrganize, ct).ConfigureAwait(false)).Outcome == ScanOutcome.Added;
 
-    /// <summary>Created: a new catalog row. Decoded: false when a local thumbnail could not be made from the content.</summary>
-    private async Task<(bool Created, bool Decoded)> IndexFileCoreAsync(
+    /// <summary>
+    /// Outcome: added, re-indexed or left unchanged. Decoded: false when a local thumbnail could
+    /// not be made from the content (remembered on the row, so unchanged files report it too).
+    /// </summary>
+    private async Task<(ScanOutcome Outcome, bool Decoded)> IndexFileCoreAsync(
         SourceFolder source,
         string file,
         bool autoOrganize,
@@ -180,7 +176,8 @@ public sealed class ScanService
     {
         if (!CloudFile.TryGetAttributes(file, out var attrs))
         {
-            return (false, true);
+            // Gone between the walk and now: nothing indexed (counted as unchanged).
+            return (ScanOutcome.Unchanged, true);
         }
 
         var decoded = true;
@@ -196,7 +193,7 @@ public sealed class ScanService
                 || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
         {
             // Unchanged since the last full index: skip hash / metadata / thumb / write.
-            return (false, true);
+            return (ScanOutcome.Unchanged, !existing!.Undecodable);
         }
 
         var asset = existing ?? new Asset
@@ -238,7 +235,7 @@ public sealed class ScanService
             asset.MetadataJson = meta.RawJson;
             if (ScanContent.MayGenerateScanThumbnail(attrs))
             {
-                var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind).ConfigureAwait(false);
+                var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind, requireKnownStatus: true).ConfigureAwait(false);
                 if (thumb is { Width: > 0, Height: > 0 } localThumb)
                 {
                     asset.Width = localThumb.Width;
@@ -258,6 +255,7 @@ public sealed class ScanService
             }
         }
 
+        asset.Undecodable = !decoded;
         await _catalog.UpsertAssetAsync(asset, "");
 
         if (isNew && autoOrganize && !onlineOnly)
@@ -265,7 +263,7 @@ public sealed class ScanService
             await _organize.AutoOrganizeNewFileAsync(source, asset);
         }
 
-        return (isNew, decoded);
+        return (isNew ? ScanOutcome.Added : ScanOutcome.Updated, decoded);
     }
 
     private async Task<ScanReport> ScanCloudSourceAsync(
@@ -362,15 +360,7 @@ public sealed class ScanService
             progress?.Report(display);
             try
             {
-                var created = await IndexCloudItemAsync(source, library, child, display, ct).ConfigureAwait(false);
-                if (created)
-                {
-                    report.Added++;
-                }
-                else
-                {
-                    report.Updated++;
-                }
+                report.NoteIndexed(await IndexCloudItemAsync(source, library, child, display, ct).ConfigureAwait(false));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -379,7 +369,7 @@ public sealed class ScanService
         }
     }
 
-    private async Task<bool> IndexCloudItemAsync(
+    private async Task<ScanOutcome> IndexCloudItemAsync(
         SourceFolder source,
         ICloudLibrary library,
         CloudEntry entry,
@@ -389,6 +379,7 @@ public sealed class ScanService
         var existing = await _catalog.GetAssetByCloudItemIdAsync(source.Id, entry.Id)
             ?? await _catalog.GetAssetByPathAsync(displayPath);
         var isNew = existing is null;
+        var unchanged = ScanFastPath.CloudUnchanged(existing, displayPath, entry.Size, entry.ModifiedUtc);
         var modified = entry.ModifiedUtc ?? DateTimeOffset.UtcNow;
         var size = entry.Size ?? 0;
         var asset = existing ?? new Asset
@@ -437,7 +428,7 @@ public sealed class ScanService
         }
 
         await _catalog.UpsertAssetAsync(asset, "");
-        return isNew;
+        return isNew ? ScanOutcome.Added : unchanged ? ScanOutcome.Unchanged : ScanOutcome.Updated;
     }
 
     private static string KeepOrStubHash(Asset? existing, string path, long size, DateTimeOffset modifiedUtc)
