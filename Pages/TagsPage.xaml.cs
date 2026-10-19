@@ -103,7 +103,7 @@ public sealed partial class TagsPage : Page
         }
 
         var index = CmbTagMosaicSort.SelectedIndex;
-        if (!MosaicSortOrder.ShouldApplyIndex(index, ViewModel.MosaicSort, out _))
+        if (!MosaicSortOrder.ShouldApplyFieldIndex(index, ViewModel.MosaicSort, out _))
         {
             return;
         }

@@ -11,10 +11,15 @@ namespace Palace.Helpers;
 /// probe, kind mapping) so every file is indexed once more.
 /// Version 2 records <see cref="Asset.Undecodable"/>, so a rescan that skips an unchanged
 /// placeholder file still lists it in the scan notice.
+/// Version 3 adds <see cref="Asset.DateTaken"/>; a version 2 row that is otherwise unchanged only
+/// gets its EXIF date read (<see cref="NeedsDateTakenOnly"/>), not a full re-index.
 /// </summary>
 public static class ScanFastPath
 {
-    public const int IndexVersion = 2;
+    public const int IndexVersion = 3;
+
+    /// <summary>Last version before Date taken; such rows take the light backfill.</summary>
+    public const int DateTakenBackfillFrom = 2;
 
     /// <summary>Same format the scan stores in <see cref="Asset.DateModified"/>.</summary>
     public static string Stamp(DateTime lastWriteUtc) =>
@@ -22,10 +27,19 @@ public static class ScanFastPath
 
     public static bool IsUnchanged(Asset? existing, long length, DateTime lastWriteUtc, bool onlineOnly) =>
         existing is not null
-        && !onlineOnly
+        && existing.IndexVersion == IndexVersion
+        && SameContent(existing, length, lastWriteUtc, onlineOnly);
+
+    /// <summary>Unchanged version 2 row: only Date taken is missing.</summary>
+    public static bool NeedsDateTakenOnly(Asset? existing, long length, DateTime lastWriteUtc, bool onlineOnly) =>
+        existing is not null
+        && existing.IndexVersion == DateTakenBackfillFrom
+        && SameContent(existing, length, lastWriteUtc, onlineOnly);
+
+    private static bool SameContent(Asset existing, long length, DateTime lastWriteUtc, bool onlineOnly) =>
+        !onlineOnly
         && !existing.IsOnlineOnly
         && !existing.IsOrphan
-        && existing.IndexVersion == IndexVersion
         && existing.FileSize == length
         && string.Equals(existing.DateModified, Stamp(lastWriteUtc), StringComparison.Ordinal)
         && existing.ContentHash is { Length: > 0 } hash

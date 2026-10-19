@@ -76,6 +76,18 @@ public sealed class ScanFastPathTests
     public void Version_2_records_undecodable_so_old_rows_reindex_once() =>
         Assert.False(ScanFastPath.IsUnchanged(WithVersion(1), 1234, Written, onlineOnly: false));
 
+    [Fact]
+    public void Version_2_rows_only_backfill_date_taken()
+    {
+        Assert.False(ScanFastPath.IsUnchanged(WithVersion(2), 1234, Written, onlineOnly: false));
+        Assert.True(ScanFastPath.NeedsDateTakenOnly(WithVersion(2), 1234, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.NeedsDateTakenOnly(WithVersion(2), 999, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.NeedsDateTakenOnly(WithVersion(2), 1234, Written, onlineOnly: true));
+        Assert.False(ScanFastPath.NeedsDateTakenOnly(WithVersion(1), 1234, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.NeedsDateTakenOnly(WithVersion(ScanFastPath.IndexVersion), 1234, Written, onlineOnly: false));
+        Assert.True(ScanFastPath.IsUnchanged(WithVersion(ScanFastPath.IndexVersion), 1234, Written, onlineOnly: false));
+    }
+
     private static Asset WithVersion(int version)
     {
         var asset = Indexed();

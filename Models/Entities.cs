@@ -49,6 +49,9 @@ public sealed class Asset
     public bool IsHdr { get; set; }
     /// <summary><c>ScanFastPath.IndexVersion</c> of the last full local index; 0 = never / older build.</summary>
     public int IndexVersion { get; set; }
+
+    /// <summary>EXIF DateTimeOriginal as local "yyyy-MM-ddTHH:mm:ss" (no zone); null when the file has none.</summary>
+    public string? DateTaken { get; set; }
     /// <summary>
     /// The last full local index could not decode the content (placeholder tile). Lets an
     /// incremental rescan, which skips unchanged files, still list them in the scan notice.

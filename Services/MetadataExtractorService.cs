@@ -16,6 +16,9 @@ public sealed class GenerationMetadata
     public string? Seed { get; set; }
     public string? Sampler { get; set; }
     public string? Steps { get; set; }
+
+    /// <summary>EXIF DateTimeOriginal (see <c>DateTakenFormat</c>); not part of <see cref="RawJson"/>.</summary>
+    public string? DateTaken { get; set; }
     public string RawJson { get; set; } = "{}";
 }
 
@@ -61,6 +64,30 @@ public sealed class MetadataExtractorService
     /// length, make / model / lens / date). Local files only — never
     /// recalls an online-only placeholder. Best-effort: missing → None.
     /// </summary>
+    /// <summary>
+    /// Only EXIF DateTimeOriginal, for the one-time Date taken backfill of unchanged files.
+    /// Local files only; never recalls an online-only placeholder.
+    /// </summary>
+    public string? ReadDateTaken(string path)
+    {
+        if (string.IsNullOrEmpty(path) || Helpers.CloudFile.IsOnlineOnly(path) || !Helpers.DateTakenFormat.MayHaveExif(path))
+        {
+            return null;
+        }
+
+        try
+        {
+            var sub = ImageMetadataReader.ReadMetadata(path).OfType<ExifSubIfdDirectory>().FirstOrDefault();
+            return sub is not null && sub.TryGetDateTime(ExifDirectoryBase.TagDateTimeOriginal, out var taken)
+                ? Helpers.DateTakenFormat.Format(taken)
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public Helpers.CameraExif ReadCamera(string path)
     {
         if (string.IsNullOrEmpty(path) || Helpers.CloudFile.IsOnlineOnly(path) || !File.Exists(path))
@@ -480,6 +507,12 @@ public sealed class MetadataExtractorService
                     {
                         meta.Prompt ??= dir.GetString(ExifDirectoryBase.TagImageDescription)?.Trim();
                     }
+                }
+
+                if (dir is ExifSubIfdDirectory sub && meta.DateTaken is null
+                    && sub.TryGetDateTime(ExifDirectoryBase.TagDateTimeOriginal, out var taken))
+                {
+                    meta.DateTaken = Helpers.DateTakenFormat.Format(taken);
                 }
 
                 if (dir is IptcDirectory iptc && iptc.ContainsTag(IptcDirectory.TagCaption))

@@ -288,6 +288,28 @@
                     ItemsSource="{x:Bind ViewModel.SortLabels, Mode=OneWay}"
                     SelectedIndex="{x:Bind ViewModel.MosaicSortIndex, Mode=OneWay}"
                     SelectionChanged="CmbMosaicSort_SelectionChanged" />
+                <Button
+                    x:Name="BtnSortDirection"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnSortDirection"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}"
+                    AutomationProperties.Name="Sort direction"
+                    Command="{x:Bind ViewModel.ToggleSortDirectionCommand}"
+                    ToolTipService.ToolTip="Reverse sort order">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ic:FluentIcon
+                            Icon="ArrowDown"
+                            IconSize="Size16"
+                            IconVariant="Regular"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsSortDescending), Mode=OneWay}" />
+                        <ic:FluentIcon
+                            Icon="ArrowUp"
+                            IconSize="Size16"
+                            IconVariant="Regular"
+                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsSortDescending), Mode=OneWay}" />
+                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}" />
+                    </StackPanel>
+                </Button>
                 <TextBlock
                     x:Name="TxtSelectionCount"
                     VerticalAlignment="Center"
