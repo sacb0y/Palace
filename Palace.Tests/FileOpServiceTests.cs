@@ -557,4 +557,38 @@ public sealed class FileOpServiceTests : IAsyncLifetime
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
+
+    [Fact]
+    public async Task Move_of_a_file_inside_another_projects_nested_root_is_skipped()
+    {
+        var nestedRoot = await AddOtherProjectSourceAsync(Path.Combine(_rootA.Path, "TheirRoot"));
+        var theirs = await AddAssetAsync(_rootA, Path.Combine("TheirRoot", "x.png"));
+
+        var result = await _ops.MoveAssetsAsync([theirs], Dir(_rootA, "Sorted"), _projectId);
+
+        Assert.False(result.Ok);
+        Assert.Contains("another project", result.Message);
+        Assert.True(File.Exists(Path.Combine(nestedRoot.Path, "x.png")));
+    }
+
+    [Fact]
+    public async Task Concurrent_moves_are_serialized_and_undo_stays_last_in_first_out()
+    {
+        var one = await AddAssetAsync(_rootA, "1.png");
+        var two = await AddAssetAsync(_rootA, "2.png");
+        var destOne = Dir(_rootA, "One");
+        var destTwo = Dir(_rootA, "Two");
+
+        var results = await Task.WhenAll(
+            _ops.MoveAssetsAsync([one], destOne, _projectId),
+            _ops.MoveAssetsAsync([two], destTwo, _projectId));
+
+        Assert.All(results, r => Assert.True(r.Ok, r.Message));
+        var undos = await Task.WhenAll(_ops.UndoLastAsync(_projectId), _ops.UndoLastAsync(_projectId));
+        Assert.All(undos, u => Assert.True(u.Ok, u.Message));
+        Assert.NotEqual(undos[0].BatchId, undos[1].BatchId);
+        Assert.True(File.Exists(one.Path));
+        Assert.True(File.Exists(two.Path));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
 }
