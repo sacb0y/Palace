@@ -164,8 +164,17 @@ public static class IccProfile
             return false;
         }
 
-        if (tag[..4].SequenceEqual("para"u8) && tag.Length >= 16)
+        if (tag[..4].SequenceEqual("para"u8))
         {
+            // ICC parametricCurveType: function types 0–4 carry 1, 3, 4, 5 or 7
+            // s15Fixed16 parameters after the 12-byte header; g is always first.
+            var function = BinaryPrimitives.ReadUInt16BigEndian(tag.Slice(8, 2));
+            int[] paramCounts = [1, 3, 4, 5, 7];
+            if (function >= paramCounts.Length || tag.Length < 12 + (4 * paramCounts[function]))
+            {
+                return false;
+            }
+
             var gamma = S15Fixed16(tag, 12);
             return gamma is >= 2.1 and <= 2.5;
         }

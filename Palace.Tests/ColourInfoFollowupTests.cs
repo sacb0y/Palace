@@ -167,6 +167,22 @@ public sealed class ColourInfoFollowupTests
     }
 
     [Fact]
+    public void Icc_ParaCurve_RequiresKnownFunctionTypeAndFullParameters()
+    {
+        var good = Para(2.4);
+        Assert.NotNull(IccProfile.MatchWideGamut(IccRgb(P3Colorants, good)));
+        var badType = (byte[])good.Clone();
+        BinaryPrimitives.WriteUInt16BigEndian(badType.AsSpan(8), 9);
+        Assert.Null(IccProfile.MatchWideGamut(IccRgb(P3Colorants, badType)));
+        // Type 3 needs 5 parameters; only g present.
+        Assert.Null(IccProfile.MatchWideGamut(IccRgb(P3Colorants, good[..16])));
+        // Type 0 with just g is valid.
+        var type0 = good[..16];
+        BinaryPrimitives.WriteUInt16BigEndian(type0.AsSpan(8), 0);
+        Assert.NotNull(IccProfile.MatchWideGamut(IccRgb(P3Colorants, type0)));
+    }
+
+    [Fact]
     public void IsOriginalStill_OnlyForTheOriginalPath()
     {
         var dir = Path.Combine(Path.GetTempPath(), "palace-still");
