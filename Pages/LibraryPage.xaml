@@ -27,12 +27,12 @@
                 <TextBlock VerticalAlignment="Center" Text="{x:Bind Display}" />
             </StackPanel>
         </DataTemplate>
-        <DataTemplate x:Key="MoveDestinationHeaderTemplate">
+        <DataTemplate x:Key="MoveDestinationHeaderTemplate" x:DataType="pages:MoveDestinationHeader">
             <TextBlock
                 Margin="0,8,0,4"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="{Binding Title}" />
+                Text="{x:Bind Title}" />
         </DataTemplate>
     </Page.Resources>
 

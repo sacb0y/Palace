@@ -342,15 +342,15 @@ public sealed partial class LibraryPage
     }
 }
 
-/// <summary>Non-selectable section header in the Move dialog list.</summary>
-internal sealed class MoveDestinationHeader
+/// <summary>Non-selectable section header in the Move dialog list (public for x:DataType).</summary>
+public sealed class MoveDestinationHeader
 {
     public MoveDestinationHeader(string title) => Title = title;
     public string Title { get; }
     public override string ToString() => Title;
 }
 
-internal sealed class MoveDestinationTemplateSelector : DataTemplateSelector
+public sealed class MoveDestinationTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? DestinationTemplate { get; set; }
     public DataTemplate? HeaderTemplate { get; set; }
