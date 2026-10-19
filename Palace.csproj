@@ -15,7 +15,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Version>0.0.4</Version>
+    <!-- Version / AssemblyVersion / FileVersion / InformationalVersion come from Directory.Build.props (PalaceVersion). -->
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**</DefaultItemExcludes>
   </PropertyGroup>

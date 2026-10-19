@@ -1,0 +1,15 @@
+<Project>
+  <!--
+    Single source of truth for Palace SemVer (MAJOR.MINOR.PATCH).
+    Package.appxmanifest Identity Version must be $(PalaceVersion).0 (Revision always 0).
+    Bump here, then sync the manifest (scripts/sync-appx-version.* or edit by hand).
+    See .cursor/rules/versioning-release.mdc and AGENTS.md.
+  -->
+  <PropertyGroup>
+    <PalaceVersion>0.0.5</PalaceVersion>
+    <Version>$(PalaceVersion)</Version>
+    <AssemblyVersion>$(PalaceVersion).0</AssemblyVersion>
+    <FileVersion>$(PalaceVersion).0</FileVersion>
+    <InformationalVersion>$(PalaceVersion)</InformationalVersion>
+  </PropertyGroup>
+</Project>

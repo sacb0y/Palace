@@ -10,8 +10,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main for version compare
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - name: Check version identity
+        env:
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 scripts/check-version.py --base-ref origin/main
+          else
+            python3 scripts/check-version.py --match-only
+          fi
+
   build-test:
     runs-on: windows-latest
+    needs: version-check
     steps:
       - uses: actions/checkout@v4
 
