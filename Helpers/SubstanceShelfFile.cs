@@ -94,10 +94,9 @@ public static class SubstanceShelfFile
             }
             else if (span.StartsWith(PngSignature))
             {
-                var end = span.IndexOf("IEND"u8);
-                if (end > 0 && end + 8 <= span.Length)
+                if (PngLength(span) is { } length)
                 {
-                    return span[..(end + 8)].ToArray();
+                    return span[..length].ToArray();
                 }
             }
             else if (span[0] == 0xFF && span[1] == 0xD8 && span[2] == 0xFF)
@@ -111,6 +110,59 @@ public static class SubstanceShelfFile
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Length of the PNG starting at <paramref name="png"/>, through its zero-length
+    /// <c>IEND</c> chunk. Walks the length-prefixed chunks, so "IEND" inside a text chunk
+    /// does not end the image. Null when the chunks run past the data.
+    /// </summary>
+    internal static int? PngLength(ReadOnlySpan<byte> png)
+    {
+        var pos = (long)PngSignature.Length;
+        while (pos + 12 <= png.Length)
+        {
+            var length = BinaryPrimitives.ReadUInt32BigEndian(png[(int)pos..]);
+            var isEnd = png.Slice((int)pos + 4, 4).SequenceEqual("IEND"u8);
+            var next = pos + 12 + length;
+            if (next > png.Length)
+            {
+                return null;
+            }
+
+            if (isEnd)
+            {
+                return length == 0 ? (int)next : null;
+            }
+
+            pos = next;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// True when the local file at <paramref name="path"/> has an image-like extension
+    /// Painter reuses and its first bytes are shelf metadata. Reads 16 bytes; callers must
+    /// not pass online-only cloud files.
+    /// </summary>
+    public static bool IsShelfMetadataFile(string path)
+    {
+        if (!ThumbCacheVersion.ShelfPreviewChanged(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            Span<byte> head = stackalloc byte[16];
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return fs.ReadAtLeast(head, head.Length, throwOnEndOfStream: false) == head.Length && IsShelfMetadata(head);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static ReadOnlySpan<byte> PngSignature => [0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A];

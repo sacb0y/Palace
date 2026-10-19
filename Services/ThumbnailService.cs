@@ -382,8 +382,11 @@ public sealed class ThumbnailService
 
     private bool NeedsLargePreviewBackfill(Models.AssetKind kind, string filePath) =>
         kind == Models.AssetKind.Image
-        && StillDecode.HandlesPath(filePath)
-        && ExistingLargePreviewForPath(filePath) is null;
+        && ExistingLargePreviewForPath(filePath) is null
+        && (StillDecode.HandlesPath(filePath)
+            // Shelf metadata under a .bmp/.tif name: full view needs the per-path preview
+            // even when an identical file's hash-keyed mosaic thumb is already cached.
+            || (!CloudFile.IsOnlineOnly(filePath) && SubstanceShelfFile.IsShelfMetadataFile(filePath)));
 
     /// <summary>
     /// Custom still paths: EXR / Radiance / TGA / Clip decoders, HDR stills

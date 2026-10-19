@@ -136,6 +136,60 @@ public class SubstanceShelfFileTests
         Assert.Equal(jpeg, SubstanceShelfFile.TryExtractPreview(ShelfWithPreview(jpeg)));
     }
 
+    /// <summary>TinyPng with a tEXt chunk whose text contains "IEND" before the image data.</summary>
+    private static byte[] PngWithIendInText()
+    {
+        using var ms = new MemoryStream();
+        ms.Write(TinyPng.AsSpan(0, 8 + 25)); // signature + IHDR chunk
+        var text = Encoding.ASCII.GetBytes("Comment\0see IEND marker");
+        BigEndian(ms, (uint)text.Length);
+        ms.Write("tEXt"u8);
+        ms.Write(text);
+        BigEndian(ms, 0); // CRC (not checked by the extractor)
+        ms.Write(TinyPng.AsSpan(8 + 25));
+        return ms.ToArray();
+    }
+
+    [Fact]
+    public void Extracts_WholePng_WhenMetadataTextContainsIend()
+    {
+        var png = PngWithIendInText();
+        Assert.Equal(png, SubstanceShelfFile.TryExtractPreview(ShelfWithPreview(png)));
+    }
+
+    [Fact]
+    public void TruncatedPng_ReturnsNull()
+    {
+        var file = ShelfWithPreview(TinyPng);
+        var cut = file.AsSpan().IndexOf("IEND"u8);
+        Assert.Null(SubstanceShelfFile.TryExtractPreview(file[..cut]));
+    }
+
+    [Theory]
+    [InlineData(".bmp", true, true)]
+    [InlineData(".tif", true, true)]
+    [InlineData(".png", true, false)]   // not a name Painter reuses
+    [InlineData(".bmp", false, false)]  // a real BMP header
+    public void IsShelfMetadataFile_ChecksExtensionAndHeader(string ext, bool shelf, bool expected)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "palace-shelf-" + Guid.NewGuid().ToString("N") + ext);
+        try
+        {
+            File.WriteAllBytes(path, shelf
+                ? ShelfWithoutPreview()
+                : [0x42, 0x4D, 0x98, 0, 0, 0, 0, 0, 0, 0, 0x36, 0, 0, 0, 0x28, 0, 0, 0]);
+            Assert.Equal(expected, SubstanceShelfFile.IsShelfMetadataFile(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void IsShelfMetadataFile_MissingFile_IsFalse() =>
+        Assert.False(SubstanceShelfFile.IsShelfMetadataFile(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".bmp")));
+
     [Fact]
     public void NoPreview_ReturnsNull()
     {
