@@ -23,6 +23,7 @@ public sealed partial class TagsPage : Page
 
     private bool _ignoreColorChanges;
     private bool _colorDirty;
+    private bool _priorityArmed;
     private static readonly SemaphoreSlim TileDecodeGate = new(4);
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
@@ -68,6 +69,7 @@ public sealed partial class TagsPage : Page
             RefreshRealizedTiles();
             HookOverlayGallery();
             await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
+            _priorityArmed = true;
         };
         Unloaded += (_, _) =>
         {
@@ -215,7 +217,7 @@ public sealed partial class TagsPage : Page
 
     private void NbTagPriority_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
-        if (!IsLoaded || ViewModel.SelectedNode?.TagId is null)
+        if (!_priorityArmed || !IsLoaded || ViewModel.SelectedNode?.TagId is null)
         {
             return;
         }
