@@ -68,6 +68,8 @@
     <Compile Include="..\Helpers\TagInk.cs" Link="TagInk.cs" />
     <Compile Include="..\Helpers\TagSuggest.cs" Link="TagSuggest.cs" />
     <Compile Include="..\Helpers\TagCreateCopy.cs" Link="TagCreateCopy.cs" />
+    <Compile Include="..\Helpers\TagPriorityEdit.cs" Link="TagPriorityEdit.cs" />
+    <Compile Include="..\Helpers\TagAssignUndo.cs" Link="TagAssignUndo.cs" />
     <Compile Include="..\Helpers\TagChipChrome.cs" Link="TagChipChrome.cs" />
     <Compile Include="..\Helpers\TagAlphaIndex.cs" Link="TagAlphaIndex.cs" />
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />

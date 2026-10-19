@@ -1146,7 +1146,10 @@ public sealed partial class FileOpService
 
                 try
                 {
-                    await _catalog.RemoveTagForUndoAsync(item.AssetId, item.OldPath).ConfigureAwait(false);
+                    await _catalog.RemoveTagForUndoAsync(
+                        item.AssetId,
+                        item.OldPath,
+                        TagAssignUndo.Decode(item.NewSourceId)).ConfigureAwait(false);
                     return null;
                 }
                 catch (Exception ex)

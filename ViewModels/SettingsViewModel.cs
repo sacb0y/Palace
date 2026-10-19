@@ -1028,18 +1028,6 @@ public partial class SettingsViewModel : ObservableObject
             "Dark" => Microsoft.UI.Xaml.ElementTheme.Dark,
             _ => Microsoft.UI.Xaml.ElementTheme.Default
         };
-        // Keep Application ThemeDictionaries (pane acrylic, tag-chip defaults) in sync with the
-        // window theme — Application.Current.Resources.TryGetValue follows Application.RequestedTheme.
-        if (Microsoft.UI.Xaml.Application.Current is { } app)
-        {
-            app.RequestedTheme = theme switch
-            {
-                "Light" => Microsoft.UI.Xaml.ApplicationTheme.Light,
-                "Dark" => Microsoft.UI.Xaml.ApplicationTheme.Dark,
-                _ => app.RequestedTheme
-            };
-        }
-
         ShellBackground.Refresh();
     }
 }

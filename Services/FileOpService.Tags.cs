@@ -46,14 +46,21 @@ public sealed partial class FileOpService
         var items = new List<FileOpItem>();
         foreach (var assetId in ids)
         {
+            var before = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
             await _catalog.AssignTagAsync(assetId, tagId, source).ConfigureAwait(false);
+            var after = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
+            var impliedAdded = TagAssignUndo.ImpliedAdded(
+                before.Select(t => t.TagId),
+                after.Select(t => t.TagId),
+                tagId);
             items.Add(new FileOpItem
             {
                 Step = FileOpStep.AssignTag,
                 AssetId = assetId,
                 OldPath = tagId,
                 NewPath = tagName,
-                OldSourceId = source.ToString()
+                OldSourceId = source.ToString(),
+                NewSourceId = TagAssignUndo.Encode(impliedAdded)
             });
         }
 

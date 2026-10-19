@@ -21,6 +21,8 @@ public sealed partial class TagsPage : Page
 {
     public TagsViewModel ViewModel => AppServices.Tags;
 
+    public LibraryViewModel Library => AppServices.Library;
+
     private bool _ignoreColorChanges;
     private bool _colorDirty;
     private bool _priorityArmed;
@@ -227,6 +229,37 @@ public sealed partial class TagsPage : Page
         }
     }
 
+    private void TagsPage_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Z
+            || !InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down)
+            || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(CoreVirtualKeyStates.Down)
+            || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(CoreVirtualKeyStates.Down)
+            || ViewModel.IsGalleryOverlayOpen
+            || FocusIsTextInput(e.OriginalSource))
+        {
+            return;
+        }
+
+        if (Library.UndoFileOpCommand.CanExecute(null) && Library.CanUndoFileOp)
+        {
+            Library.UndoFileOpCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void InfTagsUndo_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        Library.PauseUndoToastTimer();
+
+    private void InfTagsUndo_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        Library.ResumeUndoToastTimer();
+
+    private void InfTagsUndo_FocusEntered(object sender, RoutedEventArgs e) =>
+        Library.PauseUndoToastTimer();
+
+    private void InfTagsUndo_FocusExited(object sender, RoutedEventArgs e) =>
+        Library.ResumeUndoToastTimer();
+
     private void NbTagPriority_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
     {
         if (!_priorityArmed || !IsLoaded || ViewModel.SelectedNode?.TagId is null)
@@ -234,10 +267,7 @@ public sealed partial class TagsPage : Page
             return;
         }
 
-        if (ViewModel.SavePriorityCommand.CanExecute(null))
-        {
-            ViewModel.SavePriorityCommand.Execute(null);
-        }
+        ViewModel.CommitPriorityFromBox(args.NewValue);
     }
 
     private void TagChipMenu_Opening(object sender, object e)

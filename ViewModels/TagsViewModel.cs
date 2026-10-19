@@ -69,6 +69,11 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial double SelectedPriority { get; set; }
 
+    private int _priorityLoadDepth;
+
+    /// <summary>True while the number box is being filled from the catalog, not from a user edit.</summary>
+    public bool IsLoadingPriority => _priorityLoadDepth > 0;
+
     [ObservableProperty]
     public partial TagGroupPick? SelectedAvailableGroup { get; set; }
 
@@ -341,9 +346,10 @@ public partial class TagsViewModel : ObservableObject
 
         var tag = _tags.FirstOrDefault(t => t.Id == node.TagId);
         var name = tag?.Name ?? node.Name;
-        SelectedName = name;
         _renameBaseline = name;
         _renameBaselineTagId = node.TagId;
+        SelectedName = name;
+        OnPropertyChanged(nameof(CanSaveRename));
         HasSelection = true;
         ShowDetails = true;
         if (tag is null)
@@ -351,7 +357,7 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        SelectedPriority = tag.Priority;
+        SetSelectedPriorityFromCatalog(tag.Priority);
         SelectedIsStarred = tag.IsStarred;
     }
 
@@ -723,6 +729,39 @@ public partial class TagsViewModel : ObservableObject
             StatusText = "Tag renamed.";
         });
 
+    /// <summary>Persist the number box's <c>NewValue</c>, not the still-stale <see cref="SelectedPriority"/>.</summary>
+    public void CommitPriorityFromBox(double newValue)
+    {
+        var commit = TagPriorityEdit.FromBox(newValue, IsLoadingPriority);
+        if (!commit.Save || SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        if (Math.Abs(SelectedPriority - commit.Value) > 0.001)
+        {
+            SetSelectedPriorityFromCatalog(commit.Value);
+        }
+
+        if (SavePriorityCommand.CanExecute(null))
+        {
+            SavePriorityCommand.Execute(null);
+        }
+    }
+
+    private void SetSelectedPriorityFromCatalog(double value)
+    {
+        _priorityLoadDepth++;
+        try
+        {
+            SelectedPriority = value;
+        }
+        finally
+        {
+            _priorityLoadDepth--;
+        }
+    }
+
     [RelayCommand]
     private Task SavePriorityAsync() =>
         ErrorReporter.RunAsync("Save priority", Notify, async () =>
@@ -1007,7 +1046,7 @@ public partial class TagsViewModel : ObservableObject
             await UiDispatch.RunAsync(() =>
             {
                 SelectedName = "";
-                SelectedPriority = 0;
+                SetSelectedPriorityFromCatalog(0);
                 AssetCount = 0;
                 AssetCountLabel = "Select a tag";
                 ImpliedTagsSummary = "";
@@ -1036,10 +1075,11 @@ public partial class TagsViewModel : ObservableObject
         if (TagSelection.ShouldApplyLoadedName(
                 SelectedName, loadedName, _renameBaseline, _renameBaselineTagId, tag.Id))
         {
-            SelectedName = loadedName;
             _renameBaseline = loadedName;
             _renameBaselineTagId = tag.Id;
-            SelectedPriority = tag.Priority;
+            SelectedName = loadedName;
+            OnPropertyChanged(nameof(CanSaveRename));
+            SetSelectedPriorityFromCatalog(tag.Priority);
             SelectedIsStarred = tag.IsStarred;
         }
 
@@ -1069,12 +1109,13 @@ public partial class TagsViewModel : ObservableObject
             if (TagSelection.ShouldApplyLoadedName(
                     SelectedName, loadedName, _renameBaseline, _renameBaselineTagId, tag.Id))
             {
-                SelectedName = loadedName;
                 _renameBaseline = loadedName;
                 _renameBaselineTagId = tag.Id;
+                SelectedName = loadedName;
+                OnPropertyChanged(nameof(CanSaveRename));
             }
 
-            SelectedPriority = tag.Priority;
+            SetSelectedPriorityFromCatalog(tag.Priority);
             SelectedEffectiveColor = colors.GetValueOrDefault(tag.Id);
             HasCustomColor = TagColor.Normalize(tag.Color) is not null;
             SelectedColorLabel = CatalogService.DescribeTagColor(tag, _tags, _memberships);

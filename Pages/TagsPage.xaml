@@ -11,10 +11,17 @@
     xmlns:models="using:Palace.Models"
     xmlns:pages="using:Palace.Pages"
     mc:Ignorable="d"
-    Background="Transparent">
+    Background="Transparent"
+    PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
+    <ScrollViewer
+        HorizontalScrollBarVisibility="Auto"
+        HorizontalScrollMode="Enabled"
+        VerticalScrollBarVisibility="Disabled"
+        VerticalScrollMode="Disabled">
     <Grid
+        MinWidth="1100"
         Padding="16"
         ColumnSpacing="16"
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
@@ -874,6 +881,35 @@
                 Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
         </StackPanel>
     </Grid>
+    </ScrollViewer>
+
+        <StackPanel
+            Margin="16,0,16,12"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Bottom"
+            Spacing="4">
+            <InfoBar
+                x:Name="InfTagsUndo"
+                MaxWidth="720"
+                HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="InfTagsUndo"
+                GotFocus="InfTagsUndo_FocusEntered"
+                IsOpen="{x:Bind Library.ShowUndoToast, Mode=TwoWay}"
+                LostFocus="InfTagsUndo_FocusExited"
+                Message="{x:Bind Library.UndoToastMessage, Mode=OneWay}"
+                PointerEntered="InfTagsUndo_PointerEntered"
+                PointerExited="InfTagsUndo_PointerExited"
+                Severity="Success">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="BtnTagsUndoToast"
+                        AutomationProperties.Name="Undo"
+                        Command="{x:Bind Library.UndoFileOpCommand}"
+                        Content="Undo"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Library.ShowUndoToastAction), Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </StackPanel>
 
         <Grid
             x:Name="GrdGalleryOverlay"

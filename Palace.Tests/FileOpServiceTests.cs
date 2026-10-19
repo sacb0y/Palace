@@ -766,4 +766,94 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.False(Directory.Exists(created.Path!));
         Assert.Null(await _ops.PeekUndoAsync(_projectId));
     }
+
+    [Fact]
+    public async Task Undo_assign_removes_implied_tags_that_assignment_added()
+    {
+        var asset = await AddAssetAsync(_rootA, "tagged.png");
+        var parent = PalaceDb.NewId();
+        var added = PalaceDb.NewId();
+        var already = PalaceDb.NewId();
+        var manual = PalaceDb.NewId();
+        await _db.WriteAsync(conn =>
+        {
+            InsertTag(conn, parent, "Scarf");
+            InsertTag(conn, added, "Winter");
+            InsertTag(conn, already, "Already");
+            InsertTag(conn, manual, "ManualKeep");
+            InsertAssetTag(conn, asset.Id, parent, TagSource.Manual);
+            InsertAssetTag(conn, asset.Id, added, TagSource.Implied);
+            InsertAssetTag(conn, asset.Id, already, TagSource.Implied);
+            InsertAssetTag(conn, asset.Id, manual, TagSource.Manual);
+        });
+
+        await _catalog.AddFileOpBatchAsync(new FileOpBatch
+        {
+            ProjectId = _projectId,
+            Kind = FileOpKind.TagAssign,
+            Summary = "Tagged 1 item with Scarf",
+            Items =
+            [
+                new FileOpItem
+                {
+                    Step = FileOpStep.AssignTag,
+                    AssetId = asset.Id,
+                    OldPath = parent,
+                    NewPath = "Scarf",
+                    OldSourceId = TagSource.Manual.ToString(),
+                    NewSourceId = TagAssignUndo.Encode([added, manual])
+                }
+            ]
+        });
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        var left = await TagIdsOn(asset.Id);
+        Assert.DoesNotContain(parent, left);
+        Assert.DoesNotContain(added, left);
+        Assert.Contains(already, left);
+        Assert.Contains(manual, left);
+    }
+
+    private static void InsertTag(SqliteConnection conn, string id, string name)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO Tag (Id, Name, Priority, Slug, IsStarred)
+            VALUES ($id, $name, 0, $slug, 0)
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$name", name);
+        cmd.Parameters.AddWithValue("$slug", name.ToLowerInvariant());
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void InsertAssetTag(SqliteConnection conn, string assetId, string tagId, TagSource source)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO AssetTag (AssetId, TagId, Source)
+            VALUES ($asset, $tag, $source)
+            """;
+        cmd.Parameters.AddWithValue("$asset", assetId);
+        cmd.Parameters.AddWithValue("$tag", tagId);
+        cmd.Parameters.AddWithValue("$source", source.ToString());
+        cmd.ExecuteNonQuery();
+    }
+
+    private Task<List<string>> TagIdsOn(string assetId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT TagId FROM AssetTag WHERE AssetId = $asset";
+            cmd.Parameters.AddWithValue("$asset", assetId);
+            var ids = new List<string>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                ids.Add(reader.GetString(0));
+            }
+
+            return ids;
+        });
 }

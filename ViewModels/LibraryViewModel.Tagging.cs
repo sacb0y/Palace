@@ -310,6 +310,7 @@ public partial class LibraryViewModel
         if (result.Ok)
         {
             OfferUndoToast(result.Message);
+            await UiDispatch.RunAsync(() => AssignAnnouncement = result.Message);
         }
         else
         {

@@ -41,15 +41,42 @@ public sealed partial class CatalogService
             RefreshFts(conn, assetId);
         });
 
-    /// <summary>Undo helper: remove one assignment row (journal reverse of an assign).</summary>
-    public Task RemoveTagForUndoAsync(string assetId, string tagId) =>
+    /// <summary>
+    /// Undo helper: remove the assigned tag and any implied tags that assignment added.
+    /// Implied extras are deleted only while they are still <see cref="TagSource.Implied"/>.
+    /// </summary>
+    public Task RemoveTagForUndoAsync(string assetId, string tagId, IReadOnlyList<string>? impliedAdded = null) =>
         _db.WriteAsync(conn =>
         {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM AssetTag WHERE AssetId = $asset AND TagId = $tag";
-            cmd.Parameters.AddWithValue("$asset", assetId);
-            cmd.Parameters.AddWithValue("$tag", tagId);
-            cmd.ExecuteNonQuery();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "DELETE FROM AssetTag WHERE AssetId = $asset AND TagId = $tag";
+                cmd.Parameters.AddWithValue("$asset", assetId);
+                cmd.Parameters.AddWithValue("$tag", tagId);
+                cmd.ExecuteNonQuery();
+            }
+
+            if (impliedAdded is not null)
+            {
+                foreach (var extra in impliedAdded)
+                {
+                    if (string.IsNullOrEmpty(extra) || string.Equals(extra, tagId, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = """
+                        DELETE FROM AssetTag
+                        WHERE AssetId = $asset AND TagId = $tag AND Source = $source
+                        """;
+                    cmd.Parameters.AddWithValue("$asset", assetId);
+                    cmd.Parameters.AddWithValue("$tag", extra);
+                    cmd.Parameters.AddWithValue("$source", TagSource.Implied.ToString());
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
             RefreshFts(conn, assetId);
         });
 
