@@ -80,6 +80,41 @@ public sealed class ScanNoticeTests : IDisposable
     }
 
     [Fact]
+    public void NoteIndexed_counts_each_outcome()
+    {
+        var report = new ScanReport();
+        report.NoteIndexed(ScanOutcome.Added);
+        report.NoteIndexed(ScanOutcome.Updated);
+        report.NoteIndexed(ScanOutcome.Unchanged);
+        report.NoteIndexed(ScanOutcome.Unchanged);
+        Assert.Equal((1, 1, 2), (report.Added, report.Updated, report.Unchanged));
+    }
+
+    [Fact]
+    public void Summary_of_a_no_change_rescan_says_unchanged_not_updated()
+    {
+        var report = new ScanReport();
+        for (var i = 0; i < 45; i++)
+        {
+            report.NoteIndexed(ScanOutcome.Unchanged);
+        }
+
+        report.NoteUndecodable(@"C:\art\alpha 02.bmp");
+        Assert.Equal("Indexed 0 new, 0 updated, 45 unchanged, 0 missing.", ScanNotice.Summary(report));
+        Assert.Equal("Indexed Palace-Dev: 0 new, 0 updated, 45 unchanged, 0 missing.", ScanNotice.Summary(report, "Palace-Dev"));
+        // Unchanged placeholder files are still named in the notice.
+        Assert.Contains("alpha 02.bmp", ScanNotice.Describe(report));
+    }
+
+    [Fact]
+    public void Add_merges_unchanged()
+    {
+        var a = new ScanReport { Unchanged = 3 };
+        a.Add(new ScanReport { Unchanged = 4, Updated = 1 });
+        Assert.Equal((7, 1), (a.Unchanged, a.Updated));
+    }
+
+    [Fact]
     public void Add_merges_counts_and_caps_examples()
     {
         var total = new ScanReport { Added = 1 };

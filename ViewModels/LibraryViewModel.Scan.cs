@@ -63,7 +63,7 @@ public partial class LibraryViewModel
                     new Progress<string>(p => StatusText = $"Scanning {Path.GetFileName(p)}"),
                     projectId: AppServices.CurrentProject.Id);
                 await RefreshQuietAsync();
-                StatusText = $"Indexed {report.Added} new, {report.Updated} updated, {report.Orphaned} missing.";
+                StatusText = ScanNotice.Summary(report);
                 ShowScanNotice(report);
             }
             finally
@@ -79,7 +79,7 @@ public partial class LibraryViewModel
         {
             var report = await _scan.ScanSourceAsync(source);
             await RefreshQuietAsync(source.Path);
-            StatusText = $"Indexed {report.Added} files from {Path.GetFileName(source.Path)}.";
+            StatusText = ScanNotice.Summary(report, Path.GetFileName(source.Path));
             ShowScanNotice(report);
         }
         finally

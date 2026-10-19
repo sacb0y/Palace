@@ -137,6 +137,8 @@ public sealed class ThumbnailService
                 {
                     File.Delete(path);
                 }
+
+                ThumbStatus.Delete(path);
             }
             catch
             {
@@ -154,7 +156,9 @@ public sealed class ThumbnailService
     /// images may WIC-decode the original. Missing / API-only paths return
     /// a cached JPEG if present.
     /// </summary>
-    public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind)
+    /// <param name="requireKnownStatus">Scan: regenerate a current image thumbnail whose placeholder status
+    /// is unknown (cached before <see cref="ThumbStatus"/>), so the catalog's undecodable flag is accurate.</param>
+    public async Task<ThumbnailInfo?> EnsureThumbnailAsync(string filePath, string? hash, Models.AssetKind kind, bool requireKnownStatus = false)
     {
         if (string.IsNullOrEmpty(hash))
         {
@@ -173,10 +177,11 @@ public sealed class ThumbnailService
         }
 
         var dest = PathForHash(hash);
-        if (IsCachedCurrent(dest, filePath, kind))
+        if (IsCachedCurrent(dest, filePath, kind)
+            && !(requireKnownStatus && kind == Models.AssetKind.Image && ThumbStatus.Read(dest) is null))
         {
             TouchLastAccess(dest);
-            return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0);
+            return ReadCached(hash) ?? new ThumbnailInfo(dest, 0, 0, ThumbStatus.Read(dest) == true);
         }
 
         if (kind == Models.AssetKind.Image)
@@ -243,6 +248,7 @@ public sealed class ThumbnailService
 
             await using var output = File.Create(dest);
             await jpegOrImage.CopyToAsync(output).ConfigureAwait(false);
+            ThumbStatus.Write(dest, isPlaceholder: false);
             TouchLastAccess(dest);
             EnforceCacheBudget();
             var written = ImageDimensions.TryRead(dest);
@@ -330,6 +336,7 @@ public sealed class ThumbnailService
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
         encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, tw, th, 96, 96, pixels.DetachPixelData());
         await encoder.FlushAsync();
+        ThumbStatus.Write(dest, isPlaceholder: false);
         TouchLastAccess(dest);
         EnforceCacheBudget();
         var written = ImageDimensions.TryRead(dest);
@@ -418,7 +425,7 @@ public sealed class ThumbnailService
                 var ph = StillDecode.Placeholder();
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
                 await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
-                return Finish(dest, ph.Width, ph.Height) with { IsPlaceholder = true };
+                return Finish(dest, ph.Width, ph.Height, isPlaceholder: true);
             }
 
             if (StillDecode.HandlesPath(filePath))
@@ -429,7 +436,7 @@ public sealed class ThumbnailService
                     var ph = StillDecode.Placeholder();
                     await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, dest).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(ph.Bgra!, ph.Width, ph.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
-                    return Finish(dest, ph.Width, ph.Height) with { IsPlaceholder = true };
+                    return Finish(dest, ph.Width, ph.Height, isPlaceholder: true);
                 }
 
                 if (large.EncodedImage is { } encoded)
@@ -530,11 +537,12 @@ public sealed class ThumbnailService
         }
     }
 
-    private ThumbnailInfo Finish(string dest, int w, int h)
+    private ThumbnailInfo Finish(string dest, int w, int h, bool isPlaceholder = false)
     {
+        ThumbStatus.Write(dest, isPlaceholder);
         TouchLastAccess(dest);
         EnforceCacheBudget();
-        return new ThumbnailInfo(dest, w, h);
+        return new ThumbnailInfo(dest, w, h, isPlaceholder);
     }
 
     private async Task EncodeBgraJpegAsync(byte[] bgra, int width, int height, string? dest)
@@ -575,10 +583,11 @@ public sealed class ThumbnailService
         }
 
         TouchLastAccess(dest);
+        var placeholder = ThumbStatus.Read(dest) == true;
         var existing = ImageDimensions.TryRead(dest);
         return existing is { } size
-            ? new ThumbnailInfo(dest, size.Width, size.Height)
-            : new ThumbnailInfo(dest, 0, 0);
+            ? new ThumbnailInfo(dest, size.Width, size.Height, placeholder)
+            : new ThumbnailInfo(dest, 0, 0, placeholder);
     }
 
     private void EnforceCacheBudget()

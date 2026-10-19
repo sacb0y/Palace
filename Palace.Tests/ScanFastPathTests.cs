@@ -73,6 +73,88 @@ public sealed class ScanFastPathTests
     }
 
     [Fact]
+    public void Version_2_records_undecodable_so_old_rows_reindex_once() =>
+        Assert.False(ScanFastPath.IsUnchanged(WithVersion(1), 1234, Written, onlineOnly: false));
+
+    private static Asset WithVersion(int version)
+    {
+        var asset = Indexed();
+        asset.IndexVersion = version;
+        return asset;
+    }
+
+    [Fact]
+    public void Undecodable_does_not_force_the_full_path()
+    {
+        // A placeholder file is still unchanged; the scan reads Undecodable from the row instead.
+        var asset = Indexed();
+        asset.Undecodable = true;
+        Assert.True(ScanFastPath.IsUnchanged(asset, 1234, Written, onlineOnly: false));
+    }
+
+    private static readonly DateTimeOffset CloudModified = new(2026, 10, 18, 16, 30, 0, TimeSpan.Zero);
+
+    private static Asset CloudIndexed() => new()
+    {
+        Path = @"Dropbox\art\a.png",
+        FileSize = 99,
+        DateModified = CloudModified.ToString("O"),
+        IsOnlineOnly = true
+    };
+
+    [Fact]
+    public void Cloud_item_with_same_size_and_time_is_unchanged() =>
+        Assert.True(ScanFastPath.CloudUnchanged(CloudIndexed(), @"Dropbox\art\a.png", 99, CloudModified));
+
+    [Theory]
+    [InlineData("new")]
+    [InlineData("size")]
+    [InlineData("time")]
+    [InlineData("no-time")]
+    [InlineData("moved")]
+    [InlineData("orphan")]
+    public void Cloud_item_change_counts_as_updated(string change)
+    {
+        var asset = (Asset?)CloudIndexed();
+        var path = @"Dropbox\art\a.png";
+        long? size = 99;
+        DateTimeOffset? modified = CloudModified;
+        switch (change)
+        {
+            case "new": asset = null; break;
+            case "size": size = 100; break;
+            case "time": modified = CloudModified.AddSeconds(1); break;
+            case "no-time": modified = null; break;
+            case "moved": path = @"Dropbox\art\b.png"; break;
+            case "orphan": asset!.IsOrphan = true; break;
+        }
+
+        Assert.False(ScanFastPath.CloudUnchanged(asset, path, size, modified));
+    }
+
+    [Fact]
+    public async Task Catalog_gains_an_Undecodable_column_defaulting_to_zero()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "palace-fastpath-tests-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var db = new PalaceDb(Path.Combine(dir, "palace.db"));
+            var dflt = await db.ReadAsync(conn =>
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT dflt_value FROM pragma_table_info('Asset') WHERE name = 'Undecodable'";
+                return cmd.ExecuteScalar() as string;
+            });
+            Assert.Equal("0", dflt);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public async Task Catalog_gains_an_IndexVersion_column_defaulting_to_zero()
     {
         var dir = Path.Combine(Path.GetTempPath(), "palace-fastpath-tests-" + Guid.NewGuid().ToString("N"));
