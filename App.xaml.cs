@@ -65,9 +65,10 @@ public partial class App : Application
                 : BrandAccent.ForDarkTheme(ramp);
             RetintLookup(resources, active);
         }
-        catch
+        catch (Exception ex)
         {
             // Startup must not die on accent apply (sandbox / missing LocalSettings).
+            ErrorReporter.LogOnly("Brand accent", ex);
         }
     }
 
@@ -179,6 +180,9 @@ public partial class App : Application
             _systemBrushes[brush] = (brush.Color, brush.Opacity);
         }
 
+        // ThemeResource SystemAccentColor* already ran when XamlControlsResources
+        // built this brush, during InitializeComponent. This local Color value
+        // stays until a theme change. Creating the window does not resolve it again.
         brush.Color = color;
         brush.Opacity = opacity;
     }
