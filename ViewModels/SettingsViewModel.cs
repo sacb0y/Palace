@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.Data;
 using Palace.Helpers;
 using Palace.Models;
@@ -8,6 +10,7 @@ using Palace.Services;
 using Palace.Services.Cloud;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
+using Windows.UI;
 
 namespace Palace.ViewModels;
 
@@ -107,6 +110,21 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool HasWallpaper { get; set; }
 
     [ObservableProperty]
+    public partial ShellPresetKind SelectedPresetKind { get; set; } = ShellPresetKind.Default;
+
+    [ObservableProperty]
+    public partial ShellPresetItem? SelectedPreset { get; set; }
+
+    [ObservableProperty]
+    public partial bool BlurEnabled { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool DarknessEnabled { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShowCustomWallpaperActions { get; set; }
+
+    [ObservableProperty]
     public partial double Darkness { get; set; } = ShellBackground.DefaultDarkness;
 
     [ObservableProperty]
@@ -123,6 +141,16 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string TintHex { get; set; } = ShellBackground.DefaultTintHex;
+
+    public ObservableCollection<ShellPresetItem> BackgroundPresets { get; } = [];
+
+    public ObservableCollection<ShellPresetItem> ChromeBackgroundPresets { get; } = [];
+
+    public ObservableCollection<ShellPresetItem> VividBackgroundPresets { get; } = [];
+
+    public ObservableCollection<ShellPresetItem> CreatorBackgroundPresets { get; } = [];
+
+    public ObservableCollection<ShellPresetItem> CustomBackgroundPresets { get; } = [];
 
     [ObservableProperty]
     public partial bool MediaCacheEnabled { get; set; }
@@ -215,6 +243,8 @@ public partial class SettingsViewModel : ObservableObject
 
         ApplicationData.Current.LocalSettings.Values["Theme"] = value;
         ApplyTheme(value);
+        // Theme chrome drives packaged light/dark thumbs — rebuild after RequestedTheme applies.
+        RefreshPresetSwatches();
     }
 
     private void LoadAccent()
@@ -322,8 +352,10 @@ public partial class SettingsViewModel : ObservableObject
     private void LoadShellBackground()
     {
         AppServices.LoadShellBackground();
+        EnsureBackgroundPresets();
         WallpaperPath = ShellBackground.WallpaperPath ?? "";
         HasWallpaper = ShellBackground.HasWallpaper;
+        SelectedPresetKind = ShellBackground.Preset;
         WallpaperLabel = ShellBackground.WallpaperLabel;
         Darkness = ShellBackground.Darkness;
         DarknessLabel = ShellBackground.AmountLabel(Darkness);
@@ -331,6 +363,7 @@ public partial class SettingsViewModel : ObservableObject
         BlurLabel = ShellBackground.AmountLabel(Blur);
         TintEnabled = ShellBackground.TintEnabled;
         TintHex = ShellBackground.TintHex;
+        SyncPresetUi();
     }
 
     private void PersistPeakOverride()
@@ -344,20 +377,222 @@ public partial class SettingsViewModel : ObservableObject
 
     private void PersistShellBackground(bool reloadWallpaper = false)
     {
-        ShellBackground.Apply(WallpaperPath, Darkness, Blur, TintEnabled, TintHex, reloadWallpaper);
+        var path = SelectedPresetKind == ShellPresetKind.Custom ? WallpaperPath : null;
+        ShellBackground.Apply(
+            SelectedPresetKind, path, Darkness, Blur, TintEnabled, TintHex, reloadWallpaper);
+        SelectedPresetKind = ShellBackground.Preset;
         var values = ApplicationData.Current.LocalSettings.Values;
+        values[ShellBackground.PresetKey] = ShellBackground.PresetId(ShellBackground.Preset);
         values[ShellBackground.WallpaperPathKey] = ShellBackground.WallpaperPath ?? "";
         values[ShellBackground.WallpaperNameKey] = ShellBackground.WallpaperName ?? "";
         values[ShellBackground.DarknessKey] = ShellBackground.Darkness;
         values[ShellBackground.BlurKey] = ShellBackground.Blur;
+        values[ShellBackground.DarknessKeyFor(ShellBackground.Preset)] = ShellBackground.Darkness;
+        values[ShellBackground.BlurKeyFor(ShellBackground.Preset)] = ShellBackground.Blur;
         values[ShellBackground.TintEnabledKey] = ShellBackground.TintEnabled;
         values[ShellBackground.TintKey] = ShellBackground.TintHex;
         HasWallpaper = ShellBackground.HasWallpaper;
+        WallpaperPath = ShellBackground.WallpaperPath ?? "";
         WallpaperLabel = ShellBackground.WallpaperLabel;
         DarknessLabel = ShellBackground.AmountLabel(ShellBackground.Darkness);
         BlurLabel = ShellBackground.AmountLabel(ShellBackground.Blur);
         TintHex = ShellBackground.TintHex;
+        SyncPresetUi();
     }
+
+    private void EnsureBackgroundPresets()
+    {
+        if (BackgroundPresets.Count > 0)
+        {
+            RefreshPresetSwatches();
+            return;
+        }
+
+        foreach (var kind in ShellBackground.PickerOrder)
+        {
+            var item = new ShellPresetItem
+            {
+                Id = kind,
+                Name = ShellBackground.PresetDisplayName(kind),
+                Swatch = BuildPresetSwatch(kind)
+            };
+            BackgroundPresets.Add(item);
+            BucketFor(kind).Add(item);
+        }
+    }
+
+    private ObservableCollection<ShellPresetItem> BucketFor(ShellPresetKind kind) =>
+        kind switch
+        {
+            ShellPresetKind.Custom => CustomBackgroundPresets,
+            _ when ShellBackground.PresetGroup(kind) == ShellPresetGroup.Vivid => VividBackgroundPresets,
+            _ when ShellBackground.PresetGroup(kind) == ShellPresetGroup.Creator => CreatorBackgroundPresets,
+            _ => ChromeBackgroundPresets
+        };
+
+    /// <summary>Rebuild picker tiles after theme flip (Light must show *-light-thumb.jpg).</summary>
+    public void RefreshBackgroundPresetSwatches() => RefreshPresetSwatches();
+
+    private void RefreshPresetSwatches()
+    {
+        foreach (var item in BackgroundPresets)
+        {
+            item.Swatch = BuildPresetSwatch(item.Id);
+        }
+    }
+
+    private void SyncPresetUi()
+    {
+        BlurEnabled = ShellBackground.BlurApplies;
+        DarknessEnabled = ShellBackground.DarknessApplies;
+        ShowCustomWallpaperActions = SelectedPresetKind == ShellPresetKind.Custom;
+        SelectedPreset = BackgroundPresets.FirstOrDefault(p => p.Id == SelectedPresetKind);
+        RefreshPresetSwatches();
+    }
+
+    /// <summary>
+    /// Match the live shell chrome: Light theme → light packaged thumbs / gradient stops.
+    /// </summary>
+    private bool PresetSwatchLightChrome()
+    {
+        if (App.Window?.Content is Microsoft.UI.Xaml.FrameworkElement root)
+        {
+            return root.ActualTheme == Microsoft.UI.Xaml.ElementTheme.Light;
+        }
+
+        var systemLight = Microsoft.UI.Xaml.Application.Current?.RequestedTheme
+            == Microsoft.UI.Xaml.ApplicationTheme.Light;
+        return ShellBackground.IsLightChrome(SelectedTheme, systemLight);
+    }
+
+    private Brush BuildPresetSwatch(ShellPresetKind kind)
+    {
+        var light = PresetSwatchLightChrome();
+        if (ShellBackground.IsPackagedImagePreset(kind))
+        {
+            return new ImageBrush
+            {
+                ImageSource = new BitmapImage(new Uri(ShellBackground.PackagedThumbUri(kind, light))),
+                Stretch = Stretch.UniformToFill
+            };
+        }
+
+        if (kind == ShellPresetKind.Custom && HasWallpaper && !string.IsNullOrWhiteSpace(WallpaperPath))
+        {
+            try
+            {
+                return new ImageBrush
+                {
+                    ImageSource = new BitmapImage
+                    {
+                        DecodePixelWidth = 224,
+                        UriSource = new Uri(WallpaperPath, UriKind.Absolute)
+                    },
+                    Stretch = Stretch.UniformToFill
+                };
+            }
+            catch
+            {
+                // Fall through to solid placeholder.
+            }
+        }
+
+        if (kind is ShellPresetKind.Mica or ShellPresetKind.MicaAlt)
+        {
+            return new SolidColorBrush(light
+                ? Color.FromArgb(255, 0xD8, 0xD8, 0xD8)
+                : Color.FromArgb(255, 0x32, 0x32, 0x32));
+        }
+
+        if (kind == ShellPresetKind.Custom)
+        {
+            return new SolidColorBrush(light
+                ? Color.FromArgb(255, 0xE8, 0xE8, 0xE8)
+                : Color.FromArgb(255, 0x28, 0x28, 0x28));
+        }
+
+        var stops = ShellPresetGradients.TryStops(kind, light)
+            ?? ShellPresetGradients.TryStops(ShellPresetKind.Default, light)!.Value;
+        return new LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0, 0),
+            EndPoint = new Windows.Foundation.Point(1, 1),
+            GradientStops =
+            {
+                new GradientStop { Offset = 0, Color = ParseSwatchColor(stops.Start) },
+                new GradientStop { Offset = 0.48, Color = ParseSwatchColor(stops.Mid) },
+                new GradientStop { Offset = 1, Color = ParseSwatchColor(stops.End) }
+            }
+        };
+    }
+
+    private static Color ParseSwatchColor(string hex) =>
+        ShellBackground.TryParseTint(hex, out var a, out var r, out var g, out var b)
+            ? Color.FromArgb(a, r, g, b)
+            : Color.FromArgb(255, 20, 20, 24);
+
+    /// <summary>GridView / tile click: Custom opens the file picker; others apply immediately.</summary>
+    public Task SelectBackgroundPresetAsync(ShellPresetItem? item)
+    {
+        if (item is null || _load.IsLoading)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (item.Id == ShellPresetKind.Custom)
+        {
+            return PickWallpaperAsync();
+        }
+
+        return ApplyPresetAsync(item.Id);
+    }
+
+    private Task ApplyPresetAsync(ShellPresetKind kind) =>
+        ErrorReporter.RunAsync("Change background", Notify, async () =>
+        {
+            var previousPath = ShellBackground.WallpaperPath;
+            var leavingCustom = SelectedPresetKind == ShellPresetKind.Custom
+                && kind != ShellPresetKind.Custom;
+            if (kind is ShellPresetKind.Mica or ShellPresetKind.MicaAlt
+                && !Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported())
+            {
+                kind = ShellPresetKind.Neutral;
+                StatusText = "Mica is not supported here — using Neutral.";
+            }
+
+            SelectedPresetKind = kind;
+            if (leavingCustom)
+            {
+                ShellBackground.ReleaseDisplay();
+                WallpaperPath = "";
+                ShellBackground.SetWallpaperName(null);
+            }
+
+            var values = ApplicationData.Current.LocalSettings.Values;
+            var light = PresetSwatchLightChrome();
+            // Per-preset first; Default may still inherit legacy global ShellDarkness / ShellBlur.
+            // Missing keys use the manifest default for the current theme.
+            Darkness = ShellBackground.ParseDarknessFor(
+                kind,
+                values[ShellBackground.DarknessKeyFor(kind)]
+                    ?? (kind == ShellPresetKind.Default ? values[ShellBackground.DarknessKey] : null),
+                light);
+            Blur = ShellBackground.ParseBlurFor(
+                kind,
+                values[ShellBackground.BlurKeyFor(kind)]
+                    ?? (kind == ShellPresetKind.Default ? values[ShellBackground.BlurKey] : null),
+                light);
+            PersistShellBackground(reloadWallpaper: leavingCustom);
+            if (leavingCustom)
+            {
+                await TryDeleteStoredWallpaperAsync(previousPath);
+            }
+
+            if (string.IsNullOrEmpty(StatusText) || !StatusText.StartsWith("Mica", StringComparison.Ordinal))
+            {
+                StatusText = $"Background: {ShellBackground.PresetDisplayName(kind)}.";
+            }
+        });
 
     private void LoadMediaCache()
     {
@@ -651,6 +886,7 @@ public partial class SettingsViewModel : ObservableObject
                     CreationCollisionOption.ReplaceExisting);
                 await file.CopyAndReplaceAsync(dest);
                 WallpaperPath = dest.Path;
+                SelectedPresetKind = ShellPresetKind.Custom;
                 ShellBackground.SetWallpaperName(file.Name);
                 PersistShellBackground(reloadWallpaper: true);
                 await TryDeleteStoredWallpaperAsync(previous);
@@ -671,27 +907,7 @@ public partial class SettingsViewModel : ObservableObject
 
     [RelayCommand]
     private Task ClearWallpaperAsync() =>
-        ErrorReporter.RunAsync("Clear wallpaper", Notify, async () =>
-        {
-            var path = ShellBackground.WallpaperPath;
-            var name = ShellBackground.WallpaperName;
-            ShellBackground.ReleaseDisplay();
-            try
-            {
-                WallpaperPath = "";
-                ShellBackground.SetWallpaperName(null);
-                PersistShellBackground(reloadWallpaper: true);
-                await TryDeleteStoredWallpaperAsync(path);
-                StatusText = "Using the default gradient.";
-            }
-            catch
-            {
-                WallpaperPath = path ?? "";
-                ShellBackground.SetWallpaperName(name);
-                ShellBackground.RestoreDisplay();
-                throw;
-            }
-        });
+        ApplyPresetAsync(ShellPresetKind.Default);
 
     private static async Task TryDeleteStoredWallpaperAsync(string? path)
     {
@@ -1028,6 +1244,8 @@ public partial class SettingsViewModel : ObservableObject
             "Dark" => Microsoft.UI.Xaml.ElementTheme.Dark,
             _ => Microsoft.UI.Xaml.ElementTheme.Default
         };
-        ShellBackground.Refresh();
+        // Do not ShellBackground.Refresh() here: MainWindow already re-paints on
+        // ActualThemeChanged. A second apply that recreates SystemBackdrop mid-theme
+        // AVs in Microsoft.UI.Xaml.dll (Mica Dark↔Light crash-loop).
     }
 }

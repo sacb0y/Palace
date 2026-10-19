@@ -1,4 +1,5 @@
 using Palace.Helpers;
+using Palace.Models;
 using Xunit;
 
 namespace Palace.Tests;
@@ -6,6 +7,179 @@ namespace Palace.Tests;
 public sealed class ShellBackgroundTests
 {
     public ShellBackgroundTests() => Reset();
+
+    [Fact]
+    public void ParsePreset_UnknownFallsBackToDefault()
+    {
+        Assert.Equal(ShellPresetKind.Default, ShellBackground.ParsePreset(null));
+        Assert.Equal(ShellPresetKind.Default, ShellBackground.ParsePreset(""));
+        Assert.Equal(ShellPresetKind.Default, ShellBackground.ParsePreset("nope"));
+        Assert.Equal(ShellPresetKind.Petal, ShellBackground.ParsePreset("Petal"));
+        Assert.Equal(ShellPresetKind.Ribbons, ShellBackground.ParsePreset("ribbons"));
+        Assert.Equal(ShellPresetKind.MicaAlt, ShellBackground.ParsePreset("micaalt"));
+    }
+
+    [Fact]
+    public void ParsePreset_MigratesLegacyNames()
+    {
+        Assert.Equal(ShellPresetKind.Default, ShellBackground.ParsePreset("Dusk"));
+        Assert.Equal(ShellPresetKind.Neutral, ShellBackground.ParsePreset("Slate"));
+        Assert.Equal(ShellPresetKind.Aero, ShellBackground.ParsePreset("Grain"));
+    }
+
+    [Fact]
+    public void ResolvePreset_MigratesWallpaperPathToCustom()
+    {
+        Assert.Equal(ShellPresetKind.Default, ShellBackground.ResolvePreset(null, null));
+        Assert.Equal(ShellPresetKind.Custom, ShellBackground.ResolvePreset(null, @"C:\wall.jpg"));
+        Assert.Equal(ShellPresetKind.Default, ShellBackground.ResolvePreset("Custom", null));
+        Assert.Equal(ShellPresetKind.Default, ShellBackground.ResolvePreset("Dusk", null));
+        Assert.Equal(ShellPresetKind.Custom, ShellBackground.ResolvePreset("Custom", @"C:\wall.jpg"));
+    }
+
+    [Fact]
+    public void Apply_PresetChange_DoesNotBumpEpochUnlessImageLayer()
+    {
+        ShellBackground.Apply(ShellPresetKind.Default, null, 40, 45, false, ShellBackground.DefaultTintHex);
+        var epoch = ShellBackground.WallpaperEpoch;
+        ShellBackground.Apply(ShellPresetKind.Neutral, null, 40, 45, false, ShellBackground.DefaultTintHex);
+        Assert.Equal(ShellPresetKind.Neutral, ShellBackground.Preset);
+        Assert.Equal(epoch, ShellBackground.WallpaperEpoch);
+
+        ShellBackground.Apply(ShellPresetKind.Ribbons, null, 40, 45, false, ShellBackground.DefaultTintHex);
+        Assert.Equal(ShellPresetKind.Ribbons, ShellBackground.Preset);
+        Assert.True(ShellBackground.WallpaperEpoch > epoch);
+        Assert.True(ShellBackground.UsesImageLayer);
+        Assert.False(ShellBackground.HasWallpaper);
+        Assert.Equal(
+            "ms-appx:///Assets/Backgrounds/ribbons-dark.jpg",
+            ShellBackground.BoundImagePath(false));
+        Assert.Equal(
+            "ms-appx:///Assets/Backgrounds/ribbons-light.jpg",
+            ShellBackground.BoundImagePath(true));
+    }
+
+    [Fact]
+    public void BlurAndDarkness_ApplyFlags_MatchPreset()
+    {
+        ShellBackground.Apply(ShellPresetKind.Default, null, 40, 45, false, ShellBackground.DefaultTintHex);
+        Assert.True(ShellBackground.BlurApplies);
+        Assert.True(ShellBackground.DarknessApplies);
+        Assert.False(ShellBackground.UsesSystemBackdrop);
+
+        ShellBackground.Apply(ShellPresetKind.Mica, null, 40, 45, false, ShellBackground.DefaultTintHex);
+        Assert.False(ShellBackground.BlurApplies);
+        Assert.False(ShellBackground.DarknessApplies);
+        Assert.True(ShellBackground.UsesSystemBackdrop);
+
+        ShellBackground.Apply(ShellPresetKind.Neutral, null, 40, 45, false, ShellBackground.DefaultTintHex);
+        Assert.False(ShellBackground.BlurApplies);
+        Assert.True(ShellBackground.DarknessApplies);
+
+        ShellBackground.Apply(ShellPresetKind.Capsules, null, 45, 45, false, ShellBackground.DefaultTintHex);
+        Assert.True(ShellBackground.BlurApplies);
+        Assert.True(ShellBackground.DarknessApplies);
+        Assert.True(ShellBackground.UsesImageLayer);
+    }
+
+    [Fact]
+    public void DarknessAndBlurKeys_ArePerPreset()
+    {
+        Assert.Equal("ShellDarkness_Nebula", ShellBackground.DarknessKeyFor(ShellPresetKind.Nebula));
+        Assert.Equal("ShellBlur_Ribbons", ShellBackground.BlurKeyFor(ShellPresetKind.Ribbons));
+    }
+
+    [Fact]
+    public void DefaultAmounts_FollowManifestPerTheme()
+    {
+        Assert.Equal(45, ShellBackground.DefaultDarknessFor(ShellPresetKind.Ribbons), 2);
+        Assert.Equal(45, ShellBackground.DefaultBlurFor(ShellPresetKind.Ribbons), 2);
+        Assert.Equal(35, ShellBackground.DefaultDarknessFor(ShellPresetKind.Bokeh), 2);
+        Assert.Equal(35, ShellBackground.DefaultBlurFor(ShellPresetKind.Nebula), 2);
+        Assert.Equal(40, ShellBackground.DefaultDarknessFor(ShellPresetKind.Aero), 2);
+        Assert.Equal(40, ShellBackground.DefaultDarknessFor(ShellPresetKind.Default), 2);
+        Assert.Equal(40, ShellBackground.ParseDarknessFor(ShellPresetKind.Aurora, null), 2);
+        Assert.Equal(70, ShellBackground.ParseDarknessFor(ShellPresetKind.Aurora, 70), 2);
+
+        Assert.Equal(20, ShellBackground.DefaultDarknessFor(ShellPresetKind.Ribbons, lightChrome: true), 2);
+        Assert.Equal(35, ShellBackground.DefaultDarknessFor(ShellPresetKind.Aero, lightChrome: true), 2);
+        Assert.Equal(15, ShellBackground.DefaultDarknessFor(ShellPresetKind.Blueprint, lightChrome: true), 2);
+        Assert.Equal(45, ShellBackground.DefaultBlurFor(ShellPresetKind.Blueprint, lightChrome: true), 2);
+        Assert.Equal(30, ShellBackground.DefaultBlurFor(ShellPresetKind.Pixel), 2);
+        Assert.Equal(15, ShellBackground.DefaultDarknessFor(ShellPresetKind.Nodes, lightChrome: true), 2);
+        Assert.Equal(40, ShellBackground.DefaultBlurFor(ShellPresetKind.Nodes, lightChrome: true), 2);
+        Assert.Equal(30, ShellBackground.DefaultDarknessFor(ShellPresetKind.Nodes), 2);
+    }
+
+    [Fact]
+    public void DesignedPresets_UseThemeThumbsAndFinalNames()
+    {
+        Assert.Equal(ShellPresetGroup.Vivid, ShellBackground.PresetGroup(ShellPresetKind.Aero));
+        Assert.Equal(ShellPresetGroup.Creator, ShellBackground.PresetGroup(ShellPresetKind.Nodes));
+        Assert.Equal(ShellPresetGroup.None, ShellBackground.PresetGroup(ShellPresetKind.Custom));
+        Assert.Equal("Aero", ShellBackground.PresetDisplayName(ShellPresetKind.Aero));
+        Assert.Equal("Bokeh", ShellBackground.PresetDisplayName(ShellPresetKind.Bokeh));
+        Assert.Equal("Node Graph", ShellBackground.PresetDisplayName(ShellPresetKind.Nodes));
+        Assert.Equal(ShellPresetKind.Nodes, ShellBackground.ParsePreset("nodes"));
+        Assert.Equal(ShellPresetKind.Nodes, ShellBackground.ParsePreset("Node Graph"));
+        Assert.Equal("nodes", ShellBackground.PresetAssetStem(ShellPresetKind.Nodes));
+        Assert.True(ShellBackground.IsPackagedImagePreset(ShellPresetKind.Viewport));
+        Assert.False(ShellBackground.IsPackagedImagePreset(ShellPresetKind.Neutral));
+        Assert.Equal(
+            "ms-appx:///Assets/Backgrounds/aero-dark-thumb.jpg",
+            ShellBackground.PackagedThumbUri(ShellPresetKind.Aero, false));
+        Assert.Equal(
+            "ms-appx:///Assets/Backgrounds/aero-light-thumb.jpg",
+            ShellBackground.PackagedThumbUri(ShellPresetKind.Aero, true));
+        Assert.Equal(
+            "ms-appx:///Assets/Backgrounds/nodes-light-thumb.jpg",
+            ShellBackground.PackagedThumbUri(ShellPresetKind.Nodes, true));
+        Assert.Equal(
+            "ms-appx:///Assets/Backgrounds/ribbons-light-thumb.jpg",
+            ShellBackground.PackagedThumbUri(ShellPresetKind.Ribbons, true));
+        Assert.Equal(
+            "ms-appx:///Assets/Backgrounds/ribbons-dark-thumb.jpg",
+            ShellBackground.PackagedThumbUri(ShellPresetKind.Ribbons, false));
+    }
+
+    [Fact]
+    public void PickerOrder_GroupsVividAndCreator()
+    {
+        Assert.Equal(
+            [
+                ShellPresetKind.Default,
+                ShellPresetKind.Mica,
+                ShellPresetKind.MicaAlt,
+                ShellPresetKind.Neutral,
+                ShellPresetKind.Ribbons,
+                ShellPresetKind.Capsules,
+                ShellPresetKind.Bokeh,
+                ShellPresetKind.Nebula,
+                ShellPresetKind.Aero,
+                ShellPresetKind.Petal,
+                ShellPresetKind.Facets,
+                ShellPresetKind.Aurora,
+                ShellPresetKind.Viewport,
+                ShellPresetKind.Blueprint,
+                ShellPresetKind.Sketchbook,
+                ShellPresetKind.Pixel,
+                ShellPresetKind.Nodes,
+                ShellPresetKind.Custom
+            ],
+            ShellBackground.PickerOrder);
+        Assert.Equal("Vivid", ShellBackground.PickerSections[1].Header);
+        Assert.Equal(8, ShellBackground.PickerSections[1].Kinds.Length);
+        Assert.Equal("Creator", ShellBackground.PickerSections[2].Header);
+        Assert.Equal(
+            [
+                ShellPresetKind.Viewport,
+                ShellPresetKind.Blueprint,
+                ShellPresetKind.Sketchbook,
+                ShellPresetKind.Pixel,
+                ShellPresetKind.Nodes
+            ],
+            ShellBackground.PickerSections[2].Kinds);
+    }
 
     [Fact]
     public void ParseEnabled_ReadsBoolAndString()
@@ -257,6 +431,91 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void DimOverlay_IsWhiteInLightAndBlackInDark()
+    {
+        Assert.Equal(ShellBackground.LightDimHex, ShellBackground.DimHex(true));
+        Assert.Equal(ShellBackground.DarkDimHex, ShellBackground.DimHex(false));
+        Assert.Equal((255, 255, 255), ShellBackground.DimRgb(true));
+        Assert.Equal((0, 0, 0), ShellBackground.DimRgb(false));
+    }
+
+    [Fact]
+    public void ResolveFromStorage_ReadsMicaCrashBlobShape()
+    {
+        // Shape from docs/pr-blockers/pr98-crash-settings.dat (Theme=Light, ShellPreset=Mica).
+        var snap = ShellBackground.ResolveFromStorage(
+            "Mica",
+            "",
+            null,
+            preset => preset == ShellPresetKind.Mica ? 40.0 : null,
+            preset => preset == ShellPresetKind.Mica ? 45.0 : null,
+            40.0,
+            45.0,
+            false,
+            ShellBackground.DefaultTintHex,
+            micaSupported: true);
+        Assert.False(snap.FellBackToDefault);
+        Assert.Equal(ShellPresetKind.Mica, snap.Preset);
+        Assert.Null(snap.WallpaperPath);
+        Assert.Equal(40, snap.Darkness, 2);
+        Assert.Equal(45, snap.Blur, 2);
+    }
+
+    [Fact]
+    public void ResolveFromStorage_FallsBackToDefaultOnFailure()
+    {
+        var snap = ShellBackground.ResolveFromStorage(
+            "Mica",
+            null,
+            null,
+            _ => null,
+            _ => null,
+            null,
+            null,
+            null,
+            null,
+            micaSupported: true,
+            forceFailure: true);
+        Assert.True(snap.FellBackToDefault);
+        Assert.Equal(ShellPresetKind.Default, snap.Preset);
+        Assert.Equal(ShellBackground.DefaultDarkness, snap.Darkness, 2);
+        Assert.Equal(ShellBackground.DefaultBlur, snap.Blur, 2);
+        Assert.False(snap.TintEnabled);
+        Assert.Equal(ShellBackground.DefaultTintHex, snap.TintHex);
+    }
+
+    [Fact]
+    public void ResolveFromStorage_MicaWithoutSupport_BecomesNeutral()
+    {
+        var snap = ShellBackground.ResolveFromStorage(
+            "MicaAlt",
+            null,
+            null,
+            _ => null,
+            _ => null,
+            null,
+            null,
+            null,
+            null,
+            micaSupported: false);
+        Assert.Equal(ShellPresetKind.Neutral, snap.Preset);
+        Assert.False(snap.FellBackToDefault);
+    }
+
+    [Fact]
+    public void SystemBackdrop_ShouldNotRecreateWhenStayingOnMica()
+    {
+        // Theme Dark↔Light with Mica active must keep the same SystemBackdrop instance.
+        Assert.False(ShellBackground.ShouldRecreateSystemBackdrop(wantMica: true, currentlyHasMica: true));
+        Assert.True(ShellBackground.ShouldRecreateSystemBackdrop(wantMica: true, currentlyHasMica: false));
+        Assert.True(ShellBackground.ShouldRecreateSystemBackdrop(wantMica: false, currentlyHasMica: true));
+        Assert.False(ShellBackground.ShouldRecreateSystemBackdrop(wantMica: false, currentlyHasMica: false));
+        Assert.True(ShellBackground.WantsSystemBackdrop(ShellPresetKind.Mica, micaSupported: true));
+        Assert.False(ShellBackground.WantsSystemBackdrop(ShellPresetKind.Mica, micaSupported: false));
+        Assert.False(ShellBackground.WantsSystemBackdrop(ShellPresetKind.Ribbons, micaSupported: true));
+    }
+
+    [Fact]
     public void AmountLabel_IsPercent()
     {
         Assert.Equal("0%", ShellBackground.AmountLabel(-3));
@@ -267,6 +526,13 @@ public sealed class ShellBackgroundTests
     private static void Reset()
     {
         ShellBackground.SetWallpaperName(null);
-        ShellBackground.Apply(null, ShellBackground.DefaultDarkness, ShellBackground.DefaultBlur, false, ShellBackground.DefaultTintHex, reloadWallpaper: true);
+        ShellBackground.Apply(
+            ShellPresetKind.Default,
+            null,
+            ShellBackground.DefaultDarkness,
+            ShellBackground.DefaultBlur,
+            false,
+            ShellBackground.DefaultTintHex,
+            reloadWallpaper: true);
     }
 }
