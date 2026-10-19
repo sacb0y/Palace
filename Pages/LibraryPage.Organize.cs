@@ -376,21 +376,47 @@ public sealed partial class LibraryPage
         out object brush)
     {
         brush = null!;
-        var themeKey = theme == ElementTheme.Light
-            || (theme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Light)
-            ? "Light"
-            : "Default";
+        var light = theme == ElementTheme.Light
+            || (theme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Light);
+        // Prefer Dark over Default when present (WASDK 2.x); fall back to Default.
+        var themeKeys = light ? new[] { "Light" } : new[] { "Dark", "Default" };
 
-        if (root.ThemeDictionaries.TryGetValue(themeKey, out var themeDict)
-            && themeDict is ResourceDictionary dict
-            && dict.TryGetValue(key, out var fromTheme)
-            && fromTheme is not null)
+        if (TryThemeBrushInTree(root, themeKeys, key, out brush))
         {
-            brush = fromTheme;
             return true;
         }
 
         return root.TryGetValue(key, out brush!) && brush is not null;
+    }
+
+    private static bool TryThemeBrushInTree(
+        ResourceDictionary root,
+        string[] themeKeys,
+        string key,
+        out object brush)
+    {
+        brush = null!;
+        foreach (var themeKey in themeKeys)
+        {
+            if (root.ThemeDictionaries.TryGetValue(themeKey, out var themeDict)
+                && themeDict is ResourceDictionary dict
+                && dict.TryGetValue(key, out var fromTheme)
+                && fromTheme is not null)
+            {
+                brush = fromTheme;
+                return true;
+            }
+        }
+
+        foreach (var merged in root.MergedDictionaries)
+        {
+            if (TryThemeBrushInTree(merged, themeKeys, key, out brush))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void AddFolderRows(List<MoveDestinationItem> rows, FolderNode node, IReadOnlyList<string> roots)

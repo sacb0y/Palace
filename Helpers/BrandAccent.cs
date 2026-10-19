@@ -4,7 +4,8 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Optional Palace brand accent ramp. One placeholder hex for a one-line swap later.
-/// Off WinUI — App applies <see cref="Ramp"/> into SystemAccentColor* resources.
+/// Off WinUI — App applies <see cref="Ramp"/> as SystemAccentColor* + Accent*Brush
+/// inside <c>XamlControlsResources.MergedDictionaries</c> (not Application ThemeDictionaries alone).
 /// </summary>
 public static class BrandAccent
 {
@@ -72,6 +73,9 @@ public static class BrandAccent
     public static ThemeAccentColors ForLightTheme(Ramp ramp) =>
         new(Fill: ramp.Dark1, AccentText: ramp.Dark2, AccentTextSecondary: ramp.Dark3, TextOnAccent: White);
 
+    /// <summary>Theme dictionary keys App writes (Default + Dark for WASDK 2.x).</summary>
+    public static readonly string[] ThemeDictionaryKeys = ["Default", "Dark", "Light"];
+
     /// <summary>Brush keys App recreates so ThemeResource Accent*Brush rebinds after Color overrides.</summary>
     public static readonly string[] AccentBrushKeys =
     [
@@ -84,6 +88,19 @@ public static class BrandAccent
         "TextOnAccentFillColorPrimaryBrush",
         "TextOnAccentFillColorSecondaryBrush",
         "TextOnAccentFillColorDisabledBrush",
+        "NavigationViewSelectionIndicatorForeground",
+    ];
+
+    /// <summary>SystemAccentColor palette keys (base + Light/Dark 1–3) WinUI AccentFill resolves through.</summary>
+    public static readonly string[] SystemAccentColorKeys =
+    [
+        "SystemAccentColor",
+        "SystemAccentColorLight1",
+        "SystemAccentColorLight2",
+        "SystemAccentColorLight3",
+        "SystemAccentColorDark1",
+        "SystemAccentColorDark2",
+        "SystemAccentColorDark3",
     ];
 
     /// <summary>Contrast ratio of two sRGB colors (WCAG).</summary>

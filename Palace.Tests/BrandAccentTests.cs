@@ -50,11 +50,28 @@ public sealed class BrandAccentTests
     }
 
     [Fact]
-    public void AccentBrushKeys_CoverFillTextAndOnAccent()
+    public void AccentBrushKeys_CoverFillTextOnAccentAndNavIndicator()
     {
         Assert.Contains("AccentFillColorDefaultBrush", BrandAccent.AccentBrushKeys);
         Assert.Contains("AccentTextFillColorPrimaryBrush", BrandAccent.AccentBrushKeys);
         Assert.Contains("TextOnAccentFillColorPrimaryBrush", BrandAccent.AccentBrushKeys);
-        Assert.Equal(9, BrandAccent.AccentBrushKeys.Length);
+        Assert.Contains("NavigationViewSelectionIndicatorForeground", BrandAccent.AccentBrushKeys);
+        Assert.Equal(10, BrandAccent.AccentBrushKeys.Length);
+    }
+
+    [Fact]
+    public void SystemAccentColorKeys_CoverFullRamp()
+    {
+        Assert.Equal(7, BrandAccent.SystemAccentColorKeys.Length);
+        Assert.Contains("SystemAccentColorLight2", BrandAccent.SystemAccentColorKeys);
+        Assert.Contains("SystemAccentColorDark1", BrandAccent.SystemAccentColorKeys);
+    }
+
+    [Fact]
+    public void ThemeDictionaryKeys_IncludeDefaultDarkAndLight()
+    {
+        Assert.Contains("Default", BrandAccent.ThemeDictionaryKeys);
+        Assert.Contains("Dark", BrandAccent.ThemeDictionaryKeys);
+        Assert.Contains("Light", BrandAccent.ThemeDictionaryKeys);
     }
 }
