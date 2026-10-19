@@ -114,6 +114,15 @@ public sealed class ColourInfoFollowupTests
     }
 
     [Fact]
+    public void PeakChannel_UsesAnalysisTieRule()
+    {
+        Assert.Equal('R', GalleryPresent.PeakChannel(2, 2, 2));
+        Assert.Equal('G', GalleryPresent.PeakChannel(1, 2, 2));
+        Assert.Equal('B', GalleryPresent.PeakChannel(1, 2, 3));
+        Assert.Equal('\0', GalleryPresent.PeakChannel(0, -1, 0));
+    }
+
+    [Fact]
     public void FilePixelSize_UndecodableShowsNoResolutionUnlessDecoded()
     {
         Assert.Null(GalleryPresent.FilePixelSize(null, null, 64, 64, 64, 64, undecodable: true));

@@ -226,10 +226,7 @@ public static class RadianceFile
             AvgNits = _count > 0 ? (float)(_sumY / _count) : 0f,
             MinNits = _maxY <= 0 || _minY == float.MaxValue ? 0f : _minY,
             MaxScrgb = _maxScrgb,
-            MaxScrgbChannel = _maxScrgb <= 0 ? '\0'
-                : _maxR >= _maxG && _maxR >= _maxB ? 'R'
-                : _maxG >= _maxB ? 'G'
-                : 'B'
+            MaxScrgbChannel = _maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(_maxR, _maxG, _maxB)
         };
     }
 

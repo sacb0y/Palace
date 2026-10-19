@@ -571,6 +571,16 @@ public static class GalleryPresent
             ? (0.2627f * rNits) + (0.6780f * gNits) + (0.0593f * bNits)
             : (0.2126f * rNits) + (0.7152f * gNits) + (0.0722f * bNits);
 
+    /// <summary>
+    /// Channel letter of the per-channel peaks ('\0' when all ≤ 0). Ties go R, then G,
+    /// then B, like <see cref="HdrAnalysis"/>.
+    /// </summary>
+    public static char PeakChannel(float maxR, float maxG, float maxB) =>
+        maxR <= 0 && maxG <= 0 && maxB <= 0 ? '\0'
+        : maxR >= maxG && maxR >= maxB ? 'R'
+        : maxG >= maxB ? 'G'
+        : 'B';
+
     /// <summary>True when <paramref name="shownPath"/> is the original file, not a thumb or preview.</summary>
     public static bool IsOriginalStill(string? shownPath, string? originalPath)
     {
