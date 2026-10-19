@@ -244,6 +244,38 @@ public sealed class FileOpServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Undo_that_fails_on_a_locked_file_stays_undoable_and_works_on_retry()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // Locking a file against rename is a Windows sharing rule.
+        }
+
+        var asset = await AddAssetAsync(_rootA, "in.png");
+        var dest = Dir(_rootA, "Sorted");
+        await _ops.MoveAssetsAsync([asset], dest, _projectId);
+        var movedPath = Path.Combine(dest, "in.png");
+
+        FileOpResult failed;
+        using (new FileStream(movedPath, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            failed = await _ops.UndoLastAsync(_projectId);
+        }
+
+        Assert.False(failed.Ok);
+        Assert.Null(failed.BatchId);
+        Assert.Contains("Try again", failed.Message);
+        Assert.True(File.Exists(movedPath));
+        Assert.Equal("Undo move of 1 file", FileOpService.UndoLabel(await _ops.PeekUndoAsync(_projectId)));
+
+        var retry = await _ops.UndoLastAsync(_projectId);
+
+        Assert.True(retry.Ok, retry.Message);
+        Assert.True(File.Exists(asset.Path));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    [Fact]
     public async Task Undo_is_last_in_first_out_and_scoped_to_the_project()
     {
         var asset = await AddAssetAsync(_rootA, "in.png");

@@ -624,7 +624,8 @@ public sealed class FileOpService
     /// <summary>
     /// Reverse the newest file operation of the project: move files back (unique name if the old
     /// spot is taken), rename folders back, remove created folders that are still empty, recreate
-    /// deleted ones. Best effort per step; the batch is marked undone afterwards.
+    /// deleted ones. Best effort per step; the batch is marked undone afterwards, unless no step
+    /// worked and a failure may clear on retry (then it stays undoable).
     /// </summary>
     private async Task<FileOpResult> UndoLastCoreAsync(string projectId)
     {
@@ -637,6 +638,7 @@ public sealed class FileOpService
         var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
         var restored = new List<FileOpMove>();
         var notes = new List<string>();
+        var retryable = false;
         var done = 0;
         using (_suppressWatcher?.Invoke())
         {
@@ -649,13 +651,28 @@ public sealed class FileOpService
                 }
                 else
                 {
-                    notes.Add(note);
+                    notes.Add(note.Text);
+                    retryable |= note.Retryable;
                 }
             }
         }
 
-        await _catalog.MarkFileOpUndoneAsync(batch.Id).ConfigureAwait(false);
         var label = UndoLabel(batch);
+        if (done == 0 && retryable)
+        {
+            // Nothing was reversed and the failure may clear (locked file, I/O error): keep the
+            // batch on the undo stack so Ctrl+Z can try it again.
+            return new FileOpResult
+            {
+                Ok = false,
+                Message = $"Couldn't {label.Replace("Undo ", "undo ", StringComparison.Ordinal)}. {notes[0].TrimEnd('.')}. Try again.",
+                Summary = batch.Summary,
+                Moves = restored,
+                Skipped = notes
+            };
+        }
+
+        await _catalog.MarkFileOpUndoneAsync(batch.Id).ConfigureAwait(false);
         var message = notes.Count == 0
             ? $"{label.Replace("Undo ", "Undid ", StringComparison.Ordinal)}."
             : $"{label.Replace("Undo ", "Undid ", StringComparison.Ordinal)}, {notes.Count} step(s) skipped. {notes[0]}.";
@@ -670,7 +687,14 @@ public sealed class FileOpService
         };
     }
 
-    private async Task<string?> UndoStepAsync(FileOpItem item, IReadOnlyList<SourceFolder> sources, List<FileOpMove> restored)
+    /// <summary>Why an undo step was skipped. <see cref="Retryable"/> when nothing changed and trying again later can work (locked file, I/O error).</summary>
+    private sealed record UndoNote(string Text, bool Retryable)
+    {
+        public static UndoNote Skip(string text) => new(text, false);
+        public static UndoNote Retry(string text) => new(text, true);
+    }
+
+    private async Task<UndoNote?> UndoStepAsync(FileOpItem item, IReadOnlyList<SourceFolder> sources, List<FileOpMove> restored)
     {
         switch (item.Step)
         {
@@ -679,18 +703,18 @@ public sealed class FileOpService
                 var oldRoot = ResolveRoot(item.OldPath, sources);
                 if (oldRoot is null || ResolveRoot(item.NewPath, sources) is null)
                 {
-                    return $"{Path.GetFileName(item.OldPath)}: no longer in a Library folder";
+                    return UndoNote.Skip($"{Path.GetFileName(item.OldPath)}: no longer in a Library folder");
                 }
 
                 if (!CloudFile.Exists(item.NewPath))
                 {
-                    return $"{Path.GetFileName(item.NewPath)}: file is gone";
+                    return UndoNote.Skip($"{Path.GetFileName(item.NewPath)}: file is gone");
                 }
 
                 var oldDir = Path.GetDirectoryName(item.OldPath)!;
                 if (LinkedFolderBetween(oldRoot.Path, oldDir) is not null)
                 {
-                    return $"{Path.GetFileName(item.OldPath)}: its old folder is now a shortcut (junction or symlink)";
+                    return UndoNote.Skip($"{Path.GetFileName(item.OldPath)}: its old folder is now a shortcut (junction or symlink)");
                 }
 
                 try
@@ -699,14 +723,14 @@ public sealed class FileOpService
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    return $"{Path.GetFileName(item.OldPath)}: {ex.Message}";
+                    return UndoNote.Retry($"{Path.GetFileName(item.OldPath)}: {ex.Message}");
                 }
 
                 var moved = await MoveOneAsync(item.NewPath, oldDir, reserved: null, preferredName: Path.GetFileName(item.OldPath))
                     .ConfigureAwait(false);
                 if (moved.Error is not null)
                 {
-                    return $"{Path.GetFileName(item.NewPath)}: {moved.Error}";
+                    return UndoNote.Retry($"{Path.GetFileName(item.NewPath)}: {moved.Error}");
                 }
 
                 if (!string.IsNullOrEmpty(item.AssetId))
@@ -719,7 +743,7 @@ public sealed class FileOpService
                     catch (Exception ex)
                     {
                         TryMoveBack(moved.Path!, item.NewPath);
-                        return $"{Path.GetFileName(item.NewPath)}: {ex.Message}";
+                        return UndoNote.Retry($"{Path.GetFileName(item.NewPath)}: {ex.Message}");
                     }
 
                     restored.Add(new FileOpMove(item.AssetId, item.NewPath, moved.Path!, item.OldSourceId ?? oldRoot.Id));
@@ -731,7 +755,7 @@ public sealed class FileOpService
             case FileOpStep.CreateDir:
                 if (ResolveRoot(item.NewPath, sources) is null)
                 {
-                    return $"{DisplayName(item.NewPath)}: no longer in a Library folder";
+                    return UndoNote.Skip($"{DisplayName(item.NewPath)}: no longer in a Library folder");
                 }
 
                 if (!Directory.Exists(item.NewPath))
@@ -741,7 +765,7 @@ public sealed class FileOpService
 
                 if (!IsEmptyFolder(item.NewPath))
                 {
-                    return $"kept {DisplayName(item.NewPath)} because it isn't empty";
+                    return UndoNote.Skip($"kept {DisplayName(item.NewPath)} because it isn't empty");
                 }
 
                 try
@@ -751,31 +775,31 @@ public sealed class FileOpService
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    return $"{DisplayName(item.NewPath)}: {ex.Message}";
+                    return UndoNote.Retry($"{DisplayName(item.NewPath)}: {ex.Message}");
                 }
 
             case FileOpStep.RenameDir:
             {
                 if (ResolveRoot(item.OldPath, sources) is null || ResolveRoot(item.NewPath, sources) is null)
                 {
-                    return $"{DisplayName(item.NewPath)}: no longer in a Library folder";
+                    return UndoNote.Skip($"{DisplayName(item.NewPath)}: no longer in a Library folder");
                 }
 
                 if (!Directory.Exists(item.NewPath))
                 {
-                    return $"{DisplayName(item.NewPath)}: folder is gone";
+                    return UndoNote.Skip($"{DisplayName(item.NewPath)}: folder is gone");
                 }
 
                 if (!FolderNames.SamePath(item.OldPath, item.NewPath)
                     && (Directory.Exists(item.OldPath) || CloudFile.Exists(item.OldPath)))
                 {
-                    return $"{DisplayName(item.OldPath)} exists again, so the rename was kept";
+                    return UndoNote.Skip($"{DisplayName(item.OldPath)} exists again, so the rename was kept");
                 }
 
                 var error = MoveDirectory(item.NewPath, item.OldPath);
                 if (error is not null)
                 {
-                    return $"{DisplayName(item.NewPath)}: {error}";
+                    return UndoNote.Retry($"{DisplayName(item.NewPath)}: {error}");
                 }
 
                 try
@@ -787,8 +811,8 @@ public sealed class FileOpService
                     // Keep disk and catalog in step: leave the folder under the renamed name.
                     var back = MoveDirectory(item.OldPath, item.NewPath);
                     return back is null
-                        ? $"{DisplayName(item.NewPath)}: {ex.Message}"
-                        : $"{DisplayName(item.OldPath)}: renamed back on disk but the catalog couldn't be updated ({ex.Message}); rescan to fix it";
+                        ? UndoNote.Retry($"{DisplayName(item.NewPath)}: {ex.Message}")
+                        : UndoNote.Skip($"{DisplayName(item.OldPath)}: renamed back on disk but the catalog couldn't be updated ({ex.Message}); rescan to fix it");
                 }
 
                 return null;
@@ -797,7 +821,7 @@ public sealed class FileOpService
             case FileOpStep.DeleteDir:
                 if (ResolveRoot(item.OldPath, sources) is null)
                 {
-                    return $"{DisplayName(item.OldPath)}: no longer in a Library folder";
+                    return UndoNote.Skip($"{DisplayName(item.OldPath)}: no longer in a Library folder");
                 }
 
                 try
@@ -807,11 +831,11 @@ public sealed class FileOpService
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    return $"{DisplayName(item.OldPath)}: {ex.Message}";
+                    return UndoNote.Retry($"{DisplayName(item.OldPath)}: {ex.Message}");
                 }
 
             default:
-                return "unknown step";
+                return UndoNote.Skip("unknown step");
         }
     }
 
