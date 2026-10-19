@@ -37,7 +37,7 @@ public readonly record struct FileOpMove(string AssetId, string OldPath, string 
 /// <item>Folder delete is for empty folders only, so Undo can always recreate it.</item>
 /// </list>
 /// </summary>
-public sealed class FileOpService
+public sealed partial class FileOpService
 {
     private readonly CatalogService _catalog;
     private readonly Func<IDisposable>? _suppressWatcher;
