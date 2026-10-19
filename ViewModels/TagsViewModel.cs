@@ -836,6 +836,7 @@ public partial class TagsViewModel : ObservableObject
             try
             {
                 var result = await _organize.ApplyAsync(AppServices.CurrentProject.Id, OrganizePreview.ToList());
+                OrganizeService.MarkPreviewApplied(OrganizePreview, result);
                 await AppServices.Library.RefreshQuietAsync();
                 await AppServices.Library.RefreshUndoStateAsync();
                 StatusText = result.Ok

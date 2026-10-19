@@ -714,4 +714,56 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.False(Directory.Exists(Path.Combine(_rootA.Path, "Char", "tag")));
         Assert.Null(await _ops.PeekUndoAsync(_projectId));
     }
+
+    [Fact]
+    public async Task Move_absorbing_dialog_new_folder_is_one_undo()
+    {
+        var asset = await AddAssetAsync(_rootA, "pack.png");
+        var created = await _ops.CreateFolderAsync(_rootA.Path, "Pack", _projectId);
+        Assert.True(created.Ok, created.Message);
+        Assert.Equal(FileOpKind.CreateFolder, (await _ops.PeekUndoAsync(_projectId))!.Kind);
+
+        var moved = await _ops.MoveAssetsAsync(
+            [asset],
+            created.Path!,
+            _projectId,
+            absorbCreatedFolder: created.Path);
+        Assert.True(moved.Ok, moved.Message);
+
+        var peek = await _ops.PeekUndoAsync(_projectId);
+        Assert.NotNull(peek);
+        Assert.Equal(FileOpKind.Move, peek!.Kind);
+        Assert.Single(peek.Items, i => i.Step == FileOpStep.CreateDir && FolderNames.SamePath(i.NewPath, created.Path!));
+        Assert.Single(peek.Items, i => i.Step == FileOpStep.MoveFile);
+        // CreateFolder batch was absorbed — one Undo clears the stack.
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.True(File.Exists(asset.Path));
+        Assert.False(Directory.Exists(created.Path!));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    [Fact]
+    public async Task Move_without_absorb_keeps_create_folder_as_separate_undo()
+    {
+        var asset = await AddAssetAsync(_rootA, "loose.png");
+        var created = await _ops.CreateFolderAsync(_rootA.Path, "Loose", _projectId);
+        Assert.True(created.Ok, created.Message);
+
+        var moved = await _ops.MoveAssetsAsync([asset], created.Path!, _projectId);
+        Assert.True(moved.Ok, moved.Message);
+        Assert.Equal(FileOpKind.Move, (await _ops.PeekUndoAsync(_projectId))!.Kind);
+
+        var undoMove = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoMove.Ok, undoMove.Message);
+        Assert.True(File.Exists(asset.Path));
+        Assert.True(Directory.Exists(created.Path!));
+        Assert.Equal(FileOpKind.CreateFolder, (await _ops.PeekUndoAsync(_projectId))!.Kind);
+
+        var undoCreate = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoCreate.Ok, undoCreate.Message);
+        Assert.False(Directory.Exists(created.Path!));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
 }

@@ -191,13 +191,18 @@ public sealed class FileOpService
     /// <summary>
     /// Move assets into <paramref name="destinationDir"/> (an existing folder inside a watched source).
     /// Name clashes get a unique name; missing / online-only-across-roots / already-there files are skipped.
+    /// When <paramref name="absorbCreatedFolder"/> is the destination and the newest undoable batch is
+    /// a <see cref="FileOpKind.CreateFolder"/> for that path (Move dialog "New folder" then Move here),
+    /// the create steps are folded into this Move batch so one Undo returns the files and removes the
+    /// empty folder.
     /// </summary>
     public Task<FileOpResult> MoveAssetsAsync(
         IReadOnlyList<Asset> assets,
         string destinationDir,
         string projectId,
-        CancellationToken cancellationToken = default) =>
-        GatedAsync(projectId, () => MoveAssetsCoreAsync(assets, destinationDir, projectId, cancellationToken), cancellationToken);
+        CancellationToken cancellationToken = default,
+        string? absorbCreatedFolder = null) =>
+        GatedAsync(projectId, () => MoveAssetsCoreAsync(assets, destinationDir, projectId, cancellationToken, absorbCreatedFolder), cancellationToken);
 
     /// <summary>Create <paramref name="name"/> under <paramref name="parentDir"/> (inside a watched source).</summary>
     public Task<FileOpResult> CreateFolderAsync(string parentDir, string name, string projectId) =>
@@ -416,7 +421,8 @@ public sealed class FileOpService
         IReadOnlyList<Asset> assets,
         string destinationDir,
         string projectId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? absorbCreatedFolder = null)
     {
         if (assets.Count == 0)
         {
@@ -553,11 +559,42 @@ public sealed class FileOpService
             };
         }
 
+        // Parents before children so Undo (reverse seq) deletes children first — same as Organize.
+        var journal = new List<FileOpItem>();
+        string? absorbBatchId = null;
+        if (!string.IsNullOrWhiteSpace(absorbCreatedFolder)
+            && FolderNames.SamePath(absorbCreatedFolder, destinationDir))
+        {
+            var peek = await _catalog.GetLastUndoableFileOpAsync(projectId).ConfigureAwait(false);
+            if (peek?.Kind == FileOpKind.CreateFolder
+                && peek.Items.Any(i => i.Step == FileOpStep.CreateDir
+                    && FolderNames.SamePath(i.NewPath, destinationDir)))
+            {
+                absorbBatchId = peek.Id;
+                journal.AddRange(peek.Items
+                    .Where(i => i.Step == FileOpStep.CreateDir)
+                    .OrderBy(i => i.NewPath.Length)
+                    .Select(i => new FileOpItem
+                    {
+                        Step = FileOpStep.CreateDir,
+                        OldPath = i.OldPath,
+                        NewPath = i.NewPath
+                    }));
+            }
+        }
+
+        journal.AddRange(items);
         var summary = MoveSummary(moves.Count, destinationDir);
-        var batchId = await LogAsync(projectId, FileOpKind.Move, summary, items).ConfigureAwait(false);
+        var batchId = await LogAsync(projectId, FileOpKind.Move, summary, journal).ConfigureAwait(false);
         if (batchId is null)
         {
             return JournalFailed();
+        }
+
+        if (absorbBatchId is not null)
+        {
+            // Create-folder batch is superseded by this Move (CreateDir steps copied above).
+            await _catalog.MarkFileOpUndoneAsync(absorbBatchId).ConfigureAwait(false);
         }
 
         var dest = Quote(DisplayName(destinationDir));

@@ -60,6 +60,8 @@ public partial class LibraryViewModel
             try
             {
                 var result = await _organize.ApplyAsync(AppServices.CurrentProject.Id, OrganizePreview.ToList());
+                // Resume is on the UI thread — safe to mutate bound preview rows here.
+                OrganizeService.MarkPreviewApplied(OrganizePreview, result);
                 await RefreshQuietAsync();
                 await RefreshUndoStateAsync();
                 if (result.Ok)

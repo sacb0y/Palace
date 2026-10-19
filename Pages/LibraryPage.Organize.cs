@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
+using Palace.ViewModels;
 using Windows.System;
 using Windows.UI.Core;
 
@@ -102,8 +103,9 @@ public sealed partial class LibraryPage
     /// <summary>
     /// Move dialog: pick a folder inside the project's watched folders (recents first), make a new
     /// folder under the picked one, or Browse… with the system picker as a fallback.
+    /// Folders created in this dialog session are passed back so Move can fold them into one Undo.
     /// </summary>
-    private async Task<string?> AskMoveDestinationAsync()
+    private async Task<MoveDestinationChoice?> AskMoveDestinationAsync()
     {
         var roots = ViewModel.LocalFolderRoots;
         if (roots.Count == 0)
@@ -113,6 +115,8 @@ public sealed partial class LibraryPage
                 InfoBarSeverity.Warning);
             return null;
         }
+
+        var createdInDialog = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         var rootPaths = roots.Select(r => r.Path).ToList();
         ViewModel.RefreshMoveRecents();
@@ -272,6 +276,7 @@ public sealed partial class LibraryPage
                 return;
             }
 
+            createdInDialog.Add(Path.GetFullPath(result.Path));
             var parentRow = allFolders.FindIndex(r => FolderNames.SamePath(r.Path, parent));
             var row = MoveDestinationItem.For(result.Path, rootPaths, isRecent: false);
             allFolders.Insert(parentRow >= 0 ? parentRow + 1 : allFolders.Count, row);
@@ -317,17 +322,20 @@ public sealed partial class LibraryPage
 
         _moveDialogAccepted = false;
         var choice = await dialog.ShowAsync();
-        if (browsed is not null)
+        string? path = browsed;
+        if (path is null && (choice == ContentDialogResult.Primary || _moveDialogAccepted))
         {
-            return browsed;
+            path = (list.SelectedItem as MoveDestinationItem)?.Path;
         }
 
-        if (choice == ContentDialogResult.Primary || _moveDialogAccepted)
+        if (string.IsNullOrWhiteSpace(path))
         {
-            return (list.SelectedItem as MoveDestinationItem)?.Path;
+            return null;
         }
 
-        return null;
+        var full = Path.GetFullPath(path);
+        var absorb = createdInDialog.Contains(full) ? full : null;
+        return new MoveDestinationChoice(full, absorb);
     }
 
     private bool _moveDialogAccepted;

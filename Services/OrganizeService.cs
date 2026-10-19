@@ -111,7 +111,9 @@ public sealed class OrganizeService
 
     /// <summary>
     /// Apply a dry-run via <see cref="FileOpService"/> so Organize shares the same Undo journal
-    /// as Move / folder ops (one batch per run). Returns how many files moved.
+    /// as Move / folder ops (one batch per run). Does <b>not</b> mutate bound
+    /// <see cref="OrganizePreviewItem"/> rows (those fire PropertyChanged onto WinUI) — call
+    /// <see cref="MarkPreviewApplied"/> on the UI thread after this returns.
     /// </summary>
     public async Task<FileOpResult> ApplyAsync(string projectId, IReadOnlyList<OrganizePreviewItem> preview)
     {
@@ -124,21 +126,31 @@ public sealed class OrganizeService
         var plan = ready
             .Select(p => new OrganizeApplyItem(p.AssetId, p.FileName, p.OldPath, p.NewPath))
             .ToList();
-        var result = await _fileOps.ApplyOrganizeAsync(projectId, plan).ConfigureAwait(false);
-        if (result.Ok)
+        // ConfigureAwait(false): file work stays off the UI thread. Never touch ObservableObject
+        // preview rows here — that throws RPC_E_WRONG_THREAD when TextBlocks are bound.
+        return await _fileOps.ApplyOrganizeAsync(projectId, plan).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Stamp Applied / NewPath on preview rows after a successful apply. Call on the UI thread
+    /// (Library / Tags RelayCommands resume there).
+    /// </summary>
+    public static void MarkPreviewApplied(IEnumerable<OrganizePreviewItem> preview, FileOpResult result)
+    {
+        if (!result.Ok || result.Moves.Count == 0)
         {
-            foreach (var item in ready)
-            {
-                var moved = result.Moves.FirstOrDefault(m => m.AssetId == item.AssetId);
-                if (!string.IsNullOrEmpty(moved.AssetId))
-                {
-                    item.NewPath = moved.NewPath;
-                    item.Status = "Applied";
-                }
-            }
+            return;
         }
 
-        return result;
+        var byId = result.Moves.ToDictionary(m => m.AssetId, StringComparer.Ordinal);
+        foreach (var item in preview)
+        {
+            if (byId.TryGetValue(item.AssetId, out var moved))
+            {
+                item.NewPath = moved.NewPath;
+                item.Status = "Applied";
+            }
+        }
     }
 
     public async Task AutoOrganizeNewFileAsync(SourceFolder source, Asset asset)

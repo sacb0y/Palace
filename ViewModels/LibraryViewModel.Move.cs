@@ -8,6 +8,9 @@ using Windows.Storage;
 
 namespace Palace.ViewModels;
 
+/// <summary>Result of the Move dialog: destination path, and a folder created in that dialog to fold into the Move Undo batch.</summary>
+public readonly record struct MoveDestinationChoice(string Path, string? AbsorbCreatedFolder = null);
+
 /// <summary>
 /// Library: Move to (recent destinations, Move dialog, new folder) and Undo for file operations.
 /// The file work lives in <see cref="FileOpService"/>; this partial only drives the UI and keeps the
@@ -20,8 +23,8 @@ public partial class LibraryViewModel
     private CancellationTokenSource? _undoToastHideCts;
     private int _undoToastPaused;
 
-    /// <summary>Page shows the Move dialog; returns the chosen folder or null.</summary>
-    public Func<Task<string?>>? RequestPickMoveDestination { get; set; }
+    /// <summary>Page shows the Move dialog; returns the chosen folder (and optional create-folder absorb path) or null.</summary>
+    public Func<Task<MoveDestinationChoice?>>? RequestPickMoveDestination { get; set; }
 
     /// <summary>Recent Move destinations that still exist, newest first (context menu "Move to recent").</summary>
     public ObservableCollection<MoveDestinationItem> MoveRecents { get; } = [];
@@ -64,13 +67,13 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var destination = await RequestPickMoveDestination();
-            if (string.IsNullOrWhiteSpace(destination))
+            var pick = await RequestPickMoveDestination();
+            if (pick is null || string.IsNullOrWhiteSpace(pick.Value.Path))
             {
                 return;
             }
 
-            await MoveSelectionToAsync(destination);
+            await MoveSelectionToAsync(pick.Value.Path, pick.Value.AbsorbCreatedFolder);
         });
 
     [RelayCommand]
@@ -91,11 +94,12 @@ public partial class LibraryViewModel
         {
             var projectId = AppServices.CurrentProject.Id;
             BeginBusy("Undoing…");
+            FileOpResult result = FileOpResult.Fail("Nothing to undo.");
             try
             {
                 ShowUndoToast = false;
                 var peek = await _fileOps.PeekUndoAsync(projectId);
-                var result = await _fileOps.UndoLastAsync(projectId);
+                result = await _fileOps.UndoLastAsync(projectId);
                 if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
                 {
                     await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
@@ -118,6 +122,12 @@ public partial class LibraryViewModel
             finally
             {
                 EndBusy();
+                // EndBusy does not clear StatusText; mosaic refresh may leave "Undoing…" stuck.
+                if (StatusText is "Undoing…" or "Undoing.")
+                {
+                    StatusText = result.Ok ? result.Message : "Ready.";
+                }
+
                 await RefreshUndoStateAsync();
             }
         });
@@ -146,7 +156,7 @@ public partial class LibraryViewModel
     private bool HasMoveTargets() =>
         _selection.Any(s => !s.IsFolderHeader) || SelectedAsset is { IsFolderHeader: false };
 
-    private async Task MoveSelectionToAsync(string destinationDir)
+    private async Task MoveSelectionToAsync(string destinationDir, string? absorbCreatedFolder = null)
     {
         // Move acts on picked tiles only — never a whole folder because nothing was selected.
         var ids = _selection.Count > 0
@@ -159,10 +169,13 @@ public partial class LibraryViewModel
         }
 
         var assets = await _catalog.GetAssetsByIdsAsync(ids);
-        await MoveAssetsToAsync(assets, destinationDir);
+        await MoveAssetsToAsync(assets, destinationDir, absorbCreatedFolder);
     }
 
-    private async Task MoveAssetsToAsync(IReadOnlyList<Asset> assets, string destinationDir)
+    private async Task MoveAssetsToAsync(
+        IReadOnlyList<Asset> assets,
+        string destinationDir,
+        string? absorbCreatedFolder = null)
     {
         if (assets.Count == 0)
         {
@@ -174,7 +187,11 @@ public partial class LibraryViewModel
         FileOpResult result;
         try
         {
-            result = await _fileOps.MoveAssetsAsync(assets, destinationDir, AppServices.CurrentProject.Id);
+            result = await _fileOps.MoveAssetsAsync(
+                assets,
+                destinationDir,
+                AppServices.CurrentProject.Id,
+                absorbCreatedFolder: absorbCreatedFolder);
             if (result.Moves.Count > 0)
             {
                 CloseOverlay();
