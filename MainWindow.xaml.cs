@@ -42,7 +42,12 @@ public sealed partial class MainWindow : Window
         if (Content is FrameworkElement root)
         {
             // Defer off ActualThemeChanged — recreating SystemBackdrop on that stack AVs (0xc0000005).
-            root.ActualThemeChanged += (_, _) => QueueApplyShellBackdrop();
+            root.ActualThemeChanged += (_, _) =>
+            {
+                QueueApplyShellBackdrop();
+                // ThemeResource may paint the system accent back onto the same brushes.
+                root.DispatcherQueue.TryEnqueue(App.ApplySavedBrandAccent);
+            };
         }
 
         try

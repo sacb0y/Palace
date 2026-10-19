@@ -267,7 +267,8 @@ public partial class SettingsViewModel : ObservableObject
             ? BrandAccent.ModePalacePink
             : BrandAccent.ModeFollowWindows;
         ApplicationData.Current.LocalSettings.Values[BrandAccent.SettingsKey] = mode;
-        StatusText = BrandAccent.RestartCaption;
+        App.ApplySavedBrandAccent();
+        StatusText = BrandAccent.AppliedCaption;
     }
 
     partial void OnPeakOverrideEnabledChanged(bool value)

@@ -1,4 +1,6 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
 using Palace.Services;
 using Windows.UI;
@@ -15,18 +17,26 @@ public partial class App : Application
     public static nint WindowHandle =>
         WinRT.Interop.WindowNative.GetWindowHandle(Window);
 
+    /// <summary>System color captured the first time a brush is retinted, so Follow Windows can put it back.</summary>
+    private static readonly Dictionary<SolidColorBrush, (Color Color, double Opacity)> _systemBrushes = new();
+
     public App()
     {
         InitializeComponent();
-        TryApplyBrandAccent();
+        // Packaged builds throw E_UNEXPECTED (0x8000FFFF) from Application.Resources in
+        // this constructor. The old apply call caught that and never retinted anything.
+        // OnLaunched applies the accent before the first window, once Resources is live.
         InstallErrorHandling();
     }
 
     /// <summary>
-    /// Optional Palace pink ramp into SystemAccentColor*. Skip HighContrast.
-    /// Resource lookups are cached — changing the setting needs a restart.
+    /// Palace pink retints the SolidColorBrush instances inside XamlControlsResources
+    /// theme dictionaries (Default / Dark / Light). Skip HighContrast. Safe to call
+    /// again after the accent setting or the app theme changes.
     /// </summary>
-    private static void TryApplyBrandAccent()
+    public static void ApplySavedBrandAccent() => ApplySavedBrandAccent(Current.Resources);
+
+    private static void ApplySavedBrandAccent(ResourceDictionary resources)
     {
         try
         {
@@ -36,24 +46,153 @@ public partial class App : Application
             }
 
             var values = Windows.Storage.ApplicationData.Current.LocalSettings.Values;
-            if (!BrandAccent.IsPalacePink(values[BrandAccent.SettingsKey]))
+            var xcr = FindXamlControlsResources(resources);
+            if (xcr is null)
             {
                 return;
             }
 
+            if (!BrandAccent.IsPalacePink(values[BrandAccent.SettingsKey]))
+            {
+                RestoreSystemBrushes();
+                return;
+            }
+
             var ramp = BrandAccent.BuildRamp();
-            var r = Current.Resources;
-            r["SystemAccentColor"] = ToColor(ramp.Base);
-            r["SystemAccentColorLight1"] = ToColor(ramp.Light1);
-            r["SystemAccentColorLight2"] = ToColor(ramp.Light2);
-            r["SystemAccentColorLight3"] = ToColor(ramp.Light3);
-            r["SystemAccentColorDark1"] = ToColor(ramp.Dark1);
-            r["SystemAccentColorDark2"] = ToColor(ramp.Dark2);
-            r["SystemAccentColorDark3"] = ToColor(ramp.Dark3);
+            RetintAccentTree(xcr, ramp);
+            var active = Current.RequestedTheme == ApplicationTheme.Light
+                ? BrandAccent.ForLightTheme(ramp)
+                : BrandAccent.ForDarkTheme(ramp);
+            RetintLookup(resources, active);
         }
-        catch
+        catch (Exception ex)
         {
             // Startup must not die on accent apply (sandbox / missing LocalSettings).
+            ErrorReporter.LogOnly("Brand accent", ex);
+        }
+    }
+
+    private static XamlControlsResources? FindXamlControlsResources(ResourceDictionary root)
+    {
+        foreach (var merged in root.MergedDictionaries)
+        {
+            if (merged is XamlControlsResources xcr)
+            {
+                return xcr;
+            }
+
+            var nested = FindXamlControlsResources(merged);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private static int RetintAccentTree(ResourceDictionary dict, BrandAccent.Ramp ramp)
+    {
+        var count = RetintTheme(dict, "Default", BrandAccent.ForDarkTheme(ramp), ramp, lightPane: false);
+        count += RetintTheme(dict, "Dark", BrandAccent.ForDarkTheme(ramp), ramp, lightPane: false);
+        count += RetintTheme(dict, "Light", BrandAccent.ForLightTheme(ramp), ramp, lightPane: true);
+        foreach (var merged in dict.MergedDictionaries)
+        {
+            count += RetintAccentTree(merged, ramp);
+        }
+
+        return count;
+    }
+
+    private static int RetintTheme(
+        ResourceDictionary dict,
+        string themeKey,
+        BrandAccent.ThemeAccentColors colors,
+        BrandAccent.Ramp ramp,
+        bool lightPane)
+    {
+        if (!dict.ThemeDictionaries.TryGetValue(themeKey, out var themeObj)
+            || themeObj is not ResourceDictionary theme)
+        {
+            return 0;
+        }
+
+        var painted = 0;
+        foreach (var key in BrandAccent.AccentBrushKeys)
+        {
+            if (!BrandAccent.TryBrushPaint(key, colors, out var rgb, out var opacity))
+            {
+                continue;
+            }
+
+            if (RetintBrush(theme, key, ToColor(rgb), opacity))
+            {
+                painted++;
+            }
+        }
+
+        if (theme.TryGetValue("PalacePaneFillBrush", out var pane) && pane is AcrylicBrush acrylic)
+        {
+            acrylic.TintColor = lightPane ? ToColor(ramp.Light3) : ToColor(ramp.Dark3);
+        }
+
+        return painted;
+    }
+
+    private static int RetintLookup(ResourceDictionary root, BrandAccent.ThemeAccentColors colors)
+    {
+        var painted = 0;
+        foreach (var key in BrandAccent.AccentBrushKeys)
+        {
+            if (!BrandAccent.TryBrushPaint(key, colors, out var rgb, out var opacity))
+            {
+                continue;
+            }
+
+            if (!root.TryGetValue(key, out var existing) || existing is not SolidColorBrush brush)
+            {
+                continue;
+            }
+
+            RememberAndPaint(brush, ToColor(rgb), opacity);
+            painted++;
+        }
+
+        return painted;
+    }
+
+    private static bool RetintBrush(ResourceDictionary theme, string key, Color color, double opacity)
+    {
+        // Replace-by-key loses: controls and StaticResource aliases already hold this instance.
+        if (!theme.TryGetValue(key, out var existing) || existing is not SolidColorBrush brush)
+        {
+            return false;
+        }
+
+        RememberAndPaint(brush, color, opacity);
+        return true;
+    }
+
+    private static void RememberAndPaint(SolidColorBrush brush, Color color, double opacity)
+    {
+        if (!_systemBrushes.ContainsKey(brush))
+        {
+            _systemBrushes[brush] = (brush.Color, brush.Opacity);
+        }
+
+        // ThemeResource SystemAccentColor* already ran when XamlControlsResources
+        // built this brush, during InitializeComponent. This local Color value
+        // stays until a theme change. Creating the window does not resolve it again.
+        brush.Color = color;
+        brush.Opacity = opacity;
+    }
+
+    private static void RestoreSystemBrushes()
+    {
+        foreach (var (brush, saved) in _systemBrushes)
+        {
+            brush.Color = saved.Color;
+            brush.Opacity = saved.Opacity;
         }
     }
 
@@ -63,6 +202,9 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        // Application.Resources throws E_UNEXPECTED in the App constructor on a
+        // packaged build, so the accent has to be applied here, before the window.
+        ApplySavedBrandAccent(Resources);
         Window = new MainWindow();
         Window.Activate();
         try

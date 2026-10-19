@@ -343,21 +343,80 @@ public sealed partial class LibraryPage
 
     private static void ApplyAccentListSelection(ListView list)
     {
-        var app = Application.Current.Resources;
-        if (app.TryGetValue("AccentFillColorTertiaryBrush", out var selected))
+        // Prefer ThemeResource from the list so Light gets TextOnAccent on Default fill
+        // (AccentText on Tertiary is dark-on-mid and fails contrast).
+        var light = list.ActualTheme == ElementTheme.Light
+            || (list.ActualTheme == ElementTheme.Default
+                && Application.Current.RequestedTheme == ApplicationTheme.Light);
+
+        var resources = Application.Current.Resources;
+        var selectedKey = light ? "AccentFillColorDefaultBrush" : "AccentFillColorTertiaryBrush";
+        var foregroundKey = light ? "TextOnAccentFillColorPrimaryBrush" : "AccentTextFillColorPrimaryBrush";
+
+        if (TryThemeBrush(resources, list.ActualTheme, selectedKey, out var selected))
         {
             list.Resources["ListViewItemBackgroundSelected"] = selected;
         }
 
-        if (app.TryGetValue("AccentFillColorSecondaryBrush", out var over))
+        if (TryThemeBrush(resources, list.ActualTheme, "AccentFillColorSecondaryBrush", out var over))
         {
             list.Resources["ListViewItemBackgroundSelectedPointerOver"] = over;
         }
 
-        if (app.TryGetValue("AccentTextFillColorPrimaryBrush", out var foreground))
+        if (TryThemeBrush(resources, list.ActualTheme, foregroundKey, out var foreground))
         {
             list.Resources["ListViewItemForegroundSelected"] = foreground;
         }
+    }
+
+    private static bool TryThemeBrush(
+        ResourceDictionary root,
+        ElementTheme theme,
+        string key,
+        out object brush)
+    {
+        brush = null!;
+        var light = theme == ElementTheme.Light
+            || (theme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Light);
+        // Prefer Dark over Default when present (WASDK 2.x); fall back to Default.
+        var themeKeys = light ? new[] { "Light" } : new[] { "Dark", "Default" };
+
+        if (TryThemeBrushInTree(root, themeKeys, key, out brush))
+        {
+            return true;
+        }
+
+        return root.TryGetValue(key, out brush!) && brush is not null;
+    }
+
+    private static bool TryThemeBrushInTree(
+        ResourceDictionary root,
+        string[] themeKeys,
+        string key,
+        out object brush)
+    {
+        brush = null!;
+        foreach (var themeKey in themeKeys)
+        {
+            if (root.ThemeDictionaries.TryGetValue(themeKey, out var themeDict)
+                && themeDict is ResourceDictionary dict
+                && dict.TryGetValue(key, out var fromTheme)
+                && fromTheme is not null)
+            {
+                brush = fromTheme;
+                return true;
+            }
+        }
+
+        foreach (var merged in root.MergedDictionaries)
+        {
+            if (TryThemeBrushInTree(merged, themeKeys, key, out brush))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void AddFolderRows(List<MoveDestinationItem> rows, FolderNode node, IReadOnlyList<string> roots)
