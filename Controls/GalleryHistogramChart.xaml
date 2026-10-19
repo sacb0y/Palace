@@ -46,6 +46,7 @@
                 Orientation="Horizontal"
                 Spacing="4">
                 <ToggleButton
+                    AutomationProperties.Name="Luma (luminance)"
                     x:Name="BtnHistogramLuma"
                     MinWidth="40"
                     MinHeight="32"
@@ -58,6 +59,7 @@
                     </StackPanel>
                 </ToggleButton>
                 <ToggleButton
+                    AutomationProperties.Name="RGB channels"
                     x:Name="BtnHistogramRgb"
                     MinWidth="40"
                     MinHeight="32"
