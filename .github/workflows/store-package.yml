@@ -1,0 +1,82 @@
+name: Store package (Release MSIX upload)
+
+# Builds the Release x64 .msixupload for Microsoft Store submission. It is
+# unsigned on purpose: the Store re-signs submitted packages. Download it from
+# the run's artifacts and upload it in Partner Center > Packages.
+# To sideload the .msix locally, sign it with a test certificate first.
+# Manual runs can turn on "store_submission", which fails the build while
+# Package.appxmanifest still has the dev placeholder identity.
+on:
+  workflow_dispatch:
+    inputs:
+      store_submission:
+        description: Fail if the manifest still has placeholder identity values
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - Package.appxmanifest
+      - Palace.csproj
+      - .github/workflows/store-package.yml
+
+concurrency:
+  group: store-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  msixupload:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      # The .msixupload container task needs full-framework MSBuild (Visual Studio);
+      # under the dotnet CLI it fails to load System.Security.Permissions.
+      - uses: microsoft/setup-msbuild@v3
+
+      - name: Build Release MSIX upload package (x64, unsigned)
+        shell: pwsh
+        run: |
+          $out = Join-Path $PWD 'AppPackages\'
+          $extra = @()
+          if ('${{ inputs.store_submission }}' -eq 'true') { $extra += '-p:PalaceStoreSubmission=true' }
+          msbuild Palace.csproj -restore -m -v:minimal -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 `
+            -p:GenerateAppxPackageOnBuild=true -p:UapAppxPackageBuildMode=StoreUpload `
+            -p:AppxBundle=Never -p:AppxPackageSigningEnabled=false -p:AppxSymbolPackageEnabled=false `
+            "-p:AppxPackageDir=$out" @extra
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          Get-ChildItem $out -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300
+
+      - name: Check package contents
+        shell: pwsh
+        run: |
+          $upload = Get-ChildItem AppPackages -Recurse -Filter *.msixupload | Select-Object -First 1
+          if (-not $upload) { throw 'no .msixupload produced' }
+          $msix = Get-ChildItem AppPackages -Recurse -Filter 'Palace_*.msix' | Select-Object -First 1
+          if (-not $msix) { throw 'no Palace_*.msix produced' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $z = [IO.Compression.ZipFile]::OpenRead($msix.FullName)
+          try {
+            $names = $z.Entries.FullName
+            foreach ($need in 'AppxManifest.xml', 'Palace.exe', 'ffmpeg/ffmpeg.exe', 'ffmpeg/LICENSE.txt', 'ffmpeg/SOURCE.txt') {
+              if ($names -notcontains $need) { throw "missing $need in $($msix.Name)" }
+            }
+            $r = New-Object IO.StreamReader($z.GetEntry('AppxManifest.xml').Open())
+            $m = $r.ReadToEnd(); $r.Dispose()
+            if ($m -match 'systemAIModels|PhoneIdentity|Windows\.Universal') { throw 'manifest still has systemAIModels / PhoneIdentity / Windows.Universal' }
+          } finally { $z.Dispose() }
+          "{0}  {1:N1} MB" -f $upload.Name, ($upload.Length / 1MB)
+          "{0}  {1:N1} MB" -f $msix.Name, ($msix.Length / 1MB)
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: palace-msixupload
+          path: |
+            AppPackages/**/*.msixupload
+            AppPackages/*_Test/Palace_*.msix
+          if-no-files-found: error

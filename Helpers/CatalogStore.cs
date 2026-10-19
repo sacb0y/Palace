@@ -42,19 +42,27 @@ public static class CatalogStore
     /// </summary>
     public static string? DataDirOverride { get; set; }
 
-    /// <summary>Package identity name of the real Palace install.</summary>
+    /// <summary>Package identity name of the original (pre-Store) Palace install.</summary>
     public const string ReleasePackageName = "C20A7629-6BDE-449F-958A-5AAF8BCE88F3";
 
     /// <summary>
-    /// A side-by-side / test package (any identity other than
-    /// <see cref="ReleasePackageName"/>) keeps its pointer and default catalog
+    /// Every identity that is "the real Palace" and shares the durable catalog.
+    /// When Package.appxmanifest gets the reserved Partner Center identity, add that
+    /// Name here (keep the original so existing installs still find their catalog).
+    /// <c>ManifestIdentityIsARelease</c> in the tests enforces this.
+    /// </summary>
+    public static readonly IReadOnlyList<string> ReleasePackageNames = [ReleasePackageName];
+
+    /// <summary>
+    /// A side-by-side / test package (any identity not in
+    /// <see cref="ReleasePackageNames"/>) keeps its pointer and default catalog
     /// under its own LocalFolder so it can never open the real catalog.
     /// Returns null for the real identity or when unpackaged.
     /// </summary>
     public static string? IsolatedDataDirFor(string? packageName, string? packageLocalFolder) =>
         string.IsNullOrWhiteSpace(packageName)
         || string.IsNullOrWhiteSpace(packageLocalFolder)
-        || string.Equals(packageName, ReleasePackageName, StringComparison.OrdinalIgnoreCase)
+        || ReleasePackageNames.Contains(packageName, StringComparer.OrdinalIgnoreCase)
             ? null
             : Path.Combine(packageLocalFolder, "palace-data");
 
