@@ -211,7 +211,13 @@ public static class ExrFile
                     c[i] = BinaryPrimitives.ReadSingleLittleEndian(value.AsSpan(i * 4, 4));
                 }
 
-                return c.All(v => float.IsFinite(v) && v is > 0f and < 1f) ? c : null;
+                // ACES2065-1 (AP0) puts green at x = 0 and blue at y = -0.077, so allow
+                // [-1, 1]; only the white point and the primaries' y must be non-zero
+                // (ToRec709Matrix divides by y and rejects degenerate primaries).
+                return c.All(v => float.IsFinite(v) && v is >= -1f and <= 1f)
+                    && c[1] != 0f && c[3] != 0f && c[5] != 0f && c[6] > 0f && c[7] > 0f
+                    ? c
+                    : null;
             }
         }
 
