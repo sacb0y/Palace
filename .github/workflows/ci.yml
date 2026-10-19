@@ -49,6 +49,23 @@ jobs:
       - name: Build Palace (Debug x64, no MSIX package)
         run: dotnet build Palace.csproj -c Debug -p:Platform=x64 --no-restore
 
+      # Packaged path used by BuildAndRun.ps1 / winapp (single-project MSIX).
+      # Unsigned: no cert secret required; still exercises GenerateAppxPackageOnBuild.
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Palace packaged (Debug x64 MSIX, unsigned)
+        run: >
+          msbuild Palace.csproj
+          /p:Configuration=Debug
+          /p:Platform=x64
+          /p:GenerateAppxPackageOnBuild=true
+          /p:AppxPackageSigningEnabled=false
+          /p:AppxBundle=Never
+          /p:UapAppxPackageBuildMode=SideloadOnly
+          /p:AppxPackageDir=Artifacts\Msix\
+          /restore
+
       - name: Test
         run: dotnet test Palace.Tests/Palace.Tests.csproj -c Debug --no-restore --logger "trx;LogFileName=results.trx"
 
