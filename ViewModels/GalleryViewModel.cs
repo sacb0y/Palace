@@ -969,7 +969,7 @@ public partial class GalleryViewModel : ObservableObject
             ClearHistogram();
             ApplyGifState(gifCanScrub, gifInfo);
             var detailsPixels = GalleryPresent.FilePixelSize(
-                null, null, _headerPixelWidth, _headerPixelHeight, item.Width, item.Height);
+                null, null, _headerPixelWidth, _headerPixelHeight, item.Width, item.Height, item.Undecodable);
             DetailsText = GalleryPresent.DetailsLine(
                 item.FileName, detailsPixels?.Width, detailsPixels?.Height, item.Kind, item.FileSize);
             HdrStatus = GalleryPresent.StatusLine(probe, false, false, GalleryPeak.Enabled, GalleryPeak.Nits) ?? "";
