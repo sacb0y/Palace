@@ -28,7 +28,10 @@ public partial class LibraryViewModel
     public partial bool CanUndoFileOp { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UndoToolTip))]
     public partial string UndoLabel { get; set; } = "Nothing to undo";
+
+    public string UndoToolTip => $"{UndoLabel} (Ctrl+Z)";
 
     [ObservableProperty]
     public partial bool ShowUndoToast { get; set; }

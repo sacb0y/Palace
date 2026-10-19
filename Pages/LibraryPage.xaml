@@ -93,13 +93,13 @@
                 </Button>
                 <Button
                     x:Name="BtnUndo"
+                    AutomationProperties.AcceleratorKey="Control+Z"
                     AutomationProperties.AutomationId="BtnUndo"
                     AutomationProperties.HelpText="{x:Bind ViewModel.UndoLabel, Mode=OneWay}"
                     AutomationProperties.Name="Undo"
                     Command="{x:Bind ViewModel.UndoFileOpCommand}"
                     IsEnabled="{x:Bind ViewModel.CanUndoFileOp, Mode=OneWay}"
-                    KeyboardAcceleratorTextOverride="Ctrl+Z"
-                    ToolTipService.ToolTip="{x:Bind ViewModel.UndoLabel, Mode=OneWay}">
+                    ToolTipService.ToolTip="{x:Bind ViewModel.UndoToolTip, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
                         <TextBlock VerticalAlignment="Center" Text="Undo" />
