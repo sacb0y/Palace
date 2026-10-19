@@ -329,3 +329,12 @@ public sealed class FileOpItem
     public string? OldSourceId { get; set; }
     public string? NewSourceId { get; set; }
 }
+
+/// <summary>Catalog snapshot so <see cref="FileOpKind.TagDelete"/> can restore a deleted tag.</summary>
+public sealed class TagDeleteSnapshot
+{
+    public Tag Tag { get; set; } = new();
+    public List<AssetTag> Assignments { get; set; } = [];
+    public List<TagMembership> Memberships { get; set; } = [];
+    public List<TagImplication> Implications { get; set; } = [];
+}

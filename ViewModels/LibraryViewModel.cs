@@ -252,8 +252,16 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial string AssignedTagsSummary { get; set; } = "";
 
+    /// <summary>Show the comma summary only when there are no chips ("No tags assigned").</summary>
+    [ObservableProperty]
+    public partial bool ShowAssignedTagsSummary { get; set; } = true;
+
     [ObservableProperty]
     public partial string TagSuggestionsSummary { get; set; } = "";
+
+    /// <summary>Live region text when the assign flyout toggles a tag.</summary>
+    [ObservableProperty]
+    public partial string AssignAnnouncement { get; set; } = "";
 
     [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }

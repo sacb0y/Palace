@@ -15,6 +15,7 @@ public partial class TagsViewModel : ObservableObject
     private readonly OrganizeService _organize;
     private readonly AccessService _access;
     private readonly ThumbnailService _thumbs;
+    private readonly FileOpService _fileOps;
     private List<Tag> _tags = [];
     private List<TagMembership> _memberships = [];
     private List<TagImplication> _implications = [];
@@ -27,12 +28,18 @@ public partial class TagsViewModel : ObservableObject
     private string _boardSelectionKey = "all";
     private const int MosaicChunkSize = 80;
 
-    public TagsViewModel(CatalogService catalog, OrganizeService organize, AccessService access, ThumbnailService thumbs)
+    public TagsViewModel(
+        CatalogService catalog,
+        OrganizeService organize,
+        AccessService access,
+        ThumbnailService thumbs,
+        FileOpService fileOps)
     {
         _catalog = catalog;
         _organize = organize;
         _access = access;
         _thumbs = thumbs;
+        _fileOps = fileOps;
     }
 
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
@@ -75,7 +82,14 @@ public partial class TagsViewModel : ObservableObject
     public partial int AssetCount { get; set; }
 
     [ObservableProperty]
-    public partial string AssetCountLabel { get; set; } = "0 images with this tag";
+    public partial string AssetCountLabel { get; set; } = "0 items with this tag";
+
+    public bool CanSaveRename =>
+        SelectedNode?.TagId is not null
+        && !string.IsNullOrWhiteSpace(SelectedName)
+        && !string.Equals(SelectedName.Trim(), _renameBaseline?.Trim(), StringComparison.Ordinal);
+
+    public string RenameError { get; private set; } = "";
 
     [ObservableProperty]
     public partial bool IncludeNested { get; set; } = true;
@@ -441,17 +455,42 @@ public partial class TagsViewModel : ObservableObject
             }
 
             var name = SelectedNode.Name;
+            var tagId = SelectedNode.TagId;
+            var itemCount = AssetCount;
+            var groupLinks = await _catalog.CountTagGroupLinksAsync(tagId);
+            var impact = itemCount > 0 || groupLinks > 0
+                ? $" It will be removed from {AssetNouns.Count(itemCount)} and {groupLinks} group/rule link(s)."
+                : "";
             var ok = RequestConfirm is null
-                || await RequestConfirm("Delete tag", $"Delete “{name}”? Assignments and group links are removed.", "Delete");
+                || await RequestConfirm(
+                    "Delete tag",
+                    $"Delete “{name}”?{impact} Implied-tag rules that use it are removed too.",
+                    "Delete tag");
             if (!ok)
             {
                 return;
             }
 
-            await _catalog.DeleteTagAsync(SelectedNode.TagId);
+            var projectId = AppServices.CurrentProject?.Id;
+            if (string.IsNullOrEmpty(projectId))
+            {
+                await _catalog.DeleteTagAsync(tagId);
+                SelectedNode = null;
+                await RefreshAsync();
+                StatusText = $"Deleted {name}.";
+                return;
+            }
+
+            var result = await _fileOps.DeleteTagAsync(tagId, projectId);
             SelectedNode = null;
             await RefreshAsync();
-            StatusText = $"Deleted {name}.";
+            if (result.Ok)
+            {
+                AppServices.Library.OfferUndoToast(result.Message);
+                await AppServices.Library.RefreshUndoStateAsync();
+            }
+
+            StatusText = result.Message;
         });
 
     [RelayCommand]
@@ -660,16 +699,50 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            if (!await _catalog.RenameTagAsync(SelectedNode.TagId, SelectedName))
+            var name = TagNames.Normalize(SelectedName);
+            if (!await _catalog.RenameTagAsync(SelectedNode.TagId, name))
             {
-                StatusText = TagNames.DuplicateMessage(SelectedName) + " Choose a different name.";
+                RenameError = TagNames.DuplicateMessage(name);
+                OnPropertyChanged(nameof(RenameError));
+                StatusText = RenameError + " Choose a different name.";
+                return;
+            }
+
+            RenameError = "";
+            OnPropertyChanged(nameof(RenameError));
+            _renameBaseline = name;
+            SelectedName = name;
+            OnPropertyChanged(nameof(CanSaveRename));
+            await RefreshAsync();
+            StatusText = "Tag renamed.";
+        });
+
+    [RelayCommand]
+    private Task SavePriorityAsync() =>
+        ErrorReporter.RunAsync("Save priority", Notify, async () =>
+        {
+            if (SelectedNode?.TagId is null)
+            {
                 return;
             }
 
             await _catalog.SetTagPriorityAsync(SelectedNode.TagId, (int)SelectedPriority);
             await RefreshAsync();
-            StatusText = "Tag updated.";
+            StatusText = "Priority updated.";
         });
+
+    public void RevertRename()
+    {
+        if (_renameBaseline is not null)
+        {
+            SelectedName = _renameBaseline;
+            RenameError = "";
+            OnPropertyChanged(nameof(RenameError));
+            OnPropertyChanged(nameof(CanSaveRename));
+        }
+    }
+
+    partial void OnSelectedNameChanged(string value) => OnPropertyChanged(nameof(CanSaveRename));
 
     public async Task ApplyColorAsync(string? hex)
     {
@@ -977,7 +1050,7 @@ public partial class TagsViewModel : ObservableObject
             HasCustomColor = TagColor.Normalize(tag.Color) is not null;
             SelectedColorLabel = CatalogService.DescribeTagColor(tag, _tags, _memberships);
             AssetCount = count;
-            AssetCountLabel = $"{count} images with this tag";
+            AssetCountLabel = AssetNouns.WithThisTag(count);
             ParentGroups.Clear();
             foreach (var parent in parents)
             {
@@ -1310,14 +1383,23 @@ public partial class TagsViewModel : ObservableObject
         return text + ".";
     }
 
+    private string? _statusBeforeBusy;
+
     private void BeginBusy(string? status = null)
     {
-        if (status is not null)
+        if (Interlocked.Increment(ref _busyDepth) == 1)
+        {
+            _statusBeforeBusy = StatusText;
+        }
+
+        // Keep "Loading…" on PrgTags only — do not stick it in the status line.
+        if (status is not null
+            && !status.Equals("Loading…", StringComparison.Ordinal)
+            && !status.Equals("Loading...", StringComparison.Ordinal))
         {
             StatusText = status;
         }
 
-        Interlocked.Increment(ref _busyDepth);
         IsBusy = true;
     }
 
@@ -1327,6 +1409,12 @@ public partial class TagsViewModel : ObservableObject
         {
             Interlocked.Exchange(ref _busyDepth, 0);
             IsBusy = false;
+            if (StatusText is "Loading…" or "Loading...")
+            {
+                StatusText = _statusBeforeBusy ?? "";
+            }
+
+            _statusBeforeBusy = null;
         }
     }
 

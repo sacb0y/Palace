@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
@@ -7,54 +6,48 @@ namespace Palace.Helpers;
 
 public static class TagColor
 {
+    public static IReadOnlyList<string> Presets => TagInk.Presets;
+
+    public static Color BlackInk { get; } = Color.FromArgb(TagInk.Black.A, TagInk.Black.R, TagInk.Black.G, TagInk.Black.B);
+
+    public static Color WhiteInk { get; } = Color.FromArgb(TagInk.White.A, TagInk.White.R, TagInk.White.G, TagInk.White.B);
+
     public static bool TryParse(string? hex, out Color color)
     {
-        color = default;
-        if (string.IsNullOrWhiteSpace(hex))
+        if (!TagInk.TryParse(hex, out var rgba))
         {
+            color = default;
             return false;
         }
 
-        var text = hex.Trim();
-        if (text.StartsWith('#') || text.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-        {
-            text = text[0] == '#' ? text[1..] : text[2..];
-        }
-
-        if (text.Length == 6)
-        {
-            text = "FF" + text;
-        }
-
-        if (text.Length != 8 ||
-            !uint.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var value))
-        {
-            return false;
-        }
-
-        color = Color.FromArgb(
-            (byte)(value >> 24),
-            (byte)(value >> 16),
-            (byte)(value >> 8),
-            (byte)value);
+        color = Color.FromArgb(rgba.A, rgba.R, rgba.G, rgba.B);
         return true;
     }
 
     public static string ToHex(Color color) =>
-        $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
+        TagInk.ToHex(new TagInk.Rgba(color.A, color.R, color.G, color.B));
 
     public static string? Normalize(string? hex) =>
         TryParse(hex, out var color) ? ToHex(color) : null;
 
+    public static bool HasColor(string? hex) => TagInk.TryParse(hex, out _);
+
+    /// <summary>
+    /// Solid fill for a colored tag. Uncolored chips use <c>PalaceTagChipFillBrush</c>
+    /// from App ThemeDictionaries so Light/Dark follow the page theme (not app-theme white-on-white).
+    /// </summary>
     public static Brush ChipFill(string? hex) =>
         TryParse(hex, out var color)
             ? new SolidColorBrush(color)
-            : ThemeBrush("CardBackgroundFillColorDefaultBrush");
+            : ThemeBrush("PalaceTagChipFillBrush", "ControlFillColorDefaultBrush");
 
+    /// <summary>
+    /// Contrasting ink for a colored tag, or theme primary text when uncolored.
+    /// </summary>
     public static Brush ChipInk(string? hex) =>
         TryParse(hex, out var color)
             ? new SolidColorBrush(ContrastingInk(color))
-            : ThemeBrush("TextFillColorPrimaryBrush");
+            : ThemeBrush("PalaceTagChipInkBrush", "TextFillColorPrimaryBrush");
 
     public static double ChipOpacity(bool isPartial) =>
         AssignedTagChrome.Opacity(isPartial, Models.TagSource.Manual);
@@ -62,25 +55,30 @@ public static class TagColor
     public static double ChipOpacity(bool isPartial, Models.TagSource source) =>
         AssignedTagChrome.Opacity(isPartial, source);
 
+    /// <summary>
+    /// Black or white ink by maximum WCAG contrast (equal at L ≈ 0.179). Soft black matches the Fluent text ramp.
+    /// </summary>
     public static Color ContrastingInk(Color fill)
     {
-        var luminance = 0.2126 * Linear(fill.R) + 0.7152 * Linear(fill.G) + 0.0722 * Linear(fill.B);
-        return luminance > 0.55
-            ? Color.FromArgb(255, 0, 0, 0)
-            : Color.FromArgb(255, 255, 255, 255);
+        var ink = TagInk.Contrasting(new TagInk.Rgba(fill.A, fill.R, fill.G, fill.B));
+        return Color.FromArgb(ink.A, ink.R, ink.G, ink.B);
     }
 
-    private static double Linear(byte channel)
-    {
-        var srgb = channel / 255.0;
-        return srgb <= 0.04045 ? srgb / 12.92 : Math.Pow((srgb + 0.055) / 1.055, 2.4);
-    }
+    public static double RelativeLuminance(Color fill) =>
+        TagInk.RelativeLuminance(new TagInk.Rgba(fill.A, fill.R, fill.G, fill.B));
 
-    private static Brush ThemeBrush(string key)
+    private static Brush ThemeBrush(string preferredKey, string fallbackKey)
     {
-        if (Application.Current?.Resources.TryGetValue(key, out var value) == true && value is Brush brush)
+        if (Application.Current?.Resources.TryGetValue(preferredKey, out var preferred) == true
+            && preferred is Brush preferredBrush)
         {
-            return brush;
+            return preferredBrush;
+        }
+
+        if (Application.Current?.Resources.TryGetValue(fallbackKey, out var fallback) == true
+            && fallback is Brush fallbackBrush)
+        {
+            return fallbackBrush;
         }
 
         return new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));

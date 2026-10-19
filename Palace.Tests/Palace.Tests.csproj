@@ -64,6 +64,8 @@
     <Compile Include="..\Helpers\TagBoardExpand.cs" Link="TagBoardExpand.cs" />
     <Compile Include="..\Helpers\TagBrowseMosaic.cs" Link="TagBrowseMosaic.cs" />
     <Compile Include="..\Helpers\AssignedTagChrome.cs" Link="AssignedTagChrome.cs" />
+    <Compile Include="..\Helpers\AssetNouns.cs" Link="AssetNouns.cs" />
+    <Compile Include="..\Helpers\TagInk.cs" Link="TagInk.cs" />
     <Compile Include="..\Helpers\TagChipChrome.cs" Link="TagChipChrome.cs" />
     <Compile Include="..\Helpers\TagAlphaIndex.cs" Link="TagAlphaIndex.cs" />
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
@@ -98,7 +100,9 @@
     <Compile Include="..\Services\CatalogService.Search.cs" Link="CatalogService.Search.cs" />
     <Compile Include="..\Helpers\OrganizeNames.cs" Link="OrganizeNames.cs" />
     <Compile Include="..\Services\CatalogService.FileOps.cs" Link="CatalogService.FileOps.cs" />
+    <Compile Include="..\Services\CatalogService.TagUndo.cs" Link="CatalogService.TagUndo.cs" />
     <Compile Include="..\Services\FileOpService.cs" Link="FileOpService.cs" />
+    <!-- FileOpService.Tags.cs / CatalogService.Tags.cs stay out (need TagColor / full assign). -->
     <Compile Include="..\Helpers\FolderNames.cs" Link="FolderNames.cs" />
     <Compile Include="..\Helpers\DestinationRecents.cs" Link="DestinationRecents.cs" />
     <Compile Include="..\Helpers\MosaicMove.cs" Link="MosaicMove.cs" />

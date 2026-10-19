@@ -27,6 +27,9 @@
                         TintOpacity="0.35" />
                     <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="PalacePaneFillBrush" />
                     <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="PalacePaneFillBrush" />
+                    <!-- Uncolored tag chips: follow theme (same dictionary as pane chrome / #99). -->
+                    <StaticResource x:Key="PalaceTagChipFillBrush" ResourceKey="ControlFillColorDefaultBrush" />
+                    <StaticResource x:Key="PalaceTagChipInkBrush" ResourceKey="TextFillColorPrimaryBrush" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
                     <AcrylicBrush
@@ -43,12 +46,16 @@
                         TintOpacity="0.35" />
                     <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="PalacePaneFillBrush" />
                     <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="PalacePaneFillBrush" />
+                    <StaticResource x:Key="PalaceTagChipFillBrush" ResourceKey="ControlFillColorDefaultBrush" />
+                    <StaticResource x:Key="PalaceTagChipInkBrush" ResourceKey="TextFillColorPrimaryBrush" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <StaticResource x:Key="PalacePaneFillBrush" ResourceKey="SystemColorWindowColorBrush" />
                     <SolidColorBrush x:Key="GalleryOverlayBackdropBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="SystemColorWindowColorBrush" />
                     <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="PalaceTagChipFillBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+                    <StaticResource x:Key="PalaceTagChipInkBrush" ResourceKey="SystemColorButtonTextColorBrush" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
             <!-- Wallpaper lives in MainWindow; do not paint a solid content sheet. -->

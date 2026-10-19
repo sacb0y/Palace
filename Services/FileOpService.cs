@@ -1,3 +1,4 @@
+using Palace.Data;
 using Palace.Helpers;
 using Palace.Models;
 
@@ -165,8 +166,19 @@ public sealed class FileOpService
             FileOpKind.CreateFolder => $"Undo new folder {DisplayName(batch.Items.LastOrDefault()?.NewPath)}",
             FileOpKind.RenameFolder => $"Undo rename to {DisplayName(batch.Items.LastOrDefault()?.NewPath)}",
             FileOpKind.DeleteFolder => $"Undo delete of {DisplayName(batch.Items.LastOrDefault()?.OldPath)}",
+            FileOpKind.TagAssign => $"Undo tag on {Items(batch.Items.Count(i => i.Step == FileOpStep.AssignTag))}",
+            FileOpKind.TagRemove => $"Undo remove tag from {Items(batch.Items.Count(i => i.Step == FileOpStep.RemoveTag))}",
+            FileOpKind.TagDelete => $"Undo delete of {TagDeleteName(batch)}",
             _ => "Undo"
         };
+
+    private static string Items(int count) => count == 1 ? "1 item" : $"{count} items";
+
+    private static string TagDeleteName(FileOpBatch batch)
+    {
+        var json = batch.Items.LastOrDefault()?.NewPath;
+        return CatalogService.DeserializeTagSnapshot(json)?.Tag.Name ?? "tag";
+    }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> Gates = new(StringComparer.Ordinal);
 
@@ -1112,8 +1124,80 @@ public sealed class FileOpService
                     return UndoNote.Retry($"{DisplayName(item.OldPath)}: {ex.Message}");
                 }
 
+            case FileOpStep.AssignTag:
+            case FileOpStep.RemoveTag:
+            case FileOpStep.DeleteTag:
+                return await UndoTagOpStepAsync(item).ConfigureAwait(false);
+
             default:
                 return UndoNote.Skip("unknown step");
+        }
+    }
+
+    private async Task<UndoNote?> UndoTagOpStepAsync(FileOpItem item)
+    {
+        switch (item.Step)
+        {
+            case FileOpStep.AssignTag:
+                if (string.IsNullOrEmpty(item.AssetId) || string.IsNullOrEmpty(item.OldPath))
+                {
+                    return UndoNote.Skip("tag assign: incomplete journal row");
+                }
+
+                try
+                {
+                    await _catalog.RemoveTagForUndoAsync(item.AssetId, item.OldPath).ConfigureAwait(false);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"{item.NewPath}: {ex.Message}");
+                }
+
+            case FileOpStep.RemoveTag:
+                if (string.IsNullOrEmpty(item.AssetId) || string.IsNullOrEmpty(item.OldPath))
+                {
+                    return UndoNote.Skip("tag remove: incomplete journal row");
+                }
+
+                try
+                {
+                    var source = Enum.TryParse<TagSource>(item.OldSourceId, out var parsed)
+                        ? parsed
+                        : TagSource.Manual;
+                    await _catalog.AssignTagForUndoAsync(item.AssetId, item.OldPath, source).ConfigureAwait(false);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"{item.NewPath}: {ex.Message}");
+                }
+
+            case FileOpStep.DeleteTag:
+            {
+                var snapshot = CatalogService.DeserializeTagSnapshot(item.NewPath);
+                if (snapshot is null)
+                {
+                    return UndoNote.Skip("tag delete: missing snapshot");
+                }
+
+                try
+                {
+                    await _catalog.RestoreTagSnapshotAsync(snapshot).ConfigureAwait(false);
+                    return null;
+                }
+                catch (DuplicateTagNameException)
+                {
+                    return UndoNote.Skip($"kept delete of {snapshot.Tag.Name}: a tag with that name exists again");
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"{snapshot.Tag.Name}: {ex.Message}");
+                }
+            }
+
+            default:
+                return UndoNote.Skip($"unknown tag step {item.Step}");
         }
     }
 

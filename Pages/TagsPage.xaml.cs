@@ -195,6 +195,37 @@ public sealed partial class TagsPage : Page
         });
     }
 
+    private void TxtRenameTag_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            if (ViewModel.SaveRenameCommand.CanExecute(null))
+            {
+                ViewModel.SaveRenameCommand.Execute(null);
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            ViewModel.RevertRename();
+            e.Handled = true;
+        }
+    }
+
+    private void NbTagPriority_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!IsLoaded || ViewModel.SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        if (ViewModel.SavePriorityCommand.CanExecute(null))
+        {
+            ViewModel.SavePriorityCommand.Execute(null);
+        }
+    }
+
     private void TagChipMenu_Opening(object sender, object e)
     {
         if (sender is not MenuFlyout flyout)

@@ -20,10 +20,10 @@
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
         RowSpacing="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220" />
-            <ColumnDefinition Width="360" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="340" />
+            <ColumnDefinition Width="Auto" MinWidth="200" MaxWidth="260" />
+            <ColumnDefinition Width="2*" MinWidth="280" />
+            <ColumnDefinition Width="3*" MinWidth="240" />
+            <ColumnDefinition Width="Auto" MinWidth="300" MaxWidth="360" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -318,19 +318,21 @@
                     Text="{x:Bind ViewModel.SelectionSummary, Mode=OneWay}" />
             </StackPanel>
             <Grid Grid.Row="1" ColumnSpacing="12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <TextBlock
                     x:Name="TxtTagAssetCount"
-                    VerticalAlignment="Bottom"
+                    VerticalAlignment="Center"
                     AutomationProperties.AutomationId="TxtTagAssetCount"
-                    Style="{StaticResource BodyTextBlockStyle}"
-                    Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}" />
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
                 <StackPanel
-                    Grid.Column="1"
-                    VerticalAlignment="Bottom"
+                    Grid.Row="1"
+                    VerticalAlignment="Center"
                     Orientation="Horizontal"
                     Spacing="8">
                     <DropDownButton
@@ -412,7 +414,7 @@
                 x:Name="GrdTagAssets"
                 Grid.Row="2"
                 AutomationProperties.AutomationId="GrdTagAssets"
-                AutomationProperties.Name="Tagged images"
+                AutomationProperties.Name="Tagged items"
                 IsHoldingEnabled="True"
                 IsTabStop="True"
                 PreviewKeyDown="GrdTagAssets_KeyDown"
@@ -608,25 +610,35 @@
                     AutomationProperties.AutomationId="TxtRenameTag"
                     Header="Name"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                    KeyDown="TxtRenameTag_KeyDown"
                     Text="{x:Bind ViewModel.SelectedName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock
+                    x:Name="TxtRenameError"
+                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.RenameError, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.RenameError), Mode=OneWay}" />
+                <Button
+                    AutomationProperties.AutomationId="BtnSaveTag"
+                    AutomationProperties.Name="Rename"
+                    Command="{x:Bind ViewModel.SaveRenameCommand}"
+                    IsEnabled="{x:Bind ViewModel.CanSaveRename, Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Save" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Rename" />
+                    </StackPanel>
+                </Button>
                 <NumberBox
                     x:Name="NbTagPriority"
                     AutomationProperties.AutomationId="NbTagPriority"
+                    Description="Higher priority sorts first in the tag mosaic and assign panel"
                     Header="Priority"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
                     Minimum="0"
                     SpinButtonPlacementMode="Inline"
+                    ValueChanged="NbTagPriority_ValueChanged"
                     Value="{x:Bind ViewModel.SelectedPriority, Mode=TwoWay}" />
-                <Button
-                    AutomationProperties.AutomationId="BtnSaveTag"
-                    AutomationProperties.Name="Save name"
-                    Command="{x:Bind ViewModel.SaveRenameCommand}"
-                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="Save" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Save name" />
-                    </StackPanel>
-                </Button>
                 <ToggleSwitch
                     x:Name="TglStarTag"
                     AutomationProperties.AutomationId="TglStarTag"

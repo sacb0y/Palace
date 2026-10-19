@@ -58,9 +58,7 @@ public partial class LibraryViewModel
                 SelectedPickTag = null;
                 if (assigned.Count > 1)
                 {
-                    StatusText = targets.Count == 1
-                        ? $"Tagged 1 image with {string.Join(", ", assigned)}"
-                        : $"Tagged {targets.Count} images with {string.Join(", ", assigned)}";
+                    StatusText = $"Tagged {AssetNouns.Count(targets.Count)} with {string.Join(", ", assigned)}";
                 }
             });
             await LoadPreviewAsync(SelectedAsset);
@@ -104,15 +102,20 @@ public partial class LibraryViewModel
                 return;
             }
 
-            foreach (var asset in targets)
+            var rows = targets.Select(a => (a.Id, item.Source)).ToList();
+            var result = await _fileOps.RemoveTagAsync(
+                rows, item.TagId, item.TagName, AppServices.CurrentProject.Id);
+            if (result.Ok)
             {
-                await _catalog.RemoveTagAsync(asset.Id, item.TagId);
+                OfferUndoToast(result.Message);
+            }
+            else
+            {
+                StatusText = result.Message;
             }
 
-            StatusText = targets.Count == 1
-                ? $"Removed {item.TagName} from 1 image"
-                : $"Removed {item.TagName} from {targets.Count} images";
             await LoadPreviewAsync(SelectedAsset);
+            await RefreshUndoStateAsync();
         });
 
     [RelayCommand]
@@ -164,11 +167,20 @@ public partial class LibraryViewModel
 
             if (chip.IsAssigned && !chip.IsPartial)
             {
-                await RemoveAssignedTagAsync(new AssignedTagItem { TagId = chip.TagId, TagName = chip.Name });
+                await RemoveAssignedTagAsync(new AssignedTagItem
+                {
+                    TagId = chip.TagId,
+                    TagName = chip.Name,
+                    Source = TagSource.Manual
+                });
+                AssignAnnouncement = $"Removed {chip.Name}";
                 return;
             }
 
             await AssignToSelectionAsync(targets, chip.TagId, chip.Name, TagSource.Manual);
+            AssignAnnouncement = chip.IsPartial
+                ? $"Added {chip.Name} to all {targets.Count} selected"
+                : $"Added {chip.Name}";
             await LoadPreviewAsync(SelectedAsset);
             RebuildAssignPanel();
         });
@@ -299,19 +311,27 @@ public partial class LibraryViewModel
 
     private async Task AssignToSelectionAsync(IReadOnlyList<AssetItem> targets, string tagId, string tagName, TagSource source)
     {
-        foreach (var asset in targets)
-        {
-            await _catalog.AssignTagAsync(asset.Id, tagId, source);
-        }
-
+        var result = await _fileOps.AssignTagAsync(
+            targets.Select(t => t.Id).ToList(),
+            tagId,
+            tagName,
+            source,
+            AppServices.CurrentProject.Id);
         if (source == TagSource.Manual)
         {
             RememberRecent(tagId);
         }
 
-        StatusText = targets.Count == 1
-            ? $"Tagged 1 image with {tagName}"
-            : $"Tagged {targets.Count} images with {tagName}";
+        if (result.Ok)
+        {
+            OfferUndoToast(result.Message);
+        }
+        else
+        {
+            StatusText = result.Message;
+        }
+
+        await RefreshUndoStateAsync();
     }
 
     private void LoadRecentTags()
@@ -329,6 +349,21 @@ public partial class LibraryViewModel
     private TagChipItem ToAssignChip(TagPanelChip chip)
     {
         var assigned = AssignedTags.FirstOrDefault(t => t.TagId == chip.TagId);
+        var total = Math.Max(1, TagTargets().Count);
+        var partialCount = 0;
+        if (assigned?.IsPartial == true && assigned.CountLabel is { Length: > 0 } label)
+        {
+            var of = label.IndexOf(" of ", StringComparison.Ordinal);
+            if (of > 0 && int.TryParse(label.AsSpan(0, of), out var n))
+            {
+                partialCount = n;
+            }
+        }
+        else if (assigned is not null && assigned.IsPartial == false)
+        {
+            partialCount = total;
+        }
+
         return new TagChipItem
         {
             TagId = chip.TagId,
@@ -337,6 +372,8 @@ public partial class LibraryViewModel
             IsStarred = chip.IsStarred,
             IsAssigned = assigned is not null,
             IsPartial = assigned?.IsPartial == true,
+            PartialCount = partialCount,
+            SelectionTotal = total,
             AutomationPrefix = "BtnAssignChip_"
         };
     }

@@ -111,7 +111,13 @@ public enum FileOpKind
     RenameFolder,
     DeleteFolder,
     /// <summary>One Organize apply: created folders + file moves in a single Undo entry.</summary>
-    Organize
+    Organize,
+    /// <summary>Assign tag(s) to asset(s); Undo removes those assignments.</summary>
+    TagAssign,
+    /// <summary>Remove tag(s) from asset(s); Undo re-assigns them.</summary>
+    TagRemove,
+    /// <summary>Delete a tag row (assignments / memberships / implications snapshotted); Undo restores.</summary>
+    TagDelete
 }
 
 /// <summary>One step inside a <see cref="FileOpKind"/> batch. Undo replays steps in reverse.</summary>
@@ -120,5 +126,11 @@ public enum FileOpStep
     MoveFile,
     CreateDir,
     RenameDir,
-    DeleteDir
+    DeleteDir,
+    /// <summary>AssetId + OldPath=tagId + NewPath=tagName + OldSourceId=TagSource.</summary>
+    AssignTag,
+    /// <summary>Same fields as <see cref="AssignTag"/>; Undo re-assigns.</summary>
+    RemoveTag,
+    /// <summary>OldPath=tagId; NewPath=JSON <c>TagDeleteSnapshot</c>.</summary>
+    DeleteTag
 }
