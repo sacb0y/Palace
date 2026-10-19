@@ -26,8 +26,13 @@ public readonly record struct HdrProbe(
     int? MaxCllNits,
     int? CicpMatrix = null,
     bool? FullRange = null,
-    int? BitDepth = null)
+    int? BitDepth = null,
+    string? SourcePrimaries = null)
 {
+    // SourcePrimaries: a display name for primaries that are not carried as cICP
+    // codes, e.g. an EXR's chromaticities ("ACEScg") or a PNG's ICC profile
+    // ("Display P3 (ICC)"). Shown on the Info card; null when not known.
+
     public static HdrProbe None { get; } = new(HdrKind.None, null, null, null);
 
     public bool IsHdr => Kind is HdrKind.UltraHdrJpeg or HdrKind.HdrPng or HdrKind.HdrAvif
@@ -165,7 +170,8 @@ public static class HdrFile
             // Linear float scRGB (BT.709, 1.0 = 80 nits), like SKIV's EXR load.
             // Only files the in-house reader can decode present as HDR.
             return ExrFile.IsDecodable(data)
-                ? new HdrProbe(HdrKind.HdrExr, 1, null, null)
+                ? new HdrProbe(HdrKind.HdrExr, 1, null, null,
+                    SourcePrimaries: ExrFile.PrimariesName(ExrFile.TryReadChromaticities(data)))
                 : HdrProbe.None;
         }
 
@@ -192,6 +198,8 @@ public static class HdrFile
         int? maxCll = null;
         var hasCicp = false;
         var hasMastering = false;
+        var hasSrgb = false;
+        (int CicpPrimaries, string Name)? icc = null;
 
         while (i + 12 <= data.Length)
         {
@@ -218,6 +226,14 @@ public static class HdrFile
             {
                 hasMastering = true;
             }
+            else if (type == "sRGB")
+            {
+                hasSrgb = true;
+            }
+            else if (type == "iCCP" && icc is null && IccProfile.FromPngIccp(payload) is { } profile)
+            {
+                icc = IccProfile.MatchWideGamut(profile);
+            }
             else if (type is "IDAT" or "IEND")
             {
                 break;
@@ -235,6 +251,15 @@ public static class HdrFile
         if (hasCicp && primaries is 9 or 12)
         {
             return new HdrProbe(HdrKind.WideGamutPng, primaries, transfer, maxCll);
+        }
+
+        // ICC-only wide gamut (no cICP; an sRGB chunk wins over iCCP per the PNG spec):
+        // a recognised Display P3 / BT.2020 profile with an sRGB-like curve converts
+        // like cICP primaries 12 / 9 with the sRGB transfer (13).
+        if (!hasCicp && !hasSrgb && icc is { } match)
+        {
+            return new HdrProbe(HdrKind.WideGamutPng, match.CicpPrimaries, 13, maxCll,
+                SourcePrimaries: $"{match.Name} (ICC)");
         }
 
         return HdrProbe.None;

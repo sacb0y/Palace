@@ -121,6 +121,9 @@ public partial class AssetItem : ObservableObject
 
     public long? FileSize { get; set; }
 
+    /// <summary>Catalog flag: Palace could not decode the file at scan time (no resolution shown).</summary>
+    public bool Undecodable { get; set; }
+
     [ObservableProperty]
     public partial bool IsOnlineOnly { get; set; }
 
