@@ -47,6 +47,9 @@ public partial class SettingsViewModel : ObservableObject
 
     public Func<ICloudLibrary, Task<CloudEntry?>>? RequestPickCloudFolder { get; set; }
 
+    /// <summary>Confirm dialog: title, body, primary label. Safe option is Cancel (default).</summary>
+    public Func<string, string, string, Task<bool>>? RequestConfirm { get; set; }
+
     [ObservableProperty]
     public partial string SelectedTheme { get; set; } = "System";
 
@@ -465,6 +468,15 @@ public partial class SettingsViewModel : ObservableObject
     private Task ResetCatalogFolderAsync() =>
         ErrorReporter.RunAsync("Reset catalog folder", Notify, async () =>
         {
+            if (RequestConfirm is not null
+                && !await RequestConfirm(
+                    SettingsConfirm.ResetCatalogTitle,
+                    SettingsConfirm.ResetCatalogBody(),
+                    SettingsConfirm.ResetCatalogPrimary))
+            {
+                return;
+            }
+
             var root = CatalogStore.DefaultRoot();
             Directory.CreateDirectory(root);
             if (CatalogStore.ActiveRoot is { } active
@@ -561,6 +573,15 @@ public partial class SettingsViewModel : ObservableObject
     private Task ClearCacheAsync() =>
         ErrorReporter.RunAsync("Clear cache", Notify, async () =>
         {
+            if (RequestConfirm is not null
+                && !await RequestConfirm(
+                    SettingsConfirm.ClearCacheTitle,
+                    SettingsConfirm.ClearCacheBody(),
+                    SettingsConfirm.ClearCachePrimary))
+            {
+                return;
+            }
+
             AppServices.Library.BeginBusy("Clearing cache…");
             try
             {
@@ -691,6 +712,16 @@ public partial class SettingsViewModel : ObservableObject
                 return;
             }
 
+            var assetCount = await _catalog.CountAssetsForSourceAsync(SelectedSource.Id);
+            if (RequestConfirm is not null
+                && !await RequestConfirm(
+                    SettingsConfirm.RemoveFolderTitle,
+                    SettingsConfirm.RemoveFolderBody(SelectedSource.Path, assetCount),
+                    SettingsConfirm.RemoveFolderPrimary))
+            {
+                return;
+            }
+
             var folder = await _catalog.GetSourceFolderAsync(SelectedSource.Id);
             if (folder is not null)
             {
@@ -773,6 +804,15 @@ public partial class SettingsViewModel : ObservableObject
     private Task DisconnectOneDriveAsync() =>
         ErrorReporter.RunAsync("Disconnect OneDrive", Notify, async () =>
         {
+            if (RequestConfirm is not null
+                && !await RequestConfirm(
+                    SettingsConfirm.DisconnectTitle("OneDrive"),
+                    SettingsConfirm.DisconnectBody("OneDrive"),
+                    SettingsConfirm.DisconnectPrimary))
+            {
+                return;
+            }
+
             await _cloud.DisconnectAsync(CloudProvider.OneDrive);
             await RefreshCloudStatusAsync();
             StatusText = "Disconnected OneDrive.";
@@ -782,6 +822,15 @@ public partial class SettingsViewModel : ObservableObject
     private Task DisconnectDropboxAsync() =>
         ErrorReporter.RunAsync("Disconnect Dropbox", Notify, async () =>
         {
+            if (RequestConfirm is not null
+                && !await RequestConfirm(
+                    SettingsConfirm.DisconnectTitle("Dropbox"),
+                    SettingsConfirm.DisconnectBody("Dropbox"),
+                    SettingsConfirm.DisconnectPrimary))
+            {
+                return;
+            }
+
             await _cloud.DisconnectAsync(CloudProvider.Dropbox);
             await RefreshCloudStatusAsync();
             StatusText = "Disconnected Dropbox.";

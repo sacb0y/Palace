@@ -103,6 +103,7 @@
     <Compile Include="..\Helpers\FolderTreeBuilder.cs" Link="FolderTreeBuilder.cs" />
     <Compile Include="..\Helpers\NaturalStringComparer.cs" Link="NaturalStringComparer.cs" />
     <Compile Include="..\Helpers\AssetDrag.cs" Link="AssetDrag.cs" />
+    <Compile Include="..\Helpers\SettingsConfirm.cs" Link="SettingsConfirm.cs" />
   </ItemGroup>
 
   <ItemGroup>
