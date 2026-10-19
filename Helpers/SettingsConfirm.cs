@@ -42,4 +42,21 @@ public static class SettingsConfirm
 
     public static string DisconnectBody(string providerDisplayName) =>
         $"Disconnect {providerDisplayName}? Palace forgets this account’s sign-in. Watched cloud folders stay in the catalog until you remove them.";
+
+    /// <summary>
+    /// Gate for destructive Settings actions. Fail closed: no handler means do not proceed.
+    /// </summary>
+    public static async Task<bool> ConfirmedAsync(
+        Func<string, string, string, Task<bool>>? requestConfirm,
+        string title,
+        string body,
+        string primary)
+    {
+        if (requestConfirm is null)
+        {
+            return false;
+        }
+
+        return await requestConfirm(title, body, primary).ConfigureAwait(false);
+    }
 }

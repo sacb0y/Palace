@@ -56,4 +56,22 @@ public sealed class SettingsConfirmTests
         Assert.Contains(provider, body);
         Assert.Contains("sign-in", body);
     }
+
+    [Fact]
+    public async Task ConfirmedAsync_NullHandler_FailsClosed()
+    {
+        Assert.False(await SettingsConfirm.ConfirmedAsync(null, "t", "b", "p"));
+    }
+
+    [Fact]
+    public async Task ConfirmedAsync_HandlerFalse_DoesNotProceed()
+    {
+        Assert.False(await SettingsConfirm.ConfirmedAsync((_, _, _) => Task.FromResult(false), "t", "b", "p"));
+    }
+
+    [Fact]
+    public async Task ConfirmedAsync_HandlerTrue_Proceeds()
+    {
+        Assert.True(await SettingsConfirm.ConfirmedAsync((_, _, _) => Task.FromResult(true), "t", "b", "p"));
+    }
 }
