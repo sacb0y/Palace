@@ -138,14 +138,9 @@ public class ThumbSchedulerTests
 
         Assert.Contains("leaving", scrolled.Cancel);
         Assert.Contains("staying", scrolled.Cancel);
-        Assert.Empty(scrolled.Start);
-        Assert.Equal(2, queue.InFlight);
-
-        queue.Abandon("leaving");
-        queue.Abandon("staying");
-        var freed = queue.Plan(afterScroll, new ThumbRect(0, 800, 800, 400), 280);
-        Assert.Equal(["incoming"], freed.Start);
+        Assert.Equal(["incoming"], scrolled.Start);
         Assert.Equal(1, queue.InFlight);
+        Assert.Equal(0, queue.TicketFor("leaving"));
 
         queue.Reset();
         Assert.Equal(0, queue.InFlight);
@@ -154,7 +149,7 @@ public class ThumbSchedulerTests
     }
 
     [Fact]
-    public async Task Cancel_StopsTheDecodeAndHoldsTheCapUntilItReturns()
+    public async Task Cancel_ReleasesTheCapWhileTheDecodeStops()
     {
         var queue = new ThumbLoadQueue(2);
         var visible = new ThumbTile[]
@@ -164,6 +159,8 @@ public class ThumbSchedulerTests
         };
         var started = queue.Plan(visible, View, 280);
         Assert.Equal(2, started.InFlight);
+        var leavingTicket = queue.TicketFor("leaving");
+        Assert.NotEqual(0, leavingTicket);
 
         using var cts = new CancellationTokenSource();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -179,21 +176,41 @@ public class ThumbSchedulerTests
         var away = new ThumbTile[] { new("incoming", 0, 900, 100, 80) };
         var scrolled = queue.Plan(away, new ThumbRect(0, 800, 800, 400), 280);
         Assert.Contains("leaving", scrolled.Cancel);
-        Assert.Contains("staying", scrolled.Cancel);
-        Assert.Empty(scrolled.Start);
-        Assert.Equal(2, queue.InFlight);
+        Assert.Equal(["incoming"], scrolled.Start);
+        Assert.Equal(1, queue.InFlight);
 
         cts.Cancel();
         var outcome = await running.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.True(outcome.Cancelled);
         Assert.Equal(0, ranPastCancel);
-        Assert.True(outcome.Milliseconds >= 0);
-        Assert.Equal(2, queue.InFlight);
+        Assert.False(queue.TryComplete("leaving", leavingTicket));
+        Assert.False(queue.TryAbandon("leaving", leavingTicket));
+        Assert.Equal(1, queue.InFlight);
+        Assert.Equal(queue.TicketFor("incoming"), queue.TicketFor("incoming"));
+        Assert.NotEqual(0, queue.TicketFor("incoming"));
+    }
 
-        queue.Abandon("leaving");
-        queue.Abandon("staying");
-        var next = queue.Plan(away, new ThumbRect(0, 800, 800, 400), 280);
-        Assert.Equal(["incoming"], next.Start);
+    [Fact]
+    public void CancelOutstanding_FreesSlotsAndIgnoresTheOldTicket()
+    {
+        var queue = new ThumbLoadQueue(2);
+        var visible = new ThumbTile[]
+        {
+            new("leaving", 0, 10, 100, 80),
+            new("staying", 200, 10, 100, 80)
+        };
+        queue.Plan(visible, View, 280);
+        var leavingTicket = queue.TicketFor("leaving");
+        var cancel = queue.CancelOutstanding();
+        Assert.Equal(["leaving", "staying"], cancel.OrderBy(key => key, StringComparer.Ordinal));
+        Assert.Equal(0, queue.InFlight);
+
+        var again = queue.Plan(visible, View, 280);
+        Assert.Equal(["leaving", "staying"], again.Start);
+        Assert.Equal(2, queue.InFlight);
+        Assert.False(queue.TryComplete("leaving", leavingTicket));
+        Assert.Equal(2, queue.InFlight);
+        Assert.NotEqual(leavingTicket, queue.TicketFor("leaving"));
     }
 
     [Fact]

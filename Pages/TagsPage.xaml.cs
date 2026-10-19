@@ -27,6 +27,7 @@ public sealed partial class TagsPage : Page
     private bool _colorDirty;
     private bool _priorityArmed;
     private static readonly SemaphoreSlim TileDecodeGate = new(4);
+    private CancellationTokenSource _tileCts = new();
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private AssetItem? _selectedMosaicAsset;
@@ -350,6 +351,8 @@ public sealed partial class TagsPage : Page
             return;
         }
 
+        _tileCts.Cancel();
+        _tileCts = new CancellationTokenSource();
         _realizedTiles.Clear();
         _selectedMosaicAsset = null;
     }
@@ -455,9 +458,12 @@ public sealed partial class TagsPage : Page
         }
 
         item.ThumbLoadStarted = true;
-        await TileDecodeGate.WaitAsync();
+        var token = _tileCts.Token;
+        var entered = false;
         try
         {
+            await TileDecodeGate.WaitAsync(token);
+            entered = true;
             if (item.ThumbImage is not null)
             {
                 return;
@@ -471,7 +477,11 @@ public sealed partial class TagsPage : Page
                     path,
                     item.IsOnlineOnly || CloudFile.IsOnlineOnly(item.Path)))
             {
-                var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(item.Path, item.ContentHash, item.Kind);
+                var generated = await AppServices.Thumbnails.EnsureThumbnailAsync(
+                    item.Path,
+                    item.ContentHash,
+                    item.Kind,
+                    cancellationToken: token);
                 path = generated?.Path;
                 if (!string.IsNullOrEmpty(path))
                 {
@@ -484,15 +494,36 @@ public sealed partial class TagsPage : Page
                 return;
             }
 
+            var scale = 1.0;
+            try
+            {
+                scale = XamlRoot?.RasterizationScale ?? 1;
+            }
+            catch
+            {
+                // XamlRoot is unavailable during early bind.
+            }
+
+            var (boxWidth, boxHeight) = ThumbScheduler.DecodePixels(148, 148, scale);
+            var image = await LibraryPage.DecodeCappedSourceAsync(path, boxWidth, boxHeight, token);
+            if (image is null)
+            {
+                return;
+            }
+
             await UiDispatch.RunAsync(() =>
             {
-                if (item.ThumbImage is not null)
+                if (item.ThumbImage is not null || token.IsCancellationRequested)
                 {
                     return;
                 }
 
-                item.ThumbImage = LibraryPage.FileToImage(path);
+                item.ThumbImage = image;
             });
+        }
+        catch (OperationCanceledException)
+        {
+            // Mosaic reset cancelled this tile.
         }
         catch
         {
@@ -500,7 +531,10 @@ public sealed partial class TagsPage : Page
         }
         finally
         {
-            TileDecodeGate.Release();
+            if (entered)
+            {
+                TileDecodeGate.Release();
+            }
         }
     }
 
@@ -1269,22 +1303,10 @@ public sealed partial class TagsPage : Page
                     throw new InvalidOperationException("Could not capture a frame from this video.");
                 }
 
+                var (boxWidth, boxHeight) = ThumbScheduler.DecodePixels(148, 148, 1);
+                var image = await LibraryPage.DecodeCappedSourceAsync(info.Value.Path, boxWidth, boxHeight, CancellationToken.None);
                 await UiDispatch.RunAsync(() =>
                 {
-                    Microsoft.UI.Xaml.Media.Imaging.BitmapImage? image = null;
-                    try
-                    {
-                        image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage
-                        {
-                            CreateOptions = Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache,
-                            UriSource = new Uri(info.Value.Path, UriKind.Absolute)
-                        };
-                    }
-                    catch
-                    {
-                        image = null;
-                    }
-
                     gallery.ApplyMosaicThumb(info.Value.Path, image);
                     ViewModel.StatusText = "Mosaic thumbnail updated.";
                 });

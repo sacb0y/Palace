@@ -41,7 +41,7 @@ Template fields live in `.github/PULL_REQUEST_TEMPLATE.md`.
 
 | Version | Slice | Sacb0y sequence |
 |---|---|---|
-| **0.0.x** *(now 0.0.11)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
+| **0.0.x** *(now 0.0.12)* | **Library + tagging** | **Now / initial public preview.** Image and video viewing must be solid (HDR overlay / present is this slice, not a later one). Tagging must be good. Watch folders, mosaic, FTS, organize/rename, A1111/Comfy metadata. Magick TGA/EXR still deferred. Radiance is C# RGBE; JXR/JXL/DDS via WIC; PSD/HEIC mosaic via shell thumbs. See `docs/hdr-skiv.md`. Organization exists but is infancy. |
 | **0.1.x** | **Rooms** | **Next.** Moodboard (board of images) plus mindmap (lines, diagrams, notes). Support current and later formats. Kanvaz is UX reference only, not a port. Stub Rooms UI in 0.0.x is infancy — not this slice’s finished work. |
 | **bonus** | **Cloud** | **Not a numbered main slice** and not the next increment. View and manage Dropbox / OneDrive via OAuth. On-Demand + API sources already exist in 0.0.x; do not download originals. Further cloud work can land inside the current identity. |
 | **0.2.x** | **Gamedev** | **Then.** Markdown reading, audio (with loops), 3D viewing, assign a Unity folder to the Palace **project** for asset management (**not** the Library catalog), parse `.unitypackage` and extract needed assets. |

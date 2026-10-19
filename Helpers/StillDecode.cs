@@ -17,8 +17,9 @@ public static class StillDecode
     /// <summary>Above this, a PSD/PSB only yields its embedded thumbnail (composite not loaded).</summary>
     public const long PsdCompositeMaxBytes = 768L * 1024 * 1024;
 
-    public static Result? TryDecodeFile(string path, int maxSide)
+    public static Result? TryDecodeFile(string path, int maxSide, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         byte[] data;
         try
         {
@@ -47,11 +48,12 @@ public static class StillDecode
             return null;
         }
 
-        return TryDecode(data, PathSafe.Extension(path), maxSide);
+        return TryDecode(data, PathSafe.Extension(path), maxSide, cancellationToken);
     }
 
-    public static Result? TryDecode(byte[] data, string ext, int maxSide)
+    public static Result? TryDecode(byte[] data, string ext, int maxSide, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (PathSafe.IsClip(ext))
         {
             var png = ClipFile.TryExtractPreview(data);
@@ -69,7 +71,7 @@ public static class StillDecode
             }
 
             var (pw, ph) = Fit(psd.Width, psd.Height, maxSide);
-            var ppx = pw == psd.Width && ph == psd.Height ? psd.Bgra : BoxScaleBgra(psd.Bgra, psd.Width, psd.Height, pw, ph);
+            var ppx = pw == psd.Width && ph == psd.Height ? psd.Bgra : BoxScaleBgra(psd.Bgra, psd.Width, psd.Height, pw, ph, cancellationToken);
             return new Result(ppx, pw, ph, null, false);
         }
 
@@ -82,7 +84,7 @@ public static class StillDecode
             }
 
             var (w, h) = Fit(tga.Width, tga.Height, maxSide);
-            var px = w == tga.Width && h == tga.Height ? tga.Bgra : BoxScaleBgra(tga.Bgra, tga.Width, tga.Height, w, h);
+            var px = w == tga.Width && h == tga.Height ? tga.Bgra : BoxScaleBgra(tga.Bgra, tga.Width, tga.Height, w, h, cancellationToken);
             return new Result(px, w, h, null, false);
         }
 
@@ -155,11 +157,15 @@ public static class StillDecode
         return (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
     }
 
-    public static byte[] BoxScaleBgra(byte[] src, int sw, int sh, int dw, int dh)
+    public static byte[] BoxScaleBgra(byte[] src, int sw, int sh, int dw, int dh, CancellationToken cancellationToken = default)
     {
         var dst = new byte[dw * dh * 4];
         for (var y = 0; y < dh; y++)
         {
+            if ((y & 7) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             var y0 = y * sh / dh;
             var y1 = Math.Max(y0 + 1, (y + 1) * sh / dh);
             for (var x = 0; x < dw; x++)
