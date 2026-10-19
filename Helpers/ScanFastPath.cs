@@ -10,7 +10,8 @@ namespace Palace.Helpers;
 /// Bump <see cref="IndexVersion"/> whenever scan-time extraction changes (metadata fields, HDR
 /// probe, kind mapping) so every file is indexed once more.
 /// Version 2 records <see cref="Asset.Undecodable"/>, so a rescan that skips an unchanged
-/// placeholder file still lists it in the scan notice.
+/// placeholder file still lists it in the scan notice. An unchanged undecodable row skips the
+/// size and cached-thumbnail checks (<see cref="NeedsCurrentThumb"/>).
 /// Version 3 adds <see cref="Asset.DateTaken"/>; a version 2 row that is otherwise unchanged only
 /// gets its EXIF date read (<see cref="NeedsDateTakenOnly"/>), not a full re-index.
 /// </summary>
@@ -44,8 +45,16 @@ public static class ScanFastPath
         && string.Equals(existing.DateModified, Stamp(lastWriteUtc), StringComparison.Ordinal)
         && existing.ContentHash is { Length: > 0 } hash
         && !HashService.IsCloudStub(hash)
-        && existing.Width is > 0
-        && existing.Height is > 0;
+        && (existing.Undecodable || (existing.Width is > 0 && existing.Height is > 0));
+
+    /// <summary>
+    /// The fast path also needs a current cached thumbnail, except for a file already recorded as
+    /// undecodable: re-decoding the same bytes cannot succeed, and some (videos with no shell or
+    /// ffmpeg thumbnail) have no cached placeholder or size, so they were re-hashed and counted
+    /// "updated" on every rescan. Such a file is retried once it changes or
+    /// <see cref="IndexVersion"/> is bumped.
+    /// </summary>
+    public static bool NeedsCurrentThumb(Asset existing) => !existing.Undecodable;
 
     /// <summary>
     /// Cloud API rescan: the item's size and modified time match its row, so the rescan only

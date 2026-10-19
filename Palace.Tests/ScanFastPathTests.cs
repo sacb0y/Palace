@@ -31,6 +31,26 @@ public sealed class ScanFastPathTests
         Assert.True(ScanFastPath.IsUnchanged(Indexed(), 1234, Written, onlineOnly: false));
 
     [Fact]
+    public void Unchanged_undecodable_file_without_size_or_thumb_takes_the_fast_path()
+    {
+        // ApartmentTurn.webm / an MKV with no shell or ffmpeg thumbnail: no size, no cached JPEG.
+        var asset = Indexed();
+        asset.Width = null;
+        asset.Height = null;
+        asset.Undecodable = true;
+        Assert.True(ScanFastPath.IsUnchanged(asset, 1234, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.NeedsCurrentThumb(asset));
+
+        // ...but only while it is unchanged.
+        Assert.False(ScanFastPath.IsUnchanged(asset, 1235, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.IsUnchanged(asset, 1234, Written.AddSeconds(1), onlineOnly: false));
+    }
+
+    [Fact]
+    public void Decodable_file_still_needs_a_current_thumb() =>
+        Assert.True(ScanFastPath.NeedsCurrentThumb(Indexed()));
+
+    [Fact]
     public void New_file_does_not() =>
         Assert.False(ScanFastPath.IsUnchanged(null, 1234, Written, onlineOnly: false));
 
