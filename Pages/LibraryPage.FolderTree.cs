@@ -1,6 +1,5 @@
 using System.Collections.Specialized;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -169,7 +168,7 @@ public sealed partial class LibraryPage
     private bool _treeSyncHooked;
     private bool _treeSyncQueued;
     private int _treeSyncPasses;
-    private DispatcherQueueTimer? _treeSyncLate;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _treeSyncLate;
 
     private void HookFolderTreeExpansion()
     {
@@ -215,7 +214,7 @@ public sealed partial class LibraryPage
         _treeSyncLate.Start();
     }
 
-    private void TreeSyncLate_Tick(DispatcherQueueTimer sender, object args)
+    private void TreeSyncLate_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
     {
         _treeSyncPasses = 0;
         QueueTreeExpansionSync();
@@ -229,7 +228,7 @@ public sealed partial class LibraryPage
         }
 
         _treeSyncQueued = true;
-        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
         {
             _treeSyncQueued = false;
             if (SyncTreeExpansion(ViewModel.FolderTree) && ++_treeSyncPasses < 24)
