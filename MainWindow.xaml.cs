@@ -32,7 +32,12 @@ public sealed partial class MainWindow : Window
         ShellBackground.DisplayReleasing += ShellBackground_DisplayReleasing;
         if (Content is FrameworkElement root)
         {
-            root.ActualThemeChanged += (_, _) => ApplyShellBackdrop();
+            root.ActualThemeChanged += (_, _) =>
+            {
+                ApplyShellBackdrop();
+                // ThemeResource may paint the system accent back onto the same brushes.
+                root.DispatcherQueue.TryEnqueue(App.ApplySavedBrandAccent);
+            };
         }
 
         ApplyShellBackdrop();

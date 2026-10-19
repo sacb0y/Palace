@@ -29,14 +29,14 @@
                 x:Name="CmbAccent"
                 MinWidth="240"
                 AutomationProperties.AutomationId="CmbAccent"
-                AutomationProperties.HelpText="Takes effect after restart"
+                AutomationProperties.HelpText="Applies immediately"
                 Header="Accent color"
                 ItemsSource="{x:Bind ViewModel.AccentOptions, Mode=OneWay}"
                 SelectedItem="{x:Bind ViewModel.SelectedAccent, Mode=TwoWay}" />
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Follow Windows (default) or Palace pink. Takes effect after restart. High contrast always uses system colors."
+                Text="Follow Windows (default) or Palace pink. Applies immediately. High contrast always uses system colors."
                 TextWrapping="Wrap" />
 
             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Background" />

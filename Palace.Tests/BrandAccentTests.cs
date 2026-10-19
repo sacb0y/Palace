@@ -74,4 +74,50 @@ public sealed class BrandAccentTests
         Assert.Contains("Dark", BrandAccent.ThemeDictionaryKeys);
         Assert.Contains("Light", BrandAccent.ThemeDictionaryKeys);
     }
+
+    [Fact]
+    public void BrushPaint_UsesFillForNavIndicatorAndTextOnAccentForInk()
+    {
+        var colors = BrandAccent.ForDarkTheme(BrandAccent.BuildRamp());
+        Assert.True(BrandAccent.TryBrushPaint("AccentFillColorDefaultBrush", colors, out var fill, out var fillOpacity));
+        Assert.Equal(colors.Fill, fill);
+        Assert.Equal(1.0, fillOpacity);
+        Assert.True(BrandAccent.TryBrushPaint("AccentFillColorTertiaryBrush", colors, out _, out var tertiaryOpacity));
+        Assert.Equal(0.8, tertiaryOpacity);
+        Assert.True(BrandAccent.TryBrushPaint(
+            "NavigationViewSelectionIndicatorForeground", colors, out var indicator, out _));
+        Assert.Equal(colors.Fill, indicator);
+        Assert.True(BrandAccent.TryBrushPaint(
+            "TextOnAccentFillColorPrimaryBrush", colors, out var ink, out var inkOpacity));
+        Assert.Equal(colors.TextOnAccent, ink);
+        Assert.Equal(1.0, inkOpacity);
+        Assert.False(BrandAccent.TryBrushPaint("NotAnAccentBrush", colors, out _, out _));
+    }
+
+    [Fact]
+    public void MergedDictionary_DoesNotOverrideOwnerThemeBrush()
+    {
+        // Mirrors packaged WinUI: AccentFillColorDefaultBrush already lives on the
+        // XamlControlsResources theme dictionary. A dictionary appended to
+        // MergedDictionaries is not the one controls resolve.
+        var xcr = new AccentResourceScope.Node();
+        var brushes = BrandAccent.AccentBrushKeys.ToHashSet(StringComparer.Ordinal);
+        xcr.ThemeKeys["Default"] = brushes;
+        xcr.ThemeKeys["Light"] = brushes;
+
+        var injected = new AccentResourceScope.Node();
+        injected.ThemeKeys["Default"] = BrandAccent.AccentBrushKeys.ToHashSet(StringComparer.Ordinal);
+        injected.ThemeKeys["Dark"] = BrandAccent.AccentBrushKeys.ToHashSet(StringComparer.Ordinal);
+        injected.ThemeKeys["Light"] = BrandAccent.AccentBrushKeys.ToHashSet(StringComparer.Ordinal);
+        xcr.Merged.Add(injected);
+
+        foreach (var theme in new[] { "Default", "Light" })
+        {
+            var hit = AccentResourceScope.Find(xcr, theme, "AccentFillColorDefaultBrush");
+            Assert.Same(xcr, hit);
+        }
+
+        var darkOnly = AccentResourceScope.Find(xcr, "Dark", "NavigationViewSelectionIndicatorForeground");
+        Assert.Same(injected, darkOnly);
+    }
 }

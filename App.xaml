@@ -9,9 +9,11 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <!--
-                  App ThemeDictionaries must live inside XamlControlsResources.MergedDictionaries
-                  or WinUI will ignore SystemAccentColor / Accent*Brush overrides (mui-xaml #4279 / #6394).
-                  Use controls: prefix so nested ResourceDictionary stays in the presentation xmlns.
+                  Pane and tag-chip theme keys live inside XamlControlsResources.MergedDictionaries.
+                  Accent*Brush is NOT overridden from here: generic.xaml already defines those
+                  brushes on the XCR theme dictionaries, which win over a later merged dictionary.
+                  App.ApplySavedBrandAccent retints those brush instances. controls: prefix keeps
+                  nested ResourceDictionary in the presentation xmlns.
                 -->
                 <controls:XamlControlsResources>
                     <controls:XamlControlsResources.MergedDictionaries>
