@@ -903,7 +903,9 @@ public partial class SettingsViewModel : ObservableObject
 
     private async void SourceOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (_load.IsLoading || sender is not SourceFolderItem item)
+        // DestinationPolicyIndex mirrors DestinationPolicy, which already saves.
+        if (_load.IsLoading || sender is not SourceFolderItem item
+            || e.PropertyName == nameof(SourceFolderItem.DestinationPolicyIndex))
         {
             return;
         }
