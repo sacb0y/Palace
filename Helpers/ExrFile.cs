@@ -38,9 +38,12 @@ public static class ExrFile
     /// <summary>
     /// OpenEXR's lenient header parse skips an invalid compression value and
     /// assumes ZIP; treat such files as undecodable instead of guessing.
+    /// Checks every part header (tiled and multi-part included), not just the layouts the
+    /// in-house reader accepts.
     /// </summary>
-    private static bool HasUnknownCompression(ReadOnlySpan<byte> data) =>
-        TryReadHeader(data, out var h, out _) && CompressionName(h.Compression) is null;
+    internal static bool HasUnknownCompression(ReadOnlySpan<byte> data) =>
+        HeaderAttributes(data).Any(header => header.Any(a =>
+            a.Name == "compression" && (a.Value.Length < 1 || CompressionName(a.Value[0]) is null)));
 
     /// <summary>Single-part scanline NONE / RLE / ZIPS / ZIP (the in-house reader).</summary>
     public static bool IsDecodableInHouse(ReadOnlySpan<byte> data) =>
@@ -94,8 +97,16 @@ public static class ExrFile
         public int LinesPerChunk => Compression == 3 ? 16 : 1;
     }
 
-    public static Frame? TryDecode(ReadOnlySpan<byte> data) =>
-        (HasUnknownCompression(data) ? null : ExrNative.TryDecode(data)) ?? TryDecodeInHouse(data);
+    public static Frame? TryDecode(ReadOnlySpan<byte> data)
+    {
+        var frame = (HasUnknownCompression(data) ? null : ExrNative.TryDecode(data)) ?? TryDecodeInHouse(data);
+        if (frame is not null)
+        {
+            ConvertToRec709(frame.Rgba, TryReadChromaticities(data));
+        }
+
+        return frame;
+    }
 
     public static Frame? TryDecodeInHouse(ReadOnlySpan<byte> data)
     {
@@ -172,7 +183,6 @@ public static class ExrFile
                 }
             }
 
-            ConvertToRec709(rgba, TryReadChromaticities(data));
             return new Frame(rgba, h.Width, h.Height, CompressionName(h.Compression) ?? "?");
         }
         catch (Exception ex) when (ex is ArgumentOutOfRangeException or IndexOutOfRangeException
@@ -186,12 +196,12 @@ public static class ExrFile
     public static readonly float[] Rec709Chromaticities = [0.64f, 0.33f, 0.30f, 0.60f, 0.15f, 0.06f, 0.3127f, 0.3290f];
 
     /// <summary>
-    /// The first header's <c>chromaticities</c> attribute (red, green, blue, white xy), or null when
-    /// absent or malformed. Walks attributes without the in-house reader's layout limits.
+    /// The first <c>chromaticities</c> attribute (red, green, blue, white xy) in the part headers,
+    /// or null when absent or malformed. Walks attributes without the in-house reader's layout limits.
     /// </summary>
     public static float[]? TryReadChromaticities(ReadOnlySpan<byte> data)
     {
-        foreach (var (name, type, value) in FirstHeaderAttributes(data))
+        foreach (var (name, type, value) in HeaderAttributes(data).SelectMany(h => h))
         {
             if (name == "chromaticities" && type == "chromaticities" && value.Length >= 32)
             {
@@ -209,17 +219,20 @@ public static class ExrFile
     }
 
     /// <summary>
-    /// Attributes of the first header as (name, type, value). Lenient about layout (tiled,
-    /// multi-part, deep); stops at the end of that header or at malformed data.
+    /// Attributes of each part header as (name, type, value): one header, or every header of a
+    /// multi-part file. Lenient about layout (tiled, deep); stops at malformed or truncated data.
     /// </summary>
-    internal static List<(string Name, string Type, byte[] Value)> FirstHeaderAttributes(ReadOnlySpan<byte> d)
+    internal static List<List<(string Name, string Type, byte[] Value)>> HeaderAttributes(ReadOnlySpan<byte> d)
     {
-        var list = new List<(string, string, byte[])>();
+        var headers = new List<List<(string, string, byte[])>>();
         if (!IsExr(d) || d.Length < 8)
         {
-            return list;
+            return headers;
         }
 
+        var multipart = (BinaryPrimitives.ReadInt32LittleEndian(d.Slice(4, 4)) & 0x1000) != 0;
+        var list = new List<(string, string, byte[])>();
+        headers.Add(list);
         var pos = 8;
         try
         {
@@ -228,7 +241,16 @@ public static class ExrFile
                 var name = ReadCString(d, ref pos);
                 if (name.Length == 0)
                 {
-                    break;
+                    // End of this header. Multi-part: another header follows unless the next
+                    // byte is the empty header that ends the list.
+                    if (!multipart || pos >= d.Length || d[pos] == 0 || headers.Count >= 1024)
+                    {
+                        break;
+                    }
+
+                    list = new List<(string, string, byte[])>();
+                    headers.Add(list);
+                    continue;
                 }
 
                 var type = ReadCString(d, ref pos);
@@ -248,7 +270,7 @@ public static class ExrFile
             // Truncated probe head: keep what was read.
         }
 
-        return list;
+        return headers;
     }
 
     /// <summary>

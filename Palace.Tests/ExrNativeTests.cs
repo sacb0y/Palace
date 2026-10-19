@@ -194,6 +194,36 @@ public sealed class ExrNativeTests
         Assert.StartsWith("OpenEXR 3.", ExrNative.Version);
     }
 
+    /// <summary>Overwrites the value byte of the <paramref name="which"/>-th <c>compression</c> attribute.</summary>
+    private static byte[] WithCompression(byte[] data, int which, byte value)
+    {
+        var copy = (byte[])data.Clone();
+        var key = System.Text.Encoding.ASCII.GetBytes("compression\0compression\0");
+        var at = -1;
+        for (var n = 0; n <= which; n++)
+        {
+            at = copy.AsSpan(at + 1).IndexOf(key) is var i and >= 0 ? at + 1 + i : throw new InvalidOperationException("no compression attribute");
+        }
+
+        copy[at + key.Length + 4] = value;
+        return copy;
+    }
+
+    [Theory]
+    [InlineData("tiled-mip-half-zip.exr", 0)]
+    [InlineData("tiled-half-piz.exr", 0)]
+    [InlineData("multipart-depth-then-rgba.exr", 0)]
+    [InlineData("multipart-depth-then-rgba.exr", 1)] // the RGBA part that is decoded
+    public void UnknownCompression_IsRejected_ForTiledAndMultipart(string file, int part)
+    {
+        var good = Fixture(file);
+        Assert.False(ExrFile.HasUnknownCompression(good));
+        var bad = WithCompression(good, part, 99);
+        Assert.True(ExrFile.HasUnknownCompression(bad));
+        Assert.False(ExrFile.IsDecodable(bad));
+        Assert.Null(ExrFile.TryDecode(bad));
+    }
+
     [Fact]
     public void InHouseReader_StillDecodesItsSubset()
     {
