@@ -28,11 +28,21 @@ public static class BindHelpers
     public static bool IsMosaicAscending(MosaicSort current) =>
         !MosaicSortOrder.IsDescending(current);
 
+    /// <summary>AccentButtonStyle when <paramref name="accent"/>; otherwise null (default button).</summary>
+    public static Style? AccentButtonWhen(bool accent) =>
+        accent
+        && Application.Current?.Resources.TryGetValue("AccentButtonStyle", out var style) == true
+            ? style as Style
+            : null;
+
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;
 
     public static Visibility StringToVisibility(string? value) =>
         string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+
+    public static Visibility CountToVisibility(int count) =>
+        count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>Accent outline thickness for selected tag-board rows (no face "On" label).</summary>
     public static Thickness SelectedBorder(bool selected) =>

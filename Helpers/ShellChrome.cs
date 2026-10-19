@@ -7,7 +7,8 @@ namespace Palace.Helpers;
 public static class ShellChrome
 {
     public const string ThroughFill = "Transparent";
-    public const string PaneFill = "AcrylicInAppFillColorDefaultBrush";
+    /// <summary>Accent-tinted acrylic pane (<c>PalacePaneFillBrush</c>); HC maps to window color.</summary>
+    public const string PaneFill = "PalacePaneFillBrush";
     public const string CardFill = "CardBackgroundFillColorDefaultBrush";
     public const string LayerFill = "LayerFillColorDefaultBrush";
     public const string NavContentBackgroundKey = "NavigationViewContentBackground";

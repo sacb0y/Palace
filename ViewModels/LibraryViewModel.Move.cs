@@ -104,6 +104,19 @@ public partial class LibraryViewModel
                 {
                     await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
                 }
+                else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
+                {
+                    await ReloadTagCatalogAsync();
+                    await LoadPreviewAsync(SelectedAsset);
+                    if (AppServices.Tags is not null)
+                    {
+                        await AppServices.Tags.RefreshAsync();
+                        if (result.Ok && peek.Kind == FileOpKind.TagDelete)
+                        {
+                            AppServices.Tags.StatusText = result.Message;
+                        }
+                    }
+                }
                 else if (result.BatchId is not null)
                 {
                     await RefreshQuietAsync();
@@ -359,6 +372,9 @@ public partial class LibraryViewModel
             _ = HideUndoToastLaterAsync(Volatile.Read(ref _undoToastEpoch));
         }
     }
+
+    /// <summary>Shared InfUndo toast for file ops and tag assign/remove/delete.</summary>
+    public void OfferUndoToast(string message) => ShowUndoToastFor(message);
 
     private async Task HideUndoToastLaterAsync(int epoch)
     {

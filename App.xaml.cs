@@ -1,6 +1,8 @@
 using Microsoft.UI.Xaml;
 using Palace.Helpers;
 using Palace.Services;
+using Windows.UI;
+using Windows.UI.ViewManagement;
 
 namespace Palace;
 
@@ -16,8 +18,47 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        TryApplyBrandAccent();
         InstallErrorHandling();
     }
+
+    /// <summary>
+    /// Optional Palace pink ramp into SystemAccentColor*. Skip HighContrast.
+    /// Resource lookups are cached — changing the setting needs a restart.
+    /// </summary>
+    private static void TryApplyBrandAccent()
+    {
+        try
+        {
+            if (new AccessibilitySettings().HighContrast)
+            {
+                return;
+            }
+
+            var values = Windows.Storage.ApplicationData.Current.LocalSettings.Values;
+            if (!BrandAccent.IsPalacePink(values[BrandAccent.SettingsKey]))
+            {
+                return;
+            }
+
+            var ramp = BrandAccent.BuildRamp();
+            var r = Current.Resources;
+            r["SystemAccentColor"] = ToColor(ramp.Base);
+            r["SystemAccentColorLight1"] = ToColor(ramp.Light1);
+            r["SystemAccentColorLight2"] = ToColor(ramp.Light2);
+            r["SystemAccentColorLight3"] = ToColor(ramp.Light3);
+            r["SystemAccentColorDark1"] = ToColor(ramp.Dark1);
+            r["SystemAccentColorDark2"] = ToColor(ramp.Dark2);
+            r["SystemAccentColorDark3"] = ToColor(ramp.Dark3);
+        }
+        catch
+        {
+            // Startup must not die on accent apply (sandbox / missing LocalSettings).
+        }
+    }
+
+    private static Color ToColor(BrandAccent.Rgb rgb) =>
+        Color.FromArgb(255, rgb.R, rgb.G, rgb.B);
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {

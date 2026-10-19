@@ -57,7 +57,11 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestPickRoom = AskRoomAsync;
         ViewModel.RequestPickMoveDestination = AskMoveDestinationAsync;
         ViewModel.RequestFocusAssignTag = () =>
-            DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                ShowAssignTagsFlyout(preferTagSelectedCta: true);
+                AsbAssignTag.Focus(FocusState.Programmatic);
+            });
         ViewModel.RequestOpenAssignPanel = () =>
             DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
@@ -315,6 +319,7 @@ public sealed partial class LibraryPage : Page
     private void FlyAssignTags_Opening(object sender, object e)
     {
         ViewModel.RebuildAssignPanelPublic();
+        DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
     }
 
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();

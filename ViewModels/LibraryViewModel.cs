@@ -83,7 +83,11 @@ public partial class LibraryViewModel : ObservableObject
     public ObservableCollection<OrganizePreviewItem> OrganizePreview { get; } = [];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccentScan))]
     public partial FolderNode? SelectedFolder { get; set; }
+
+    /// <summary>Scan uses AccentButtonStyle when the library has no folder roots yet.</summary>
+    public bool AccentScan => FolderTree.Count == 0;
 
     [ObservableProperty]
     public partial TagTreeNode? SelectedTag { get; set; }
@@ -248,8 +252,16 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial string AssignedTagsSummary { get; set; } = "";
 
+    /// <summary>Show the comma summary only when there are no chips ("No tags assigned").</summary>
+    [ObservableProperty]
+    public partial bool ShowAssignedTagsSummary { get; set; } = true;
+
     [ObservableProperty]
     public partial string TagSuggestionsSummary { get; set; } = "";
+
+    /// <summary>Live region text when the assign flyout toggles a tag.</summary>
+    [ObservableProperty]
+    public partial string AssignAnnouncement { get; set; } = "";
 
     [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }
@@ -279,12 +291,30 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnSelectedFolderChanged(FolderNode? value)
     {
+        StampFolderSelection(value);
         RebuildBreadcrumbs();
         if (!_suppressFilter)
         {
             _ = ApplyFilterAsync();
         }
     }
+
+    private void StampFolderSelection(FolderNode? selected)
+    {
+        void Walk(IEnumerable<FolderNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                node.IsSelected = selected is not null
+                    && string.Equals(node.Path, selected.Path, StringComparison.OrdinalIgnoreCase);
+                Walk(node.Children);
+            }
+        }
+
+        Walk(FolderTree);
+    }
+
+    private void NotifyAccentScan() => OnPropertyChanged(nameof(AccentScan));
 
     partial void OnSelectedTagChanged(TagTreeNode? value)
     {

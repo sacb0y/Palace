@@ -21,8 +21,11 @@ public sealed partial class TagsPage : Page
 {
     public TagsViewModel ViewModel => AppServices.Tags;
 
+    public LibraryViewModel Library => AppServices.Library;
+
     private bool _ignoreColorChanges;
     private bool _colorDirty;
+    private bool _priorityArmed;
     private static readonly SemaphoreSlim TileDecodeGate = new(4);
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
@@ -68,6 +71,7 @@ public sealed partial class TagsPage : Page
             RefreshRealizedTiles();
             HookOverlayGallery();
             await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
+            _priorityArmed = true;
         };
         Unloaded += (_, _) =>
         {
@@ -188,11 +192,82 @@ public sealed partial class TagsPage : Page
 
     private void FocusRenameBox()
     {
-        DispatcherQueue.TryEnqueue(() =>
+        // Chip context menus steal focus on close; wait a tick so Rename lands in the name box.
+        _ = FocusRenameBoxAfterMenuAsync();
+    }
+
+    private async Task FocusRenameBoxAfterMenuAsync()
+    {
+        await Task.Delay(80);
+        await UiDispatch.RunAsync(() =>
         {
+            if (!ViewModel.ShowDetails || !IsLoaded)
+            {
+                return;
+            }
+
             TxtRenameTag.Focus(FocusState.Programmatic);
             TxtRenameTag.SelectAll();
         });
+    }
+
+    private void TxtRenameTag_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            if (ViewModel.SaveRenameCommand.CanExecute(null))
+            {
+                ViewModel.SaveRenameCommand.Execute(null);
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            ViewModel.RevertRename();
+            e.Handled = true;
+        }
+    }
+
+    private void TagsPage_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Z
+            || !InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control).HasFlag(CoreVirtualKeyStates.Down)
+            || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(CoreVirtualKeyStates.Down)
+            || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu).HasFlag(CoreVirtualKeyStates.Down)
+            || ViewModel.IsGalleryOverlayOpen
+            || FocusIsTextInput(e.OriginalSource))
+        {
+            return;
+        }
+
+        if (Library.UndoFileOpCommand.CanExecute(null) && Library.CanUndoFileOp)
+        {
+            Library.UndoFileOpCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void InfTagsUndo_PointerEntered(object sender, PointerRoutedEventArgs e) =>
+        Library.PauseUndoToastTimer();
+
+    private void InfTagsUndo_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        Library.ResumeUndoToastTimer();
+
+    private void InfTagsUndo_FocusEntered(object sender, RoutedEventArgs e) =>
+        Library.PauseUndoToastTimer();
+
+    private void InfTagsUndo_FocusExited(object sender, RoutedEventArgs e) =>
+        Library.ResumeUndoToastTimer();
+
+    private void NbTagPriority_ValueChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+    {
+        if (!_priorityArmed || !IsLoaded || ViewModel.SelectedNode?.TagId is null)
+        {
+            return;
+        }
+
+        ViewModel.CommitPriorityFromBox(args.NewValue);
     }
 
     private void TagChipMenu_Opening(object sender, object e)

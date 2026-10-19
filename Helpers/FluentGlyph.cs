@@ -22,4 +22,8 @@ public static class FluentGlyph
 
     /// <summary>Move dialog row: clock for a recent destination, folder otherwise.</summary>
     public static Icon MoveDestinationIcon(bool isRecent) => isRecent ? Icon.History : Icon.Folder;
+
+    /// <summary>Folder tree row: drive for roots, open/closed folder for the rest.</summary>
+    public static Icon FolderTreeIcon(bool isRoot, bool isExpanded) =>
+        isRoot ? Icon.HardDrive : isExpanded ? Icon.FolderOpen : Icon.Folder;
 }

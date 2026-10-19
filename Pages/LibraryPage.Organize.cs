@@ -184,6 +184,7 @@ public sealed partial class LibraryPage
             MinHeight = 120,
             MaxHeight = 300
         };
+        ApplyAccentListSelection(list);
         AutomationProperties.SetAutomationId(list, "LstMoveDestinations");
         AutomationProperties.SetName(list, "Destination folders");
 
@@ -339,6 +340,25 @@ public sealed partial class LibraryPage
     }
 
     private bool _moveDialogAccepted;
+
+    private static void ApplyAccentListSelection(ListView list)
+    {
+        var app = Application.Current.Resources;
+        if (app.TryGetValue("AccentFillColorTertiaryBrush", out var selected))
+        {
+            list.Resources["ListViewItemBackgroundSelected"] = selected;
+        }
+
+        if (app.TryGetValue("AccentFillColorSecondaryBrush", out var over))
+        {
+            list.Resources["ListViewItemBackgroundSelectedPointerOver"] = over;
+        }
+
+        if (app.TryGetValue("AccentTextFillColorPrimaryBrush", out var foreground))
+        {
+            list.Resources["ListViewItemForegroundSelected"] = foreground;
+        }
+    }
 
     private static void AddFolderRows(List<MoveDestinationItem> rows, FolderNode node, IReadOnlyList<string> roots)
     {

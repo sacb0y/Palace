@@ -18,9 +18,9 @@ public sealed class AssignedTagChromeTests
     [Theory]
     [InlineData("Implied", "", "Implied")]
     [InlineData("Manual", "", "Manual")]
-    [InlineData("Implied", "1/2", "Implied (1/2)")]
-    [InlineData("Mixed", "1/3", "Mixed (1/3)")]
-    [InlineData("", "1/2", "1/2")]
+    [InlineData("Implied", "1 of 2", "Implied (1 of 2)")]
+    [InlineData("Mixed", "1 of 3", "Mixed (1 of 3)")]
+    [InlineData("", "1 of 2", "1 of 2")]
     [InlineData("  Manual  ", "  ", "Manual")]
     [InlineData(null, null, "")]
     public void Tooltip_SourceAndOptionalCount(string? source, string? count, string expected) =>

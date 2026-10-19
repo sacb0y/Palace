@@ -28,6 +28,10 @@ public sealed partial class FolderNode : ObservableObject
     [ObservableProperty]
     public partial bool IsExpanded { get; set; } = true;
 
+    /// <summary>True when this node is the Library folder selection (count pill).</summary>
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
     /// <summary>Inline name editor shown (new folder or rename).</summary>
     [ObservableProperty]
     public partial bool IsEditing { get; set; }
@@ -297,8 +301,24 @@ public partial class AssignedTagItem : ObservableObject
     public string RemoveAutomationId =>
         "BtnRemoveTag_" + string.Concat((TagName ?? "").Where(char.IsLetterOrDigit));
 
-    public string ChipAutomationName =>
-        string.IsNullOrWhiteSpace(SourceLabel) ? TagName : $"{TagName} {SourceLabel}";
+    public string ChipAutomationName
+    {
+        get
+        {
+            var parts = new List<string> { TagName };
+            if (IsPartial && !string.IsNullOrWhiteSpace(CountLabel))
+            {
+                parts.Add($"on {CountLabel}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(SourceLabel))
+            {
+                parts.Add(SourceLabel.ToLowerInvariant());
+            }
+
+            return string.Join(", ", parts);
+        }
+    }
 
     /// <summary>Source (and optional k/n) for ToolTipService — not shown as chip chrome text.</summary>
     public string ChipTooltip => Helpers.AssignedTagChrome.Tooltip(SourceLabel, CountLabel);
@@ -436,6 +456,13 @@ public partial class TagChipItem : ObservableObject
     [ObservableProperty]
     public partial bool IsFilterSelected { get; set; }
 
+    /// <summary>Multi-select assign flyout: how many of the selection already have this tag.</summary>
+    [ObservableProperty]
+    public partial int PartialCount { get; set; }
+
+    [ObservableProperty]
+    public partial int SelectionTotal { get; set; }
+
     public string? ParentGroupId { get; set; }
 
     public string? ImmediateParentId { get; set; }
@@ -450,8 +477,49 @@ public partial class TagChipItem : ObservableObject
     public string AutomationId =>
         AutomationPrefix + string.Concat((Name ?? "").Where(char.IsLetterOrDigit));
 
+    public bool HasColor => Helpers.TagColor.HasColor(EffectiveColor);
+
+    /// <summary>Tri-state for assign flyout CheckBox: true / false / null (partial).</summary>
+    public bool? CheckState =>
+        IsPartial ? null : IsAssigned;
+
+    public string PartialLabel =>
+        IsPartial && SelectionTotal > 0 ? $"{PartialCount} of {SelectionTotal}" : "";
+
+    public string AssignTooltip =>
+        IsPartial && SelectionTotal > 0
+            ? $"On {PartialCount} of {SelectionTotal} selected. Click to add to all"
+            : IsAssigned ? $"Remove {Name}" : $"Add {Name}";
+
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Name;
+
+    partial void OnIsAssignedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CheckState));
+        OnPropertyChanged(nameof(AssignTooltip));
+    }
+
+    partial void OnIsPartialChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CheckState));
+        OnPropertyChanged(nameof(PartialLabel));
+        OnPropertyChanged(nameof(AssignTooltip));
+    }
+
+    partial void OnPartialCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(PartialLabel));
+        OnPropertyChanged(nameof(AssignTooltip));
+    }
+
+    partial void OnSelectionTotalChanged(int value)
+    {
+        OnPropertyChanged(nameof(PartialLabel));
+        OnPropertyChanged(nameof(AssignTooltip));
+    }
+
+    partial void OnEffectiveColorChanged(string? value) => OnPropertyChanged(nameof(HasColor));
 }
 
 public partial class TagBoardGroup : ObservableObject

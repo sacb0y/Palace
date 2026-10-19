@@ -10,17 +10,57 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <res:RoomTemplates />
             </ResourceDictionary.MergedDictionaries>
-            <AcrylicBrush
-                x:Key="GalleryOverlayBackdropBrush"
-                FallbackColor="{ThemeResource SmokeFillColorDefault}"
-                TintColor="{ThemeResource SolidBackgroundFillColorBase}"
-                TintLuminosityOpacity="0.55"
-                TintOpacity="0.35" />
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- Dark (Default): accent-tinted nav pane; gallery overlay stays neutral. -->
+                <ResourceDictionary x:Key="Default">
+                    <AcrylicBrush
+                        x:Key="PalacePaneFillBrush"
+                        FallbackColor="#FF2C2C2C"
+                        TintColor="{ThemeResource SystemAccentColorDark3}"
+                        TintLuminosityOpacity="0.85"
+                        TintOpacity="0.08" />
+                    <AcrylicBrush
+                        x:Key="GalleryOverlayBackdropBrush"
+                        FallbackColor="{ThemeResource SmokeFillColorDefault}"
+                        TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                        TintLuminosityOpacity="0.55"
+                        TintOpacity="0.35" />
+                    <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="PalacePaneFillBrush" />
+                    <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="PalacePaneFillBrush" />
+                    <!-- Uncolored tag chips: follow theme (same dictionary as pane chrome / #99). -->
+                    <StaticResource x:Key="PalaceTagChipFillBrush" ResourceKey="ControlFillColorDefaultBrush" />
+                    <StaticResource x:Key="PalaceTagChipInkBrush" ResourceKey="TextFillColorPrimaryBrush" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <AcrylicBrush
+                        x:Key="PalacePaneFillBrush"
+                        FallbackColor="#FFF3F3F3"
+                        TintColor="{ThemeResource SystemAccentColorLight3}"
+                        TintLuminosityOpacity="0.9"
+                        TintOpacity="0.08" />
+                    <AcrylicBrush
+                        x:Key="GalleryOverlayBackdropBrush"
+                        FallbackColor="{ThemeResource SmokeFillColorDefault}"
+                        TintColor="{ThemeResource SolidBackgroundFillColorBase}"
+                        TintLuminosityOpacity="0.55"
+                        TintOpacity="0.35" />
+                    <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="PalacePaneFillBrush" />
+                    <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="PalacePaneFillBrush" />
+                    <StaticResource x:Key="PalaceTagChipFillBrush" ResourceKey="ControlFillColorDefaultBrush" />
+                    <StaticResource x:Key="PalaceTagChipInkBrush" ResourceKey="TextFillColorPrimaryBrush" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <StaticResource x:Key="PalacePaneFillBrush" ResourceKey="SystemColorWindowColorBrush" />
+                    <SolidColorBrush x:Key="GalleryOverlayBackdropBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="PalaceTagChipFillBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+                    <StaticResource x:Key="PalaceTagChipInkBrush" ResourceKey="SystemColorButtonTextColorBrush" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
             <!-- Wallpaper lives in MainWindow; do not paint a solid content sheet. -->
             <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
             <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
-            <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="AcrylicInAppFillColorDefaultBrush" />
-            <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="AcrylicInAppFillColorDefaultBrush" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

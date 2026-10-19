@@ -140,13 +140,14 @@ public partial class LibraryViewModel
                         : "Mixed",
                     EffectiveColor = tag.EffectiveColor,
                     IsPartial = isPartial,
-                    CountLabel = isPartial ? $"{entry.Count}/{total}" : ""
+                    CountLabel = isPartial ? $"{entry.Count} of {total}" : ""
                 });
             }
 
             AssignedTagsSummary = AssignedTags.Count == 0
                 ? "No tags assigned"
                 : string.Join(", ", AssignedTags.Select(t => t.TagName));
+            ShowAssignedTagsSummary = AssignedTags.Count == 0;
 
             Suggestions.Clear();
             foreach (var suggestion in suggestions)
@@ -195,6 +196,7 @@ public partial class LibraryViewModel
         Suggestions.Clear();
         _previewTargets = [];
         AssignedTagsSummary = "";
+        ShowAssignedTagsSummary = true;
         IsImagePreview = false;
         IsVideoPreview = false;
         ShowPreviewPlaceholder = false;

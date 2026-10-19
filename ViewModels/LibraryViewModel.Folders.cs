@@ -115,6 +115,9 @@ public partial class LibraryViewModel
         {
             FolderTree.Add(root);
         }
+
+        StampFolderSelection(SelectedFolder);
+        NotifyAccentScan();
     }
 
     private static bool HasFolderEditInProgress(IEnumerable<FolderNode> nodes)
