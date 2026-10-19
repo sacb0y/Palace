@@ -127,7 +127,7 @@ public sealed class StillFormatDecodeTests
 
     // ---------- EXR ----------
 
-    private static byte[] ExrFixture(int compression, int w, int h, int pixelType, Func<int, int, string, float> value)
+    private static byte[] ExrFixture(int compression, int w, int h, int pixelType, Func<int, int, string, float> value, float[]? chromaticities = null)
     {
         var channels = new[] { "B", "G", "R" };
         var header = new MemoryStream();
@@ -157,6 +157,11 @@ public sealed class StillFormatDecodeTests
         Attr("dataWindow", "box2i", box);
         Attr("displayWindow", "box2i", box);
         Attr("lineOrder", "lineOrder", [0]);
+        if (chromaticities is not null)
+        {
+            Attr("chromaticities", "chromaticities", chromaticities.SelectMany(BitConverter.GetBytes).ToArray());
+        }
+
         header.WriteByte(0);
 
         var lpc = compression == 3 ? 16 : 1;
@@ -285,6 +290,43 @@ public sealed class StillFormatDecodeTests
         }
     }
 
+    private static readonly float[] Rec2020Chroma = [0.708f, 0.292f, 0.170f, 0.797f, 0.131f, 0.046f, 0.3127f, 0.3290f];
+    private static readonly float[] AcesCgChroma = [0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f];
+
+    [Fact]
+    public void Exr_Rec2020Chromaticities_ConvertToRec709()
+    {
+        var data = ExrFixture(0, 2, 1, 2, (_, _, c) => c == "R" ? 1f : 0f, Rec2020Chroma);
+        Assert.Equal(Rec2020Chroma, ExrFile.TryReadChromaticities(data));
+        var f = ExrFile.TryDecode(data)!;
+        GalleryPresent.Bt2020ToBt709(1, 0, 0, out var r, out var g, out var b);
+        Assert.Equal(r, f.Rgba[0], 2);
+        Assert.Equal(g, f.Rgba[1], 2);
+        Assert.Equal(b, f.Rgba[2], 2);
+        Assert.True(f.Rgba[1] < 0, "out-of-709 colour must stay negative for gamut analysis");
+    }
+
+    [Fact]
+    public void Exr_AcesCgWhite_StaysNeutralAfterAdaptation()
+    {
+        var data = ExrFixture(0, 1, 1, 2, (_, _, _) => 0.5f, AcesCgChroma);
+        var f = ExrFile.TryDecode(data)!;
+        Assert.Equal(0.5f, f.Rgba[0], 2);
+        Assert.Equal(0.5f, f.Rgba[1], 2);
+        Assert.Equal(0.5f, f.Rgba[2], 2);
+    }
+
+    [Fact]
+    public void Exr_Rec709OrMissingChromaticities_LeavePixelsUnchanged()
+    {
+        Assert.Null(ExrFile.ToRec709Matrix(null));
+        Assert.Null(ExrFile.ToRec709Matrix(ExrFile.Rec709Chromaticities));
+        var data = ExrFixture(0, 1, 1, 2, (_, _, c) => c == "G" ? 3f : 0.25f, ExrFile.Rec709Chromaticities);
+        var f = ExrFile.TryDecode(data)!;
+        Assert.Equal([0.25f, 3f, 0.25f], f.Rgba[..3]);
+        Assert.Null(ExrFile.TryReadChromaticities(ExrFixture(0, 1, 1, 2, (_, _, _) => 1f)));
+    }
+
     [Fact]
     public void Exr_UnsupportedCompressionReturnsNullNotThrow()
     {
@@ -294,6 +336,58 @@ public sealed class StillFormatDecodeTests
         data[idx] = 4;
         Assert.Null(ExrFile.TryDecode(data));
         Assert.Equal((2, 2), ExrFile.TryReadSize(data));
+    }
+
+    [Fact]
+    public void Exr_ProbesAsPresentableHdr_OnlyWhenDecodable()
+    {
+        var data = ExrFixture(3, 8, 4, 1, (_, _, _) => 2f);
+        var probe = HdrFile.Probe(data);
+        Assert.Equal(HdrKind.HdrExr, probe.Kind);
+        Assert.True(probe.IsHdr);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Equal(HdrTransfer.Scrgb, probe.Transfer);
+
+        // Header-only head (what Probe(Stream) may see) still probes.
+        var headLen = data.AsSpan().IndexOf("lineOrder\0lineOrder\0"u8) + 32;
+        Assert.Equal(HdrKind.HdrExr, HdrFile.Probe(data.AsSpan(0, Math.Min(headLen, data.Length))).Kind);
+
+        var idx = data.AsSpan().IndexOf("compression\0compression\0"u8) + "compression\0compression\0"u8.Length + 4;
+        data[idx] = 4; // PIZ: catalog-thumb only, no HDR present
+        Assert.Equal(HdrKind.None, HdrFile.Probe(data).Kind);
+    }
+
+    [Fact]
+    public void Exr_DecodeScrgb_KeepsLinearValuesAndSanitizesNonFinite()
+    {
+        var data = ExrFixture(0, 4, 2, 2, (x, y, c) => (x, y, c) switch
+        {
+            (0, 0, "R") => float.NaN,
+            (1, 0, "G") => float.PositiveInfinity,
+            (2, 0, "B") => -0.25f,
+            (3, 1, _) => 12.5f, // 1000 nits white
+            _ => 1f,
+        });
+        var f = ExrFile.TryDecodeScrgb(data)!;
+        Assert.Equal((4, 2), (f.Width, f.Height));
+        Assert.All(f.ScrgbRgba, v => Assert.True(float.IsFinite(v)));
+        Assert.Equal(0f, f.ScrgbRgba[0]);
+        Assert.Equal(0f, f.ScrgbRgba[(1 * 4) + 1]);
+        Assert.Equal(-0.25f, f.ScrgbRgba[(2 * 4) + 2]);
+        Assert.Equal(12.5f, f.MaxScrgb, 3);
+        Assert.Equal(1000f, f.MaxNits, 0);
+        Assert.True(f.AvgNits > 80f && f.AvgNits < 1000f);
+    }
+
+    [Fact]
+    public void Radiance_FrameFromScrgb_Stats()
+    {
+        float[] px = [1f, 1f, 1f, 1f, 2f, 2f, 2f, 1f];
+        var f = RadianceFile.FrameFromScrgb(px, 2, 1);
+        Assert.Equal(160f, f.MaxNits, 1);
+        Assert.Equal(80f, f.MinNits, 1);
+        Assert.Equal(120f, f.AvgNits, 1);
+        Assert.Equal(2f, f.MaxScrgb);
     }
 
     [Fact]

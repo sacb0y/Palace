@@ -4,37 +4,75 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ic="using:FluentIcons.WinUI">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="HistogramRedBrush" Color="#FFF0565C" />
+                    <SolidColorBrush x:Key="HistogramGreenBrush" Color="#FF4CC266" />
+                    <SolidColorBrush x:Key="HistogramBlueBrush" Color="#FF4C8DF6" />
+                    <SolidColorBrush x:Key="HistogramLumaBrush" Color="#FFB4B4B4" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HistogramRedBrush" Color="#FFD13438" />
+                    <SolidColorBrush x:Key="HistogramGreenBrush" Color="#FF107C10" />
+                    <SolidColorBrush x:Key="HistogramBlueBrush" Color="#FF0063B1" />
+                    <SolidColorBrush x:Key="HistogramLumaBrush" Color="#FF7A7A7A" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="HistogramRedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="HistogramGreenBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="HistogramBlueBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="HistogramLumaBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
     <StackPanel x:Name="PnlHistogram" Spacing="6">
-        <StackPanel
-            x:Name="PnlHistogramModes"
-            Orientation="Horizontal"
-            Spacing="8">
-            <ToggleButton
-                x:Name="BtnHistogramLuma"
-                Padding="8,4"
-                Click="BtnHistogramLuma_Click"
-                ToolTipService.ToolTip="Luminance">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <ic:FluentIcon Icon="DataHistogram" IconSize="Size16" IconVariant="Regular" />
-                    <TextBlock VerticalAlignment="Center" Text="Luma" />
-                </StackPanel>
-            </ToggleButton>
-            <ToggleButton
-                x:Name="BtnHistogramRgb"
-                Padding="8,4"
-                Click="BtnHistogramRgb_Click"
-                ToolTipService.ToolTip="RGB channels">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <ic:FluentIcon Icon="Color" IconSize="Size16" IconVariant="Regular" />
-                    <TextBlock VerticalAlignment="Center" Text="RGB" />
-                </StackPanel>
-            </ToggleButton>
-        </StackPanel>
-        <TextBlock
-            x:Name="TxtHistogram"
-            Style="{StaticResource CaptionTextBlockStyle}"
-            TextWrapping="Wrap" />
+        <Grid x:Name="GrdHistogramHeader" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                x:Name="TxtHistogram"
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextTrimming="CharacterEllipsis" />
+            <StackPanel
+                x:Name="PnlHistogramModes"
+                Grid.Column="1"
+                Orientation="Horizontal"
+                Spacing="4">
+                <ToggleButton
+                    x:Name="BtnHistogramLuma"
+                    MinWidth="40"
+                    MinHeight="32"
+                    Padding="8,4"
+                    Click="BtnHistogramLuma_Click"
+                    ToolTipService.ToolTip="Luminance (grey area)">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ic:FluentIcon Icon="DataHistogram" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Luma" />
+                    </StackPanel>
+                </ToggleButton>
+                <ToggleButton
+                    x:Name="BtnHistogramRgb"
+                    MinWidth="40"
+                    MinHeight="32"
+                    Padding="8,4"
+                    Click="BtnHistogramRgb_Click"
+                    ToolTipService.ToolTip="Red, green and blue channels">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ic:FluentIcon Icon="Color" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="RGB" />
+                    </StackPanel>
+                </ToggleButton>
+            </StackPanel>
+        </Grid>
         <Border
+            x:Name="BrdHistogramPlot"
             Padding="0"
             Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -42,29 +80,92 @@
             CornerRadius="{StaticResource ControlCornerRadius}">
             <Canvas
                 x:Name="CnvHistogram"
-                Height="96"
+                Height="120"
                 HorizontalAlignment="Stretch"
+                Background="Transparent"
+                PointerExited="CnvHistogram_PointerExited"
+                PointerMoved="CnvHistogram_PointerMoved"
                 SizeChanged="CnvHistogram_SizeChanged">
-                <Polyline
-                    x:Name="PlnLuma"
+                <Rectangle
+                    x:Name="RctHdrZone"
+                    Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                    Opacity="0.12" />
+                <Polygon x:Name="PlgLuma" Fill="{ThemeResource HistogramLumaBrush}" Opacity="0.45" />
+                <Polygon x:Name="PlgRed" Fill="{ThemeResource HistogramRedBrush}" Opacity="0.28" />
+                <Polygon x:Name="PlgGreen" Fill="{ThemeResource HistogramGreenBrush}" Opacity="0.28" />
+                <Polygon x:Name="PlgBlue" Fill="{ThemeResource HistogramBlueBrush}" Opacity="0.28" />
+                <Polyline x:Name="PlnRed" Stroke="{ThemeResource HistogramRedBrush}" StrokeThickness="1.25" />
+                <Polyline x:Name="PlnGreen" Stroke="{ThemeResource HistogramGreenBrush}" StrokeThickness="1.25" />
+                <Polyline x:Name="PlnBlue" Stroke="{ThemeResource HistogramBlueBrush}" StrokeThickness="1.25" />
+                <Canvas x:Name="CnvStopLines" IsHitTestVisible="False" />
+                <Line
+                    x:Name="LnHover"
+                    IsHitTestVisible="False"
                     Stroke="{ThemeResource TextFillColorPrimaryBrush}"
-                    StrokeThickness="1.5" />
-                <Polyline
-                    x:Name="PlnRed"
-                    Opacity="0.85"
-                    Stroke="{ThemeResource SystemFillColorCriticalBrush}"
-                    StrokeThickness="1.25" />
-                <Polyline
-                    x:Name="PlnGreen"
-                    Opacity="0.85"
-                    Stroke="{ThemeResource SystemFillColorSuccessBrush}"
-                    StrokeThickness="1.25" />
-                <Polyline
-                    x:Name="PlnBlue"
-                    Opacity="0.85"
-                    Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-                    StrokeThickness="1.25" />
+                    StrokeThickness="1"
+                    Visibility="Collapsed" />
             </Canvas>
         </Border>
+        <Grid x:Name="GrdHistogramBar" Height="8">
+            <Rectangle x:Name="RctHistogramSdr" HorizontalAlignment="Left" RadiusX="2" RadiusY="2">
+                <Rectangle.Fill>
+                    <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                        <GradientStop Offset="0" Color="Black" />
+                        <GradientStop Offset="1" Color="White" />
+                    </LinearGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+            <Rectangle
+                x:Name="RctHistogramHdr"
+                HorizontalAlignment="Right"
+                Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                RadiusX="2"
+                RadiusY="2" />
+            <Rectangle x:Name="RctHistogramHeatmap" RadiusX="2" RadiusY="2" Visibility="Collapsed" />
+        </Grid>
+        <Grid x:Name="GrdHistogramBarLabels">
+            <TextBlock
+                x:Name="TxtHistogramSdr"
+                HorizontalAlignment="Left"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="SDR" />
+            <TextBlock
+                x:Name="TxtHistogramHdr"
+                HorizontalAlignment="Left"
+                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="HDR" />
+        </Grid>
+        <Grid x:Name="GrdHistogramRows" ColumnSpacing="12" RowSpacing="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="TxtHistogramFormat" Style="{StaticResource CaptionTextBlockStyle}" />
+            <TextBlock
+                x:Name="TxtHistogramIndex"
+                Grid.Column="1"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                ToolTipService.ToolTip="Position in this view" />
+            <TextBlock
+                x:Name="TxtHistogramSize"
+                Grid.Column="2"
+                HorizontalAlignment="Right"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextTrimming="CharacterEllipsis" />
+            <TextBlock
+                x:Name="TxtHistogramExif"
+                Grid.Row="1"
+                Grid.ColumnSpan="3"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap" />
+        </Grid>
     </StackPanel>
 </UserControl>

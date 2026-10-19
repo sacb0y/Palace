@@ -86,10 +86,10 @@ public static class GalleryPresent
         {
             HdrKind.UltraHdrJpeg => "Ultra HDR JPEG — showing the SDR base",
             HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
-                or HdrKind.HdrJxl or HdrKind.HdrRadiance when presented =>
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr when presented =>
                 $"{HdrKindLabel(probe.Kind)} · presenting scRGB",
             HdrKind.HdrPng or HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr
-                or HdrKind.HdrJxl or HdrKind.HdrRadiance =>
+                or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr =>
                 $"{HdrKindLabel(probe.Kind)} — SDR preview",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
@@ -108,6 +108,7 @@ public static class GalleryPresent
             HdrKind.HdrJxr => "HDR JPEG XR",
             HdrKind.HdrJxl => "HDR JPEG XL",
             HdrKind.HdrRadiance => "Radiance HDR",
+            HdrKind.HdrExr => "OpenEXR",
             HdrKind.WideGamutPng => "Wide-gamut PNG",
             HdrKind.WideGamutAvif => "Wide-gamut AVIF",
             HdrKind.WideGamutHeif => "Wide-gamut HEIF",
@@ -254,7 +255,7 @@ public static class GalleryPresent
         return probe.IsPq
             || probe.IsHlg
             || probe.Transfer is HdrTransfer.Pq or HdrTransfer.Hlg
-            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance;
+            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance or HdrKind.HdrExr;
     }
 
     public static string FormatUnknownDisplayProbe(string reason, bool assumeHdr, string? ccd = null)
@@ -358,6 +359,54 @@ public static class GalleryPresent
     /// auto-clip to 203 paper white, and never map to an EDID 80–220 peak
     /// (that would present scRGB above 1 on G22 and look overblown).
     /// </summary>
+    /// <summary>Headroom above the P99 max-RGB that the SDR map keeps before clipping.</summary>
+    public const float SdrMapP99Headroom = 2f;
+
+    /// <summary>
+    /// SDR map peak: MaxCLL, capped at <see cref="SdrMapP99Headroom"/> × the
+    /// P99 max-RGB so a tiny extreme highlight (the sun in a 130 000-nit
+    /// panorama) does not scale the whole frame to black. Typical HDR stills
+    /// (P99 within half of MaxCLL) keep the SKIV MaxCLL map unchanged.
+    /// </summary>
+    public static float SdrMapPeakNits(float contentMaxNits, float p99MaxRgbNits)
+    {
+        if (contentMaxNits <= 0 || p99MaxRgbNits <= 0 || !float.IsFinite(p99MaxRgbNits))
+        {
+            return contentMaxNits;
+        }
+
+        return Math.Min(contentMaxNits, Math.Max(ScrgbNits, p99MaxRgbNits * SdrMapP99Headroom));
+    }
+
+    /// <summary>Sampled P99 of max(R,G,B) in nits over a linear scRGB RGBA buffer.</summary>
+    public static float P99MaxRgbNits(float[] rgba, int width, int height, int maxSamples = 65_536)
+    {
+        if (rgba is null || width <= 0 || height <= 0 || maxSamples <= 0)
+        {
+            return 0;
+        }
+
+        long pixelsL = (long)width * height;
+        if (pixelsL > int.MaxValue / 4 || rgba.Length < pixelsL * 4)
+        {
+            return 0;
+        }
+
+        var pixels = (int)pixelsL;
+        var stride = Math.Max(1, pixels / maxSamples);
+        var values = new float[(pixels + stride - 1) / stride];
+        var n = 0;
+        for (var i = 0; i < pixels && n < values.Length; i += stride)
+        {
+            var o = i * 4;
+            // Math.Max propagates NaN, so sanitize each channel first.
+            static float F(float v) => float.IsFinite(v) && v > 0 ? v : 0f;
+            values[n++] = Math.Max(F(rgba[o]), Math.Max(F(rgba[o + 1]), F(rgba[o + 2])));
+        }
+
+        return HdrAnalysis.Percentile(values, n, HdrAnalysis.P99Fraction) * ScrgbNits;
+    }
+
     public static HdrPresentMap PresentMap(bool displayIsHdr, float contentMaxNits, float displayPeakNits)
     {
         if (displayIsHdr)
@@ -373,8 +422,9 @@ public static class GalleryPresent
         $"{ClampPeakNits(nits):0} nits";
 
     /// <summary>
-    /// SKIV-style info box: file / size / resolution / color / luminance.
-    /// No Save As, Export, Copy, gamut triangle, or output-format radios.
+    /// SKIV-style info box: file / size / resolution / color / luminance,
+    /// plus the <see cref="HdrAnalysis"/> figures (MaxCLL channel, P99,
+    /// Palace's FALL, share above SDR white, gamut coverage).
     /// </summary>
     public static string ImageInfoText(GalleryImageInfo info)
     {
@@ -407,7 +457,9 @@ public static class GalleryPresent
 
         if (info.MaxScrgb is > 0)
         {
-            lines.Add($"MaxCLL (scRGB): {info.MaxScrgb.Value:0.###}");
+            lines.Add(info.MaxCllChannel is 'R' or 'G' or 'B'
+                ? $"MaxCLL (scRGB): {info.MaxScrgb.Value:0.###} ({info.MaxCllChannel})"
+                : $"MaxCLL (scRGB): {info.MaxScrgb.Value:0.###}");
         }
 
         if (info.MaxLuminanceNits is > 0)
@@ -423,6 +475,27 @@ public static class GalleryPresent
         if (info.MinLuminanceNits is >= 0 && info.MaxLuminanceNits is > 0)
         {
             lines.Add($"Min luminance: {FormatNits(info.MinLuminanceNits.Value)}");
+        }
+
+        if (info.P99Nits is > 0)
+        {
+            lines.Add($"P99 luminance: {FormatNits(info.P99Nits.Value)}");
+        }
+
+        if (info.FallNits is > 0)
+        {
+            // Not a SKIV figure: Palace's frame-average of max(R,G,B).
+            lines.Add($"FALL (Palace, avg of max RGB): {FormatNits(info.FallNits.Value)}");
+        }
+
+        if (info.AboveSdrWhitePercent is > 0)
+        {
+            lines.Add($"Above SDR white: {info.AboveSdrWhitePercent.Value:0.#}%");
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.Gamut))
+        {
+            lines.Add($"Gamut: {info.Gamut.Trim()}");
         }
 
         if (info.DisplayLuminanceNits is > 0)
@@ -724,6 +797,44 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// The MaxCLL channel letter for Info, or null. The channel comes from the (possibly
+    /// box-filtered) analysis buffer while the displayed MaxCLL can be the native file peak;
+    /// downscaling can change which channel wins, so only name it when both peaks agree.
+    /// </summary>
+    public static char? MaxCllChannelFor(char channel, float analysisMaxScrgb, float displayedMaxScrgb)
+    {
+        if (channel == '\0' || analysisMaxScrgb <= 0 || displayedMaxScrgb <= 0)
+        {
+            return null;
+        }
+
+        return Math.Abs(analysisMaxScrgb - displayedMaxScrgb) <= 0.005f * displayedMaxScrgb ? channel : null;
+    }
+
+    /// <summary>Linear Display P3 (D65) → linear BT.709; out-of-709 colours go negative.</summary>
+    public static void DisplayP3ToBt709(float r, float g, float b, out float r709, out float g709, out float b709)
+    {
+        r709 = (1.224940f * r) + (-0.224940f * g);
+        g709 = (-0.042057f * r) + (1.042057f * g);
+        b709 = (-0.019638f * r) + (-0.078636f * g) + (1.098274f * b);
+    }
+
+    /// <summary>CIE Y of linear Display P3 (D65) channels.</summary>
+    public static float DisplayP3LuminanceY(float r, float g, float b) =>
+        (0.228975f * r) + (0.691739f * g) + (0.079287f * b);
+
+    /// <summary>
+    /// Primaries to hand histogram / heatmap / gamut analysis for a presented frame.
+    /// The PNG path converts Display P3 (12) exactly to BT.709, unlike the SKIV path
+    /// that runs P3 through the BT.2020 matrix, so its luma must invert the exact
+    /// conversion: report it as BT.2020 (9), whose inversion returns the same CIE Y.
+    /// </summary>
+    public static int? AnalysisPrimaries(HdrProbe probe) =>
+        (probe.Kind is HdrKind.HdrPng or HdrKind.WideGamutPng) && probe.CicpPrimaries == 12
+            ? 9
+            : probe.CicpPrimaries;
+
+    /// <summary>
     /// Inverse of <see cref="Bt2020ToBt709"/> / SKIV <c>c_Bt2100toscRGB</c>.
     /// </summary>
     public static void Bt709ToBt2020(float r709, float g709, float b709, out float r, out float g, out float b)
@@ -756,6 +867,46 @@ public static class GalleryPresent
     }
 
     public static float NitsToScrgb(float nits) => nits / ScrgbNits;
+
+    /// <summary>
+    /// HDR / wide-gamut PNG pixel → presented scRGB (linear BT.709, negatives
+    /// kept so out-of-709 colours stay out of 709 for gamut coverage).
+    /// <paramref name="nitsY"/> is source-primary luminance.
+    /// </summary>
+    public static void PngEncodedToScrgb(
+        float r,
+        float g,
+        float b,
+        HdrTransfer transfer,
+        int? cicpPrimaries,
+        out float sr,
+        out float sg,
+        out float sb,
+        out float nitsY)
+    {
+        var nitsR = EncodedToNits(r, transfer);
+        var nitsG = EncodedToNits(g, transfer);
+        var nitsB = EncodedToNits(b, transfer);
+        var bt2020 = cicpPrimaries == 9;
+        if (cicpPrimaries == 12)
+        {
+            // Display P3 (D65): WIC hands over the raw P3 channels, so convert here.
+            nitsY = DisplayP3LuminanceY(nitsR, nitsG, nitsB);
+            DisplayP3ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
+        }
+        else
+        {
+            nitsY = LuminanceY(nitsR, nitsG, nitsB, bt2020);
+            if (bt2020)
+            {
+                Bt2020ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
+            }
+        }
+
+        sr = NitsToScrgb(nitsR);
+        sg = NitsToScrgb(nitsG);
+        sb = NitsToScrgb(nitsB);
+    }
 
     public static (float X, float Y, float W, float H) DestRect(
         ImageScaling scaling,
@@ -854,6 +1005,11 @@ public readonly record struct GalleryImageInfo(
     float? MinLuminanceNits,
     float? DisplayLuminanceNits,
     float? MaxScrgb = null,
-    string? DisplayProbe = null);
+    string? DisplayProbe = null,
+    char? MaxCllChannel = null,
+    float? P99Nits = null,
+    float? FallNits = null,
+    double? AboveSdrWhitePercent = null,
+    string? Gamut = null);
 
 public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);

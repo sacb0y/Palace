@@ -24,6 +24,34 @@ public static class ExrFile
     public static (int Width, int Height)? TryReadSize(ReadOnlySpan<byte> data) =>
         TryReadHeader(data, out var h, out _) ? (h.Width, h.Height) : null;
 
+    /// <summary>Header says single-part scanline with a compression this reader supports.</summary>
+    public static bool IsDecodable(ReadOnlySpan<byte> data) =>
+        TryReadHeader(data, out var h, out _) && h.Compression <= 3;
+
+    /// <summary>
+    /// Decode to linear scRGB for HDR presentation: non-finite samples become
+    /// 0 (negatives are kept, as scRGB allows), plus Info stats.
+    /// </summary>
+    public static RadianceFrame? TryDecodeScrgb(ReadOnlySpan<byte> data)
+    {
+        var frame = TryDecode(data);
+        if (frame is null)
+        {
+            return null;
+        }
+
+        var rgba = frame.Rgba;
+        for (var i = 0; i < rgba.Length; i++)
+        {
+            if (!float.IsFinite(rgba[i]))
+            {
+                rgba[i] = (i & 3) == 3 ? 1f : 0f;
+            }
+        }
+
+        return RadianceFile.FrameFromScrgb(rgba, frame.Width, frame.Height);
+    }
+
     public static string? CompressionName(int c) => c switch
     {
         0 => "none",
@@ -119,6 +147,7 @@ public static class ExrFile
                 }
             }
 
+            ConvertToRec709(rgba, TryReadChromaticities(data));
             return new Frame(rgba, h.Width, h.Height, CompressionName(h.Compression) ?? "?");
         }
         catch (Exception ex) when (ex is ArgumentOutOfRangeException or IndexOutOfRangeException
@@ -126,6 +155,192 @@ public static class ExrFile
         {
             return null;
         }
+    }
+
+    /// <summary>Rec.709 / sRGB primaries and D65 white: the OpenEXR default when <c>chromaticities</c> is absent.</summary>
+    public static readonly float[] Rec709Chromaticities = [0.64f, 0.33f, 0.30f, 0.60f, 0.15f, 0.06f, 0.3127f, 0.3290f];
+
+    /// <summary>
+    /// The first header's <c>chromaticities</c> attribute (red, green, blue, white xy), or null when
+    /// absent or malformed. Walks attributes without the in-house reader's layout limits.
+    /// </summary>
+    public static float[]? TryReadChromaticities(ReadOnlySpan<byte> data)
+    {
+        foreach (var (name, type, value) in FirstHeaderAttributes(data))
+        {
+            if (name == "chromaticities" && type == "chromaticities" && value.Length >= 32)
+            {
+                var c = new float[8];
+                for (var i = 0; i < 8; i++)
+                {
+                    c[i] = BinaryPrimitives.ReadSingleLittleEndian(value.AsSpan(i * 4, 4));
+                }
+
+                return c.All(v => float.IsFinite(v) && v is > 0f and < 1f) ? c : null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Attributes of the first header as (name, type, value). Lenient about layout (tiled,
+    /// multi-part, deep); stops at the end of that header or at malformed data.
+    /// </summary>
+    internal static List<(string Name, string Type, byte[] Value)> FirstHeaderAttributes(ReadOnlySpan<byte> d)
+    {
+        var list = new List<(string, string, byte[])>();
+        if (!IsExr(d) || d.Length < 8)
+        {
+            return list;
+        }
+
+        var pos = 8;
+        try
+        {
+            while (pos < d.Length)
+            {
+                var name = ReadCString(d, ref pos);
+                if (name.Length == 0)
+                {
+                    break;
+                }
+
+                var type = ReadCString(d, ref pos);
+                var size = BinaryPrimitives.ReadInt32LittleEndian(d.Slice(pos, 4));
+                pos += 4;
+                if (size < 0)
+                {
+                    break;
+                }
+
+                list.Add((name, type, d.Slice(pos, size).ToArray()));
+                pos += size;
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Truncated probe head: keep what was read.
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// Linear RGB in <paramref name="chromaticities"/> → linear BT.709 / D65 (scRGB), Bradford-adapting
+    /// the white point. Null when the primaries already are Rec.709 / D65 (or degenerate).
+    /// Row-major 3×3.
+    /// </summary>
+    public static double[]? ToRec709Matrix(float[]? chromaticities)
+    {
+        if (chromaticities is not { Length: >= 8 } c)
+        {
+            return null;
+        }
+
+        var src = RgbToXyz(c);
+        var dst = RgbToXyz(Rec709Chromaticities);
+        if (src is null || dst is null || Invert(dst) is not { } xyzTo709)
+        {
+            return null;
+        }
+
+        var adapt = Bradford(c[6], c[7], Rec709Chromaticities[6], Rec709Chromaticities[7]);
+        var m = Mul(xyzTo709, Mul(adapt, src));
+        var identity = true;
+        for (var i = 0; i < 9; i++)
+        {
+            identity &= Math.Abs(m[i] - (i % 4 == 0 ? 1 : 0)) < 1e-3;
+        }
+
+        return identity ? null : m;
+    }
+
+    /// <summary>Converts RGBA floats in place to BT.709 when the file declares other primaries.</summary>
+    public static void ConvertToRec709(float[] rgba, float[]? chromaticities)
+    {
+        if (ToRec709Matrix(chromaticities) is not { } m)
+        {
+            return;
+        }
+
+        for (var i = 0; i + 3 < rgba.Length; i += 4)
+        {
+            double r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+            rgba[i] = (float)((m[0] * r) + (m[1] * g) + (m[2] * b));
+            rgba[i + 1] = (float)((m[3] * r) + (m[4] * g) + (m[5] * b));
+            rgba[i + 2] = (float)((m[6] * r) + (m[7] * g) + (m[8] * b));
+        }
+    }
+
+    private static double[] XyToXyz(double x, double y) => [x / y, 1, (1 - x - y) / y];
+
+    private static double[]? RgbToXyz(float[] c)
+    {
+        var r = XyToXyz(c[0], c[1]);
+        var g = XyToXyz(c[2], c[3]);
+        var b = XyToXyz(c[4], c[5]);
+        double[] p = [r[0], g[0], b[0], r[1], g[1], b[1], r[2], g[2], b[2]];
+        if (Invert(p) is not { } inv)
+        {
+            return null;
+        }
+
+        var w = XyToXyz(c[6], c[7]);
+        var s0 = (inv[0] * w[0]) + (inv[1] * w[1]) + (inv[2] * w[2]);
+        var s1 = (inv[3] * w[0]) + (inv[4] * w[1]) + (inv[5] * w[2]);
+        var s2 = (inv[6] * w[0]) + (inv[7] * w[1]) + (inv[8] * w[2]);
+        return [p[0] * s0, p[1] * s1, p[2] * s2, p[3] * s0, p[4] * s1, p[5] * s2, p[6] * s0, p[7] * s1, p[8] * s2];
+    }
+
+    private static double[] Bradford(double sx, double sy, double dx, double dy)
+    {
+        double[] ma = [0.8951, 0.2664, -0.1614, -0.7502, 1.7135, 0.0367, 0.0389, -0.0685, 1.0296];
+        var maInv = Invert(ma)!;
+        var s = Apply(ma, XyToXyz(sx, sy));
+        var d = Apply(ma, XyToXyz(dx, dy));
+        double[] scale = [d[0] / s[0], 0, 0, 0, d[1] / s[1], 0, 0, 0, d[2] / s[2]];
+        return Mul(maInv, Mul(scale, ma));
+    }
+
+    private static double[] Apply(double[] m, double[] v) =>
+    [
+        (m[0] * v[0]) + (m[1] * v[1]) + (m[2] * v[2]),
+        (m[3] * v[0]) + (m[4] * v[1]) + (m[5] * v[2]),
+        (m[6] * v[0]) + (m[7] * v[1]) + (m[8] * v[2])
+    ];
+
+    private static double[] Mul(double[] a, double[] b)
+    {
+        var m = new double[9];
+        for (var r = 0; r < 3; r++)
+        {
+            for (var c = 0; c < 3; c++)
+            {
+                m[(r * 3) + c] = (a[r * 3] * b[c]) + (a[(r * 3) + 1] * b[3 + c]) + (a[(r * 3) + 2] * b[6 + c]);
+            }
+        }
+
+        return m;
+    }
+
+    private static double[]? Invert(double[] m)
+    {
+        var det = (m[0] * ((m[4] * m[8]) - (m[5] * m[7])))
+                  - (m[1] * ((m[3] * m[8]) - (m[5] * m[6])))
+                  + (m[2] * ((m[3] * m[7]) - (m[4] * m[6])));
+        if (Math.Abs(det) < 1e-12)
+        {
+            return null;
+        }
+
+        var k = 1 / det;
+        return
+        [
+            ((m[4] * m[8]) - (m[5] * m[7])) * k, ((m[2] * m[7]) - (m[1] * m[8])) * k, ((m[1] * m[5]) - (m[2] * m[4])) * k,
+            ((m[5] * m[6]) - (m[3] * m[8])) * k, ((m[0] * m[8]) - (m[2] * m[6])) * k, ((m[2] * m[3]) - (m[0] * m[5])) * k,
+            ((m[3] * m[7]) - (m[4] * m[6])) * k, ((m[1] * m[6]) - (m[0] * m[7])) * k, ((m[0] * m[4]) - (m[1] * m[3])) * k
+        ];
     }
 
     private static int SampleSize(int type) => type == 1 ? 2 : 4;
