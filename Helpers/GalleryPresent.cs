@@ -797,6 +797,44 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// The MaxCLL channel letter for Info, or null. The channel comes from the (possibly
+    /// box-filtered) analysis buffer while the displayed MaxCLL can be the native file peak;
+    /// downscaling can change which channel wins, so only name it when both peaks agree.
+    /// </summary>
+    public static char? MaxCllChannelFor(char channel, float analysisMaxScrgb, float displayedMaxScrgb)
+    {
+        if (channel == '\0' || analysisMaxScrgb <= 0 || displayedMaxScrgb <= 0)
+        {
+            return null;
+        }
+
+        return Math.Abs(analysisMaxScrgb - displayedMaxScrgb) <= 0.005f * displayedMaxScrgb ? channel : null;
+    }
+
+    /// <summary>Linear Display P3 (D65) → linear BT.709; out-of-709 colours go negative.</summary>
+    public static void DisplayP3ToBt709(float r, float g, float b, out float r709, out float g709, out float b709)
+    {
+        r709 = (1.224940f * r) + (-0.224940f * g);
+        g709 = (-0.042057f * r) + (1.042057f * g);
+        b709 = (-0.019638f * r) + (-0.078636f * g) + (1.098274f * b);
+    }
+
+    /// <summary>CIE Y of linear Display P3 (D65) channels.</summary>
+    public static float DisplayP3LuminanceY(float r, float g, float b) =>
+        (0.228975f * r) + (0.691739f * g) + (0.079287f * b);
+
+    /// <summary>
+    /// Primaries to hand histogram / heatmap / gamut analysis for a presented frame.
+    /// The PNG path converts Display P3 (12) exactly to BT.709, unlike the SKIV path
+    /// that runs P3 through the BT.2020 matrix, so its luma must invert the exact
+    /// conversion: report it as BT.2020 (9), whose inversion returns the same CIE Y.
+    /// </summary>
+    public static int? AnalysisPrimaries(HdrProbe probe) =>
+        (probe.Kind is HdrKind.HdrPng or HdrKind.WideGamutPng) && probe.CicpPrimaries == 12
+            ? 9
+            : probe.CicpPrimaries;
+
+    /// <summary>
     /// Inverse of <see cref="Bt2020ToBt709"/> / SKIV <c>c_Bt2100toscRGB</c>.
     /// </summary>
     public static void Bt709ToBt2020(float r709, float g709, float b709, out float r, out float g, out float b)
@@ -850,10 +888,19 @@ public static class GalleryPresent
         var nitsG = EncodedToNits(g, transfer);
         var nitsB = EncodedToNits(b, transfer);
         var bt2020 = cicpPrimaries == 9;
-        nitsY = LuminanceY(nitsR, nitsG, nitsB, bt2020);
-        if (bt2020)
+        if (cicpPrimaries == 12)
         {
-            Bt2020ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
+            // Display P3 (D65): WIC hands over the raw P3 channels, so convert here.
+            nitsY = DisplayP3LuminanceY(nitsR, nitsG, nitsB);
+            DisplayP3ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
+        }
+        else
+        {
+            nitsY = LuminanceY(nitsR, nitsG, nitsB, bt2020);
+            if (bt2020)
+            {
+                Bt2020ToBt709(nitsR, nitsG, nitsB, out nitsR, out nitsG, out nitsB);
+            }
         }
 
         sr = NitsToScrgb(nitsR);

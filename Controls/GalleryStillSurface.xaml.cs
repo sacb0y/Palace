@@ -567,7 +567,7 @@ public sealed partial class GalleryStillSurface : UserControl
             // a still is normal, and VizMode re-presents when it turns on.
             viz = WantedViz(g);
             _lastPresentedViz = viz;
-            vizPrimaries = _hdrFrameProbe.CicpPrimaries;
+            vizPrimaries = GalleryPresent.AnalysisPrimaries(_hdrFrameProbe);
             epoch = Volatile.Read(ref _epoch);
             _presenter ??= new HdrSwapchainPresenter(ScpHdr);
             presenter = _presenter;
@@ -707,7 +707,7 @@ public sealed partial class GalleryStillSurface : UserControl
         var rgba = frame.ScrgbRgba;
         var width = frame.Width;
         var height = frame.Height;
-        var primaries = probe.CicpPrimaries;
+        var primaries = GalleryPresent.AnalysisPrimaries(probe);
         _ = Task.Run(() =>
         {
             HdrAnalysisResult bins;
@@ -781,7 +781,7 @@ public sealed partial class GalleryStillSurface : UserControl
                         frame.ScrgbRgba,
                         frame.Width,
                         frame.Height,
-                        probe.CicpPrimaries,
+                        GalleryPresent.AnalysisPrimaries(probe),
                         probe.CanPresentHdr);
             }
             catch (OperationCanceledException)
