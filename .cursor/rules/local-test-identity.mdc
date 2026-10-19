@@ -1,5 +1,5 @@
 ---
-description: "HARD: never register/launch/unregister Sacb0y's release identity C20A7629; agents use a copied test manifest + PALACE_DATA_DIR"
+description: "HARD: never register/launch/unregister Sacb0y's release identity C20A7629; register the build AppxManifest.xml (not winapp run --no-launch) under a separate test Identity Name"
 globs: Package.appxmanifest,BuildAndRun.ps1,ui-tests.ps1,scripts/Prepare-TestIdentity.ps1,Helpers/CatalogStore.cs
 alwaysApply: false
 ---
@@ -14,6 +14,7 @@ Sacb0y’s installed Palace uses Identity **Name** `C20A7629-6BDE-449F-958A-5AAF
 2. **Launch guard.** `.\BuildAndRun.ps1` **refuses** Identity `C20A7629-…` and exits non-zero. Do not bypass the guard. Do not call `winapp run` / `Add-AppxPackage` yourself against the release manifest.
 3. **`PALACE_DATA_DIR` + temp SFW.** Point data at an isolated temp folder. Use a temp safe-for-work media copy only.
 4. After a test session, restore the **repo file** `Package.appxmanifest` from git / the Prepare backup so the release Name is not committed. That is **not** restoring Sacb0y’s install.
+5. **Register the build manifest.** `winapp run --no-launch` copies the **source** `Package.appxmanifest` into the layout and registers that copy. The source manifest has **no** Windows App Runtime package dependency (the SDK writes `Microsoft.WindowsAppRuntime` only into the generated build manifest). The registered app then crashes with **REGDB_E_CLASSNOTREG**. Register the **build output’s own** `bin\...\AppxManifest.xml` instead — the file the Windows App SDK generated for that configuration — and only after its Identity **Name** is a separate test name. Do not register by `winapp run --no-launch`.
 
 ### Never
 
@@ -21,6 +22,8 @@ Sacb0y’s installed Palace uses Identity **Name** `C20A7629-6BDE-449F-958A-5AAF
 |---|---|
 | `winapp run` / `.\BuildAndRun.ps1` / `Add-AppxPackage` on release Identity `C20A7629-…` or an unpatched release `Package.appxmanifest` | Overwrites his packaged install |
 | `winapp run … --no-launch` on release Identity | Still **registers layout** and can overwrite his install |
+| `winapp run --no-launch` to register any identity (including a test name) | Copies the source `Package.appxmanifest` (no WindowsAppRuntime dependency) → **REGDB_E_CLASSNOTREG**. Register `bin\...\AppxManifest.xml` instead |
+| `Add-AppxPackage` of a build `AppxManifest.xml` whose Identity Name is still `C20A7629-…` | Same overwrite as registering the release manifest |
 | `winapp unregister` (or Remove-AppxPackage) on his `C20A7629-…` install | Destroys his install; **agents do not restore it — Sacb0y owns that** |
 | Real catalog, Unity trees, `%TEMP%\palace-vss` | Not agent test data |
 
