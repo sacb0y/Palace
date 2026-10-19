@@ -263,6 +263,7 @@ public sealed class PalaceDb : IDisposable
         EnsureColumn("Asset", "IsHdr", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Asset", "IndexVersion", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Asset", "Undecodable", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("Asset", "DateTaken", "TEXT");
         EnsureColumn("Collection", "Icon", "TEXT");
         EnsureUniqueTagNames();
         SeedDefaults();

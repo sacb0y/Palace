@@ -299,7 +299,7 @@ public sealed partial class LibraryPage : Page
         }
 
         var index = CmbMosaicSort.SelectedIndex;
-        if (!MosaicSortOrder.ShouldApplyIndex(index, ViewModel.MosaicSort, out _))
+        if (!MosaicSortOrder.ShouldApplyFieldIndex(index, ViewModel.MosaicSort, out _))
         {
             return;
         }

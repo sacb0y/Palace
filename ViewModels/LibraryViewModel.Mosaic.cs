@@ -182,12 +182,21 @@ public partial class LibraryViewModel
 
     private void LoadMosaicSort()
     {
-        var key = MosaicSortOrder.SettingsKey(AppServices.CurrentProject.Id);
-        var next = MosaicSortOrder.Parse(ApplicationData.Current.LocalSettings.Values[key]);
+        if (AppServices.CurrentProject is not { } project)
+        {
+            return;
+        }
+
+        var settings = ApplicationData.Current.LocalSettings.Values;
+        var next = MosaicSortOrder.Load(key => settings.TryGetValue(key, out var v) ? v : null, project.Id, MosaicSortViewNow);
+        var wasSuppressed = _suppressFilter;
         _suppressFilter = true;
         MosaicSort = next;
-        _suppressFilter = false;
+        _suppressFilter = wasSuppressed;
     }
+
+    /// <summary>Folders and Tag browse remember their own sort.</summary>
+    private MosaicSortView MosaicSortViewNow => IsTagBrowse ? MosaicSortView.TagBrowse : MosaicSortView.Folders;
 
     private static string RowHeightKey(string projectId) => $"MosaicRowHeight_{projectId}";
 }

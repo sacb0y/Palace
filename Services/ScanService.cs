@@ -197,6 +197,20 @@ public sealed class ScanService
             return (ScanOutcome.Unchanged, !existing!.Undecodable);
         }
 
+        if (ScanFastPath.NeedsDateTakenOnly(existing, info.Length, info.LastWriteTimeUtc, onlineOnly)
+            && existing!.Kind == kind
+            && ScanContent.MayReadOriginal(attrs)
+            && (!ScanContent.MayGenerateScanThumbnail(attrs)
+                || !ScanFastPath.NeedsCurrentThumb(existing)
+                || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
+        {
+            // Indexed by version 2, before Date taken: read only the EXIF date (no hash / thumb).
+            // Same thumb rule as the fast path: an undecodable row needs no cached thumb.
+            var taken = _metadata.ReadDateTaken(file);
+            await _catalog.SetDateTakenAsync(existing.Id, taken, ScanFastPath.IndexVersion);
+            return (ScanOutcome.Unchanged, !existing.Undecodable);
+        }
+
         var asset = existing ?? new Asset
         {
             Id = PalaceDb.NewId(),
@@ -234,6 +248,7 @@ public sealed class ScanService
             asset.Prompt = meta.Prompt;
             asset.NegativePrompt = meta.NegativePrompt;
             asset.MetadataJson = meta.RawJson;
+            asset.DateTaken = meta.DateTaken;
             if (ScanContent.MayGenerateScanThumbnail(attrs))
             {
                 var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind, requireKnownStatus: true).ConfigureAwait(false);

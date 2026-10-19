@@ -188,6 +188,18 @@ public sealed partial class CatalogService
             tx.Commit();
         });
 
+    /// <summary>Date taken backfill for an unchanged file: sets the date and the index version only.</summary>
+    public Task SetDateTakenAsync(string assetId, string? dateTaken, int indexVersion) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Asset SET DateTaken = $taken, IndexVersion = $iv WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$taken", (object?)dateTaken ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$iv", indexVersion);
+            cmd.Parameters.AddWithValue("$id", assetId);
+            cmd.ExecuteNonQuery();
+        });
+
     public Task MarkOrphanAsync(string assetId, bool orphan) =>
         _db.WriteAsync(conn =>
         {
@@ -281,9 +293,9 @@ public sealed partial class CatalogService
         cmd.CommandText = """
             INSERT INTO Asset (Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-                               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr, IndexVersion, Undecodable)
+                               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr, IndexVersion, Undecodable, DateTaken)
             VALUES ($id, $source, $path, $name, $hash, $kind, $w, $h, $dur, $orphan, $model, $seed, $prompt, $neg,
-                    $json, $err, $rating, $notes, $added, $mod, $size, $online, $cloud, $hdr, $iv, $undecodable)
+                    $json, $err, $rating, $notes, $added, $mod, $size, $online, $cloud, $hdr, $iv, $undecodable, $taken)
             ON CONFLICT(Path) DO UPDATE SET
                 SourceFolderId = excluded.SourceFolderId,
                 FileName = excluded.FileName,
@@ -304,7 +316,8 @@ public sealed partial class CatalogService
                 CloudItemId = excluded.CloudItemId,
                 IsHdr = excluded.IsHdr,
                 IndexVersion = excluded.IndexVersion,
-                Undecodable = excluded.Undecodable
+                Undecodable = excluded.Undecodable,
+                DateTaken = excluded.DateTaken
             RETURNING RowId, Id;
             """;
         cmd.Parameters.AddWithValue("$id", asset.Id);
@@ -333,6 +346,7 @@ public sealed partial class CatalogService
         cmd.Parameters.AddWithValue("$hdr", asset.IsHdr ? 1 : 0);
         cmd.Parameters.AddWithValue("$iv", asset.IndexVersion);
         cmd.Parameters.AddWithValue("$undecodable", asset.Undecodable ? 1 : 0);
+        cmd.Parameters.AddWithValue("$taken", (object?)asset.DateTaken ?? DBNull.Value);
         using var reader = cmd.ExecuteReader();
         if (reader.Read())
         {
@@ -356,7 +370,7 @@ public sealed partial class CatalogService
     private const string SelectAssetSql = """
         SELECT RowId, Id, SourceFolderId, Path, FileName, ContentHash, Kind, Width, Height, DurationMs,
                IsOrphan, Model, Seed, Prompt, NegativePrompt, MetadataJson, OrganizeError, Rating, Notes,
-               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr, IndexVersion, Undecodable
+               DateAdded, DateModified, FileSize, IsOnlineOnly, CloudItemId, IsHdr, IndexVersion, Undecodable, DateTaken
         FROM Asset
         """ + "\n";
 
@@ -394,7 +408,8 @@ public sealed partial class CatalogService
                 CloudItemId = reader.FieldCount > 23 && !reader.IsDBNull(23) ? reader.GetString(23) : null,
                 IsHdr = reader.FieldCount > 24 && !reader.IsDBNull(24) && reader.GetInt32(24) != 0,
                 IndexVersion = reader.FieldCount > 25 && !reader.IsDBNull(25) ? reader.GetInt32(25) : 0,
-                Undecodable = reader.FieldCount > 26 && !reader.IsDBNull(26) && reader.GetInt32(26) != 0
+                Undecodable = reader.FieldCount > 26 && !reader.IsDBNull(26) && reader.GetInt32(26) != 0,
+                DateTaken = reader.FieldCount > 27 && !reader.IsDBNull(27) ? reader.GetString(27) : null
             });
         }
 

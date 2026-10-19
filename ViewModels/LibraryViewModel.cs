@@ -109,14 +109,16 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
 
-    public IReadOnlyList<string> SortLabels => MosaicSortOrder.Labels;
+    /// <summary>Sort field choices (the direction is <see cref="ToggleSortDirectionCommand"/>).</summary>
+    public IReadOnlyList<string> SortLabels => MosaicSortOrder.FieldLabels;
 
+    /// <summary>Index into <see cref="SortLabels"/>; picking a field starts in its natural direction.</summary>
     public int MosaicSortIndex
     {
-        get => MosaicSortOrder.IndexOf(MosaicSort);
+        get => MosaicSortOrder.FieldIndexOf(MosaicSort);
         set
         {
-            if (!MosaicSortOrder.ShouldApplyIndex(value, MosaicSort, out var next))
+            if (!MosaicSortOrder.ShouldApplyFieldIndex(value, MosaicSort, out var next))
             {
                 return;
             }
@@ -124,6 +126,14 @@ public partial class LibraryViewModel : ObservableObject
             MosaicSort = next;
         }
     }
+
+    public bool IsSortDescending => MosaicSortOrder.IsDescending(MosaicSort);
+
+    /// <summary>"Newest first", "A to Z", … for the direction button.</summary>
+    public string SortDirectionLabel => MosaicSortOrder.DirectionLabel(MosaicSort);
+
+    [RelayCommand]
+    private void ToggleSortDirection() => MosaicSort = MosaicSortOrder.ToggleDirection(MosaicSort);
 
     [ObservableProperty]
     public partial AssetItem? SelectedAsset { get; set; }
@@ -247,6 +257,7 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnIsTagBrowseChanged(bool value)
     {
+        LoadMosaicSort();
         _suppressFilter = true;
         if (value)
         {
@@ -266,6 +277,8 @@ public partial class LibraryViewModel : ObservableObject
     partial void OnMosaicSortChanged(MosaicSort value)
     {
         OnPropertyChanged(nameof(MosaicSortIndex));
+        OnPropertyChanged(nameof(IsSortDescending));
+        OnPropertyChanged(nameof(SortDirectionLabel));
         if (_suppressFilter)
         {
             return;
@@ -273,7 +286,7 @@ public partial class LibraryViewModel : ObservableObject
 
         if (AppServices.CurrentProject is { } project)
         {
-            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(project.Id)] =
+            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(project.Id, MosaicSortViewNow)] =
                 MosaicSortOrder.Persist(value);
         }
 

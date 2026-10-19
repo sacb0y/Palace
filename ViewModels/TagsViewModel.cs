@@ -83,14 +83,16 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
 
-    public IReadOnlyList<string> SortLabels => MosaicSortOrder.Labels;
+    /// <summary>Sort field choices (the direction is <see cref="ToggleSortDirectionCommand"/>).</summary>
+    public IReadOnlyList<string> SortLabels => MosaicSortOrder.FieldLabels;
 
+    /// <summary>Index into <see cref="SortLabels"/>; picking a field starts in its natural direction.</summary>
     public int MosaicSortIndex
     {
-        get => MosaicSortOrder.IndexOf(MosaicSort);
+        get => MosaicSortOrder.FieldIndexOf(MosaicSort);
         set
         {
-            if (!MosaicSortOrder.ShouldApplyIndex(value, MosaicSort, out var next))
+            if (!MosaicSortOrder.ShouldApplyFieldIndex(value, MosaicSort, out var next))
             {
                 return;
             }
@@ -98,6 +100,14 @@ public partial class TagsViewModel : ObservableObject
             MosaicSort = next;
         }
     }
+
+    public bool IsSortDescending => MosaicSortOrder.IsDescending(MosaicSort);
+
+    /// <summary>"Newest first", "A to Z", … for the direction button.</summary>
+    public string SortDirectionLabel => MosaicSortOrder.DirectionLabel(MosaicSort);
+
+    [RelayCommand]
+    private void ToggleSortDirection() => MosaicSort = MosaicSortOrder.ToggleDirection(MosaicSort);
 
     [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }
@@ -204,6 +214,8 @@ public partial class TagsViewModel : ObservableObject
     partial void OnMosaicSortChanged(MosaicSort value)
     {
         OnPropertyChanged(nameof(MosaicSortIndex));
+        OnPropertyChanged(nameof(IsSortDescending));
+        OnPropertyChanged(nameof(SortDirectionLabel));
         if (_suppressMosaicSort)
         {
             return;
@@ -211,7 +223,7 @@ public partial class TagsViewModel : ObservableObject
 
         if (AppServices.CurrentProject is { } project)
         {
-            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(project.Id)] =
+            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(project.Id, MosaicSortView.Tags)] =
                 MosaicSortOrder.Persist(value);
         }
 
@@ -226,8 +238,8 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        var next = MosaicSortOrder.Parse(
-            ApplicationData.Current.LocalSettings.Values[MosaicSortOrder.SettingsKey(projectId)]);
+        var settings = ApplicationData.Current.LocalSettings.Values;
+        var next = MosaicSortOrder.Load(key => settings.TryGetValue(key, out var v) ? v : null, projectId, MosaicSortView.Tags);
         _suppressMosaicSort = true;
         MosaicSort = next;
         _suppressMosaicSort = false;
