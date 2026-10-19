@@ -26,8 +26,9 @@ public sealed partial class TagsPage : Page
     private bool _ignoreColorChanges;
     private bool _colorDirty;
     private bool _priorityArmed;
-    private static readonly SemaphoreSlim TileDecodeGate = new(4);
+    private static readonly ThumbSlotGate TileDecodeGate = new(4);
     private CancellationTokenSource _tileCts = new();
+    private int _tileGeneration;
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private AssetItem? _selectedMosaicAsset;
@@ -351,6 +352,7 @@ public sealed partial class TagsPage : Page
             return;
         }
 
+        _tileGeneration++;
         _tileCts.Cancel();
         _tileCts = new CancellationTokenSource();
         _realizedTiles.Clear();
@@ -459,12 +461,12 @@ public sealed partial class TagsPage : Page
 
         item.ThumbLoadStarted = true;
         var token = _tileCts.Token;
-        var entered = false;
+        var generation = _tileGeneration;
+        ThumbSlot? slot = null;
         try
         {
-            await TileDecodeGate.WaitAsync(token);
-            entered = true;
-            if (item.ThumbImage is not null)
+            slot = await TileDecodeGate.EnterAsync(token);
+            if (item.ThumbImage is not null || generation != _tileGeneration)
             {
                 return;
             }
@@ -513,7 +515,9 @@ public sealed partial class TagsPage : Page
 
             await UiDispatch.RunAsync(() =>
             {
-                if (item.ThumbImage is not null || token.IsCancellationRequested)
+                if (item.ThumbImage is not null
+                    || generation != _tileGeneration
+                    || slot is not { IsCurrent: true })
                 {
                     return;
                 }
@@ -523,7 +527,7 @@ public sealed partial class TagsPage : Page
         }
         catch (OperationCanceledException)
         {
-            // Mosaic reset cancelled this tile.
+            // Mosaic reset cancelled this tile. The slot was already released.
         }
         catch
         {
@@ -531,10 +535,7 @@ public sealed partial class TagsPage : Page
         }
         finally
         {
-            if (entered)
-            {
-                TileDecodeGate.Release();
-            }
+            slot?.Dispose();
         }
     }
 

@@ -38,7 +38,7 @@ public static class StillDecode
                 // Stream + box-filter to the thumb size: a 16384x8192 pano
                 // never loads its 344 MB file or 2 GB float frame at once.
                 using var hs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16);
-                return TryDecodeRadiance(hs, maxSide);
+                return TryDecodeRadiance(hs, maxSide, cancellationToken);
             }
 
             data = File.ReadAllBytes(path);
@@ -92,7 +92,7 @@ public static class StillDecode
         int sw = 0, sh = 0;
         if (PathSafe.IsExr(ext))
         {
-            var exr = ExrFile.TryDecode(data);
+            var exr = ExrFile.TryDecode(data, cancellationToken);
             if (exr is not null)
             {
                 (rgba, sw, sh) = (exr.Rgba, exr.Width, exr.Height);
@@ -101,15 +101,16 @@ public static class StillDecode
         else if (PathSafe.IsRadiance(ext))
         {
             using var ms = new MemoryStream(data, writable: false);
-            return TryDecodeRadiance(ms, maxSide);
+            return TryDecodeRadiance(ms, maxSide, cancellationToken);
         }
 
-        return rgba is null ? null : FromScrgb(rgba, sw, sh, maxSide);
+        return rgba is null ? null : FromScrgb(rgba, sw, sh, maxSide, cancellationToken);
     }
 
     /// <summary>Radiance at thumb size: streamed box filter, then tone map.</summary>
-    private static Result? TryDecodeRadiance(Stream stream, int maxSide)
+    private static Result? TryDecodeRadiance(Stream stream, int maxSide, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var size = RadianceFile.TryReadSize(stream);
         if (size is null)
         {
@@ -118,10 +119,10 @@ public static class StillDecode
 
         var (w, h) = Fit(size.Value.Width, size.Value.Height, maxSide);
         stream.Position = 0;
-        var hdr = RadianceFile.TryDecode(stream, w, h);
+        var hdr = RadianceFile.TryDecode(stream, w, h, cancellationToken);
         return hdr is null
             ? null
-            : new Result(ToneMap.ScrgbToBgra8(hdr.ScrgbRgba, hdr.Width, hdr.Height), hdr.Width, hdr.Height, null, true);
+            : new Result(ToneMap.ScrgbToBgra8(hdr.ScrgbRgba, hdr.Width, hdr.Height, cancellationToken), hdr.Width, hdr.Height, null, true);
     }
 
     private static bool IsUniform(byte[] bgra)
@@ -139,11 +140,12 @@ public static class StillDecode
     }
 
     /// <summary>Scale linear scRGB to fit <paramref name="maxSide"/>, then tone map to BGRA8.</summary>
-    public static Result FromScrgb(float[] rgba, int width, int height, int maxSide)
+    public static Result FromScrgb(float[] rgba, int width, int height, int maxSide, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var (w, h) = Fit(width, height, maxSide);
-        var scaled = w == width && h == height ? rgba : HdrPixels.BoxScaleScrgb(rgba, width, height, w, h);
-        return new Result(ToneMap.ScrgbToBgra8(scaled, w, h), w, h, null, true);
+        var scaled = w == width && h == height ? rgba : HdrPixels.BoxScaleScrgb(rgba, width, height, w, h, cancellationToken);
+        return new Result(ToneMap.ScrgbToBgra8(scaled, w, h, cancellationToken), w, h, null, true);
     }
 
     public static (int Width, int Height) Fit(int width, int height, int maxSide)

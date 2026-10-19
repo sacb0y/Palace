@@ -513,7 +513,7 @@ public static class HdrPixels
     }
 
     /// <summary>Box-average scRGB RGBA downscale. Same size is a no-op.</summary>
-    public static float[] BoxScaleScrgb(float[] src, int srcW, int srcH, int destW, int destH)
+    public static float[] BoxScaleScrgb(float[] src, int srcW, int srcH, int destW, int destH, CancellationToken cancellationToken = default)
     {
         if (srcW <= 0 || srcH <= 0 || destW <= 0 || destH <= 0
             || src.Length < srcW * srcH * 4)
@@ -529,6 +529,11 @@ public static class HdrPixels
         var dest = new float[destW * destH * 4];
         for (var y = 0; y < destH; y++)
         {
+            if ((y & 7) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             var y0 = y * srcH / destH;
             var y1 = Math.Max(y0 + 1, (y + 1) * srcH / destH);
             for (var x = 0; x < destW; x++)

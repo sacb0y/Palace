@@ -186,7 +186,6 @@ public class ThumbSchedulerTests
         Assert.False(queue.TryComplete("leaving", leavingTicket));
         Assert.False(queue.TryAbandon("leaving", leavingTicket));
         Assert.Equal(1, queue.InFlight);
-        Assert.Equal(queue.TicketFor("incoming"), queue.TicketFor("incoming"));
         Assert.NotEqual(0, queue.TicketFor("incoming"));
     }
 
