@@ -75,7 +75,7 @@ public sealed partial class CatalogService
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = """
-                    UPDATE Asset SET Path = $new || substr(Path, $len + 1), IsOrphan = 0
+                    UPDATE Asset SET Path = $new || substr(Path, $len + 1)
                     WHERE Id = $id
                     """;
                 cmd.Parameters.AddWithValue("$new", newTrim);

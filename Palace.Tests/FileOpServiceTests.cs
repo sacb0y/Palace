@@ -381,4 +381,180 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.Null(FileOpService.ResolveRoot(Path.Combine(Path.GetTempPath(), "elsewhere"), sources));
         Assert.Null(FileOpService.ResolveRoot(_rootA.Path + "-sibling", sources[1..]));
     }
+
+    private async Task<SourceFolder> AddOtherProjectSourceAsync(string path)
+    {
+        var other = await _catalog.CreateProjectAsync("Other");
+        Directory.CreateDirectory(path);
+        var source = new SourceFolder { Id = PalaceDb.NewId(), Path = path, ProjectId = other.Id };
+        await _catalog.UpsertSourceFolderAsync(source);
+        return source;
+    }
+
+    /// <summary>Folder symlink; false where the OS refuses (Windows without symlink rights).</summary>
+    private static bool TryLink(string link, string target)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(link, target);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    [Fact]
+    public async Task Move_into_a_junction_or_symlink_folder_is_refused_and_nothing_moves()
+    {
+        var asset = await AddAssetAsync(_rootA, "in.png");
+        var link = Path.Combine(_rootA.Path, "Linked");
+        if (!TryLink(link, _outside))
+        {
+            return;
+        }
+
+        var result = await _ops.MoveAssetsAsync([asset], link, _projectId);
+        var nested = await _ops.CreateFolderAsync(link, "Sub", _projectId);
+
+        Assert.False(result.Ok);
+        Assert.Contains("shortcut", result.Message);
+        Assert.True(File.Exists(asset.Path));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(_outside));
+        Assert.False(nested.Ok);
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    [Fact]
+    public async Task Move_of_a_file_reached_through_a_symlink_folder_is_skipped()
+    {
+        var real = Path.Combine(_outside, "x.png");
+        await File.WriteAllTextAsync(real, "pixels");
+        if (!TryLink(Path.Combine(_rootA.Path, "Linked"), _outside))
+        {
+            return;
+        }
+        var asset = new Asset
+        {
+            Id = PalaceDb.NewId(),
+            SourceFolderId = _rootA.Id,
+            Path = Path.Combine(_rootA.Path, "Linked", "x.png"),
+            FileName = "x.png",
+            Kind = AssetKind.Image,
+            DateAdded = PalaceDb.NowIso()
+        };
+        await _catalog.UpsertAssetAsync(asset, "");
+
+        var result = await _ops.MoveAssetsAsync([asset], Dir(_rootA, "Sorted"), _projectId);
+
+        Assert.False(result.Ok);
+        Assert.True(File.Exists(real));
+    }
+
+    [Fact]
+    public async Task Move_and_new_folder_inside_another_projects_nested_root_are_refused()
+    {
+        var asset = await AddAssetAsync(_rootA, "in.png");
+        var nestedRoot = await AddOtherProjectSourceAsync(Path.Combine(_rootA.Path, "TheirRoot"));
+
+        var moved = await _ops.MoveAssetsAsync([asset], nestedRoot.Path, _projectId);
+        var created = await _ops.CreateFolderAsync(nestedRoot.Path, "Mine", _projectId);
+        var renamed = await _ops.RenameFolderAsync(nestedRoot.Path, "Gone", _projectId);
+
+        Assert.False(moved.Ok);
+        Assert.Contains("another project", moved.Message);
+        Assert.True(File.Exists(asset.Path));
+        Assert.False(created.Ok);
+        Assert.False(Directory.Exists(Path.Combine(nestedRoot.Path, "Mine")));
+        Assert.False(renamed.Ok);
+        Assert.True(Directory.Exists(nestedRoot.Path));
+    }
+
+    [Fact]
+    public async Task RenameFolder_refuses_a_folder_that_contains_a_watched_source()
+    {
+        var holder = Dir(_rootA, "Holder");
+        await AddOtherProjectSourceAsync(Path.Combine(holder, "Inner"));
+
+        var result = await _ops.RenameFolderAsync(holder, "Moved", _projectId);
+
+        Assert.False(result.Ok);
+        Assert.Contains("contains the Library folder", result.Message);
+        Assert.True(Directory.Exists(holder));
+        Assert.False(Directory.Exists(Path.Combine(_rootA.Path, "Moved")));
+    }
+
+    [Fact]
+    public async Task RenameFolder_keeps_the_orphan_flag_of_missing_files()
+    {
+        var present = await AddAssetAsync(_rootA, Path.Combine("Old", "here.png"));
+        var missing = await AddAssetAsync(_rootA, Path.Combine("Old", "gone.png"));
+        File.Delete(missing.Path);
+        await _catalog.MarkOrphanAsync(missing.Id, true);
+
+        var result = await _ops.RenameFolderAsync(Path.Combine(_rootA.Path, "Old"), "New", _projectId);
+
+        Assert.True(result.Ok, result.Message);
+        Assert.True((await _catalog.GetAssetByIdAsync(missing.Id))!.IsOrphan);
+        Assert.False((await _catalog.GetAssetByIdAsync(present.Id))!.IsOrphan);
+    }
+
+    [Fact]
+    public async Task Move_cancelled_before_any_change_throws_and_moves_nothing()
+    {
+        var asset = await AddAssetAsync(_rootA, "in.png");
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _ops.MoveAssetsAsync([asset], Dir(_rootA, "Sorted"), _projectId, cts.Token));
+
+        Assert.True(File.Exists(asset.Path));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    [Fact]
+    public async Task Move_cancelled_midway_logs_what_moved_so_undo_reverses_it()
+    {
+        var first = await AddAssetAsync(_rootA, "1.png");
+        var second = await AddAssetAsync(_rootA, "2.png");
+        var dest = Dir(_rootA, "Sorted");
+        using var cts = new CancellationTokenSource();
+        var assets = new CancelAfterFirst([first, second], cts);
+
+        var result = await _ops.MoveAssetsAsync(assets, dest, _projectId, cts.Token);
+
+        Assert.True(result.Ok, result.Message);
+        Assert.Single(result.Moves);
+        Assert.Contains("Stopped before the other 1", result.Message);
+        Assert.True(File.Exists(Path.Combine(dest, "1.png")));
+        Assert.True(File.Exists(second.Path));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.True(File.Exists(first.Path));
+    }
+
+    /// <summary>Cancels the token as soon as the second item is asked for.</summary>
+    private sealed class CancelAfterFirst(IReadOnlyList<Asset> items, CancellationTokenSource cts) : IReadOnlyList<Asset>
+    {
+        public Asset this[int index] => items[index];
+        public int Count => items.Count;
+
+        public IEnumerator<Asset> GetEnumerator()
+        {
+            for (var i = 0; i < items.Count; i++)
+            {
+                if (i == 1)
+                {
+                    cts.Cancel();
+                }
+
+                yield return items[i];
+            }
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
 }

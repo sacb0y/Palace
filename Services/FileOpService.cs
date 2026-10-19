@@ -25,7 +25,11 @@ public readonly record struct FileOpMove(string AssetId, string OldPath, string 
 /// Logged, undoable file operations for organizing: move assets, new / rename / delete folder,
 /// and Undo. WinUI-free so the app, tests and a future <c>palace</c> CLI share one code path.
 /// <list type="bullet">
-/// <item>Every path must sit inside a <b>local</b> watched source of the project.</item>
+/// <item>Every path must sit inside a <b>local</b> watched source of the project, not inside another
+/// project's nested source, and not behind a junction / symlink below the source.</item>
+/// <item>A folder that contains another watched source is never renamed. Rename keeps orphan flags,
+/// and rolls the folder back when the catalog update fails.</item>
+/// <item>Cancelling a move after files already moved stops there and still journals them for Undo.</item>
 /// <item>Never overwrites: name clashes get <c>name (2).ext</c>; <c>File.Move(overwrite: false)</c>.</item>
 /// <item>Never reads file contents. Online-only (Dropbox / OneDrive) placeholders move only inside
 /// their own watched folder, where a move is a rename and stays a placeholder.</item>
@@ -69,6 +73,86 @@ public sealed class FileOpService
         return best;
     }
 
+    /// <summary>
+    /// The project's watched source that may be written at <paramref name="path"/>, or an error.
+    /// <list type="bullet">
+    /// <item>The deepest watched source across <b>all</b> projects decides, so a folder nested inside
+    /// another project's Library folder is refused rather than written behind that project's back.</item>
+    /// <item>No folder between the source and <paramref name="path"/> may be a junction or symlink:
+    /// those can point outside the watched root while still passing the path check. Cloud
+    /// placeholders (Dropbox / OneDrive) have no link target and are fine.</item>
+    /// </list>
+    /// </summary>
+    public static SourceFolder? ResolveWritableRoot(
+        string path,
+        IEnumerable<SourceFolder> allSources,
+        string projectId,
+        out string error)
+    {
+        error = "";
+        var root = ResolveRoot(path, allSources);
+        if (root is null)
+        {
+            error = "not in one of your Library folders";
+            return null;
+        }
+
+        if (!string.Equals(root.ProjectId, projectId, StringComparison.Ordinal))
+        {
+            error = "inside a Library folder of another project";
+            return null;
+        }
+
+        if (LinkedFolderBetween(root.Path, path) is { } link)
+        {
+            error = $"{DisplayName(link)} is a shortcut (junction or symlink) to another place";
+            return null;
+        }
+
+        return root;
+    }
+
+    /// <summary>
+    /// First folder strictly below <paramref name="root"/> on the way to <paramref name="path"/>
+    /// (inclusive) that is a junction or symlink, or null. Missing folders are not links.
+    /// </summary>
+    public static string? LinkedFolderBetween(string root, string path)
+    {
+        var rootFull = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var current = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        while (current.Length > rootFull.Length && FolderNames.IsSameOrUnder(current, rootFull))
+        {
+            try
+            {
+                var info = new DirectoryInfo(current);
+                if (info.Exists && info.LinkTarget is not null)
+                {
+                    return current;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return current;
+            }
+
+            var parent = Path.GetDirectoryName(current);
+            if (parent is null || parent.Length >= current.Length)
+            {
+                break;
+            }
+
+            current = parent;
+        }
+
+        return null;
+    }
+
+    /// <summary>A watched source (any project) sits strictly inside <paramref name="folderPath"/>.</summary>
+    public static SourceFolder? NestedSourceIn(string folderPath, IEnumerable<SourceFolder> allSources) =>
+        allSources.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Path)
+            && !FolderNames.SamePath(s.Path, folderPath)
+            && FolderNames.IsSameOrUnder(s.Path, folderPath));
+
     public static string MoveSummary(int count, string destinationDir) =>
         $"Move {Files(count)} to {DisplayName(destinationDir)}";
 
@@ -101,11 +185,17 @@ public sealed class FileOpService
             return FileOpResult.Fail("Select assets first.");
         }
 
-        var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
-        var destRoot = ResolveRoot(destinationDir, sources);
-        if (destRoot is null)
+        var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
+        var sources = allSources.Where(s => string.Equals(s.ProjectId, projectId, StringComparison.Ordinal)).ToList();
+        if (ResolveRoot(destinationDir, sources) is null)
         {
             return FileOpResult.Fail("Pick a folder inside one of your Library folders.");
+        }
+
+        var destRoot = ResolveWritableRoot(destinationDir, allSources, projectId, out var destError);
+        if (destRoot is null)
+        {
+            return FileOpResult.Fail($"Can't move there: {DisplayName(destinationDir)} is {destError}.");
         }
 
         destinationDir = Path.GetFullPath(destinationDir);
@@ -118,15 +208,34 @@ public sealed class FileOpService
         var skipped = new List<string>();
         var items = new List<FileOpItem>();
         var reserved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var stopped = false;
         using (_suppressWatcher?.Invoke())
         {
             foreach (var asset in assets)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                // Before the first change, cancel outright. After that, stop and still log what
+                // moved so Undo can reverse it (never leave unjournaled moves behind).
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    if (moves.Count == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+
+                    stopped = true;
+                    break;
+                }
+
                 var srcRoot = ResolveRoot(asset.Path, sources);
                 if (srcRoot is null)
                 {
                     skipped.Add($"{asset.FileName}: not in a Library folder");
+                    continue;
+                }
+
+                if (LinkedFolderBetween(srcRoot.Path, Path.GetDirectoryName(asset.Path)!) is not null)
+                {
+                    skipped.Add($"{asset.FileName}: its folder is a shortcut (junction or symlink)");
                     continue;
                 }
 
@@ -197,6 +306,10 @@ public sealed class FileOpService
         var message = skipped.Count == 0
             ? $"Moved {Files(moves.Count)} to {DisplayName(destinationDir)}."
             : $"Moved {Files(moves.Count)} to {DisplayName(destinationDir)}. Skipped {skipped.Count}.";
+        if (stopped)
+        {
+            message += $" Stopped before the other {assets.Count - moves.Count - skipped.Count}.";
+        }
         return new FileOpResult
         {
             Ok = true,
@@ -217,10 +330,15 @@ public sealed class FileOpService
             return FileOpResult.Fail(error);
         }
 
-        var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
-        if (ResolveRoot(parentDir, sources) is null)
+        var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
+        if (ResolveRoot(parentDir, allSources.Where(s => string.Equals(s.ProjectId, projectId, StringComparison.Ordinal))) is null)
         {
             return FileOpResult.Fail("New folders go inside one of your Library folders.");
+        }
+
+        if (ResolveWritableRoot(parentDir, allSources, projectId, out var rootError) is null)
+        {
+            return FileOpResult.Fail($"Can't create a folder in {DisplayName(parentDir)}: it is {rootError}.");
         }
 
         if (!Directory.Exists(parentDir))
@@ -260,16 +378,28 @@ public sealed class FileOpService
             return FileOpResult.Fail(error);
         }
 
-        var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
-        var root = ResolveRoot(folderPath, sources);
+        var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
+        var root = ResolveRoot(folderPath, allSources.Where(s => string.Equals(s.ProjectId, projectId, StringComparison.Ordinal)));
         if (root is null)
         {
             return FileOpResult.Fail("Only folders inside your Library folders can be renamed.");
         }
 
-        if (FolderNames.SamePath(folderPath, root.Path))
+        if (FolderNames.SamePath(folderPath, root.Path) || allSources.Any(s => FolderNames.SamePath(s.Path, folderPath)))
         {
             return FileOpResult.Fail("This is a Library folder. Rename it in File Explorer, then add it again.");
+        }
+
+        if (ResolveWritableRoot(folderPath, allSources, projectId, out var rootError) is null)
+        {
+            return FileOpResult.Fail($"Can't rename {DisplayName(folderPath)}: it is {rootError}.");
+        }
+
+        // Renaming would move a watched source on disk while its SourceFolder row (and watcher)
+        // still point at the old path.
+        if (NestedSourceIn(folderPath, allSources) is { } nested)
+        {
+            return FileOpResult.Fail($"{DisplayName(folderPath)} contains the Library folder {DisplayName(nested.Path)}. Rename it in File Explorer instead.");
         }
 
         folderPath = Path.GetFullPath(folderPath).TrimEnd(Path.DirectorySeparatorChar);
@@ -299,7 +429,18 @@ public sealed class FileOpService
                 return FileOpResult.Fail($"Couldn't rename {DisplayName(folderPath)}: {moved}");
             }
 
-            await _catalog.RebaseFolderPathsAsync(folderPath, target).ConfigureAwait(false);
+            try
+            {
+                await _catalog.RebaseFolderPathsAsync(folderPath, target).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Keep disk and catalog in step: put the folder back under its old name.
+                var back = MoveDirectory(target, folderPath);
+                return FileOpResult.Fail(back is null
+                    ? $"Couldn't rename {DisplayName(folderPath)}: {ex.Message}"
+                    : $"Renamed {DisplayName(folderPath)} on disk but couldn't update the catalog ({ex.Message}). Rescan to fix it.");
+            }
         }
 
         var summary = $"Rename {DisplayName(folderPath)} to {cleaned}";
@@ -353,16 +494,21 @@ public sealed class FileOpService
     /// <summary>Delete an <b>empty</b> folder inside a watched source (not a source root). Undo recreates it.</summary>
     public async Task<FileOpResult> DeleteEmptyFolderAsync(string folderPath, string projectId)
     {
-        var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
-        var root = ResolveRoot(folderPath, sources);
+        var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);
+        var root = ResolveRoot(folderPath, allSources.Where(s => string.Equals(s.ProjectId, projectId, StringComparison.Ordinal)));
         if (root is null)
         {
             return FileOpResult.Fail("Only folders inside your Library folders can be deleted here.");
         }
 
-        if (FolderNames.SamePath(folderPath, root.Path))
+        if (FolderNames.SamePath(folderPath, root.Path) || allSources.Any(s => FolderNames.SamePath(s.Path, folderPath)))
         {
             return FileOpResult.Fail("This is a Library folder. Remove it in Settings instead.");
+        }
+
+        if (ResolveWritableRoot(folderPath, allSources, projectId, out var rootError) is null)
+        {
+            return FileOpResult.Fail($"Can't delete {DisplayName(folderPath)}: it is {rootError}.");
         }
 
         folderPath = Path.GetFullPath(folderPath).TrimEnd(Path.DirectorySeparatorChar);
@@ -461,6 +607,11 @@ public sealed class FileOpService
                 }
 
                 var oldDir = Path.GetDirectoryName(item.OldPath)!;
+                if (LinkedFolderBetween(oldRoot.Path, oldDir) is not null)
+                {
+                    return $"{Path.GetFileName(item.OldPath)}: its old folder is now a shortcut (junction or symlink)";
+                }
+
                 try
                 {
                     Directory.CreateDirectory(oldDir);
