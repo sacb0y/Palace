@@ -395,13 +395,13 @@
                                     Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
                                     CommandParameter="true"
                                     GroupName="TagMosaicSortDir"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort, true), Mode=OneWay}"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort), Mode=OneWay}"
                                     Text="{x:Bind ViewModel.SortDescendingLabel, Mode=OneWay}" />
                                 <RadioMenuFlyoutItem
                                     Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
                                     CommandParameter="false"
                                     GroupName="TagMosaicSortDir"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort, false), Mode=OneWay}"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicAscending(ViewModel.MosaicSort), Mode=OneWay}"
                                     Text="{x:Bind ViewModel.SortAscendingLabel, Mode=OneWay}" />
                             </MenuFlyout>
                         </DropDownButton.Flyout>
@@ -867,7 +867,6 @@
             x:Name="GrdGalleryOverlay"
             AutomationProperties.AutomationId="GrdGalleryOverlay"
             AutomationProperties.Name="Gallery overlay"
-            Canvas.ZIndex="1"
             IsTabStop="True"
             PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">

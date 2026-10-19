@@ -19,8 +19,11 @@ public static class BindHelpers
     public static bool IsMosaicField(MosaicSort current, string field) =>
         MosaicSortOrder.FieldOf(current).ToString() == field;
 
-    public static bool IsMosaicDescending(MosaicSort current, bool descending) =>
-        MosaicSortOrder.IsDescending(current) == descending;
+    public static bool IsMosaicDescending(MosaicSort current) =>
+        MosaicSortOrder.IsDescending(current);
+
+    public static bool IsMosaicAscending(MosaicSort current) =>
+        !MosaicSortOrder.IsDescending(current);
 
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;

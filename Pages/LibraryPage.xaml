@@ -537,14 +537,14 @@
                                 Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
                                 CommandParameter="true"
                                 GroupName="MosaicSortDir"
-                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort, true), Mode=OneWay}"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort), Mode=OneWay}"
                                 Text="{x:Bind ViewModel.SortDescendingLabel, Mode=OneWay}" />
                             <RadioMenuFlyoutItem
                                 AutomationProperties.AutomationId="MnuMosaicSortAsc"
                                 Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
                                 CommandParameter="false"
                                 GroupName="MosaicSortDir"
-                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort, false), Mode=OneWay}"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicAscending(ViewModel.MosaicSort), Mode=OneWay}"
                                 Text="{x:Bind ViewModel.SortAscendingLabel, Mode=OneWay}" />
                         </MenuFlyout>
                     </DropDownButton.Flyout>
@@ -1363,7 +1363,6 @@
             Margin="0,0,0,12"
             Padding="8,0"
             VerticalAlignment="Bottom"
-            Canvas.ZIndex="1"
             Spacing="4">
             <InfoBar
                 AutomationProperties.AutomationId="InfStatus"
@@ -1432,7 +1431,6 @@
             x:Name="GrdGalleryOverlay"
             AutomationProperties.AutomationId="GrdGalleryOverlay"
             AutomationProperties.Name="Gallery overlay"
-            Canvas.ZIndex="1"
             IsTabStop="True"
             PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
