@@ -30,6 +30,16 @@ public static class BrandAccent
         Rgb Dark2,
         Rgb Dark3);
 
+    /// <summary>
+    /// WinUI AccentFill / AccentText / TextOnAccent colors for one theme.
+    /// Secondary/Tertiary fills share <see cref="Fill"/> with brush Opacity 0.9 / 0.8.
+    /// </summary>
+    public readonly record struct ThemeAccentColors(
+        Rgb Fill,
+        Rgb AccentText,
+        Rgb AccentTextSecondary,
+        Rgb TextOnAccent);
+
     public static bool IsPalacePink(object? stored) =>
         stored is string text
         && text.Trim().Equals(ModePalacePink, StringComparison.OrdinalIgnoreCase);
@@ -53,6 +63,28 @@ public static class BrandAccent
             Dark2: Mix(seed, Black, 0.48),
             Dark3: Mix(seed, Black, 0.65));
     }
+
+    /// <summary>Dark (Default) theme: fills/text from Light*, ink on accent is near-black.</summary>
+    public static ThemeAccentColors ForDarkTheme(Ramp ramp) =>
+        new(Fill: ramp.Light2, AccentText: ramp.Light2, AccentTextSecondary: ramp.Light3, TextOnAccent: Black);
+
+    /// <summary>Light theme: fills/text from Dark*, ink on accent is white.</summary>
+    public static ThemeAccentColors ForLightTheme(Ramp ramp) =>
+        new(Fill: ramp.Dark1, AccentText: ramp.Dark2, AccentTextSecondary: ramp.Dark3, TextOnAccent: White);
+
+    /// <summary>Brush keys App recreates so ThemeResource Accent*Brush rebinds after Color overrides.</summary>
+    public static readonly string[] AccentBrushKeys =
+    [
+        "AccentFillColorDefaultBrush",
+        "AccentFillColorSecondaryBrush",
+        "AccentFillColorTertiaryBrush",
+        "AccentTextFillColorPrimaryBrush",
+        "AccentTextFillColorSecondaryBrush",
+        "AccentTextFillColorTertiaryBrush",
+        "TextOnAccentFillColorPrimaryBrush",
+        "TextOnAccentFillColorSecondaryBrush",
+        "TextOnAccentFillColorDisabledBrush",
+    ];
 
     /// <summary>Contrast ratio of two sRGB colors (WCAG).</summary>
     public static double ContrastRatio(Rgb a, Rgb b)

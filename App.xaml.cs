@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
 using Palace.Services;
 using Windows.UI;
@@ -18,12 +19,15 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        // Ramp + brush recreate must finish before OnLaunched creates the first window —
+        // XamlControlsResources already resolved Accent*Brush from system colors.
         TryApplyBrandAccent();
         InstallErrorHandling();
     }
 
     /// <summary>
-    /// Optional Palace pink ramp into SystemAccentColor*. Skip HighContrast.
+    /// Optional Palace pink ramp into SystemAccentColor* and recreated Accent*Brush
+    /// resources so WinUI ThemeResource consumers rebind. Skip HighContrast.
     /// Resource lookups are cached — changing the setting needs a restart.
     /// </summary>
     private static void TryApplyBrandAccent()
@@ -42,20 +46,165 @@ public partial class App : Application
             }
 
             var ramp = BrandAccent.BuildRamp();
-            var r = Current.Resources;
-            r["SystemAccentColor"] = ToColor(ramp.Base);
-            r["SystemAccentColorLight1"] = ToColor(ramp.Light1);
-            r["SystemAccentColorLight2"] = ToColor(ramp.Light2);
-            r["SystemAccentColorLight3"] = ToColor(ramp.Light3);
-            r["SystemAccentColorDark1"] = ToColor(ramp.Dark1);
-            r["SystemAccentColorDark2"] = ToColor(ramp.Dark2);
-            r["SystemAccentColorDark3"] = ToColor(ramp.Dark3);
+            ApplySystemAccentColors(Current.Resources, ramp);
+            RecreateAccentBrushes(Current.Resources, ramp);
         }
         catch
         {
             // Startup must not die on accent apply (sandbox / missing LocalSettings).
         }
     }
+
+    private static void ApplySystemAccentColors(ResourceDictionary root, BrandAccent.Ramp ramp)
+    {
+        root["SystemAccentColor"] = ToColor(ramp.Base);
+        root["SystemAccentColorLight1"] = ToColor(ramp.Light1);
+        root["SystemAccentColorLight2"] = ToColor(ramp.Light2);
+        root["SystemAccentColorLight3"] = ToColor(ramp.Light3);
+        root["SystemAccentColorDark1"] = ToColor(ramp.Dark1);
+        root["SystemAccentColorDark2"] = ToColor(ramp.Dark2);
+        root["SystemAccentColorDark3"] = ToColor(ramp.Dark3);
+
+        // ThemeDictionaries may also hold Color keys; override so pane TintColor rebinds.
+        foreach (var key in new[] { "Default", "Light" })
+        {
+            if (root.ThemeDictionaries.TryGetValue(key, out var theme) && theme is ResourceDictionary dict)
+            {
+                dict["SystemAccentColor"] = ToColor(ramp.Base);
+                dict["SystemAccentColorLight1"] = ToColor(ramp.Light1);
+                dict["SystemAccentColorLight2"] = ToColor(ramp.Light2);
+                dict["SystemAccentColorLight3"] = ToColor(ramp.Light3);
+                dict["SystemAccentColorDark1"] = ToColor(ramp.Dark1);
+                dict["SystemAccentColorDark2"] = ToColor(ramp.Dark2);
+                dict["SystemAccentColorDark3"] = ToColor(ramp.Dark3);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recreate Accent* brushes in Application ThemeDictionaries (ThemeResource override)
+    /// and mutate matching brushes inside merged XamlControlsResources so already-held
+    /// SolidColorBrush references update in place.
+    /// </summary>
+    private static void RecreateAccentBrushes(ResourceDictionary root, BrandAccent.Ramp ramp)
+    {
+        ApplyThemeAccent(root, "Default", BrandAccent.ForDarkTheme(ramp), recreate: true);
+        ApplyThemeAccent(root, "Light", BrandAccent.ForLightTheme(ramp), recreate: true);
+
+        if (root.ThemeDictionaries.TryGetValue("Default", out var darkObj)
+            && darkObj is ResourceDictionary dark)
+        {
+            RefreshPalacePaneBrush(
+                dark,
+                tint: ToColor(ramp.Dark3),
+                fallback: Color.FromArgb(255, 0x2C, 0x2C, 0x2C),
+                tintLuminosityOpacity: 0.85);
+        }
+
+        if (root.ThemeDictionaries.TryGetValue("Light", out var lightObj)
+            && lightObj is ResourceDictionary light)
+        {
+            RefreshPalacePaneBrush(
+                light,
+                tint: ToColor(ramp.Light3),
+                fallback: Color.FromArgb(255, 0xF3, 0xF3, 0xF3),
+                tintLuminosityOpacity: 0.9);
+        }
+
+        foreach (var merged in root.MergedDictionaries)
+        {
+            PatchMergedAccentBrushes(merged, ramp);
+        }
+    }
+
+    private static void PatchMergedAccentBrushes(ResourceDictionary dict, BrandAccent.Ramp ramp)
+    {
+        ApplyThemeAccent(dict, "Default", BrandAccent.ForDarkTheme(ramp), recreate: false);
+        ApplyThemeAccent(dict, "Light", BrandAccent.ForLightTheme(ramp), recreate: false);
+        foreach (var nested in dict.MergedDictionaries)
+        {
+            PatchMergedAccentBrushes(nested, ramp);
+        }
+    }
+
+    private static void ApplyThemeAccent(
+        ResourceDictionary root,
+        string themeKey,
+        BrandAccent.ThemeAccentColors colors,
+        bool recreate)
+    {
+        if (!root.ThemeDictionaries.TryGetValue(themeKey, out var themeObj)
+            || themeObj is not ResourceDictionary theme)
+        {
+            if (!recreate)
+            {
+                return;
+            }
+
+            theme = new ResourceDictionary();
+            root.ThemeDictionaries[themeKey] = theme;
+        }
+
+        WriteAccentBrushes(theme, colors, recreate);
+    }
+
+    private static void WriteAccentBrushes(
+        ResourceDictionary theme,
+        BrandAccent.ThemeAccentColors colors,
+        bool recreate)
+    {
+        var fill = ToColor(colors.Fill);
+        var accentText = ToColor(colors.AccentText);
+        var accentTextSecondary = ToColor(colors.AccentTextSecondary);
+        var textOn = ToColor(colors.TextOnAccent);
+
+        SetBrush(theme, "AccentFillColorDefaultBrush", fill, 1.0, recreate);
+        SetBrush(theme, "AccentFillColorSecondaryBrush", fill, 0.9, recreate);
+        SetBrush(theme, "AccentFillColorTertiaryBrush", fill, 0.8, recreate);
+        SetBrush(theme, "AccentTextFillColorPrimaryBrush", accentText, 1.0, recreate);
+        SetBrush(theme, "AccentTextFillColorSecondaryBrush", accentTextSecondary, 1.0, recreate);
+        SetBrush(theme, "AccentTextFillColorTertiaryBrush", accentTextSecondary, 0.6, recreate);
+        SetBrush(theme, "TextOnAccentFillColorPrimaryBrush", textOn, 1.0, recreate);
+        SetBrush(theme, "TextOnAccentFillColorSecondaryBrush", textOn, 0.5, recreate);
+        SetBrush(theme, "TextOnAccentFillColorDisabledBrush", textOn, 0.2, recreate);
+    }
+
+    private static void SetBrush(
+        ResourceDictionary theme,
+        string key,
+        Color color,
+        double opacity,
+        bool recreate)
+    {
+        if (!recreate
+            && theme.TryGetValue(key, out var existing)
+            && existing is SolidColorBrush brush)
+        {
+            brush.Color = color;
+            brush.Opacity = opacity;
+            return;
+        }
+
+        theme[key] = Solid(color, opacity);
+    }
+
+    private static void RefreshPalacePaneBrush(
+        ResourceDictionary theme,
+        Color tint,
+        Color fallback,
+        double tintLuminosityOpacity)
+    {
+        theme["PalacePaneFillBrush"] = new AcrylicBrush
+        {
+            FallbackColor = fallback,
+            TintColor = tint,
+            TintLuminosityOpacity = tintLuminosityOpacity,
+            TintOpacity = 0.08,
+        };
+    }
+
+    private static SolidColorBrush Solid(Color color, double opacity) =>
+        new() { Color = color, Opacity = opacity };
 
     private static Color ToColor(BrandAccent.Rgb rgb) =>
         Color.FromArgb(255, rgb.R, rgb.G, rgb.B);
