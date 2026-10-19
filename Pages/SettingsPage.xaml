@@ -463,9 +463,10 @@
                 MinWidth="240"
                 AutomationProperties.AutomationId="CmbDestinationPolicy"
                 Header="New-file destination"
-                SelectedItem="{x:Bind ViewModel.SelectedSource.DestinationPolicy, Mode=TwoWay, FallbackValue='InSource'}">
-                <x:String>InSource</x:String>
-                <x:String>Destination</x:String>
+                SelectedIndex="{x:Bind ViewModel.SelectedSource.DestinationPolicyIndex, Mode=TwoWay, FallbackValue=0}">
+                <!-- Order matches DestinationPolicyChoice: 0 = InSource, 1 = Destination. -->
+                <ComboBoxItem Content="Organize inside the source folder" />
+                <ComboBoxItem Content="Organize into the saved destination" />
             </ComboBox>
             <TextBox
                 x:Name="TxtDestinationPath"
