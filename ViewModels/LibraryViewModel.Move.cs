@@ -114,6 +114,7 @@ public partial class LibraryViewModel
         var result = await _fileOps.CreateFolderAsync(parentDir, name, AppServices.CurrentProject.Id);
         if (result.Ok)
         {
+            await RebuildFolderTreeAsync();
             await RefreshUndoStateAsync();
         }
 
@@ -238,15 +239,16 @@ public partial class LibraryViewModel
     }
 
     /// <summary>Rebuild the folder tree from the in-memory catalog, keeping the selected folder.</summary>
-    private async Task RebuildFolderTreeAsync()
+    private async Task RebuildFolderTreeAsync(string? selectPath = null)
     {
         var projectId = AppServices.CurrentProject.Id;
         var sources = await _catalog.GetSourceFoldersAsync(projectId);
         var assets = _allAssets;
-        var tree = await Task.Run(() => BuildFolderNodes(sources, assets));
+        var treeSort = FolderSort;
+        var tree = await Task.Run(() => BuildFolderNodes(sources, assets, treeSort));
         await UiDispatch.RunAsync(() =>
         {
-            var selectedPath = SelectedFolder?.Path;
+            var selectedPath = selectPath ?? SelectedFolder?.Path;
             _suppressFilter = true;
             ReplaceFolderTree(tree);
             SelectedFolder = selectedPath is null || IsTagBrowse ? null : FindNode(FolderTree, selectedPath);

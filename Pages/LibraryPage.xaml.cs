@@ -471,6 +471,7 @@ public sealed partial class LibraryPage : Page
     private void GrdAssets_RangePressed(object sender, PointerRoutedEventArgs e)
     {
         _rangeConsumedTap = false;
+        _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -485,6 +486,12 @@ public sealed partial class LibraryPage : Page
         var item = FindAssetItem(e.OriginalSource);
         if (item is null
             || !RangeSelect.AllowsGesture(true, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
+        {
+            return;
+        }
+
+        // Pressing an already selected tile with the mouse drags the selection to a folder instead.
+        if (AssetDrag.YieldsRangeSelect(_lastPressWasMouse, item.IsSelected))
         {
             return;
         }

@@ -92,6 +92,18 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnNewFolder"
+                    AutomationProperties.AutomationId="BtnNewFolder"
+                    AutomationProperties.HelpText="New folder in the selected folder"
+                    AutomationProperties.Name="New folder"
+                    Command="{x:Bind ViewModel.NewFolderCommand}"
+                    KeyboardAcceleratorTextOverride="Ctrl+Shift+N">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="New folder" />
+                    </StackPanel>
+                </Button>
+                <Button
                     x:Name="BtnUndo"
                     AutomationProperties.AcceleratorKey="Control+Z"
                     AutomationProperties.AutomationId="BtnUndo"
@@ -211,20 +223,169 @@
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
             </ItemsRepeater>
+            <Grid
+                Grid.Row="2"
+                ColumnSpacing="4"
+                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Folders" />
+                <DropDownButton
+                    x:Name="BtnFolderSort"
+                    Grid.Column="1"
+                    Padding="6,4"
+                    AutomationProperties.AutomationId="BtnFolderSort"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.FolderSortLabel, Mode=OneWay}"
+                    AutomationProperties.Name="Sort folders"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.FolderSortLabel, Mode=OneWay}">
+                    <ic:FluentIcon Icon="ArrowSort" IconSize="Size16" IconVariant="Regular" />
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuFolderSortNameAsc"
+                                Command="{x:Bind ViewModel.SetFolderSortCommand}"
+                                CommandParameter="NameAsc"
+                                GroupName="FolderSort"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsFolderSort(ViewModel.FolderSort, 'NameAsc'), Mode=OneWay}"
+                                Text="Name (A to Z)" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuFolderSortNameDesc"
+                                Command="{x:Bind ViewModel.SetFolderSortCommand}"
+                                CommandParameter="NameDesc"
+                                GroupName="FolderSort"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsFolderSort(ViewModel.FolderSort, 'NameDesc'), Mode=OneWay}"
+                                Text="Name (Z to A)" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuFolderSortMostItems"
+                                Command="{x:Bind ViewModel.SetFolderSortCommand}"
+                                CommandParameter="MostItems"
+                                GroupName="FolderSort"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsFolderSort(ViewModel.FolderSort, 'MostItems'), Mode=OneWay}"
+                                Text="Most items" />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuFolderSortNewest"
+                                Command="{x:Bind ViewModel.SetFolderSortCommand}"
+                                CommandParameter="Newest"
+                                GroupName="FolderSort"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsFolderSort(ViewModel.FolderSort, 'Newest'), Mode=OneWay}"
+                                Text="Recently changed" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
+                <Button
+                    x:Name="BtnTreeNewFolder"
+                    Grid.Column="2"
+                    Padding="6,4"
+                    AutomationProperties.AutomationId="BtnTreeNewFolder"
+                    AutomationProperties.Name="New folder"
+                    Command="{x:Bind ViewModel.NewFolderCommand}"
+                    ToolTipService.ToolTip="New folder (Ctrl+Shift+N)">
+                    <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                </Button>
+            </Grid>
             <TreeView
                 x:Name="TreFolders"
                 Grid.Row="3"
+                AllowDrop="False"
                 AutomationProperties.AutomationId="TreFolders"
                 AutomationProperties.Name="Source folders"
+                CanDragItems="False"
+                CanReorderItems="False"
                 ItemInvoked="TreFolders_ItemInvoked"
                 ItemsSource="{x:Bind ViewModel.FolderTree, Mode=OneWay}"
                 Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
                 <TreeView.ItemTemplate>
                     <DataTemplate x:DataType="models:FolderNode">
                         <TreeViewItem
-                            Content="{x:Bind Name, Mode=OneTime}"
-                            IsExpanded="True"
-                            ItemsSource="{x:Bind Children, Mode=OneWay}" />
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                            IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
+                            ItemsSource="{x:Bind Children, Mode=OneWay}">
+                            <TreeViewItem.ContextFlyout>
+                                <MenuFlyout Opening="FolderMenu_Opening">
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuNewSubfolder"
+                                        Command="{x:Bind pages:LibraryPage.GetNewFolderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        KeyboardAcceleratorTextOverride="Ctrl+Shift+N"
+                                        Text="New folder">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuRenameFolder"
+                                        Command="{x:Bind pages:LibraryPage.GetRenameFolderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        KeyboardAcceleratorTextOverride="F2"
+                                        Text="Rename">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Rename" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuDeleteFolder"
+                                        Command="{x:Bind pages:LibraryPage.GetDeleteFolderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Text="Delete empty folder">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuFolderInExplorer"
+                                        Command="{x:Bind pages:LibraryPage.GetShowFolderInExplorerCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        Text="Show in File Explorer">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </TreeViewItem.ContextFlyout>
+                            <Grid
+                                AllowDrop="True"
+                                Background="Transparent"
+                                ColumnSpacing="8"
+                                DragOver="FolderItem_DragOver"
+                                Drop="FolderItem_Drop"
+                                Tag="{x:Bind}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    Text="{x:Bind Name, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis"
+                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsEditing), Mode=OneWay}" />
+                                <TextBox
+                                    x:Name="TxtFolderName"
+                                    x:Load="{x:Bind IsEditing, Mode=OneWay}"
+                                    MinWidth="120"
+                                    AutomationProperties.AutomationId="TxtFolderName"
+                                    AutomationProperties.Name="Folder name"
+                                    KeyDown="FolderEditor_KeyDown"
+                                    Loaded="FolderEditor_Loaded"
+                                    LostFocus="FolderEditor_LostFocus"
+                                    Tag="{x:Bind}"
+                                    Text="{x:Bind EditName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind CountText, Mode=OneWay}" />
+                            </Grid>
+                        </TreeViewItem>
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
@@ -383,7 +544,9 @@
                     <DataTemplate x:DataType="models:AssetItem">
                         <ItemContainer
                             AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
+                            CanDrag="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                             ContextRequested="AssetItem_ContextRequested"
+                            DragStarting="AssetItem_DragStarting"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
                             IsHoldingEnabled="True"

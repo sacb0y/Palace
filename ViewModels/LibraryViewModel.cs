@@ -330,6 +330,7 @@ public partial class LibraryViewModel : ObservableObject
             LoadMosaicSort();
             LoadRecentTags();
             LoadMoveRecents();
+            LoadFolderSort();
             await RefreshQuietAsync();
             await RefreshUndoStateAsync();
         }
@@ -354,7 +355,8 @@ public partial class LibraryViewModel : ObservableObject
             var selectedTagId = SelectedTag?.TagId;
             var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
             var pickItems = BuildTagPicks(tags, memberships);
-            var tree = BuildFolderNodes(sources, assets);
+            var treeSort = FolderSort;
+            var tree = await Task.Run(() => BuildFolderNodes(sources, assets, treeSort));
 
             await UiDispatch.RunAsync(() =>
             {
@@ -410,7 +412,7 @@ public partial class LibraryViewModel : ObservableObject
         }
     }
 
-    private void Notify(string message)
+    public void Notify(string message)
     {
         InfoMessage = message;
         ShowInfo = true;
