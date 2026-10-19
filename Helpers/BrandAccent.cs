@@ -4,7 +4,8 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Optional Palace brand accent ramp. One placeholder hex for a one-line swap later.
-/// Off WinUI — App applies <see cref="Ramp"/> into SystemAccentColor* resources.
+/// Off WinUI — App retints the Accent*Brush instances WinUI already created on the
+/// XamlControlsResources theme dictionaries (a later merged dictionary does not override them).
 /// </summary>
 public static class BrandAccent
 {
@@ -17,7 +18,7 @@ public static class BrandAccent
 
     public const string FollowWindowsLabel = "Follow Windows";
     public const string PalacePinkLabel = "Palace pink";
-    public const string RestartCaption = "Takes effect after restart.";
+    public const string AppliedCaption = "Applies immediately.";
 
     public readonly record struct Rgb(byte R, byte G, byte B);
 
@@ -29,6 +30,16 @@ public static class BrandAccent
         Rgb Dark1,
         Rgb Dark2,
         Rgb Dark3);
+
+    /// <summary>
+    /// WinUI AccentFill / AccentText / TextOnAccent colors for one theme.
+    /// Secondary/Tertiary fills share <see cref="Fill"/> with brush Opacity 0.9 / 0.8.
+    /// </summary>
+    public readonly record struct ThemeAccentColors(
+        Rgb Fill,
+        Rgb AccentText,
+        Rgb AccentTextSecondary,
+        Rgb TextOnAccent);
 
     public static bool IsPalacePink(object? stored) =>
         stored is string text
@@ -53,6 +64,99 @@ public static class BrandAccent
             Dark2: Mix(seed, Black, 0.48),
             Dark3: Mix(seed, Black, 0.65));
     }
+
+    /// <summary>Dark (Default) theme: fills/text from Light*, ink on accent is near-black.</summary>
+    public static ThemeAccentColors ForDarkTheme(Ramp ramp) =>
+        new(Fill: ramp.Light2, AccentText: ramp.Light2, AccentTextSecondary: ramp.Light3, TextOnAccent: Black);
+
+    /// <summary>Light theme: fills/text from Dark*, ink on accent is white.</summary>
+    public static ThemeAccentColors ForLightTheme(Ramp ramp) =>
+        new(Fill: ramp.Dark1, AccentText: ramp.Dark2, AccentTextSecondary: ramp.Dark3, TextOnAccent: White);
+
+    /// <summary>
+    /// Theme dictionary keys that can own accent brushes.
+    /// WinUI generic.xaml puts Accent*Brush on Default (dark and system-dark) and Light.
+    /// Dark is included so a later SDK that adds that key is retinted too.
+    /// </summary>
+    public static readonly string[] ThemeDictionaryKeys = ["Default", "Dark", "Light"];
+
+    /// <summary>
+    /// Color and opacity for one accent brush key. False when <paramref name="key"/> is not an accent brush.
+    /// </summary>
+    public static bool TryBrushPaint(string key, ThemeAccentColors colors, out Rgb rgb, out double opacity)
+    {
+        switch (key)
+        {
+            case "AccentFillColorDefaultBrush":
+            case "NavigationViewSelectionIndicatorForeground":
+                rgb = colors.Fill;
+                opacity = 1.0;
+                return true;
+            case "AccentFillColorSecondaryBrush":
+                rgb = colors.Fill;
+                opacity = 0.9;
+                return true;
+            case "AccentFillColorTertiaryBrush":
+                rgb = colors.Fill;
+                opacity = 0.8;
+                return true;
+            case "AccentTextFillColorPrimaryBrush":
+                rgb = colors.AccentText;
+                opacity = 1.0;
+                return true;
+            case "AccentTextFillColorSecondaryBrush":
+                rgb = colors.AccentTextSecondary;
+                opacity = 1.0;
+                return true;
+            case "AccentTextFillColorTertiaryBrush":
+                rgb = colors.AccentTextSecondary;
+                opacity = 0.6;
+                return true;
+            case "TextOnAccentFillColorPrimaryBrush":
+                rgb = colors.TextOnAccent;
+                opacity = 1.0;
+                return true;
+            case "TextOnAccentFillColorSecondaryBrush":
+                rgb = colors.TextOnAccent;
+                opacity = 0.5;
+                return true;
+            case "TextOnAccentFillColorDisabledBrush":
+                rgb = colors.TextOnAccent;
+                opacity = 0.2;
+                return true;
+            default:
+                rgb = default;
+                opacity = 0;
+                return false;
+        }
+    }
+
+    /// <summary>Brush keys App recreates so ThemeResource Accent*Brush rebinds after Color overrides.</summary>
+    public static readonly string[] AccentBrushKeys =
+    [
+        "AccentFillColorDefaultBrush",
+        "AccentFillColorSecondaryBrush",
+        "AccentFillColorTertiaryBrush",
+        "AccentTextFillColorPrimaryBrush",
+        "AccentTextFillColorSecondaryBrush",
+        "AccentTextFillColorTertiaryBrush",
+        "TextOnAccentFillColorPrimaryBrush",
+        "TextOnAccentFillColorSecondaryBrush",
+        "TextOnAccentFillColorDisabledBrush",
+        "NavigationViewSelectionIndicatorForeground",
+    ];
+
+    /// <summary>SystemAccentColor palette keys (base + Light/Dark 1–3) WinUI AccentFill resolves through.</summary>
+    public static readonly string[] SystemAccentColorKeys =
+    [
+        "SystemAccentColor",
+        "SystemAccentColorLight1",
+        "SystemAccentColorLight2",
+        "SystemAccentColorLight3",
+        "SystemAccentColorDark1",
+        "SystemAccentColorDark2",
+        "SystemAccentColorDark3",
+    ];
 
     /// <summary>Contrast ratio of two sRGB colors (WCAG).</summary>
     public static double ContrastRatio(Rgb a, Rgb b)

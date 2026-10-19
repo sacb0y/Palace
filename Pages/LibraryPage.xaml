@@ -311,15 +311,16 @@
                 <TreeView.Resources>
                     <ResourceDictionary>
                         <ResourceDictionary.ThemeDictionaries>
+                            <!-- Dark: accent text on tertiary fill reads; Light: Dark* text on Dark* fill fails AA — use TextOnAccent. -->
                             <ResourceDictionary x:Key="Default">
                                 <StaticResource x:Key="TreeViewItemBackgroundSelected" ResourceKey="AccentFillColorTertiaryBrush" />
                                 <StaticResource x:Key="TreeViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
                                 <StaticResource x:Key="TreeViewItemForegroundSelected" ResourceKey="AccentTextFillColorPrimaryBrush" />
                             </ResourceDictionary>
                             <ResourceDictionary x:Key="Light">
-                                <StaticResource x:Key="TreeViewItemBackgroundSelected" ResourceKey="AccentFillColorTertiaryBrush" />
+                                <StaticResource x:Key="TreeViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
                                 <StaticResource x:Key="TreeViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
-                                <StaticResource x:Key="TreeViewItemForegroundSelected" ResourceKey="AccentTextFillColorPrimaryBrush" />
+                                <StaticResource x:Key="TreeViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
                             </ResourceDictionary>
                             <ResourceDictionary x:Key="HighContrast">
                                 <StaticResource x:Key="TreeViewItemBackgroundSelected" ResourceKey="SystemColorHighlightColorBrush" />
