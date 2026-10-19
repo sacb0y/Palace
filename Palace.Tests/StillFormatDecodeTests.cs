@@ -331,9 +331,9 @@ public sealed class StillFormatDecodeTests
     public void Exr_UnsupportedCompressionReturnsNullNotThrow()
     {
         var data = ExrFixture(0, 2, 2, 1, (_, _, _) => 1f);
-        // Patch compression byte NONE -> PIZ (4).
+        // Patch compression byte NONE -> an unknown method (99).
         var idx = data.AsSpan().IndexOf("compression\0compression\0"u8) + "compression\0compression\0"u8.Length + 4;
-        data[idx] = 4;
+        data[idx] = 99;
         Assert.Null(ExrFile.TryDecode(data));
         Assert.Equal((2, 2), ExrFile.TryReadSize(data));
     }
@@ -353,7 +353,7 @@ public sealed class StillFormatDecodeTests
         Assert.Equal(HdrKind.HdrExr, HdrFile.Probe(data.AsSpan(0, Math.Min(headLen, data.Length))).Kind);
 
         var idx = data.AsSpan().IndexOf("compression\0compression\0"u8) + "compression\0compression\0"u8.Length + 4;
-        data[idx] = 4; // PIZ: catalog-thumb only, no HDR present
+        data[idx] = 99; // unknown compression: no reader can decode it
         Assert.Equal(HdrKind.None, HdrFile.Probe(data).Kind);
     }
 

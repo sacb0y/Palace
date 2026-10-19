@@ -22,6 +22,10 @@
 
   <ItemGroup>
     <Content Include="Assets\**\*.*" />
+    <!-- Bundled OpenEXR (all compressions, tiled, multi-part): tools/openexr/build-openexr.sh. -->
+    <Content Include="Native\openexr\win-x64\palace_exr.dll" Link="palace_exr.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Native\openexr\win-x64\LICENSE.txt" Link="openexr\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Native\openexr\win-x64\SOURCE.txt" Link="openexr\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
