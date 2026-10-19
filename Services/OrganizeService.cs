@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Palace.Helpers;
 using Palace.Models;
 
@@ -18,7 +17,6 @@ public sealed class OrganizeService
 {
     private readonly CatalogService _catalog;
     private readonly FileOpService _fileOps;
-    private static readonly Regex Token = new(@"\{([^}]+)\}|%([^%]+)%", RegexOptions.Compiled);
 
     public OrganizeService(CatalogService catalog, FileOpService fileOps)
     {
@@ -54,9 +52,7 @@ public sealed class OrganizeService
 
             try
             {
-                var root = choice.Policy == DestinationPolicy.Destination
-                    ? choice.DestinationRoot
-                    : source?.Path;
+                var root = OrganizeNames.Root(choice.Policy, choice.DestinationRoot, source?.Path);
                 if (string.IsNullOrWhiteSpace(root))
                 {
                     preview.Status = "Error";
@@ -185,135 +181,11 @@ public sealed class OrganizeService
         await ApplyAsync(projectId, ready).ConfigureAwait(false);
     }
 
-    public string RenderFolder(string template, Asset asset, IReadOnlyList<AssignedTag> tags)
-    {
-        var rendered = ReplaceTokens(template, asset, tags, forFolder: true);
-        var parts = rendered.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(PathSafe.StripIllegal)
-            .Where(p => p.Length > 0);
-        return Path.Combine(parts.ToArray());
-    }
+    public string RenderFolder(string template, Asset asset, IReadOnlyList<AssignedTag> tags) =>
+        OrganizeNames.RenderFolder(template, asset, tags);
 
-    public string RenderFile(string template, Asset asset, IReadOnlyList<AssignedTag> tags)
-    {
-        var ext = Path.GetExtension(asset.FileName);
-        if (string.IsNullOrEmpty(ext))
-        {
-            ext = Path.GetExtension(asset.Path);
-        }
-
-        var rendered = ReplaceTokens(template, asset, tags, forFolder: false);
-        rendered = PathSafe.StripIllegal(rendered);
-        rendered = PathSafe.CollapseDashes(rendered);
-        if (string.IsNullOrWhiteSpace(rendered))
-        {
-            rendered = Path.GetFileNameWithoutExtension(asset.FileName);
-        }
-
-        if (!rendered.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
-        {
-            rendered += ext;
-        }
-
-        return rendered;
-    }
-
-    private static string ReplaceTokens(string template, Asset asset, IReadOnlyList<AssignedTag> tags, bool forFolder)
-    {
-        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        return Token.Replace(template, match =>
-        {
-            var raw = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Value;
-            var value = ResolveToken(raw, asset, tags, used);
-            if (forFolder && string.IsNullOrWhiteSpace(value))
-            {
-                return "";
-            }
-
-            return value ?? "";
-        });
-    }
-
-    private static string? ResolveToken(string raw, Asset asset, IReadOnlyList<AssignedTag> tags, HashSet<string> used)
-    {
-        var key = raw.Trim();
-        if (key.Equals("original", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.GetFileNameWithoutExtension(asset.FileName);
-        }
-
-        if (key.Equals("ext", StringComparison.OrdinalIgnoreCase))
-        {
-            var ext = Path.GetExtension(asset.FileName);
-            return ext.StartsWith('.') ? ext[1..] : ext;
-        }
-
-        if (key.Equals("model", StringComparison.OrdinalIgnoreCase))
-        {
-            return PathSafe.StripIllegal(asset.Model ?? "");
-        }
-
-        if (key.Equals("seed", StringComparison.OrdinalIgnoreCase))
-        {
-            return asset.Seed ?? "";
-        }
-
-        if (key.StartsWith("tags", StringComparison.OrdinalIgnoreCase))
-        {
-            var take = int.MaxValue;
-            var colon = key.IndexOf(':');
-            if (colon >= 0 && int.TryParse(key[(colon + 1)..], out var n))
-            {
-                take = n;
-            }
-
-            var remaining = tags.Where(t => !used.Contains(t.TagId)).Take(take).ToList();
-            foreach (var t in remaining)
-            {
-                used.Add(t.TagId);
-            }
-
-            return string.Join(", ", remaining.Select(t => t.TagName));
-        }
-
-        if (key.StartsWith("top:", StringComparison.OrdinalIgnoreCase) &&
-            int.TryParse(key[4..], out var topN))
-        {
-            var top = tags.Take(topN).ToList();
-            foreach (var t in top)
-            {
-                used.Add(t.TagId);
-            }
-
-            return string.Join("/", top.Select(t => t.Slug));
-        }
-
-        if (key.StartsWith("facet:", StringComparison.OrdinalIgnoreCase)
-            || key.StartsWith("group:", StringComparison.OrdinalIgnoreCase))
-        {
-            var groupName = key[(key.IndexOf(':') + 1)..];
-            var hit = tags.FirstOrDefault(t =>
-                t.ParentNames.Any(p => p.Equals(groupName, StringComparison.OrdinalIgnoreCase)));
-            return hit?.TagName ?? "";
-        }
-
-        var byGroup = tags.FirstOrDefault(t =>
-            t.ParentNames.Any(p => p.Equals(key, StringComparison.OrdinalIgnoreCase)));
-        if (byGroup is not null)
-        {
-            used.Add(byGroup.TagId);
-            return byGroup.TagName;
-        }
-
-        var byTag = tags.FirstOrDefault(t => t.TagName.Equals(key, StringComparison.OrdinalIgnoreCase));
-        if (byTag is not null)
-        {
-            used.Add(byTag.TagId);
-            return byTag.TagName;
-        }
-
-        return "";
-    }
+    public string RenderFile(string template, Asset asset, IReadOnlyList<AssignedTag> tags) =>
+        OrganizeNames.RenderFile(template, asset, tags);
 
     private static string UniqueAmong(string desired, HashSet<string> used, string currentPath)
     {
@@ -321,6 +193,12 @@ public sealed class OrganizeService
         var dir = Path.GetDirectoryName(desired) ?? "";
         var name = Path.GetFileNameWithoutExtension(desired);
         var ext = Path.GetExtension(desired);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = "untitled";
+            candidate = Path.Combine(dir, name + ext);
+        }
+
         var n = 2;
         while ((CloudFile.Exists(candidate) && !string.Equals(candidate, currentPath, StringComparison.OrdinalIgnoreCase))
                || used.Contains(candidate))
