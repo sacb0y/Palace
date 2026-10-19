@@ -19,6 +19,9 @@ internal sealed class HdrFrame
     public required float MinNits { get; init; }
     public required float MaxScrgb { get; init; }
 
+    /// <summary>Native-pixel channel of <see cref="MaxScrgb"/> ('R'/'G'/'B'), or '\0' when unknown.</summary>
+    public char MaxScrgbChannel { get; init; }
+
     public bool HasStats => MaxNits > 0;
 
     private float _p99MaxRgbNits = -1f;
@@ -887,7 +890,8 @@ internal static class HdrWicDecode
             MaxNits = converted.Value.MaxNits,
             AvgNits = converted.Value.AvgNits,
             MinNits = converted.Value.MinNits,
-            MaxScrgb = converted.Value.MaxScrgb
+            MaxScrgb = converted.Value.MaxScrgb,
+            MaxScrgbChannel = converted.Value.MaxScrgbChannel
         };
     }
 
@@ -973,7 +977,8 @@ internal static class HdrWicDecode
                 MaxNits = converted.Value.MaxNits,
                 AvgNits = converted.Value.AvgNits,
                 MinNits = converted.Value.MinNits,
-                MaxScrgb = converted.Value.MaxScrgb
+                MaxScrgb = converted.Value.MaxScrgb,
+                MaxScrgbChannel = converted.Value.MaxScrgbChannel
             };
         }
         catch (OperationCanceledException)
@@ -1031,7 +1036,8 @@ internal static class HdrWicDecode
                         MaxNits = frame.MaxNits,
                         AvgNits = frame.AvgNits,
                         MinNits = frame.MinNits,
-                        MaxScrgb = frame.MaxScrgb
+                        MaxScrgb = frame.MaxScrgb,
+                        MaxScrgbChannel = frame.MaxScrgbChannel
                     };
                 }
             }
@@ -1066,7 +1072,8 @@ internal static class HdrWicDecode
                 MaxNits = frame.MaxNits,
                 AvgNits = frame.AvgNits,
                 MinNits = frame.MinNits,
-                MaxScrgb = frame.MaxScrgb
+                MaxScrgb = frame.MaxScrgb,
+                MaxScrgbChannel = frame.MaxScrgbChannel
             };
         }
         catch
@@ -1255,7 +1262,8 @@ internal static class HdrWicDecode
             MaxNits = converted.Value.MaxNits,
             AvgNits = converted.Value.AvgNits,
             MinNits = converted.Value.MinNits,
-            MaxScrgb = converted.Value.MaxScrgb
+            MaxScrgb = converted.Value.MaxScrgb,
+            MaxScrgbChannel = converted.Value.MaxScrgbChannel
         };
     }
 
@@ -1281,7 +1289,7 @@ internal static class HdrWicDecode
                 nativeHeight);
     }
 
-    private static (float[]? Rgba, float MaxNits, float AvgNits, float MinNits, float MaxScrgb)? Convert(
+    private static (float[]? Rgba, float MaxNits, float AvgNits, float MinNits, float MaxScrgb, char MaxScrgbChannel)? Convert(
         byte[] data,
         HdrPackedFormat format,
         int width,
@@ -1312,6 +1320,9 @@ internal static class HdrWicDecode
         var minY = float.MaxValue;
         var sumY = 0.0;
         var maxScrgb = 0f;
+        var maxR = 0f;
+        var maxG = 0f;
+        var maxB = 0f;
         for (var i = 0; i < count; i++)
         {
             if (!wantRgba && (i & 0x3FFF) == 0)
@@ -1352,6 +1363,9 @@ internal static class HdrWicDecode
             minY = Math.Min(minY, nitsY);
             sumY += nitsY;
             maxScrgb = Math.Max(maxScrgb, Math.Max(sr, Math.Max(sg, sb)));
+            maxR = Math.Max(maxR, sr);
+            maxG = Math.Max(maxG, sg);
+            maxB = Math.Max(maxB, sb);
             if (rgba is not null)
             {
                 var o = i * 4;
@@ -1372,7 +1386,8 @@ internal static class HdrWicDecode
             minY = 0;
         }
 
-        return (rgba, maxY, (float)(sumY / count), minY, maxScrgb);
+        return (rgba, maxY, (float)(sumY / count), minY, maxScrgb,
+            maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(maxR, maxG, maxB));
     }
 
     /// <summary>
@@ -1698,7 +1713,8 @@ internal static class HdrWicDecode
                 MaxNits = converted.Value.MaxNits,
                 AvgNits = converted.Value.AvgNits,
                 MinNits = converted.Value.MinNits,
-                MaxScrgb = converted.Value.MaxScrgb
+                MaxScrgb = converted.Value.MaxScrgb,
+                MaxScrgbChannel = converted.Value.MaxScrgbChannel
             };
         }
 
