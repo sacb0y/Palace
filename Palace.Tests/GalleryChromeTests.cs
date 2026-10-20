@@ -67,5 +67,24 @@ public sealed class GalleryChromeTests
         Assert.False(GalleryChrome.ParseSectionExpanded(false, defaultExpanded: true));
         Assert.True(GalleryChrome.ParseSectionExpanded("true", defaultExpanded: false));
     }
+
+    [Fact]
+    public void CoerceExclusivePanels_DetailsWinsWhenBothOn()
+    {
+        Assert.Equal((true, false), GalleryChrome.CoerceExclusivePanels(true, true));
+        Assert.Equal((true, false), GalleryChrome.CoerceExclusivePanels(true, false));
+        Assert.Equal((false, true), GalleryChrome.CoerceExclusivePanels(false, true));
+        Assert.Equal((false, false), GalleryChrome.CoerceExclusivePanels(false, false));
+    }
+
+    [Fact]
+    public void CoerceExclusivePanels_FirstRunDefaultsPreferDetails()
+    {
+        var details = GalleryChrome.ParseShowDetails(null);
+        var info = GalleryChrome.ParseShowImageInfo(null);
+        Assert.True(details);
+        Assert.True(info);
+        Assert.Equal((true, false), GalleryChrome.CoerceExclusivePanels(details, info));
+    }
 }
 

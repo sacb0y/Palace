@@ -16,6 +16,7 @@ public partial class GalleryViewModel : ObservableObject
     private readonly IReadOnlyList<AssetItem> _items;
     private int _loadEpoch;
     private bool _chromeReady;
+    private bool _suppressExclusiveChrome;
 
     public GalleryViewModel(IReadOnlyList<AssetItem> items, int startIndex, CatalogService catalog)
     {
@@ -413,6 +414,20 @@ public partial class GalleryViewModel : ObservableObject
         {
             ApplicationData.Current.LocalSettings.Values[GalleryChrome.ShowImageInfoKey] = value;
         }
+
+        // One panel at a time: opening Info closes floating Details.
+        if (value && !_suppressExclusiveChrome && ShowDetails)
+        {
+            _suppressExclusiveChrome = true;
+            try
+            {
+                ShowDetails = false;
+            }
+            finally
+            {
+                _suppressExclusiveChrome = false;
+            }
+        }
     }
 
     partial void OnShowDetailsChanged(bool value)
@@ -420,6 +435,20 @@ public partial class GalleryViewModel : ObservableObject
         if (_chromeReady)
         {
             ApplicationData.Current.LocalSettings.Values[GalleryChrome.ShowDetailsKey] = value;
+        }
+
+        // One panel at a time: opening Details closes the top-left Info card.
+        if (value && !_suppressExclusiveChrome && ShowImageInfo)
+        {
+            _suppressExclusiveChrome = true;
+            try
+            {
+                ShowImageInfo = false;
+            }
+            finally
+            {
+                _suppressExclusiveChrome = false;
+            }
         }
     }
 
@@ -434,10 +463,25 @@ public partial class GalleryViewModel : ObservableObject
     private void LoadChromeSettings()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
-        ShowImageInfo = GalleryChrome.ParseShowImageInfo(values[GalleryChrome.ShowImageInfoKey]);
-        ShowDetails = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
+        var info = GalleryChrome.ParseShowImageInfo(values[GalleryChrome.ShowImageInfoKey]);
+        var details = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
+        (details, info) = GalleryChrome.CoerceExclusivePanels(details, info);
+        _suppressExclusiveChrome = true;
+        try
+        {
+            ShowImageInfo = info;
+            ShowDetails = details;
+        }
+        finally
+        {
+            _suppressExclusiveChrome = false;
+        }
+
         LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
         _chromeReady = true;
+        // Persist coerced exclusivity so a prior both-on prefs pair does not return.
+        values[GalleryChrome.ShowImageInfoKey] = info;
+        values[GalleryChrome.ShowDetailsKey] = details;
     }
 
     partial void OnGifFrameIndexChanged(double value)
