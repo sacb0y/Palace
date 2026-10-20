@@ -43,9 +43,14 @@ public readonly record struct HdrProbe(
     /// JPEG XR HDR is often already float/half scRGB; WinRT has no float
     /// pixel format, so present uses native WIC COM into the same swapchain
     /// as HDR PNG — not Magick, not <c>BitmapImage</c>.
+    /// HDR PNG presents only for cICP PQ/HLG (16/18); cLLi/mDCv without that
+    /// transfer stays <see cref="IsHdr"/> for the badge / Details line but
+    /// does not take the scRGB path (sRGB / <c>BitmapImage</c>).
     /// </summary>
-    public bool CanPresentHdr => Kind is HdrKind.HdrPng or HdrKind.HdrAvif
-        or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl or HdrKind.HdrRadiance or HdrKind.HdrExr;
+    public bool CanPresentHdr =>
+        Kind is HdrKind.HdrAvif or HdrKind.HdrHeif or HdrKind.HdrJxr or HdrKind.HdrJxl
+            or HdrKind.HdrRadiance or HdrKind.HdrExr
+        || (Kind is HdrKind.HdrPng && (IsPq || IsHlg));
 
     public bool IsPq => CicpTransfer == 16;
 
@@ -195,7 +200,10 @@ public static class HdrFile
         var i = 8;
         int? primaries = null;
         int? transfer = null;
+        int? matrix = null;
+        bool? fullRange = null;
         int? maxCll = null;
+        int? bitDepth = null;
         var hasCicp = false;
         var hasMastering = false;
         var hasSrgb = false;
@@ -211,11 +219,20 @@ public static class HdrFile
 
             var type = Encoding.ASCII.GetString(data.Slice(i + 4, 4));
             var payload = data.Slice(i + 8, len);
-            if (type == "cICP" && payload.Length >= 3)
+            if (type == "IHDR" && payload.Length >= 9)
+            {
+                bitDepth = payload[8];
+            }
+            else if (type == "cICP" && payload.Length >= 3)
             {
                 hasCicp = true;
                 primaries = payload[0];
                 transfer = payload[1];
+                if (payload.Length >= 4)
+                {
+                    matrix = payload[2];
+                    fullRange = payload[3] != 0;
+                }
             }
             else if (type is "cLLi" or "cLLI" && payload.Length >= 4)
             {
@@ -245,12 +262,12 @@ public static class HdrFile
         var hdrTransfer = transfer is 16 or 18;
         if (hdrTransfer || hasMastering)
         {
-            return new HdrProbe(HdrKind.HdrPng, primaries, transfer, maxCll);
+            return new HdrProbe(HdrKind.HdrPng, primaries, transfer, maxCll, matrix, fullRange, bitDepth);
         }
 
         if (hasCicp && primaries is 9 or 12)
         {
-            return new HdrProbe(HdrKind.WideGamutPng, primaries, transfer, maxCll);
+            return new HdrProbe(HdrKind.WideGamutPng, primaries, transfer, maxCll, matrix, fullRange, bitDepth);
         }
 
         // ICC-only wide gamut (no cICP; an sRGB chunk wins over iCCP per the PNG spec):
@@ -259,7 +276,7 @@ public static class HdrFile
         if (!hasCicp && !hasSrgb && icc is { } match)
         {
             return new HdrProbe(HdrKind.WideGamutPng, match.CicpPrimaries, 13, maxCll,
-                SourcePrimaries: $"{match.Name} (ICC)");
+                BitDepth: bitDepth, SourcePrimaries: $"{match.Name} (ICC)");
         }
 
         return HdrProbe.None;

@@ -95,6 +95,28 @@ internal static class HdrWicDecode
                 cancellation).ConfigureAwait(false);
         }
 
+        if (PngFile.ShouldDecodeManaged(probe))
+        {
+            try
+            {
+                var png = await Task.Run(
+                    () => FromManagedPng(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
+                    cancellation).ConfigureAwait(false);
+                if (png is not null)
+                {
+                    return png;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Managed PNG inflate/unfilter failed — fall through to WIC.
+            }
+        }
+
         if (probe.Kind == HdrKind.HdrJxr)
         {
             return await TryLoadJxrAsync(
@@ -240,6 +262,34 @@ internal static class HdrWicDecode
                             frame.NativeHeight);
                 },
                 cancellation).ConfigureAwait(false);
+        }
+
+        if (PngFile.ShouldDecodeManaged(probe))
+        {
+            try
+            {
+                var png = await Task.Run(
+                    () => FromManagedPng(path, probe, viewportPixelWidth, viewportPixelHeight, ImageScaling.Fit),
+                    cancellation).ConfigureAwait(false);
+                if (png is not null)
+                {
+                    return new HdrStats(
+                        png.MaxNits,
+                        png.AvgNits,
+                        png.MinNits,
+                        png.MaxScrgb,
+                        png.NativeWidth,
+                        png.NativeHeight);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Managed PNG failed — fall through to WIC.
+            }
         }
 
         if (probe.Kind == HdrKind.HdrJxr)
@@ -996,6 +1046,66 @@ internal static class HdrWicDecode
     private static bool IsLinearFloatStill(HdrProbe probe, string path) =>
         probe.Kind is HdrKind.HdrRadiance or HdrKind.HdrExr
         || PathSafe.IsRadiance(path);
+
+    /// <summary>
+    /// HDR PNG (cICP PQ/HLG): inflate IDAT ourselves so WinRT WIC cannot
+    /// color-manage the frame to 8-bit sRGB before we apply PQ/HLG → scRGB.
+    /// </summary>
+    private static HdrFrame? FromManagedPng(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        ImageScaling scaling)
+    {
+        var encoded = PngFile.TryDecodeEncodedRgba(path);
+        if (encoded is null)
+        {
+            return null;
+        }
+
+        var nativeW = encoded.Value.Width;
+        var nativeH = encoded.Value.Height;
+        var (decodeW, decodeH) = GalleryPresent.PresentDecodeSize(
+            nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
+        if (decodeW <= 0 || decodeH <= 0)
+        {
+            decodeW = nativeW;
+            decodeH = nativeH;
+        }
+
+        var frame = ToScrgb(
+            encoded.Value.Data,
+            encoded.Value.Format,
+            nativeW,
+            nativeH,
+            nativeW,
+            nativeH,
+            probe);
+        if (frame is null)
+        {
+            return null;
+        }
+
+        if (decodeW < nativeW || decodeH < nativeH)
+        {
+            return new HdrFrame
+            {
+                ScrgbRgba = HdrPixels.BoxScaleScrgb(frame.ScrgbRgba, nativeW, nativeH, decodeW, decodeH),
+                Width = decodeW,
+                Height = decodeH,
+                NativeWidth = nativeW,
+                NativeHeight = nativeH,
+                MaxNits = frame.MaxNits,
+                AvgNits = frame.AvgNits,
+                MinNits = frame.MinNits,
+                MaxScrgb = frame.MaxScrgb,
+                MaxScrgbChannel = frame.MaxScrgbChannel
+            };
+        }
+
+        return frame;
+    }
 
     /// <summary>
     /// Decode at the present size (as the WIC paths do): Radiance box-filters
