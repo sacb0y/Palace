@@ -1,0 +1,1 @@
+﻿Color and HDR expander not shown: InfoHasColorSection stayed false for these SFW JPEGs/PNGs (no color/HDR rows). File/Histogram/Gamut/Tags covered in both hosts.

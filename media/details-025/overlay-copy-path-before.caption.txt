@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: before Copy path (clipboard marker set).

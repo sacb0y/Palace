@@ -1,0 +1,1 @@
+﻿Histogram Compact=True hides Luma/RGB mode toggles in Details card; not visible to capture.

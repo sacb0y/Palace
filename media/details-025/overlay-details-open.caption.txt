@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: Details card open with File/Histogram/Gamut/Tags - hit-testable host.

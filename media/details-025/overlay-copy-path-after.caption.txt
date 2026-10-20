@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: after Copy path - clipboard has path (ends 'aero-dark.jpg').

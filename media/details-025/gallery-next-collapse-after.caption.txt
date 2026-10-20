@@ -1,0 +1,1 @@
+﻿74abeb1 GalleryWindow: after Next - Tags still collapsed.

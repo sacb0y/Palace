@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: Histogram section expanded (pointer toggle works).

@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: after Show in Explorer (Explorer should select aero-dark.jpg).

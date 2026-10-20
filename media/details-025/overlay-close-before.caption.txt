@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: Details open before Close.

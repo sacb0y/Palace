@@ -1,0 +1,1 @@
+﻿74abeb1 GalleryWindow: Details card open - same hit-testable controls.

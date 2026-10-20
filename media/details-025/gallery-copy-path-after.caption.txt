@@ -1,0 +1,1 @@
+﻿74abeb1 GalleryWindow: after footer Copy path - clipboard ends 'dark-still.png'.

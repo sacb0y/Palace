@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: after Open with (default app should have launched for JPG).

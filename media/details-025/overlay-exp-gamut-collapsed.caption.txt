@@ -1,0 +1,1 @@
+﻿74abeb1 overlay: Gamut section collapsed (pointer toggle works).
