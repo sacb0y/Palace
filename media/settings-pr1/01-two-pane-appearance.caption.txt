@@ -1,0 +1,1 @@
+﻿Two-pane Settings: left ~180px section list with Fluent icons + accent pill on Appearance; content pane Theme/Accent/Background.

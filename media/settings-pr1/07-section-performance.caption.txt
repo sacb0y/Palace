@@ -1,0 +1,1 @@
+﻿Performance & Storage section — media cache and catalog location.

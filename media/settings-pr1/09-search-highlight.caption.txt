@@ -1,0 +1,1 @@
+﻿Search filtering: query "peak nits" jumps to Viewer and highlights the HDR peak card.
