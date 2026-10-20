@@ -90,6 +90,28 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void BlurRadius_MapsPercentToDipLinearly()
+    {
+        Assert.Equal(0f, ShellBackground.BlurRadius(0), 2);
+        Assert.Equal(ShellBackground.MaxBlurRadius * 0.25f, ShellBackground.BlurRadius(25), 2);
+        Assert.Equal(ShellBackground.MaxBlurRadius * 0.50f, ShellBackground.BlurRadius(50), 2);
+        Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(100), 2);
+        Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(400), 2);
+        Assert.Equal(0f, ShellBackground.BlurRadius(-10), 2);
+    }
+
+    [Fact]
+    public void QuantizedBlurRadius_StepsAndCacheKey()
+    {
+        Assert.Equal(0, ShellBackground.QuantizedBlurRadius(0));
+        Assert.Equal(16, ShellBackground.QuantizedBlurRadius(25)); // 16 DIP at 25% of 64
+        Assert.Equal(32, ShellBackground.QuantizedBlurRadius(50));
+        Assert.Equal(64, ShellBackground.QuantizedBlurRadius(100));
+        Assert.Equal("Ribbons:D:32", ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, false, 50));
+        Assert.Equal("Ribbons:L:16", ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, true, 25));
+    }
+
+    [Fact]
     public void DefaultAmounts_FollowManifestPerTheme()
     {
         Assert.Equal(45, ShellBackground.DefaultDarknessFor(ShellPresetKind.Ribbons), 2);

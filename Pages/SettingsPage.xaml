@@ -13,18 +13,32 @@
 
     <Page.Resources>
         <DataTemplate x:Key="ShellPresetTile" x:DataType="models:ShellPresetItem">
+            <!--
+              Selection chrome is on the swatch only (IsSelected). GridViews use
+              SelectionMode=None so group SelectedItem cannot multi-highlight.
+              Padding keeps the label clear of the accent ring.
+            -->
             <StackPanel
-                Width="112"
+                Width="120"
+                Padding="4,4,4,2"
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
                 AutomationProperties.Name="{x:Bind Name}"
-                Spacing="4">
-                <Border
-                    Height="64"
-                    Background="{x:Bind Swatch, Mode=OneWay}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{ThemeResource ControlCornerRadius}" />
+                Spacing="6">
+                <Grid Height="64">
+                    <Border
+                        Margin="2"
+                        Background="{x:Bind Swatch, Mode=OneWay}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="{ThemeResource ControlCornerRadius}" />
+                    <Border
+                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                        BorderThickness="2"
+                        CornerRadius="{ThemeResource ControlCornerRadius}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}" />
+                </Grid>
                 <TextBlock
+                    Padding="2,0"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind Name}"
                     TextTrimming="CharacterEllipsis" />
@@ -64,7 +78,7 @@
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Presets sit behind chrome. Buttons, panes, and cards keep ThemeResource / Fluent. Blur frosts image backgrounds."
+                Text="Presets sit behind chrome. Buttons, panes, and cards keep ThemeResource / Fluent. Blur softens image backgrounds."
                 TextWrapping="Wrap" />
             <StackPanel
                 x:Name="GrdShellPresets"
@@ -77,8 +91,7 @@
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.ChromeBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    SelectionMode="None" />
                 <TextBlock
                     AutomationProperties.AutomationId="TxtShellPresetGroup_Vivid"
                     Style="{StaticResource SubtitleTextBlockStyle}"
@@ -89,8 +102,7 @@
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.VividBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    SelectionMode="None" />
                 <TextBlock
                     AutomationProperties.AutomationId="TxtShellPresetGroup_Creator"
                     Style="{StaticResource SubtitleTextBlockStyle}"
@@ -101,16 +113,14 @@
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.CreatorBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    SelectionMode="None" />
                 <GridView
                     AutomationProperties.Name="Custom background"
                     IsItemClickEnabled="True"
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.CustomBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    SelectionMode="None" />
             </StackPanel>
             <TextBlock
                 x:Name="TxtShellWallpaper"
@@ -175,7 +185,7 @@
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Blur blends toward a frosted copy of image backgrounds. Disabled for gradients and Mica."
+                Text="Blur softens image backgrounds (real blur amount). Disabled for Neutral and Mica."
                 TextWrapping="Wrap"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.BlurEnabled), Mode=OneWay}" />
             <ToggleSwitch
