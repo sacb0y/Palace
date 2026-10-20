@@ -18,8 +18,8 @@ using Windows.UI.ViewManagement;
 namespace Palace.Controls;
 
 /// <summary>
-/// Floating Details panel for overlay / GalleryWindow. Does not consume image
-/// layout — docks right (340 epx) or bottom sheet under 720 epx width.
+/// Floating Details / Info panel for overlay / GalleryWindow. Docks under the
+/// left toolbar (~270 epx) — does not consume image layout or cover transport.
 /// </summary>
 public sealed partial class ViewerDetailsCard : UserControl
 {
@@ -80,7 +80,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         try
         {
             BrdDetailsCard.Shadow = new ThemeShadow();
-            BrdDetailsCard.Translation = new Vector3(0, 0, 32);
+            BrdDetailsCard.Translation = new Vector3(0, 0, 24);
         }
         catch
         {
@@ -98,7 +98,10 @@ public sealed partial class ViewerDetailsCard : UserControl
 
     private void HookSectionExpanders()
     {
-        foreach (var expander in new[] { ExpFile, ExpTags, ExpImage, ExpVideo, ExpGeneration })
+        foreach (var expander in new[]
+                 {
+                     ExpFile, ExpColorHdr, ExpHistogram, ExpGamut, ExpVideo, ExpTags, ExpGeneration
+                 })
         {
             expander.RegisterPropertyChangedCallback(
                 Expander.IsExpandedProperty,
@@ -162,12 +165,21 @@ public sealed partial class ViewerDetailsCard : UserControl
         if (e.PropertyName is nameof(GalleryViewModel.Current)
             or nameof(GalleryViewModel.CurrentKind)
             or nameof(GalleryViewModel.Title)
-            or nameof(GalleryViewModel.CurrentIndex))
+            or nameof(GalleryViewModel.CurrentIndex)
+            or nameof(GalleryViewModel.ShowHistogram)
+            or nameof(GalleryViewModel.ShowGamut)
+            or nameof(GalleryViewModel.InfoHasColorSection)
+            or nameof(GalleryViewModel.IsVideo))
         {
             UpdateModuleVisibility();
             UpdateLandmark();
-            ResetScroll();
-            AnnounceFileChange();
+            if (e.PropertyName is nameof(GalleryViewModel.Current)
+                or nameof(GalleryViewModel.CurrentIndex)
+                or nameof(GalleryViewModel.Title))
+            {
+                ResetScroll();
+                AnnounceFileChange();
+            }
         }
         else if (e.PropertyName is nameof(GalleryViewModel.ShowGeneration))
         {
@@ -184,41 +196,23 @@ public sealed partial class ViewerDetailsCard : UserControl
 
     private void ApplyLayout(double width, double height)
     {
-        var bottom = ViewerDetailsLayout.UsesBottomSheet(width);
-        var panelWidth = ViewerDetailsLayout.EffectivePanelWidth(width, bottom);
-
+        var panelWidth = ViewerDetailsLayout.EffectivePanelWidth(width);
         if (Gallery is not null)
         {
-            Gallery.DetailsUsesBottomSheet = bottom;
+            Gallery.DetailsUsesBottomSheet = false;
             Gallery.DetailsPanelWidth = panelWidth;
         }
 
-        if (bottom)
-        {
-            BrdDetailsCard.Width = double.NaN;
-            BrdDetailsCard.MinWidth = 0;
-            BrdDetailsCard.MaxHeight = ViewerDetailsLayout.BottomSheetMaxHeight(height);
-            BrdDetailsCard.HorizontalAlignment = HorizontalAlignment.Stretch;
-            BrdDetailsCard.VerticalAlignment = VerticalAlignment.Bottom;
-            BrdDetailsCard.Margin = new Thickness(
-                ViewerDetailsLayout.Inset,
-                0,
-                ViewerDetailsLayout.Inset,
-                ViewerDetailsLayout.Inset);
-        }
-        else
-        {
-            BrdDetailsCard.Width = panelWidth;
-            BrdDetailsCard.MinWidth = ViewerDetailsLayout.PanelMinWidth;
-            BrdDetailsCard.MaxHeight = double.PositiveInfinity;
-            BrdDetailsCard.HorizontalAlignment = HorizontalAlignment.Right;
-            BrdDetailsCard.VerticalAlignment = VerticalAlignment.Stretch;
-            BrdDetailsCard.Margin = new Thickness(
-                0,
-                ViewerDetailsLayout.TopInset,
-                ViewerDetailsLayout.Inset,
-                ViewerDetailsLayout.Inset);
-        }
+        BrdDetailsCard.Width = panelWidth;
+        BrdDetailsCard.MinWidth = ViewerDetailsLayout.PanelMinWidth;
+        BrdDetailsCard.MaxHeight = ViewerDetailsLayout.PanelMaxHeight(height);
+        BrdDetailsCard.HorizontalAlignment = HorizontalAlignment.Left;
+        BrdDetailsCard.VerticalAlignment = VerticalAlignment.Top;
+        BrdDetailsCard.Margin = new Thickness(
+            ViewerDetailsLayout.Inset,
+            ViewerDetailsLayout.TopInset,
+            ViewerDetailsLayout.Inset,
+            ViewerDetailsLayout.Inset);
     }
 
     private void SyncOpenState(bool animate)
@@ -241,11 +235,11 @@ public sealed partial class ViewerDetailsCard : UserControl
         if (!animate || reduce)
         {
             BrdDetailsCard.Opacity = 1;
-            SetTranslationX(0);
+            SetTranslationY(0);
             return;
         }
 
-        Animate(fromX: ViewerDetailsLayout.EnterOffsetX, toX: 0, fromOpacity: 0, toOpacity: 1, ViewerDetailsLayout.EnterMs, easeOut: true);
+        Animate(fromY: ViewerDetailsLayout.EnterOffsetY, toY: 0, fromOpacity: 0, toOpacity: 1, ViewerDetailsLayout.EnterMs, easeOut: true);
     }
 
     private void PlayCloseAnimation(bool animate)
@@ -255,13 +249,13 @@ public sealed partial class ViewerDetailsCard : UserControl
         {
             BrdDetailsCard.Opacity = 0;
             BrdDetailsCard.Visibility = Visibility.Collapsed;
-            SetTranslationX(ViewerDetailsLayout.EnterOffsetX);
+            SetTranslationY(ViewerDetailsLayout.EnterOffsetY);
             return;
         }
 
         Animate(
-            fromX: 0,
-            toX: ViewerDetailsLayout.EnterOffsetX,
+            fromY: 0,
+            toY: ViewerDetailsLayout.EnterOffsetY,
             fromOpacity: 1,
             toOpacity: 0,
             ViewerDetailsLayout.ExitMs,
@@ -273,8 +267,8 @@ public sealed partial class ViewerDetailsCard : UserControl
     }
 
     private void Animate(
-        double fromX,
-        double toX,
+        double fromY,
+        double toY,
         double fromOpacity,
         double toOpacity,
         int ms,
@@ -295,7 +289,7 @@ public sealed partial class ViewerDetailsCard : UserControl
             : compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0.0f), new Vector2(1.0f, 1.0f));
 
         BrdDetailsCard.Opacity = fromOpacity;
-        SetTranslationX(fromX);
+        SetTranslationY(fromY);
 
         var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
         opacityAnim.InsertKeyFrame(0, (float)fromOpacity);
@@ -303,8 +297,8 @@ public sealed partial class ViewerDetailsCard : UserControl
         opacityAnim.Duration = duration;
 
         var offsetAnim = compositor.CreateScalarKeyFrameAnimation();
-        offsetAnim.InsertKeyFrame(0, (float)fromX);
-        offsetAnim.InsertKeyFrame(1, (float)toX, easing);
+        offsetAnim.InsertKeyFrame(0, (float)fromY);
+        offsetAnim.InsertKeyFrame(1, (float)toY, easing);
         offsetAnim.Duration = duration;
 
         var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
@@ -312,20 +306,20 @@ public sealed partial class ViewerDetailsCard : UserControl
         {
             _animating = false;
             BrdDetailsCard.Opacity = toOpacity;
-            SetTranslationX(toX);
+            SetTranslationY(toY);
             onComplete?.Invoke();
         };
         visual.StartAnimation("Opacity", opacityAnim);
-        visual.StartAnimation("Offset.X", offsetAnim);
+        visual.StartAnimation("Offset.Y", offsetAnim);
         batch.End();
     }
 
-    private void SetTranslationX(double x)
+    private void SetTranslationY(double y)
     {
         try
         {
             var current = BrdDetailsCard.Translation;
-            BrdDetailsCard.Translation = new Vector3((float)x, current.Y, current.Z == 0 ? 32 : current.Z);
+            BrdDetailsCard.Translation = new Vector3(current.X, (float)y, current.Z == 0 ? 24 : current.Z);
         }
         catch
         {
@@ -349,25 +343,29 @@ public sealed partial class ViewerDetailsCard : UserControl
     private void UpdateModuleVisibility()
     {
         var kind = Gallery?.CurrentKind ?? AssetKind.Other;
-        ExpImage.Visibility = BindHelpers.BoolToVisibility(DetailsModuleCatalog.Includes(DetailsModuleKind.Image, kind));
-        ExpVideo.Visibility = BindHelpers.BoolToVisibility(DetailsModuleCatalog.Includes(DetailsModuleKind.Video, kind));
+        var showStill = DetailsModuleCatalog.Includes(DetailsModuleKind.ColorHdr, kind);
+        ExpColorHdr.Visibility = BindHelpers.BoolToVisibility(
+            showStill && Gallery?.InfoHasColorSection == true);
+        ExpHistogram.Visibility = BindHelpers.BoolToVisibility(
+            showStill && Gallery?.ShowHistogram == true);
+        ExpGamut.Visibility = BindHelpers.BoolToVisibility(
+            showStill && Gallery?.ShowGamut == true);
+        ExpVideo.Visibility = BindHelpers.BoolToVisibility(
+            DetailsModuleCatalog.Includes(DetailsModuleKind.Video, kind));
     }
 
     private void UpdateLandmark()
     {
-        var name = helpersName();
+        var name = BindHelpers.DetailsLandmarkName(Gallery?.Title);
         AutomationProperties.SetName(BrdDetailsCard, name);
         AutomationProperties.SetLocalizedLandmarkType(BrdDetailsCard, "Details");
-
-        string helpersName() => BindHelpers.DetailsLandmarkName(Gallery?.Title);
     }
 
     private void AnnounceOpenState()
     {
         var peer = FrameworkElementAutomationPeer.FromElement(BrdDetailsCard)
             ?? FrameworkElementAutomationPeer.CreatePeerForElement(BrdDetailsCard);
-        peer?.RaiseAutomationEvent(
-            IsOpen ? AutomationEvents.LiveRegionChanged : AutomationEvents.LiveRegionChanged);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
         try
         {
             var text = IsOpen ? "Details shown" : "Details hidden";
@@ -415,9 +413,11 @@ public sealed partial class ViewerDetailsCard : UserControl
         {
             var values = ApplicationData.Current.LocalSettings.Values;
             ApplyExpanded(ExpFile, DetailsModuleCatalog.File, values);
-            ApplyExpanded(ExpTags, DetailsModuleCatalog.Tags, values);
-            ApplyExpanded(ExpImage, DetailsModuleCatalog.Image, values);
+            ApplyExpanded(ExpColorHdr, DetailsModuleCatalog.ColorHdr, values);
+            ApplyExpanded(ExpHistogram, DetailsModuleCatalog.Histogram, values);
+            ApplyExpanded(ExpGamut, DetailsModuleCatalog.Gamut, values);
             ApplyExpanded(ExpVideo, DetailsModuleCatalog.Video, values);
+            ApplyExpanded(ExpTags, DetailsModuleCatalog.Tags, values);
             ApplyExpanded(ExpGeneration, DetailsModuleCatalog.Generation, values);
         }
         finally
@@ -444,6 +444,16 @@ public sealed partial class ViewerDetailsCard : UserControl
         }
 
         ApplicationData.Current.LocalSettings.Values[GalleryChrome.DetailsSectionKey(id)] = expanded;
+    }
+
+    private void BtnDetailsClose_Click(object sender, RoutedEventArgs e)
+    {
+        if (Gallery is not null)
+        {
+            Gallery.ShowDetails = false;
+        }
+
+        IsOpen = false;
     }
 
     private void BrdDetailsCard_PointerEntered(object sender, PointerRoutedEventArgs e)

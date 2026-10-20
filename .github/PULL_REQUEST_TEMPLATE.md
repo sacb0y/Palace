@@ -13,8 +13,8 @@ Bump `<PalaceVersion>` in `Directory.Build.props`, then `python3 scripts/sync-ap
 
 Read [`AGENTS.md`](../AGENTS.md) — especially **PR / agent goals** and **Version**.
 
-- [ ] Stays on current **0.0.x Library** slice (no invented Rooms canvas / gamedev / AI unless that minor is open)
-- [ ] Version bumped when the app changes (`Directory.Build.props` + synced `Package.appxmanifest`); milestone only when opening a new slice
+- [ ] Stays on **0.x** until Store **1.0.0** (PATCH for library/viewer polish; MINOR only for finished milestones)
+- [ ] Version bumped when the app changes (`Directory.Build.props` + synced `Package.appxmanifest`); milestone only when opening a new minor
 - [ ] Does not claim Rooms or Organization are finished
 - [ ] No secrets; no GitHub visibility changes
 

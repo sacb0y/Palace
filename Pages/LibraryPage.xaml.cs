@@ -916,7 +916,7 @@ public sealed partial class LibraryPage : Page
                 (int)e.Key)
             && ViewModel.OverlayGallery?.TryCloseDetailsFirst() == true)
         {
-            BtnGalleryDetails.Focus(FocusState.Programmatic);
+            BtnGalleryImageInfo.Focus(FocusState.Programmatic);
             e.Handled = true;
             return;
         }
@@ -1075,7 +1075,7 @@ public sealed partial class LibraryPage : Page
                 BtnGalleryPrev,
                 BtnGalleryNext,
                 BtnGalleryClose,
-                BtnGalleryDetails);
+                BtnGalleryImageInfo);
             _viewerOverlayAutoHide.Attach();
         }
         else
@@ -1113,7 +1113,7 @@ public sealed partial class LibraryPage : Page
                 }
                 else
                 {
-                    BtnGalleryDetails.Focus(FocusState.Programmatic);
+                    BtnGalleryImageInfo.Focus(FocusState.Programmatic);
                     _viewerFocusZone = ViewerFocusZone.Controls;
                 }
             }
@@ -1159,7 +1159,7 @@ public sealed partial class LibraryPage : Page
             case VirtualKey.Escape:
                 if (ViewModel.OverlayGallery.TryCloseDetailsFirst())
                 {
-                    BtnGalleryDetails.Focus(FocusState.Programmatic);
+                    BtnGalleryImageInfo.Focus(FocusState.Programmatic);
                     _viewerFocusZone = ViewerFocusZone.Controls;
                     e.Handled = true;
                     break;
@@ -1195,7 +1195,7 @@ public sealed partial class LibraryPage : Page
         switch (_viewerFocusZone)
         {
             case ViewerFocusZone.Controls:
-                BtnGalleryDetails.Focus(FocusState.Programmatic);
+                BtnGalleryImageInfo.Focus(FocusState.Programmatic);
                 break;
             case ViewerFocusZone.Details:
                 CardViewerDetails.FocusCard();

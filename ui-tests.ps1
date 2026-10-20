@@ -742,8 +742,6 @@ Test-UI 'Double-click opens gallery overlay' {
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleFill missing' }
     winapp ui wait-for 'BtnGalleryImageInfo' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryImageInfo missing' }
-    winapp ui wait-for 'BtnGalleryDetails' @(WinArgs) -t 2000
-    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryDetails missing' }
     winapp ui wait-for 'TxtGalleryOverlayDetails' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'TxtGalleryOverlayDetails missing' }
 }
@@ -832,8 +830,8 @@ Test-UI 'Open in new window then close' {
     if ($LASTEXITCODE -ne 0) { throw 'GrdGalleryWindow did not open' }
     winapp ui wait-for 'BtnGalleryWindowClose' -a $AppPid -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowClose missing' }
-    winapp ui wait-for 'BtnGalleryWindowDetails' -a $AppPid -t 3000
-    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowDetails missing' }
+    winapp ui wait-for 'BtnGalleryWindowImageInfo' -a $AppPid -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowImageInfo missing' }
     winapp ui wait-for 'BtnGalleryWindowScaleActual' -a $AppPid -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowScaleActual missing' }
     winapp ui wait-for 'BtnGalleryWindowScaleFit' -a $AppPid -t 3000

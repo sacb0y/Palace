@@ -16,7 +16,7 @@ public partial class GalleryViewModel : ObservableObject
     private readonly IReadOnlyList<AssetItem> _items;
     private int _loadEpoch;
     private bool _chromeReady;
-    private bool _suppressExclusiveChrome;
+    private int? _assetDurationMs;
 
     public GalleryViewModel(IReadOnlyList<AssetItem> items, int startIndex, CatalogService catalog)
     {
@@ -213,19 +213,13 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool ShowGeneration { get; set; }
 
     [ObservableProperty]
-    public partial bool ShowImageInfo { get; set; } = GalleryChrome.DefaultShowImageInfo;
-
-    [ObservableProperty]
     public partial bool ShowDetails { get; set; } = GalleryChrome.DefaultShowDetails;
 
-    /// <summary>
-    /// Host window is under <see cref="ViewerDetailsLayout.NarrowBreakpoint"/> —
-    /// floating Details docks as a bottom sheet and Next stays at the default inset.
-    /// </summary>
+    /// <summary>Left-docked Info card never uses a bottom sheet; kept for Next-margin binds.</summary>
     [ObservableProperty]
     public partial bool DetailsUsesBottomSheet { get; set; }
 
-    /// <summary>Live width of the floating Details card (right dock or bottom sheet).</summary>
+    /// <summary>Live width of the floating Details card (left dock under toolbar).</summary>
     [ObservableProperty]
     public partial double DetailsPanelWidth { get; set; } = ViewerDetailsLayout.PanelWidth;
 
@@ -237,6 +231,73 @@ public partial class GalleryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string ImageInfoText { get; set; } = "";
+
+    // Structured Info card fields (empty => hide row).
+    [ObservableProperty]
+    public partial string InfoFileName { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoFileNameEllipsis { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoPath { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoPathEllipsis { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoFileMetaLeft { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoFileMetaRight { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoColor { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoHdrStatus { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoMaxCll { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoFall { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoMaxLum { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoAvgLum { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoMinLum { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoP99 { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoAboveSdr { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoDisplayLum { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoDisplayProbe { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoGamutSummary { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool InfoShowHdrStats { get; set; }
+
+    [ObservableProperty]
+    public partial bool InfoHasColorSection { get; set; }
+
+    [ObservableProperty]
+    public partial string InfoVideoDuration { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string InfoVideoSize { get; set; } = "";
 
     [ObservableProperty]
     public partial GalleryHistogramBins Histogram { get; set; } = GalleryHistogramBins.Empty;
@@ -351,13 +412,9 @@ public partial class GalleryViewModel : ObservableObject
             return true;
         }
 
-        if (GalleryScale.TogglesImageInfo(controlDown, keyCode))
-        {
-            ShowImageInfo = !ShowImageInfo;
-            return true;
-        }
-
-        if (GalleryScale.TogglesDetails(controlDown, altDown, keyCode))
+        // Ctrl+D aliases the Info pill; bare I / Alt+Enter also toggle Details.
+        if (GalleryScale.TogglesImageInfo(controlDown, keyCode)
+            || GalleryScale.TogglesDetails(controlDown, altDown, keyCode))
         {
             ShowDetails = !ShowDetails;
             return true;
@@ -391,9 +448,6 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void ToggleImageInfo() => ShowImageInfo = !ShowImageInfo;
-
-    [RelayCommand]
     private void ToggleDetails() => ShowDetails = !ShowDetails;
 
     partial void OnShowHeatmapChanged(bool value)
@@ -408,47 +462,11 @@ public partial class GalleryViewModel : ObservableObject
         OnPropertyChanged(nameof(HeatmapActive));
     }
 
-    partial void OnShowImageInfoChanged(bool value)
-    {
-        if (_chromeReady)
-        {
-            ApplicationData.Current.LocalSettings.Values[GalleryChrome.ShowImageInfoKey] = value;
-        }
-
-        // One panel at a time: opening Info closes floating Details.
-        if (value && !_suppressExclusiveChrome && ShowDetails)
-        {
-            _suppressExclusiveChrome = true;
-            try
-            {
-                ShowDetails = false;
-            }
-            finally
-            {
-                _suppressExclusiveChrome = false;
-            }
-        }
-    }
-
     partial void OnShowDetailsChanged(bool value)
     {
         if (_chromeReady)
         {
             ApplicationData.Current.LocalSettings.Values[GalleryChrome.ShowDetailsKey] = value;
-        }
-
-        // One panel at a time: opening Details closes the top-left Info card.
-        if (value && !_suppressExclusiveChrome && ShowImageInfo)
-        {
-            _suppressExclusiveChrome = true;
-            try
-            {
-                ShowImageInfo = false;
-            }
-            finally
-            {
-                _suppressExclusiveChrome = false;
-            }
         }
     }
 
@@ -463,25 +481,9 @@ public partial class GalleryViewModel : ObservableObject
     private void LoadChromeSettings()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
-        var info = GalleryChrome.ParseShowImageInfo(values[GalleryChrome.ShowImageInfoKey]);
-        var details = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
-        (details, info) = GalleryChrome.CoerceExclusivePanels(details, info);
-        _suppressExclusiveChrome = true;
-        try
-        {
-            ShowImageInfo = info;
-            ShowDetails = details;
-        }
-        finally
-        {
-            _suppressExclusiveChrome = false;
-        }
-
+        ShowDetails = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
         LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
         _chromeReady = true;
-        // Persist coerced exclusivity so a prior both-on prefs pair does not return.
-        values[GalleryChrome.ShowImageInfoKey] = info;
-        values[GalleryChrome.ShowDetailsKey] = details;
     }
 
     partial void OnGifFrameIndexChanged(double value)
@@ -762,6 +764,22 @@ public partial class GalleryViewModel : ObservableObject
             item?.Undecodable == true);
         var light = Analysis.Light;
         var hdrFigures = HdrPresented && Analysis.HasSamples && Analysis.IsHdr;
+        var maxCllChannel = hdrFigures
+            ? GalleryPresent.MaxCllChannelFor(
+                light.MaxCllChannel, light.MaxCllScrgb, ContentMaxScrgb, _contentMaxScrgbChannel)
+            : null;
+        var maxLum = HdrPresented && ContentMaxNits > 0 ? ContentMaxNits : (float?)null;
+        var avgLum = HdrPresented && ContentMaxNits > 0 ? ContentAvgNits : (float?)null;
+        var minLum = HdrPresented && ContentMaxNits > 0 ? ContentMinNits : (float?)null;
+        var displayLum = HdrPresented && DisplayIsHdr && DisplayPeakNits > 0 ? DisplayPeakNits : (float?)null;
+        var maxScrgb = HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : (float?)null;
+        var p99 = hdrFigures && light.P99Nits > 0 ? light.P99Nits : (float?)null;
+        var fall = hdrFigures && light.FallNits > 0 ? light.FallNits : (float?)null;
+        var aboveSdr = hdrFigures ? light.AboveSdrWhitePercent : null;
+        var displayProbe = string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe;
+        var gamut = Analysis.HasSamples ? Analysis.Gamut.Summary() : null;
+        var frames = GifFrameCount > 1 ? GifFrameCount : (int?)null;
+
         ImageInfoText = GalleryPresent.ImageInfoText(new GalleryImageInfo(
             item?.FileName,
             item?.FileSize,
@@ -769,18 +787,51 @@ public partial class GalleryViewModel : ObservableObject
             pixels?.Height,
             CurrentProbe,
             HdrStatus,
-            HdrPresented && ContentMaxNits > 0 ? ContentMaxNits : null,
-            HdrPresented && ContentMaxNits > 0 ? ContentAvgNits : null,
-            HdrPresented && ContentMaxNits > 0 ? ContentMinNits : null,
-            HdrPresented && DisplayIsHdr && DisplayPeakNits > 0 ? DisplayPeakNits : null,
-            HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : null,
-            string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe,
-            hdrFigures ? GalleryPresent.MaxCllChannelFor(
-                light.MaxCllChannel, light.MaxCllScrgb, ContentMaxScrgb, _contentMaxScrgbChannel) : null,
-            hdrFigures && light.P99Nits > 0 ? light.P99Nits : null,
-            hdrFigures && light.FallNits > 0 ? light.FallNits : null,
-            hdrFigures ? light.AboveSdrWhitePercent : null,
-            Analysis.HasSamples ? Analysis.Gamut.Summary() : null));
+            maxLum,
+            avgLum,
+            minLum,
+            displayLum,
+            maxScrgb,
+            displayProbe,
+            maxCllChannel,
+            p99,
+            fall,
+            aboveSdr,
+            gamut));
+
+        InfoFileName = item?.FileName?.Trim() ?? "";
+        InfoFileNameEllipsis = MiddleEllipsis.Truncate(InfoFileName);
+        InfoPath = item?.Path?.Trim() ?? "";
+        InfoPathEllipsis = MiddleEllipsis.Truncate(InfoPath, 48);
+        InfoFileMetaLeft = ViewerInfoFields.FileMetaLeft(item?.FileSize, pixels?.Width, pixels?.Height);
+        InfoFileMetaRight = ViewerInfoFields.FormatMetaRight(
+            item?.FileName,
+            frames,
+            CurrentProbe.IsHdr || item?.IsHdr == true,
+            PositionLabel);
+        InfoColor = GalleryPresent.ColorLabel(CurrentProbe) ?? "";
+        InfoHdrStatus = HdrStatus?.Trim() ?? "";
+        InfoMaxCll = ViewerInfoFields.ScrgbLabel(maxScrgb, maxCllChannel);
+        InfoFall = ViewerInfoFields.NitsLabel(fall);
+        InfoMaxLum = ViewerInfoFields.NitsLabel(maxLum);
+        InfoAvgLum = ViewerInfoFields.NitsLabel(avgLum);
+        InfoMinLum = ViewerInfoFields.NitsLabel(minLum);
+        InfoP99 = ViewerInfoFields.NitsLabel(p99);
+        InfoAboveSdr = ViewerInfoFields.PercentLabel(aboveSdr);
+        InfoDisplayLum = ViewerInfoFields.NitsLabel(displayLum);
+        InfoDisplayProbe = displayProbe?.Trim() ?? "";
+        InfoGamutSummary = gamut?.Trim() ?? "";
+        InfoShowHdrStats = ViewerInfoFields.HasHdrStatRows(
+            HdrPresented, Analysis.IsHdr, maxScrgb, maxLum, p99, fall, aboveSdr);
+        InfoHasColorSection = !string.IsNullOrWhiteSpace(InfoColor)
+            || !string.IsNullOrWhiteSpace(InfoHdrStatus)
+            || InfoShowHdrStats
+            || !string.IsNullOrWhiteSpace(InfoDisplayLum)
+            || !string.IsNullOrWhiteSpace(InfoDisplayProbe)
+            || !string.IsNullOrWhiteSpace(InfoGamutSummary);
+        InfoVideoDuration = ViewerInfoFields.DurationLabel(_assetDurationMs);
+        InfoVideoSize = ViewerInfoFields.SizeLabel(item?.FileSize);
+
         DetailsRows = GalleryDetails.Build(
             item?.Path,
             CurrentProbe,
@@ -875,6 +926,56 @@ public partial class GalleryViewModel : ObservableObject
         });
     }
 
+    [RelayCommand]
+    private void CopyPath()
+    {
+        var path = Current?.Path;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        if (AccessService.ShouldSkipClipboardCopy(path))
+        {
+            return;
+        }
+
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(path);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+    }
+
+    [RelayCommand]
+    private void CopyFileName()
+    {
+        var name = Current?.FileName;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(name);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+    }
+
+    /// <summary>Open with the default associated app (shell).</summary>
+    [RelayCommand]
+    private void OpenWith()
+    {
+        var path = Current?.Path;
+        if (string.IsNullOrEmpty(path) || !CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = path,
+            UseShellExecute = true
+        });
+    }
+
     private async Task LoadCurrentAsync()
     {
         var epoch = Interlocked.Increment(ref _loadEpoch);
@@ -901,6 +1002,7 @@ public partial class GalleryViewModel : ObservableObject
 
                 Current = null;
                 CurrentProbe = HdrProbe.None;
+                _assetDurationMs = null;
                 _cameraExif = CameraExif.None;
                 _genSampler = null;
                 _genSteps = null;
@@ -952,11 +1054,13 @@ public partial class GalleryViewModel : ObservableObject
             assigned = [];
         }
 
+        int? durationMs = null;
         try
         {
             var asset = await _catalog.GetAssetByIdAsync(item.Id);
             generation = GenerationFields.ForPreview(
                 asset?.Model, asset?.Prompt, asset?.NegativePrompt, asset?.Seed);
+            durationMs = asset?.DurationMs;
         }
         catch
         {
@@ -1024,6 +1128,7 @@ public partial class GalleryViewModel : ObservableObject
 
             Current = item;
             CurrentProbe = probe;
+            _assetDurationMs = durationMs;
             _cameraExif = camera;
             _genSampler = sampler;
             _genSteps = steps;

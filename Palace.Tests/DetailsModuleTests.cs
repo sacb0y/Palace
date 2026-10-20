@@ -19,12 +19,15 @@ public sealed class DetailsModuleTests
     }
 
     [Fact]
-    public void ForKind_ImageAndGif_GetImageModule()
+    public void ForKind_ImageAndGif_GetStillModules()
     {
-        Assert.Contains(DetailsModuleCatalog.ForKind(AssetKind.Image), m => m.Kind == DetailsModuleKind.Image);
-        Assert.Contains(DetailsModuleCatalog.ForKind(AssetKind.Gif), m => m.Kind == DetailsModuleKind.Image);
-        Assert.DoesNotContain(DetailsModuleCatalog.ForKind(AssetKind.Video), m => m.Kind == DetailsModuleKind.Image);
-        Assert.DoesNotContain(DetailsModuleCatalog.ForKind(AssetKind.Other), m => m.Kind == DetailsModuleKind.Image);
+        var image = DetailsModuleCatalog.ForKind(AssetKind.Image);
+        Assert.Contains(image, m => m.Kind == DetailsModuleKind.ColorHdr);
+        Assert.Contains(image, m => m.Kind == DetailsModuleKind.Histogram);
+        Assert.Contains(image, m => m.Kind == DetailsModuleKind.Gamut);
+        Assert.Contains(DetailsModuleCatalog.ForKind(AssetKind.Gif), m => m.Kind == DetailsModuleKind.ColorHdr);
+        Assert.DoesNotContain(DetailsModuleCatalog.ForKind(AssetKind.Video), m => m.Kind == DetailsModuleKind.ColorHdr);
+        Assert.DoesNotContain(DetailsModuleCatalog.ForKind(AssetKind.Other), m => m.Kind == DetailsModuleKind.Histogram);
     }
 
     [Fact]
@@ -48,27 +51,24 @@ public sealed class DetailsModuleTests
     {
         Assert.Equal("GalleryDetailsSection_file", DetailsModuleCatalog.File.CollapseSettingsKey);
         Assert.Equal(
-            GalleryChrome.DetailsSectionKey("image"),
-            DetailsModuleCatalog.Image.CollapseSettingsKey);
+            GalleryChrome.DetailsSectionKey("colorhdr"),
+            DetailsModuleCatalog.ColorHdr.CollapseSettingsKey);
     }
 
     [Fact]
-    public void Layout_NarrowUsesBottomSheet_AndNextMargin()
+    public void Layout_LeftDock_DoesNotStealNextInset()
     {
-        Assert.True(ViewerDetailsLayout.UsesBottomSheet(719));
+        Assert.False(ViewerDetailsLayout.UsesBottomSheet(719));
         Assert.False(ViewerDetailsLayout.UsesBottomSheet(720));
-        Assert.False(ViewerDetailsLayout.UsesBottomSheet(0));
 
-        var closed = ViewerDetailsLayout.NextMargin(false, false, 340);
+        var closed = ViewerDetailsLayout.NextMargin(false, false, 270);
         Assert.Equal(16, closed.Right);
 
-        var open = ViewerDetailsLayout.NextMargin(true, false, 340);
-        Assert.Equal(16 + 340 + 16, open.Right);
+        var open = ViewerDetailsLayout.NextMargin(true, false, 270);
+        Assert.Equal(16, open.Right);
 
-        var sheet = ViewerDetailsLayout.NextMargin(true, true, 700);
-        Assert.Equal(16, sheet.Right);
-
-        Assert.Equal(360, ViewerDetailsLayout.BottomSheetMaxHeight(720));
+        Assert.Equal(270, ViewerDetailsLayout.PanelWidth);
+        Assert.Equal(720 * ViewerDetailsLayout.MaxHeightFraction, ViewerDetailsLayout.PanelMaxHeight(720), 3);
         Assert.Equal("Details for shot.png", ViewerDetailsLayout.LandmarkName("shot.png"));
     }
 

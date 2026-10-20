@@ -106,7 +106,7 @@ public sealed partial class GalleryWindow : Window
                 }
                 else
                 {
-                    BtnGalleryWindowDetails.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+                    BtnGalleryWindowImageInfo.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
                     _viewerFocusZone = ViewerFocusZone.Controls;
                 }
             }
@@ -152,7 +152,7 @@ public sealed partial class GalleryWindow : Window
             case VirtualKey.Escape:
                 if (Gallery.TryCloseDetailsFirst())
                 {
-                    BtnGalleryWindowDetails.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+                    BtnGalleryWindowImageInfo.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
                     _viewerFocusZone = ViewerFocusZone.Controls;
                     e.Handled = true;
                     break;
@@ -188,7 +188,7 @@ public sealed partial class GalleryWindow : Window
         switch (_viewerFocusZone)
         {
             case ViewerFocusZone.Controls:
-                BtnGalleryWindowDetails.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+                BtnGalleryWindowImageInfo.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
                 break;
             case ViewerFocusZone.Details:
                 CardViewerDetails.FocusCard();
