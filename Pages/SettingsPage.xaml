@@ -473,7 +473,7 @@
                                         IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
                                         Maximum="90"
                                         Minimum="0"
-                                        SpinButtonPlacementMode="Collapsed"
+                                        SpinButtonPlacementMode="Hidden"
                                         Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
                                     <HyperlinkButton
                                         Grid.Column="2"
@@ -518,7 +518,7 @@
                                         IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
                                         Maximum="40"
                                         Minimum="0"
-                                        SpinButtonPlacementMode="Collapsed"
+                                        SpinButtonPlacementMode="Hidden"
                                         Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
                                     <HyperlinkButton
                                         Grid.Column="2"
