@@ -1,4 +1,5 @@
 using System.Numerics;
+using Microsoft.Graphics.Canvas;
 using Microsoft.Graphics.Canvas.Effects;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
@@ -192,15 +193,25 @@ public static class ShellBackdrop
         _glassHost = glass;
         _blurCompositor = compositor;
 
-        // Soft pads outside samples with transparent black. We oversize the sprite
-        // and clip the host so that soft edge never shows as unblurred wallpaper.
+        // BackdropBrush has no pixels past the window. Soft blur turned those
+        // samples transparent → sharp ImgShellWallpaper (still drawn under glass)
+        // showed through at top/right, worse with radius. Soft oversize+clip does
+        // not help: Soft softens at the *source* edge, not the sprite edge.
+        // Clamp-extend the backdrop first, then Hard-blur so edge pixels repeat.
+        var backdrop = new CompositionEffectSourceParameter("backdrop");
+        var clamped = new BorderEffect
+        {
+            ExtendX = CanvasEdgeBehavior.Clamp,
+            ExtendY = CanvasEdgeBehavior.Clamp,
+            Source = backdrop
+        };
         var effect = new GaussianBlurEffect
         {
             Name = "Blur",
             BlurAmount = 0f,
-            BorderMode = EffectBorderMode.Soft,
+            BorderMode = EffectBorderMode.Hard,
             Optimization = EffectOptimization.Balanced,
-            Source = new CompositionEffectSourceParameter("backdrop")
+            Source = clamped
         };
         // One factory + brush; BlurAmount is animated. Cache key tracks preset/theme/radius
         // so Apply can skip redundant work; GPU blur stays cheap at 4K.
@@ -210,11 +221,8 @@ public static class ShellBackdrop
 
         _blurVisual = compositor.CreateSpriteVisual();
         _blurVisual.Brush = _blurBrush;
-        // Manual Size/Offset (not RelativeSizeAdjustment) so we can overscan past the host.
+        _blurVisual.RelativeSizeAdjustment = Vector2.One;
         ElementCompositionPreview.SetElementChildVisual(glass, _blurVisual);
-        // Clip child sprite to the glass bounds — overscan soft edges stay cropped.
-        ElementCompositionPreview.GetElementVisual(glass).Clip =
-            compositor.CreateInsetClip(0, 0, 0, 0);
         glass.SizeChanged -= Glass_SizeChanged;
         glass.SizeChanged += Glass_SizeChanged;
         SyncBlurVisualSize(glass);
@@ -267,16 +275,12 @@ public static class ShellBackdrop
 
         var w = (float)glass.ActualWidth;
         var h = (float)glass.ActualHeight;
-        if (w <= 0 || h <= 0)
+        if (w > 0 && h > 0)
         {
-            return;
+            // Exact host size — BorderEffect Clamp + Hard blur covers every edge.
+            _blurVisual.Size = new Vector2(w, h);
+            _blurVisual.Offset = Vector3.Zero;
         }
-
-        // Pad for max radius so dragging the slider does not resize the sprite.
-        // Soft kernel grows ~3× BlurAmount past each edge; crop hides that fringe.
-        var pad = ShellBackground.BlurEdgePad(ShellBackground.MaxBlurRadius);
-        _blurVisual.Size = new Vector2(w + pad * 2f, h + pad * 2f);
-        _blurVisual.Offset = new Vector3(-pad, -pad, 0f);
     }
 
     private static void ClearGlassHost(Border glass)
@@ -307,7 +311,6 @@ public static class ShellBackdrop
         try
         {
             ElementCompositionPreview.SetElementChildVisual(glass, null);
-            ElementCompositionPreview.GetElementVisual(glass).Clip = null;
         }
         catch
         {

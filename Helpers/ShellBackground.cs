@@ -42,8 +42,8 @@ public static class ShellBackground
     /// <summary>Quantize radius for cache keys / cheap 4K re-apply (2 DIP steps).</summary>
     public const int BlurRadiusStep = 2;
     /// <summary>
-    /// Soft-mode kernel half-width multiplier (std deviation × 3). Used to
-    /// oversize the blur sprite so transparent edges crop outside the host.
+    /// Soft-mode kernel half-width multiplier (std deviation × 3). Kept for
+    /// pad math / tests; live blur uses BorderEffect Clamp + Hard (not Soft overscan).
     /// </summary>
     public const float BlurEdgeKernel = 3f;
     public const double LightDimScale = 0.35;
@@ -691,8 +691,8 @@ public static class ShellBackground
     }
 
     /// <summary>
-    /// Extra DIP padding so Soft-mode blur edges fall outside the clipped host.
-    /// Pass <see cref="MaxBlurRadius"/> for a stable overscan while dragging.
+    /// Soft-kernel half-width pad (stdDev × <see cref="BlurEdgeKernel"/>).
+    /// Retained for tests; <c>ShellBackdrop</c> clamps via BorderEffect instead.
     /// </summary>
     public static float BlurEdgePad(float radiusDip) =>
         radiusDip <= 0.01f ? 0f : MathF.Ceiling(radiusDip * BlurEdgeKernel);
