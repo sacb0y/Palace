@@ -23,6 +23,7 @@
     <Compile Include="..\Helpers\CieDiagram.cs" Link="CieDiagram.cs" />
     <Compile Include="..\Helpers\GalleryDetails.cs" Link="GalleryDetails.cs" />
     <Compile Include="..\Helpers\GalleryChrome.cs" Link="GalleryChrome.cs" />
+    <Compile Include="..\Helpers\ViewerOverlayChrome.cs" Link="ViewerOverlayChrome.cs" />
     <Compile Include="..\Helpers\GalleryPeak.cs" Link="GalleryPeak.cs" />
     <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />
     <Compile Include="..\Helpers\DisplayHdr.cs" Link="DisplayHdr.cs" />

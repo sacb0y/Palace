@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Reusable translucent circular viewer chrome (Gooey).
+  Plate size = Button Width/Height (default 40). Hit target via MinWidth/MinHeight.
+  Callers may override Background / BorderBrush / Foreground (e.g. accent-on Info).
+  Theme keys (incl. HighContrast) stay stable for other PRs (24px remove, Info toggle).
+  No acrylic. No Palace pink in the default brushes.
+-->
+<ResourceDictionary
+    x:Class="Palace.Resources.ViewerOverlayStyles"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+        <!-- Fixed look for Light and Dark. -->
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillBrush" Color="#80000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillHoverBrush" Color="#99000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillPressedBrush" Color="#B8000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillDisabledBrush" Color="#4D000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphPressedBrush" Color="#D9FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphDisabledBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonShadowBrush" Color="#40000000" />
+            <Thickness x:Key="ViewerOverlayButtonBorderThickness">1</Thickness>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillBrush" Color="#80000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillHoverBrush" Color="#99000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillPressedBrush" Color="#B8000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillDisabledBrush" Color="#4D000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphPressedBrush" Color="#D9FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphDisabledBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonShadowBrush" Color="#40000000" />
+            <Thickness x:Key="ViewerOverlayButtonBorderThickness">1</Thickness>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillBrush" Color="#80000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillHoverBrush" Color="#99000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillPressedBrush" Color="#B8000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonFillDisabledBrush" Color="#4D000000" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonBorderBrush" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphBrush" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphPressedBrush" Color="#D9FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonGlyphDisabledBrush" Color="#66FFFFFF" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonShadowBrush" Color="#40000000" />
+            <Thickness x:Key="ViewerOverlayButtonBorderThickness">1</Thickness>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <StaticResource x:Key="ViewerOverlayButtonFillBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+            <StaticResource x:Key="ViewerOverlayButtonFillHoverBrush" ResourceKey="SystemColorHighlightColorBrush" />
+            <StaticResource x:Key="ViewerOverlayButtonFillPressedBrush" ResourceKey="SystemColorHighlightColorBrush" />
+            <StaticResource x:Key="ViewerOverlayButtonFillDisabledBrush" ResourceKey="SystemColorButtonFaceColorBrush" />
+            <StaticResource x:Key="ViewerOverlayButtonBorderBrush" ResourceKey="SystemColorButtonTextColorBrush" />
+            <StaticResource x:Key="ViewerOverlayButtonGlyphBrush" ResourceKey="SystemColorButtonTextColorBrush" />
+            <StaticResource x:Key="ViewerOverlayButtonGlyphPressedBrush" ResourceKey="SystemColorHighlightTextColorBrush" />
+            <StaticResource x:Key="ViewerOverlayButtonGlyphDisabledBrush" ResourceKey="SystemColorGrayTextColorBrush" />
+            <SolidColorBrush x:Key="ViewerOverlayButtonShadowBrush" Color="Transparent" />
+            <Thickness x:Key="ViewerOverlayButtonBorderThickness">2</Thickness>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!--
+      CornerRadius 999 keeps a circle for any Width/Height (40 nav, 36 close, 24 remove…).
+      Override Background/BorderBrush/Foreground on the Button for accent-on states.
+    -->
+    <Style x:Key="ViewerOverlayButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="MinWidth" Value="44" />
+        <Setter Property="MinHeight" Value="44" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Background" Value="{ThemeResource ViewerOverlayButtonFillBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ViewerOverlayButtonBorderBrush}" />
+        <Setter Property="BorderThickness" Value="{ThemeResource ViewerOverlayButtonBorderThickness}" />
+        <Setter Property="Foreground" Value="{ThemeResource ViewerOverlayButtonGlyphBrush}" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid
+                        Width="{TemplateBinding MinWidth}"
+                        Height="{TemplateBinding MinHeight}"
+                        Background="Transparent">
+                        <!-- Soft plate-only shadow (no acrylic). HC brush is transparent. -->
+                        <Border
+                            x:Name="PlateShadow"
+                            Width="{TemplateBinding Width}"
+                            Height="{TemplateBinding Height}"
+                            Margin="0,1,0,-1"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource ViewerOverlayButtonShadowBrush}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            IsHitTestVisible="False" />
+                        <Border
+                            x:Name="Plate"
+                            Width="{TemplateBinding Width}"
+                            Height="{TemplateBinding Height}"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}">
+                            <ContentPresenter
+                                x:Name="ContentPresenter"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Plate" Storyboard.TargetProperty="Background">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ViewerOverlayButtonFillHoverBrush}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Plate" Storyboard.TargetProperty="Background">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ViewerOverlayButtonFillPressedBrush}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ViewerOverlayButtonGlyphPressedBrush}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="Plate" Storyboard.TargetProperty="Background">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ViewerOverlayButtonFillDisabledBrush}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="ContentPresenter" Storyboard.TargetProperty="Foreground">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{ThemeResource ViewerOverlayButtonGlyphDisabledBrush}" />
+                                        </ObjectAnimationUsingKeyFrames>
+                                        <DoubleAnimation
+                                            Storyboard.TargetName="PlateShadow"
+                                            Storyboard.TargetProperty="Opacity"
+                                            To="0"
+                                            Duration="0" />
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Close plate is 36×36; hit target still ≥44 via MinWidth/MinHeight. -->
+    <Style
+        x:Key="ViewerOverlayCloseButtonStyle"
+        BasedOn="{StaticResource ViewerOverlayButtonStyle}"
+        TargetType="Button">
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="36" />
+    </Style>
+</ResourceDictionary>
