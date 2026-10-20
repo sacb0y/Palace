@@ -775,7 +775,7 @@ public partial class GalleryViewModel : ObservableObject
         var maxScrgb = HdrPresented && ContentMaxScrgb > 0 ? ContentMaxScrgb : (float?)null;
         var p99 = hdrFigures && light.P99Nits > 0 ? light.P99Nits : (float?)null;
         var fall = hdrFigures && light.FallNits > 0 ? light.FallNits : (float?)null;
-        var aboveSdr = hdrFigures ? light.AboveSdrWhitePercent : null;
+        var aboveSdr = hdrFigures ? light.AboveSdrWhitePercent : (double?)null;
         var displayProbe = string.IsNullOrWhiteSpace(_displayProbe) ? null : _displayProbe;
         var gamut = Analysis.HasSamples ? Analysis.Gamut.Summary() : null;
         var frames = GifFrameCount > 1 ? GifFrameCount : (int?)null;
