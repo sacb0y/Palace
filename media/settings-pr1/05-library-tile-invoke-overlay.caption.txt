@@ -1,0 +1,1 @@
+﻿Library: UIA Invoke on mosaic tile opens viewer overlay (hdr-preview.jpg).

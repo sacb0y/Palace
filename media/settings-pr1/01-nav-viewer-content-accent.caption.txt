@@ -1,0 +1,1 @@
+﻿Settings: selecting Viewer via UIA switches content pane; selected nav row shows accent pill (not grey-only).

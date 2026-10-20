@@ -1,0 +1,1 @@
+﻿Settings nav shows full readable Performance label (uncut); selected row uses accent pill.

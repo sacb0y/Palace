@@ -1,0 +1,1 @@
+﻿Settings search "hdr": Override HDR peak brightness label/card clear of the toggle (no overlap).
