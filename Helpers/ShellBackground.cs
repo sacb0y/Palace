@@ -42,10 +42,12 @@ public static class ShellBackground
     /// <summary>Quantize radius for cache keys / cheap 4K re-apply (2 DIP steps).</summary>
     public const int BlurRadiusStep = 2;
     /// <summary>
-    /// Soft-mode kernel half-width multiplier (std deviation × 3). Kept for
-    /// pad math / tests; live blur uses BorderEffect Clamp + Hard (not Soft overscan).
+    /// Soft-mode kernel half-width multiplier (std deviation × 3). Used to
+    /// size the blur sprite margin in physical pixels (DPI-aware).
     /// </summary>
     public const float BlurEdgeKernel = 3f;
+    /// <summary>Minimum physical-pixel coverage margin on each blur-sprite edge.</summary>
+    public const float BlurCoverageMinPhysicalPx = 2f;
     public const double LightDimScale = 0.35;
     public const string DefaultTintHex = "#502C3A6B";
     public const string DefaultWallpaperLabel = "Default gradient";
@@ -691,11 +693,44 @@ public static class ShellBackground
     }
 
     /// <summary>
-    /// Soft-kernel half-width pad (stdDev × <see cref="BlurEdgeKernel"/>).
-    /// Retained for tests; <c>ShellBackdrop</c> clamps via BorderEffect instead.
+    /// Soft-kernel half-width pad in DIPs (stdDev × <see cref="BlurEdgeKernel"/>).
     /// </summary>
     public static float BlurEdgePad(float radiusDip) =>
         radiusDip <= 0.01f ? 0f : MathF.Ceiling(radiusDip * BlurEdgeKernel);
+
+    /// <summary>
+    /// Blur-sprite edge pad in DIPs after ceiling in <b>physical</b> pixels.
+    /// At 150% DPI, a DIP-only pad can leave a 1px gap on the top/right; this
+    /// converts through <paramref name="rasterizationScale"/> so coverage is exact.
+    /// </summary>
+    public static float BlurVisualPadDip(float radiusDip, double rasterizationScale)
+    {
+        var scale = rasterizationScale <= 0 ? 1.0 : rasterizationScale;
+        var padDip = BlurEdgePad(radiusDip);
+        var physical = Math.Max(
+            BlurCoverageMinPhysicalPx,
+            Math.Ceiling(Math.Max(padDip, 1f) * scale));
+        return (float)(physical / scale);
+    }
+
+    /// <summary>
+    /// Host width/height in DIPs snapped up to whole physical pixels, then
+    /// converted back — avoids a sub-pixel shortfall at non-100% DPI.
+    /// </summary>
+    public static float BlurHostSizeDip(double logicalDip, double rasterizationScale)
+    {
+        if (logicalDip <= 0)
+        {
+            return 0f;
+        }
+
+        var scale = rasterizationScale <= 0 ? 1.0 : rasterizationScale;
+        return (float)(Math.Ceiling(logicalDip * scale) / scale);
+    }
+
+    /// <summary>True when the blur slider should hide the sharp wallpaper layer.</summary>
+    public static bool BlurHidesWallpaper(double blurPercent) =>
+        BlurApplies && BlurRadius(blurPercent) > 0.01f;
 
     /// <summary>
     /// Quantized radius for cache keys. Step keeps nearby slider ticks on one

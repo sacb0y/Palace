@@ -32,6 +32,9 @@ public static class ShellBackdrop
     private static CompositionEffectBrush? _blurBrush;
     private static CompositionEffectFactory? _blurFactory;
     private static Compositor? _blurCompositor;
+    private static CompositionBrush? _blurSourceBrush;
+    private static LoadedImageSurface? _blurImageSurface;
+    private static string? _blurSurfacePath;
     private static float _appliedBlurAmount = -1f;
     private static string? _blurCacheKey;
 
@@ -151,7 +154,7 @@ public static class ShellBackdrop
         var glassTint = ToColor(ShellBackground.GlassTintHex(light), Color.FromArgb(255, 12, 14, 20));
         glass.Background = new SolidColorBrush(Color.FromArgb(28, glassTint.R, glassTint.G, glassTint.B));
 
-        EnsureBlurVisual(glass);
+        EnsureBlurVisual(glass, light);
         if (_blurVisual is null || _blurBrush is null)
         {
             return;
@@ -173,13 +176,22 @@ public static class ShellBackdrop
         }
     }
 
-    private static void EnsureBlurVisual(Border glass)
+    private static void EnsureBlurVisual(Border glass, bool light)
     {
         var compositor = ElementCompositionPreview.GetElementVisual(glass).Compositor;
+        var imagePath = ShellBackground.BoundImagePath(light);
+        var wantSurface = !string.IsNullOrWhiteSpace(imagePath);
+        var surfaceReady = wantSurface
+            && _blurImageSurface is not null
+            && _blurSurfacePath == imagePath
+            && _blurSourceBrush is CompositionSurfaceBrush;
+
         if (_blurVisual is not null
             && ReferenceEquals(_glassHost, glass)
             && ReferenceEquals(_blurCompositor, compositor)
-            && _blurBrush is not null)
+            && _blurBrush is not null
+            && ((!wantSurface && _blurSourceBrush is CompositionBackdropBrush)
+                || surfaceReady))
         {
             return;
         }
@@ -193,17 +205,18 @@ public static class ShellBackdrop
         _glassHost = glass;
         _blurCompositor = compositor;
 
-        // BackdropBrush has no pixels past the window. Soft blur turned those
-        // samples transparent → sharp ImgShellWallpaper (still drawn under glass)
-        // showed through at top/right, worse with radius. Soft oversize+clip does
-        // not help: Soft softens at the *source* edge, not the sprite edge.
-        // Clamp-extend the backdrop first, then Hard-blur so edge pixels repeat.
-        var backdrop = new CompositionEffectSourceParameter("backdrop");
+        // Sharp ImgShellWallpaper is Collapsed whenever blur > 0. Image presets
+        // therefore cannot use BackdropBrush (nothing left to sample). Paint the
+        // same URI through LoadedImageSurface → SurfaceBrush, Clamp-extend, then
+        // Hard-blur. Default (gradient only) still uses BackdropBrush.
+        // Sprite size adds a DPI-aware physical-pixel margin so 150% scale cannot
+        // leave a top/right gap over the gradient.
+        var sourceParam = new CompositionEffectSourceParameter("source");
         var clamped = new BorderEffect
         {
             ExtendX = CanvasEdgeBehavior.Clamp,
             ExtendY = CanvasEdgeBehavior.Clamp,
-            Source = backdrop
+            Source = sourceParam
         };
         var effect = new GaussianBlurEffect
         {
@@ -217,16 +230,62 @@ public static class ShellBackdrop
         // so Apply can skip redundant work; GPU blur stays cheap at 4K.
         _blurFactory = compositor.CreateEffectFactory(effect, ["Blur.BlurAmount"]);
         _blurBrush = _blurFactory.CreateBrush();
-        _blurBrush.SetSourceParameter("backdrop", compositor.CreateBackdropBrush());
+        _blurSourceBrush = CreateBlurSourceBrush(compositor, imagePath);
+        _blurBrush.SetSourceParameter("source", _blurSourceBrush);
 
         _blurVisual = compositor.CreateSpriteVisual();
         _blurVisual.Brush = _blurBrush;
-        _blurVisual.RelativeSizeAdjustment = Vector2.One;
+        // Manual Size/Offset (not RelativeSizeAdjustment) for DPI-snapped overscan.
+        _blurVisual.RelativeSizeAdjustment = Vector2.Zero;
         ElementCompositionPreview.SetElementChildVisual(glass, _blurVisual);
         glass.SizeChanged -= Glass_SizeChanged;
         glass.SizeChanged += Glass_SizeChanged;
         SyncBlurVisualSize(glass);
         _appliedBlurAmount = -1f;
+    }
+
+    private static CompositionBrush CreateBlurSourceBrush(Compositor compositor, string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            ReleaseBlurImageSurface();
+            return compositor.CreateBackdropBrush();
+        }
+
+        if (_blurImageSurface is null || _blurSurfacePath != imagePath)
+        {
+            ReleaseBlurImageSurface();
+            try
+            {
+                _blurSurfacePath = imagePath;
+                _blurImageSurface = LoadedImageSurface.StartLoadFromUri(
+                    new Uri(imagePath, UriKind.Absolute));
+            }
+            catch
+            {
+                ReleaseBlurImageSurface();
+                return compositor.CreateBackdropBrush();
+            }
+        }
+
+        var surfaceBrush = compositor.CreateSurfaceBrush(_blurImageSurface);
+        surfaceBrush.Stretch = CompositionStretch.UniformToFill;
+        return surfaceBrush;
+    }
+
+    private static void ReleaseBlurImageSurface()
+    {
+        try
+        {
+            _blurImageSurface?.Dispose();
+        }
+        catch
+        {
+            // ignore
+        }
+
+        _blurImageSurface = null;
+        _blurSurfacePath = null;
     }
 
     private static void AnimateBlurAmount(float radius)
@@ -275,12 +334,29 @@ public static class ShellBackdrop
 
         var w = (float)glass.ActualWidth;
         var h = (float)glass.ActualHeight;
-        if (w > 0 && h > 0)
+        if (w <= 0 || h <= 0)
         {
-            // Exact host size — BorderEffect Clamp + Hard blur covers every edge.
-            _blurVisual.Size = new Vector2(w, h);
-            _blurVisual.Offset = Vector3.Zero;
+            return;
         }
+
+        double scale;
+        try
+        {
+            scale = glass.XamlRoot?.RasterizationScale ?? 1.0;
+        }
+        catch
+        {
+            scale = 1.0;
+        }
+
+        // Snap host to whole physical pixels, then add kernel pad also ceiling'd
+        // in physical px so 150% DPI cannot leave a sharp strip on top/right.
+        var hostW = ShellBackground.BlurHostSizeDip(w, scale);
+        var hostH = ShellBackground.BlurHostSizeDip(h, scale);
+        var pad = ShellBackground.BlurVisualPadDip(ShellBackground.MaxBlurRadius, scale);
+        _blurVisual.RelativeSizeAdjustment = Vector2.Zero;
+        _blurVisual.Size = new Vector2(hostW + pad * 2f, hostH + pad * 2f);
+        _blurVisual.Offset = new Vector3(-pad, -pad, 0f);
     }
 
     private static void ClearGlassHost(Border glass)
@@ -324,6 +400,8 @@ public static class ShellBackdrop
         _blurBrush = null;
         _blurFactory = null;
         _blurCompositor = null;
+        _blurSourceBrush = null;
+        ReleaseBlurImageSurface();
         _appliedBlurAmount = -1f;
         _blurCacheKey = null;
     }
@@ -343,6 +421,7 @@ public static class ShellBackdrop
     {
         var path = ShellBackground.BoundImagePath(light);
         var epoch = ShellBackground.WallpaperEpoch;
+        var hideSharp = ShellBackground.BlurHidesWallpaper(ShellBackground.Blur);
         if (string.IsNullOrWhiteSpace(path)
             || (ShellBackground.Preset == ShellPresetKind.Custom && !ShellBackground.ShouldBindWallpaper))
         {
@@ -363,7 +442,8 @@ public static class ShellBackdrop
                     DecodePixelWidth = ShellBackground.WallpaperDecodeWidth,
                     UriSource = new Uri(path, UriKind.Absolute)
                 };
-                wallpaper.Visibility = Visibility.Visible;
+                // Keep Source warm for blur=0, but never draw sharp under glass when blur > 0.
+                wallpaper.Visibility = hideSharp ? Visibility.Collapsed : Visibility.Visible;
                 _loadedPath = path;
                 _loadedEpoch = epoch;
             }
@@ -377,7 +457,7 @@ public static class ShellBackdrop
         }
         else
         {
-            wallpaper.Visibility = Visibility.Visible;
+            wallpaper.Visibility = hideSharp ? Visibility.Collapsed : Visibility.Visible;
         }
     }
 

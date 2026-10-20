@@ -128,6 +128,45 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void BlurVisualPadDip_CeilingsInPhysicalPixels()
+    {
+        // 150% DPI: DIP pad 192 → 288 physical → 192 DIP again (exact).
+        var at150 = ShellBackground.BlurVisualPadDip(ShellBackground.MaxBlurRadius, 1.5);
+        Assert.Equal(
+            ShellBackground.BlurEdgePad(ShellBackground.MaxBlurRadius),
+            at150,
+            3);
+
+        // Fractional DIP×scale must ceiling so coverage never undershoots.
+        var pad10 = ShellBackground.BlurEdgePad(10f);
+        var scale = 1.25;
+        var expected = (float)(Math.Ceiling(pad10 * scale) / scale);
+        Assert.Equal(expected, ShellBackground.BlurVisualPadDip(10f, scale), 3);
+        Assert.True(ShellBackground.BlurVisualPadDip(0, 1.5) >= ShellBackground.BlurCoverageMinPhysicalPx / 1.5f);
+    }
+
+    [Fact]
+    public void BlurHostSizeDip_SnapsUpToPhysicalPixels()
+    {
+        Assert.Equal(0f, ShellBackground.BlurHostSizeDip(0, 1.5));
+        // 100.2 DIP @ 150% → 150.3 px → ceil 151 → 151/1.5 DIP
+        Assert.Equal((float)(151.0 / 1.5), ShellBackground.BlurHostSizeDip(100.2, 1.5), 4);
+        Assert.Equal(800f, ShellBackground.BlurHostSizeDip(800, 1.0), 3);
+    }
+
+    [Fact]
+    public void BlurHidesWallpaper_WhenBlurAppliesAndRadiusPositive()
+    {
+        ShellBackground.Apply(ShellPresetKind.Blueprint, null, 40, 100, false, null);
+        Assert.True(ShellBackground.BlurHidesWallpaper(100));
+        Assert.True(ShellBackground.BlurHidesWallpaper(10));
+        Assert.False(ShellBackground.BlurHidesWallpaper(0));
+
+        ShellBackground.Apply(ShellPresetKind.Neutral, null, 40, 100, false, null);
+        Assert.False(ShellBackground.BlurHidesWallpaper(100));
+    }
+
+    [Fact]
     public void QuantizedBlurRadius_StepsAndCacheKey()
     {
         Assert.Equal(0, ShellBackground.QuantizedBlurRadius(0));
