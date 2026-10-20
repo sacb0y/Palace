@@ -12,19 +12,89 @@
     Background="Transparent">
 
     <Page.Resources>
+        <!--
+          Temp contract mirror of overlay PR 0.0.14 ViewerOverlayButtonStyle.
+          Reuse/replace when rebasing after that PR lands (24x24 plate, HC keys).
+        -->
+        <Style x:Key="ViewerOverlayButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <!--
+          Selection chrome is on the swatch only (IsSelected). GridViews use
+          SelectionMode=None so group SelectedItem cannot multi-highlight (blur PR).
+          Gooey Custom tiles: 110x62, CornerRadius 4.
+        -->
         <DataTemplate x:Key="ShellPresetTile" x:DataType="models:ShellPresetItem">
             <StackPanel
-                Width="112"
+                Width="118"
+                Padding="4,4,4,2"
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
-                AutomationProperties.Name="{x:Bind Name}"
-                Spacing="4">
-                <Border
-                    Height="64"
-                    Background="{x:Bind Swatch, Mode=OneWay}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{ThemeResource ControlCornerRadius}" />
+                AutomationProperties.HelpText="{x:Bind AutomationHelpText}"
+                AutomationProperties.Name="{x:Bind AutomationName}"
+                Spacing="4"
+                ToolTipService.ToolTip="{x:Bind ToolTipText}">
+                <StackPanel.ContextFlyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem
+                            Click="ShellRecentCustomRemoveMenu_Click"
+                            IsEnabled="{x:Bind ShowRemoveChrome}"
+                            Tag="{x:Bind}"
+                            Text="Remove from recent" />
+                    </MenuFlyout>
+                </StackPanel.ContextFlyout>
+                <Grid Width="110" Height="62">
+                    <Border
+                        Background="{x:Bind Swatch, Mode=OneWay}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Opacity="{x:Bind helpers:BindHelpers.BrokenTileOpacity(IsBroken), Mode=OneWay}" />
+                    <!-- Add image… glyph -->
+                    <ic:FluentIcon
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Icon="Add"
+                        IconSize="Size20"
+                        IconVariant="Regular"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAddCustom)}" />
+                    <!-- Broken warning -->
+                    <ic:FluentIcon
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Icon="Warning"
+                        IconSize="Size20"
+                        IconVariant="Regular"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsBroken)}" />
+                    <Border
+                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                        BorderThickness="2"
+                        CornerRadius="4"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}" />
+                    <Button
+                        AutomationProperties.AutomationId="{x:Bind RemoveAutomationId}"
+                        AutomationProperties.Name="{x:Bind RemoveAutomationName}"
+                        Click="ShellRecentCustomRemove_Click"
+                        Style="{StaticResource ViewerOverlayButtonStyle}"
+                        Tag="{x:Bind}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowRemoveChrome)}">
+                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                    </Button>
+                </Grid>
                 <TextBlock
+                    Padding="2,0"
+                    Opacity="{x:Bind helpers:BindHelpers.BrokenTileOpacity(IsBroken), Mode=OneWay}"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind Name}"
                     TextTrimming="CharacterEllipsis" />
@@ -71,47 +141,102 @@
                 AutomationProperties.AutomationId="GrdShellPresets"
                 AutomationProperties.Name="Background"
                 Spacing="8">
+                <!--
+                  SelectionMode=None + ShellPresetItem.IsSelected / SelectionKey via
+                  ShellPresetSelection (blur PR). Custom group: Add image… then MRU.
+                -->
                 <GridView
+                    x:Name="GrdShellPresetsChrome"
+                    AutomationProperties.AutomationId="GrdShellPresetsChrome"
                     AutomationProperties.Name="Chrome backgrounds"
                     IsItemClickEnabled="True"
+                    IsTabStop="True"
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.ChromeBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    KeyDown="ShellPresetGrid_KeyDown"
+                    SelectionMode="None"
+                    SingleSelectionFollowsFocus="False" />
                 <TextBlock
                     AutomationProperties.AutomationId="TxtShellPresetGroup_Vivid"
                     Style="{StaticResource SubtitleTextBlockStyle}"
                     Text="Vivid" />
                 <GridView
+                    x:Name="GrdShellPresetsVivid"
+                    AutomationProperties.AutomationId="GrdShellPresetsVivid"
                     AutomationProperties.Name="Vivid backgrounds"
                     IsItemClickEnabled="True"
+                    IsTabStop="True"
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.VividBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    KeyDown="ShellPresetGrid_KeyDown"
+                    SelectionMode="None"
+                    SingleSelectionFollowsFocus="False" />
                 <TextBlock
                     AutomationProperties.AutomationId="TxtShellPresetGroup_Creator"
                     Style="{StaticResource SubtitleTextBlockStyle}"
                     Text="Creator" />
                 <GridView
+                    x:Name="GrdShellPresetsCreator"
+                    AutomationProperties.AutomationId="GrdShellPresetsCreator"
                     AutomationProperties.Name="Creator backgrounds"
                     IsItemClickEnabled="True"
+                    IsTabStop="True"
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.CreatorBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    KeyDown="ShellPresetGrid_KeyDown"
+                    SelectionMode="None"
+                    SingleSelectionFollowsFocus="False" />
+                <TextBlock
+                    AutomationProperties.AutomationId="TxtShellPresetGroup_Custom"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Custom" />
                 <GridView
-                    AutomationProperties.Name="Custom background"
+                    x:Name="GrdShellPresetsCustom"
+                    AutomationProperties.AutomationId="GrdShellPresetsCustom"
+                    AutomationProperties.Name="Custom backgrounds"
                     IsItemClickEnabled="True"
+                    IsTabStop="True"
                     ItemClick="ShellPreset_ItemClick"
                     ItemTemplate="{StaticResource ShellPresetTile}"
                     ItemsSource="{x:Bind ViewModel.CustomBackgroundPresets, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.SelectedPreset, Mode=OneWay}"
-                    SelectionMode="Single" />
+                    KeyDown="ShellPresetGrid_KeyDown"
+                    SelectionMode="None"
+                    SingleSelectionFollowsFocus="False" />
+                <TextBlock
+                    AutomationProperties.AutomationId="TxtShellCustomEmptyCaption"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Images you add appear here so you can switch back in one click."
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowCustomEmptyCaption), Mode=OneWay}" />
             </StackPanel>
+            <InfoBar
+                x:Name="InfShellCustomBroken"
+                AutomationProperties.AutomationId="InfShellCustomBroken"
+                IsClosable="True"
+                IsOpen="{x:Bind ViewModel.ShowCustomBrokenWarning, Mode=TwoWay}"
+                Message="{x:Bind ViewModel.CustomBrokenWarningMessage, Mode=OneWay}"
+                Severity="Warning" />
+            <InfoBar
+                x:Name="InfShellRecentUndo"
+                AutomationProperties.AutomationId="InfShellRecentUndo"
+                GotFocus="InfShellRecentUndo_FocusEntered"
+                IsOpen="{x:Bind ViewModel.ShowRecentCustomUndoToast, Mode=TwoWay}"
+                LostFocus="InfShellRecentUndo_FocusExited"
+                Message="{x:Bind ViewModel.RecentCustomUndoMessage, Mode=OneWay}"
+                PointerEntered="InfShellRecentUndo_PointerEntered"
+                PointerExited="InfShellRecentUndo_PointerExited"
+                Severity="Informational">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="BtnShellRecentUndo"
+                        Command="{x:Bind ViewModel.UndoRecentCustomRemoveCommand}"
+                        Content="Undo" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <TextBlock
                 x:Name="TxtShellWallpaper"
                 AutomationProperties.AutomationId="TxtShellWallpaper"

@@ -645,19 +645,70 @@ public sealed class TagChipGroupMove
     public override string ToString() => GroupName;
 }
 
-/// <summary>Settings → Background preset tile.</summary>
+/// <summary>Settings → Background preset / Custom-group tile.</summary>
 public sealed partial class ShellPresetItem : ObservableObject
 {
     public ShellPresetKind Id { get; init; }
     public string Name { get; init; } = "";
 
+    /// <summary>
+    /// Single-select key across picker groups. Presets use <see cref="ShellPresetSelection.KeyFor"/>;
+    /// Custom MRU tiles use <see cref="ShellPresetSelection.KeyForRecent"/>.
+    /// </summary>
+    public string SelectionKey { get; init; } = "";
+
     /// <summary>Theme-aware preview (dark/light thumb or gradient); refresh on ActualThemeChanged.</summary>
     [ObservableProperty]
     public partial Brush? Swatch { get; set; }
 
+    /// <summary>Shared selection chrome — not GridView SelectedItem (per-group).</summary>
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    /// <summary>Custom group: leading Add image… tile (opens the file picker).</summary>
+    public bool IsAddCustom { get; init; }
+
+    /// <summary>Custom group: MRU entry id (null for packaged presets and Add).</summary>
+    public string? RecentId { get; init; }
+
+    public string? RecentFileName { get; init; }
+    public string? RecentImagePath { get; init; }
+    public string? RecentSourcePath { get; init; }
+    public string? RecentContentHash { get; init; }
+    public DateTimeOffset RecentAddedUtc { get; init; }
+    public double RecentDarkness { get; init; } = ShellBackground.DefaultDarkness;
+    public double RecentBlur { get; init; } = ShellBackground.DefaultBlur;
+
+    /// <summary>Cache and source both missing — placeholder, not selectable.</summary>
+    public bool IsBroken { get; init; }
+
+    public bool IsRecentCustom => !string.IsNullOrWhiteSpace(RecentId);
     public bool IsCustom => Id == ShellPresetKind.Custom;
-    public string AutomationId => "BtnShellPreset_" + Id;
+    public bool ShowRemoveChrome => IsRecentCustom;
+    public bool CanSelect => !IsBroken;
+
+    public string AutomationId => IsRecentCustom
+        ? "BtnShellRecentCustom_" + RecentId
+        : IsAddCustom
+            ? "BtnShellPreset_AddCustom"
+            : "BtnShellPreset_" + Id;
+
+    public string AutomationName => IsBroken
+        ? Name + ", unavailable"
+        : IsAddCustom
+            ? "Add custom background image"
+            : IsRecentCustom
+                ? Name + ", custom background"
+                : Name;
+
+    public string AutomationHelpText => IsRecentCustom && !IsBroken
+        ? "Press Delete to remove"
+        : "";
+
+    public string RemoveAutomationId => "BtnShellRecentCustomRemove_" + (RecentId ?? "");
+    public string RemoveAutomationName => "Remove " + Name;
+    public string ToolTipText { get; init; } = "";
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
-    public override string ToString() => Name;
+    public override string ToString() => AutomationName;
 }

@@ -12,6 +12,9 @@ public static class BindHelpers
     public static Visibility InvertBoolToVisibility(bool value) =>
         value ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>Broken Custom tiles dim to 55% (avoid x:Bind bool-literal helpers).</summary>
+    public static double BrokenTileOpacity(bool isBroken) => isBroken ? 0.55 : 1.0;
+
     public static bool Not(bool value) => !value;
 
     public static bool IsFolderSort(FolderTreeSort current, string value) => current.ToString() == value;
