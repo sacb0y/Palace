@@ -4,7 +4,10 @@ namespace Palace.Helpers;
 /// Overlay / GalleryWindow Details, Info, and video-loop chrome. Persist via
 /// LocalSettings (<see cref="ShowDetailsKey"/> / <see cref="ShowImageInfoKey"/> /
 /// <see cref="LoopVideoKey"/> / section collapse keys). First-run Details/Info
-/// default on; video loop defaults on. Off sticks until toggled. Off WinUI.
+/// keys each default on, but the floating Details card and top-left Info panel
+/// are exclusive — <see cref="CoerceExclusivePanels"/> keeps only one open
+/// (Details wins when both would be on). Video loop defaults on. Off sticks
+/// until toggled. Off WinUI.
 /// </summary>
 public static class GalleryChrome
 {
@@ -31,6 +34,24 @@ public static class GalleryChrome
 
     public static bool ParseSectionExpanded(object? stored, bool defaultExpanded) =>
         ParseBool(stored, defaultExpanded);
+
+    /// <summary>
+    /// Floating Details and the top-left Info card must not stack (Details would
+    /// cover Info and let it show through). Opening either panel closes the
+    /// other. When both prefs request open (legacy / first-run defaults), Details
+    /// wins so the richer card stays.
+    /// </summary>
+    public static (bool showDetails, bool showImageInfo) CoerceExclusivePanels(
+        bool showDetails,
+        bool showImageInfo)
+    {
+        if (showDetails && showImageInfo)
+        {
+            return (true, false);
+        }
+
+        return (showDetails, showImageInfo);
+    }
 
     public static bool ParseBool(object? stored, bool defaultValue) => stored switch
     {
