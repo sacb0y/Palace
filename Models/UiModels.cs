@@ -487,9 +487,15 @@ public partial class TagChipItem : ObservableObject
         IsPartial && SelectionTotal > 0 ? $"{PartialCount} of {SelectionTotal}" : "";
 
     public string AssignTooltip =>
-        IsPartial && SelectionTotal > 0
-            ? $"On {PartialCount} of {SelectionTotal} selected. Click to add to all"
-            : IsAssigned ? $"Remove {Name}" : $"Add {Name}";
+        Helpers.TagChipVisual.AssignTooltip(
+            Helpers.TagChipVisual.Resolve(IsPartial, IsAssigned),
+            Name,
+            PartialCount,
+            SelectionTotal);
+
+    /// <summary>Gooey TagChip apply state for assign / filter / board chips (never a face "On" word).</summary>
+    public Helpers.TagChipApplyState ApplyState =>
+        Helpers.TagChipVisual.Resolve(IsPartial, IsFilterSelected || IsAssigned);
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Name;
@@ -498,6 +504,7 @@ public partial class TagChipItem : ObservableObject
     {
         OnPropertyChanged(nameof(CheckState));
         OnPropertyChanged(nameof(AssignTooltip));
+        OnPropertyChanged(nameof(ApplyState));
     }
 
     partial void OnIsPartialChanged(bool value)
@@ -505,6 +512,7 @@ public partial class TagChipItem : ObservableObject
         OnPropertyChanged(nameof(CheckState));
         OnPropertyChanged(nameof(PartialLabel));
         OnPropertyChanged(nameof(AssignTooltip));
+        OnPropertyChanged(nameof(ApplyState));
     }
 
     partial void OnPartialCountChanged(int value)
@@ -518,6 +526,9 @@ public partial class TagChipItem : ObservableObject
         OnPropertyChanged(nameof(PartialLabel));
         OnPropertyChanged(nameof(AssignTooltip));
     }
+
+    partial void OnIsFilterSelectedChanged(bool value) =>
+        OnPropertyChanged(nameof(ApplyState));
 
     partial void OnEffectiveColorChanged(string? value) => OnPropertyChanged(nameof(HasColor));
 }
