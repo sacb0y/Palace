@@ -61,6 +61,8 @@
     <Compile Include="..\Helpers\ShortcutCheatsheet.cs" Link="ShortcutCheatsheet.cs" />
     <Compile Include="..\Helpers\RangeSelect.cs" Link="RangeSelect.cs" />
     <Compile Include="..\Helpers\ShellBackground.cs" Link="ShellBackground.cs" />
+    <Compile Include="..\Helpers\RecentCustomBackgrounds.cs" Link="RecentCustomBackgrounds.cs" />
+    <Compile Include="..\Helpers\ShellPresetSelection.cs" Link="ShellPresetSelection.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />
     <Compile Include="..\Models\ShellPreset.cs" Link="ShellPreset.cs" />
     <Compile Include="..\Helpers\BrandAccent.cs" Link="BrandAccent.cs" />

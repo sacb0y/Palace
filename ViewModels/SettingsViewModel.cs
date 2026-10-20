@@ -115,6 +115,34 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial ShellPresetItem? SelectedPreset { get; set; }
 
+    /// <summary>Active Custom-group MRU id when the live wallpaper is a recent custom.</summary>
+    [ObservableProperty]
+    public partial string? SelectedRecentCustomId { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowCustomEmptyCaption { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShowCustomBrokenWarning { get; set; }
+
+    [ObservableProperty]
+    public partial string CustomBrokenWarningMessage { get; set; } =
+        "Your custom background couldn't be loaded. Switched to Default.";
+
+    [ObservableProperty]
+    public partial bool ShowRecentCustomUndoToast { get; set; }
+
+    [ObservableProperty]
+    public partial string RecentCustomUndoMessage { get; set; } = "";
+
+    private RecentCustomBackgroundEntry? _pendingRecentDelete;
+    private bool _pendingRecentDeleteWasActive;
+    private double _pendingRecentDeleteDarkness;
+    private double _pendingRecentDeleteBlur;
+    private int _recentUndoEpoch;
+    private CancellationTokenSource? _recentUndoCts;
+    private int _recentUndoPaused;
+
     [ObservableProperty]
     public partial bool BlurEnabled { get; set; } = true;
 
@@ -364,7 +392,165 @@ public partial class SettingsViewModel : ObservableObject
         BlurLabel = ShellBackground.AmountLabel(Blur);
         TintEnabled = ShellBackground.TintEnabled;
         TintHex = ShellBackground.TintHex;
+        LoadRecentCustomBackgrounds();
         SyncPresetUi();
+    }
+
+    private void LoadRecentCustomBackgrounds()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        var localFolder = ApplicationData.Current.LocalFolder.Path;
+        var kept = RecentCustomBackgrounds.Parse(values[RecentCustomBackgrounds.SettingsKey]).ToList();
+
+        // Seed MRU from the active custom wallpaper when the list is empty (upgrade path).
+        if (kept.Count == 0
+            && SelectedPresetKind == ShellPresetKind.Custom
+            && !string.IsNullOrWhiteSpace(WallpaperPath)
+            && File.Exists(WallpaperPath))
+        {
+            var fileName = RecentCustomBackgrounds.FileNameOnly(WallpaperPath);
+            if (!string.IsNullOrWhiteSpace(fileName))
+            {
+                string? hash = null;
+                try
+                {
+                    hash = RecentCustomBackgrounds.HashFile(WallpaperPath);
+                }
+                catch
+                {
+                    // Hash is best-effort for migration.
+                }
+
+                var seeded = RecentCustomBackgrounds.Create(
+                    fileName,
+                    ShellBackground.WallpaperName ?? fileName,
+                    sourcePath: null,
+                    Darkness,
+                    Blur,
+                    hash);
+                var (list, _) = RecentCustomBackgrounds.Push([], seeded);
+                kept = list.ToList();
+                values[RecentCustomBackgrounds.ActiveIdKey] = seeded.Id;
+            }
+        }
+
+        values[RecentCustomBackgrounds.SettingsKey] = RecentCustomBackgrounds.Serialize(kept);
+        var activeId = values[RecentCustomBackgrounds.ActiveIdKey] as string;
+        ShowCustomBrokenWarning = false;
+
+        if (SelectedPresetKind == ShellPresetKind.Custom
+            && !string.IsNullOrWhiteSpace(WallpaperPath))
+        {
+            var match = RecentCustomBackgrounds.FindById(kept, activeId)
+                ?? RecentCustomBackgrounds.FindByCachedPath(kept, localFolder, WallpaperPath);
+            SelectedRecentCustomId = match?.Id;
+            if (match is not null)
+            {
+                values[RecentCustomBackgrounds.ActiveIdKey] = match.Id;
+                if (RecentCustomBackgrounds.IsBroken(match, localFolder, File.Exists))
+                {
+                    // Active image missing at startup → Default + one-time Warning InfoBar.
+                    SelectedRecentCustomId = null;
+                    values[RecentCustomBackgrounds.ActiveIdKey] = "";
+                    SelectedPresetKind = ShellPresetKind.Default;
+                    WallpaperPath = "";
+                    ShellBackground.SetWallpaperName(null);
+                    Darkness = ShellBackground.ParseDarknessFor(
+                        ShellPresetKind.Default,
+                        values[ShellBackground.DarknessKeyFor(ShellPresetKind.Default)]
+                            ?? values[ShellBackground.DarknessKey],
+                        PresetSwatchLightChrome());
+                    Blur = ShellBackground.ParseBlurFor(
+                        ShellPresetKind.Default,
+                        values[ShellBackground.BlurKeyFor(ShellPresetKind.Default)]
+                            ?? values[ShellBackground.BlurKey],
+                        PresetSwatchLightChrome());
+                    PersistShellBackground(reloadWallpaper: true);
+                    ShowCustomBrokenWarning = true;
+                }
+            }
+        }
+        else
+        {
+            SelectedRecentCustomId = null;
+            values[RecentCustomBackgrounds.ActiveIdKey] = "";
+        }
+
+        RebuildCustomGroupItems(kept, localFolder);
+    }
+
+    private void RebuildCustomGroupItems(
+        IReadOnlyList<RecentCustomBackgroundEntry> entries,
+        string localFolder)
+    {
+        // Drop prior Custom / recent tiles from the shared selection list.
+        for (var i = BackgroundPresets.Count - 1; i >= 0; i--)
+        {
+            var row = BackgroundPresets[i];
+            if (row.Id == ShellPresetKind.Custom || row.IsRecentCustom || row.IsAddCustom)
+            {
+                BackgroundPresets.RemoveAt(i);
+            }
+        }
+
+        CustomBackgroundPresets.Clear();
+
+        var add = new ShellPresetItem
+        {
+            Id = ShellPresetKind.Custom,
+            Name = "Add image…",
+            SelectionKey = ShellPresetSelection.KeyFor(ShellPresetKind.Custom),
+            IsAddCustom = true,
+            Swatch = BuildAddCustomSwatch(),
+            ToolTipText = "Add a custom background image"
+        };
+        CustomBackgroundPresets.Add(add);
+        BackgroundPresets.Add(add);
+
+        foreach (var entry in entries)
+        {
+            var path = RecentCustomBackgrounds.ResolveImagePath(entry, localFolder, File.Exists);
+            var broken = path is null;
+            var label = RecentCustomBackgrounds.DisplayLabel(entry.DisplayName);
+            var item = new ShellPresetItem
+            {
+                Id = ShellPresetKind.Custom,
+                Name = label,
+                SelectionKey = ShellPresetSelection.KeyForRecent(entry.Id),
+                RecentId = entry.Id,
+                RecentFileName = entry.FileName,
+                RecentImagePath = path,
+                RecentSourcePath = entry.SourcePath,
+                RecentContentHash = entry.ContentHash,
+                RecentAddedUtc = entry.DateAddedUtc,
+                RecentDarkness = entry.Darkness,
+                RecentBlur = entry.Blur,
+                IsBroken = broken,
+                ToolTipText = RecentCustomBackgrounds.Tooltip(entry.DisplayName, entry.DateAddedUtc),
+                Swatch = broken
+                    ? BuildBrokenCustomSwatch()
+                    : BuildRecentCustomSwatch(path!)
+            };
+            CustomBackgroundPresets.Add(item);
+            BackgroundPresets.Add(item);
+        }
+
+        ShowCustomEmptyCaption = entries.Count == 0;
+    }
+
+    private IReadOnlyList<RecentCustomBackgroundEntry> ReadRecentEntries()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        return RecentCustomBackgrounds.Parse(values[RecentCustomBackgrounds.SettingsKey]);
+    }
+
+    private void WriteRecentEntries(IReadOnlyList<RecentCustomBackgroundEntry> entries)
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        values[RecentCustomBackgrounds.SettingsKey] = RecentCustomBackgrounds.Serialize(entries);
+        values[RecentCustomBackgrounds.ActiveIdKey] = SelectedRecentCustomId ?? "";
+        RebuildCustomGroupItems(entries, ApplicationData.Current.LocalFolder.Path);
+        SyncBackgroundSelection();
     }
 
     private void PersistPeakOverride()
@@ -392,6 +578,24 @@ public partial class SettingsViewModel : ObservableObject
         values[ShellBackground.BlurKeyFor(ShellBackground.Preset)] = ShellBackground.Blur;
         values[ShellBackground.TintEnabledKey] = ShellBackground.TintEnabled;
         values[ShellBackground.TintKey] = ShellBackground.TintHex;
+        if (SelectedPresetKind == ShellPresetKind.Custom
+            && !string.IsNullOrWhiteSpace(SelectedRecentCustomId))
+        {
+            var updated = RecentCustomBackgrounds.UpdateAmounts(
+                ReadRecentEntries(),
+                SelectedRecentCustomId,
+                ShellBackground.Darkness,
+                ShellBackground.Blur);
+            values[RecentCustomBackgrounds.SettingsKey] = RecentCustomBackgrounds.Serialize(updated);
+            values[RecentCustomBackgrounds.ActiveIdKey] = SelectedRecentCustomId;
+            RebuildCustomGroupItems(updated, ApplicationData.Current.LocalFolder.Path);
+        }
+        else if (SelectedPresetKind != ShellPresetKind.Custom)
+        {
+            SelectedRecentCustomId = null;
+            values[RecentCustomBackgrounds.ActiveIdKey] = "";
+        }
+
         HasWallpaper = ShellBackground.HasWallpaper;
         WallpaperPath = ShellBackground.WallpaperPath ?? "";
         WallpaperLabel = ShellBackground.WallpaperLabel;
@@ -411,10 +615,17 @@ public partial class SettingsViewModel : ObservableObject
 
         foreach (var kind in ShellBackground.PickerOrder)
         {
+            if (kind == ShellPresetKind.Custom)
+            {
+                // Custom group is rebuilt from MRU (Add image… + recents).
+                continue;
+            }
+
             var item = new ShellPresetItem
             {
                 Id = kind,
                 Name = ShellBackground.PresetDisplayName(kind),
+                SelectionKey = ShellPresetSelection.KeyFor(kind),
                 Swatch = BuildPresetSwatch(kind)
             };
             BackgroundPresets.Add(item);
@@ -438,7 +649,54 @@ public partial class SettingsViewModel : ObservableObject
     {
         foreach (var item in BackgroundPresets)
         {
-            item.Swatch = BuildPresetSwatch(item.Id);
+            if (item.IsAddCustom)
+            {
+                item.Swatch = BuildAddCustomSwatch();
+            }
+            else if (item.IsRecentCustom)
+            {
+                item.Swatch = item.IsBroken || string.IsNullOrWhiteSpace(item.RecentImagePath)
+                    ? BuildBrokenCustomSwatch()
+                    : BuildRecentCustomSwatch(item.RecentImagePath!);
+            }
+            else
+            {
+                item.Swatch = BuildPresetSwatch(item.Id);
+            }
+        }
+    }
+
+    private Brush BuildAddCustomSwatch()
+    {
+        // Gooey: SubtleFillColorSecondary plate + 1 px stroke (glyph drawn in the tile template).
+        return new SolidColorBrush(PresetSwatchLightChrome()
+            ? Color.FromArgb(255, 0xF3, 0xF3, 0xF3)
+            : Color.FromArgb(255, 0x2C, 0x2C, 0x2C));
+    }
+
+    private Brush BuildBrokenCustomSwatch() =>
+        new SolidColorBrush(PresetSwatchLightChrome()
+            ? Color.FromArgb(255, 0xE8, 0xE8, 0xE8)
+            : Color.FromArgb(255, 0x28, 0x28, 0x28));
+
+    private Brush BuildRecentCustomSwatch(string imagePath)
+    {
+        try
+        {
+            return new ImageBrush
+            {
+                ImageSource = new BitmapImage
+                {
+                    DecodePixelWidth = RecentCustomBackgrounds.ThumbDecodeWidth,
+                    DecodePixelHeight = RecentCustomBackgrounds.ThumbDecodeHeight,
+                    UriSource = new Uri(imagePath, UriKind.Absolute)
+                },
+                Stretch = Stretch.UniformToFill
+            };
+        }
+        catch
+        {
+            return BuildBrokenCustomSwatch();
         }
     }
 
@@ -446,10 +704,34 @@ public partial class SettingsViewModel : ObservableObject
     {
         BlurEnabled = ShellBackground.BlurApplies;
         DarknessEnabled = ShellBackground.DarknessApplies;
-        ShowCustomWallpaperActions = SelectedPresetKind == ShellPresetKind.Custom;
-        SelectedPreset = BackgroundPresets.FirstOrDefault(p => p.Id == SelectedPresetKind);
+        // Add tile + remove chrome replace the old Change image / Use default row.
+        ShowCustomWallpaperActions = false;
+        SyncBackgroundSelection();
         RefreshPresetSwatches();
     }
+
+    /// <summary>
+    /// One selected tile across chrome / Vivid / Creator / Custom (Add + recents).
+    /// Matches blur PR <c>ShellPresetSelection</c> — never per-GridView SelectedItem.
+    /// </summary>
+    private void SyncBackgroundSelection()
+    {
+        var activeKey = ActiveBackgroundSelectionKey();
+        foreach (var item in BackgroundPresets)
+        {
+            // Add tile is never the "selected wallpaper" chrome; broken tiles are not selectable.
+            item.IsSelected = !item.IsAddCustom
+                && !item.IsBroken
+                && ShellPresetSelection.Matches(item.SelectionKey, activeKey);
+        }
+
+        SelectedPreset = BackgroundPresets.FirstOrDefault(p => p.IsSelected);
+    }
+
+    private string ActiveBackgroundSelectionKey() =>
+        !string.IsNullOrWhiteSpace(SelectedRecentCustomId)
+            ? ShellPresetSelection.KeyForRecent(SelectedRecentCustomId)
+            : ShellPresetSelection.KeyFor(SelectedPresetKind);
 
     /// <summary>
     /// Match the live shell chrome: Light theme → light packaged thumbs / gradient stops.
@@ -532,26 +814,258 @@ public partial class SettingsViewModel : ObservableObject
             ? Color.FromArgb(a, r, g, b)
             : Color.FromArgb(255, 20, 20, 24);
 
-    /// <summary>GridView / tile click: Custom opens the file picker; others apply immediately.</summary>
+    /// <summary>
+    /// Picker tile click: Add opens the file picker; recent restores that image;
+    /// broken tiles are ignored; packaged presets apply immediately.
+    /// </summary>
     public Task SelectBackgroundPresetAsync(ShellPresetItem? item)
     {
-        if (item is null || _load.IsLoading)
+        if (item is null || _load.IsLoading || item.IsBroken)
         {
             return Task.CompletedTask;
         }
 
-        if (item.Id == ShellPresetKind.Custom)
+        if (item.IsAddCustom)
         {
             return PickWallpaperAsync();
         }
 
+        if (item.IsRecentCustom)
+        {
+            return SelectRecentCustomAsync(item);
+        }
+
         return ApplyPresetAsync(item.Id);
+    }
+
+    /// <summary>One-click restore of a Custom-group recent (cache + saved blur/darkness).</summary>
+    public Task SelectRecentCustomAsync(ShellPresetItem? item)
+    {
+        if (item is null || _load.IsLoading || !item.IsRecentCustom || item.IsBroken)
+        {
+            return Task.CompletedTask;
+        }
+
+        return ErrorReporter.RunAsync("Change background", Notify, async () =>
+        {
+            var localFolder = ApplicationData.Current.LocalFolder.Path;
+            var entry = RecentCustomBackgrounds.FindById(ReadRecentEntries(), item.RecentId);
+            if (entry is null)
+            {
+                WriteRecentEntries(ReadRecentEntries());
+                return;
+            }
+
+            var path = RecentCustomBackgrounds.ResolveImagePath(entry, localFolder, File.Exists);
+            if (path is null)
+            {
+                // Keep the broken placeholder; do not auto-delete — user removes explicitly.
+                WriteRecentEntries(ReadRecentEntries());
+                StatusText = "That custom background is no longer available.";
+                return;
+            }
+
+            var previousPath = ShellBackground.WallpaperPath;
+            if (!string.Equals(previousPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                ShellBackground.ReleaseDisplay();
+            }
+
+            WallpaperPath = path;
+            SelectedPresetKind = ShellPresetKind.Custom;
+            SelectedRecentCustomId = entry.Id;
+            ShellBackground.SetWallpaperName(entry.DisplayName);
+            Darkness = entry.Darkness;
+            Blur = entry.Blur;
+            PersistShellBackground(reloadWallpaper: true);
+            if (!string.Equals(previousPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                await TryDeleteStoredWallpaperAsync(previousPath, ReadRecentEntries());
+            }
+
+            StatusText = $"Background: {entry.DisplayName}.";
+            await Task.CompletedTask;
+        });
+    }
+
+    [RelayCommand]
+    private Task RemoveRecentCustomAsync(ShellPresetItem? item)
+    {
+        if (item is null || _load.IsLoading || !item.IsRecentCustom)
+        {
+            return Task.CompletedTask;
+        }
+
+        return ErrorReporter.RunAsync("Remove recent background", Notify, async () =>
+        {
+            await RemoveRecentCustomCoreAsync(item.RecentId!, notify: true);
+        });
+    }
+
+    /// <summary>
+    /// Soft-remove from the MRU. Active image → Default immediately + Undo toast;
+    /// stored copy deleted only after the Undo window passes.
+    /// </summary>
+    private async Task RemoveRecentCustomCoreAsync(string id, bool notify)
+    {
+        var previous = ReadRecentEntries();
+        var removed = RecentCustomBackgrounds.FindById(previous, id);
+        if (removed is null)
+        {
+            return;
+        }
+
+        var next = RecentCustomBackgrounds.Remove(previous, id);
+        var wasActive = string.Equals(SelectedRecentCustomId, id, StringComparison.OrdinalIgnoreCase)
+            || (SelectedPresetKind == ShellPresetKind.Custom
+                && string.Equals(
+                    RecentCustomBackgrounds.FileNameOnly(ShellBackground.WallpaperPath),
+                    removed.FileName,
+                    StringComparison.OrdinalIgnoreCase));
+
+        _pendingRecentDelete = removed;
+        _pendingRecentDeleteWasActive = wasActive;
+        _pendingRecentDeleteDarkness = Darkness;
+        _pendingRecentDeleteBlur = Blur;
+
+        SelectedRecentCustomId = wasActive ? null : SelectedRecentCustomId;
+        WriteRecentEntries(next);
+
+        if (wasActive)
+        {
+            await ApplyPresetAsync(ShellPresetKind.Default);
+            OfferRecentCustomUndoToast($"Removed {RecentCustomBackgrounds.DisplayLabel(removed.DisplayName)}.");
+        }
+        else
+        {
+            // Non-active: still offer Undo; file delete waits for the window.
+            OfferRecentCustomUndoToast($"Removed {RecentCustomBackgrounds.DisplayLabel(removed.DisplayName)}.");
+        }
+
+        if (notify)
+        {
+            StatusText = "Removed from Custom.";
+        }
+    }
+
+    private void OfferRecentCustomUndoToast(string message)
+    {
+        var epoch = Interlocked.Increment(ref _recentUndoEpoch);
+        _recentUndoCts?.Cancel();
+        RecentCustomUndoMessage = message;
+        ShowRecentCustomUndoToast = true;
+        _ = FinalizeRecentDeleteLaterAsync(epoch);
+    }
+
+    [RelayCommand]
+    private Task UndoRecentCustomRemoveAsync() =>
+        ErrorReporter.RunAsync("Undo remove background", Notify, async () =>
+        {
+            var pending = _pendingRecentDelete;
+            if (pending is null)
+            {
+                ShowRecentCustomUndoToast = false;
+                return;
+            }
+
+            _recentUndoCts?.Cancel();
+            _pendingRecentDelete = null;
+            ShowRecentCustomUndoToast = false;
+
+            var (list, evicted) = RecentCustomBackgrounds.Push(
+                ReadRecentEntries(),
+                pending,
+                SelectedRecentCustomId);
+            WriteRecentEntries(list);
+            foreach (var old in evicted)
+            {
+                var cache = RecentCustomBackgrounds.CachePath(
+                    ApplicationData.Current.LocalFolder.Path,
+                    old.FileName);
+                await TryDeleteStoredWallpaperAsync(cache, list);
+            }
+
+            if (_pendingRecentDeleteWasActive)
+            {
+                var path = RecentCustomBackgrounds.ResolveImagePath(
+                    pending,
+                    ApplicationData.Current.LocalFolder.Path,
+                    File.Exists);
+                if (path is not null)
+                {
+                    ShellBackground.ReleaseDisplay();
+                    WallpaperPath = path;
+                    SelectedPresetKind = ShellPresetKind.Custom;
+                    SelectedRecentCustomId = pending.Id;
+                    ShellBackground.SetWallpaperName(pending.DisplayName);
+                    Darkness = _pendingRecentDeleteDarkness;
+                    Blur = _pendingRecentDeleteBlur;
+                    PersistShellBackground(reloadWallpaper: true);
+                }
+            }
+
+            StatusText = "Restored custom background.";
+            await Task.CompletedTask;
+        });
+
+    public void PauseRecentCustomUndoTimer()
+    {
+        Interlocked.Increment(ref _recentUndoPaused);
+        _recentUndoCts?.Cancel();
+    }
+
+    public void ResumeRecentCustomUndoTimer()
+    {
+        if (Interlocked.Decrement(ref _recentUndoPaused) > 0)
+        {
+            return;
+        }
+
+        Interlocked.Exchange(ref _recentUndoPaused, 0);
+        if (ShowRecentCustomUndoToast)
+        {
+            _ = FinalizeRecentDeleteLaterAsync(Volatile.Read(ref _recentUndoEpoch));
+        }
+    }
+
+    private async Task FinalizeRecentDeleteLaterAsync(int epoch)
+    {
+        _recentUndoCts?.Cancel();
+        _recentUndoCts = new CancellationTokenSource();
+        var token = _recentUndoCts.Token;
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(12), token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (epoch != Volatile.Read(ref _recentUndoEpoch) || Volatile.Read(ref _recentUndoPaused) > 0)
+        {
+            return;
+        }
+
+        var pending = _pendingRecentDelete;
+        _pendingRecentDelete = null;
+        ShowRecentCustomUndoToast = false;
+        if (pending is null)
+        {
+            return;
+        }
+
+        var cache = RecentCustomBackgrounds.CachePath(
+            ApplicationData.Current.LocalFolder.Path,
+            pending.FileName);
+        await TryDeleteStoredWallpaperAsync(cache, ReadRecentEntries());
     }
 
     private Task ApplyPresetAsync(ShellPresetKind kind) =>
         ErrorReporter.RunAsync("Change background", Notify, async () =>
         {
             var previousPath = ShellBackground.WallpaperPath;
+            var previousRecents = ReadRecentEntries();
             var leavingCustom = SelectedPresetKind == ShellPresetKind.Custom
                 && kind != ShellPresetKind.Custom;
             if (kind is ShellPresetKind.Mica or ShellPresetKind.MicaAlt
@@ -567,12 +1081,11 @@ public partial class SettingsViewModel : ObservableObject
                 ShellBackground.ReleaseDisplay();
                 WallpaperPath = "";
                 ShellBackground.SetWallpaperName(null);
+                SelectedRecentCustomId = null;
             }
 
             var values = ApplicationData.Current.LocalSettings.Values;
             var light = PresetSwatchLightChrome();
-            // Per-preset first; Default may still inherit legacy global ShellDarkness / ShellBlur.
-            // Missing keys use the manifest default for the current theme.
             Darkness = ShellBackground.ParseDarknessFor(
                 kind,
                 values[ShellBackground.DarknessKeyFor(kind)]
@@ -586,7 +1099,8 @@ public partial class SettingsViewModel : ObservableObject
             PersistShellBackground(reloadWallpaper: leavingCustom);
             if (leavingCustom)
             {
-                await TryDeleteStoredWallpaperAsync(previousPath);
+                // Keep MRU cache files; only delete orphans not listed.
+                await TryDeleteStoredWallpaperAsync(previousPath, previousRecents);
             }
 
             if (string.IsNullOrEmpty(StatusText) || !StatusText.StartsWith("Mica", StringComparison.Ordinal))
@@ -878,26 +1392,90 @@ public partial class SettingsViewModel : ObservableObject
 
             var previous = ShellBackground.WallpaperPath;
             var previousName = ShellBackground.WallpaperName;
+            var previousRecents = ReadRecentEntries();
+            var previousRecentId = SelectedRecentCustomId;
             ShellBackground.ReleaseDisplay();
             StorageFile? dest = null;
+            var createdNewFile = false;
             try
             {
+                // Copy first so we can hash the stored bytes (same content → move front).
+                var fileName = RecentCustomBackgrounds.NewFileName(Path.GetExtension(file.Name));
                 dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
-                    ShellBackground.NewWallpaperFileName(Path.GetExtension(file.Name)),
+                    fileName,
                     CreationCollisionOption.ReplaceExisting);
+                createdNewFile = true;
                 await file.CopyAndReplaceAsync(dest);
-                WallpaperPath = dest.Path;
+
+                var hash = RecentCustomBackgrounds.HashFile(dest.Path);
+                var existing = RecentCustomBackgrounds.FindByHash(previousRecents, hash);
+                RecentCustomBackgroundEntry entry;
+                IReadOnlyList<RecentCustomBackgroundEntry> pushed;
+                IReadOnlyList<RecentCustomBackgroundEntry> evicted;
+                if (existing is not null)
+                {
+                    // Same content: move existing to front; delete the unused new copy.
+                    entry = existing with
+                    {
+                        DisplayName = file.Name,
+                        SourcePath = file.Path,
+                        Darkness = Darkness,
+                        Blur = Blur,
+                        ContentHash = hash,
+                        DateAddedUtc = DateTimeOffset.UtcNow
+                    };
+                    (pushed, evicted) = RecentCustomBackgrounds.Push(
+                        previousRecents,
+                        entry,
+                        existing.Id);
+                    await TryDeleteStoredWallpaperAsync(dest.Path, pushed);
+                    dest = null;
+                    createdNewFile = false;
+                    WallpaperPath = RecentCustomBackgrounds.CachePath(
+                        ApplicationData.Current.LocalFolder.Path,
+                        existing.FileName);
+                }
+                else
+                {
+                    entry = RecentCustomBackgrounds.Create(
+                        fileName,
+                        file.Name,
+                        file.Path,
+                        Darkness,
+                        Blur,
+                        hash);
+                    (pushed, evicted) = RecentCustomBackgrounds.Push(
+                        previousRecents,
+                        entry,
+                        SelectedRecentCustomId);
+                    WallpaperPath = dest.Path;
+                }
+
                 SelectedPresetKind = ShellPresetKind.Custom;
+                SelectedRecentCustomId = entry.Id;
                 ShellBackground.SetWallpaperName(file.Name);
+                WriteRecentEntries(pushed);
                 PersistShellBackground(reloadWallpaper: true);
-                await TryDeleteStoredWallpaperAsync(previous);
+
+                foreach (var old in evicted)
+                {
+                    var cache = RecentCustomBackgrounds.CachePath(
+                        ApplicationData.Current.LocalFolder.Path,
+                        old.FileName);
+                    await TryDeleteStoredWallpaperAsync(cache, pushed);
+                }
+
+                await TryDeleteStoredWallpaperAsync(previous, pushed);
                 StatusText = "Wallpaper updated.";
             }
             catch
             {
-                if (dest is not null && !string.Equals(ShellBackground.WallpaperPath, dest.Path, StringComparison.OrdinalIgnoreCase))
+                SelectedRecentCustomId = previousRecentId;
+                if (createdNewFile
+                    && dest is not null
+                    && !string.Equals(ShellBackground.WallpaperPath, dest.Path, StringComparison.OrdinalIgnoreCase))
                 {
-                    await TryDeleteStoredWallpaperAsync(dest.Path);
+                    await TryDeleteStoredWallpaperAsync(dest.Path, previousRecents);
                 }
 
                 ShellBackground.SetWallpaperName(previousName);
@@ -910,9 +1488,23 @@ public partial class SettingsViewModel : ObservableObject
     private Task ClearWallpaperAsync() =>
         ApplyPresetAsync(ShellPresetKind.Default);
 
-    private static async Task TryDeleteStoredWallpaperAsync(string? path)
+    private static async Task TryDeleteStoredWallpaperAsync(
+        string? path,
+        IEnumerable<RecentCustomBackgroundEntry>? keepListed = null)
     {
-        if (string.IsNullOrWhiteSpace(path) || !ShellBackground.IsStoredWallpaperName(path))
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var listed = keepListed?.ToList() ?? [];
+        if (RecentCustomBackgrounds.ShouldKeepStoredFile(path, listed))
+        {
+            return;
+        }
+
+        if (!ShellBackground.IsStoredWallpaperName(path)
+            && !RecentCustomBackgrounds.IsStoredRecentName(path))
         {
             return;
         }
