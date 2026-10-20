@@ -1,1 +1,0 @@
-﻿532f21c: After closing Details, I key reopens docked card under toolbar.

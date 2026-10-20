@@ -1,1 +1,0 @@
-﻿532f21c: Video with Details open - Media section above scrubber; no maximize/full-window on transport.

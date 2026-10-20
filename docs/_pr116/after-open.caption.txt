@@ -1,1 +1,0 @@
-﻿532f21c: Details open - File + Color/HDR + Histogram visible without scrolling; toolbar clear above card.
