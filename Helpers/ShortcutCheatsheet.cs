@@ -32,6 +32,8 @@ public static class ShortcutCheatsheet
         new("Ctrl+D", "Image information", "TxtShortcutInfo"),
         new("Ctrl+I", "Details", "TxtShortcutDetails"),
         new("Ctrl+H", "Luminance heatmap (HDR)", "TxtShortcutHeatmap"),
+        new("M", "Mute / unmute video", "TxtShortcutMute"),
+        new("Up / Down", "Video volume (±5, Shift ±1)", "TxtShortcutVolume"),
         new("Space", "Open overlay on the focused or selected tile", "TxtShortcutSpace"),
         new("Esc", "Close overlay", "TxtShortcutEsc")
     ];

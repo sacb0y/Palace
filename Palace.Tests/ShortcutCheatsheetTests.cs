@@ -9,7 +9,7 @@ public sealed class ShortcutCheatsheetTests
     public void Entries_CoverViewerShortcuts()
     {
         Assert.Equal(
-            ["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+D", "Ctrl+I", "Ctrl+H", "Space", "Esc"],
+            ["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+D", "Ctrl+I", "Ctrl+H", "M", "Up / Down", "Space", "Esc"],
             ShortcutCheatsheet.Entries.Select(entry => entry.Keys));
         Assert.Equal("1:1", ShortcutCheatsheet.Find("Ctrl+1")?.Action);
         Assert.Equal("Fit", ShortcutCheatsheet.Find("Ctrl+2")?.Action);
@@ -17,6 +17,8 @@ public sealed class ShortcutCheatsheetTests
         Assert.Equal("Image information", ShortcutCheatsheet.Find("Ctrl+D")?.Action);
         Assert.Equal("Details", ShortcutCheatsheet.Find("Ctrl+I")?.Action);
         Assert.Contains("heatmap", ShortcutCheatsheet.Find("Ctrl+H")!.Action, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Mute", ShortcutCheatsheet.Find("M")!.Action, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("volume", ShortcutCheatsheet.Find("Up / Down")!.Action, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("overlay", ShortcutCheatsheet.Find("Space")!.Action, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Close", ShortcutCheatsheet.Find("Esc")!.Action, StringComparison.OrdinalIgnoreCase);
     }
@@ -33,6 +35,8 @@ public sealed class ShortcutCheatsheetTests
                 "TxtShortcutInfo",
                 "TxtShortcutDetails",
                 "TxtShortcutHeatmap",
+                "TxtShortcutMute",
+                "TxtShortcutVolume",
                 "TxtShortcutSpace",
                 "TxtShortcutEsc"
             ],

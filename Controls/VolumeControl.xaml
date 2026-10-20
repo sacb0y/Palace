@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Palace.Controls.VolumeControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsTabStop="False">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="VolumeSliderFillBrush" Color="White" />
+                    <SolidColorBrush x:Key="VolumeHudBackgroundBrush" Color="#CC1C1C1C" />
+                    <SolidColorBrush x:Key="VolumeHudForegroundBrush" Color="White" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="VolumeSliderFillBrush" Color="White" />
+                    <SolidColorBrush x:Key="VolumeHudBackgroundBrush" Color="#CC1C1C1C" />
+                    <SolidColorBrush x:Key="VolumeHudForegroundBrush" Color="White" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="VolumeSliderFillBrush" Color="White" />
+                    <SolidColorBrush x:Key="VolumeHudBackgroundBrush" Color="#CC1C1C1C" />
+                    <SolidColorBrush x:Key="VolumeHudForegroundBrush" Color="White" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="VolumeSliderFillBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="VolumeHudBackgroundBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="VolumeHudForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Grid x:Name="GrdRoot">
+        <Border
+            x:Name="BrdPill"
+            Padding="4,2"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Bottom"
+            Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="18">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <Button
+                    x:Name="BtnMute"
+                    Width="40"
+                    Height="40"
+                    MinWidth="44"
+                    MinHeight="44"
+                    AutomationProperties.AutomationId="BtnGalleryVolume"
+                    AutomationProperties.Name="Mute"
+                    Click="BtnMute_Click"
+                    Style="{StaticResource ViewerOverlayButtonStyle}"
+                    ToolTipService.ToolTip="Mute (M)">
+                    <ic:FluentIcon
+                        x:Name="IcnSpeaker"
+                        Foreground="{ThemeResource ViewerOverlayButtonGlyphBrush}"
+                        Icon="Speaker2"
+                        IconSize="Size16"
+                        IconVariant="Regular" />
+                </Button>
+                <Grid
+                    x:Name="GrdSliderHost"
+                    Width="0"
+                    Height="32"
+                    VerticalAlignment="Center">
+                    <Slider
+                        x:Name="SldVolume"
+                        Width="100"
+                        VerticalAlignment="Center"
+                        Maximum="100"
+                        Minimum="0"
+                        AutomationProperties.AutomationId="SldGalleryVolume"
+                        AutomationProperties.Name="Volume"
+                        StepFrequency="1"
+                        Value="100" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border
+            x:Name="BrdHud"
+            Padding="16,12"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Background="{ThemeResource VolumeHudBackgroundBrush}"
+            CornerRadius="12"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <ic:FluentIcon
+                    x:Name="IcnHud"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource VolumeHudForegroundBrush}"
+                    Icon="Speaker2"
+                    IconSize="Size24"
+                    IconVariant="Regular" />
+                <TextBlock
+                    x:Name="TxtHud"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource VolumeHudForegroundBrush}"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="100%" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1084,6 +1084,8 @@ public sealed partial class LibraryPage : Page
 
         var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(CoreVirtualKeyStates.Down);
+        var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(CoreVirtualKeyStates.Down);
         if (ViewModel.OverlayGallery.TryHandleViewerShortcut(control, (int)e.Key))
         {
             e.Handled = true;
@@ -1097,6 +1099,21 @@ public sealed partial class LibraryPage : Page
 
         if (GifFrames.PassesGifSliderArrows(FocusIsGifSlider(e.OriginalSource), (int)e.Key))
         {
+            return;
+        }
+
+        if (GalleryVolume.PassesVolumeFocusKeys(VolOverlay.OwnsFocus(e.OriginalSource), (int)e.Key))
+        {
+            return;
+        }
+
+        if (VolOverlay.TryHandleViewerKey(
+                ViewModel.OverlayGallery.IsVideo,
+                FocusIsTextInput(e.OriginalSource),
+                shift,
+                e.Key))
+        {
+            e.Handled = true;
             return;
         }
 
@@ -1963,6 +1980,11 @@ public sealed partial class LibraryPage : Page
         }
 
         ApplyOverlayLoop();
+        ApplyOverlayVolume();
+        VolOverlay.AttachTransport(MpeOverlay.TransportControls);
+        VolOverlay.VolumeChanged -= OverlayVolume_Changed;
+        VolOverlay.VolumeChanged += OverlayVolume_Changed;
+        VolOverlay.SyncFromStore();
     }
 
     private void ApplyOverlayLoop()
@@ -1975,6 +1997,11 @@ public sealed partial class LibraryPage : Page
 
         player.IsLoopingEnabled = ViewModel.OverlayGallery?.LoopVideo ?? GalleryChrome.DefaultLoopVideo;
     }
+
+    private void ApplyOverlayVolume() =>
+        Controls.VolumeControl.ApplyToPlayer(MpeOverlay.MediaPlayer);
+
+    private void OverlayVolume_Changed(object? sender, EventArgs e) => ApplyOverlayVolume();
 
     private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)
     {

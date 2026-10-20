@@ -60,6 +60,7 @@ public static class AppServices
     {
         LocalRoot = ApplicationData.Current.LocalFolder.Path;
         LoadPeakOverride();
+        LoadGalleryVolume();
         LoadShellBackground();
         LoadMediaCache();
         // Side-by-side/test packages must never open the real catalog.
@@ -167,6 +168,12 @@ public static class AppServices
         GalleryPeak.Apply(
             GalleryPeak.ParseEnabled(values[GalleryPeak.EnabledKey]),
             GalleryPeak.ParseNits(values[GalleryPeak.NitsKey]));
+    }
+
+    private static void LoadGalleryVolume()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        GalleryVolume.Load(values[GalleryVolume.VolumeKey], values[GalleryVolume.MuteKey]);
     }
 
     internal static void LoadShellBackground()

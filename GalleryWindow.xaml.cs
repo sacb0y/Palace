@@ -61,8 +61,10 @@ public sealed partial class GalleryWindow : Window
             Gallery.StopGifPlayback();
             SrfWindowStill.Bind(null);
             MpeGallery.Source = null;
+            VolGallery.VolumeChanged -= GalleryVolume_Changed;
         };
 
+        VolGallery.VolumeChanged += GalleryVolume_Changed;
         Activated += (_, _) => GrdGalleryWindow.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
         UpdateMedia();
     }
@@ -87,6 +89,8 @@ public sealed partial class GalleryWindow : Window
     {
         var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(CoreVirtualKeyStates.Down);
+        var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(CoreVirtualKeyStates.Down);
         if (Gallery.TryHandleViewerShortcut(control, (int)e.Key))
         {
             e.Handled = true;
@@ -100,6 +104,21 @@ public sealed partial class GalleryWindow : Window
 
         if (GifFrames.PassesGifSliderArrows(FocusIsGifSlider(e.OriginalSource), (int)e.Key))
         {
+            return;
+        }
+
+        if (GalleryVolume.PassesVolumeFocusKeys(VolGallery.OwnsFocus(e.OriginalSource), (int)e.Key))
+        {
+            return;
+        }
+
+        if (VolGallery.TryHandleViewerKey(
+                Gallery.IsVideo,
+                FocusIsTextInput(e.OriginalSource),
+                shift,
+                e.Key))
+        {
+            e.Handled = true;
             return;
         }
 
@@ -118,6 +137,22 @@ public sealed partial class GalleryWindow : Window
                 e.Handled = true;
                 break;
         }
+    }
+
+    private static bool FocusIsTextInput(object? source)
+    {
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is Microsoft.UI.Xaml.Controls.TextBox
+                or Microsoft.UI.Xaml.Controls.RichEditBox
+                or Microsoft.UI.Xaml.Controls.PasswordBox
+                or Microsoft.UI.Xaml.Controls.AutoSuggestBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool FocusIsGifSlider(object? source)
@@ -150,6 +185,9 @@ public sealed partial class GalleryWindow : Window
                 }
 
                 ApplyLoop();
+                ApplyVolume();
+                VolGallery.AttachTransport(MpeGallery.TransportControls);
+                VolGallery.SyncFromStore();
                 var file = await StorageFile.GetFileFromPathAsync(Gallery.CurrentPath);
                 if (epoch != _mediaEpoch)
                 {
@@ -182,6 +220,11 @@ public sealed partial class GalleryWindow : Window
 
         player.IsLoopingEnabled = Gallery.LoopVideo;
     }
+
+    private void ApplyVolume() =>
+        Controls.VolumeControl.ApplyToPlayer(MpeGallery.MediaPlayer);
+
+    private void GalleryVolume_Changed(object? sender, EventArgs e) => ApplyVolume();
 
     private async void BtnGalleryWindowSetThumb_Click(object sender, RoutedEventArgs e)
     {
