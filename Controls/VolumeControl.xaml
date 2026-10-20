@@ -48,9 +48,10 @@
             <StackPanel Orientation="Horizontal" Spacing="4">
                 <Button
                     x:Name="BtnMute"
-                    MinWidth="36"
-                    MinHeight="36"
-                    Padding="8,4"
+                    Width="40"
+                    Height="40"
+                    MinWidth="44"
+                    MinHeight="44"
                     AutomationProperties.AutomationId="BtnGalleryVolume"
                     AutomationProperties.Name="Mute"
                     Click="BtnMute_Click"
@@ -58,6 +59,7 @@
                     ToolTipService.ToolTip="Mute (M)">
                     <ic:FluentIcon
                         x:Name="IcnSpeaker"
+                        Foreground="{ThemeResource ViewerOverlayButtonGlyphBrush}"
                         Icon="Speaker2"
                         IconSize="Size16"
                         IconVariant="Regular" />
