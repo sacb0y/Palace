@@ -118,6 +118,8 @@ public sealed partial class LibraryPage : Page
             {
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+                CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
+                ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
                 TryHookMosaicScroll();
                 LogLibraryShow(pageReused: true);
@@ -127,6 +129,8 @@ public sealed partial class LibraryPage : Page
             }
 
             _shellReady = true;
+            CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
+            ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
             SyncBrowseChromeFromViewModel();
             _suppressBrowseChrome = false;
@@ -916,7 +920,7 @@ public sealed partial class LibraryPage : Page
                 (int)e.Key)
             && ViewModel.OverlayGallery?.TryCloseDetailsFirst() == true)
         {
-            BtnGalleryDetails.Focus(FocusState.Programmatic);
+            BtnGalleryImageInfo.Focus(FocusState.Programmatic);
             e.Handled = true;
             return;
         }
@@ -1075,7 +1079,7 @@ public sealed partial class LibraryPage : Page
                 BtnGalleryPrev,
                 BtnGalleryNext,
                 BtnGalleryClose,
-                BtnGalleryDetails);
+                BtnGalleryImageInfo);
             _viewerOverlayAutoHide.Attach();
         }
         else
@@ -1113,7 +1117,7 @@ public sealed partial class LibraryPage : Page
                 }
                 else
                 {
-                    BtnGalleryDetails.Focus(FocusState.Programmatic);
+                    BtnGalleryImageInfo.Focus(FocusState.Programmatic);
                     _viewerFocusZone = ViewerFocusZone.Controls;
                 }
             }
@@ -1159,7 +1163,7 @@ public sealed partial class LibraryPage : Page
             case VirtualKey.Escape:
                 if (ViewModel.OverlayGallery.TryCloseDetailsFirst())
                 {
-                    BtnGalleryDetails.Focus(FocusState.Programmatic);
+                    BtnGalleryImageInfo.Focus(FocusState.Programmatic);
                     _viewerFocusZone = ViewerFocusZone.Controls;
                     e.Handled = true;
                     break;
@@ -1195,7 +1199,7 @@ public sealed partial class LibraryPage : Page
         switch (_viewerFocusZone)
         {
             case ViewerFocusZone.Controls:
-                BtnGalleryDetails.Focus(FocusState.Programmatic);
+                BtnGalleryImageInfo.Focus(FocusState.Programmatic);
                 break;
             case ViewerFocusZone.Details:
                 CardViewerDetails.FocusCard();
@@ -2017,6 +2021,7 @@ public sealed partial class LibraryPage : Page
         if (gallery is { IsVideo: true, CurrentPath: not null } video
             && !AccessService.WouldHydrateOnOpen(video.CurrentPath))
         {
+            var wasMaximized = ViewerMediaElement.IsPresenterMaximized(App.Window?.AppWindow);
             BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
             try
             {
@@ -2028,6 +2033,8 @@ public sealed partial class LibraryPage : Page
                 }
 
                 MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
+                ViewerMediaElement.SuppressFullWindow(MpeOverlay);
+                ViewerMediaElement.RestoreIfVideoMaximized(App.Window?.AppWindow, wasMaximized);
             }
             catch
             {
@@ -2051,6 +2058,7 @@ public sealed partial class LibraryPage : Page
             MpeOverlay.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
         }
 
+        ViewerMediaElement.SuppressFullWindow(MpeOverlay);
         ApplyOverlayLoop();
         ApplyOverlayVolume();
         VolOverlay.AttachTransport(MpeOverlay.TransportControls);

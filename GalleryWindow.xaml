@@ -69,16 +69,16 @@
                     Text="Missing"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsMissing), Mode=OneWay}" />
 
-                <!-- Grid, not StackPanel: the info card gets a finite height and
-                     scrolls instead of running under the bottom bar. -->
+                <!-- Toolbar + Details in one column: card is Grid row 1 (stable reopen dock). -->
                 <Grid
+                    x:Name="GrdViewerLeftChrome"
                     Margin="16,16,0,72"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
                     RowSpacing="8">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Border
                         Padding="6,4"
@@ -91,9 +91,9 @@
                             x:Name="BtnGalleryWindowImageInfo"
                             Padding="8,4"
                             AutomationProperties.AutomationId="BtnGalleryWindowImageInfo"
-                            AutomationProperties.Name="Image information"
-                            IsChecked="{x:Bind Gallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
-                            ToolTipService.ToolTip="Image information (Ctrl+D)">
+                            AutomationProperties.Name="Details"
+                            IsChecked="{x:Bind Gallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
+                            ToolTipService.ToolTip="Details (I)">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
                                 <TextBlock VerticalAlignment="Center" Text="Info" />
@@ -164,39 +164,11 @@
                         </Border>
                     </StackPanel>
                     </Border>
-                    <Border
-                        x:Name="BrdGalleryWindowImageInfo"
+                    <controls:ViewerDetailsCard
+                        x:Name="CardViewerDetails"
                         Grid.Row="1"
-                        MaxWidth="360"
-                        Padding="10,6"
-                        AutomationProperties.AutomationId="BrdGalleryWindowImageInfo"
-                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                        BorderThickness="1"
-                        CornerRadius="{StaticResource OverlayCornerRadius}"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowImageInfo), Mode=OneWay}">
-                        <ScrollViewer
-                            HorizontalScrollBarVisibility="Disabled"
-                            VerticalScrollBarVisibility="Auto">
-                            <StackPanel Spacing="6">
-                                <TextBlock
-                                    AutomationProperties.AutomationId="TxtGalleryWindowImageInfo"
-                                    AutomationProperties.Name="Image information"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind Gallery.ImageInfoText, Mode=OneWay}"
-                                    TextWrapping="Wrap" />
-                                <controls:GalleryHistogramChart
-                                    Compact="True"
-                                    IdPrefix="GalleryWindowInfo"
-                                    Bins="{x:Bind Gallery.Histogram, Mode=OneWay}"
-                                    Details="{x:Bind Gallery.DetailsRows, Mode=OneWay}"
-                                    Heatmap="{x:Bind Gallery.HeatmapActive, Mode=OneWay}"
-                                    ShowLuma="{x:Bind Gallery.HistogramShowLuma, Mode=OneWay}"
-                                    ShowRgb="{x:Bind Gallery.HistogramShowRgb, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowHistogram), Mode=OneWay}" />
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Border>
+                        Gallery="{x:Bind Gallery, Mode=OneWay}"
+                        IsOpen="{x:Bind Gallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
                 </Grid>
                 <Button
                     x:Name="BtnGalleryWindowPrev"
@@ -396,15 +368,6 @@
                             <TextBlock VerticalAlignment="Center" Text="Open in Explorer" />
                         </StackPanel>
                     </Button>
-                    <ToggleButton
-                        x:Name="BtnGalleryWindowDetails"
-                        AutomationProperties.AutomationId="BtnGalleryWindowDetails"
-                        AutomationProperties.Name="Details"
-                        IsChecked="{x:Bind Gallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
-                        Style="{StaticResource ViewerOverlayDetailsToggleStyle}"
-                        ToolTipService.ToolTip="Details (I)">
-                        <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
-                    </ToggleButton>
                     <Button
                         x:Name="BtnGalleryWindowClose"
                         AutomationProperties.AutomationId="BtnGalleryWindowClose"
@@ -415,10 +378,6 @@
                         <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
                     </Button>
                 </StackPanel>
-                <controls:ViewerDetailsCard
-                    x:Name="CardViewerDetails"
-                    Gallery="{x:Bind Gallery, Mode=OneWay}"
-                    IsOpen="{x:Bind Gallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
             </Grid>
         </Grid>
     </Grid>

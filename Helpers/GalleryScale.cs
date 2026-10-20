@@ -30,12 +30,13 @@ public static class GalleryScale
     public const double MinPinchZoom = 1.0;
     public const double MaxPinchZoom = 8.0;
 
+    /// <summary>Ctrl+D aliases the Info / Details card (same as bare <c>I</c>).</summary>
     public static bool TogglesImageInfo(bool controlDown, int keyCode) =>
         controlDown && keyCode == KeyLetterD;
 
     /// <summary>
-    /// Details panel: bare <c>I</c> or <c>Alt+Enter</c> (no Ctrl). Ctrl+I used to
-    /// toggle Details and is retired so letter shortcuts stay chord-free.
+    /// Details / Info card: bare <c>I</c> or <c>Alt+Enter</c> (no Ctrl). Ctrl+D is
+    /// the chord alias via <see cref="TogglesImageInfo"/>.
     /// </summary>
     public static bool TogglesDetails(bool controlDown, bool altDown, int keyCode)
     {

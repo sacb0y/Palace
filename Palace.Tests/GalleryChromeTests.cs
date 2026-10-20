@@ -9,10 +9,10 @@ public sealed class GalleryChromeTests
     public void Keys_AreStable()
     {
         Assert.Equal("GalleryShowDetails", GalleryChrome.ShowDetailsKey);
-        Assert.Equal("GalleryShowImageInfo", GalleryChrome.ShowImageInfoKey);
         Assert.Equal("GalleryLoopVideo", GalleryChrome.LoopVideoKey);
         Assert.Equal("GalleryDetailsSection_", GalleryChrome.DetailsSectionKeyPrefix);
         Assert.Equal("GalleryDetailsSection_file", GalleryChrome.DetailsSectionKey("file"));
+        Assert.Equal("GalleryDetailsSection_colorhdr", GalleryChrome.DetailsSectionKey("colorhdr"));
     }
 
     [Fact]
@@ -25,18 +25,6 @@ public sealed class GalleryChromeTests
         Assert.False(GalleryChrome.ParseShowDetails(false));
         Assert.True(GalleryChrome.ParseShowDetails("true"));
         Assert.False(GalleryChrome.ParseShowDetails("false"));
-    }
-
-    [Fact]
-    public void ParseShowImageInfo_DefaultsOn()
-    {
-        Assert.True(GalleryChrome.DefaultShowImageInfo);
-        Assert.True(GalleryChrome.ParseShowImageInfo(null));
-        Assert.True(GalleryChrome.ParseShowImageInfo("nope"));
-        Assert.True(GalleryChrome.ParseShowImageInfo(true));
-        Assert.False(GalleryChrome.ParseShowImageInfo(false));
-        Assert.True(GalleryChrome.ParseShowImageInfo("true"));
-        Assert.False(GalleryChrome.ParseShowImageInfo("false"));
     }
 
     [Fact]
@@ -67,24 +55,4 @@ public sealed class GalleryChromeTests
         Assert.False(GalleryChrome.ParseSectionExpanded(false, defaultExpanded: true));
         Assert.True(GalleryChrome.ParseSectionExpanded("true", defaultExpanded: false));
     }
-
-    [Fact]
-    public void CoerceExclusivePanels_DetailsWinsWhenBothOn()
-    {
-        Assert.Equal((true, false), GalleryChrome.CoerceExclusivePanels(true, true));
-        Assert.Equal((true, false), GalleryChrome.CoerceExclusivePanels(true, false));
-        Assert.Equal((false, true), GalleryChrome.CoerceExclusivePanels(false, true));
-        Assert.Equal((false, false), GalleryChrome.CoerceExclusivePanels(false, false));
-    }
-
-    [Fact]
-    public void CoerceExclusivePanels_FirstRunDefaultsPreferDetails()
-    {
-        var details = GalleryChrome.ParseShowDetails(null);
-        var info = GalleryChrome.ParseShowImageInfo(null);
-        Assert.True(details);
-        Assert.True(info);
-        Assert.Equal((true, false), GalleryChrome.CoerceExclusivePanels(details, info));
-    }
 }
-

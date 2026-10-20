@@ -14,9 +14,9 @@ public sealed class ShortcutCheatsheetTests
         Assert.Equal("1:1", ShortcutCheatsheet.Find("Ctrl+1")?.Action);
         Assert.Equal("Fit", ShortcutCheatsheet.Find("Ctrl+2")?.Action);
         Assert.Equal("Fill", ShortcutCheatsheet.Find("Ctrl+3")?.Action);
-        Assert.Equal("Image information", ShortcutCheatsheet.Find("Ctrl+D")?.Action);
-        Assert.Equal("Details", ShortcutCheatsheet.Find("I")?.Action);
-        Assert.Equal("Details", ShortcutCheatsheet.Find("Alt+Enter")?.Action);
+        Assert.Equal("Details (Info)", ShortcutCheatsheet.Find("Ctrl+D")?.Action);
+        Assert.Equal("Details (Info)", ShortcutCheatsheet.Find("I")?.Action);
+        Assert.Equal("Details (Info)", ShortcutCheatsheet.Find("Alt+Enter")?.Action);
         Assert.Contains("heatmap", ShortcutCheatsheet.Find("Ctrl+H")!.Action, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Mute", ShortcutCheatsheet.Find("M")!.Action, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("volume", ShortcutCheatsheet.Find("Up / Down")!.Action, StringComparison.OrdinalIgnoreCase);

@@ -207,7 +207,9 @@ public sealed partial class GalleryHistogramChart : UserControl
 
         var compact = Compact;
         PnlHistogramModes.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        CnvHistogram.Height = compact ? 64 : 120;
+        // Compact Details card targets ~90px plot so File+Color+Histogram fit
+        // without scrolling at ~1200×800.
+        CnvHistogram.Height = compact ? 90 : 120;
         var luma = ShowLuma;
         var rgb = ShowRgb;
         BtnHistogramLuma.IsChecked = luma;

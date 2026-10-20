@@ -1500,16 +1500,16 @@
                         Text="Missing"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
 
-                    <!-- Grid, not StackPanel: the info card gets a finite height and
-                         scrolls instead of running under the bottom bar. -->
+                    <!-- Toolbar + Details in one column: card is Grid row 1 (stable reopen dock). -->
                     <Grid
+                        x:Name="GrdViewerLeftChrome"
                         Margin="16,16,0,8"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
                         RowSpacing="8">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <Border
                             Padding="6,4"
@@ -1522,9 +1522,9 @@
                                 x:Name="BtnGalleryImageInfo"
                                 Padding="8,4"
                                 AutomationProperties.AutomationId="BtnGalleryImageInfo"
-                                AutomationProperties.Name="Image information"
-                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowImageInfo, Mode=TwoWay, FallbackValue=False}"
-                                ToolTipService.ToolTip="Image information (Ctrl+D)">
+                                AutomationProperties.Name="Details"
+                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
+                                ToolTipService.ToolTip="Details (I)">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Info" />
@@ -1634,44 +1634,11 @@
                             </Border>
                         </StackPanel>
                         </Border>
-                        <Border
-                            x:Name="BrdGalleryImageInfo"
+                        <controls:ViewerDetailsCard
+                            x:Name="CardViewerDetails"
                             Grid.Row="1"
-                            MaxWidth="360"
-                            Padding="10,6"
-                            AutomationProperties.AutomationId="BrdGalleryImageInfo"
-                            Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="{StaticResource OverlayCornerRadius}"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowImageInfo), Mode=OneWay, FallbackValue=Collapsed}">
-                            <ScrollViewer
-                                HorizontalScrollBarVisibility="Disabled"
-                                VerticalScrollBarVisibility="Auto">
-                                <StackPanel Spacing="6">
-                                    <TextBlock
-                                        AutomationProperties.AutomationId="TxtGalleryImageInfo"
-                                        AutomationProperties.Name="Image information"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind ViewModel.OverlayGallery.ImageInfoText, Mode=OneWay, FallbackValue=''}"
-                                        TextWrapping="Wrap" />
-                                    <controls:GalleryHistogramChart
-                                        Compact="True"
-                                        IdPrefix="GalleryOverlay"
-                                        Bins="{x:Bind ViewModel.OverlayGallery.Histogram, Mode=OneWay, FallbackValue={x:Null}}"
-                                        Details="{x:Bind ViewModel.OverlayGallery.DetailsRows, Mode=OneWay, FallbackValue={x:Null}}"
-                                        Heatmap="{x:Bind ViewModel.OverlayGallery.HeatmapActive, Mode=OneWay, FallbackValue=False}"
-                                        ShowLuma="{x:Bind ViewModel.OverlayGallery.HistogramShowLuma, Mode=OneWay, FallbackValue=True}"
-                                        ShowRgb="{x:Bind ViewModel.OverlayGallery.HistogramShowRgb, Mode=OneWay, FallbackValue=True}"
-                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowHistogram), Mode=OneWay, FallbackValue=Collapsed}" />
-                                    <controls:GalleryGamutChart
-                                        Analysis="{x:Bind ViewModel.OverlayGallery.Analysis, Mode=OneWay, FallbackValue={x:Null}}"
-                                        Compact="True"
-                                        IdPrefix="GalleryOverlay"
-                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowGamut), Mode=OneWay, FallbackValue=Collapsed}" />
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Border>
+                            Gallery="{x:Bind ViewModel.OverlayGallery, Mode=OneWay}"
+                            IsOpen="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
                     </Grid>
                     <Grid
                         x:Name="GrdViewerOverlayNav"
@@ -1708,15 +1675,6 @@
                             VerticalAlignment="Top"
                             Orientation="Horizontal"
                             Spacing="8">
-                            <ToggleButton
-                                x:Name="BtnGalleryDetails"
-                                AutomationProperties.AutomationId="BtnGalleryDetails"
-                                AutomationProperties.Name="Details"
-                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
-                                Style="{StaticResource ViewerOverlayDetailsToggleStyle}"
-                                ToolTipService.ToolTip="Details (I)">
-                                <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
-                            </ToggleButton>
                             <Button
                                 x:Name="BtnGalleryClose"
                                 AutomationProperties.AutomationId="BtnGalleryClose"
@@ -1728,10 +1686,6 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <controls:ViewerDetailsCard
-                        x:Name="CardViewerDetails"
-                        Gallery="{x:Bind ViewModel.OverlayGallery, Mode=OneWay}"
-                        IsOpen="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
                 </Grid>
 
                 <Border
