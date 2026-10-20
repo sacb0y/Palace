@@ -290,9 +290,10 @@ public sealed partial class TagChip : UserControl
         }
 
         VbStateGlyph.Visibility = Visibility.Visible;
+        // FluentIcon.Icon is FluentIcons.Common.Icon (not Symbol).
         IcnState.Icon = state == TagChipApplyState.Partial
-            ? FluentIcons.Common.Symbol.Subtract
-            : FluentIcons.Common.Symbol.Checkmark;
+            ? FluentIcons.Common.Icon.Subtract
+            : FluentIcons.Common.Icon.Checkmark;
 
         if (highContrast)
         {
@@ -452,8 +453,8 @@ public sealed partial class TagChip : UserControl
 
     private void BtnStar_Click(object sender, RoutedEventArgs e)
     {
+        // WinUI RoutedEventArgs has no Handled; star Click already stops at the Button.
         InvokeStar();
-        e.Handled = true;
     }
 
     private void InvokeChip()
