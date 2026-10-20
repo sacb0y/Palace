@@ -554,6 +554,7 @@ public sealed partial class GalleryStillSurface : UserControl
         var viz = HdrVizMode.None;
         int? vizPrimaries = null;
         ImageScaling scaling = ImageScaling.Fit;
+        var contentProbe = HdrProbe.None;
         await UiDispatch.RunAsync(() =>
         {
             if (_gallery is not { IsImage: true } g || _hdrFrame is not { } f)
@@ -563,6 +564,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
             gallery = g;
             frame = f;
+            contentProbe = _hdrFrameProbe;
             scaling = g.Scaling;
             // Heatmap applies once an HDR present exists; the first present of
             // a still is normal, and VizMode re-presents when it turns on.
@@ -613,6 +615,7 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             outcome = await presenterRef.TryPresentAsync(
                 frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token,
+                contentProbe: contentProbe,
                 viz: viz, vizPrimaries: vizPrimaries);
         }
         finally

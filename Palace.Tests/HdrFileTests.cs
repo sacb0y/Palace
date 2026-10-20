@@ -298,10 +298,20 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(jxr));
         Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(HdrProbe.None));
         Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(new HdrProbe(HdrKind.UltraHdrJpeg, 1, 13, null)));
+        // FenrirDesktop: no Output6 + CCD HDR on, or PQ content with default probe miss.
+        Assert.True(GalleryPresent.DisplayHdrWithoutOutput6(true, HdrProbe.None));
+        Assert.True(GalleryPresent.DisplayHdrWithoutOutput6(null, pq));
+        Assert.True(GalleryPresent.DisplayHdrWithoutOutput6(
+            true, new HdrProbe(HdrKind.HdrPng, 9, 16, 560)));
+        Assert.False(GalleryPresent.DisplayHdrWithoutOutput6(false, HdrProbe.None));
+        Assert.False(GalleryPresent.DisplayHdrWithoutOutput6(null, HdrProbe.None));
         var unknown = GalleryPresent.PresentMap(GalleryPresent.UnknownDisplayPresentsHdr(pq), 1000, 0);
         Assert.Equal(1f, unknown.Scale);
         Assert.Equal(125f, unknown.ClipScrgb, 3);
         Assert.Contains("assumeHdr=1", GalleryPresent.FormatUnknownDisplayProbe("throw NullReferenceException", true));
+        Assert.Contains(
+            "assumeHdr=1",
+            GalleryPresent.FormatUnknownDisplayProbe("no Output6", true, "CCD ACE=1"));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(0, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(203, 0));
         Assert.Equal(80f, GalleryPresent.SdrPresentPeakNits(270, 270));

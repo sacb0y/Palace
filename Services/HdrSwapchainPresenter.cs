@@ -270,7 +270,10 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                         var output6 = TryQuery(output, IidDxgiOutput6);
                         if (output6 == IntPtr.Zero)
                         {
-                            ApplyUnknownDisplay("no Output6", content);
+                            // Packaged / some GPUs omit Output6; still ask CCD
+                            // (and PQ/HLG content) so we do not SDR-tonemap
+                            // while Windows HDR is on (FenrirDesktop).
+                            ApplyWithoutOutput6(output, content);
                             return;
                         }
 
@@ -280,7 +283,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                             var hr = CallGetDesc1(output6, ref desc);
                             if (hr < 0)
                             {
-                                ApplyUnknownDisplay($"descHr=0x{hr:X8}", content);
+                                ApplyWithoutOutput6(output, content, $"descHr=0x{hr:X8}");
                                 return;
                             }
 
@@ -345,9 +348,39 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         }
     }
 
+    private void ApplyWithoutOutput6(IntPtr output, HdrProbe content, string? reason = null)
+    {
+        var deviceName = TryGetOutputDeviceName(output);
+        // Named output: CCD for that GDI name only. No name (rare): any-path
+        // CCD so Advanced Color Enabled still wins without Output6.
+        var windowsHdr = string.IsNullOrEmpty(deviceName)
+            ? DisplayHdr.TryWindowsHdrEnabled(null)
+            : DisplayHdr.WindowsHdrForNamedOutput(DisplayHdr.TryWindowsHdrEnabled(deviceName));
+        var assume = GalleryPresent.DisplayHdrWithoutOutput6(windowsHdr, content);
+        DisplayIsHdr = assume;
+        _autoDisplayNits = 0;
+        DisplayPeakNits = 0;
+        var label = reason ?? "no Output6";
+        DisplayProbeText = GalleryPresent.FormatUnknownDisplayProbe(
+            label,
+            assume,
+            DisplayHdr.LastQuery.Summary);
+        if (assume)
+        {
+            DisplayProbeText +=
+                " · swap=" + GalleryPresent.FormatSwapChainLabel(
+                    GalleryPresent.ScrgbSwapChainFormat,
+                    GalleryPresent.ScrgbColorSpace);
+        }
+
+        DisplayHdr.WriteDebug(DisplayProbeText);
+    }
+
     private void ApplyUnknownDisplay(string reason, HdrProbe content)
     {
-        var assume = GalleryPresent.UnknownDisplayPresentsHdr(content);
+        // No DXGI output at all — still ask any-path CCD, then PQ/HLG content.
+        var windowsHdr = DisplayHdr.TryWindowsHdrEnabled(null);
+        var assume = GalleryPresent.DisplayHdrWithoutOutput6(windowsHdr, content);
         DisplayIsHdr = assume;
         _autoDisplayNits = 0;
         DisplayPeakNits = 0;
@@ -364,6 +397,30 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         }
 
         DisplayHdr.WriteDebug(DisplayProbeText);
+    }
+
+    /// <summary>IDXGIOutput::GetDesc DeviceName (<c>\\.\DISPLAYn</c>) without Output6.</summary>
+    private static string? TryGetOutputDeviceName(IntPtr output)
+    {
+        if (output == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            var desc = new DxgiOutputDesc();
+            if (CallGetDesc(output, ref desc) < 0 || string.IsNullOrWhiteSpace(desc.DeviceName))
+            {
+                return null;
+            }
+
+            return desc.DeviceName;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private IntPtr FindOutputForWindow(IntPtr adapter)
@@ -655,6 +712,12 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         return hr < 0 ? IntPtr.Zero : output;
     }
 
+    private static int CallGetDesc(IntPtr output, ref DxgiOutputDesc desc)
+    {
+        var fn = Marshal.GetDelegateForFunctionPointer<GetDescDelegate>(Vtbl(output, VtblGetDesc));
+        return fn(output, ref desc);
+    }
+
     private static int CallGetDesc1(IntPtr output6, ref DxgiOutputDesc1 desc)
     {
         var fn = Marshal.GetDelegateForFunctionPointer<GetDesc1Delegate>(Vtbl(output6, VtblGetDesc1));
@@ -745,9 +808,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         return fn(swap, sync, flags);
     }
 
-    // IDXGIFactory2::CreateSwapChainForComposition, IDXGIOutput6::GetDesc1,
-    // IDXGISwapChain3::SetColorSpace1. DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 is scRGB.
+    // IDXGIFactory2::CreateSwapChainForComposition, IDXGIOutput::GetDesc,
+    // IDXGIOutput6::GetDesc1, IDXGISwapChain3::SetColorSpace1.
+    // DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 is scRGB.
     private const int VtblCreateSwapChainForComposition = 24;
+    private const int VtblGetDesc = 7;
     private const int VtblGetDesc1 = 27;
     private const int VtblSetColorSpace1 = 38;
     private const int DxgiColorSpaceRgbFullG10NoneP709 = 1;
@@ -818,6 +883,20 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DxgiOutputDesc
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+        public int DesktopLeft;
+        public int DesktopTop;
+        public int DesktopRight;
+        public int DesktopBottom;
+        public int AttachedToDesktop;
+        public uint Rotation;
+        public IntPtr Monitor;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct DxgiOutputDesc1
     {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
@@ -848,6 +927,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private delegate uint ReleaseDelegate(IntPtr self);
     private delegate int GetAdapterDelegate(IntPtr self, out IntPtr adapter);
     private delegate int EnumOutputsDelegate(IntPtr self, uint index, out IntPtr output);
+    private delegate int GetDescDelegate(IntPtr self, ref DxgiOutputDesc desc);
     private delegate int GetDesc1Delegate(IntPtr self, ref DxgiOutputDesc1 desc);
     private delegate int GetParentDelegate(IntPtr self, ref Guid iid, out IntPtr parent);
     private delegate int CreateSwapChainForCompositionDelegate(IntPtr self, IntPtr device, ref DxgiSwapChainDesc1 desc, IntPtr restrict, out IntPtr swapChain);

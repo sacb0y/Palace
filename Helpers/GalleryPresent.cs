@@ -284,6 +284,14 @@ public static class GalleryPresent
             || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance or HdrKind.HdrExr;
     }
 
+    /// <summary>
+    /// When <c>IDXGIOutput6</c> / luminance is missing: Windows HDR (CCD) or
+    /// PQ/HLG/HDR-still content still presents scRGB — never false-tonemap to
+    /// 80 nits while Advanced Color is on (FenrirDesktop / SAM713F class).
+    /// </summary>
+    public static bool DisplayHdrWithoutOutput6(bool? windowsHdrEnabled, HdrProbe content) =>
+        windowsHdrEnabled == true || UnknownDisplayPresentsHdr(content);
+
     public static string FormatUnknownDisplayProbe(string reason, bool assumeHdr, string? ccd = null)
     {
         var line = $"DXGI {reason} · assumeHdr={(assumeHdr ? 1 : 0)} displayHdr={(assumeHdr ? 1 : 0)}";
