@@ -1503,6 +1503,7 @@
                     <!-- Toolbar + Details in one column: card is Grid row 1 (stable reopen dock). -->
                     <Grid
                         x:Name="GrdViewerLeftChrome"
+                        Canvas.ZIndex="1"
                         Margin="16,16,0,8"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
