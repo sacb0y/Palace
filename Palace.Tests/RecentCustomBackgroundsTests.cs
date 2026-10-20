@@ -176,8 +176,11 @@ public sealed class ShellPresetSelectionTests
 
         Assert.Equal(1, ShellPresetSelection.MatchCount(keys, ShellPresetSelection.KeyFor(ShellPresetKind.Default)));
         Assert.Equal(1, ShellPresetSelection.MatchCount(keys, ShellPresetSelection.KeyFor(ShellPresetKind.Bokeh)));
+        Assert.Equal(1, ShellPresetSelection.MatchCount(keys, ShellPresetSelection.KeyFor(ShellPresetKind.Sketchbook)));
+        Assert.Equal(1, ShellPresetSelection.MatchCount(keys, ShellPresetSelection.KeyFor(ShellPresetKind.Custom)));
         Assert.Equal(1, ShellPresetSelection.MatchCount(keys, ShellPresetSelection.KeyForRecent("abc")));
         Assert.Equal(0, ShellPresetSelection.MatchCount(keys, ShellPresetSelection.KeyForRecent("nope")));
+        Assert.Equal(0, ShellPresetSelection.MatchCount(keys, ShellPresetSelection.KeyFor(ShellPresetKind.Aurora)));
     }
 
     [Fact]
