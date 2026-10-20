@@ -49,8 +49,6 @@
                             AutomationProperties.AutomationId="ExpDetailsFile"
                             ExpandDirection="Down"
                             IsExpanded="True"
-                            Collapsed="Section_Collapsed"
-                            Expanded="Section_Expanded"
                             Tag="file">
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="File" />
@@ -97,8 +95,6 @@
                             AutomationProperties.AutomationId="ExpDetailsTags"
                             ExpandDirection="Down"
                             IsExpanded="True"
-                            Collapsed="Section_Collapsed"
-                            Expanded="Section_Expanded"
                             Tag="tags">
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Tags" />
@@ -147,8 +143,6 @@
                             AutomationProperties.AutomationId="ExpDetailsImage"
                             ExpandDirection="Down"
                             IsExpanded="True"
-                            Collapsed="Section_Collapsed"
-                            Expanded="Section_Expanded"
                             Tag="image"
                             Visibility="Collapsed">
                             <Expander.Header>
@@ -194,8 +188,6 @@
                             AutomationProperties.AutomationId="ExpDetailsVideo"
                             ExpandDirection="Down"
                             IsExpanded="True"
-                            Collapsed="Section_Collapsed"
-                            Expanded="Section_Expanded"
                             Tag="video"
                             Visibility="Collapsed">
                             <Expander.Header>
@@ -221,8 +213,6 @@
                             AutomationProperties.AutomationId="ExpDetailsGeneration"
                             ExpandDirection="Down"
                             IsExpanded="False"
-                            Collapsed="Section_Collapsed"
-                            Expanded="Section_Expanded"
                             Tag="generation"
                             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.ShowGeneration), Mode=OneWay}">
                             <Expander.Header>

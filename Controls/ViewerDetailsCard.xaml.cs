@@ -90,9 +90,28 @@ public sealed partial class ViewerDetailsCard : UserControl
         ApplyHighContrastBorder();
         ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
         SyncOpenState(animate: false);
+        HookSectionExpanders();
         LoadSectionExpanded();
         UpdateModuleVisibility();
         UpdateLandmark();
+    }
+
+    private void HookSectionExpanders()
+    {
+        foreach (var expander in new[] { ExpFile, ExpTags, ExpImage, ExpVideo, ExpGeneration })
+        {
+            expander.RegisterPropertyChangedCallback(
+                Expander.IsExpandedProperty,
+                OnSectionIsExpandedChanged);
+        }
+    }
+
+    private void OnSectionIsExpandedChanged(DependencyObject sender, DependencyProperty dp)
+    {
+        if (sender is Expander expander)
+        {
+            PersistSection(expander, expander.IsExpanded);
+        }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) =>
@@ -416,12 +435,6 @@ public sealed partial class ViewerDetailsCard : UserControl
             values[module.CollapseSettingsKey],
             module.DefaultExpanded);
     }
-
-    private void Section_Expanded(Expander sender, ExpanderExpandedEventArgs args) =>
-        PersistSection(sender, expanded: true);
-
-    private void Section_Collapsed(Expander sender, ExpanderCollapsedEventArgs args) =>
-        PersistSection(sender, expanded: false);
 
     private void PersistSection(Expander sender, bool expanded)
     {
