@@ -80,9 +80,9 @@ public sealed partial class SettingsPage : Page
 
     private async void ShellRecentCustomRemove_Click(object sender, RoutedEventArgs e)
     {
+        // WinUI RoutedEventArgs has no Handled (unlike WPF / KeyRoutedEventArgs).
         if (sender is Button { Tag: ShellPresetItem item })
         {
-            e.Handled = true;
             await ViewModel.RemoveRecentCustomCommand.ExecuteAsync(item);
             FocusNextCustomTile(item);
         }
