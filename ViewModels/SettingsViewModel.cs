@@ -415,6 +415,7 @@ public partial class SettingsViewModel : ObservableObject
             {
                 Id = kind,
                 Name = ShellBackground.PresetDisplayName(kind),
+                SelectionKey = ShellPresetSelection.KeyFor(kind),
                 Swatch = BuildPresetSwatch(kind)
             };
             BackgroundPresets.Add(item);
@@ -447,9 +448,32 @@ public partial class SettingsViewModel : ObservableObject
         BlurEnabled = ShellBackground.BlurApplies;
         DarknessEnabled = ShellBackground.DarknessApplies;
         ShowCustomWallpaperActions = SelectedPresetKind == ShellPresetKind.Custom;
-        SelectedPreset = BackgroundPresets.FirstOrDefault(p => p.Id == SelectedPresetKind);
+        SyncBackgroundSelection();
         RefreshPresetSwatches();
     }
+
+    /// <summary>
+    /// One selected tile across chrome / Vivid / Creator / Custom (and future Recent).
+    /// Recent custom PR: pass those tiles through <see cref="BackgroundPresets"/> or
+    /// call this after updating their <see cref="ShellPresetItem.SelectionKey"/>.
+    /// </summary>
+    private void SyncBackgroundSelection()
+    {
+        var activeKey = ActiveBackgroundSelectionKey();
+        foreach (var item in BackgroundPresets)
+        {
+            item.IsSelected = ShellPresetSelection.Matches(item.SelectionKey, activeKey);
+        }
+
+        SelectedPreset = BackgroundPresets.FirstOrDefault(p => p.IsSelected);
+    }
+
+    /// <summary>
+    /// Active picker key. Override when a Recent custom path is the live wallpaper
+    /// so the matching recent tile (not only Custom…) looks selected.
+    /// </summary>
+    private string ActiveBackgroundSelectionKey() =>
+        ShellPresetSelection.KeyFor(SelectedPresetKind);
 
     /// <summary>
     /// Match the live shell chrome: Light theme → light packaged thumbs / gradient stops.

@@ -640,9 +640,19 @@ public sealed partial class ShellPresetItem : ObservableObject
     public ShellPresetKind Id { get; init; }
     public string Name { get; init; } = "";
 
+    /// <summary>
+    /// Single-select key across picker groups. Presets use <see cref="Helpers.ShellPresetSelection.KeyFor"/>;
+    /// Recent custom tiles override (e.g. <c>recent:path</c>).
+    /// </summary>
+    public string SelectionKey { get; init; } = "";
+
     /// <summary>Theme-aware preview (dark/light thumb or gradient); refresh on ActualThemeChanged.</summary>
     [ObservableProperty]
     public partial Brush? Swatch { get; set; }
+
+    /// <summary>Shared selection chrome — not GridView SelectedItem (per-group).</summary>
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
 
     public bool IsCustom => Id == ShellPresetKind.Custom;
     public string AutomationId => "BtnShellPreset_" + Id;
