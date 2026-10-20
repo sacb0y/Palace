@@ -1,0 +1,1 @@
+Selected Ribbons preset with accent ring/check; Darkness and Blur sliders with NumberBox and Reset.

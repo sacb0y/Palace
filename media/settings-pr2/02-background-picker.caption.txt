@@ -1,0 +1,1 @@
+Background picker: chrome/Vivid/Creator presets, Recent group, and +Custom tile.
