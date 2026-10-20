@@ -581,11 +581,15 @@ public sealed partial class VolumeControl : UserControl
 
         SldVolume.Visibility = Visibility.Visible;
         _expandBoard?.Stop();
+        // Width is a dependent (layout) property — without this, WinUI silently
+        // no-ops the tween and the slider host stays 0x0.
         _expandAnimation = new DoubleAnimation
         {
+            From = GrdSliderHost.Width,
             To = target,
             Duration = TimeSpan.FromMilliseconds(GalleryVolume.ExpandMs),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            EnableDependentAnimation = true
         };
         Storyboard.SetTarget(_expandAnimation, GrdSliderHost);
         Storyboard.SetTargetProperty(_expandAnimation, "Width");
