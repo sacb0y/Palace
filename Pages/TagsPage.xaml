@@ -1023,7 +1023,8 @@
                                 IsEnabled="{x:Bind ViewModel.OverlayGallery.CanScale, Mode=OneWay, FallbackValue=True}"
                                 ToolTipService.ToolTip="1:1 (Ctrl+1)">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size16" IconVariant="Regular" />
+                                    <!-- Size20: Size16 font omits ratio_one_to_one (and scale_fill). -->
+                                    <ic:FluentIcon Icon="RatioOneToOne" IconSize="Size20" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="1:1" />
                                 </StackPanel>
                             </Button>
@@ -1036,7 +1037,7 @@
                                 IsEnabled="{x:Bind ViewModel.OverlayGallery.CanScale, Mode=OneWay, FallbackValue=True}"
                                 ToolTipService.ToolTip="Fit (Ctrl+2)">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="ArrowFit" IconSize="Size16" IconVariant="Regular" />
+                                    <ic:FluentIcon Icon="ScaleFit" IconSize="Size20" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Fit" />
                                 </StackPanel>
                             </Button>
@@ -1049,7 +1050,7 @@
                                 IsEnabled="{x:Bind ViewModel.OverlayGallery.CanScale, Mode=OneWay, FallbackValue=True}"
                                 ToolTipService.ToolTip="Fill (Ctrl+3)">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="ArrowMaximize" IconSize="Size16" IconVariant="Regular" />
+                                    <ic:FluentIcon Icon="ScaleFill" IconSize="Size20" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Fill" />
                                 </StackPanel>
                             </Button>
@@ -1088,7 +1089,7 @@
                         AutomationProperties.AutomationId="GrdViewerOverlayNav">
                         <Button
                             x:Name="BtnGalleryPrev"
-                            Margin="16,0,0,0"
+                            Margin="{x:Bind helpers:BindHelpers.GalleryPrevMargin(ViewModel.OverlayGallery.ShowDetails, ViewModel.OverlayGallery.DetailsUsesBottomSheet, ViewModel.OverlayGallery.DetailsPanelWidth), Mode=OneWay, FallbackValue='16,0,0,0'}"
                             HorizontalAlignment="Left"
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="BtnGalleryPrev"

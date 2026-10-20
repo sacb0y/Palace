@@ -217,7 +217,9 @@ public sealed partial class GalleryHistogramChart : UserControl
 
         var bins = Bins;
         TxtHistogram.Text = GalleryHistogram.Caption(bins);
-        ApplyDetails(Details);
+        // File meta (format · index · size) already lives in the Details File
+        // expander — hide the duplicate caption under the compact plot.
+        ApplyDetails(compact ? null : Details);
 
         var width = CnvHistogram.ActualWidth;
         var height = CnvHistogram.Height;

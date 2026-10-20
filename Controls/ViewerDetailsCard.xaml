@@ -202,6 +202,7 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
                                 <StackPanel
                                     Orientation="Horizontal"
@@ -210,17 +211,23 @@
                                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Color" />
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoColor, Mode=OneWay}" />
                                 </StackPanel>
+                                <!-- Full-width HDR row so "OpenEXR · tonemap SDR 80 nits" is not truncated. -->
                                 <StackPanel
-                                    Grid.Column="1"
+                                    Grid.Row="1"
+                                    Grid.ColumnSpan="2"
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     ToolTipService.ToolTip="{x:Bind Gallery.InfoHdrStatus, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoHdrLine), Mode=OneWay}">
+                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoHdrStatus), Mode=OneWay}">
                                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="HDR" />
-                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoHdrLine, Mode=OneWay}" />
+                                    <TextBlock
+                                        FontWeight="Bold"
+                                        Style="{StaticResource ViewerDetailsInlineStatStyle}"
+                                        Text="{x:Bind Gallery.InfoHdrStatus, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="1"
+                                    Grid.Row="2"
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoMaxCll), Mode=OneWay}">
@@ -228,7 +235,7 @@
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoMaxCll, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="1"
+                                    Grid.Row="2"
                                     Grid.Column="1"
                                     Orientation="Horizontal"
                                     Spacing="4"
@@ -237,7 +244,7 @@
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoFall, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="2"
+                                    Grid.Row="3"
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoMaxLum), Mode=OneWay}">
@@ -245,7 +252,7 @@
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoMaxLum, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="2"
+                                    Grid.Row="3"
                                     Grid.Column="1"
                                     Orientation="Horizontal"
                                     Spacing="4"
@@ -254,7 +261,7 @@
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoAvgLum, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="3"
+                                    Grid.Row="4"
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoMinLum), Mode=OneWay}">
@@ -262,7 +269,7 @@
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoMinLum, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="3"
+                                    Grid.Row="4"
                                     Grid.Column="1"
                                     Orientation="Horizontal"
                                     Spacing="4"
@@ -271,7 +278,7 @@
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoP99, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="4"
+                                    Grid.Row="5"
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoAboveSdr), Mode=OneWay}">
@@ -279,7 +286,7 @@
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoAboveSdr, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="4"
+                                    Grid.Row="5"
                                     Grid.Column="1"
                                     Orientation="Horizontal"
                                     Spacing="4"

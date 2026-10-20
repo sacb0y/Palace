@@ -56,7 +56,7 @@ public sealed class DetailsModuleTests
     }
 
     [Fact]
-    public void Layout_LeftDock_DoesNotStealNextInset()
+    public void Layout_LeftDock_DoesNotStealNextInset_AndShiftsPrevPastCard()
     {
         Assert.False(ViewerDetailsLayout.UsesBottomSheet(719));
         Assert.False(ViewerDetailsLayout.UsesBottomSheet(720));
@@ -66,6 +66,13 @@ public sealed class DetailsModuleTests
 
         var open = ViewerDetailsLayout.NextMargin(true, false, 270);
         Assert.Equal(16, open.Right);
+
+        var prevClosed = ViewerDetailsLayout.PrevMargin(false, false, 270);
+        Assert.Equal(16, prevClosed.Left);
+
+        var prevOpen = ViewerDetailsLayout.PrevMargin(true, false, 270);
+        // Host inset (16) + panel (270) + gap (16).
+        Assert.Equal(16 + 270 + 16, prevOpen.Left);
 
         Assert.Equal(270, ViewerDetailsLayout.PanelWidth);
         Assert.Equal(720 * ViewerDetailsLayout.MaxHeightFraction, ViewerDetailsLayout.PanelMaxHeight(720), 3);

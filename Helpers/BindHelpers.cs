@@ -52,12 +52,20 @@ public static class BindHelpers
         selected ? new Thickness(2) : new Thickness(0);
 
     /// <summary>
-    /// Next-plate margin: slides left to 16 epx from the floating Details card
-    /// when right-docked; stays at the default inset when closed or bottom-sheet.
+    /// Next-plate margin: left-docked Details never steals the right inset.
     /// </summary>
     public static Thickness GalleryNextMargin(bool showDetails, bool bottomSheet, double panelWidth)
     {
         var like = ViewerDetailsLayout.NextMargin(showDetails, bottomSheet, panelWidth);
+        return new Thickness(like.Left, like.Top, like.Right, like.Bottom);
+    }
+
+    /// <summary>
+    /// Prev-plate margin: slides right of the left-docked Details card when open.
+    /// </summary>
+    public static Thickness GalleryPrevMargin(bool showDetails, bool bottomSheet, double panelWidth)
+    {
+        var like = ViewerDetailsLayout.PrevMargin(showDetails, bottomSheet, panelWidth);
         return new Thickness(like.Left, like.Top, like.Right, like.Bottom);
     }
 
