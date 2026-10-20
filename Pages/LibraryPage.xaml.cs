@@ -118,7 +118,7 @@ public sealed partial class LibraryPage : Page
             {
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
-                CardViewerDetails.AttachBelowToolbar(GrdViewerToolbar);
+                CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
                 TryHookMosaicScroll();
@@ -129,7 +129,7 @@ public sealed partial class LibraryPage : Page
             }
 
             _shellReady = true;
-            CardViewerDetails.AttachBelowToolbar(GrdViewerToolbar);
+            CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
             SyncBrowseChromeFromViewModel();

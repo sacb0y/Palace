@@ -66,4 +66,27 @@ public sealed class ViewerInfoFieldsTests
         Assert.False(ViewerInfoFields.HasHdrStatRows(false, false, null, null, null, null, null));
         Assert.True(ViewerInfoFields.HasHdrStatRows(true, true, 12.5f, null, null, null, null));
     }
+
+    [Fact]
+    public void HasColorHdrRows_IgnoresGamutOnly()
+    {
+        Assert.False(ViewerInfoFields.HasColorHdrRows(null, null, false, null, null));
+        Assert.True(ViewerInfoFields.HasColorHdrRows("sRGB", null, false, null, null));
+        // Gamut summary alone must not keep an empty Color & HDR expander open.
+        Assert.False(ViewerInfoFields.HasColorHdrRows("", "", false, "", ""));
+    }
+
+    [Fact]
+    public void ShortHdrLine_CompactsAndTruncates()
+    {
+        Assert.Equal("", ViewerInfoFields.ShortHdrLine(null));
+        Assert.Equal(
+            "OpenEXR · SDR 80 nits",
+            ViewerInfoFields.ShortHdrLine("OpenEXR · SDR 80 nits"));
+        var longLine = ViewerInfoFields.ShortHdrLine(
+            "Very long HDR status that should truncate for the dense grid",
+            maxChars: 20);
+        Assert.True(longLine.Length <= 20);
+        Assert.EndsWith("…", longLine);
+    }
 }

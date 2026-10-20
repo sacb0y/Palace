@@ -8,31 +8,41 @@
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:models="using:Palace.Models"
     x:Name="Root"
+    Width="270"
+    HorizontalAlignment="Left"
+    VerticalAlignment="Top"
     RequestedTheme="Dark"
     IsTabStop="False">
     <UserControl.Resources>
-        <!-- Compact section headers: shrink default Expander chrome. -->
         <Style x:Key="ViewerDetailsExpanderStyle" TargetType="Expander">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="0,2,0,4" />
+            <Setter Property="Padding" Value="0,0,0,2" />
             <Setter Property="MinHeight" Value="0" />
-            <Setter Property="Margin" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
         </Style>
         <Style x:Key="ViewerDetailsSectionHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12" />
         </Style>
-        <Style x:Key="ViewerDetailsStatLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
-            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Style x:Key="ViewerDetailsInlineStatStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
         </Style>
-        <Style x:Key="ViewerDetailsStatValueStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
-            <Setter Property="FontWeight" Value="Bold" />
+        <Style x:Key="ViewerDetailsIconButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="24" />
+            <Setter Property="MinHeight" Value="24" />
         </Style>
     </UserControl.Resources>
     <Grid
         x:Name="GrdCardHost"
         HorizontalAlignment="Stretch"
-        VerticalAlignment="Stretch"
+        VerticalAlignment="Top"
         IsHitTestVisible="False"
         SizeChanged="GrdCardHost_SizeChanged">
         <Border
@@ -40,9 +50,9 @@
             Width="270"
             MinWidth="240"
             MaxWidth="320"
-            Margin="16,56,16,16"
+            Margin="0"
             Padding="0"
-            HorizontalAlignment="Left"
+            HorizontalAlignment="Stretch"
             VerticalAlignment="Top"
             AutomationProperties.AutomationId="BrdViewerDetailsCard"
             Background="{ThemeResource ViewerDetailsSurfaceBrush}"
@@ -61,26 +71,36 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Header: title + close -->
-                <Grid Padding="8,6,4,4" ColumnSpacing="4">
+                <!-- Title + copy name + close (filename once) -->
+                <Grid Padding="8,4,4,2" ColumnSpacing="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock
                         x:Name="TxtDetailsTitle"
                         VerticalAlignment="Center"
                         AutomationProperties.AutomationId="TxtViewerDetailsTitle"
-                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        FontSize="12"
+                        FontWeight="SemiBold"
                         Text="{x:Bind Gallery.InfoFileNameEllipsis, Mode=OneWay}"
                         ToolTipService.ToolTip="{x:Bind Gallery.InfoFileName, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
                         TextWrapping="NoWrap" />
                     <Button
-                        x:Name="BtnDetailsClose"
                         Grid.Column="1"
-                        Width="28"
-                        Height="28"
-                        Padding="0"
+                        Style="{StaticResource ViewerDetailsIconButtonStyle}"
+                        AutomationProperties.AutomationId="BtnViewerDetailsCopyName"
+                        AutomationProperties.Name="Copy file name"
+                        Command="{x:Bind Gallery.CopyFileNameCommand, Mode=OneWay}"
+                        ToolTipService.ToolTip="Copy file name">
+                        <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                    </Button>
+                    <Button
+                        x:Name="BtnDetailsClose"
+                        Grid.Column="2"
+                        Style="{StaticResource ViewerDetailsIconButtonStyle}"
                         AutomationProperties.AutomationId="BtnViewerDetailsClose"
                         AutomationProperties.Name="Close details"
                         Click="BtnDetailsClose_Click"
@@ -97,8 +117,8 @@
                     PointerWheelChanged="ScrDetails_PointerWheelChanged"
                     VerticalScrollBarVisibility="Auto"
                     VerticalScrollMode="Enabled">
-                    <StackPanel x:Name="PnlSections" Padding="8,0,8,6" Spacing="0">
-                        <!-- FILE — three lines: name; path+icons; size · res | format · frame -->
+                    <StackPanel x:Name="PnlSections" Padding="8,0,8,4" Spacing="0">
+                        <!-- FILE: path+icons; meta line (name lives in title) -->
                         <Expander
                             x:Name="ExpFile"
                             Style="{StaticResource ViewerDetailsExpanderStyle}"
@@ -109,30 +129,7 @@
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource ViewerDetailsSectionHeaderStyle}" Text="File" />
                             </Expander.Header>
-                            <StackPanel Spacing="4">
-                                <Grid ColumnSpacing="4">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind Gallery.InfoFileNameEllipsis, Mode=OneWay}"
-                                        ToolTipService.ToolTip="{x:Bind Gallery.InfoFileName, Mode=OneWay}"
-                                        TextWrapping="NoWrap" />
-                                    <Button
-                                        Grid.Column="1"
-                                        Width="28"
-                                        Height="28"
-                                        Padding="0"
-                                        AutomationProperties.AutomationId="BtnViewerDetailsCopyName"
-                                        AutomationProperties.Name="Copy file name"
-                                        Command="{x:Bind Gallery.CopyFileNameCommand, Mode=OneWay}"
-                                        ToolTipService.ToolTip="Copy file name">
-                                        <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
-                                    </Button>
-                                </Grid>
+                            <StackPanel Spacing="2">
                                 <Grid ColumnSpacing="2">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -143,16 +140,16 @@
                                         VerticalAlignment="Center"
                                         AutomationProperties.AutomationId="TxtViewerDetailsPath"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        FontSize="11"
                                         Style="{StaticResource CaptionTextBlockStyle}"
                                         Text="{x:Bind Gallery.InfoPathEllipsis, Mode=OneWay}"
                                         ToolTipService.ToolTip="{x:Bind Gallery.InfoPath, Mode=OneWay}"
+                                        TextTrimming="CharacterEllipsis"
                                         TextWrapping="NoWrap"
                                         Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoPath), Mode=OneWay}" />
                                     <Button
                                         Grid.Column="1"
-                                        Width="28"
-                                        Height="28"
-                                        Padding="0"
+                                        Style="{StaticResource ViewerDetailsIconButtonStyle}"
                                         AutomationProperties.AutomationId="BtnViewerDetailsCopyPath"
                                         AutomationProperties.Name="Copy path"
                                         Command="{x:Bind Gallery.CopyPathCommand, Mode=OneWay}"
@@ -162,9 +159,7 @@
                                     </Button>
                                     <Button
                                         Grid.Column="2"
-                                        Width="28"
-                                        Height="28"
-                                        Padding="0"
+                                        Style="{StaticResource ViewerDetailsIconButtonStyle}"
                                         AutomationProperties.AutomationId="BtnViewerDetailsShowFolder"
                                         AutomationProperties.Name="Show in Explorer"
                                         Command="{x:Bind Gallery.OpenInExplorerCommand, Mode=OneWay}"
@@ -175,14 +170,16 @@
                                 </Grid>
                                 <TextBlock
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    FontSize="11"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind Gallery.InfoFileMetaLine, Mode=OneWay}"
-                                    TextWrapping="WrapWholeWords"
+                                    TextTrimming="CharacterEllipsis"
+                                    TextWrapping="NoWrap"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoFileMetaLine), Mode=OneWay}" />
                             </StackPanel>
                         </Expander>
 
-                        <!-- COLOR & HDR — 2-col, bold values, no empty rows -->
+                        <!-- COLOR & HDR — inline label+value, 2-col, no empty rows -->
                         <Expander
                             x:Name="ExpColorHdr"
                             Style="{StaticResource ViewerDetailsExpanderStyle}"
@@ -194,7 +191,7 @@
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource ViewerDetailsSectionHeaderStyle}" Text="Color &amp; HDR" />
                             </Expander.Header>
-                            <Grid ColumnSpacing="8" RowSpacing="4">
+                            <Grid ColumnSpacing="6" RowSpacing="2">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -205,81 +202,95 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
-                                <StackPanel Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoColor), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Color" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoColor, Mode=OneWay}" TextWrapping="Wrap" />
+                                <StackPanel
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoColor), Mode=OneWay}">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Color" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoColor, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Column="1"
-                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoHdrStatus), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="HDR" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoHdrStatus, Mode=OneWay}" TextWrapping="Wrap" />
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    ToolTipService.ToolTip="{x:Bind Gallery.InfoHdrStatus, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoHdrLine), Mode=OneWay}">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="HDR" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoHdrLine, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Row="1"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoMaxCll), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="MaxCLL" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoMaxCll, Mode=OneWay}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="MaxCLL" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoMaxCll, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Row="1"
                                     Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoFall), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="FALL" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoFall, Mode=OneWay}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="FALL" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoFall, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Row="2"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoMaxLum), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Max" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoMaxLum, Mode=OneWay}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Max" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoMaxLum, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Row="2"
                                     Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoAvgLum), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Avg" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoAvgLum, Mode=OneWay}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Avg" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoAvgLum, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Row="3"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoMinLum), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Min" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoMinLum, Mode=OneWay}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Min" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoMinLum, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Row="3"
                                     Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoP99), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="P99" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoP99, Mode=OneWay}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="P99" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoP99, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
                                     Grid.Row="4"
-                                    Grid.ColumnSpan="2"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoAboveSdr), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Above SDR white" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoAboveSdr, Mode=OneWay}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Above SDR" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoAboveSdr, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel
-                                    Grid.Row="5"
-                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoDisplayLum), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Display luminance" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoDisplayLum, Mode=OneWay}" />
-                                </StackPanel>
-                                <StackPanel
-                                    Grid.Row="5"
+                                    Grid.Row="4"
                                     Grid.Column="1"
-                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoDisplayProbe), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Display" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoDisplayProbe, Mode=OneWay}" TextWrapping="Wrap" />
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoDisplayLum), Mode=OneWay}">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Display" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoDisplayLum, Mode=OneWay}" />
                                 </StackPanel>
                             </Grid>
                         </Expander>
 
-                        <!-- HISTOGRAM -->
+                        <!-- HISTOGRAM — compact ~90px -->
                         <Expander
                             x:Name="ExpHistogram"
                             Style="{StaticResource ViewerDetailsExpanderStyle}"
@@ -291,10 +302,7 @@
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource ViewerDetailsSectionHeaderStyle}" Text="Histogram" />
                             </Expander.Header>
-                            <Border
-                                Padding="0"
-                                Background="{ThemeResource ViewerDetailsPlotBrush}"
-                                CornerRadius="4">
+                            <Border Padding="0" Background="{ThemeResource ViewerDetailsPlotBrush}" CornerRadius="4">
                                 <controls:GalleryHistogramChart
                                     Compact="True"
                                     IdPrefix="ViewerDetails"
@@ -307,7 +315,6 @@
                             </Border>
                         </Expander>
 
-                        <!-- GAMUT -->
                         <Expander
                             x:Name="ExpGamut"
                             Style="{StaticResource ViewerDetailsExpanderStyle}"
@@ -319,10 +326,7 @@
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource ViewerDetailsSectionHeaderStyle}" Text="Gamut · CIE 1931 xy" />
                             </Expander.Header>
-                            <Border
-                                Padding="0"
-                                Background="{ThemeResource ViewerDetailsPlotBrush}"
-                                CornerRadius="4">
+                            <Border Padding="0" Background="{ThemeResource ViewerDetailsPlotBrush}" CornerRadius="4">
                                 <controls:GalleryGamutChart
                                     Analysis="{x:Bind Gallery.Analysis, Mode=OneWay}"
                                     Compact="True"
@@ -331,7 +335,6 @@
                             </Border>
                         </Expander>
 
-                        <!-- MEDIA (video) -->
                         <Expander
                             x:Name="ExpVideo"
                             Style="{StaticResource ViewerDetailsExpanderStyle}"
@@ -343,17 +346,24 @@
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource ViewerDetailsSectionHeaderStyle}" Text="Media" />
                             </Expander.Header>
-                            <StackPanel Spacing="4">
-                                <StackPanel Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoVideoDuration), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Duration" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoVideoDuration, Mode=OneWay}" />
+                            <StackPanel Spacing="2">
+                                <StackPanel
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoVideoDuration), Mode=OneWay}">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Duration" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoVideoDuration, Mode=OneWay}" />
                                 </StackPanel>
-                                <StackPanel Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoVideoSize), Mode=OneWay}">
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Size" />
-                                    <TextBlock Style="{StaticResource ViewerDetailsStatValueStyle}" Text="{x:Bind Gallery.InfoVideoSize, Mode=OneWay}" />
+                                <StackPanel
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoVideoSize), Mode=OneWay}">
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="Size" />
+                                    <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoVideoSize, Mode=OneWay}" />
                                 </StackPanel>
                                 <TextBlock
                                     AutomationProperties.AutomationId="TxtViewerVideoDetails"
+                                    FontSize="11"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind Gallery.DetailsText, Mode=OneWay}"
                                     TextWrapping="Wrap"
@@ -361,7 +371,6 @@
                             </StackPanel>
                         </Expander>
 
-                        <!-- TAGS -->
                         <Expander
                             x:Name="ExpTags"
                             Style="{StaticResource ViewerDetailsExpanderStyle}"
@@ -378,13 +387,13 @@
                                 AutomationProperties.Name="Tags"
                                 ItemsSource="{x:Bind Gallery.Tags, Mode=OneWay}">
                                 <ItemsRepeater.Layout>
-                                    <helpers:ChipWrapLayout HorizontalSpacing="4" VerticalSpacing="4" />
+                                    <helpers:ChipWrapLayout HorizontalSpacing="4" VerticalSpacing="2" />
                                 </ItemsRepeater.Layout>
                                 <ItemsRepeater.ItemTemplate>
                                     <DataTemplate x:DataType="models:AssignedTagItem">
                                         <Border
                                             MinWidth="0"
-                                            Padding="6,2"
+                                            Padding="4,1"
                                             HorizontalAlignment="Left"
                                             Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
                                             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -394,10 +403,12 @@
                                             ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
                                                 <TextBlock
+                                                    FontSize="11"
                                                     Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
                                                     Style="{StaticResource CaptionTextBlockStyle}"
                                                     Text="{x:Bind TagName, Mode=OneWay}" />
                                                 <TextBlock
+                                                    FontSize="11"
                                                     Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
                                                     Style="{StaticResource CaptionTextBlockStyle}"
                                                     Text="{x:Bind CountLabel, Mode=OneWay}"
@@ -409,7 +420,6 @@
                             </ItemsRepeater>
                         </Expander>
 
-                        <!-- GENERATION -->
                         <Expander
                             x:Name="ExpGeneration"
                             Style="{StaticResource ViewerDetailsExpanderStyle}"
@@ -421,25 +431,29 @@
                             <Expander.Header>
                                 <TextBlock Style="{StaticResource ViewerDetailsSectionHeaderStyle}" Text="Generation" />
                             </Expander.Header>
-                            <StackPanel Spacing="4">
+                            <StackPanel Spacing="2">
                                 <TextBlock
                                     AutomationProperties.AutomationId="TxtViewerDetailsModel"
+                                    FontSize="11"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewModel), Mode=OneWay}"
                                     TextWrapping="Wrap" />
-                                <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Prompt" />
+                                <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Prompt" />
                                 <TextBlock
                                     AutomationProperties.AutomationId="TxtViewerDetailsPrompt"
+                                    FontSize="11"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewPrompt), Mode=OneWay}"
                                     TextWrapping="Wrap" />
-                                <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Negative" />
+                                <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Negative" />
                                 <TextBlock
+                                    FontSize="11"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewNegative), Mode=OneWay}"
                                     TextWrapping="Wrap" />
-                                <TextBlock Style="{StaticResource ViewerDetailsStatLabelStyle}" Text="Seed" />
+                                <TextBlock FontSize="11" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Seed" />
                                 <TextBlock
+                                    FontSize="11"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind helpers:BindHelpers.OrDash(Gallery.PreviewSeed), Mode=OneWay}" />
                             </StackPanel>
@@ -447,11 +461,12 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Footer actions -->
+                <!-- Footer ~28px: icon + short labels -->
                 <Grid
                     Grid.Row="2"
-                    Padding="8,4,8,6"
-                    ColumnSpacing="4"
+                    Height="28"
+                    Padding="4,0"
+                    ColumnSpacing="2"
                     BorderBrush="{ThemeResource ViewerDetailsBorderBrush}"
                     BorderThickness="0,1,0,0">
                     <Grid.ColumnDefinitions>
@@ -461,46 +476,46 @@
                     </Grid.ColumnDefinitions>
                     <Button
                         HorizontalAlignment="Stretch"
-                        Padding="2,4"
+                        VerticalAlignment="Stretch"
+                        Padding="2,0"
                         AutomationProperties.AutomationId="BtnViewerDetailsFooterCopyPath"
                         AutomationProperties.Name="Copy path"
                         Command="{x:Bind Gallery.CopyPathCommand, Mode=OneWay}"
                         ToolTipService.ToolTip="Copy path">
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Copy path"
-                            TextWrapping="WrapWholeWords" />
+                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                            <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" FontSize="11" Text="Copy" />
+                        </StackPanel>
                     </Button>
                     <Button
                         Grid.Column="1"
                         HorizontalAlignment="Stretch"
-                        Padding="2,4"
+                        VerticalAlignment="Stretch"
+                        Padding="2,0"
                         AutomationProperties.AutomationId="BtnViewerDetailsFooterExplorer"
                         AutomationProperties.Name="Show in Explorer"
                         Command="{x:Bind Gallery.OpenInExplorerCommand, Mode=OneWay}"
                         IsEnabled="{x:Bind Gallery.CanOpenInExplorer, Mode=OneWay}"
                         ToolTipService.ToolTip="Show in Explorer">
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Show in Explorer"
-                            TextWrapping="WrapWholeWords" />
+                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                            <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" FontSize="11" Text="Explorer" />
+                        </StackPanel>
                     </Button>
                     <Button
                         Grid.Column="2"
                         HorizontalAlignment="Stretch"
-                        Padding="2,4"
+                        VerticalAlignment="Stretch"
+                        Padding="2,0"
                         AutomationProperties.AutomationId="BtnViewerDetailsFooterOpenWith"
                         AutomationProperties.Name="Open with"
                         Command="{x:Bind Gallery.OpenWithCommand, Mode=OneWay}"
                         IsEnabled="{x:Bind Gallery.CanOpenInExplorer, Mode=OneWay}"
                         ToolTipService.ToolTip="Open with default app">
-                        <TextBlock
-                            HorizontalAlignment="Center"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Open with"
-                            TextWrapping="WrapWholeWords" />
+                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                            <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" FontSize="11" Text="Open" />
+                        </StackPanel>
                     </Button>
                 </Grid>
             </Grid>

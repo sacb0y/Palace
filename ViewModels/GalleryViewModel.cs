@@ -261,6 +261,10 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial string InfoHdrStatus { get; set; } = "";
 
+    /// <summary>Dense one-line HDR value (no wrap) for Color &amp; HDR grid.</summary>
+    [ObservableProperty]
+    public partial string InfoHdrLine { get; set; } = "";
+
     [ObservableProperty]
     public partial string InfoMaxCll { get; set; } = "";
 
@@ -823,6 +827,7 @@ public partial class GalleryViewModel : ObservableObject
             PositionLabel);
         InfoColor = GalleryPresent.ColorLabel(CurrentProbe) ?? "";
         InfoHdrStatus = HdrStatus?.Trim() ?? "";
+        InfoHdrLine = ViewerInfoFields.ShortHdrLine(InfoHdrStatus);
         InfoMaxCll = ViewerInfoFields.ScrgbLabel(maxScrgb, maxCllChannel);
         InfoFall = ViewerInfoFields.NitsLabel(fall);
         InfoMaxLum = ViewerInfoFields.NitsLabel(maxLum);
@@ -835,12 +840,8 @@ public partial class GalleryViewModel : ObservableObject
         InfoGamutSummary = gamut?.Trim() ?? "";
         InfoShowHdrStats = ViewerInfoFields.HasHdrStatRows(
             HdrPresented, Analysis.IsHdr, maxScrgb, maxLum, p99, fall, aboveSdr);
-        InfoHasColorSection = !string.IsNullOrWhiteSpace(InfoColor)
-            || !string.IsNullOrWhiteSpace(InfoHdrStatus)
-            || InfoShowHdrStats
-            || !string.IsNullOrWhiteSpace(InfoDisplayLum)
-            || !string.IsNullOrWhiteSpace(InfoDisplayProbe)
-            || !string.IsNullOrWhiteSpace(InfoGamutSummary);
+        InfoHasColorSection = ViewerInfoFields.HasColorHdrRows(
+            InfoColor, InfoHdrStatus, InfoShowHdrStats, InfoDisplayLum, InfoDisplayProbe);
         InfoVideoDuration = ViewerInfoFields.DurationLabel(_assetDurationMs);
         InfoVideoSize = ViewerInfoFields.SizeLabel(item?.FileSize);
 

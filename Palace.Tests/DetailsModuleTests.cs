@@ -76,6 +76,10 @@ public sealed class DetailsModuleTests
             3);
         Assert.Equal(56 + 8, ViewerDetailsLayout.TopBelowToolbar(56));
         Assert.Equal(ViewerDetailsLayout.TopInset, ViewerDetailsLayout.TopBelowToolbar(0));
+        Assert.Equal(
+            720 - ViewerDetailsLayout.Inset - ViewerDetailsLayout.ToolbarGap,
+            ViewerDetailsLayout.InFlowPanelMaxHeight(720),
+            3);
         Assert.Equal("Details for shot.png", ViewerDetailsLayout.LandmarkName("shot.png"));
     }
 

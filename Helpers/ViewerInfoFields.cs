@@ -216,6 +216,47 @@ public static class ViewerInfoFields
             || aboveSdr is > 0;
     }
 
+    /// <summary>
+    /// Color &amp; HDR expander has at least one row. Gamut summary belongs in
+    /// the Gamut section — do not count it here (avoids an empty Color &amp; HDR box).
+    /// </summary>
+    public static bool HasColorHdrRows(
+        string? color,
+        string? hdrStatus,
+        bool showHdrStats,
+        string? displayLum,
+        string? displayProbe) =>
+        !string.IsNullOrWhiteSpace(color)
+        || !string.IsNullOrWhiteSpace(hdrStatus)
+        || showHdrStats
+        || !string.IsNullOrWhiteSpace(displayLum)
+        || !string.IsNullOrWhiteSpace(displayProbe);
+
+    /// <summary>
+    /// One-line HDR value for the dense Color &amp; HDR grid (no wrap).
+    /// e.g. <c>OpenEXR · SDR 80 nits</c>.
+    /// </summary>
+    public static string ShortHdrLine(string? hdrStatus, int maxChars = 28)
+    {
+        if (string.IsNullOrWhiteSpace(hdrStatus))
+        {
+            return "";
+        }
+
+        var text = hdrStatus.Trim().Replace('\n', ' ').Replace('\r', ' ');
+        while (text.Contains("  ", StringComparison.Ordinal))
+        {
+            text = text.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        if (text.Length <= maxChars)
+        {
+            return text;
+        }
+
+        return text[..(maxChars - 1)] + "…";
+    }
+
     public static string KindLabel(AssetKind kind) => kind switch
     {
         AssetKind.Image => "Image",

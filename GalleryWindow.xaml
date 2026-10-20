@@ -69,13 +69,17 @@
                     Text="Missing"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsMissing), Mode=OneWay}" />
 
-                <!-- Toolbar row; Details card docks below its ActualHeight. -->
+                <!-- Toolbar + Details in one column: card is Grid row 1 (stable reopen dock). -->
                 <Grid
-                    x:Name="GrdViewerToolbar"
+                    x:Name="GrdViewerLeftChrome"
                     Margin="16,16,0,72"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top"
                     RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Border
                         Padding="6,4"
                         Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
@@ -160,6 +164,11 @@
                         </Border>
                     </StackPanel>
                     </Border>
+                    <controls:ViewerDetailsCard
+                        x:Name="CardViewerDetails"
+                        Grid.Row="1"
+                        Gallery="{x:Bind Gallery, Mode=OneWay}"
+                        IsOpen="{x:Bind Gallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
                 </Grid>
                 <Button
                     x:Name="BtnGalleryWindowPrev"
@@ -369,10 +378,6 @@
                         <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
                     </Button>
                 </StackPanel>
-                <controls:ViewerDetailsCard
-                    x:Name="CardViewerDetails"
-                    Gallery="{x:Bind Gallery, Mode=OneWay}"
-                    IsOpen="{x:Bind Gallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
             </Grid>
         </Grid>
     </Grid>

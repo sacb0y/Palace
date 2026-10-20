@@ -129,12 +129,11 @@ public static class ViewerDetailsLayout
     public const double PanelMinWidth = 240;
     public const double Inset = 16;
     /// <summary>
-    /// Fallback top inset when the toolbar has not reported bounds yet
-    /// (~toolbar margin 16 + ~32 chrome + gap). Prefer
-    /// <see cref="TopBelowToolbar"/>.
+    /// Legacy absolute-dock fallback. Prefer in-flow Grid row under the toolbar
+    /// (<see cref="InFlowPanelMaxHeight"/>) so reopen cannot drift.
     /// </summary>
     public const double TopInset = 56;
-    /// <summary>Gap between the toolbar's actual bottom edge and the card.</summary>
+    /// <summary>RowSpacing between toolbar and in-flow Details card.</summary>
     public const double ToolbarGap = 8;
     public const double MaxHeightFraction = 0.70;
     public const double MinPanelHeight = 160;
@@ -159,8 +158,8 @@ public static class ViewerDetailsLayout
     }
 
     /// <summary>
-    /// Top margin so the card clears the toolbar row. Uses the toolbar's
-    /// measured bottom in host coordinates when available.
+    /// Absolute-dock top margin (tests / legacy). Production hosts use a Grid
+    /// row below the toolbar instead of TransformToVisual.
     /// </summary>
     public static double TopBelowToolbar(double toolbarBottomInHost, double fallbackTop = TopInset)
     {
@@ -170,6 +169,21 @@ public static class ViewerDetailsLayout
         }
 
         return fallbackTop;
+    }
+
+    /// <summary>
+    /// In-flow card MaxHeight: grow toward the bottom margin (not an artificial
+    /// short fraction). Toolbar is a sibling row above the card.
+    /// </summary>
+    public static double InFlowPanelMaxHeight(double viewportHeight)
+    {
+        if (viewportHeight <= 0)
+        {
+            return MinPanelHeight;
+        }
+
+        // Leave only the host chrome inset under the card.
+        return Math.Max(MinPanelHeight, viewportHeight - Inset - ToolbarGap);
     }
 
     /// <summary>

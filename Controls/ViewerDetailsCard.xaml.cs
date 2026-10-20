@@ -19,8 +19,8 @@ using Windows.UI.ViewManagement;
 namespace Palace.Controls;
 
 /// <summary>
-/// Floating Details / Info panel for overlay / GalleryWindow. Docks under the
-/// left toolbar (~270 epx) — does not consume image layout or cover transport.
+/// Floating Details / Info panel. Hosts place this control in a Grid row
+/// <b>below</b> the toolbar so dock position is layout-driven (no reopen jump).
 /// </summary>
 public sealed partial class ViewerDetailsCard : UserControl
 {
@@ -38,10 +38,11 @@ public sealed partial class ViewerDetailsCard : UserControl
 
     private bool _sectionLoad;
     private bool _animating;
+    private bool _expandersHooked;
     private string? _lastAnnouncedFile;
     private GalleryViewModel? _subscribed;
-    private FrameworkElement? _toolbarAnchor;
-    private double _toolbarBottomInHost;
+    private FrameworkElement? _viewport;
+    private bool _inFlow;
 
     public ViewerDetailsCard()
     {
@@ -52,31 +53,29 @@ public sealed partial class ViewerDetailsCard : UserControl
     }
 
     /// <summary>
-    /// Dock the card just below this toolbar's actual bounds (small gap).
-    /// Keeps Info/Heatmap pills clickable — the card never covers them.
+    /// In-flow dock: card lives in a Grid row under the toolbar. Viewport is
+    /// the overlay / gallery content root used for MaxHeight.
     /// </summary>
-    public void AttachBelowToolbar(FrameworkElement? toolbar)
+    public void AttachInFlow(FrameworkElement? viewport)
     {
-        if (_toolbarAnchor is not null)
+        if (_viewport is not null)
         {
-            _toolbarAnchor.SizeChanged -= ToolbarAnchor_SizeChanged;
-            _toolbarAnchor.LayoutUpdated -= ToolbarAnchor_LayoutUpdated;
+            _viewport.SizeChanged -= Viewport_SizeChanged;
         }
 
-        _toolbarAnchor = toolbar;
-        if (toolbar is not null)
+        _inFlow = true;
+        _viewport = viewport;
+        if (viewport is not null)
         {
-            toolbar.SizeChanged += ToolbarAnchor_SizeChanged;
-            toolbar.LayoutUpdated += ToolbarAnchor_LayoutUpdated;
-            MeasureToolbarBottom();
-        }
-        else
-        {
-            _toolbarBottomInHost = 0;
+            viewport.SizeChanged += Viewport_SizeChanged;
         }
 
-        ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
+        ApplyLayout();
     }
+
+    /// <summary>Legacy name — redirects to <see cref="AttachInFlow"/>.</summary>
+    public void AttachBelowToolbar(FrameworkElement? toolbar) =>
+        AttachInFlow(toolbar is null ? null : FindViewport(toolbar));
 
     public GalleryViewModel? Gallery
     {
@@ -90,20 +89,14 @@ public sealed partial class ViewerDetailsCard : UserControl
         set => SetValue(IsOpenProperty, value);
     }
 
-    /// <summary>True while the pointer is over the card — keeps chrome from auto-hiding.</summary>
     public bool PointerOverCard { get; private set; }
 
     public event EventHandler? ChromePinChanged;
 
-    public void FocusCard()
-    {
-        ScrDetails.Focus(FocusState.Programmatic);
-    }
+    public void FocusCard() => ScrDetails.Focus(FocusState.Programmatic);
 
-    public void ResetScroll()
-    {
+    public void ResetScroll() =>
         ScrDetails.ChangeView(0, 0, null, disableAnimation: true);
-    }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -114,13 +107,24 @@ public sealed partial class ViewerDetailsCard : UserControl
         }
         catch
         {
-            // ThemeShadow / Translation unavailable in some hosts — solid card still works.
+            // ThemeShadow / Translation unavailable in some hosts.
         }
 
         ApplyHighContrastBorder();
         CompactSectionExpanders();
-        MeasureToolbarBottom();
-        ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
+        if (!_inFlow && _viewport is null)
+        {
+            // Prefer parent-of-parent when already placed under a toolbar Grid.
+            _inFlow = true;
+            _viewport = FindViewport(this);
+            if (_viewport is not null)
+            {
+                _viewport.SizeChanged -= Viewport_SizeChanged;
+                _viewport.SizeChanged += Viewport_SizeChanged;
+            }
+        }
+
+        ApplyLayout();
         SyncOpenState(animate: false);
         HookSectionExpanders();
         LoadSectionExpanded();
@@ -128,39 +132,20 @@ public sealed partial class ViewerDetailsCard : UserControl
         UpdateLandmark();
     }
 
-    private void ToolbarAnchor_SizeChanged(object sender, SizeChangedEventArgs e) =>
-        RelayoutFromToolbar();
+    private void Viewport_SizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout();
 
-    private void ToolbarAnchor_LayoutUpdated(object? sender, object e) =>
-        RelayoutFromToolbar();
-
-    private void RelayoutFromToolbar()
+    private static FrameworkElement? FindViewport(FrameworkElement start)
     {
-        MeasureToolbarBottom();
-        ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
-    }
-
-    private void MeasureToolbarBottom()
-    {
-        if (_toolbarAnchor is null || GrdCardHost.ActualWidth <= 0)
+        for (var current = start as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            return;
-        }
-
-        try
-        {
-            var transform = _toolbarAnchor.TransformToVisual(GrdCardHost);
-            var bottom = transform.TransformPoint(
-                new Windows.Foundation.Point(0, _toolbarAnchor.ActualHeight));
-            if (bottom.Y > 0)
+            if (current is FrameworkElement fe
+                && (fe.Name is "GrdGalleryOverlay" or "GrdGalleryWindow" || fe is Page or Window))
             {
-                _toolbarBottomInHost = bottom.Y;
+                return fe;
             }
         }
-        catch
-        {
-            // Transform can throw before the visual tree is ready.
-        }
+
+        return start.XamlRoot?.Content as FrameworkElement;
     }
 
     private void CompactSectionExpanders()
@@ -181,7 +166,6 @@ public sealed partial class ViewerDetailsCard : UserControl
     {
         try
         {
-            // Default WinUI Expander header ToggleButton is ~40epx; shrink padding.
             if (VisualTreeHelper.GetChildrenCount(expander) == 0)
             {
                 expander.ApplyTemplate();
@@ -189,33 +173,53 @@ public sealed partial class ViewerDetailsCard : UserControl
 
             for (var i = 0; i < VisualTreeHelper.GetChildrenCount(expander); i++)
             {
-                ShrinkHeaderButtons(VisualTreeHelper.GetChild(expander, i));
+                ShrinkHeaderChrome(VisualTreeHelper.GetChild(expander, i));
             }
         }
         catch
         {
-            // Template not ready — style Padding still helps.
+            // Template not ready.
         }
     }
 
-    private static void ShrinkHeaderButtons(DependencyObject node)
+    private static void ShrinkHeaderChrome(DependencyObject node)
     {
         if (node is ToggleButton header)
         {
-            header.MinHeight = 28;
-            header.Padding = new Thickness(4, 2, 4, 2);
+            header.MinHeight = 24;
+            header.Height = 24;
+            header.Padding = new Thickness(2, 0, 2, 0);
             header.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            header.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(0, 0, 0, 0));
+            header.BorderThickness = new Thickness(0);
+        }
+        else if (node is Border border && border.Background is not null)
+        {
+            // Clear filled expander chrome plates when present.
+            var name = border.Name ?? "";
+            if (name.Contains("Header", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("Expander", StringComparison.OrdinalIgnoreCase))
+            {
+                border.Background = null;
+                border.Padding = new Thickness(0);
+            }
         }
 
         var count = VisualTreeHelper.GetChildrenCount(node);
         for (var i = 0; i < count; i++)
         {
-            ShrinkHeaderButtons(VisualTreeHelper.GetChild(node, i));
+            ShrinkHeaderChrome(VisualTreeHelper.GetChild(node, i));
         }
     }
 
     private void HookSectionExpanders()
     {
+        if (_expandersHooked)
+        {
+            return;
+        }
+
+        _expandersHooked = true;
         foreach (var expander in SectionExpanders())
         {
             expander.RegisterPropertyChangedCallback(
@@ -235,11 +239,10 @@ public sealed partial class ViewerDetailsCard : UserControl
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         UnsubscribeGallery();
-        if (_toolbarAnchor is not null)
+        if (_viewport is not null)
         {
-            _toolbarAnchor.SizeChanged -= ToolbarAnchor_SizeChanged;
-            _toolbarAnchor.LayoutUpdated -= ToolbarAnchor_LayoutUpdated;
-            _toolbarAnchor = null;
+            _viewport.SizeChanged -= Viewport_SizeChanged;
+            _viewport = null;
         }
     }
 
@@ -314,48 +317,42 @@ public sealed partial class ViewerDetailsCard : UserControl
         }
     }
 
-    private void GrdCardHost_SizeChanged(object sender, SizeChangedEventArgs e) =>
-        ApplyLayout(e.NewSize.Width, e.NewSize.Height);
+    private void GrdCardHost_SizeChanged(object sender, SizeChangedEventArgs e) => ApplyLayout();
 
-    private void ApplyLayout(double width, double height)
+    private void ApplyLayout()
     {
-        if (_toolbarBottomInHost <= 0)
+        var viewportH = _viewport?.ActualHeight ?? 0;
+        if (viewportH <= 0)
         {
-            MeasureToolbarBottom();
+            viewportH = XamlRoot?.Size.Height ?? GrdCardHost.ActualHeight;
         }
 
-        var top = ViewerDetailsLayout.TopBelowToolbar(_toolbarBottomInHost);
-        var panelWidth = ViewerDetailsLayout.EffectivePanelWidth(width);
-        var maxHeight = ViewerDetailsLayout.PanelMaxHeight(height, top);
+        var panelWidth = ViewerDetailsLayout.PanelWidth;
+        // Grow toward the bottom margin; MaxHeight is the viewport cap (not a
+        // short fixed Height that forces early scroll).
+        var maxHeight = ViewerDetailsLayout.InFlowPanelMaxHeight(viewportH);
         if (Gallery is not null)
         {
             Gallery.DetailsUsesBottomSheet = false;
             Gallery.DetailsPanelWidth = panelWidth;
         }
 
+        Width = panelWidth;
         BrdDetailsCard.Width = panelWidth;
         BrdDetailsCard.MinWidth = ViewerDetailsLayout.PanelMinWidth;
         BrdDetailsCard.MaxHeight = maxHeight;
-        // Explicit Height so the * ScrollViewer row gets a finite viewport
-        // (MaxHeight alone lets content measure unbounded and clip mid-row).
-        if (IsOpen || Gallery?.ShowDetails == true)
-        {
-            BrdDetailsCard.Height = maxHeight;
-        }
-
-        BrdDetailsCard.HorizontalAlignment = HorizontalAlignment.Left;
+        BrdDetailsCard.ClearValue(FrameworkElement.HeightProperty);
+        BrdDetailsCard.Margin = new Thickness(0);
+        BrdDetailsCard.HorizontalAlignment = HorizontalAlignment.Stretch;
         BrdDetailsCard.VerticalAlignment = VerticalAlignment.Top;
-        BrdDetailsCard.Margin = new Thickness(
-            ViewerDetailsLayout.Inset,
-            top,
-            ViewerDetailsLayout.Inset,
-            ViewerDetailsLayout.Inset);
     }
 
     private void SyncOpenState(bool animate)
     {
         var open = IsOpen || Gallery?.ShowDetails == true;
-        ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
+        ApplyLayout();
+        // Always zero composition offset so reopen cannot stack a stale Y jump.
+        ResetCompositionOffset();
         if (open)
         {
             BrdDetailsCard.Visibility = Visibility.Visible;
@@ -365,9 +362,19 @@ public sealed partial class ViewerDetailsCard : UserControl
         {
             PlayCloseAnimation(animate);
         }
-        else
+    }
+
+    private void ResetCompositionOffset()
+    {
+        try
         {
-            BrdDetailsCard.ClearValue(FrameworkElement.HeightProperty);
+            var visual = ElementCompositionPreview.GetElementVisual(BrdDetailsCard);
+            visual.Offset = new Vector3(visual.Offset.X, 0, visual.Offset.Z);
+            SetTranslationY(0);
+        }
+        catch
+        {
+            SetTranslationY(0);
         }
     }
 
@@ -377,7 +384,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         if (!animate || reduce)
         {
             BrdDetailsCard.Opacity = 1;
-            SetTranslationY(0);
+            ResetCompositionOffset();
             return;
         }
 
@@ -391,8 +398,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         {
             BrdDetailsCard.Opacity = 0;
             BrdDetailsCard.Visibility = Visibility.Collapsed;
-            BrdDetailsCard.ClearValue(FrameworkElement.HeightProperty);
-            SetTranslationY(ViewerDetailsLayout.EnterOffsetY);
+            ResetCompositionOffset();
             return;
         }
 
@@ -406,7 +412,7 @@ public sealed partial class ViewerDetailsCard : UserControl
             onComplete: () =>
             {
                 BrdDetailsCard.Visibility = Visibility.Collapsed;
-                BrdDetailsCard.ClearValue(FrameworkElement.HeightProperty);
+                ResetCompositionOffset();
             });
     }
 
@@ -433,7 +439,7 @@ public sealed partial class ViewerDetailsCard : UserControl
             : compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0.0f), new Vector2(1.0f, 1.0f));
 
         BrdDetailsCard.Opacity = fromOpacity;
-        SetTranslationY(fromY);
+        visual.Offset = new Vector3(visual.Offset.X, (float)fromY, visual.Offset.Z);
 
         var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
         opacityAnim.InsertKeyFrame(0, (float)fromOpacity);
@@ -450,7 +456,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         {
             _animating = false;
             BrdDetailsCard.Opacity = toOpacity;
-            SetTranslationY(toY);
+            visual.Offset = new Vector3(visual.Offset.X, (float)toY, visual.Offset.Z);
             onComplete?.Invoke();
         };
         visual.StartAnimation("Opacity", opacityAnim);
@@ -475,8 +481,7 @@ public sealed partial class ViewerDetailsCard : UserControl
     {
         try
         {
-            var settings = new UISettings();
-            return !settings.AnimationsEnabled;
+            return !new UISettings().AnimationsEnabled;
         }
         catch
         {
@@ -512,16 +517,15 @@ public sealed partial class ViewerDetailsCard : UserControl
         peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
         try
         {
-            var text = IsOpen ? "Details shown" : "Details hidden";
             peer?.RaiseNotificationEvent(
                 AutomationNotificationKind.Other,
                 AutomationNotificationProcessing.ImportantMostRecent,
-                text,
+                IsOpen ? "Details shown" : "Details hidden",
                 "ViewerDetailsOpen");
         }
         catch
         {
-            // RaiseNotificationEvent needs a newer contract on some builds.
+            // Optional.
         }
     }
 
@@ -546,7 +550,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         }
         catch
         {
-            // Optional polite announcement.
+            // Optional.
         }
     }
 
@@ -612,25 +616,21 @@ public sealed partial class ViewerDetailsCard : UserControl
         ChromePinChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private void ScrDetails_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
-    {
-        // Keep wheel scrolling inside the card; do not bubble to the still.
+    private void ScrDetails_PointerWheelChanged(object sender, PointerRoutedEventArgs e) =>
         e.Handled = true;
-    }
 
     private void ApplyHighContrastBorder()
     {
         try
         {
-            var accessibility = new AccessibilitySettings();
-            if (accessibility.HighContrast)
+            if (new AccessibilitySettings().HighContrast)
             {
                 BrdDetailsCard.BorderThickness = new Thickness(2);
             }
         }
         catch
         {
-            // AccessibilitySettings may throw off the UI thread / in tests.
+            // Optional.
         }
     }
 }

@@ -943,13 +943,17 @@
                         Style="{StaticResource BodyTextBlockStyle}"
                         Text="Missing"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
-                    <!-- Toolbar row; Details card docks below its ActualHeight. -->
+                    <!-- Toolbar + Details in one column: card is Grid row 1 (stable reopen dock). -->
                     <Grid
-                        x:Name="GrdViewerToolbar"
+                        x:Name="GrdViewerLeftChrome"
                         Margin="16,16,0,8"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"
                         RowSpacing="8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Border
                             Padding="6,4"
                             Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
@@ -1073,6 +1077,11 @@
                             </Border>
                         </StackPanel>
                         </Border>
+                        <controls:ViewerDetailsCard
+                            x:Name="CardViewerDetails"
+                            Grid.Row="1"
+                            Gallery="{x:Bind ViewModel.OverlayGallery, Mode=OneWay}"
+                            IsOpen="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
                     </Grid>
                     <Grid
                         x:Name="GrdViewerOverlayNav"
@@ -1120,10 +1129,6 @@
                             </Button>
                         </StackPanel>
                     </Grid>
-                    <controls:ViewerDetailsCard
-                        x:Name="CardViewerDetails"
-                        Gallery="{x:Bind ViewModel.OverlayGallery, Mode=OneWay}"
-                        IsOpen="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
             </Grid>
         </Grid>
     </Grid>

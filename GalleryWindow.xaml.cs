@@ -53,7 +53,7 @@ public sealed partial class GalleryWindow : Window
 
         AppWindow.Resize(new SizeInt32(desiredW, desiredH));
         ViewerMediaElement.SuppressFullWindow(MpeGallery);
-        CardViewerDetails.AttachBelowToolbar(GrdViewerToolbar);
+        CardViewerDetails.AttachInFlow(GrdGalleryWindow);
 
         Gallery.PropertyChanged += (_, e) =>
         {

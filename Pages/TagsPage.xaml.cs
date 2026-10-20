@@ -72,7 +72,7 @@ public sealed partial class TagsPage : Page
             GrdTagAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdTagAssets_RangeReleased), true);
             GrdTagAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdTagAssets_RangeCaptureLost), true);
             GrdTagAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdTagAssets_RangeHolding), true);
-            CardViewerDetails.AttachBelowToolbar(GrdViewerToolbar);
+            CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             RefreshRealizedTiles();
             HookOverlayGallery();
