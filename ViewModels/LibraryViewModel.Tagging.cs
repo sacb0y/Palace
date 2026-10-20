@@ -165,7 +165,8 @@ public partial class LibraryViewModel
                 return;
             }
 
-            if (chip.IsAssigned && !chip.IsPartial)
+            var state = TagChipVisual.Resolve(chip.IsPartial, chip.IsAssigned);
+            if (TagChipVisual.ToggleRemoves(state))
             {
                 await RemoveAssignedTagAsync(new AssignedTagItem
                 {
@@ -173,14 +174,12 @@ public partial class LibraryViewModel
                     TagName = chip.Name,
                     Source = TagSource.Manual
                 });
-                AssignAnnouncement = $"Removed {chip.Name}";
+                AssignAnnouncement = TagChipVisual.AnnounceRemoved(chip.Name, targets.Count);
                 return;
             }
 
             await AssignToSelectionAsync(targets, chip.TagId, chip.Name, TagSource.Manual);
-            AssignAnnouncement = chip.IsPartial
-                ? $"Added {chip.Name} to all {targets.Count} selected"
-                : $"Added {chip.Name}";
+            AssignAnnouncement = TagChipVisual.AnnounceAdded(chip.Name, targets.Count);
             await LoadPreviewAsync(SelectedAsset);
             RebuildAssignPanel();
         });
