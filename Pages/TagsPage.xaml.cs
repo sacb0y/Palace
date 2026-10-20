@@ -41,6 +41,7 @@ public sealed partial class TagsPage : Page
     private Pointer? _rangePointer;
     private bool _rangeCaptured;
     private bool _rangeConsumedTap;
+    private ViewerOverlayAutoHide? _viewerOverlayAutoHide;
 
     public TagsPage()
     {
@@ -57,6 +58,7 @@ public sealed partial class TagsPage : Page
             {
                 HookOverlayGallery();
                 UpdateOverlayMedia();
+                SyncViewerOverlayAutoHide();
                 if (ViewModel.IsGalleryOverlayOpen)
                 {
                     GrdGalleryOverlay.Focus(FocusState.Programmatic);
@@ -1195,12 +1197,31 @@ public sealed partial class TagsPage : Page
         BtnGalleryPlay.Visibility = Visibility.Collapsed;
     }
 
+    private void SyncViewerOverlayAutoHide()
+    {
+        if (ViewModel.IsGalleryOverlayOpen)
+        {
+            _viewerOverlayAutoHide ??= new ViewerOverlayAutoHide(
+                GrdGalleryOverlay,
+                GrdViewerOverlayNav,
+                () => ViewerOverlayNavProbe.IsHoveredOrFocused(
+                    BtnGalleryPrev, BtnGalleryNext, BtnGalleryClose));
+            _viewerOverlayAutoHide.Attach();
+        }
+        else
+        {
+            _viewerOverlayAutoHide?.Detach();
+        }
+    }
+
     private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (ViewModel.OverlayGallery is null)
         {
             return;
         }
+
+        _viewerOverlayAutoHide?.Show(resetIdle: true);
 
         var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(CoreVirtualKeyStates.Down);

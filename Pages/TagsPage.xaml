@@ -1147,47 +1147,48 @@
                             </ScrollViewer>
                         </Border>
                     </Grid>
-                    <Button
-                        x:Name="BtnGalleryPrev"
-                        MinWidth="48"
-                        MinHeight="48"
-                        Margin="16,0,0,0"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="BtnGalleryPrev"
-                        AutomationProperties.Name="Previous"
-                        Command="{x:Bind ViewModel.OverlayGallery.GoPreviousCommand, Mode=OneWay, FallbackValue={x:Null}}"
-                        IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoPrevious, Mode=OneWay, FallbackValue=False}"
-                        ToolTipService.ToolTip="Previous">
-                        <ic:FluentIcon Icon="ChevronLeft" IconSize="Size20" IconVariant="Regular" />
-                    </Button>
-                    <Button
-                        x:Name="BtnGalleryNext"
-                        MinWidth="48"
-                        MinHeight="48"
-                        Margin="0,0,16,0"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="BtnGalleryNext"
-                        AutomationProperties.Name="Next"
-                        Command="{x:Bind ViewModel.OverlayGallery.GoNextCommand, Mode=OneWay, FallbackValue={x:Null}}"
-                        IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoNext, Mode=OneWay, FallbackValue=False}"
-                        ToolTipService.ToolTip="Next">
-                        <ic:FluentIcon Icon="ChevronRight" IconSize="Size20" IconVariant="Regular" />
-                    </Button>
-                    <Button
-                        x:Name="BtnGalleryClose"
-                        MinWidth="48"
-                        MinHeight="48"
-                        Margin="0,16,16,0"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Top"
-                        AutomationProperties.AutomationId="BtnGalleryClose"
-                        AutomationProperties.Name="Close"
-                        Command="{x:Bind ViewModel.CloseOverlayCommand}"
-                        ToolTipService.ToolTip="Close">
-                        <ic:FluentIcon Icon="Dismiss" IconSize="Size20" IconVariant="Regular" />
-                    </Button>
+                    <Grid
+                        x:Name="GrdViewerOverlayNav"
+                        AutomationProperties.AutomationId="GrdViewerOverlayNav">
+                        <Button
+                            x:Name="BtnGalleryPrev"
+                            Margin="16,0,0,0"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="BtnGalleryPrev"
+                            AutomationProperties.Name="Previous"
+                            Command="{x:Bind ViewModel.OverlayGallery.GoPreviousCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoPrevious, Mode=OneWay, FallbackValue=False}"
+                            Style="{StaticResource ViewerOverlayButtonStyle}"
+                            ToolTipService.ToolTip="Previous (Left)">
+                            <ic:FluentIcon Icon="ChevronLeft" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
+                        <Button
+                            x:Name="BtnGalleryNext"
+                            Margin="0,0,16,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="BtnGalleryNext"
+                            AutomationProperties.Name="Next"
+                            Command="{x:Bind ViewModel.OverlayGallery.GoNextCommand, Mode=OneWay, FallbackValue={x:Null}}"
+                            IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoNext, Mode=OneWay, FallbackValue=False}"
+                            Style="{StaticResource ViewerOverlayButtonStyle}"
+                            ToolTipService.ToolTip="Next (Right)">
+                            <ic:FluentIcon Icon="ChevronRight" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
+                        <Button
+                            x:Name="BtnGalleryClose"
+                            Margin="0,16,16,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            AutomationProperties.AutomationId="BtnGalleryClose"
+                            AutomationProperties.Name="Close"
+                            Command="{x:Bind ViewModel.CloseOverlayCommand}"
+                            Style="{StaticResource ViewerOverlayCloseButtonStyle}"
+                            ToolTipService.ToolTip="Close (Esc)">
+                            <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
+                    </Grid>
                 </Grid>
                 <Border
                     x:Name="BrdGalleryOverlayInfo"
