@@ -1,7 +1,7 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// Overlay / gallery shortcut copy for Settings → About. Off WinUI so the list is testable.
+/// Overlay / gallery shortcut copy for Settings → Input. Off WinUI so the list is testable.
 /// </summary>
 public sealed class ShortcutHint
 {

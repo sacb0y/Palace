@@ -130,6 +130,25 @@ public static class GalleryMedia
         int keyCode) =>
         GalleryScale.OpensOverlay(overlayOpen, isTyping, keyCode) && !isFolderHeader;
 
+    /// <summary>
+    /// Enter / UIA Invoke path: open a mosaic asset (never a folder header).
+    /// </summary>
+    public static bool ShouldOpenOverlayFromEnter(
+        bool overlayOpen,
+        bool isTyping,
+        bool isFolderHeader,
+        int keyCode) =>
+        GalleryScale.OpensOverlayFromEnter(overlayOpen, isTyping, keyCode) && !isFolderHeader;
+
+    /// <summary>
+    /// ItemsView ItemInvoked (double-tap, Enter, or automation Invoke when
+    /// selection is enabled — not a single pointer tap).
+    /// </summary>
+    public static bool ShouldOpenOverlayFromItemInvoke(
+        bool overlayOpen,
+        bool isFolderHeader) =>
+        !overlayOpen && !isFolderHeader;
+
     public static bool ShouldLoadTileThumb(
         bool isOrphan,
         bool alreadyStarted,

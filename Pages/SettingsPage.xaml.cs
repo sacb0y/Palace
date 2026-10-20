@@ -1,11 +1,15 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.Services.Cloud;
 using Palace.ViewModels;
+using Windows.Storage;
 using Windows.System;
 using Windows.UI;
 
@@ -14,6 +18,10 @@ namespace Palace.Pages;
 public sealed partial class SettingsPage : Page
 {
     private bool _ignoreTintChanges;
+    private bool _ignoreNavSelection;
+    private Control? _highlightedCard;
+    private Brush? _highlightRestoreBrush;
+    private DispatcherTimer? _highlightTimer;
 
     public SettingsViewModel ViewModel => AppServices.Settings;
 
@@ -22,6 +30,7 @@ public sealed partial class SettingsPage : Page
         InitializeComponent();
         // System theme (or late ActualTheme) must flip packaged light/dark preset thumbs.
         ActualThemeChanged += (_, _) => ViewModel.RefreshBackgroundPresetSwatches();
+        SizeChanged += SettingsPage_SizeChanged;
         Loaded += async (_, _) =>
         {
             ViewModel.RequestPickCloudFolder = PickCloudFolderAsync;
@@ -29,14 +38,201 @@ public sealed partial class SettingsPage : Page
             await ErrorReporter.RunAsync("Load settings", null, ViewModel.LoadAsync);
             SyncTintPicker();
             ViewModel.RefreshBackgroundPresetSwatches();
+            ApplyContentCap(ActualWidth);
+            RestoreLastSection(scrollToTop: true);
         };
         Unloaded += (_, _) =>
         {
             ViewModel.RequestPickCloudFolder = null;
             ViewModel.RequestConfirm = null;
             ViewModel.PropertyChanged -= ViewModelOnPropertyChanged;
+            ClearSearchHighlight();
+            _highlightTimer?.Stop();
         };
         ViewModel.PropertyChanged += ViewModelOnPropertyChanged;
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        // Frame may reuse the page; restore content pane (not only list highlight).
+        if (IsLoaded)
+        {
+            RestoreLastSection(scrollToTop: false);
+        }
+    }
+
+    private void SettingsPage_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        ApplyContentCap(e.NewSize.Width);
+
+    /// <summary>
+    /// Content capped at 1000px and left-aligned when the Settings page is wider than 1100px.
+    /// </summary>
+    private void ApplyContentCap(double pageWidth)
+    {
+        var capWindow = (double)Application.Current.Resources["PalaceSettingsContentCapWindow"];
+        var cap = (double)Application.Current.Resources["PalaceSettingsContentCap"];
+        PnlSettingsContent.MaxWidth = pageWidth > capWindow ? cap : double.PositiveInfinity;
+    }
+
+    private void RestoreLastSection(bool scrollToTop)
+    {
+        var stored = ApplicationData.Current.LocalSettings.Values[SettingsNav.LastSectionKey];
+        SelectSection(SettingsNav.ParseStored(stored), persist: false, scrollToTop);
+    }
+
+    /// <summary>
+    /// Keyboard, pointer, and Narrator/UIA selection all change SelectedItem —
+    /// drive content from SelectionChanged (not ItemClick).
+    /// </summary>
+    private void LstSettingsNav_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_ignoreNavSelection || LstSettingsNav.SelectedItem is not ListViewItem item)
+        {
+            return;
+        }
+
+        var id = item.Tag as string ?? SettingsNav.DefaultSectionId;
+        SelectSection(id, persist: true, scrollToTop: true);
+    }
+
+    private void TxtSettingsSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var hit = SettingsNav.FindHit(TxtSettingsSearch.Text);
+        if (hit is null)
+        {
+            ClearSearchHighlight();
+            return;
+        }
+
+        SelectSection(hit.Value.SectionId, persist: true, scrollToTop: hit.Value.CardAutomationId is null);
+        if (hit.Value.CardAutomationId is { } cardId)
+        {
+            HighlightCard(cardId);
+        }
+        else
+        {
+            ClearSearchHighlight();
+        }
+    }
+
+    private void SelectSection(string sectionId, bool persist, bool scrollToTop)
+    {
+        var id = SettingsNav.Normalize(sectionId);
+
+        // Content panes first so list highlight and content never diverge.
+        foreach (var panel in SectionPanels())
+        {
+            panel.Visibility = panel.Name.EndsWith("_" + id, StringComparison.Ordinal)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
+
+        ListViewItem? match = null;
+        foreach (var item in LstSettingsNav.Items.OfType<ListViewItem>())
+        {
+            if (string.Equals(item.Tag as string, id, StringComparison.OrdinalIgnoreCase))
+            {
+                match = item;
+                break;
+            }
+        }
+
+        if (match is not null && !ReferenceEquals(LstSettingsNav.SelectedItem, match))
+        {
+            _ignoreNavSelection = true;
+            LstSettingsNav.SelectedItem = match;
+            _ignoreNavSelection = false;
+        }
+
+        if (persist)
+        {
+            ApplicationData.Current.LocalSettings.Values[SettingsNav.LastSectionKey] = id;
+        }
+
+        if (scrollToTop)
+        {
+            ScrSettingsContent.ChangeView(null, 0, null, disableAnimation: true);
+        }
+    }
+
+    private IEnumerable<StackPanel> SectionPanels() =>
+    [
+        PnlSection_appearance,
+        PnlSection_library,
+        PnlSection_viewer,
+        PnlSection_tags,
+        PnlSection_input,
+        PnlSection_performance,
+        PnlSection_about
+    ];
+
+    private void HighlightCard(string automationId)
+    {
+        ClearSearchHighlight();
+        // Card AutomationIds match x:Name (CardTheme, …). SettingsCard is a Control.
+        var card = FindName(automationId) as Control
+            ?? FindNamedControl(PnlSettingsContent, automationId);
+        if (card is null)
+        {
+            return;
+        }
+
+        _highlightedCard = card;
+        _highlightRestoreBrush = card.Background;
+        if (Application.Current.Resources.TryGetValue("PalaceSettingsSearchHighlightBrush", out var brush)
+            && brush is Brush highlight)
+        {
+            card.Background = highlight;
+        }
+
+        card.StartBringIntoView();
+        _highlightTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+        _highlightTimer.Tick -= HighlightTimer_Tick;
+        _highlightTimer.Tick += HighlightTimer_Tick;
+        _highlightTimer.Stop();
+        _highlightTimer.Start();
+    }
+
+    private void HighlightTimer_Tick(object? sender, object e)
+    {
+        _highlightTimer?.Stop();
+        ClearSearchHighlight();
+    }
+
+    private void ClearSearchHighlight()
+    {
+        if (_highlightedCard is not null)
+        {
+            _highlightedCard.Background = _highlightRestoreBrush;
+            _highlightedCard = null;
+            _highlightRestoreBrush = null;
+        }
+    }
+
+    private static Control? FindNamedControl(DependencyObject root, string automationId)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe)
+            {
+                var id = fe.GetValue(AutomationProperties.AutomationIdProperty) as string;
+                if (string.Equals(id, automationId, StringComparison.Ordinal) && fe is Control control)
+                {
+                    return control;
+                }
+
+                var nested = FindNamedControl(fe, automationId);
+                if (nested is not null)
+                {
+                    return nested;
+                }
+            }
+        }
+
+        return null;
     }
 
     private void ViewModelOnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

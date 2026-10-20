@@ -932,18 +932,36 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (!GalleryMedia.ShouldOpenOverlayFromSpace(
-                ViewModel.IsGalleryOverlayOpen,
-                FocusIsTextInput(e.OriginalSource),
-                false,
-                (int)e.Key))
+        var typing = FocusIsTextInput(e.OriginalSource);
+        var item = FindAssetItem(e.OriginalSource)
+            ?? ViewModel.SelectedAsset
+            ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
+
+        if (item is { IsFolderHeader: true }
+            && e.Key == VirtualKey.Enter
+            && !ViewModel.IsGalleryOverlayOpen
+            && !typing)
+        {
+            ViewModel.SelectFolderGroup(item);
+            e.Handled = true;
+            return;
+        }
+
+        var openSpace = GalleryMedia.ShouldOpenOverlayFromSpace(
+            ViewModel.IsGalleryOverlayOpen,
+            typing,
+            item?.IsFolderHeader == true,
+            (int)e.Key);
+        var openEnter = GalleryMedia.ShouldOpenOverlayFromEnter(
+            ViewModel.IsGalleryOverlayOpen,
+            typing,
+            item?.IsFolderHeader == true,
+            (int)e.Key);
+        if (!openSpace && !openEnter)
         {
             return;
         }
 
-        var item = FindAssetItem(e.OriginalSource)
-            ?? ViewModel.SelectedAsset
-            ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
         if (item is null || item.IsFolderHeader)
         {
             return;
@@ -958,18 +976,16 @@ public sealed partial class LibraryPage : Page
         if (!e.Handled && TryHandleMosaicMoveKey(e))
         {
             e.Handled = true;
-            return;
         }
+    }
 
-        if (e.Key != VirtualKey.Enter || ViewModel.IsGalleryOverlayOpen)
-        {
-            return;
-        }
-
-        var item = FindAssetItem(e.OriginalSource)
-            ?? ViewModel.SelectedAsset
-            ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
-        if (item is null)
+    /// <summary>
+    /// Double-tap, Enter, and UIA InvokePattern (not a single pointer tap while
+    /// SelectionMode is Single/Multiple — see ItemsView.CanRaiseItemInvoked).
+    /// </summary>
+    private void GrdAssets_ItemInvoked(ItemsView sender, ItemsViewItemInvokedEventArgs e)
+    {
+        if (e.InvokedItem is not AssetItem item)
         {
             return;
         }
@@ -977,12 +993,17 @@ public sealed partial class LibraryPage : Page
         if (item.IsFolderHeader)
         {
             ViewModel.SelectFolderGroup(item);
-            e.Handled = true;
+            return;
+        }
+
+        if (!GalleryMedia.ShouldOpenOverlayFromItemInvoke(
+                ViewModel.IsGalleryOverlayOpen,
+                item.IsFolderHeader))
+        {
             return;
         }
 
         OpenOverlayFor(item);
-        e.Handled = true;
     }
 
     private void OpenOverlayFor(AssetItem item)
