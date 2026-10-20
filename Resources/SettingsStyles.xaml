@@ -72,5 +72,7 @@
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Margin" Value="0,0,0,2" />
+        <!-- Pill shape for the accent selection fill. -->
+        <Setter Property="BorderThickness" Value="0" />
     </Style>
 </ResourceDictionary>

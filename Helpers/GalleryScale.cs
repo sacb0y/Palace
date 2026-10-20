@@ -78,6 +78,13 @@ public static class GalleryScale
     public static bool OpensOverlay(bool overlayOpen, bool isTyping, int keyCode) =>
         !overlayOpen && !isTyping && keyCode == KeySpace;
 
+    /// <summary>
+    /// Enter opens the overlay on the focused or selected mosaic tile (same
+    /// path as ItemsView ItemInvoked / UIA Invoke when selection mode is on).
+    /// </summary>
+    public static bool OpensOverlayFromEnter(bool overlayOpen, bool isTyping, int keyCode) =>
+        !overlayOpen && !isTyping && keyCode == KeyEnter;
+
     public static bool ClosesOverlay(bool overlayOpen, int keyCode) =>
         overlayOpen && keyCode == KeyEscape;
 

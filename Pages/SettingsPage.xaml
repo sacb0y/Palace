@@ -109,10 +109,19 @@
                 x:Name="LstSettingsNav"
                 AutomationProperties.AutomationId="LstSettingsNav"
                 AutomationProperties.Name="Settings sections"
-                IsItemClickEnabled="True"
-                ItemClick="LstSettingsNav_ItemClick"
+                IsItemClickEnabled="False"
                 ItemContainerStyle="{StaticResource PalaceSettingsNavItemStyle}"
+                SelectionChanged="LstSettingsNav_SelectionChanged"
                 SelectionMode="Single">
+                <!-- Accent selection pill (scoped — follows BrandAccent / system accent). -->
+                <ListView.Resources>
+                    <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="AccentFillColorDefaultBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="AccentFillColorSecondaryBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="AccentFillColorTertiaryBrush" />
+                    <StaticResource x:Key="ListViewItemForegroundSelected" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                    <StaticResource x:Key="ListViewItemForegroundSelectedPointerOver" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                    <StaticResource x:Key="ListViewItemForegroundSelectedPressed" ResourceKey="TextOnAccentFillColorPrimaryBrush" />
+                </ListView.Resources>
                 <ListView.Items>
                     <ListViewItem
                         x:Name="NavAppearance"
@@ -167,11 +176,11 @@
                     <ListViewItem
                         x:Name="NavPerformance"
                         AutomationProperties.AutomationId="BtnSettingsNav_Performance"
-                        AutomationProperties.Name="Performance and Storage"
+                        AutomationProperties.Name="Performance"
                         Tag="performance">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ic:FluentIcon Icon="Database" IconSize="Size16" IconVariant="Regular" />
-                            <TextBlock VerticalAlignment="Center" Text="Performance &amp; Storage" TextWrapping="WrapWholeWords" />
+                            <TextBlock VerticalAlignment="Center" Text="Performance" />
                         </StackPanel>
                     </ListViewItem>
                     <ListViewItem
@@ -682,38 +691,42 @@
                         <controls:SettingsCard
                             x:Name="CardHdrPeak"
                             AutomationProperties.AutomationId="CardHdrPeak"
-                            ContentAlignment="Vertical"
                             Description="One app-wide clip for HDR present. 203 nits is paper white."
-                            Header="HDR peak brightness"
+                            Header="Override HDR peak brightness"
                             Style="{StaticResource PalaceSettingsCardStyle}">
-                            <StackPanel Spacing="8">
-                                <ToggleSwitch
-                                    x:Name="TglHdrPeakOverride"
-                                    AutomationProperties.AutomationId="TglHdrPeakOverride"
-                                    AutomationProperties.Name="Override HDR peak brightness"
-                                    Header="Override HDR peak brightness"
-                                    IsOn="{x:Bind ViewModel.PeakOverrideEnabled, Mode=TwoWay}"
-                                    OffContent="Off"
-                                    OnContent="On" />
+                            <ToggleSwitch
+                                x:Name="TglHdrPeakOverride"
+                                AutomationProperties.AutomationId="TglHdrPeakOverride"
+                                AutomationProperties.Name="Override HDR peak brightness"
+                                IsOn="{x:Bind ViewModel.PeakOverrideEnabled, Mode=TwoWay}"
+                                OffContent="Off"
+                                OnContent="On" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardHdrPeakNits"
+                            AutomationProperties.AutomationId="CardHdrPeakNits"
+                            Header="Peak nits"
+                            Style="{StaticResource PalaceSettingsCardStyle}"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
                                 <Slider
                                     x:Name="SldHdrPeakNits"
+                                    MinWidth="180"
                                     AutomationProperties.AutomationId="SldHdrPeakNits"
                                     AutomationProperties.Name="Peak nits"
-                                    Header="Peak nits"
                                     Maximum="4000"
                                     Minimum="80"
                                     StepFrequency="10"
                                     TickFrequency="400"
                                     TickPlacement="None"
-                                    Value="{x:Bind ViewModel.PeakOverrideNits, Mode=TwoWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}" />
+                                    Value="{x:Bind ViewModel.PeakOverrideNits, Mode=TwoWay}" />
                                 <TextBlock
                                     x:Name="TxtHdrPeakNits"
+                                    VerticalAlignment="Center"
                                     AutomationProperties.AutomationId="TxtHdrPeakNits"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.PeakOverrideLabel, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}" />
+                                    Text="{x:Bind ViewModel.PeakOverrideLabel, Mode=OneWay}" />
                             </StackPanel>
                         </controls:SettingsCard>
                         <controls:SettingsCard
@@ -800,7 +813,7 @@
 
                     <!-- Performance & Storage -->
                     <StackPanel x:Name="PnlSection_performance" Spacing="0" Visibility="Collapsed">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Performance &amp; Storage" />
+                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Performance" />
                         <controls:SettingsCard
                             x:Name="CardMediaCache"
                             AutomationProperties.AutomationId="CardMediaCache"

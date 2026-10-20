@@ -66,10 +66,10 @@ public static class SettingsNav
             ["input", "shortcuts", "keyboard", "hotkey", "touch", "swipe"]),
         new(
             Performance,
-            "Performance & Storage",
+            "Performance",
             "Database",
             "BtnSettingsNav_Performance",
-            ["performance", "storage", "cache", "media cache", "catalog", "gpu", "preview", "thumbs"]),
+            ["performance", "storage", "cache", "media cache", "catalog", "gpu", "preview", "thumbs", "performance & storage"]),
         new(
             About,
             "About",
@@ -90,7 +90,8 @@ public static class SettingsNav
         new(Library, "CardWatchedFolders", ["watched", "folder", "folders", "source", "add folder", "remove"]),
         new(Library, "CardSelectedFolder", ["auto-organize", "organize", "template", "destination", "filename"]),
         new(Library, "CardCloudAccounts", ["cloud", "onedrive", "dropbox", "oauth", "redirect", "connect"]),
-        new(Viewer, "CardHdrPeak", ["hdr", "peak", "nits", "brightness", "override"]),
+        new(Viewer, "CardHdrPeak", ["hdr", "peak", "brightness", "override", "override hdr"]),
+        new(Viewer, "CardHdrPeakNits", ["nits", "peak nits"]),
         new(Tags, "CardTagPortable", ["export tags", "import tags", "tags json"]),
         new(Input, "CardShortcuts", ["shortcut", "shortcuts", "keyboard", "hotkey", "ctrl"]),
         new(Performance, "CardMediaCache", ["cache", "media cache", "max mb", "clear cache"]),

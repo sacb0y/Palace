@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Navigation;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -38,8 +39,7 @@ public sealed partial class SettingsPage : Page
             SyncTintPicker();
             ViewModel.RefreshBackgroundPresetSwatches();
             ApplyContentCap(ActualWidth);
-            var stored = ApplicationData.Current.LocalSettings.Values[SettingsNav.LastSectionKey];
-            SelectSection(SettingsNav.ParseStored(stored), persist: false, scrollToTop: true);
+            RestoreLastSection(scrollToTop: true);
         };
         Unloaded += (_, _) =>
         {
@@ -50,6 +50,16 @@ public sealed partial class SettingsPage : Page
             _highlightTimer?.Stop();
         };
         ViewModel.PropertyChanged += ViewModelOnPropertyChanged;
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        // Frame may reuse the page; restore content pane (not only list highlight).
+        if (IsLoaded)
+        {
+            RestoreLastSection(scrollToTop: false);
+        }
     }
 
     private void SettingsPage_SizeChanged(object sender, SizeChangedEventArgs e) =>
@@ -65,9 +75,19 @@ public sealed partial class SettingsPage : Page
         PnlSettingsContent.MaxWidth = pageWidth > capWindow ? cap : double.PositiveInfinity;
     }
 
-    private void LstSettingsNav_ItemClick(object sender, ItemClickEventArgs e)
+    private void RestoreLastSection(bool scrollToTop)
     {
-        if (_ignoreNavSelection || e.ClickedItem is not ListViewItem item)
+        var stored = ApplicationData.Current.LocalSettings.Values[SettingsNav.LastSectionKey];
+        SelectSection(SettingsNav.ParseStored(stored), persist: false, scrollToTop);
+    }
+
+    /// <summary>
+    /// Keyboard, pointer, and Narrator/UIA selection all change SelectedItem —
+    /// drive content from SelectionChanged (not ItemClick).
+    /// </summary>
+    private void LstSettingsNav_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_ignoreNavSelection || LstSettingsNav.SelectedItem is not ListViewItem item)
         {
             return;
         }
@@ -100,6 +120,7 @@ public sealed partial class SettingsPage : Page
     {
         var id = SettingsNav.Normalize(sectionId);
 
+        // Content panes first so list highlight and content never diverge.
         foreach (var panel in SectionPanels())
         {
             panel.Visibility = panel.Name.EndsWith("_" + id, StringComparison.Ordinal)
@@ -107,17 +128,22 @@ public sealed partial class SettingsPage : Page
                 : Visibility.Collapsed;
         }
 
-        _ignoreNavSelection = true;
+        ListViewItem? match = null;
         foreach (var item in LstSettingsNav.Items.OfType<ListViewItem>())
         {
             if (string.Equals(item.Tag as string, id, StringComparison.OrdinalIgnoreCase))
             {
-                LstSettingsNav.SelectedItem = item;
+                match = item;
                 break;
             }
         }
 
-        _ignoreNavSelection = false;
+        if (match is not null && !ReferenceEquals(LstSettingsNav.SelectedItem, match))
+        {
+            _ignoreNavSelection = true;
+            LstSettingsNav.SelectedItem = match;
+            _ignoreNavSelection = false;
+        }
 
         if (persist)
         {

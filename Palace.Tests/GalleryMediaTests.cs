@@ -103,6 +103,13 @@ public sealed class GalleryMediaTests
         Assert.False(GalleryMedia.ShouldOpenOverlayFromSpace(false, false, true, 32));
         Assert.False(GalleryMedia.ShouldOpenOverlayFromSpace(true, false, false, 32));
         Assert.False(GalleryMedia.ShouldOpenOverlayFromSpace(false, true, false, 32));
+        Assert.True(GalleryMedia.ShouldOpenOverlayFromEnter(false, false, false, 13));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromEnter(false, false, true, 13));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromEnter(true, false, false, 13));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromEnter(false, true, false, 13));
+        Assert.True(GalleryMedia.ShouldOpenOverlayFromItemInvoke(false, false));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromItemInvoke(true, false));
+        Assert.False(GalleryMedia.ShouldOpenOverlayFromItemInvoke(false, true));
     }
 
     [Fact]

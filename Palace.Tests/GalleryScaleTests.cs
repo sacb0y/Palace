@@ -46,6 +46,10 @@ public sealed class GalleryScaleTests
         Assert.False(GalleryScale.OpensOverlay(true, false, GalleryScale.KeySpace));
         Assert.False(GalleryScale.OpensOverlay(false, true, GalleryScale.KeySpace));
         Assert.False(GalleryScale.OpensOverlay(false, false, GalleryScale.KeyEscape));
+        Assert.True(GalleryScale.OpensOverlayFromEnter(false, false, GalleryScale.KeyEnter));
+        Assert.False(GalleryScale.OpensOverlayFromEnter(true, false, GalleryScale.KeyEnter));
+        Assert.False(GalleryScale.OpensOverlayFromEnter(false, true, GalleryScale.KeyEnter));
+        Assert.False(GalleryScale.OpensOverlayFromEnter(false, false, GalleryScale.KeySpace));
         Assert.True(GalleryScale.ClosesOverlay(true, GalleryScale.KeyEscape));
         Assert.False(GalleryScale.ClosesOverlay(false, GalleryScale.KeyEscape));
         Assert.False(GalleryScale.ClosesOverlay(true, GalleryScale.KeySpace));
