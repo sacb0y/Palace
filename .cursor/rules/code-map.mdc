@@ -64,7 +64,7 @@ alwaysApply: false
 | Tag group destinations | `Helpers/TagGroups.cs` |
 | Tag A–Z index | `Helpers/TagAlphaIndex.cs` (letter buckets; Tags board chips wrap under each header) |
 | Tag children mosaic | `Pages/TagsPage.xaml` (`RepTagChildren` `WrapLayout` chips; keep `BtnTagChip_*`) |
-| Tag board chip chrome | `Helpers/TagChipChrome.cs` (fill background, width from name; `TagColor.ChipFill` / `ChipInk`) |
+| Tag board / assign chip | `Controls/TagChip.*` + `Helpers/TagChipVisual.cs` (Gooey pill: accent/partial/off, never face "On"; color dot only) + `Helpers/TagChipChrome.cs` (wrap width) |
 | Tag rename apply | `Helpers/TagSelection.cs` |
 | Recent tags | `Helpers/RecentTags.cs` |
 | Preview generation fields | `Helpers/GenerationFields.cs` (empty Extract/catalog replaces prior Prompt/Model; hide Generation when `HasAny` is false) |

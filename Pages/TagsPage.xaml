@@ -140,20 +140,20 @@
                                     </ItemsRepeater.Layout>
                                     <ItemsRepeater.ItemTemplate>
                                         <DataTemplate x:DataType="models:TagChipItem">
-                                            <Button
-                                                MinWidth="0"
-                                                MinHeight="0"
-                                                Padding="0"
+                                            <controls:TagChip
                                                 HorizontalAlignment="Left"
-                                                HorizontalContentAlignment="Left"
                                                 VerticalAlignment="Top"
-                                                Background="{ThemeResource ControlFillColorTransparentBrush}"
-                                                BorderThickness="0"
-                                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
-                                                Click="TagChip_Click"
-                                                Tag="{x:Bind}">
-                                                <Button.ContextFlyout>
+                                                ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                                ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                ChipClick="TagChip_Click"
+                                                IsStarred="{x:Bind IsStarred, Mode=OneWay}"
+                                                Label="{x:Bind Name, Mode=OneWay}"
+                                                ShowStar="True"
+                                                StarCommand="{x:Bind pages:TagsPage.GetStarChipCommand()}"
+                                                StarCommandParameter="{x:Bind}"
+                                                Tag="{x:Bind}"
+                                                TagColor="{x:Bind EffectiveColor, Mode=OneWay}">
+                                                <controls:TagChip.ContextFlyout>
                                                     <MenuFlyout Opening="TagChipMenu_Opening">
                                                         <MenuFlyoutItem
                                                             AutomationProperties.AutomationId="MnuFilterTag"
@@ -167,7 +167,7 @@
                                                         <MenuFlyoutItem
                                                             Command="{x:Bind pages:TagsPage.GetStarChipCommand()}"
                                                             CommandParameter="{x:Bind}"
-                                                            Text="Add to starred"
+                                                            Text="Star tag"
                                                             Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsStarred), Mode=OneWay}">
                                                             <MenuFlyoutItem.Icon>
                                                                 <ic:FluentIcon Icon="Star" IconSize="Size16" IconVariant="Regular" />
@@ -176,10 +176,10 @@
                                                         <MenuFlyoutItem
                                                             Command="{x:Bind pages:TagsPage.GetStarChipCommand()}"
                                                             CommandParameter="{x:Bind}"
-                                                            Text="Remove from starred"
+                                                            Text="Unstar tag"
                                                             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}">
                                                             <MenuFlyoutItem.Icon>
-                                                                <ic:FluentIcon Icon="Star" IconSize="Size16" IconVariant="Regular" />
+                                                                <ic:FluentIcon Icon="Star" IconSize="Size16" IconVariant="Filled" />
                                                             </MenuFlyoutItem.Icon>
                                                         </MenuFlyoutItem>
                                                         <MenuFlyoutItem
@@ -226,35 +226,8 @@
                                                             </MenuFlyoutItem.Icon>
                                                         </MenuFlyoutItem>
                                                     </MenuFlyout>
-                                                </Button.ContextFlyout>
-                                                <Border
-                                                    Padding="10,4"
-                                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                    BorderThickness="1"
-                                                    CornerRadius="{StaticResource ControlCornerRadius}">
-                                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                                        <TextBlock
-                                                            VerticalAlignment="Center"
-                                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                            Text="{x:Bind Name, Mode=OneWay}"
-                                                            TextWrapping="NoWrap" />
-                                                        <ic:FluentIcon
-                                                            VerticalAlignment="Center"
-                                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                            Icon="Star"
-                                                            IconSize="Size12"
-                                                            IconVariant="Regular"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarred), Mode=OneWay}" />
-                                                        <TextBlock
-                                                            VerticalAlignment="Center"
-                                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                                            Text="On"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
-                                                    </StackPanel>
-                                                </Border>
-                                            </Button>
+                                                </controls:TagChip.ContextFlyout>
+                                            </controls:TagChip>
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
                                 </ItemsRepeater>

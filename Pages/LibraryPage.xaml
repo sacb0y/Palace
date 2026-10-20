@@ -456,33 +456,15 @@
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:TagChipItem">
-                            <Button
-                                MinWidth="0"
-                                Padding="8,4"
+                            <controls:TagChip
                                 HorizontalAlignment="Left"
-                                HorizontalContentAlignment="Left"
-                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                 Command="{x:Bind pages:LibraryPage.GetToggleFilterChipCommand()}"
-                                CommandParameter="{x:Bind}">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Border
-                                        Width="10"
-                                        Height="10"
-                                        VerticalAlignment="Center"
-                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="2" />
-                                    <TextBlock VerticalAlignment="Center" Text="{x:Bind Name, Mode=OneWay}" />
-                                    <TextBlock
-                                        VerticalAlignment="Center"
-                                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="On"
-                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFilterSelected), Mode=OneWay}" />
-                                </StackPanel>
-                            </Button>
+                                CommandParameter="{x:Bind}"
+                                Compact="True"
+                                Label="{x:Bind Name, Mode=OneWay}"
+                                TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
@@ -1093,6 +1075,12 @@
                                             </DataTemplate>
                                         </AutoSuggestBox.ItemTemplate>
                                     </AutoSuggestBox>
+                                    <TextBlock
+                                        x:Name="TxtAssignChipLegend"
+                                        AutomationProperties.AutomationId="TxtAssignChipLegend"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                        Text="✓ all selected · – some" />
                                     <Button
                                         AutomationProperties.AutomationId="BtnAssignTag"
                                         Click="BtnAssignTag_Click"
@@ -1108,127 +1096,85 @@
                                         Style="{StaticResource BodyStrongTextBlockStyle}"
                                         Text="Starred"
                                         Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.StarredAssignTags.Count), Mode=OneWay}" />
-                                    <ItemsControl
+                                    <ItemsRepeater
                                         ItemsSource="{x:Bind ViewModel.StarredAssignTags, Mode=OneWay}"
                                         Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.StarredAssignTags.Count), Mode=OneWay}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Spacing="4" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
+                                        <ItemsRepeater.Layout>
+                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
                                             <DataTemplate x:DataType="models:TagChipItem">
-                                                <ToggleButton
-                                                    HorizontalAlignment="Stretch"
-                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                                <controls:TagChip
+                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                     Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
                                                     CommandParameter="{x:Bind}"
-                                                    IsChecked="{x:Bind CheckState, Mode=OneWay}"
-                                                    IsThreeState="True"
-                                                    ToolTipService.ToolTip="{x:Bind AssignTooltip, Mode=OneWay}">
-                                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <Ellipse
-                                                            Width="10"
-                                                            Height="10"
-                                                            Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                                            Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                            StrokeThickness="1"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(HasColor), Mode=OneWay}" />
-                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
-                                                        <TextBlock
-                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                            Text="{x:Bind PartialLabel, Mode=OneWay}"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                                    </StackPanel>
-                                                </ToggleButton>
+                                                    Compact="True"
+                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
+                                                    Label="{x:Bind Name, Mode=OneWay}"
+                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
+                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
+                                                    ShowStar="True"
+                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
                                             </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
                                     <TextBlock
                                         AutomationProperties.HeadingLevel="Level2"
                                         Style="{StaticResource BodyStrongTextBlockStyle}"
                                         Text="Recent"
                                         Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecentAssignTags.Count), Mode=OneWay}" />
-                                    <ItemsControl
+                                    <ItemsRepeater
                                         ItemsSource="{x:Bind ViewModel.RecentAssignTags, Mode=OneWay}"
                                         Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecentAssignTags.Count), Mode=OneWay}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Spacing="4" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
+                                        <ItemsRepeater.Layout>
+                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
                                             <DataTemplate x:DataType="models:TagChipItem">
-                                                <ToggleButton
-                                                    HorizontalAlignment="Stretch"
-                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                                <controls:TagChip
+                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                     Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
                                                     CommandParameter="{x:Bind}"
-                                                    IsChecked="{x:Bind CheckState, Mode=OneWay}"
-                                                    IsThreeState="True"
-                                                    ToolTipService.ToolTip="{x:Bind AssignTooltip, Mode=OneWay}">
-                                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <Ellipse
-                                                            Width="10"
-                                                            Height="10"
-                                                            Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                                            Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                            StrokeThickness="1"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(HasColor), Mode=OneWay}" />
-                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
-                                                        <TextBlock
-                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                            Text="{x:Bind PartialLabel, Mode=OneWay}"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                                    </StackPanel>
-                                                </ToggleButton>
+                                                    Compact="True"
+                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
+                                                    Label="{x:Bind Name, Mode=OneWay}"
+                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
+                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
+                                                    ShowStar="True"
+                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
                                             </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
                                     <TextBlock
                                         AutomationProperties.HeadingLevel="Level2"
                                         Style="{StaticResource BodyStrongTextBlockStyle}"
                                         Text="Suggested"
                                         Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecommendedAssignTags.Count), Mode=OneWay}" />
-                                    <ItemsControl
+                                    <ItemsRepeater
                                         ItemsSource="{x:Bind ViewModel.RecommendedAssignTags, Mode=OneWay}"
                                         Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecommendedAssignTags.Count), Mode=OneWay}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Spacing="4" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
+                                        <ItemsRepeater.Layout>
+                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
                                             <DataTemplate x:DataType="models:TagChipItem">
-                                                <ToggleButton
-                                                    HorizontalAlignment="Stretch"
-                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                                <controls:TagChip
+                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                     Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
                                                     CommandParameter="{x:Bind}"
-                                                    IsChecked="{x:Bind CheckState, Mode=OneWay}"
-                                                    IsThreeState="True"
-                                                    ToolTipService.ToolTip="{x:Bind AssignTooltip, Mode=OneWay}">
-                                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <Ellipse
-                                                            Width="10"
-                                                            Height="10"
-                                                            Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                                            Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                            StrokeThickness="1"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(HasColor), Mode=OneWay}" />
-                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
-                                                        <TextBlock
-                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                            Text="{x:Bind PartialLabel, Mode=OneWay}"
-                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                                    </StackPanel>
-                                                </ToggleButton>
+                                                    Compact="True"
+                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
+                                                    Label="{x:Bind Name, Mode=OneWay}"
+                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
+                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
+                                                    ShowStar="True"
+                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
                                             </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
                                     <TextBlock
                                         AutomationProperties.HeadingLevel="Level2"
                                         Style="{StaticResource BodyStrongTextBlockStyle}"
@@ -1244,41 +1190,27 @@
                                                     AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
                                                     Header="{x:Bind Name, Mode=OneWay}"
                                                     IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
-                                                    <ItemsControl ItemsSource="{x:Bind Chips, Mode=OneWay}">
-                                                        <ItemsControl.ItemsPanel>
-                                                            <ItemsPanelTemplate>
-                                                                <StackPanel Spacing="4" />
-                                                            </ItemsPanelTemplate>
-                                                        </ItemsControl.ItemsPanel>
-                                                        <ItemsControl.ItemTemplate>
+                                                    <ItemsRepeater ItemsSource="{x:Bind Chips, Mode=OneWay}">
+                                                        <ItemsRepeater.Layout>
+                                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                                                        </ItemsRepeater.Layout>
+                                                        <ItemsRepeater.ItemTemplate>
                                                             <DataTemplate x:DataType="models:TagChipItem">
-                                                                <ToggleButton
-                                                                    HorizontalAlignment="Stretch"
-                                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                                                <controls:TagChip
+                                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                                     Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
                                                                     CommandParameter="{x:Bind}"
-                                                                    IsChecked="{x:Bind CheckState, Mode=OneWay}"
-                                                                                    IsThreeState="True"
-                                                                                    ToolTipService.ToolTip="{x:Bind AssignTooltip, Mode=OneWay}">
-                                                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                        <Ellipse
-                                                                            Width="10"
-                                                                            Height="10"
-                                                                            Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                                                            Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                                            StrokeThickness="1"
-                                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(HasColor), Mode=OneWay}" />
-                                                                        <TextBlock Text="{x:Bind Name, Mode=OneWay}" />
-                                                                        <TextBlock
-                                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                            Text="{x:Bind PartialLabel, Mode=OneWay}"
-                                                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                                                    </StackPanel>
-                                                                </ToggleButton>
+                                                                    Compact="True"
+                                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
+                                                                    Label="{x:Bind Name, Mode=OneWay}"
+                                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
+                                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
+                                                                    ShowStar="True"
+                                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
                                                             </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
+                                                        </ItemsRepeater.ItemTemplate>
+                                                    </ItemsRepeater>
                                                 </Expander>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>

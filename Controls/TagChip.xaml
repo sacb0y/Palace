@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Palace.Controls.TagChip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsTabStop="True"
+    UseSystemFocusVisuals="True"
+    XYFocusKeyboardNavigation="Enabled"
+    KeyDown="Root_KeyDown"
+    PointerEntered="Root_PointerEntered"
+    PointerExited="Root_PointerExited"
+    PointerPressed="Root_PointerPressed"
+    PointerReleased="Root_PointerReleased"
+    PointerCanceled="Root_PointerCanceled"
+    PointerCaptureLost="Root_PointerCaptureLost"
+    Tapped="Root_Tapped">
+    <Grid
+        x:Name="GrdRoot"
+        MinHeight="32"
+        HorizontalAlignment="Left"
+        Background="Transparent">
+        <Border
+            x:Name="BrdChip"
+            MinHeight="32"
+            Padding="8,0,4,0"
+            HorizontalAlignment="Left"
+            Background="Transparent"
+            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="16">
+            <Grid ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Leading apply glyph (Checkmark / Subtract). Never the word On. -->
+                <Viewbox
+                    x:Name="VbStateGlyph"
+                    Width="12"
+                    Height="12"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed">
+                    <ic:FluentIcon
+                        x:Name="IcnState"
+                        Icon="Checkmark"
+                        IconSize="Size16"
+                        IconVariant="Regular" />
+                </Viewbox>
+
+                <Ellipse
+                    x:Name="EllColorDot"
+                    Grid.Column="1"
+                    Width="8"
+                    Height="8"
+                    VerticalAlignment="Center"
+                    Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
+                    StrokeThickness="1"
+                    Visibility="Collapsed" />
+
+                <TextBlock
+                    x:Name="TxtLabel"
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    TextWrapping="NoWrap" />
+
+                <TextBlock
+                    x:Name="TxtPartialBadge"
+                    Grid.Column="3"
+                    VerticalAlignment="Center"
+                    IsHitTestVisible="False"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Visibility="Collapsed" />
+
+                <Button
+                    x:Name="BtnStar"
+                    Grid.Column="4"
+                    Width="24"
+                    Height="24"
+                    MinWidth="24"
+                    MinHeight="24"
+                    Padding="0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="Star tag"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="BtnStar_Click"
+                    IsTabStop="False"
+                    ToolTipService.ToolTip="Star tag"
+                    Visibility="Collapsed">
+                    <ic:FluentIcon
+                        x:Name="IcnStar"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Icon="Star"
+                        IconSize="Size16"
+                        IconVariant="Regular" />
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- Dashed accent outline for Partial (Border cannot dash). -->
+        <Rectangle
+            x:Name="RectPartialDash"
+            RadiusX="16"
+            RadiusY="16"
+            Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+            StrokeDashArray="1.5,1.5"
+            StrokeThickness="1.5"
+            Visibility="Collapsed"
+            IsHitTestVisible="False" />
+    </Grid>
+</UserControl>
