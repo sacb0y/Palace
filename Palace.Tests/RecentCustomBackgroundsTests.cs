@@ -11,7 +11,7 @@ public sealed class RecentCustomBackgroundsTests
         string file,
         string? source = null,
         double darkness = 40,
-        double blur = 45,
+        double blur = 18,
         string? name = null,
         string? hash = null) =>
         RecentCustomBackgrounds.Create(
@@ -42,26 +42,27 @@ public sealed class RecentCustomBackgroundsTests
     }
 
     [Fact]
-    public void Push_caps_at_six_dropping_oldest_non_active()
+    public void Push_caps_at_five_dropping_oldest_non_active()
     {
         IReadOnlyList<RecentCustomBackgroundEntry> list = [];
-        for (var i = 0; i < 6; i++)
+        for (var i = 0; i < 5; i++)
         {
             (list, _) = RecentCustomBackgrounds.Push(list, E($"id{i}", $"shell-recent-{i}.jpg"));
         }
 
         Assert.Equal(RecentCustomBackgrounds.Max, list.Count);
+        Assert.Equal(5, RecentCustomBackgrounds.Max);
 
         var (capped, evicted) = RecentCustomBackgrounds.Push(
             list,
-            E("id6", "shell-recent-6.jpg"),
-            activeId: "id5");
+            E("id5", "shell-recent-5.jpg"),
+            activeId: "id4");
 
         Assert.Equal(RecentCustomBackgrounds.Max, capped.Count);
         Assert.Single(evicted);
         Assert.Equal("id0", evicted[0].Id);
-        Assert.Equal("id6", capped[0].Id);
-        Assert.Contains(capped, e => e.Id == "id5");
+        Assert.Equal("id5", capped[0].Id);
+        Assert.Contains(capped, e => e.Id == "id4");
     }
 
     [Fact]
@@ -75,17 +76,32 @@ public sealed class RecentCustomBackgroundsTests
     }
 
     [Fact]
-    public void UpdateAmounts_rewrites_one_entry()
+    public void UpdateAmounts_rewrites_one_entry_and_touches_last_used()
     {
+        var before = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var seeded = E("b", "shell-recent-b.jpg") with { LastUsedUtc = before };
         var list = RecentCustomBackgrounds.UpdateAmounts(
-            [E("a", "shell-recent-a.jpg"), E("b", "shell-recent-b.jpg")],
+            [E("a", "shell-recent-a.jpg"), seeded],
             "b",
             12,
-            88);
+            28);
 
         Assert.Equal(40, list[0].Darkness);
         Assert.Equal(12, list[1].Darkness);
-        Assert.Equal(88, list[1].Blur);
+        Assert.Equal(28, list[1].Blur);
+        Assert.True(list[1].LastUsedUtc > before);
+    }
+
+    [Fact]
+    public void TouchLastUsed_updates_one_entry()
+    {
+        var stamp = DateTimeOffset.Parse("2026-10-20T12:00:00Z");
+        var list = RecentCustomBackgrounds.TouchLastUsed(
+            [E("a", "shell-recent-a.jpg"), E("b", "shell-recent-b.jpg")],
+            "a",
+            stamp);
+
+        Assert.Equal(stamp, list[0].LastUsedUtc);
     }
 
     [Fact]
@@ -93,7 +109,7 @@ public sealed class RecentCustomBackgroundsTests
     {
         var (original, _) = RecentCustomBackgrounds.Push(
             [],
-            E("abc", "shell-recent-abc.png", @"C:\pics\wall.png", 33, 66, "wall.png", "deadbeef"));
+            E("abc", "shell-recent-abc.png", @"C:\pics\wall.png", 33, 22, "wall.png", "deadbeef"));
 
         var roundTrip = RecentCustomBackgrounds.Parse(RecentCustomBackgrounds.Serialize(original));
 
@@ -103,10 +119,21 @@ public sealed class RecentCustomBackgroundsTests
         Assert.Equal("wall.png", roundTrip[0].DisplayName);
         Assert.Equal(@"C:\pics\wall.png", roundTrip[0].SourcePath);
         Assert.Equal(33, roundTrip[0].Darkness);
-        Assert.Equal(66, roundTrip[0].Blur);
+        Assert.Equal(22, roundTrip[0].Blur);
         Assert.Equal("deadbeef", roundTrip[0].ContentHash);
+        Assert.NotEqual(default, roundTrip[0].LastUsedUtc);
         Assert.Empty(RecentCustomBackgrounds.Parse(null));
         Assert.Empty(RecentCustomBackgrounds.Parse("{not-json"));
+    }
+
+    [Fact]
+    public void Parse_MigratesLegacyPercentBlurAboveMaxPx()
+    {
+        var json = """[{"id":"x","file":"shell-recent-x.jpg","name":"x","darkness":40,"blur":45,"hash":"aa","added":"2026-10-01T00:00:00Z"}]""";
+        var list = RecentCustomBackgrounds.Parse(json);
+        Assert.Single(list);
+        Assert.Equal(ShellBackground.MigrateBlurFromLegacyPercent(45), list[0].Blur, 2);
+        Assert.True(list[0].Blur <= ShellBackground.MaxBlurPx);
     }
 
     [Fact]

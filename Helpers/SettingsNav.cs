@@ -39,7 +39,7 @@ public static class SettingsNav
             "Appearance",
             "PaintBrush",
             "BtnSettingsNav_Appearance",
-            ["appearance", "theme", "accent", "background", "wallpaper", "darkness", "blur", "tint", "color", "mica", "pink"]),
+            ["appearance", "theme", "accent", "background", "wallpaper", "darkness", "blur", "tint", "color", "mica", "pink", "density", "animations", "compact", "comfortable"]),
         new(
             Library,
             "Library & Folders",
@@ -86,7 +86,9 @@ public static class SettingsNav
     [
         new(Appearance, "CardTheme", ["theme", "light", "dark", "system"]),
         new(Appearance, "CardAccent", ["accent", "pink", "brand", "color"]),
-        new(Appearance, "CardBackground", ["background", "wallpaper", "preset", "blur", "darkness", "tint", "mica", "custom"]),
+        new(Appearance, "CardDensity", ["density", "compact", "comfortable"]),
+        new(Appearance, "CardAnimations", ["animations", "motion", "reduce motion"]),
+        new(Appearance, "CardBackground", ["background", "wallpaper", "preset", "blur", "darkness", "tint", "mica", "custom", "recent"]),
         new(Library, "CardWatchedFolders", ["watched", "folder", "folders", "source", "add folder", "remove"]),
         new(Library, "CardSelectedFolder", ["auto-organize", "organize", "template", "destination", "filename"]),
         new(Library, "CardCloudAccounts", ["cloud", "onedrive", "dropbox", "oauth", "redirect", "connect"]),

@@ -7,13 +7,14 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Custom-group MRU wallpapers (newest first, capped). Each entry keeps a
-/// LocalFolder cache copy, optional source path, content hash, date added, and
+/// LocalFolder cache copy, optional source path, content hash, last-used, and
 /// per-image darkness/blur. Off WinUI for Palace.Tests.
+/// Removing from Recent never deletes the cached file (Undo InfoBar only).
 /// </summary>
 public static class RecentCustomBackgrounds
 {
-    /// <summary>Gooey: six recents; adding a 7th drops the oldest non-active.</summary>
-    public const int Max = 6;
+    /// <summary>Gooey: five recents; adding a 6th drops the oldest non-active.</summary>
+    public const int Max = 5;
 
     public const string SettingsKey = "ShellRecentCustoms";
     public const string ActiveIdKey = "ShellRecentCustomId";
@@ -105,7 +106,8 @@ public static class RecentCustomBackgrounds
                 ContentHash = string.IsNullOrWhiteSpace(incoming.ContentHash)
                     ? matched.ContentHash
                     : incoming.ContentHash,
-                DateAddedUtc = incoming.DateAddedUtc
+                DateAddedUtc = incoming.DateAddedUtc,
+                LastUsedUtc = incoming.LastUsedUtc
             };
 
         list.Insert(0, head);
@@ -149,11 +151,28 @@ public static class RecentCustomBackgrounds
             return Normalize(existing);
         }
 
-        var d = ShellBackground.ClampAmount(darkness);
-        var b = ShellBackground.ClampAmount(blur);
+        var d = ShellBackground.ClampDarkness(darkness);
+        var b = ShellBackground.ClampBlur(blur);
         return Normalize(existing.Select(e =>
             string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase)
-                ? e with { Darkness = d, Blur = b }
+                ? e with { Darkness = d, Blur = b, LastUsedUtc = DateTimeOffset.UtcNow }
+                : e));
+    }
+
+    public static IReadOnlyList<RecentCustomBackgroundEntry> TouchLastUsed(
+        IEnumerable<RecentCustomBackgroundEntry> existing,
+        string? id,
+        DateTimeOffset? whenUtc = null)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return Normalize(existing);
+        }
+
+        var stamp = whenUtc ?? DateTimeOffset.UtcNow;
+        return Normalize(existing.Select(e =>
+            string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase)
+                ? e with { LastUsedUtc = stamp }
                 : e));
     }
 
@@ -342,16 +361,21 @@ public static class RecentCustomBackgrounds
         double blur,
         string? contentHash = null,
         DateTimeOffset? dateAddedUtc = null,
-        string? id = null) =>
-        NormalizeEntry(new RecentCustomBackgroundEntry(
+        string? id = null,
+        DateTimeOffset? lastUsedUtc = null)
+    {
+        var added = dateAddedUtc ?? DateTimeOffset.UtcNow;
+        return NormalizeEntry(new RecentCustomBackgroundEntry(
             string.IsNullOrWhiteSpace(id) ? Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture) : id.Trim(),
             fileName,
             string.IsNullOrWhiteSpace(displayName) ? fileName : displayName.Trim(),
             string.IsNullOrWhiteSpace(sourcePath) ? null : sourcePath.Trim(),
-            ShellBackground.ClampAmount(darkness),
-            ShellBackground.ClampAmount(blur),
+            ShellBackground.ClampDarkness(darkness),
+            ShellBackground.NormalizeBlur(blur),
             string.IsNullOrWhiteSpace(contentHash) ? "" : contentHash.Trim().ToLowerInvariant(),
-            dateAddedUtc ?? DateTimeOffset.UtcNow));
+            added,
+            lastUsedUtc ?? added));
+    }
 
     private static int FindOldestNonActiveIndex(
         IReadOnlyList<RecentCustomBackgroundEntry> list,
@@ -409,16 +433,21 @@ public static class RecentCustomBackgrounds
         return list;
     }
 
-    private static RecentCustomBackgroundEntry NormalizeEntry(RecentCustomBackgroundEntry entry) =>
-        new(
+    private static RecentCustomBackgroundEntry NormalizeEntry(RecentCustomBackgroundEntry entry)
+    {
+        var added = entry.DateAddedUtc == default ? DateTimeOffset.UtcNow : entry.DateAddedUtc;
+        var used = entry.LastUsedUtc == default ? added : entry.LastUsedUtc;
+        return new(
             (entry.Id ?? "").Trim(),
             (entry.FileName ?? "").Trim(),
             string.IsNullOrWhiteSpace(entry.DisplayName) ? (entry.FileName ?? "").Trim() : entry.DisplayName.Trim(),
             string.IsNullOrWhiteSpace(entry.SourcePath) ? null : entry.SourcePath.Trim(),
-            ShellBackground.ClampAmount(entry.Darkness),
-            ShellBackground.ClampAmount(entry.Blur),
+            ShellBackground.ClampDarkness(entry.Darkness),
+            ShellBackground.NormalizeBlur(entry.Blur),
             string.IsNullOrWhiteSpace(entry.ContentHash) ? "" : entry.ContentHash.Trim().ToLowerInvariant(),
-            entry.DateAddedUtc == default ? DateTimeOffset.UtcNow : entry.DateAddedUtc);
+            added,
+            used);
+    }
 
     private static RecentCustomDto ToDto(RecentCustomBackgroundEntry entry) =>
         new()
@@ -430,7 +459,8 @@ public static class RecentCustomBackgrounds
             Darkness = entry.Darkness,
             Blur = entry.Blur,
             Hash = string.IsNullOrWhiteSpace(entry.ContentHash) ? null : entry.ContentHash,
-            Added = entry.DateAddedUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)
+            Added = entry.DateAddedUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture),
+            LastUsed = entry.LastUsedUtc.UtcDateTime.ToString("o", CultureInfo.InvariantCulture)
         };
 
     private static RecentCustomBackgroundEntry FromDto(RecentCustomDto? dto)
@@ -447,6 +477,13 @@ public static class RecentCustomBackgrounds
             added = parsed.ToUniversalTime();
         }
 
+        DateTimeOffset lastUsed = added;
+        if (!string.IsNullOrWhiteSpace(dto.LastUsed)
+            && DateTimeOffset.TryParse(dto.LastUsed, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsedUsed))
+        {
+            lastUsed = parsedUsed.ToUniversalTime();
+        }
+
         return Create(
             dto.File ?? "",
             dto.Name ?? dto.File ?? "",
@@ -455,7 +492,8 @@ public static class RecentCustomBackgrounds
             dto.Blur ?? ShellBackground.DefaultBlur,
             dto.Hash,
             added,
-            dto.Id);
+            dto.Id,
+            lastUsed);
     }
 
     private sealed class RecentCustomDto
@@ -468,10 +506,11 @@ public static class RecentCustomBackgrounds
         public double? Blur { get; set; }
         public string? Hash { get; set; }
         public string? Added { get; set; }
+        public string? LastUsed { get; set; }
     }
 }
 
-/// <summary>One Custom-group MRU row (cache + hash + amounts + date).</summary>
+/// <summary>One Recent custom row (Palace cache copy + amounts + lastUsed).</summary>
 public sealed record RecentCustomBackgroundEntry(
     string Id,
     string FileName,
@@ -480,4 +519,5 @@ public sealed record RecentCustomBackgroundEntry(
     double Darkness,
     double Blur,
     string ContentHash,
-    DateTimeOffset DateAddedUtc);
+    DateTimeOffset DateAddedUtc,
+    DateTimeOffset LastUsedUtc);

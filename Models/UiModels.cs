@@ -645,15 +645,17 @@ public sealed class TagChipGroupMove
     public override string ToString() => GroupName;
 }
 
-/// <summary>Settings → Background preset / Custom-group tile.</summary>
+/// <summary>Settings → Background preset / Recent / +Custom tile (stable identity).</summary>
 public sealed partial class ShellPresetItem : ObservableObject
 {
     public ShellPresetKind Id { get; init; }
-    public string Name { get; init; } = "";
+
+    [ObservableProperty]
+    public partial string Name { get; set; } = "";
 
     /// <summary>
     /// Single-select key across picker groups. Presets use <see cref="ShellPresetSelection.KeyFor"/>;
-    /// Custom MRU tiles use <see cref="ShellPresetSelection.KeyForRecent"/>.
+    /// Recent tiles use <see cref="ShellPresetSelection.KeyForRecent"/>.
     /// </summary>
     public string SelectionKey { get; init; } = "";
 
@@ -665,27 +667,33 @@ public sealed partial class ShellPresetItem : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
-    /// <summary>Custom group: leading Add image… tile (opens the file picker).</summary>
+    /// <summary>Recent group: trailing +Custom tile (opens the file picker).</summary>
     public bool IsAddCustom { get; init; }
 
-    /// <summary>Custom group: MRU entry id (null for packaged presets and Add).</summary>
+    /// <summary>Recent group: MRU entry id (null for packaged presets and Add).</summary>
     public string? RecentId { get; init; }
 
-    public string? RecentFileName { get; init; }
-    public string? RecentImagePath { get; init; }
-    public string? RecentSourcePath { get; init; }
-    public string? RecentContentHash { get; init; }
-    public DateTimeOffset RecentAddedUtc { get; init; }
-    public double RecentDarkness { get; init; } = ShellBackground.DefaultDarkness;
-    public double RecentBlur { get; init; } = ShellBackground.DefaultBlur;
+    public string? RecentFileName { get; set; }
+    public string? RecentImagePath { get; set; }
+    public string? RecentSourcePath { get; set; }
+    public string? RecentContentHash { get; set; }
+    public DateTimeOffset RecentAddedUtc { get; set; }
+    public DateTimeOffset RecentLastUsedUtc { get; set; }
+    public double RecentDarkness { get; set; } = ShellBackground.DefaultDarkness;
+    public double RecentBlur { get; set; } = ShellBackground.DefaultBlur;
 
-    /// <summary>Cache and source both missing — placeholder, not selectable.</summary>
-    public bool IsBroken { get; init; }
+    /// <summary>Cache and source both missing — broken thumb + Locate.</summary>
+    [ObservableProperty]
+    public partial bool IsBroken { get; set; }
 
     public bool IsRecentCustom => !string.IsNullOrWhiteSpace(RecentId);
     public bool IsCustom => Id == ShellPresetKind.Custom;
     public bool ShowRemoveChrome => IsRecentCustom;
-    public bool CanSelect => !IsBroken;
+    public bool ShowLocateChrome => IsRecentCustom && IsBroken;
+    public bool CanSelect => IsAddCustom || !IsBroken;
+
+    partial void OnIsBrokenChanged(bool value) =>
+        OnPropertyChanged(nameof(ShowLocateChrome));
 
     public string AutomationId => IsRecentCustom
         ? "BtnShellRecentCustom_" + RecentId
@@ -703,11 +711,17 @@ public sealed partial class ShellPresetItem : ObservableObject
 
     public string AutomationHelpText => IsRecentCustom && !IsBroken
         ? "Press Delete to remove"
-        : "";
+        : IsBroken
+            ? "Locate the missing image"
+            : "";
 
     public string RemoveAutomationId => "BtnShellRecentCustomRemove_" + (RecentId ?? "");
     public string RemoveAutomationName => "Remove " + Name;
-    public string ToolTipText { get; init; } = "";
+    public string LocateAutomationId => "BtnShellRecentCustomLocate_" + (RecentId ?? "");
+    public string LocateAutomationName => "Locate " + Name;
+
+    [ObservableProperty]
+    public partial string ToolTipText { get; set; } = "";
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => AutomationName;

@@ -69,6 +69,7 @@
     <Compile Include="..\Helpers\ShellBackground.cs" Link="ShellBackground.cs" />
     <Compile Include="..\Helpers\RecentCustomBackgrounds.cs" Link="RecentCustomBackgrounds.cs" />
     <Compile Include="..\Helpers\ShellPresetSelection.cs" Link="ShellPresetSelection.cs" />
+    <Compile Include="..\Helpers\AppearanceSettings.cs" Link="AppearanceSettings.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />
     <Compile Include="..\Models\ShellPreset.cs" Link="ShellPreset.cs" />
     <Compile Include="..\Helpers\BrandAccent.cs" Link="BrandAccent.cs" />
