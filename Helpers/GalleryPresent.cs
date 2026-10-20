@@ -209,6 +209,12 @@ public static class GalleryPresent
         return IsHdrDisplay(raw);
     }
 
+    /// <summary>DXGI_FORMAT_R16G16B16A16_FLOAT — HDR still swapchain.</summary>
+    public const int ScrgbSwapChainFormat = 10;
+
+    /// <summary>DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 — linear scRGB.</summary>
+    public const int ScrgbColorSpace = 1;
+
     public static string FormatDisplayProbe(
         int colorSpace,
         float maxLuminance,
@@ -216,17 +222,37 @@ public static class GalleryPresent
         int bitsPerColor,
         bool? windowsHdrEnabled,
         bool displayHdr,
-        string? ccd = null)
+        string? ccd = null,
+        int? swapChainFormat = null,
+        int? swapChainColorSpace = null)
     {
         var win = windowsHdrEnabled is null ? "?" : windowsHdrEnabled.Value ? "1" : "0";
         var line =
             $"DXGI cs={colorSpace} max={maxLuminance:0} ff={maxFullFrameLuminance:0} bits={bitsPerColor} winHdr={win} displayHdr={(displayHdr ? 1 : 0)}";
+        if (swapChainFormat.HasValue || swapChainColorSpace.HasValue)
+        {
+            var f = swapChainFormat ?? ScrgbSwapChainFormat;
+            var c = swapChainColorSpace ?? ScrgbColorSpace;
+            line += $" · swap={FormatSwapChainLabel(f, c)}";
+        }
+
         if (!string.IsNullOrWhiteSpace(ccd))
         {
             line += " · " + ccd.Trim();
         }
 
         return line;
+    }
+
+    /// <summary>
+    /// Human label for the composition swapchain used by HDR still present
+    /// (format 10 = R16G16B16A16_FLOAT, color space 1 = scRGB G10 P709).
+    /// </summary>
+    public static string FormatSwapChainLabel(int format, int colorSpace)
+    {
+        var fmt = format == ScrgbSwapChainFormat ? "R16G16B16A16_FLOAT" : $"fmt={format}";
+        var cs = colorSpace == ScrgbColorSpace ? "scRGB(G10/P709)" : $"cs={colorSpace}";
+        return $"{fmt}/{cs}";
     }
 
     /// <summary>
@@ -257,6 +283,14 @@ public static class GalleryPresent
             || probe.Transfer is HdrTransfer.Pq or HdrTransfer.Hlg
             || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance or HdrKind.HdrExr;
     }
+
+    /// <summary>
+    /// When <c>IDXGIOutput6</c> / luminance is missing: Windows HDR (CCD) or
+    /// PQ/HLG/HDR-still content still presents scRGB — never false-tonemap to
+    /// 80 nits while Advanced Color is on (FenrirDesktop / SAM713F class).
+    /// </summary>
+    public static bool DisplayHdrWithoutOutput6(bool? windowsHdrEnabled, HdrProbe content) =>
+        windowsHdrEnabled == true || UnknownDisplayPresentsHdr(content);
 
     public static string FormatUnknownDisplayProbe(string reason, bool assumeHdr, string? ccd = null)
     {
