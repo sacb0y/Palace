@@ -1,1 +1,1 @@
-﻿After density: video Details Media section above scrubber; transport without maximize/full-window.
+﻿532f21c: Video with Details open - Media section above scrubber; no maximize/full-window on transport.
