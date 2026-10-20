@@ -1,67 +1,92 @@
 # Palace — agent notes
 
-Palace is a packaged WinUI 3 / Windows App SDK digital asset manager (images, GIF, video; later more formats). The metaphor is a mind palace: **Library** (catalog), **Room** (moodboard / mindmap). Files stay on disk. SQLite + FTS5 is the index.
+Packaged WinUI 3 / Windows App SDK digital asset manager (images, GIF, video; more later). Metaphor: **Library** (catalog) and **Room** (moodboard / mindmap). Files stay on disk; SQLite + FTS5 is the index.
+
+Human overview: `README.md`. Bug reports: Settings → About (`TxtAppVersion`).
 
 ## Keeping these notes current
 
-This file is the always-loaded core. Detailed topic rules live in `.cursor/rules/*.mdc` and load when you touch matching files. When you change a convention (scan, thumbs, UI thread, cloud, packaging, tests), update the **matching rule file** in the same change — not this file. Only add here if it is a cross-cutting contract rule. New topic → new `.mdc` with `description` + `globs`.
+This file is the always-loaded core. Topic rules live in `.cursor/rules/*.mdc` and load by glob. Change a convention → update the **matching** `.mdc` in the same change. Cross-cutting contracts only belong here. New topic → new `.mdc` with `description` + `globs`.
 
 | Rule file | Covers |
 |---|---|
-| `product-tags-library.mdc` | Projects, delete, organize, Tags board, Library mosaic grouping / sort / select |
-| `library-ui.mdc` | Do-not-freeze rules, busy bars, startup order, mosaic chunking, lazy thumbs, overlay open/close |
-| `gallery-hdr.mdc` | Overlay / GalleryWindow chrome, GIF scrub, 1:1/Fit/Fill, HDR present, SDR tonemap, histogram, video posters |
-| `cloud-files.mdc` | On-Demand + API sources, never download originals, hydrate on Open only |
-| `catalog-sqlite.mdc` | Schema / migrations, SQL fragments, `PalaceDb` async gate, OAuth storage |
-| `errors.mdc` | Log and Notify, do not crash |
+| `product-tags-library.mdc` | Projects, delete, organize, Tags board, Library mosaic |
+| `library-ui.mdc` | Freeze rules, busy bars, startup, mosaic, lazy thumbs, overlay |
+| `gallery-hdr.mdc` | Overlay / GalleryWindow, GIF, scale modes, HDR, histogram, posters |
+| `cloud-files.mdc` | On-Demand + API; never download originals; hydrate on Open |
+| `catalog-sqlite.mdc` | Schema / migrations, SQL, `PalaceDb` gate, OAuth storage |
+| `errors.mdc` | Log and Notify; do not crash |
 | `icons-automation.mdc` | FluentIcons, AutomationIds, badges |
 | `code-map.mdc` | Which file owns which area |
-| `versioning-release.mdc` | `PalaceVersion`, bump rules, PR version+summary, slice table, MSIX, trim |
-| `local-test-identity.mdc` | HARD: never touch release Identity `C20A7629`; test manifest + `PALACE_DATA_DIR` |
+| `versioning-release.mdc` | `PalaceVersion`, bump rules, PR summary, MSIX, trim |
+| `local-test-identity.mdc` | HARD: never touch release Identity `C20A7629` |
 | `tests.mdc` | Test commands and `Palace.Tests` coverage |
 
-## PR / agent goals (read first)
+## Versioning and changelog
 
-Any PR agent (Cursor, Copilot, human) should treat this as the product contract:
+- Source of truth: `<PalaceVersion>` in `Directory.Build.props` (Assembly / File / Informational follow it). Manifest `Identity Version` = `MAJOR.MINOR.PATCH.**0**` — sync with `python3 scripts/sync-appx-version.py`. CI enforces props ↔ manifest match and a bump over `main` for app-changing PRs.
+- Stay on **0.x** until the first public Store release (**1.0.0**). **PATCH** = fixes, polish, small features, library work. **MINOR** = finished milestones only (next: Settings restructure → **0.3.0**). Docs / CI / tests-only: no bump (`no-version-bump` label or exempt paths). Version follows merge order; rebase and re-bump stacked PRs.
+- Bumping PRs must state the **new version** and a **one-line user-facing summary** (for Isiac). Keep `Helpers/AppVersion.cs` `Milestone` in lockstep when opening a milestone. Do not jump to `1.0.0` because something “feels ready.”
+- No `CHANGELOG.md` in-repo. Maintainers record version-bump merges in an external changelog.
 
-1. **Library-first.** Ship Library browsing, mosaic, overlay/gallery, tags, watch folders, FTS, and solid image/video (including HDR present). Do not invent Rooms canvas, gamedev viewers, or AI features as a new minor unless Sacb0y opens that milestone.
-2. **Version / slice rules.** Source of truth: `<PalaceVersion>` in `Directory.Build.props` (Assembly/File/Informational follow it). Manifest `Identity Version` = `MAJOR.MINOR.PATCH.**0**` — sync with `python3 scripts/sync-appx-version.py`. Stay on **0.x** until the first public Store release (**1.0.0**). **PATCH** = fixes, polish, small features, library work. **MINOR** = only finished milestones (next: Settings restructure → **0.3.0**). Docs/CI/tests-only: no bump (`no-version-bump` label or exempt paths). CI still requires a version **greater than `main`** for app-changing PRs — it does **not** require MINOR for features. PR description must state the **new version** and a **one-line user-facing summary** (for Isiac). Do **not** jump to `1.0.0` because something “feels ready.” Keep `Helpers/AppVersion.cs` `Milestone` in lockstep when opening a milestone. Details: `.cursor/rules/versioning-release.mdc`.
-3. **Local Windows identity (HARD).** Sacb0y’s install is Identity **Name** `C20A7629-6BDE-449F-958A-5AAF8BCE88F3`. Agents **never** `winapp run`, `BuildAndRun.ps1`, `Add-AppxPackage`, or `winapp run --no-launch` against that release manifest/identity (layout register still overwrites his install). **Never** `winapp unregister` his install — agents do **not** restore `C20A7629`; Sacb0y owns that. Always: copied `Package.appxmanifest` with a **separate** test Identity Name, PhoneProductId, and DisplayName (e.g. `PalaceOrganizeTest-5E1F` via `.\scripts\Prepare-TestIdentity.ps1`, which rewrites all three), `BuildAndRun.ps1` guard (refuses release Name, PhoneProductId, and DisplayName `Palace`), `PALACE_DATA_DIR` + temp SFW copy — never real catalog / Unity / `%TEMP%\palace-vss`. Details: `.cursor/rules/local-test-identity.mdc`.
-4. **Do not invent ahead of the slice.** No freeform Rooms canvas / moodboard-mindmap, no gamedev viewers (3D/audio/markdown Unity assign), no AI tagging/organization features until that minor is opened. Existing Rooms and Organization (on-disk organize / auto-organize) are **infancy** — polish only if the task names them; do not claim they are finished.
-5. **Cloud is bonus.** Dropbox / OneDrive OAuth and On-Demand already live in 0.0.x. Further cloud work can land inside the current identity; it is **not** the next numbered slice and must not download originals.
-6. **Maintainer preferences (hands-off).** Prefer small, reviewable PRs on a branch from current `main`. Packaged Debug only for agent UI runs — **test identity**, never release `C20A7629`. Never unpackaged. Never change GitHub visibility or add secrets. Do not resume paused Magick / TGA / EXR spikes unless asked. Fix trivial CI/Bugbot blockers; skip speculative refactors.
-7. **Tests.** `dotnet test .\Palace.Tests\Palace.Tests.csproj` on every change that touches helpers/services. On Windows Main-Desktop, packaged Debug via `Prepare-TestIdentity.ps1` then `BuildAndRun.ps1` when UI is in scope. Linux Cloud Agents: tests only — no WinUI build. Self-hosted Windows worker for live UI.
-8. **Linux vs Windows.** Cloud Agent VMs are Linux → `Palace.Tests` only. WinUI / `winapp` / screenshots need a Windows worker (e.g. Main-Desktop). See **Cursor Cloud specific instructions**.
+## Safety and testing (HARD)
 
-Human-facing overview: root `README.md`. Bug reports: Settings → About (`TxtAppVersion`).
+- **Never** launch, register, unregister, or install over release Identity **Name** `C20A7629-…`. Never `winapp run` / `Add-AppxPackage` / `BuildAndRun.ps1` / `winapp run --no-launch` on the release manifest (layout register overwrites the install). Agents do **not** restore `C20A7629` — Sacb0y owns that.
+- Tests: `.\scripts\Prepare-TestIdentity.ps1 -IdentityName PalaceOrganizeTest-5E1F` (rewrites Name, PhoneProductId, DisplayName), set `PALACE_DATA_DIR` to a temp folder, then `.\BuildAndRun.ps1 . --arch x64`. Register the **build output** `bin\...\AppxManifest.xml` (test identity), not `winapp run --no-launch` on source. See `.cursor/rules/local-test-identity.mdc`.
+- Test data: temp copy of the SFW Palace-Dev folder only. Seed the catalog directly — no GUI folder picker. Never touch the installed Palace, real catalog (`%LOCALAPPDATA%\Palace`), `%TEMP%\palace-vss`, `winapp-layout\palace-main-*`, or Unity.
+- Before test input: confirm the user is idle. Prefer UI Automation; never maximize the test window; screenshot only the test window. Unity builds have priority for machine time — use BelowNormal with `-m:1` when the machine is shared.
+- Cleanup: remove named **test** identities only. If the target PC is unreachable, skip and report — never substitute another PC.
+- HDR output verification: PC with the HDR display (**FenrirDesktop**).
+- Every UI test report includes captioned screenshots. Host PR screenshots on the media branch — never commit PNGs on the product branch.
+- Push from temp clones only when that workflow applies.
+- Unit / helper changes: `dotnet test .\Palace.Tests\Palace.Tests.csproj`. Linux Cloud Agents: tests only (no WinUI). Live UI needs a self-hosted Windows worker.
+
+## Process and design
+
+- Prefer small PRs from current `main`. Maintainers merge when CI is green and a manual retest passes. Do not rely on Bugbot.
+- New UI-heavy features need Gooey mockups that Isiac approves **before** build. Other UI changes still get design input first. No release pressure.
+- Library-first: mosaic, overlay/gallery, tags, watch folders, FTS, solid image/video (incl. HDR present). Do not invent Rooms canvas, gamedev viewers, or AI features until that minor is opened. Existing Rooms / Organization are infancy — polish only if the task names them.
+- Cloud (Dropbox / OneDrive OAuth, On-Demand) may land inside the current identity; not a numbered slice; never download originals.
+- Icons: FluentIcons.WinUI (`ic:FluentIcon`). Confirm the size variant exists (e.g. `ratio_one_to_one` / `scale_fill` start at Size20).
+- Viewer overlays: same look in Light and Dark (dark translucent plates; no acrylic over HDR). High contrast uses system colors. Reusable styles: `ViewerOverlayButtonStyle`, `ViewerDetailsCard`, `VolumeControl`, `TagChip`. Card surface `#E01C1C1C` (`#1C1C1CE0` in CSS), border `#1AFFFFFF`, radius 8.
+- Overlay hit-testing: keep interactive cards `IsHitTestVisible`. Navigation via `SelectionChanged` and UI Automation, not pointer-only.
+- Hands-off: packaged Debug under a **test** identity only; never unpackaged; never change GitHub visibility or add secrets; skip speculative refactors and paused Magick / TGA / EXR spikes unless asked.
 
 ## Stack (locked)
 
 - Packaged `winui-mvvm` only. CommunityToolkit.Mvvm, `{x:Bind}` with explicit `Mode`, `AutomationProperties.AutomationId` on interactive controls, `ThemeResource` (not hardcoded brushes).
 - Never run the unpackaged `.exe`. Never set `WindowsPackageType=None`.
-- Run (agents): `.\scripts\Prepare-TestIdentity.ps1 -IdentityName PalaceOrganizeTest-5E1F`, set `PALACE_DATA_DIR` to a temp folder, then `.\BuildAndRun.ps1 . --arch x64`. The script **refuses** release Identity `C20A7629-…`. Never call `winapp run` / `Add-AppxPackage` on the unpatched release manifest (including `--no-launch`). Invoke attached runs asynchronously; the command stays attached while the app is open.
-- Official skills: `C:\Users\iadag\.cursor\skills\winui-*` — load `winui-dev-workflow`, `winui-design`, `winui-packaging`, `winui-code-review`, `winui-ui-testing` as needed.
-- Domain-reload-disabled is a Unity habit. It does not apply here.
-- `Palace.Tests` is a separate `net10.0` project (`Palace.csproj` excludes `Palace.Tests\**`). Keep tests off WinUI / WinRT. Do not reference `FluentIcons.WinUI` from tests.
-- Debug vs Release of the **same source** share one version number. Agent daily run is Debug under a **test** identity (see goal 3). `PublishTrimmed` is **off** for both until Release trim stops crashing on `ItemsSource` COM wrappers; re-enable trim only with `SelfContained` + `WindowsAppSDKSelfContained` (else `NETSDK1102`). Title bar: set `AppTitleBar.Title` to `AppVersion.TitleBarTitle` (`Palace {version}`) and `Subtitle` to `AppVersion.TitleBar` — do not leave Title hardcoded `Palace` alone.
+- `Palace.Tests` is a separate `net10.0` project (excluded from `Palace.csproj`). Keep tests off WinUI / WinRT / `FluentIcons.WinUI`.
+- Debug and Release of the same source share one version. `PublishTrimmed` is off until Release trim stops crashing on `ItemsSource` COM wrappers; re-enable only with `SelfContained` + `WindowsAppSDKSelfContained`.
+- Title bar: `AppTitleBar.Title` = `AppVersion.TitleBarTitle` (`Palace {version}`); `Subtitle` = `AppVersion.TitleBar`.
+
+## Architecture (current product)
+
+- WinUI 3, .NET 10, Windows App SDK, MSIX (Store).
+- Settings (0.2.6+): two-pane with search. Sections: Appearance, Library & Folders, Viewer, Tags & Rooms, Input, Performance, About. CommunityToolkit SettingsCard / Expander.
+- Details card: single info area (Info flyout merged in); overlays the viewer; never resizes the image.
+- HDR: scRGB / FP16 path; tonemap to SDR on SDR displays. PNG cICP HDR from 0.2.7.
+- Exports: PNG / JPEG / JXR / AVIF / EXR with HDR→SDR tonemap. 360 panoramas get a thumbnail badge.
+- Planned: palace CLI for agents (JSON, previews to PNG); no MCP yet; Chromium extension later.
+- Dropbox cloud library: chosen folders per Project; read-only at first.
+- Unified Undo: moves and organize runs share one history; an organize run is one step; undoing a move removes its folder if empty.
+- Thumbnails: ~2–4 concurrent decodes, lazy in viewport order, short prefetch, cancel on scroll-away, full decodes off the UI thread.
+- Accent: Follow Windows or Palace pink (`#ED9FBC` Dark, `#A14165` Light). Retint in `OnLaunched`; do not touch `Application.Resources` in the App constructor.
+- Backgrounds: 13 presets plus Default, Mica, Mica Alt, Neutral, Custom. Recent custom images kept as copies; blur / darkness per entry.
+- Roadmap: Settings → **0.3.0**, then touch (long-press select; swipe keep/reject → `_rejected`), then 3D and audio, then moodboard.
 
 ## PR descriptions
 
-Keep them short. Use `.github/PULL_REQUEST_TEMPLATE.md`. Every bumping PR must fill:
-
-- **New version** (matches `Directory.Build.props`)
-- **User-facing summary (one line)** — plain wording for Isiac to pass on
-
-Also: What / Why / Tested. No essays, no full verification tables, no screenshots unless the change is visual.
+Short. Use `.github/PULL_REQUEST_TEMPLATE.md`. Bumping PRs fill **New version** + **User-facing summary**. Also What / Why / Tested. No essays or screenshot dumps unless the change is visual (then captioned shots on the media branch).
 
 ## Cursor Cloud specific instructions
 
-Cloud Agents run on **Linux**. On the Linux VM, only **`Palace.Tests`** (`net10.0`, off WinUI/WinRT) builds and runs. Keep those tests cross-platform. Windows-only remains `BuildAndRun.ps1` / `winapp` / `ui-tests.ps1` and live screenshots — not available on the Linux VM itself.
+Cloud Agents run on **Linux**. Only `Palace.Tests` (`net10.0`, off WinUI/WinRT) builds here — keep those tests cross-platform.
 
 ```bash
 dotnet test ./Palace.Tests/Palace.Tests.csproj
 ```
 
-**Self-hosted Windows worker.** For WinUI build/run, UI tests, screenshots, or visual design review of the live app, do **not** conclude "no Windows access" just because the Cloud Agent VM is Linux. Check connected workers with cursor-cloud `list-self-hosted-workers`. If a Windows worker is connected (e.g. `win-laptop` / My Machines), target it for that UI/visual work. If none is connected — or Developer Mode / the Palace checkout is missing — remind the user to set up or reconnect the Windows PC (Cursor CLI `agent worker start` from the Palace checkout, Developer Mode on, keep unlocked) before treating live UI verification as impossible.
+WinUI / `winapp` / `ui-tests.ps1` / live screenshots need a self-hosted Windows worker. Check `cursor-cloud` `list-self-hosted-workers`. If none is connected (or Developer Mode / checkout missing), report that — do not invent “no Windows access” without checking. HDR verification targets **FenrirDesktop**.
 
-The environment is repo-managed via `.cursor/environment.json`, whose `install` runs `.cursor/install.sh` to install the .NET 10 SDK into `$HOME/.dotnet` (added to `PATH`/`DOTNET_ROOT` in `~/.bashrc`) and warm a build of the test project.
+Environment: `.cursor/environment.json` → `.cursor/install.sh` installs the .NET 10 SDK into `$HOME/.dotnet` and warms the test project.
