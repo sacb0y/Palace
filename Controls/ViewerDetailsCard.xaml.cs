@@ -139,7 +139,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         for (var current = start as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
             if (current is FrameworkElement fe
-                && (fe.Name is "GrdGalleryOverlay" or "GrdGalleryWindow" || fe is Page or Window))
+                && (fe.Name is "GrdGalleryOverlay" or "GrdGalleryWindow" || fe is Page))
             {
                 return fe;
             }
