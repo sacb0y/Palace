@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -17,7 +18,7 @@ public sealed partial class SettingsPage : Page
 {
     private bool _ignoreTintChanges;
     private bool _ignoreNavSelection;
-    private FrameworkElement? _highlightedCard;
+    private Control? _highlightedCard;
     private Brush? _highlightRestoreBrush;
     private DispatcherTimer? _highlightTimer;
 
@@ -143,9 +144,9 @@ public sealed partial class SettingsPage : Page
     private void HighlightCard(string automationId)
     {
         ClearSearchHighlight();
-        // Card AutomationIds match x:Name (CardTheme, …).
-        var card = FindName(automationId) as FrameworkElement
-            ?? FindNamedDescendant(PnlSettingsContent, automationId);
+        // Card AutomationIds match x:Name (CardTheme, …). SettingsCard is a Control.
+        var card = FindName(automationId) as Control
+            ?? FindNamedControl(PnlSettingsContent, automationId);
         if (card is null)
         {
             return;
@@ -183,7 +184,7 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private static FrameworkElement? FindNamedDescendant(DependencyObject root, string automationId)
+    private static Control? FindNamedControl(DependencyObject root, string automationId)
     {
         var count = VisualTreeHelper.GetChildrenCount(root);
         for (var i = 0; i < count; i++)
@@ -192,12 +193,12 @@ public sealed partial class SettingsPage : Page
             if (child is FrameworkElement fe)
             {
                 var id = fe.GetValue(AutomationProperties.AutomationIdProperty) as string;
-                if (string.Equals(id, automationId, StringComparison.Ordinal))
+                if (string.Equals(id, automationId, StringComparison.Ordinal) && fe is Control control)
                 {
-                    return fe;
+                    return control;
                 }
 
-                var nested = FindNamedDescendant(fe, automationId);
+                var nested = FindNamedControl(fe, automationId);
                 if (nested is not null)
                 {
                     return nested;
