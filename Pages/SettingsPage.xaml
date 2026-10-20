@@ -19,6 +19,11 @@
           ViewerOverlayButtonStyle (24 DIP plate; style from App.xaml merge).
         -->
         <DataTemplate x:Key="ShellPresetTile" x:DataType="models:ShellPresetItem">
+            <!--
+              Selection chrome is on the swatch only (IsSelected). GridViews use
+              SelectionMode=None so group SelectedItem cannot multi-highlight.
+              Padding keeps the label clear of the accent ring.
+            -->
             <StackPanel
                 Width="118"
                 Padding="4,4,4,2"
@@ -126,7 +131,7 @@
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Presets sit behind chrome. Buttons, panes, and cards keep ThemeResource / Fluent. Blur frosts image backgrounds."
+                Text="Presets sit behind chrome. Buttons, panes, and cards keep ThemeResource / Fluent. Blur softens image backgrounds."
                 TextWrapping="Wrap" />
             <StackPanel
                 x:Name="GrdShellPresets"
@@ -292,7 +297,7 @@
             <TextBlock
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="Blur blends toward a frosted copy of image backgrounds. Disabled for gradients and Mica."
+                Text="Blur softens image backgrounds (real blur amount). Disabled for Neutral and Mica."
                 TextWrapping="Wrap"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.BlurEnabled), Mode=OneWay}" />
             <ToggleSwitch

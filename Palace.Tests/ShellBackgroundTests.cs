@@ -90,6 +90,102 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void BlurRadius_MapsPercentWithEaseInGamma()
+    {
+        Assert.Equal(0f, ShellBackground.BlurRadius(0), 2);
+        Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(100), 2);
+        Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(400), 2);
+        Assert.Equal(0f, ShellBackground.BlurRadius(-10), 2);
+
+        // Low end is softer than linear (gamma > 1) so 0→10 is not a hard jump.
+        var at10 = ShellBackground.BlurRadius(10);
+        var linear10 = ShellBackground.MaxBlurRadius * 0.10f;
+        Assert.True(at10 < linear10);
+        Assert.True(at10 > 0f);
+        Assert.Equal(
+            (float)(ShellBackground.MaxBlurRadius * Math.Pow(0.10, ShellBackground.BlurAmountGamma)),
+            at10,
+            2);
+        Assert.Equal(
+            (float)(ShellBackground.MaxBlurRadius * Math.Pow(0.50, ShellBackground.BlurAmountGamma)),
+            ShellBackground.BlurRadius(50),
+            2);
+        // Monotonic: more percent → more radius.
+        Assert.True(ShellBackground.BlurRadius(10) < ShellBackground.BlurRadius(25));
+        Assert.True(ShellBackground.BlurRadius(25) < ShellBackground.BlurRadius(50));
+        Assert.True(ShellBackground.BlurRadius(50) < ShellBackground.BlurRadius(100));
+    }
+
+    [Fact]
+    public void BlurEdgePad_CoversSoftKernel()
+    {
+        Assert.Equal(0f, ShellBackground.BlurEdgePad(0));
+        Assert.Equal(0f, ShellBackground.BlurEdgePad(0.005f));
+        Assert.Equal(
+            MathF.Ceiling(ShellBackground.MaxBlurRadius * ShellBackground.BlurEdgeKernel),
+            ShellBackground.BlurEdgePad(ShellBackground.MaxBlurRadius));
+        Assert.True(ShellBackground.BlurEdgePad(10f) >= 30f);
+    }
+
+    [Fact]
+    public void BlurVisualPadDip_CeilingsInPhysicalPixels()
+    {
+        // 150% DPI: DIP pad 192 → 288 physical → 192 DIP again (exact).
+        var at150 = ShellBackground.BlurVisualPadDip(ShellBackground.MaxBlurRadius, 1.5);
+        Assert.Equal(
+            ShellBackground.BlurEdgePad(ShellBackground.MaxBlurRadius),
+            at150,
+            3);
+
+        // Fractional DIP×scale must ceiling so coverage never undershoots.
+        var pad10 = ShellBackground.BlurEdgePad(10f);
+        var scale = 1.25;
+        var expected = (float)(Math.Ceiling(pad10 * scale) / scale);
+        Assert.Equal(expected, ShellBackground.BlurVisualPadDip(10f, scale), 3);
+        Assert.True(ShellBackground.BlurVisualPadDip(0, 1.5) >= ShellBackground.BlurCoverageMinPhysicalPx / 1.5f);
+    }
+
+    [Fact]
+    public void BlurHostSizeDip_SnapsUpToPhysicalPixels()
+    {
+        Assert.Equal(0f, ShellBackground.BlurHostSizeDip(0, 1.5));
+        // 100.2 DIP @ 150% → 150.3 px → ceil 151 → 151/1.5 DIP
+        Assert.Equal((float)(151.0 / 1.5), ShellBackground.BlurHostSizeDip(100.2, 1.5), 4);
+        Assert.Equal(800f, ShellBackground.BlurHostSizeDip(800, 1.0), 3);
+    }
+
+    [Fact]
+    public void BlurHidesWallpaper_WhenBlurAppliesAndRadiusPositive()
+    {
+        ShellBackground.Apply(ShellPresetKind.Blueprint, null, 40, 100, false, null);
+        Assert.True(ShellBackground.BlurHidesWallpaper(100));
+        Assert.True(ShellBackground.BlurHidesWallpaper(10));
+        Assert.False(ShellBackground.BlurHidesWallpaper(0));
+
+        ShellBackground.Apply(ShellPresetKind.Neutral, null, 40, 100, false, null);
+        Assert.False(ShellBackground.BlurHidesWallpaper(100));
+    }
+
+    [Fact]
+    public void QuantizedBlurRadius_StepsAndCacheKey()
+    {
+        Assert.Equal(0, ShellBackground.QuantizedBlurRadius(0));
+        Assert.Equal(
+            ShellBackground.QuantizeRadiusDip(ShellBackground.BlurRadius(25)),
+            ShellBackground.QuantizedBlurRadius(25));
+        Assert.Equal(
+            ShellBackground.QuantizeRadiusDip(ShellBackground.BlurRadius(50)),
+            ShellBackground.QuantizedBlurRadius(50));
+        Assert.Equal(64, ShellBackground.QuantizedBlurRadius(100));
+        Assert.Equal(
+            $"Ribbons:D:{ShellBackground.QuantizedBlurRadius(50)}",
+            ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, false, 50));
+        Assert.Equal(
+            $"Ribbons:L:{ShellBackground.QuantizedBlurRadius(25)}",
+            ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, true, 25));
+    }
+
+    [Fact]
     public void DefaultAmounts_FollowManifestPerTheme()
     {
         Assert.Equal(45, ShellBackground.DefaultDarknessFor(ShellPresetKind.Ribbons), 2);

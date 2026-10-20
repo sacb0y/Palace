@@ -29,6 +29,25 @@ public static class ShellBackground
     public const double MaxAmount = 100;
     public const double DefaultDarkness = 40;
     public const double DefaultBlur = 45;
+    /// <summary>
+    /// Composition GaussianBlur <c>BlurAmount</c> at slider 100%. Percent maps
+    /// through <see cref="BlurAmountGamma"/> — never an opacity cross-fade.
+    /// </summary>
+    public const float MaxBlurRadius = 64f;
+    /// <summary>
+    /// Ease-in exponent for percent → radius. &gt;1 softens the 0→10 jump so
+    /// low slider ticks stay subtle; 100% still reaches <see cref="MaxBlurRadius"/>.
+    /// </summary>
+    public const double BlurAmountGamma = 1.35;
+    /// <summary>Quantize radius for cache keys / cheap 4K re-apply (2 DIP steps).</summary>
+    public const int BlurRadiusStep = 2;
+    /// <summary>
+    /// Soft-mode kernel half-width multiplier (std deviation × 3). Used to
+    /// size the blur sprite margin in physical pixels (DPI-aware).
+    /// </summary>
+    public const float BlurEdgeKernel = 3f;
+    /// <summary>Minimum physical-pixel coverage margin on each blur-sprite edge.</summary>
+    public const float BlurCoverageMinPhysicalPx = 2f;
     public const double LightDimScale = 0.35;
     public const string DefaultTintHex = "#502C3A6B";
     public const string DefaultWallpaperLabel = "Default gradient";
@@ -657,6 +676,83 @@ public static class ShellBackground
 
     public static double ClampAmount(double value) =>
         Math.Clamp(value, MinAmount, MaxAmount);
+
+    /// <summary>
+    /// Map blur slider percent (0–100) to Composition GaussianBlur radius in DIPs.
+    /// Uses an ease-in power curve so the low end is perceptually smoother than linear.
+    /// </summary>
+    public static float BlurRadius(double blurPercent)
+    {
+        var t = ClampAmount(blurPercent) / MaxAmount;
+        if (t <= 0)
+        {
+            return 0f;
+        }
+
+        return (float)(MaxBlurRadius * Math.Pow(t, BlurAmountGamma));
+    }
+
+    /// <summary>
+    /// Soft-kernel half-width pad in DIPs (stdDev × <see cref="BlurEdgeKernel"/>).
+    /// </summary>
+    public static float BlurEdgePad(float radiusDip) =>
+        radiusDip <= 0.01f ? 0f : MathF.Ceiling(radiusDip * BlurEdgeKernel);
+
+    /// <summary>
+    /// Blur-sprite edge pad in DIPs after ceiling in <b>physical</b> pixels.
+    /// At 150% DPI, a DIP-only pad can leave a 1px gap on the top/right; this
+    /// converts through <paramref name="rasterizationScale"/> so coverage is exact.
+    /// </summary>
+    public static float BlurVisualPadDip(float radiusDip, double rasterizationScale)
+    {
+        var scale = rasterizationScale <= 0 ? 1.0 : rasterizationScale;
+        var padDip = BlurEdgePad(radiusDip);
+        var physical = Math.Max(
+            BlurCoverageMinPhysicalPx,
+            Math.Ceiling(Math.Max(padDip, 1f) * scale));
+        return (float)(physical / scale);
+    }
+
+    /// <summary>
+    /// Host width/height in DIPs snapped up to whole physical pixels, then
+    /// converted back — avoids a sub-pixel shortfall at non-100% DPI.
+    /// </summary>
+    public static float BlurHostSizeDip(double logicalDip, double rasterizationScale)
+    {
+        if (logicalDip <= 0)
+        {
+            return 0f;
+        }
+
+        var scale = rasterizationScale <= 0 ? 1.0 : rasterizationScale;
+        return (float)(Math.Ceiling(logicalDip * scale) / scale);
+    }
+
+    /// <summary>True when the blur slider should hide the sharp wallpaper layer.</summary>
+    public static bool BlurHidesWallpaper(double blurPercent) =>
+        BlurApplies && BlurRadius(blurPercent) > 0.01f;
+
+    /// <summary>
+    /// Quantized radius for cache keys. Step keeps nearby slider ticks on one
+    /// GPU/brush entry without mid-value opacity blending.
+    /// </summary>
+    public static int QuantizedBlurRadius(double blurPercent) =>
+        QuantizeRadiusDip(BlurRadius(blurPercent));
+
+    public static int QuantizeRadiusDip(float radiusDip)
+    {
+        if (radiusDip <= 0.01f)
+        {
+            return 0;
+        }
+
+        var stepped = (int)Math.Round(radiusDip / BlurRadiusStep) * BlurRadiusStep;
+        return Math.Clamp(stepped, BlurRadiusStep, (int)MaxBlurRadius);
+    }
+
+    /// <summary>Cache key: preset id + theme + quantized radius.</summary>
+    public static string BlurCacheKey(ShellPresetKind preset, bool lightChrome, double blurPercent) =>
+        $"{PresetId(NormalizePreset(preset))}:{(lightChrome ? "L" : "D")}:{QuantizedBlurRadius(blurPercent)}";
 
     public static string AmountLabel(double value) =>
         $"{ClampAmount(value):0}%";
