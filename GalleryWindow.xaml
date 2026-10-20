@@ -172,7 +172,7 @@
                 </Grid>
                 <Button
                     x:Name="BtnGalleryWindowPrev"
-                    Margin="16,0,0,0"
+                    Margin="{x:Bind helpers:BindHelpers.GalleryPrevMargin(Gallery.ShowDetails, Gallery.DetailsUsesBottomSheet, Gallery.DetailsPanelWidth), Mode=OneWay, FallbackValue='16,0,0,0'}"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="BtnGalleryWindowPrev"
@@ -321,7 +321,7 @@
                         IsEnabled="{x:Bind Gallery.CanScale, Mode=OneWay}"
                         ToolTipService.ToolTip="Fit (Ctrl+2)">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ic:FluentIcon Icon="ArrowFit" IconSize="Size16" IconVariant="Regular" />
+                            <ic:FluentIcon Icon="ScaleFit" IconSize="Size16" IconVariant="Regular" />
                             <TextBlock VerticalAlignment="Center" Text="Fit" />
                         </StackPanel>
                     </Button>
@@ -333,7 +333,7 @@
                         IsEnabled="{x:Bind Gallery.CanScale, Mode=OneWay}"
                         ToolTipService.ToolTip="Fill (Ctrl+3)">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ic:FluentIcon Icon="ArrowMaximize" IconSize="Size16" IconVariant="Regular" />
+                            <ic:FluentIcon Icon="ScaleFill" IconSize="Size16" IconVariant="Regular" />
                             <TextBlock VerticalAlignment="Center" Text="Fill" />
                         </StackPanel>
                     </Button>

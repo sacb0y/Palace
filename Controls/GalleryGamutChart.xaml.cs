@@ -100,9 +100,12 @@ public sealed partial class GalleryGamutChart : UserControl
         }
 
         var analysis = Analysis;
-        var size = Compact ? 120 : 160;
+        var compact = Compact;
+        var size = compact ? 120 : 160;
         ImgCie.Width = size;
         ImgCie.Height = size;
+        // Compact Details expander already titles "Gamut · CIE 1931 xy".
+        TxtGamutTitle.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         var gamut = analysis?.HasSamples == true ? analysis.Gamut : GamutCoverage.Empty;
         TxtGamut.Text = analysis?.HasSamples == true ? gamut.Summary() : "";
         BuildLegend(gamut, analysis?.HasSamples == true);

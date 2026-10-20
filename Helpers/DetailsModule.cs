@@ -219,6 +219,23 @@ public static class ViewerDetailsLayout
         return new ThicknessLike(0, 0, Inset, 0);
     }
 
+    /// <summary>
+    /// Prev-plate left margin. Left chrome hosts the Details card at
+    /// <see cref="Inset"/> from the window edge; when Details is open, sit
+    /// just past the card's right edge (host inset + panel + gap).
+    /// </summary>
+    public static ThicknessLike PrevMargin(bool detailsOpen, bool bottomSheet, double panelWidth)
+    {
+        _ = bottomSheet;
+        if (!detailsOpen)
+        {
+            return new ThicknessLike(Inset, 0, 0, 0);
+        }
+
+        var width = panelWidth > 0 ? panelWidth : PanelWidth;
+        return new ThicknessLike(Inset + width + Inset, 0, 0, 0);
+    }
+
     public static string LandmarkName(string? fileName)
     {
         var name = string.IsNullOrWhiteSpace(fileName) ? "file" : fileName.Trim();
