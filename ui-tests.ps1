@@ -534,6 +534,12 @@ Test-UI 'Rooms status mentions room' {
 Test-UI 'Navigate to Settings' { winapp ui invoke 'NavSettings' -a $AppPid }
 Test-UI 'Theme combo exists' { winapp ui wait-for 'CmbTheme' -a $AppPid -t 4000 }
 Test-UI 'Accent combo exists' { winapp ui wait-for 'CmbAccent' -a $AppPid -t 4000 }
+Test-UI 'Background presets exist' { winapp ui wait-for 'GrdShellPresets' -a $AppPid -t 4000 }
+Test-UI 'Default background preset exists' { winapp ui wait-for 'BtnShellPreset_Default' -a $AppPid -t 4000 }
+Test-UI 'Vivid background group exists' { winapp ui wait-for 'TxtShellPresetGroup_Vivid' -a $AppPid -t 4000 }
+Test-UI 'Creator background group exists' { winapp ui wait-for 'TxtShellPresetGroup_Creator' -a $AppPid -t 4000 }
+Test-UI 'Viewport background preset exists' { winapp ui wait-for 'BtnShellPreset_Viewport' -a $AppPid -t 4000 }
+Test-UI 'Node Graph background preset exists' { winapp ui wait-for 'BtnShellPreset_Nodes' -a $AppPid -t 4000 }
 Test-UI 'Wallpaper picker exists' { winapp ui wait-for 'BtnPickWallpaper' -a $AppPid -t 4000 }
 Test-UI 'Wallpaper darkness exists' { winapp ui wait-for 'SldShellDarkness' -a $AppPid -t 4000 }
 Test-UI 'Wallpaper blur exists' { winapp ui wait-for 'SldShellBlur' -a $AppPid -t 4000 }

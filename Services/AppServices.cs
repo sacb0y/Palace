@@ -172,13 +172,74 @@ public static class AppServices
     internal static void LoadShellBackground()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
-        ShellBackground.SetWallpaperName(ShellBackground.ParsePath(values[ShellBackground.WallpaperNameKey]));
+        bool micaSupported;
+        try
+        {
+            micaSupported = Microsoft.UI.Composition.SystemBackdrops.MicaController.IsSupported();
+        }
+        catch
+        {
+            micaSupported = false;
+        }
+
+        ShellBackground.SettingsSnapshot snap;
+        try
+        {
+            snap = ShellBackground.ResolveFromStorage(
+                values[ShellBackground.PresetKey],
+                values[ShellBackground.WallpaperPathKey],
+                values[ShellBackground.WallpaperNameKey],
+                preset => values[ShellBackground.DarknessKeyFor(preset)],
+                preset => values[ShellBackground.BlurKeyFor(preset)],
+                values[ShellBackground.DarknessKey],
+                values[ShellBackground.BlurKey],
+                values[ShellBackground.TintEnabledKey],
+                values[ShellBackground.TintKey],
+                micaSupported,
+                LightChrome(values["Theme"] as string));
+        }
+        catch
+        {
+            snap = ShellBackground.DefaultSettingsSnapshot();
+        }
+
+        if (snap.FellBackToDefault)
+        {
+            // Persist Default so a corrupt blob cannot crash-loop every launch.
+            values[ShellBackground.PresetKey] = ShellBackground.PresetId(ShellPresetKind.Default);
+            values[ShellBackground.WallpaperPathKey] = "";
+            values[ShellBackground.WallpaperNameKey] = "";
+            values[ShellBackground.DarknessKey] = ShellBackground.DefaultDarkness;
+            values[ShellBackground.BlurKey] = ShellBackground.DefaultBlur;
+            values[ShellBackground.TintEnabledKey] = false;
+            values[ShellBackground.TintKey] = ShellBackground.DefaultTintHex;
+        }
+
+        ShellBackground.SetWallpaperName(snap.WallpaperName);
         ShellBackground.Apply(
-            ShellBackground.ParsePath(values[ShellBackground.WallpaperPathKey]),
-            ShellBackground.ParseDarkness(values[ShellBackground.DarknessKey]),
-            ShellBackground.ParseBlur(values[ShellBackground.BlurKey]),
-            ShellBackground.ParseEnabled(values[ShellBackground.TintEnabledKey]),
-            ShellBackground.ParseTint(values[ShellBackground.TintKey]));
+            snap.Preset,
+            snap.WallpaperPath,
+            snap.Darkness,
+            snap.Blur,
+            snap.TintEnabled,
+            snap.TintHex,
+            reloadWallpaper: true);
+    }
+
+    private static bool LightChrome(string? theme)
+    {
+        var systemLight = false;
+        try
+        {
+            systemLight = Microsoft.UI.Xaml.Application.Current?.RequestedTheme
+                == Microsoft.UI.Xaml.ApplicationTheme.Light;
+        }
+        catch
+        {
+            // Theme is not available yet; dark defaults until Settings applies a theme.
+        }
+
+        return ShellBackground.IsLightChrome(theme, systemLight);
     }
 
     internal static void LoadMediaCache()

@@ -633,3 +633,20 @@ public sealed class TagChipGroupMove
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => GroupName;
 }
+
+/// <summary>Settings → Background preset tile.</summary>
+public sealed partial class ShellPresetItem : ObservableObject
+{
+    public ShellPresetKind Id { get; init; }
+    public string Name { get; init; } = "";
+
+    /// <summary>Theme-aware preview (dark/light thumb or gradient); refresh on ActualThemeChanged.</summary>
+    [ObservableProperty]
+    public partial Brush? Swatch { get; set; }
+
+    public bool IsCustom => Id == ShellPresetKind.Custom;
+    public string AutomationId => "BtnShellPreset_" + Id;
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => Name;
+}

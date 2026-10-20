@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Palace.Helpers;
+using Palace.Models;
 using Palace.Services;
 using Palace.Services.Cloud;
 using Palace.ViewModels;
@@ -17,12 +18,15 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        // System theme (or late ActualTheme) must flip packaged light/dark preset thumbs.
+        ActualThemeChanged += (_, _) => ViewModel.RefreshBackgroundPresetSwatches();
         Loaded += async (_, _) =>
         {
             ViewModel.RequestPickCloudFolder = PickCloudFolderAsync;
             ViewModel.RequestConfirm = AskConfirmAsync;
             await ErrorReporter.RunAsync("Load settings", null, ViewModel.LoadAsync);
             SyncTintPicker();
+            ViewModel.RefreshBackgroundPresetSwatches();
         };
         Unloaded += (_, _) =>
         {
@@ -62,6 +66,14 @@ public sealed partial class SettingsPage : Page
         }
 
         ViewModel.TintHex = TagColor.ToHex(args.NewColor);
+    }
+
+    private async void ShellPreset_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is ShellPresetItem item)
+        {
+            await ViewModel.SelectBackgroundPresetAsync(item);
+        }
     }
 
     private async Task<CloudEntry?> PickCloudFolderAsync(ICloudLibrary library)

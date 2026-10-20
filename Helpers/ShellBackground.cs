@@ -1,4 +1,5 @@
 using System.Globalization;
+using Palace.Models;
 
 namespace Palace.Helpers;
 
@@ -14,6 +15,7 @@ public static class ShellBackground
     public const string BlurKey = "ShellBlur";
     public const string TintEnabledKey = "ShellTintEnabled";
     public const string TintKey = "ShellTintColor";
+    public const string PresetKey = "ShellPreset";
 
     public const string WallpaperFilePrefix = "shell-wallpaper-";
     /// <summary>
@@ -38,6 +40,43 @@ public static class ShellBackground
     public const string LightGradientEndHex = "#FFD9E3F0";
     public const string DarkGlassTintHex = "#FF0C0E14";
     public const string LightGlassTintHex = "#FFF2F4F8";
+    public const string DarkDimHex = "#FF000000";
+    public const string LightDimHex = "#FFFFFFFF";
+
+    /// <summary>
+    /// Settings picker: chrome, then Vivid, then Creator, Custom last.
+    /// Header is empty for the unlabeled chrome and Custom rows.
+    /// </summary>
+    public static readonly (string Header, ShellPresetKind[] Kinds)[] PickerSections =
+    [
+        ("", [ShellPresetKind.Default, ShellPresetKind.Mica, ShellPresetKind.MicaAlt, ShellPresetKind.Neutral]),
+        ("Vivid",
+        [
+            ShellPresetKind.Ribbons, ShellPresetKind.Capsules, ShellPresetKind.Bokeh, ShellPresetKind.Nebula,
+            ShellPresetKind.Aero, ShellPresetKind.Petal, ShellPresetKind.Facets, ShellPresetKind.Aurora
+        ]),
+        ("Creator",
+        [
+            ShellPresetKind.Viewport, ShellPresetKind.Blueprint, ShellPresetKind.Sketchbook,
+            ShellPresetKind.Pixel, ShellPresetKind.Nodes
+        ]),
+        ("", [ShellPresetKind.Custom])
+    ];
+
+    public static readonly ShellPresetKind[] PickerOrder = FlattenPicker();
+
+    private static ShellPresetKind[] FlattenPicker()
+    {
+        var list = new List<ShellPresetKind>();
+        foreach (var section in PickerSections)
+        {
+            list.AddRange(section.Kinds);
+        }
+
+        return list.ToArray();
+    }
+
+    public static ShellPresetKind Preset { get; private set; } = ShellPresetKind.Default;
 
     public static string? WallpaperPath { get; private set; }
 
@@ -56,13 +95,45 @@ public static class ShellBackground
 
     public static bool HasWallpaper => !string.IsNullOrWhiteSpace(WallpaperPath);
 
+    /// <summary>True when the painted layer uses a packaged preset bitmap (not Custom file).</summary>
+    public static bool IsPackagedImagePreset(ShellPresetKind preset) =>
+        PresetGroup(preset) is ShellPresetGroup.Vivid or ShellPresetGroup.Creator;
+
+    public static ShellPresetGroup PresetGroup(ShellPresetKind preset) =>
+        NormalizePreset(preset) switch
+        {
+            ShellPresetKind.Ribbons or ShellPresetKind.Capsules or ShellPresetKind.Bokeh
+                or ShellPresetKind.Nebula or ShellPresetKind.Aero or ShellPresetKind.Petal
+                or ShellPresetKind.Facets or ShellPresetKind.Aurora => ShellPresetGroup.Vivid,
+            ShellPresetKind.Viewport or ShellPresetKind.Blueprint or ShellPresetKind.Sketchbook
+                or ShellPresetKind.Pixel or ShellPresetKind.Nodes => ShellPresetGroup.Creator,
+            _ => ShellPresetGroup.None
+        };
+
+    /// <summary>True when the painted layer uses a bitmap (packaged preset or Custom file).</summary>
+    public static bool UsesImageLayer =>
+        IsPackagedImagePreset(Preset) || Preset == ShellPresetKind.Custom;
+
+    /// <summary>Mica / MicaAlt — host paints via <c>Window.SystemBackdrop</c>.</summary>
+    public static bool UsesSystemBackdrop =>
+        Preset is ShellPresetKind.Mica or ShellPresetKind.MicaAlt;
+
+    /// <summary>
+    /// Blur slider is meaningful over an image. Default keeps glass for continuity
+    /// (acrylic also tints the gradient). Other gradients / Neutral / Mica skip glass.
+    /// </summary>
+    public static bool BlurApplies =>
+        Preset is ShellPresetKind.Default || UsesImageLayer;
+
+    public static bool DarknessApplies => !UsesSystemBackdrop;
+
     public static string WallpaperLabel
     {
         get
         {
-            if (!HasWallpaper)
+            if (Preset != ShellPresetKind.Custom || !HasWallpaper)
             {
-                return DefaultWallpaperLabel;
+                return PresetDisplayName(Preset);
             }
 
             if (WallpaperName is { } name)
@@ -102,29 +173,60 @@ public static class ShellBackground
         double blur,
         bool tintEnabled,
         string? tintHex,
+        bool reloadWallpaper = false) =>
+        Apply(Preset, wallpaperPath, darkness, blur, tintEnabled, tintHex, reloadWallpaper);
+
+    public static void Apply(
+        ShellPresetKind preset,
+        string? wallpaperPath,
+        double darkness,
+        double blur,
+        bool tintEnabled,
+        string? tintHex,
         bool reloadWallpaper = false)
     {
+        preset = NormalizePreset(preset);
         wallpaperPath = NormalizePath(wallpaperPath);
+        // A concrete user file always means Custom (picker + legacy Apply(path, …) tests).
+        if (wallpaperPath is not null)
+        {
+            preset = ShellPresetKind.Custom;
+        }
+        else if (preset == ShellPresetKind.Custom)
+        {
+            preset = ShellPresetKind.Default;
+        }
+
+        // Built-in presets never keep a user file bound (packaged images use BoundImagePath).
+        if (preset != ShellPresetKind.Custom)
+        {
+            wallpaperPath = null;
+        }
+
         darkness = ClampAmount(darkness);
         blur = ClampAmount(blur);
         tintHex = ParseTint(tintHex);
-        var unchanged = WallpaperPath == wallpaperPath
+        var unchanged = Preset == preset
+            && WallpaperPath == wallpaperPath
             && Math.Abs(Darkness - darkness) < 0.01
             && Math.Abs(Blur - blur) < 0.01
             && TintEnabled == tintEnabled
             && TintHex == tintHex;
         var pathChanged = WallpaperPath != wallpaperPath;
+        var presetChanged = Preset != preset;
         if (unchanged && !reloadWallpaper)
         {
             return;
         }
 
+        Preset = preset;
         WallpaperPath = wallpaperPath;
         Darkness = darkness;
         Blur = blur;
         TintEnabled = tintEnabled;
         TintHex = tintHex;
-        if (pathChanged || reloadWallpaper)
+        // Theme swap / packaged image / custom replace need a fresh BitmapImage.
+        if (pathChanged || reloadWallpaper || (presetChanged && UsesImageLayer))
         {
             WallpaperEpoch++;
             DisplayHeld = false;
@@ -132,6 +234,247 @@ public static class ShellBackground
 
         Changed?.Invoke(null, EventArgs.Empty);
     }
+
+    public static string PresetDisplayName(ShellPresetKind preset) => preset switch
+    {
+        ShellPresetKind.Default => DefaultWallpaperLabel,
+        ShellPresetKind.Mica => "Mica",
+        ShellPresetKind.MicaAlt => "Mica Alt",
+        ShellPresetKind.Neutral => "Neutral",
+        ShellPresetKind.Ribbons => "Ribbons",
+        ShellPresetKind.Capsules => "Capsules",
+        ShellPresetKind.Bokeh => "Bokeh",
+        ShellPresetKind.Nebula => "Nebula",
+        ShellPresetKind.Aero => "Aero",
+        ShellPresetKind.Petal => "Petal",
+        ShellPresetKind.Facets => "Facets",
+        ShellPresetKind.Aurora => "Aurora",
+        ShellPresetKind.Viewport => "Viewport",
+        ShellPresetKind.Blueprint => "Blueprint",
+        ShellPresetKind.Sketchbook => "Sketchbook",
+        ShellPresetKind.Pixel => "Pixel",
+        ShellPresetKind.Nodes => "Node Graph",
+        ShellPresetKind.Custom => "Custom…",
+        _ => DefaultWallpaperLabel
+    };
+
+    public static string PresetId(ShellPresetKind preset) => preset.ToString();
+
+    public static string PresetAssetStem(ShellPresetKind preset) =>
+        PresetId(NormalizePreset(preset)).ToLowerInvariant();
+
+    public static ShellPresetKind NormalizePreset(ShellPresetKind preset) =>
+        Enum.IsDefined(preset) ? preset : ShellPresetKind.Default;
+
+    public static ShellPresetKind ParsePreset(object? stored)
+    {
+        if (stored is string text && !string.IsNullOrWhiteSpace(text))
+        {
+            var key = text.Trim();
+            // Legacy #98 names removed from the picker.
+            if (key.Equals("Dusk", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("Slate", StringComparison.OrdinalIgnoreCase))
+            {
+                return key.Equals("Slate", StringComparison.OrdinalIgnoreCase)
+                    ? ShellPresetKind.Neutral
+                    : ShellPresetKind.Default;
+            }
+
+            if (key.Equals("Grain", StringComparison.OrdinalIgnoreCase))
+            {
+                return ShellPresetKind.Aero;
+            }
+
+            if (key.Equals("Node Graph", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("NodeGraph", StringComparison.OrdinalIgnoreCase))
+            {
+                return ShellPresetKind.Nodes;
+            }
+
+            if (Enum.TryParse<ShellPresetKind>(key, ignoreCase: true, out var parsed)
+                && Enum.IsDefined(parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return ShellPresetKind.Default;
+    }
+
+    /// <summary>
+    /// Resolve stored preset. Non-empty wallpaper path migrates to Custom when
+    /// no preset key was saved yet (or the key is empty).
+    /// </summary>
+    public static ShellPresetKind ResolvePreset(object? storedPreset, object? wallpaperPath)
+    {
+        var path = ParsePath(wallpaperPath);
+        if (storedPreset is string text && !string.IsNullOrWhiteSpace(text))
+        {
+            var preset = ParsePreset(storedPreset);
+            if (preset == ShellPresetKind.Custom && path is null)
+            {
+                return ShellPresetKind.Default;
+            }
+
+            return preset;
+        }
+
+        return path is null ? ShellPresetKind.Default : ShellPresetKind.Custom;
+    }
+
+    public static string DarknessKeyFor(ShellPresetKind preset) =>
+        DarknessKey + "_" + PresetId(NormalizePreset(preset));
+
+    public static string BlurKeyFor(ShellPresetKind preset) =>
+        BlurKey + "_" + PresetId(NormalizePreset(preset));
+
+    /// <summary>
+    /// Snapshot resolved from LocalSettings (or defaults). Off WinUI so tests can cover
+    /// migration / corrupt-value fallback without a packaged host.
+    /// </summary>
+    public readonly record struct SettingsSnapshot(
+        ShellPresetKind Preset,
+        string? WallpaperPath,
+        string? WallpaperName,
+        double Darkness,
+        double Blur,
+        bool TintEnabled,
+        string TintHex,
+        bool FellBackToDefault);
+
+    /// <summary>
+    /// Parse stored shell background keys. On any failure, returns Default and
+    /// <see cref="SettingsSnapshot.FellBackToDefault"/> so startup never crash-loops.
+    /// </summary>
+    public static SettingsSnapshot ResolveFromStorage(
+        object? storedPreset,
+        object? wallpaperPath,
+        object? wallpaperName,
+        Func<ShellPresetKind, object?> darknessFor,
+        Func<ShellPresetKind, object?> blurFor,
+        object? globalDarkness,
+        object? globalBlur,
+        object? tintEnabled,
+        object? tintHex,
+        bool micaSupported,
+        bool lightChrome = false,
+        bool forceFailure = false)
+    {
+        try
+        {
+            if (forceFailure)
+            {
+                throw new InvalidOperationException("Forced settings failure.");
+            }
+
+            var path = ParsePath(wallpaperPath);
+            var preset = ResolvePreset(storedPreset, path);
+            if (preset is ShellPresetKind.Mica or ShellPresetKind.MicaAlt && !micaSupported)
+            {
+                preset = ShellPresetKind.Neutral;
+            }
+
+            var darknessStored = darknessFor(preset)
+                ?? (preset == ShellPresetKind.Default ? globalDarkness : null);
+            var blurStored = blurFor(preset)
+                ?? (preset == ShellPresetKind.Default ? globalBlur : null);
+            return new SettingsSnapshot(
+                preset,
+                path,
+                ParsePath(wallpaperName),
+                ParseDarknessFor(preset, darknessStored, lightChrome),
+                ParseBlurFor(preset, blurStored, lightChrome),
+                ParseEnabled(tintEnabled),
+                ParseTint(tintHex),
+                FellBackToDefault: false);
+        }
+        catch
+        {
+            return DefaultSettingsSnapshot();
+        }
+    }
+
+    public static SettingsSnapshot DefaultSettingsSnapshot() =>
+        new(
+            ShellPresetKind.Default,
+            null,
+            null,
+            DefaultDarkness,
+            DefaultBlur,
+            false,
+            DefaultTintHex,
+            FellBackToDefault: true);
+
+    /// <summary>
+    /// Recreating <c>Window.SystemBackdrop</c> during <c>ActualThemeChanged</c> AVs in
+    /// WinUI (<c>Microsoft.UI.Xaml.dll</c>). Keep the existing Mica instance when still wanted.
+    /// </summary>
+    public static bool ShouldRecreateSystemBackdrop(bool wantMica, bool currentlyHasMica) =>
+        wantMica != currentlyHasMica;
+
+    public static bool WantsSystemBackdrop(ShellPresetKind preset, bool micaSupported) =>
+        micaSupported && preset is ShellPresetKind.Mica or ShellPresetKind.MicaAlt;
+
+    /// <summary>
+    /// First-pick Darkness when no per-preset LocalSettings value exists.
+    /// <paramref name="lightChrome"/> selects the manifest Light row; otherwise Dark.
+    /// </summary>
+    public static double DefaultDarknessFor(ShellPresetKind preset, bool lightChrome = false) =>
+        ImageDefaults(preset) is { } row
+            ? (lightChrome ? row.LightDarkness : row.DarkDarkness)
+            : DefaultDarkness;
+
+    /// <summary>
+    /// First-pick Blur when no per-preset LocalSettings value exists.
+    /// <paramref name="lightChrome"/> selects the manifest Light row; otherwise Dark.
+    /// </summary>
+    public static double DefaultBlurFor(ShellPresetKind preset, bool lightChrome = false) =>
+        ImageDefaults(preset) is { } row
+            ? (lightChrome ? row.LightBlur : row.DarkBlur)
+            : DefaultBlur;
+
+    /// <summary>Manifest first-pick blur/darkness for one designed preset, dark then light.</summary>
+    private readonly record struct ImageDefaultRow(
+        double DarkBlur,
+        double DarkDarkness,
+        double LightBlur,
+        double LightDarkness);
+
+    private static ImageDefaultRow? ImageDefaults(ShellPresetKind preset) =>
+        NormalizePreset(preset) switch
+        {
+            ShellPresetKind.Ribbons => new(45, 45, 45, 20),
+            ShellPresetKind.Capsules => new(45, 45, 50, 25),
+            ShellPresetKind.Bokeh => new(35, 35, 45, 20),
+            ShellPresetKind.Nebula => new(35, 35, 45, 20),
+            ShellPresetKind.Aero => new(45, 40, 45, 35),
+            ShellPresetKind.Petal => new(45, 45, 45, 20),
+            ShellPresetKind.Facets => new(45, 45, 45, 20),
+            ShellPresetKind.Aurora => new(40, 40, 45, 20),
+            ShellPresetKind.Viewport => new(40, 40, 45, 20),
+            ShellPresetKind.Blueprint => new(40, 35, 45, 15),
+            ShellPresetKind.Sketchbook => new(40, 35, 40, 15),
+            ShellPresetKind.Pixel => new(30, 45, 30, 20),
+            ShellPresetKind.Nodes => new(35, 30, 40, 15),
+            _ => null
+        };
+
+    public static string PackagedImageUri(ShellPresetKind preset, bool lightChrome) =>
+        $"ms-appx:///Assets/Backgrounds/{PresetAssetStem(preset)}-{(lightChrome ? "light" : "dark")}.jpg";
+
+    public static string PackagedThumbUri(ShellPresetKind preset, bool lightChrome) =>
+        $"ms-appx:///Assets/Backgrounds/{PresetAssetStem(preset)}-{(lightChrome ? "light" : "dark")}-thumb.jpg";
+
+    /// <summary>
+    /// Image path the backdrop should bind: Custom store file, or packaged preset URI.
+    /// </summary>
+    public static string? BoundImagePath(bool lightChrome) =>
+        Preset switch
+        {
+            ShellPresetKind.Custom when ShouldBindWallpaper => WallpaperPath,
+            _ when IsPackagedImagePreset(Preset) => PackagedImageUri(Preset, lightChrome),
+            _ => null
+        };
 
     public static void SetWallpaperName(string? name) =>
         WallpaperName = NormalizePath(name);
@@ -177,6 +520,16 @@ public static class ShellBackground
 
     public static string GlassTintHex(bool lightChrome) =>
         lightChrome ? LightGlassTintHex : DarkGlassTintHex;
+
+    /// <summary>
+    /// Dim overlay color: white wash in Light (fade toward white), black in Dark.
+    /// High Contrast collapses the dim layer entirely in <c>ShellBackdrop</c>.
+    /// </summary>
+    public static string DimHex(bool lightChrome) =>
+        lightChrome ? LightDimHex : DarkDimHex;
+
+    public static (byte R, byte G, byte B) DimRgb(bool lightChrome) =>
+        lightChrome ? ((byte)255, (byte)255, (byte)255) : ((byte)0, (byte)0, (byte)0);
 
     public static double DimOpacity(bool lightChrome, double darkness)
     {
@@ -246,6 +599,16 @@ public static class ShellBackground
 
     public static double ParseBlur(object? stored) =>
         ParseAmount(stored, DefaultBlur);
+
+    public static double ParseDarknessFor(ShellPresetKind preset, object? stored, bool lightChrome = false) =>
+        stored is null
+            ? DefaultDarknessFor(preset, lightChrome)
+            : ParseAmount(stored, DefaultDarknessFor(preset, lightChrome));
+
+    public static double ParseBlurFor(ShellPresetKind preset, object? stored, bool lightChrome = false) =>
+        stored is null
+            ? DefaultBlurFor(preset, lightChrome)
+            : ParseAmount(stored, DefaultBlurFor(preset, lightChrome));
 
     public static string ParseTint(object? stored)
     {
