@@ -1204,8 +1204,9 @@ public sealed partial class TagsPage : Page
             _viewerOverlayAutoHide ??= new ViewerOverlayAutoHide(
                 GrdGalleryOverlay,
                 GrdViewerOverlayNav,
-                () => ViewerOverlayNavProbe.IsHoveredOrFocused(
-                    BtnGalleryPrev, BtnGalleryNext, BtnGalleryClose));
+                BtnGalleryPrev,
+                BtnGalleryNext,
+                BtnGalleryClose);
             _viewerOverlayAutoHide.Attach();
         }
         else
