@@ -55,6 +55,19 @@
                     AreTransportControlsEnabled="True"
                     AutoPlay="False"
                     AutomationProperties.AutomationId="MpeGalleryWindow"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}">
+                    <MediaPlayerElement.TransportControls>
+                        <MediaTransportControls IsVolumeButtonVisible="False" />
+                    </MediaPlayerElement.TransportControls>
+                </MediaPlayerElement>
+                <controls:VolumeControl
+                    x:Name="VolGallery"
+                    Margin="24,0,0,72"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    MuteButtonAutomationId="BtnGalleryWindowVolume"
+                    RootAutomationId="VolGalleryWindowVolume"
+                    SliderAutomationId="SldGalleryWindowVolume"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}" />
                 <TextBlock
                     HorizontalAlignment="Center"
