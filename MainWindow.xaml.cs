@@ -38,6 +38,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new SizeInt32((int)(1200 * scale), (int)(800 * scale)));
 
         ShellBackground.Changed += ShellBackground_Changed;
+        ShellBackground.LiveAmountsChanged += ShellBackground_LiveAmountsChanged;
         ShellBackground.DisplayReleasing += ShellBackground_DisplayReleasing;
         if (Content is FrameworkElement root)
         {
@@ -64,6 +65,7 @@ public sealed partial class MainWindow : Window
         Closed += (_, _) =>
         {
             ShellBackground.Changed -= ShellBackground_Changed;
+            ShellBackground.LiveAmountsChanged -= ShellBackground_LiveAmountsChanged;
             ShellBackground.DisplayReleasing -= ShellBackground_DisplayReleasing;
             if (_accessibility is not null)
             {
@@ -78,6 +80,21 @@ public sealed partial class MainWindow : Window
         QueueApplyShellBackdrop();
 
     private void ShellBackground_Changed(object? sender, EventArgs e) => QueueApplyShellBackdrop();
+
+    /// <summary>
+    /// Blur/darkness slider ticks — Composition InsertScalar only (shared surface stays).
+    /// </summary>
+    private void ShellBackground_LiveAmountsChanged(object? sender, EventArgs e)
+    {
+        try
+        {
+            ShellBackdrop.SyncLiveAmounts();
+        }
+        catch
+        {
+            QueueApplyShellBackdrop();
+        }
+    }
 
     private void ShellBackground_DisplayReleasing(object? sender, EventArgs e) =>
         ShellBackdrop.Release(ImgShellWallpaper);

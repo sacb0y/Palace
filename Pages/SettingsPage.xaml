@@ -319,6 +319,45 @@
                             Header="Background"
                             Style="{StaticResource PalaceSettingsCardStyle}">
                             <StackPanel Spacing="8">
+                                <!--
+                                  16:9 composition preview (~280 DIP). Mock nav + card overlay
+                                  the glass host; thumbs below stay sharp (never blurred/darkened).
+                                -->
+                                <Grid
+                                    x:Name="GrdShellPreview"
+                                    Width="498"
+                                    Height="280"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.AutomationId="GrdShellPreview"
+                                    AutomationProperties.Name="Background preview">
+                                    <Border
+                                        x:Name="BrdShellPreviewClip"
+                                        CornerRadius="8"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1">
+                                        <Grid>
+                                            <Border x:Name="BrdShellPreviewGradient" />
+                                            <Image
+                                                x:Name="ImgShellPreviewWallpaper"
+                                                Stretch="UniformToFill" />
+                                            <Border x:Name="BrdShellPreviewGlass" />
+                                            <Border x:Name="BrdShellPreviewDim" />
+                                            <!-- Mock chrome over the composition layer -->
+                                            <Grid IsHitTestVisible="False">
+                                                <Border
+                                                    Width="48"
+                                                    HorizontalAlignment="Left"
+                                                    Background="#99000000" />
+                                                <Border
+                                                    Margin="64,28,28,28"
+                                                    Background="#E01C1C1C"
+                                                    BorderBrush="#1AFFFFFF"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8" />
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
                                 <StackPanel
                                     x:Name="GrdShellPresets"
                                     AutomationProperties.AutomationId="GrdShellPresets"

@@ -149,6 +149,7 @@ public partial class SettingsViewModel : ObservableObject
     private int _recentUndoEpoch;
     private CancellationTokenSource? _recentUndoCts;
     private int _recentUndoPaused;
+    private CancellationTokenSource? _shellPersistCts;
 
     [ObservableProperty]
     public partial bool BlurEnabled { get; set; } = true;
@@ -336,7 +337,9 @@ public partial class SettingsViewModel : ObservableObject
         DarknessLabel = ShellBackground.DarknessLabel(clamped);
         if (!_load.IsLoading)
         {
-            PersistShellBackground();
+            // Live Composition scalars immediately; LocalSettings ~300ms later.
+            ShellBackground.ApplyLiveAmounts(clamped, Blur);
+            ScheduleShellPersist();
         }
     }
 
@@ -352,7 +355,8 @@ public partial class SettingsViewModel : ObservableObject
         BlurLabel = ShellBackground.BlurLabel(clamped);
         if (!_load.IsLoading)
         {
-            PersistShellBackground();
+            ShellBackground.ApplyLiveAmounts(Darkness, clamped);
+            ScheduleShellPersist();
         }
     }
 
@@ -537,6 +541,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         // Stable-identity: update / reorder existing ShellPresetItem instances by RecentId
         // so GridView containers and thumb bitmaps are not torn down on every slider tick.
+        // Never Clear()+rebuild — Move/Insert/Remove only (see StableIdentityList).
         var byId = CustomBackgroundPresets
             .Where(i => i.IsRecentCustom)
             .ToDictionary(i => i.RecentId!, StringComparer.OrdinalIgnoreCase);
@@ -556,7 +561,7 @@ public partial class SettingsViewModel : ObservableObject
         else
         {
             add.Name = "+ Custom";
-            add.Swatch = BuildAddCustomSwatch();
+            // Keep the solid swatch instance — do not allocate a new brush each persist.
             add.ToolTipText = "Add a custom background image";
         }
 
@@ -589,7 +594,7 @@ public partial class SettingsViewModel : ObservableObject
             item.RecentBlur = entry.Blur;
             item.IsBroken = broken;
             item.ToolTipText = RecentCustomBackgrounds.Tooltip(entry.DisplayName, entry.DateAddedUtc);
-            // Keep an existing decoded swatch when the path did not change (slider persist).
+            // Thumbs: DecodePixelWidth once, cached on the item. Never blur/darken tiles.
             if (broken)
             {
                 item.Swatch = BuildBrokenCustomSwatch();
@@ -603,29 +608,68 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         ordered.Add(add);
+        StableIdentityList.Sync(CustomBackgroundPresets, ordered, i => i.SelectionKey);
 
-        CustomBackgroundPresets.Clear();
-        foreach (var item in ordered)
-        {
-            CustomBackgroundPresets.Add(item);
-        }
-
-        // Keep BackgroundPresets in sync (presets first, then Recent/+Custom).
-        for (var i = BackgroundPresets.Count - 1; i >= 0; i--)
-        {
-            var row = BackgroundPresets[i];
-            if (row.IsRecentCustom || row.IsAddCustom)
-            {
-                BackgroundPresets.RemoveAt(i);
-            }
-        }
-
-        foreach (var item in ordered)
-        {
-            BackgroundPresets.Add(item);
-        }
+        var full = new List<ShellPresetItem>(
+            ChromeBackgroundPresets.Count
+            + VividBackgroundPresets.Count
+            + CreatorBackgroundPresets.Count
+            + ordered.Count);
+        full.AddRange(ChromeBackgroundPresets);
+        full.AddRange(VividBackgroundPresets);
+        full.AddRange(CreatorBackgroundPresets);
+        full.AddRange(ordered);
+        StableIdentityList.Sync(BackgroundPresets, full, i => i.SelectionKey);
 
         ShowCustomEmptyCaption = entries.Count == 0;
+    }
+
+    private void ScheduleShellPersist(bool reloadWallpaper = false)
+    {
+        if (reloadWallpaper)
+        {
+            _shellPersistCts?.Cancel();
+            _shellPersistCts = null;
+            PersistShellBackground(reloadWallpaper: true);
+            return;
+        }
+
+        _shellPersistCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _shellPersistCts = cts;
+        _ = DebouncedPersistShellAsync(cts.Token);
+    }
+
+    private async Task DebouncedPersistShellAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(ShellBackground.PersistDebounceMs, token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        PersistShellBackground();
+    }
+
+    /// <summary>Flush a pending slider persist (Settings unload / section leave).</summary>
+    public void FlushShellPersist()
+    {
+        if (_shellPersistCts is null)
+        {
+            return;
+        }
+
+        _shellPersistCts.Cancel();
+        _shellPersistCts = null;
+        PersistShellBackground();
     }
 
     private IReadOnlyList<RecentCustomBackgroundEntry> ReadRecentEntries()

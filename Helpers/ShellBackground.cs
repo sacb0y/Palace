@@ -53,6 +53,12 @@ public static class ShellBackground
     public const double LightDimScale = 0.35;
     public const string DefaultTintHex = "#502C3A6B";
     public const string DefaultWallpaperLabel = "Default gradient";
+    /// <summary>Gooey Appearance preview: 16:9 frame ~280 DIP tall.</summary>
+    public const double PreviewHeightDip = 280;
+    /// <summary>Preview width for <see cref="PreviewHeightDip"/> at 16:9.</summary>
+    public const double PreviewWidthDip = PreviewHeightDip * 16.0 / 9.0;
+    /// <summary>LocalSettings flush after last blur/darkness slider tick.</summary>
+    public const int PersistDebounceMs = ShellBackgroundPersist.DebounceMs;
     public const string DarkGradientStartHex = "#FF0B0E14";
     public const string DarkGradientMidHex = "#FF161022";
     public const string DarkGradientEndHex = "#FF0A1628";
@@ -173,6 +179,12 @@ public static class ShellBackground
     public static event EventHandler? Changed;
 
     /// <summary>
+    /// Blur/darkness only — hosts should <c>InsertScalar</c> animatable Composition
+    /// props (no surface reload). Fired by <see cref="ApplyLiveAmounts"/>.
+    /// </summary>
+    public static event EventHandler? LiveAmountsChanged;
+
+    /// <summary>
     /// Drop the displayed <c>BitmapImage</c> before overwriting or deleting the
     /// store file so the decode does not keep it locked.
     /// </summary>
@@ -254,6 +266,25 @@ public static class ShellBackground
         }
 
         Changed?.Invoke(null, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Update darkness/blur without bumping <see cref="WallpaperEpoch"/> or
+    /// rebinding the wallpaper. Composition hosts listen via
+    /// <see cref="LiveAmountsChanged"/> and only <c>InsertScalar</c>.
+    /// </summary>
+    public static void ApplyLiveAmounts(double darkness, double blur)
+    {
+        darkness = ClampDarkness(darkness);
+        blur = NormalizeBlur(blur);
+        if (Math.Abs(Darkness - darkness) < 0.01 && Math.Abs(Blur - blur) < 0.01)
+        {
+            return;
+        }
+
+        Darkness = darkness;
+        Blur = blur;
+        LiveAmountsChanged?.Invoke(null, EventArgs.Empty);
     }
 
     public static string PresetDisplayName(ShellPresetKind preset) => preset switch
