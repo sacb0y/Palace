@@ -30,12 +30,14 @@ public static class ShortcutCheatsheet
         new("Ctrl+2", "Fit", "TxtShortcutFit"),
         new("Ctrl+3", "Fill", "TxtShortcutFill"),
         new("Ctrl+D", "Image information", "TxtShortcutInfo"),
-        new("Ctrl+I", "Details", "TxtShortcutDetails"),
+        new("I", "Details", "TxtShortcutDetails"),
+        new("Alt+Enter", "Details", "TxtShortcutDetailsAlt"),
         new("Ctrl+H", "Luminance heatmap (HDR)", "TxtShortcutHeatmap"),
         new("M", "Mute / unmute video", "TxtShortcutMute"),
         new("Up / Down", "Video volume (±5, Shift ±1)", "TxtShortcutVolume"),
+        new("F6", "Cycle image / controls / Details", "TxtShortcutFocusCycle"),
         new("Space", "Open overlay on the focused or selected tile", "TxtShortcutSpace"),
-        new("Esc", "Close overlay", "TxtShortcutEsc")
+        new("Esc", "Close Details, then overlay", "TxtShortcutEsc")
     ];
 
     public static ShortcutHint? Find(string keys) =>

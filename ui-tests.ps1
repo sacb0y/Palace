@@ -29,7 +29,7 @@ winapp ui wait-for 'BtnAddFolder' -a $AppPid -t 8000 | Out-Null
 winapp ui wait-for 'GrdAssets' -a $AppPid -t 8000 | Out-Null
 
 function Test-GalleryOverlayOpen {
-    winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) -t 1200 | Out-Null
+    winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) -t 1200 | Out-Null
     if ($LASTEXITCODE -eq 0) { return $true }
     winapp ui wait-for 'BtnGalleryClose' @(WinArgs) -t 600 | Out-Null
     return ($LASTEXITCODE -eq 0)
@@ -37,10 +37,10 @@ function Test-GalleryOverlayOpen {
 
 function Close-GalleryOverlay {
     winapp ui send-keys 'esc' @(WinArgs) --via send-input | Out-Null
-    winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 1500 | Out-Null
+    winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) --gone -t 1500 | Out-Null
     if ($LASTEXITCODE -ne 0) {
         winapp ui invoke 'BtnGalleryClose' @(WinArgs) | Out-Null
-        winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 1500 | Out-Null
+        winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) --gone -t 1500 | Out-Null
     }
 }
 
@@ -551,7 +551,7 @@ Test-UI 'Shortcut cheatsheet lists 1:1' { winapp ui wait-for 'TxtShortcutActual'
 Test-UI 'Shortcut cheatsheet lists Fit' { winapp ui wait-for 'TxtShortcutFit' -a $AppPid --value 'Ctrl+2' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Fill' { winapp ui wait-for 'TxtShortcutFill' -a $AppPid --value 'Ctrl+3' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Info' { winapp ui wait-for 'TxtShortcutInfo' -a $AppPid --value 'Ctrl+D' --contains -t 3000 }
-Test-UI 'Shortcut cheatsheet lists Details' { winapp ui wait-for 'TxtShortcutDetails' -a $AppPid --value 'Ctrl+I' --contains -t 3000 }
+Test-UI 'Shortcut cheatsheet lists Details' { winapp ui wait-for 'TxtShortcutDetails' -a $AppPid --value 'I' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Space' { winapp ui wait-for 'TxtShortcutSpace' -a $AppPid --value 'Space' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Esc' { winapp ui wait-for 'TxtShortcutEsc' -a $AppPid --value 'Esc' --contains -t 3000 }
 Test-UI 'Sources list exists' { winapp ui wait-for 'LstSources' -a $AppPid -t 3000 }
@@ -752,20 +752,20 @@ New-Item -ItemType Directory -Force -Path 'screenshots' | Out-Null
 winapp ui screenshot -a $AppPid -o 'screenshots/07-overlay.png' 2>$null
 
 Test-UI 'Right then Left changes overlay file; Esc closes' {
-    winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) -t 3000
+    winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'Overlay not open' }
     winapp ui focus 'GrdGalleryOverlay' @(WinArgs)
     Start-Sleep -Milliseconds 200
-    $beforeTitle = Get-UiText 'TxtGalleryOverlayTitle'
+    $beforeTitle = Get-UiText 'TxtViewerDetailsTitle'
     $beforePos = Get-UiText 'TxtGalleryOverlayPosition'
     winapp ui send-keys 'right' @(WinArgs) --via send-input
     Start-Sleep -Milliseconds 600
-    $midTitle = Get-UiText 'TxtGalleryOverlayTitle'
+    $midTitle = Get-UiText 'TxtViewerDetailsTitle'
     $midPos = Get-UiText 'TxtGalleryOverlayPosition'
     if ($midTitle -eq $beforeTitle -and $midPos -eq $beforePos) {
         winapp ui invoke 'BtnGalleryNext' @(WinArgs)
         Start-Sleep -Milliseconds 500
-        $midTitle = Get-UiText 'TxtGalleryOverlayTitle'
+        $midTitle = Get-UiText 'TxtViewerDetailsTitle'
         $midPos = Get-UiText 'TxtGalleryOverlayPosition'
     }
     if ($midTitle -eq $beforeTitle -and $midPos -eq $beforePos) {
@@ -773,22 +773,22 @@ Test-UI 'Right then Left changes overlay file; Esc closes' {
     }
     winapp ui send-keys 'left' @(WinArgs) --via send-input
     Start-Sleep -Milliseconds 600
-    $afterTitle = Get-UiText 'TxtGalleryOverlayTitle'
+    $afterTitle = Get-UiText 'TxtViewerDetailsTitle'
     $afterPos = Get-UiText 'TxtGalleryOverlayPosition'
     if ($afterTitle -eq $midTitle -and $afterPos -eq $midPos) {
         winapp ui invoke 'BtnGalleryPrev' @(WinArgs)
         Start-Sleep -Milliseconds 500
-        $afterTitle = Get-UiText 'TxtGalleryOverlayTitle'
+        $afterTitle = Get-UiText 'TxtViewerDetailsTitle'
         $afterPos = Get-UiText 'TxtGalleryOverlayPosition'
     }
     if ($afterTitle -eq $midTitle -and $afterPos -eq $midPos) {
         throw "Left did not change overlay file back (still '$midTitle' $midPos)"
     }
     winapp ui send-keys 'esc' @(WinArgs) --via send-input
-    winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 4000
+    winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) --gone -t 4000
     if ($LASTEXITCODE -ne 0) {
         winapp ui invoke 'BtnGalleryClose' @(WinArgs)
-        winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 3000
+        winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) --gone -t 3000
         if ($LASTEXITCODE -ne 0) { throw 'Esc did not close overlay' }
     }
 }
@@ -810,10 +810,10 @@ Test-UI 'Space opens overlay on focused mosaic tile' {
     winapp ui wait-for 'GrdGalleryBackdrop' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'GrdGalleryBackdrop missing after Space overlay' }
     winapp ui send-keys 'esc' @(WinArgs) --via send-input
-    winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 4000
+    winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) --gone -t 4000
     if ($LASTEXITCODE -ne 0) {
         winapp ui invoke 'BtnGalleryClose' @(WinArgs)
-        winapp ui wait-for 'TxtGalleryOverlayTitle' @(WinArgs) --gone -t 3000
+        winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) --gone -t 3000
         if ($LASTEXITCODE -ne 0) { throw 'Esc did not close Space overlay' }
     }
 }
@@ -840,8 +840,8 @@ Test-UI 'Open in new window then close' {
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowScaleFit missing' }
     winapp ui wait-for 'BtnGalleryWindowScaleFill' -a $AppPid -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryWindowScaleFill missing' }
-    winapp ui wait-for 'ScrGalleryWindowDetails' -a $AppPid -t 3000
-    if ($LASTEXITCODE -ne 0) { throw 'ScrGalleryWindowDetails missing' }
+    winapp ui wait-for 'ScrViewerDetails' -a $AppPid -t 3000
+    if ($LASTEXITCODE -ne 0) { throw 'ScrViewerDetails missing' }
     winapp ui wait-for 'LstGalleryWindowTags' -a $AppPid -t 3000
     winapp ui screenshot -a $AppPid -o 'screenshots/08-gallery-window.png' 2>$null
     winapp ui invoke 'BtnGalleryWindowClose' -a $AppPid

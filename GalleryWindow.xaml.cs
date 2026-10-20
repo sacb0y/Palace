@@ -85,14 +85,39 @@ public sealed partial class GalleryWindow : Window
 
     private void BtnGalleryWindowClose_Click(object sender, RoutedEventArgs e) => Close();
 
+    private ViewerFocusZone _viewerFocusZone = ViewerFocusZone.Image;
+
     private void GalleryRoot_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         var control = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
             .HasFlag(CoreVirtualKeyStates.Down);
         var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(CoreVirtualKeyStates.Down);
-        if (Gallery.TryHandleViewerShortcut(control, (int)e.Key))
+        var alt = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (Gallery.TryHandleViewerShortcut(control, alt, (int)e.Key))
         {
+            if (GalleryScale.TogglesDetails(control, alt, (int)e.Key))
+            {
+                if (Gallery.ShowDetails)
+                {
+                    CardViewerDetails.FocusCard();
+                    _viewerFocusZone = ViewerFocusZone.Details;
+                }
+                else
+                {
+                    BtnGalleryWindowDetails.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+                    _viewerFocusZone = ViewerFocusZone.Controls;
+                }
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (GalleryScale.CyclesViewerFocus((int)e.Key))
+        {
+            CycleViewerFocus();
             e.Handled = true;
             return;
         }
@@ -125,16 +150,51 @@ public sealed partial class GalleryWindow : Window
         switch (e.Key)
         {
             case VirtualKey.Escape:
+                if (Gallery.TryCloseDetailsFirst())
+                {
+                    BtnGalleryWindowDetails.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+                    _viewerFocusZone = ViewerFocusZone.Controls;
+                    e.Handled = true;
+                    break;
+                }
+
                 Close();
                 e.Handled = true;
                 break;
             case VirtualKey.Left:
-                Gallery.GoPreviousCommand.Execute(null);
-                e.Handled = true;
+                if (ViewerFocusCycle.AllowsArrowNavigate(_viewerFocusZone))
+                {
+                    Gallery.GoPreviousCommand.Execute(null);
+                    e.Handled = true;
+                }
+
                 break;
             case VirtualKey.Right:
-                Gallery.GoNextCommand.Execute(null);
-                e.Handled = true;
+                if (ViewerFocusCycle.AllowsArrowNavigate(_viewerFocusZone))
+                {
+                    Gallery.GoNextCommand.Execute(null);
+                    e.Handled = true;
+                }
+
+                break;
+        }
+    }
+
+    private void CycleViewerFocus()
+    {
+        _viewerFocusZone = ViewerFocusCycle.Next(
+            _viewerFocusZone,
+            Gallery.ShowDetails);
+        switch (_viewerFocusZone)
+        {
+            case ViewerFocusZone.Controls:
+                BtnGalleryWindowDetails.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+                break;
+            case ViewerFocusZone.Details:
+                CardViewerDetails.FocusCard();
+                break;
+            default:
+                GrdGalleryWindow.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
                 break;
         }
     }

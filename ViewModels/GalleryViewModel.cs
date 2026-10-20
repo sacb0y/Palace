@@ -131,6 +131,7 @@ public partial class GalleryViewModel : ObservableObject
     partial void OnCurrentChanged(AssetItem? value)
     {
         OnPropertyChanged(nameof(ShowHdrBadge));
+        OnPropertyChanged(nameof(CurrentKind));
         NotifySetVideoThumbChrome();
     }
 
@@ -216,8 +217,22 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowDetails { get; set; } = GalleryChrome.DefaultShowDetails;
 
+    /// <summary>
+    /// Host window is under <see cref="ViewerDetailsLayout.NarrowBreakpoint"/> —
+    /// floating Details docks as a bottom sheet and Next stays at the default inset.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool DetailsUsesBottomSheet { get; set; }
+
+    /// <summary>Live width of the floating Details card (right dock or bottom sheet).</summary>
+    [ObservableProperty]
+    public partial double DetailsPanelWidth { get; set; } = ViewerDetailsLayout.PanelWidth;
+
     [ObservableProperty]
     public partial bool LoopVideo { get; set; } = GalleryChrome.DefaultLoopVideo;
+
+    /// <summary>Asset kind for DetailsModule selection (File/Tags always; Image/Video by kind).</summary>
+    public AssetKind CurrentKind => Current?.Kind ?? AssetKind.Other;
 
     [ObservableProperty]
     public partial string ImageInfoText { get; set; } = "";
@@ -325,7 +340,10 @@ public partial class GalleryViewModel : ObservableObject
         return true;
     }
 
-    public bool TryHandleViewerShortcut(bool controlDown, int keyCode)
+    public bool TryHandleViewerShortcut(bool controlDown, int keyCode) =>
+        TryHandleViewerShortcut(controlDown, altDown: false, keyCode);
+
+    public bool TryHandleViewerShortcut(bool controlDown, bool altDown, int keyCode)
     {
         if (TryHandleScaleShortcut(controlDown, keyCode))
         {
@@ -338,7 +356,7 @@ public partial class GalleryViewModel : ObservableObject
             return true;
         }
 
-        if (GalleryScale.TogglesDetails(controlDown, keyCode))
+        if (GalleryScale.TogglesDetails(controlDown, altDown, keyCode))
         {
             ShowDetails = !ShowDetails;
             return true;
@@ -355,6 +373,20 @@ public partial class GalleryViewModel : ObservableObject
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Esc while Details is open hides the floating card and leaves the viewer open.
+    /// </summary>
+    public bool TryCloseDetailsFirst()
+    {
+        if (!ShowDetails)
+        {
+            return false;
+        }
+
+        ShowDetails = false;
+        return true;
     }
 
     [RelayCommand]

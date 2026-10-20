@@ -604,6 +604,16 @@ public sealed partial class TagsPage : Page
 
     private void GrdTagAssets_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        if (GalleryScale.ClosesDetailsFirst(
+                ViewModel.OverlayGallery?.ShowDetails == true,
+                (int)e.Key)
+            && ViewModel.OverlayGallery?.TryCloseDetailsFirst() == true)
+        {
+            BtnGalleryDetails.Focus(FocusState.Programmatic);
+            e.Handled = true;
+            return;
+        }
+
         if (GalleryScale.ClosesOverlay(ViewModel.IsGalleryOverlayOpen, (int)e.Key))
         {
             ViewModel.CloseOverlayCommand.Execute(null);
@@ -1216,7 +1226,8 @@ public sealed partial class TagsPage : Page
                 GrdViewerOverlayNav,
                 BtnGalleryPrev,
                 BtnGalleryNext,
-                BtnGalleryClose);
+                BtnGalleryClose,
+                BtnGalleryDetails);
             _viewerOverlayAutoHide.Attach();
         }
         else
@@ -1224,6 +1235,9 @@ public sealed partial class TagsPage : Page
             _viewerOverlayAutoHide?.Detach();
         }
     }
+
+    private ViewerFocusZone _viewerFocusZone = ViewerFocusZone.Image;
+
 
     private void GalleryOverlay_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
@@ -1238,8 +1252,31 @@ public sealed partial class TagsPage : Page
             .HasFlag(CoreVirtualKeyStates.Down);
         var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(CoreVirtualKeyStates.Down);
-        if (ViewModel.OverlayGallery.TryHandleViewerShortcut(control, (int)e.Key))
+        var alt = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (ViewModel.OverlayGallery.TryHandleViewerShortcut(control, alt, (int)e.Key))
         {
+            if (GalleryScale.TogglesDetails(control, alt, (int)e.Key))
+            {
+                if (ViewModel.OverlayGallery.ShowDetails)
+                {
+                    CardViewerDetails.FocusCard();
+                    _viewerFocusZone = ViewerFocusZone.Details;
+                }
+                else
+                {
+                    BtnGalleryDetails.Focus(FocusState.Programmatic);
+                    _viewerFocusZone = ViewerFocusZone.Controls;
+                }
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        if (GalleryScale.CyclesViewerFocus((int)e.Key))
+        {
+            CycleViewerFocus();
             e.Handled = true;
             return;
         }
@@ -1272,16 +1309,51 @@ public sealed partial class TagsPage : Page
         switch (e.Key)
         {
             case VirtualKey.Escape:
+                if (ViewModel.OverlayGallery.TryCloseDetailsFirst())
+                {
+                    BtnGalleryDetails.Focus(FocusState.Programmatic);
+                    _viewerFocusZone = ViewerFocusZone.Controls;
+                    e.Handled = true;
+                    break;
+                }
+
                 ViewModel.CloseOverlayCommand.Execute(null);
                 e.Handled = true;
                 break;
             case VirtualKey.Left:
-                ViewModel.OverlayGallery.GoPreviousCommand.Execute(null);
-                e.Handled = true;
+                if (ViewerFocusCycle.AllowsArrowNavigate(_viewerFocusZone))
+                {
+                    ViewModel.OverlayGallery.GoPreviousCommand.Execute(null);
+                    e.Handled = true;
+                }
+
                 break;
             case VirtualKey.Right:
-                ViewModel.OverlayGallery.GoNextCommand.Execute(null);
-                e.Handled = true;
+                if (ViewerFocusCycle.AllowsArrowNavigate(_viewerFocusZone))
+                {
+                    ViewModel.OverlayGallery.GoNextCommand.Execute(null);
+                    e.Handled = true;
+                }
+
+                break;
+        }
+    }
+
+    private void CycleViewerFocus()
+    {
+        _viewerFocusZone = ViewerFocusCycle.Next(
+            _viewerFocusZone,
+            ViewModel.OverlayGallery?.ShowDetails == true);
+        switch (_viewerFocusZone)
+        {
+            case ViewerFocusZone.Controls:
+                BtnGalleryDetails.Focus(FocusState.Programmatic);
+                break;
+            case ViewerFocusZone.Details:
+                CardViewerDetails.FocusCard();
+                break;
+            default:
+                GrdGalleryOverlay.Focus(FocusState.Programmatic);
                 break;
         }
     }
