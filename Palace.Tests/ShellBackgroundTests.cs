@@ -90,25 +90,60 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
-    public void BlurRadius_MapsPercentToDipLinearly()
+    public void BlurRadius_MapsPercentWithEaseInGamma()
     {
         Assert.Equal(0f, ShellBackground.BlurRadius(0), 2);
-        Assert.Equal(ShellBackground.MaxBlurRadius * 0.25f, ShellBackground.BlurRadius(25), 2);
-        Assert.Equal(ShellBackground.MaxBlurRadius * 0.50f, ShellBackground.BlurRadius(50), 2);
         Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(100), 2);
         Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(400), 2);
         Assert.Equal(0f, ShellBackground.BlurRadius(-10), 2);
+
+        // Low end is softer than linear (gamma > 1) so 0→10 is not a hard jump.
+        var at10 = ShellBackground.BlurRadius(10);
+        var linear10 = ShellBackground.MaxBlurRadius * 0.10f;
+        Assert.True(at10 < linear10);
+        Assert.True(at10 > 0f);
+        Assert.Equal(
+            (float)(ShellBackground.MaxBlurRadius * Math.Pow(0.10, ShellBackground.BlurAmountGamma)),
+            at10,
+            2);
+        Assert.Equal(
+            (float)(ShellBackground.MaxBlurRadius * Math.Pow(0.50, ShellBackground.BlurAmountGamma)),
+            ShellBackground.BlurRadius(50),
+            2);
+        // Monotonic: more percent → more radius.
+        Assert.True(ShellBackground.BlurRadius(10) < ShellBackground.BlurRadius(25));
+        Assert.True(ShellBackground.BlurRadius(25) < ShellBackground.BlurRadius(50));
+        Assert.True(ShellBackground.BlurRadius(50) < ShellBackground.BlurRadius(100));
+    }
+
+    [Fact]
+    public void BlurEdgePad_CoversSoftKernel()
+    {
+        Assert.Equal(0f, ShellBackground.BlurEdgePad(0));
+        Assert.Equal(0f, ShellBackground.BlurEdgePad(0.005f));
+        Assert.Equal(
+            MathF.Ceiling(ShellBackground.MaxBlurRadius * ShellBackground.BlurEdgeKernel),
+            ShellBackground.BlurEdgePad(ShellBackground.MaxBlurRadius));
+        Assert.True(ShellBackground.BlurEdgePad(10f) >= 30f);
     }
 
     [Fact]
     public void QuantizedBlurRadius_StepsAndCacheKey()
     {
         Assert.Equal(0, ShellBackground.QuantizedBlurRadius(0));
-        Assert.Equal(16, ShellBackground.QuantizedBlurRadius(25)); // 16 DIP at 25% of 64
-        Assert.Equal(32, ShellBackground.QuantizedBlurRadius(50));
+        Assert.Equal(
+            ShellBackground.QuantizeRadiusDip(ShellBackground.BlurRadius(25)),
+            ShellBackground.QuantizedBlurRadius(25));
+        Assert.Equal(
+            ShellBackground.QuantizeRadiusDip(ShellBackground.BlurRadius(50)),
+            ShellBackground.QuantizedBlurRadius(50));
         Assert.Equal(64, ShellBackground.QuantizedBlurRadius(100));
-        Assert.Equal("Ribbons:D:32", ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, false, 50));
-        Assert.Equal("Ribbons:L:16", ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, true, 25));
+        Assert.Equal(
+            $"Ribbons:D:{ShellBackground.QuantizedBlurRadius(50)}",
+            ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, false, 50));
+        Assert.Equal(
+            $"Ribbons:L:{ShellBackground.QuantizedBlurRadius(25)}",
+            ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, true, 25));
     }
 
     [Fact]

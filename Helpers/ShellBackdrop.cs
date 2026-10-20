@@ -192,11 +192,13 @@ public static class ShellBackdrop
         _glassHost = glass;
         _blurCompositor = compositor;
 
+        // Soft pads outside samples with transparent black. We oversize the sprite
+        // and clip the host so that soft edge never shows as unblurred wallpaper.
         var effect = new GaussianBlurEffect
         {
             Name = "Blur",
             BlurAmount = 0f,
-            BorderMode = EffectBorderMode.Hard,
+            BorderMode = EffectBorderMode.Soft,
             Optimization = EffectOptimization.Balanced,
             Source = new CompositionEffectSourceParameter("backdrop")
         };
@@ -208,8 +210,11 @@ public static class ShellBackdrop
 
         _blurVisual = compositor.CreateSpriteVisual();
         _blurVisual.Brush = _blurBrush;
-        _blurVisual.RelativeSizeAdjustment = Vector2.One;
+        // Manual Size/Offset (not RelativeSizeAdjustment) so we can overscan past the host.
         ElementCompositionPreview.SetElementChildVisual(glass, _blurVisual);
+        // Clip child sprite to the glass bounds — overscan soft edges stay cropped.
+        ElementCompositionPreview.GetElementVisual(glass).Clip =
+            compositor.CreateInsetClip(0, 0, 0, 0);
         glass.SizeChanged -= Glass_SizeChanged;
         glass.SizeChanged += Glass_SizeChanged;
         SyncBlurVisualSize(glass);
@@ -262,10 +267,16 @@ public static class ShellBackdrop
 
         var w = (float)glass.ActualWidth;
         var h = (float)glass.ActualHeight;
-        if (w > 0 && h > 0)
+        if (w <= 0 || h <= 0)
         {
-            _blurVisual.Size = new Vector2(w, h);
+            return;
         }
+
+        // Pad for max radius so dragging the slider does not resize the sprite.
+        // Soft kernel grows ~3× BlurAmount past each edge; crop hides that fringe.
+        var pad = ShellBackground.BlurEdgePad(ShellBackground.MaxBlurRadius);
+        _blurVisual.Size = new Vector2(w + pad * 2f, h + pad * 2f);
+        _blurVisual.Offset = new Vector3(-pad, -pad, 0f);
     }
 
     private static void ClearGlassHost(Border glass)
@@ -296,6 +307,7 @@ public static class ShellBackdrop
         try
         {
             ElementCompositionPreview.SetElementChildVisual(glass, null);
+            ElementCompositionPreview.GetElementVisual(glass).Clip = null;
         }
         catch
         {

@@ -30,12 +30,22 @@ public static class ShellBackground
     public const double DefaultDarkness = 40;
     public const double DefaultBlur = 45;
     /// <summary>
-    /// Composition GaussianBlur <c>BlurAmount</c> at slider 100%. Mid values
-    /// scale this linearly — never an opacity cross-fade.
+    /// Composition GaussianBlur <c>BlurAmount</c> at slider 100%. Percent maps
+    /// through <see cref="BlurAmountGamma"/> — never an opacity cross-fade.
     /// </summary>
     public const float MaxBlurRadius = 64f;
+    /// <summary>
+    /// Ease-in exponent for percent → radius. &gt;1 softens the 0→10 jump so
+    /// low slider ticks stay subtle; 100% still reaches <see cref="MaxBlurRadius"/>.
+    /// </summary>
+    public const double BlurAmountGamma = 1.35;
     /// <summary>Quantize radius for cache keys / cheap 4K re-apply (2 DIP steps).</summary>
     public const int BlurRadiusStep = 2;
+    /// <summary>
+    /// Soft-mode kernel half-width multiplier (std deviation × 3). Used to
+    /// oversize the blur sprite so transparent edges crop outside the host.
+    /// </summary>
+    public const float BlurEdgeKernel = 3f;
     public const double LightDimScale = 0.35;
     public const string DefaultTintHex = "#502C3A6B";
     public const string DefaultWallpaperLabel = "Default gradient";
@@ -667,9 +677,25 @@ public static class ShellBackground
 
     /// <summary>
     /// Map blur slider percent (0–100) to Composition GaussianBlur radius in DIPs.
+    /// Uses an ease-in power curve so the low end is perceptually smoother than linear.
     /// </summary>
-    public static float BlurRadius(double blurPercent) =>
-        (float)(ClampAmount(blurPercent) / MaxAmount * MaxBlurRadius);
+    public static float BlurRadius(double blurPercent)
+    {
+        var t = ClampAmount(blurPercent) / MaxAmount;
+        if (t <= 0)
+        {
+            return 0f;
+        }
+
+        return (float)(MaxBlurRadius * Math.Pow(t, BlurAmountGamma));
+    }
+
+    /// <summary>
+    /// Extra DIP padding so Soft-mode blur edges fall outside the clipped host.
+    /// Pass <see cref="MaxBlurRadius"/> for a stable overscan while dragging.
+    /// </summary>
+    public static float BlurEdgePad(float radiusDip) =>
+        radiusDip <= 0.01f ? 0f : MathF.Ceiling(radiusDip * BlurEdgeKernel);
 
     /// <summary>
     /// Quantized radius for cache keys. Step keeps nearby slider ticks on one
