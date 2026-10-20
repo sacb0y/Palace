@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -39,6 +40,8 @@ public sealed partial class ViewerDetailsCard : UserControl
     private bool _animating;
     private string? _lastAnnouncedFile;
     private GalleryViewModel? _subscribed;
+    private FrameworkElement? _toolbarAnchor;
+    private double _toolbarBottomInHost;
 
     public ViewerDetailsCard()
     {
@@ -46,6 +49,33 @@ public sealed partial class ViewerDetailsCard : UserControl
         RequestedTheme = ElementTheme.Dark;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+    }
+
+    /// <summary>
+    /// Dock the card just below this toolbar's actual bounds (small gap).
+    /// Keeps Info/Heatmap pills clickable — the card never covers them.
+    /// </summary>
+    public void AttachBelowToolbar(FrameworkElement? toolbar)
+    {
+        if (_toolbarAnchor is not null)
+        {
+            _toolbarAnchor.SizeChanged -= ToolbarAnchor_SizeChanged;
+            _toolbarAnchor.LayoutUpdated -= ToolbarAnchor_LayoutUpdated;
+        }
+
+        _toolbarAnchor = toolbar;
+        if (toolbar is not null)
+        {
+            toolbar.SizeChanged += ToolbarAnchor_SizeChanged;
+            toolbar.LayoutUpdated += ToolbarAnchor_LayoutUpdated;
+            MeasureToolbarBottom();
+        }
+        else
+        {
+            _toolbarBottomInHost = 0;
+        }
+
+        ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
     }
 
     public GalleryViewModel? Gallery
@@ -88,6 +118,8 @@ public sealed partial class ViewerDetailsCard : UserControl
         }
 
         ApplyHighContrastBorder();
+        CompactSectionExpanders();
+        MeasureToolbarBottom();
         ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
         SyncOpenState(animate: false);
         HookSectionExpanders();
@@ -96,12 +128,95 @@ public sealed partial class ViewerDetailsCard : UserControl
         UpdateLandmark();
     }
 
+    private void ToolbarAnchor_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RelayoutFromToolbar();
+
+    private void ToolbarAnchor_LayoutUpdated(object? sender, object e) =>
+        RelayoutFromToolbar();
+
+    private void RelayoutFromToolbar()
+    {
+        MeasureToolbarBottom();
+        ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
+    }
+
+    private void MeasureToolbarBottom()
+    {
+        if (_toolbarAnchor is null || GrdCardHost.ActualWidth <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var transform = _toolbarAnchor.TransformToVisual(GrdCardHost);
+            var bottom = transform.TransformPoint(
+                new Windows.Foundation.Point(0, _toolbarAnchor.ActualHeight));
+            if (bottom.Y > 0)
+            {
+                _toolbarBottomInHost = bottom.Y;
+            }
+        }
+        catch
+        {
+            // Transform can throw before the visual tree is ready.
+        }
+    }
+
+    private void CompactSectionExpanders()
+    {
+        foreach (var expander in SectionExpanders())
+        {
+            CompactExpanderHeader(expander);
+            expander.Loaded += (_, _) => CompactExpanderHeader(expander);
+        }
+    }
+
+    private IEnumerable<Expander> SectionExpanders() =>
+    [
+        ExpFile, ExpColorHdr, ExpHistogram, ExpGamut, ExpVideo, ExpTags, ExpGeneration
+    ];
+
+    private static void CompactExpanderHeader(Expander expander)
+    {
+        try
+        {
+            // Default WinUI Expander header ToggleButton is ~40epx; shrink padding.
+            if (VisualTreeHelper.GetChildrenCount(expander) == 0)
+            {
+                expander.ApplyTemplate();
+            }
+
+            for (var i = 0; i < VisualTreeHelper.GetChildrenCount(expander); i++)
+            {
+                ShrinkHeaderButtons(VisualTreeHelper.GetChild(expander, i));
+            }
+        }
+        catch
+        {
+            // Template not ready — style Padding still helps.
+        }
+    }
+
+    private static void ShrinkHeaderButtons(DependencyObject node)
+    {
+        if (node is ToggleButton header)
+        {
+            header.MinHeight = 28;
+            header.Padding = new Thickness(4, 2, 4, 2);
+            header.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        }
+
+        var count = VisualTreeHelper.GetChildrenCount(node);
+        for (var i = 0; i < count; i++)
+        {
+            ShrinkHeaderButtons(VisualTreeHelper.GetChild(node, i));
+        }
+    }
+
     private void HookSectionExpanders()
     {
-        foreach (var expander in new[]
-                 {
-                     ExpFile, ExpColorHdr, ExpHistogram, ExpGamut, ExpVideo, ExpTags, ExpGeneration
-                 })
+        foreach (var expander in SectionExpanders())
         {
             expander.RegisterPropertyChangedCallback(
                 Expander.IsExpandedProperty,
@@ -117,8 +232,16 @@ public sealed partial class ViewerDetailsCard : UserControl
         }
     }
 
-    private void OnUnloaded(object sender, RoutedEventArgs e) =>
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
         UnsubscribeGallery();
+        if (_toolbarAnchor is not null)
+        {
+            _toolbarAnchor.SizeChanged -= ToolbarAnchor_SizeChanged;
+            _toolbarAnchor.LayoutUpdated -= ToolbarAnchor_LayoutUpdated;
+            _toolbarAnchor = null;
+        }
+    }
 
     private static void OnGalleryChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -196,7 +319,14 @@ public sealed partial class ViewerDetailsCard : UserControl
 
     private void ApplyLayout(double width, double height)
     {
+        if (_toolbarBottomInHost <= 0)
+        {
+            MeasureToolbarBottom();
+        }
+
+        var top = ViewerDetailsLayout.TopBelowToolbar(_toolbarBottomInHost);
         var panelWidth = ViewerDetailsLayout.EffectivePanelWidth(width);
+        var maxHeight = ViewerDetailsLayout.PanelMaxHeight(height, top);
         if (Gallery is not null)
         {
             Gallery.DetailsUsesBottomSheet = false;
@@ -205,12 +335,19 @@ public sealed partial class ViewerDetailsCard : UserControl
 
         BrdDetailsCard.Width = panelWidth;
         BrdDetailsCard.MinWidth = ViewerDetailsLayout.PanelMinWidth;
-        BrdDetailsCard.MaxHeight = ViewerDetailsLayout.PanelMaxHeight(height);
+        BrdDetailsCard.MaxHeight = maxHeight;
+        // Explicit Height so the * ScrollViewer row gets a finite viewport
+        // (MaxHeight alone lets content measure unbounded and clip mid-row).
+        if (IsOpen || Gallery?.ShowDetails == true)
+        {
+            BrdDetailsCard.Height = maxHeight;
+        }
+
         BrdDetailsCard.HorizontalAlignment = HorizontalAlignment.Left;
         BrdDetailsCard.VerticalAlignment = VerticalAlignment.Top;
         BrdDetailsCard.Margin = new Thickness(
             ViewerDetailsLayout.Inset,
-            ViewerDetailsLayout.TopInset,
+            top,
             ViewerDetailsLayout.Inset,
             ViewerDetailsLayout.Inset);
     }
@@ -218,6 +355,7 @@ public sealed partial class ViewerDetailsCard : UserControl
     private void SyncOpenState(bool animate)
     {
         var open = IsOpen || Gallery?.ShowDetails == true;
+        ApplyLayout(GrdCardHost.ActualWidth, GrdCardHost.ActualHeight);
         if (open)
         {
             BrdDetailsCard.Visibility = Visibility.Visible;
@@ -226,6 +364,10 @@ public sealed partial class ViewerDetailsCard : UserControl
         else if (BrdDetailsCard.Visibility == Visibility.Visible)
         {
             PlayCloseAnimation(animate);
+        }
+        else
+        {
+            BrdDetailsCard.ClearValue(FrameworkElement.HeightProperty);
         }
     }
 
@@ -249,6 +391,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         {
             BrdDetailsCard.Opacity = 0;
             BrdDetailsCard.Visibility = Visibility.Collapsed;
+            BrdDetailsCard.ClearValue(FrameworkElement.HeightProperty);
             SetTranslationY(ViewerDetailsLayout.EnterOffsetY);
             return;
         }
@@ -263,6 +406,7 @@ public sealed partial class ViewerDetailsCard : UserControl
             onComplete: () =>
             {
                 BrdDetailsCard.Visibility = Visibility.Collapsed;
+                BrdDetailsCard.ClearValue(FrameworkElement.HeightProperty);
             });
     }
 

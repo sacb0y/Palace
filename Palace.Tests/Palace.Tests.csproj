@@ -28,6 +28,7 @@
     <Compile Include="..\Helpers\DetailsModule.cs" Link="DetailsModule.cs" />
     <Compile Include="..\Helpers\MiddleEllipsis.cs" Link="MiddleEllipsis.cs" />
     <Compile Include="..\Helpers\ViewerInfoFields.cs" Link="ViewerInfoFields.cs" />
+    <Compile Include="..\Helpers\ViewerMediaChrome.cs" Link="ViewerMediaChrome.cs" />
     <Compile Include="..\Helpers\GalleryPeak.cs" Link="GalleryPeak.cs" />
 
     <Compile Include="..\Helpers\GalleryPresent.cs" Link="GalleryPresent.cs" />

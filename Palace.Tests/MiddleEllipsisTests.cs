@@ -44,12 +44,20 @@ public sealed class ViewerInfoFieldsTests
     }
 
     [Fact]
-    public void FormatMetaRight_HdrIncludesPosition()
+    public void FormatMetaRight_IncludesFormatAndFrame()
     {
         var right = ViewerInfoFields.FormatMetaRight("sky.exr", null, isHdr: true, "1 / 44");
-        Assert.Contains("EXR", right);
-        Assert.Contains("HDR", right);
-        Assert.Contains("1 / 44", right);
+        Assert.Equal("EXR · 1 / 44", right);
+        Assert.Equal("GIF · 12 frames", ViewerInfoFields.FormatMetaRight("a.gif", 12, false, null));
+    }
+
+    [Fact]
+    public void FileMetaLine_JoinsWithPipe()
+    {
+        Assert.Equal(
+            "23 MB · 3840×2160 | EXR · 1 / 44",
+            ViewerInfoFields.FileMetaLine(23L * 1024 * 1024, 3840, 2160, "sky.exr", null, true, "1 / 44"));
+        Assert.Equal("", ViewerInfoFields.FileMetaLine(null, null, null, null, null, false, null));
     }
 
     [Fact]

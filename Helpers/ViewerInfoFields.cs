@@ -36,8 +36,8 @@ public static class ViewerInfoFields
     }
 
     /// <summary>
-    /// Right side of the File meta row: <c>EXR · HDR 1/44</c> or just the
-    /// format when there is no HDR / position tag.
+    /// Right side of the File meta row: <c>EXR · 1/44</c> / <c>GIF · 44 frames</c>
+    /// / format only. Position label is the frame index in the gallery.
     /// </summary>
     public static string FormatMetaRight(
         string? fileName,
@@ -45,23 +45,19 @@ public static class ViewerInfoFields
         bool isHdr,
         string? positionLabel)
     {
-        var format = FormatLabel(fileName, gifFrameCount);
+        _ = isHdr;
         var parts = new List<string>();
-        if (!string.IsNullOrEmpty(format))
+        var badge = TypeBadge(fileName);
+        if (!string.IsNullOrEmpty(badge))
         {
-            parts.Add(format.Contains('·', StringComparison.Ordinal)
-                ? format.Split('·', 2)[0].Trim()
-                : format);
+            parts.Add(badge);
         }
 
-        if (isHdr)
+        if (gifFrameCount is > 1)
         {
-            parts.Add(string.IsNullOrWhiteSpace(positionLabel)
-                ? "HDR"
-                : $"HDR {positionLabel.Trim()}");
+            parts.Add($"{gifFrameCount} frames");
         }
-        else if (!string.IsNullOrWhiteSpace(positionLabel)
-            && string.IsNullOrEmpty(format))
+        else if (!string.IsNullOrWhiteSpace(positionLabel))
         {
             parts.Add(positionLabel.Trim());
         }
@@ -86,6 +82,34 @@ public static class ViewerInfoFields
         }
 
         return string.Join(" · ", parts);
+    }
+
+    /// <summary>
+    /// Single File meta line: <c>size · resolution | format · frame</c>.
+    /// Empty when both sides are empty.
+    /// </summary>
+    public static string FileMetaLine(
+        long? bytes,
+        int? width,
+        int? height,
+        string? fileName,
+        int? gifFrameCount,
+        bool isHdr,
+        string? positionLabel)
+    {
+        var left = FileMetaLeft(bytes, width, height);
+        var right = FormatMetaRight(fileName, gifFrameCount, isHdr, positionLabel);
+        if (string.IsNullOrEmpty(left))
+        {
+            return right;
+        }
+
+        if (string.IsNullOrEmpty(right))
+        {
+            return left;
+        }
+
+        return $"{left} | {right}";
     }
 
     public static string ResolutionLabel(int? width, int? height)

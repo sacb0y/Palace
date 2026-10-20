@@ -251,6 +251,10 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial string InfoFileMetaRight { get; set; } = "";
 
+    /// <summary>File section line 3: <c>size · resolution | format · frame</c>.</summary>
+    [ObservableProperty]
+    public partial string InfoFileMetaLine { get; set; } = "";
+
     [ObservableProperty]
     public partial string InfoColor { get; set; } = "";
 
@@ -805,6 +809,14 @@ public partial class GalleryViewModel : ObservableObject
         InfoPathEllipsis = MiddleEllipsis.Truncate(InfoPath, 48);
         InfoFileMetaLeft = ViewerInfoFields.FileMetaLeft(item?.FileSize, pixels?.Width, pixels?.Height);
         InfoFileMetaRight = ViewerInfoFields.FormatMetaRight(
+            item?.FileName,
+            frames,
+            CurrentProbe.IsHdr || item?.IsHdr == true,
+            PositionLabel);
+        InfoFileMetaLine = ViewerInfoFields.FileMetaLine(
+            item?.FileSize,
+            pixels?.Width,
+            pixels?.Height,
             item?.FileName,
             frames,
             CurrentProbe.IsHdr || item?.IsHdr == true,

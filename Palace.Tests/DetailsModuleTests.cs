@@ -69,6 +69,13 @@ public sealed class DetailsModuleTests
 
         Assert.Equal(270, ViewerDetailsLayout.PanelWidth);
         Assert.Equal(720 * ViewerDetailsLayout.MaxHeightFraction, ViewerDetailsLayout.PanelMaxHeight(720), 3);
+        // Under a tall toolbar the fit-under-toolbar cap wins over 70%.
+        Assert.Equal(
+            720 - 200 - ViewerDetailsLayout.Inset,
+            ViewerDetailsLayout.PanelMaxHeight(720, topInset: 200),
+            3);
+        Assert.Equal(56 + 8, ViewerDetailsLayout.TopBelowToolbar(56));
+        Assert.Equal(ViewerDetailsLayout.TopInset, ViewerDetailsLayout.TopBelowToolbar(0));
         Assert.Equal("Details for shot.png", ViewerDetailsLayout.LandmarkName("shot.png"));
     }
 

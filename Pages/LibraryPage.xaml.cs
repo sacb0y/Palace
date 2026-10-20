@@ -118,6 +118,8 @@ public sealed partial class LibraryPage : Page
             {
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+                CardViewerDetails.AttachBelowToolbar(GrdViewerToolbar);
+                ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
                 TryHookMosaicScroll();
                 LogLibraryShow(pageReused: true);
@@ -127,6 +129,8 @@ public sealed partial class LibraryPage : Page
             }
 
             _shellReady = true;
+            CardViewerDetails.AttachBelowToolbar(GrdViewerToolbar);
+            ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
             SyncBrowseChromeFromViewModel();
             _suppressBrowseChrome = false;
@@ -2017,6 +2021,7 @@ public sealed partial class LibraryPage : Page
         if (gallery is { IsVideo: true, CurrentPath: not null } video
             && !AccessService.WouldHydrateOnOpen(video.CurrentPath))
         {
+            var wasMaximized = ViewerMediaElement.IsPresenterMaximized(App.Window?.AppWindow);
             BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Visible;
             try
             {
@@ -2028,6 +2033,8 @@ public sealed partial class LibraryPage : Page
                 }
 
                 MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
+                ViewerMediaElement.SuppressFullWindow(MpeOverlay);
+                ViewerMediaElement.RestoreIfVideoMaximized(App.Window?.AppWindow, wasMaximized);
             }
             catch
             {
@@ -2051,6 +2058,7 @@ public sealed partial class LibraryPage : Page
             MpeOverlay.SetMediaPlayer(new Windows.Media.Playback.MediaPlayer());
         }
 
+        ViewerMediaElement.SuppressFullWindow(MpeOverlay);
         ApplyOverlayLoop();
         ApplyOverlayVolume();
         VolOverlay.AttachTransport(MpeOverlay.TransportControls);

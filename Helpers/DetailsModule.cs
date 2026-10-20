@@ -128,9 +128,16 @@ public static class ViewerDetailsLayout
     public const double PanelWidth = 270;
     public const double PanelMinWidth = 240;
     public const double Inset = 16;
-    /// <summary>Top inset clears the overlay toolbar chrome (~48 + 16).</summary>
+    /// <summary>
+    /// Fallback top inset when the toolbar has not reported bounds yet
+    /// (~toolbar margin 16 + ~32 chrome + gap). Prefer
+    /// <see cref="TopBelowToolbar"/>.
+    /// </summary>
     public const double TopInset = 56;
+    /// <summary>Gap between the toolbar's actual bottom edge and the card.</summary>
+    public const double ToolbarGap = 8;
     public const double MaxHeightFraction = 0.70;
+    public const double MinPanelHeight = 160;
     public const double NarrowBreakpoint = 720;
     public const double EnterOffsetY = -12;
     public const int EnterMs = 180;
@@ -151,8 +158,36 @@ public static class ViewerDetailsLayout
         return Math.Max(PanelMinWidth, width);
     }
 
-    public static double PanelMaxHeight(double windowHeight) =>
-        Math.Max(0, windowHeight * MaxHeightFraction);
+    /// <summary>
+    /// Top margin so the card clears the toolbar row. Uses the toolbar's
+    /// measured bottom in host coordinates when available.
+    /// </summary>
+    public static double TopBelowToolbar(double toolbarBottomInHost, double fallbackTop = TopInset)
+    {
+        if (toolbarBottomInHost > 0)
+        {
+            return toolbarBottomInHost + ToolbarGap;
+        }
+
+        return fallbackTop;
+    }
+
+    /// <summary>
+    /// Card height cap: ~70% of the viewer, but never past the space under the
+    /// toolbar (+ bottom inset). Gives the ScrollViewer a finite viewport.
+    /// </summary>
+    public static double PanelMaxHeight(double windowHeight, double topInset = TopInset)
+    {
+        if (windowHeight <= 0)
+        {
+            return MinPanelHeight;
+        }
+
+        var fromFraction = windowHeight * MaxHeightFraction;
+        var fromFit = windowHeight - topInset - Inset;
+        var capped = Math.Min(fromFraction, fromFit);
+        return Math.Max(MinPanelHeight, capped);
+    }
 
     /// <summary>Legacy name — left-docked card never steals Next inset.</summary>
     public static double BottomSheetMaxHeight(double windowHeight) =>

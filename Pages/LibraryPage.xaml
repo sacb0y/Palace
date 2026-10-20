@@ -1468,7 +1468,9 @@
                         AutomationProperties.AutomationId="MpeGalleryOverlay"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
                         <MediaPlayerElement.TransportControls>
-                            <MediaTransportControls IsVolumeButtonVisible="False" />
+                            <MediaTransportControls
+                                IsFullWindowButtonVisible="False"
+                                IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
                     <controls:VolumeControl
@@ -1500,9 +1502,9 @@
                         Text="Missing"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMissing), Mode=OneWay, FallbackValue=Collapsed}" />
 
-                    <!-- Grid, not StackPanel: the info card gets a finite height and
-                         scrolls instead of running under the bottom bar. -->
+                    <!-- Toolbar row; Details card docks below its ActualHeight. -->
                     <Grid
+                        x:Name="GrdViewerToolbar"
                         Margin="16,16,0,8"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Top"

@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Input;
@@ -37,7 +38,22 @@ public sealed partial class GalleryWindow : Window
 
         var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
         var scale = GetDpiForWindow(hwnd) / 96.0;
-        AppWindow.Resize(new SizeInt32((int)(1280 * scale), (int)(840 * scale)));
+        var desiredW = (int)(1280 * scale);
+        var desiredH = (int)(840 * scale);
+        try
+        {
+            var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+            (desiredW, desiredH) = ViewerMediaChrome.ClampGalleryWindowSize(
+                desiredW, desiredH, work.Width, work.Height);
+        }
+        catch
+        {
+            // DisplayArea can fail early; still Resize to the DIP-scaled default.
+        }
+
+        AppWindow.Resize(new SizeInt32(desiredW, desiredH));
+        ViewerMediaElement.SuppressFullWindow(MpeGallery);
+        CardViewerDetails.AttachBelowToolbar(GrdViewerToolbar);
 
         Gallery.PropertyChanged += (_, e) =>
         {
@@ -237,6 +253,7 @@ public sealed partial class GalleryWindow : Window
         SrfWindowStill.Bind(Gallery.IsImage ? Gallery : null);
         if (Gallery.IsVideo && Gallery.CurrentPath is not null)
         {
+            var wasMaximized = ViewerMediaElement.IsPresenterMaximized(AppWindow);
             try
             {
                 if (MpeGallery.MediaPlayer is null)
@@ -244,6 +261,7 @@ public sealed partial class GalleryWindow : Window
                     MpeGallery.SetMediaPlayer(new MediaPlayer());
                 }
 
+                ViewerMediaElement.SuppressFullWindow(MpeGallery);
                 ApplyLoop();
                 ApplyVolume();
                 VolGallery.AttachTransport(MpeGallery.TransportControls);
@@ -255,6 +273,8 @@ public sealed partial class GalleryWindow : Window
                 }
 
                 MpeGallery.Source = MediaSource.CreateFromStorageFile(file);
+                ViewerMediaElement.SuppressFullWindow(MpeGallery);
+                ViewerMediaElement.RestoreIfVideoMaximized(AppWindow, wasMaximized);
             }
             catch
             {
