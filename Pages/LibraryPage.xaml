@@ -1456,7 +1456,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid>
                     <controls:GalleryStillSurface
@@ -1529,18 +1528,6 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Info" />
-                                </StackPanel>
-                            </ToggleButton>
-                            <ToggleButton
-                                x:Name="BtnGalleryDetails"
-                                Padding="8,4"
-                                AutomationProperties.AutomationId="BtnGalleryDetails"
-                                AutomationProperties.Name="Details"
-                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
-                                ToolTipService.ToolTip="Details (Ctrl+I)">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="TextDescription" IconSize="Size16" IconVariant="Regular" />
-                                    <TextBlock VerticalAlignment="Center" Text="Details" />
                                 </StackPanel>
                             </ToggleButton>
                             <ToggleButton
@@ -1704,7 +1691,7 @@
                         </Button>
                         <Button
                             x:Name="BtnGalleryNext"
-                            Margin="0,0,16,0"
+                            Margin="{x:Bind helpers:BindHelpers.GalleryNextMargin(ViewModel.OverlayGallery.ShowDetails, ViewModel.OverlayGallery.DetailsUsesBottomSheet, ViewModel.OverlayGallery.DetailsPanelWidth), Mode=OneWay, FallbackValue='0,0,16,0'}"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="BtnGalleryNext"
@@ -1715,19 +1702,36 @@
                             ToolTipService.ToolTip="Next (Right)">
                             <ic:FluentIcon Icon="ChevronRight" IconSize="Size16" IconVariant="Regular" />
                         </Button>
-                        <Button
-                            x:Name="BtnGalleryClose"
+                        <StackPanel
                             Margin="0,16,16,0"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Top"
-                            AutomationProperties.AutomationId="BtnGalleryClose"
-                            AutomationProperties.Name="Close"
-                            Command="{x:Bind ViewModel.CloseOverlayCommand}"
-                            Style="{StaticResource ViewerOverlayCloseButtonStyle}"
-                            ToolTipService.ToolTip="Close (Esc)">
-                            <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
-                        </Button>
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <ToggleButton
+                                x:Name="BtnGalleryDetails"
+                                AutomationProperties.AutomationId="BtnGalleryDetails"
+                                AutomationProperties.Name="Details"
+                                IsChecked="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=TwoWay, FallbackValue=False}"
+                                Style="{StaticResource ViewerOverlayDetailsToggleStyle}"
+                                ToolTipService.ToolTip="Details (I)">
+                                <ic:FluentIcon Icon="Info" IconSize="Size16" IconVariant="Regular" />
+                            </ToggleButton>
+                            <Button
+                                x:Name="BtnGalleryClose"
+                                AutomationProperties.AutomationId="BtnGalleryClose"
+                                AutomationProperties.Name="Close"
+                                Command="{x:Bind ViewModel.CloseOverlayCommand}"
+                                Style="{StaticResource ViewerOverlayCloseButtonStyle}"
+                                ToolTipService.ToolTip="Close (Esc)">
+                                <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                            </Button>
+                        </StackPanel>
                     </Grid>
+                    <controls:ViewerDetailsCard
+                        x:Name="CardViewerDetails"
+                        Gallery="{x:Bind ViewModel.OverlayGallery, Mode=OneWay}"
+                        IsOpen="{x:Bind ViewModel.OverlayGallery.ShowDetails, Mode=OneWay, FallbackValue=False}" />
                 </Grid>
 
                 <Border
@@ -1830,136 +1834,6 @@
                     </Grid>
                 </Border>
 
-                <Border
-                    x:Name="BrdGalleryOverlayInfo"
-                    Grid.Row="2"
-                    MaxWidth="920"
-                    MinWidth="280"
-                    Margin="16,8,16,12"
-                    Padding="10,6"
-                    HorizontalAlignment="Center"
-                    AutomationProperties.AutomationId="BrdGalleryOverlayInfo"
-                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{StaticResource OverlayCornerRadius}"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowDetails), Mode=OneWay, FallbackValue=Collapsed}">
-                    <StackPanel Spacing="4">
-                    <Grid ColumnSpacing="10">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock
-                            MaxWidth="280"
-                            VerticalAlignment="Center"
-                            AutomationProperties.AutomationId="TxtGalleryOverlayTitle"
-                            AutomationProperties.Name="Gallery title"
-                            Style="{StaticResource BodyStrongTextBlockStyle}"
-                            Text="{x:Bind ViewModel.OverlayGallery.Title, Mode=OneWay, FallbackValue=''}"
-                            TextTrimming="CharacterEllipsis" />
-                        <ItemsRepeater
-                            x:Name="LstGalleryOverlayTags"
-                            Grid.Column="1"
-                            VerticalAlignment="Center"
-                            AutomationProperties.AutomationId="LstGalleryOverlayTags"
-                            AutomationProperties.Name="Tags"
-                            ItemsSource="{x:Bind ViewModel.OverlayGallery.Tags, Mode=OneWay, FallbackValue={x:Null}}">
-                            <ItemsRepeater.Layout>
-                                <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="4" />
-                            </ItemsRepeater.Layout>
-                            <ItemsRepeater.ItemTemplate>
-                                <DataTemplate x:DataType="models:AssignedTagItem">
-                                    <Border
-                                        MinWidth="0"
-                                        Padding="6,2"
-                                        HorizontalAlignment="Left"
-                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="{StaticResource ControlCornerRadius}"
-                                        Opacity="{x:Bind ChromeOpacity, Mode=OneWay}"
-                                        ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock
-                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                Text="{x:Bind TagName, Mode=OneWay}" />
-                                            <TextBlock
-                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                Text="{x:Bind CountLabel, Mode=OneWay}"
-                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsRepeater.ItemTemplate>
-                        </ItemsRepeater>
-                    </Grid>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtGalleryOverlayPosition"
-                            AutomationProperties.Name="Gallery position"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.OverlayGallery.PositionLabel, Mode=OneWay, FallbackValue=''}" />
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtGalleryOverlayDetails"
-                            AutomationProperties.Name="Image details"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.OverlayGallery.DetailsText, Mode=OneWay, FallbackValue=''}"
-                            TextTrimming="CharacterEllipsis"
-                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.OverlayGallery.DetailsText), Mode=OneWay, FallbackValue=Collapsed}" />
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtGalleryOverlayHdr"
-                            AutomationProperties.Name="HDR status"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.OverlayGallery.HdrStatus, Mode=OneWay, FallbackValue=''}"
-                            TextTrimming="CharacterEllipsis"
-                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.OverlayGallery.HdrStatus), Mode=OneWay, FallbackValue=Collapsed}" />
-                    </StackPanel>
-                    <StackPanel
-                        AutomationProperties.AutomationId="PnlOverlayGeneration"
-                        Spacing="4"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.ShowGeneration), Mode=OneWay, FallbackValue=Collapsed}">
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Generation" />
-                        <TextBlock
-                            AutomationProperties.AutomationId="TxtOverlayModel"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewModel), Mode=OneWay, FallbackValue=''}"
-                            TextWrapping="Wrap" />
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Prompt" />
-                        <ScrollViewer
-                            AutomationProperties.AutomationId="ScrOverlayPrompt"
-                            MaxHeight="120"
-                            HorizontalScrollBarVisibility="Disabled"
-                            VerticalScrollBarVisibility="Auto">
-                            <TextBlock
-                                AutomationProperties.AutomationId="TxtOverlayPrompt"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewPrompt), Mode=OneWay, FallbackValue=''}"
-                                TextWrapping="Wrap" />
-                        </ScrollViewer>
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Negative" />
-                        <ScrollViewer
-                            AutomationProperties.AutomationId="ScrOverlayNegative"
-                            MaxHeight="80"
-                            HorizontalScrollBarVisibility="Disabled"
-                            VerticalScrollBarVisibility="Auto">
-                            <TextBlock
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewNegative), Mode=OneWay, FallbackValue=''}"
-                                TextWrapping="Wrap" />
-                        </ScrollViewer>
-                        <TextBlock Style="{StaticResource CaptionTextBlockStyle}" Text="Seed" />
-                        <TextBlock
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind helpers:BindHelpers.OrDash(ViewModel.OverlayGallery.PreviewSeed), Mode=OneWay, FallbackValue=''}" />
-                    </StackPanel>
-                    </StackPanel>
-                </Border>
             </Grid>
         </Grid>
     </Grid>

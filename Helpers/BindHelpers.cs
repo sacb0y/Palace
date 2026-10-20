@@ -51,6 +51,19 @@ public static class BindHelpers
     public static Thickness SelectedBorder(bool selected) =>
         selected ? new Thickness(2) : new Thickness(0);
 
+    /// <summary>
+    /// Next-plate margin: slides left to 16 epx from the floating Details card
+    /// when right-docked; stays at the default inset when closed or bottom-sheet.
+    /// </summary>
+    public static Thickness GalleryNextMargin(bool showDetails, bool bottomSheet, double panelWidth)
+    {
+        var like = ViewerDetailsLayout.NextMargin(showDetails, bottomSheet, panelWidth);
+        return new Thickness(like.Left, like.Top, like.Right, like.Bottom);
+    }
+
+    public static string DetailsLandmarkName(string? fileName) =>
+        ViewerDetailsLayout.LandmarkName(fileName);
+
     public static Stretch ImageStretch(ImageScaling scaling) =>
         scaling switch
         {

@@ -11,6 +11,8 @@ public sealed class GalleryChromeTests
         Assert.Equal("GalleryShowDetails", GalleryChrome.ShowDetailsKey);
         Assert.Equal("GalleryShowImageInfo", GalleryChrome.ShowImageInfoKey);
         Assert.Equal("GalleryLoopVideo", GalleryChrome.LoopVideoKey);
+        Assert.Equal("GalleryDetailsSection_", GalleryChrome.DetailsSectionKeyPrefix);
+        Assert.Equal("GalleryDetailsSection_file", GalleryChrome.DetailsSectionKey("file"));
     }
 
     [Fact]
@@ -56,4 +58,14 @@ public sealed class GalleryChromeTests
         Assert.True(GalleryChrome.ParseBool(null, defaultValue: true));
         Assert.False(GalleryChrome.ParseBool("garbage", defaultValue: false));
     }
+
+    [Fact]
+    public void ParseSectionExpanded_UsesModuleDefault()
+    {
+        Assert.True(GalleryChrome.ParseSectionExpanded(null, defaultExpanded: true));
+        Assert.False(GalleryChrome.ParseSectionExpanded(null, defaultExpanded: false));
+        Assert.False(GalleryChrome.ParseSectionExpanded(false, defaultExpanded: true));
+        Assert.True(GalleryChrome.ParseSectionExpanded("true", defaultExpanded: false));
+    }
 }
+

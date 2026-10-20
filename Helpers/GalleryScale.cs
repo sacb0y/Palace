@@ -25,18 +25,48 @@ public static class GalleryScale
     public const int KeyLetterH = 72;
     public const int KeySpace = 32;
     public const int KeyEscape = 27;
+    public const int KeyEnter = 13;
+    public const int KeyF6 = 117;
     public const double MinPinchZoom = 1.0;
     public const double MaxPinchZoom = 8.0;
 
     public static bool TogglesImageInfo(bool controlDown, int keyCode) =>
         controlDown && keyCode == KeyLetterD;
 
+    /// <summary>
+    /// Details panel: bare <c>I</c> or <c>Alt+Enter</c> (no Ctrl). Ctrl+I used to
+    /// toggle Details and is retired so letter shortcuts stay chord-free.
+    /// </summary>
+    public static bool TogglesDetails(bool controlDown, bool altDown, int keyCode)
+    {
+        if (controlDown)
+        {
+            return false;
+        }
+
+        if (keyCode == KeyLetterI && !altDown)
+        {
+            return true;
+        }
+
+        return altDown && keyCode == KeyEnter;
+    }
+
+    /// <summary>Backward-compatible overload — treats Alt as up.</summary>
     public static bool TogglesDetails(bool controlDown, int keyCode) =>
-        controlDown && keyCode == KeyLetterI;
+        TogglesDetails(controlDown, altDown: false, keyCode);
 
     /// <summary>Ctrl+H: luminance heatmap view (SKIV's visualization cycle key).</summary>
     public static bool TogglesHeatmap(bool controlDown, int keyCode) =>
         controlDown && keyCode == KeyLetterH;
+
+    /// <summary>Esc closes the Details panel first while it is open.</summary>
+    public static bool ClosesDetailsFirst(bool detailsOpen, int keyCode) =>
+        detailsOpen && keyCode == KeyEscape;
+
+    /// <summary>F6 cycles image / chrome controls / Details card.</summary>
+    public static bool CyclesViewerFocus(int keyCode) =>
+        keyCode == KeyF6;
 
     /// <summary>
     /// Space opens the overlay on the focused or selected mosaic tile.
