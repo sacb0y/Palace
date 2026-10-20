@@ -15,35 +15,58 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Paints the glass wallpaper layer (theme gradient / preset / user image +
-/// Composition GaussianBlur + dim + optional tint) behind ThemeResource chrome.
-/// Blur slider drives <see cref="GaussianBlurEffect.BlurAmount"/> — not opacity.
+/// Composition GaussianBlur then darkness) behind ThemeResource chrome.
+/// Preview and the real shell share one <see cref="LoadedImageSurface"/>; slider
+/// ticks only <c>InsertScalar</c> animatable props (no surface reload).
 /// WinUI only.
 /// </summary>
 public static class ShellBackdrop
 {
-    private const int BlurAnimMs = 120;
+    private const string BlurAmountProperty = "Blur.BlurAmount";
+    private const string DimOpacityProperty = "Dim.Opacity";
+    private const string DimColorProperty = "DimColor.Color";
 
     private static string? _loadedPath;
     private static int _loadedEpoch = -1;
     private static AccessibilitySettings? _accessibility;
 
-    private static Border? _glassHost;
-    private static SpriteVisual? _blurVisual;
-    private static CompositionEffectBrush? _blurBrush;
-    private static CompositionEffectFactory? _blurFactory;
-    private static Compositor? _blurCompositor;
-    private static CompositionBrush? _blurSourceBrush;
-    private static LoadedImageSurface? _blurImageSurface;
-    private static string? _blurSurfacePath;
-    private static float _appliedBlurAmount = -1f;
-    private static string? _blurCacheKey;
+    private static Compositor? _compositor;
+    private static CompositionEffectFactory? _effectFactory;
+    private static LoadedImageSurface? _sharedSurface;
+    private static string? _sharedSurfacePath;
+    private static bool _sharedSurfaceIsLight;
+    private static float _liveBlurAmount = -1f;
+    private static float _liveDimOpacity = -1f;
+    private static bool _liveDimIsLight;
+
+    private static readonly GlassSlot MainSlot = new();
+    private static readonly GlassSlot PreviewSlot = new();
+
+    private sealed class GlassSlot
+    {
+        public Border? Host;
+        public Image? Wallpaper;
+        public Border? Gradient;
+        public Border? Dim;
+        public Border? Tint;
+        public SpriteVisual? Visual;
+        public CompositionEffectBrush? Brush;
+        public CompositionBrush? SourceBrush;
+        public bool IsPreview;
+    }
 
     public static void Release(Image wallpaper)
     {
         wallpaper.Source = null;
         _loadedPath = null;
         _loadedEpoch = -1;
-        ReleaseGlassBlur();
+        ReleaseSlot(MainSlot);
+        // Keep shared surface for preview until DetachPreview / full release.
+        if (PreviewSlot.Host is null)
+        {
+            ReleaseSharedSurface();
+            ReleaseFactory();
+        }
     }
 
     public static bool IsHighContrast()
@@ -70,147 +93,293 @@ public static class ShellBackdrop
         Border dim,
         Border tint)
     {
+        MainSlot.Gradient = gradient;
+        MainSlot.Wallpaper = wallpaper;
+        MainSlot.Dim = dim;
+        MainSlot.Tint = tint;
+        return ApplyToSlot(MainSlot, glass, dim, tint, isPreview: false);
+    }
+
+    /// <summary>
+    /// Settings 16:9 preview — same LoadedImageSurface + effect recipe as the shell.
+    /// Mock nav/card are XAML siblings above <paramref name="glass"/> (never blurred).
+    /// </summary>
+    public static void AttachPreview(
+        Border gradient,
+        Image wallpaper,
+        Border glass,
+        Border dim)
+    {
+        PreviewSlot.Gradient = gradient;
+        PreviewSlot.Wallpaper = wallpaper;
+        PreviewSlot.Dim = dim;
+        PreviewSlot.Tint = null;
+        PreviewSlot.IsPreview = true;
+        ApplyToSlot(PreviewSlot, glass, dim, tint: null, isPreview: true);
+    }
+
+    public static void DetachPreview()
+    {
+        ReleaseSlot(PreviewSlot);
+        PreviewSlot.Gradient = null;
+        PreviewSlot.Wallpaper = null;
+        PreviewSlot.Dim = null;
+        if (MainSlot.Host is null)
+        {
+            ReleaseSharedSurface();
+            ReleaseFactory();
+        }
+    }
+
+    /// <summary>
+    /// Slider path: only <c>InsertScalar</c> blur + darkness on attached hosts.
+    /// Crossing the glass on/off boundary rebuilds the SpriteVisual once (no surface reload
+    /// when the image path is unchanged).
+    /// </summary>
+    public static void SyncLiveAmounts()
+    {
         if (IsHighContrast())
         {
-            CollapseAll(gradient, wallpaper, glass, dim, tint);
+            return;
+        }
+
+        SyncLiveSlot(MainSlot);
+        SyncLiveSlot(PreviewSlot);
+    }
+
+    private static void SyncLiveSlot(GlassSlot slot)
+    {
+        if (slot.Host is null)
+        {
+            return;
+        }
+
+        var light = ResolveLightChrome(slot.Gradient);
+        var blurAmount = ShellBackground.BlurApplies
+            ? ShellBackground.BlurRadius(ShellBackground.Blur)
+            : 0f;
+        var dimOpacity = ShellBackground.DarknessApplies
+            ? (float)ShellBackground.DimOpacity(light, ShellBackground.Darkness)
+            : 0f;
+        var useGlass = UsesCompositionGlass(blurAmount, dimOpacity);
+
+        if (ShellBackground.UsesSystemBackdrop && !slot.IsPreview)
+        {
+            return;
+        }
+
+        if (useGlass)
+        {
+            EnsureGlassVisual(slot, slot.Host, light);
+            InsertScalars(slot, blurAmount, dimOpacity, light);
+            UpdateGlassVisibility(slot, blurAmount, dimOpacity);
+            if (slot.Dim is not null)
+            {
+                slot.Dim.Visibility = Visibility.Collapsed;
+                slot.Dim.Background = null;
+                slot.Dim.Opacity = 0;
+            }
+        }
+        else
+        {
+            ClearGlassHost(slot, slot.Host);
+            ApplyXamlDim(slot.Dim, light, dimOpacity);
+        }
+
+        UpdateWallpaperVisibility(slot);
+    }
+
+    private static bool ApplyToSlot(
+        GlassSlot slot,
+        Border glass,
+        Border? dim,
+        Border? tint,
+        bool isPreview)
+    {
+        slot.IsPreview = isPreview;
+        // Keep the Border reference even when glass is collapsed so SyncLiveAmounts
+        // can reattach without a full page re-Apply.
+        slot.Host = glass;
+        slot.Dim = dim;
+        if (IsHighContrast())
+        {
+            CollapseSlot(slot, glass, dim, tint);
             return false;
         }
 
-        var light = gradient.ActualTheme == ElementTheme.Light;
-        var preset = ShellBackground.Preset;
+        var light = ResolveLightChrome(slot.Gradient);
 
-        if (ShellBackground.UsesSystemBackdrop)
+        if (ShellBackground.UsesSystemBackdrop && !isPreview)
         {
-            CollapseAll(gradient, wallpaper, glass, dim, tint);
+            CollapseSlot(slot, glass, dim, tint);
             return true;
         }
 
-        var stops = ShellPresetGradients.TryStops(preset, light);
-        if (stops is { } gradientStops)
+        if (ShellBackground.UsesSystemBackdrop && isPreview)
         {
-            gradient.Visibility = Visibility.Visible;
-            gradient.Background = GradientBrush(gradientStops.Start, gradientStops.Mid, gradientStops.End);
+            // Preview shows a quiet mica stand-in (no system backdrop in-page).
+            PaintGradient(slot, light, forceDefault: true);
+            ClearGlassHost(slot, glass);
+            if (dim is not null)
+            {
+                dim.Visibility = Visibility.Collapsed;
+                dim.Background = null;
+                dim.Opacity = 0;
+            }
+
+            if (slot.Wallpaper is not null)
+            {
+                slot.Wallpaper.Source = null;
+                slot.Wallpaper.Visibility = Visibility.Collapsed;
+            }
+
+            return false;
+        }
+
+        PaintGradient(slot, light, forceDefault: false);
+        BindImage(slot, light);
+
+        var blurAmount = ShellBackground.BlurApplies
+            ? ShellBackground.BlurRadius(ShellBackground.Blur)
+            : 0f;
+        var dimOpacity = ShellBackground.DarknessApplies
+            ? (float)ShellBackground.DimOpacity(light, ShellBackground.Darkness)
+            : 0f;
+        var useGlass = UsesCompositionGlass(blurAmount, dimOpacity);
+
+        if (useGlass)
+        {
+            EnsureGlassVisual(slot, glass, light);
+            InsertScalars(slot, blurAmount, dimOpacity, light);
+            UpdateGlassVisibility(slot, blurAmount, dimOpacity);
+            if (dim is not null)
+            {
+                // Darkness is in the effect brush — avoid double dim.
+                dim.Visibility = Visibility.Collapsed;
+                dim.Background = null;
+                dim.Opacity = 0;
+            }
         }
         else
         {
-            // Image-only presets (packaged / Custom): keep a subtle fallback under the image.
-            gradient.Visibility = Visibility.Visible;
-            var fallback = ShellPresetGradients.TryStops(ShellPresetKind.Default, light)!.Value;
-            gradient.Background = GradientBrush(fallback.Start, fallback.Mid, fallback.End);
+            ClearGlassHost(slot, glass);
+            ApplyXamlDim(dim, light, dimOpacity);
         }
 
-        BindImage(wallpaper, light);
-        ApplyGlassBlur(glass, light);
+        UpdateWallpaperVisibility(slot);
 
-        if (ShellBackground.DarknessApplies)
+        if (tint is not null)
         {
-            var darkness = ShellBackground.DimOpacity(light, ShellBackground.Darkness);
-            dim.Opacity = darkness;
-            dim.Visibility = darkness <= 0.001 ? Visibility.Collapsed : Visibility.Visible;
-            // Light: white wash (fade toward white). Dark: black. HC collapses earlier.
-            var (dr, dg, db) = ShellBackground.DimRgb(light);
-            dim.Background = new SolidColorBrush(Color.FromArgb(255, dr, dg, db));
-        }
-        else
-        {
-            dim.Visibility = Visibility.Collapsed;
-            dim.Background = null;
-            dim.Opacity = 0;
-        }
-
-        if (ShellBackground.TintEnabled
-            && ShellBackground.TryParseTint(ShellBackground.TintHex, out var a, out var r, out var g, out var b)
-            && a > 0)
-        {
-            tint.Visibility = Visibility.Visible;
-            tint.Background = new SolidColorBrush(Color.FromArgb(a, r, g, b));
-        }
-        else
-        {
-            tint.Visibility = Visibility.Collapsed;
-            tint.Background = null;
+            if (ShellBackground.TintEnabled
+                && ShellBackground.TryParseTint(ShellBackground.TintHex, out var a, out var r, out var g, out var b)
+                && a > 0)
+            {
+                tint.Visibility = Visibility.Visible;
+                tint.Background = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+            }
+            else
+            {
+                tint.Visibility = Visibility.Collapsed;
+                tint.Background = null;
+            }
         }
 
         return false;
     }
 
-    private static void ApplyGlassBlur(Border glass, bool light)
+    private static bool UsesCompositionGlass(float blurAmount, float dimOpacity) =>
+        (ShellBackground.BlurApplies && blurAmount > 0.01f)
+        || (ShellBackground.DarknessApplies && dimOpacity > 0.001f && ShellBackground.BlurApplies);
+
+    private static void PaintGradient(GlassSlot slot, bool light, bool forceDefault)
     {
-        var blurApplies = ShellBackground.BlurApplies;
-        var blurPercent = ShellBackground.Blur;
-        var radius = ShellBackground.BlurRadius(blurPercent);
-        var cacheKey = ShellBackground.BlurCacheKey(ShellBackground.Preset, light, blurPercent);
-
-        if (!blurApplies || radius <= 0.01f)
-        {
-            ClearGlassHost(glass);
-            return;
-        }
-
-        // Opacity stays fully on — amount is BlurAmount, not a sharp/frost cross-fade.
-        glass.Opacity = 1;
-        glass.Visibility = Visibility.Visible;
-        // Soft tint under the blur sprite (fixed alpha — not slider opacity).
-        var glassTint = ToColor(ShellBackground.GlassTintHex(light), Color.FromArgb(255, 12, 14, 20));
-        glass.Background = new SolidColorBrush(Color.FromArgb(28, glassTint.R, glassTint.G, glassTint.B));
-
-        EnsureBlurVisual(glass, light);
-        if (_blurVisual is null || _blurBrush is null)
+        if (slot.Gradient is null)
         {
             return;
         }
 
-        SyncBlurVisualSize(glass);
-
-        // Cache key = preset + theme + quantized radius; skip redundant anim when unchanged.
-        if (_blurCacheKey == cacheKey && Math.Abs(_appliedBlurAmount - radius) <= 0.05f)
+        var preset = forceDefault ? ShellPresetKind.Default : ShellBackground.Preset;
+        var stops = ShellPresetGradients.TryStops(preset, light)
+            ?? ShellPresetGradients.TryStops(ShellPresetKind.Default, light);
+        if (stops is { } gradientStops)
         {
-            return;
+            slot.Gradient.Visibility = Visibility.Visible;
+            slot.Gradient.Background = GradientBrush(gradientStops.Start, gradientStops.Mid, gradientStops.End);
         }
-
-        _blurCacheKey = cacheKey;
-        if (Math.Abs(_appliedBlurAmount - radius) > 0.05f)
+        else
         {
-            AnimateBlurAmount(radius);
-            _appliedBlurAmount = radius;
+            slot.Gradient.Visibility = Visibility.Collapsed;
+            slot.Gradient.Background = null;
         }
     }
 
-    private static void EnsureBlurVisual(Border glass, bool light)
+    private static void EnsureGlassVisual(GlassSlot slot, Border glass, bool light)
     {
         var compositor = ElementCompositionPreview.GetElementVisual(glass).Compositor;
-        var imagePath = ShellBackground.BoundImagePath(light);
-        var wantSurface = !string.IsNullOrWhiteSpace(imagePath);
-        var surfaceReady = wantSurface
-            && _blurImageSurface is not null
-            && _blurSurfacePath == imagePath
-            && _blurSourceBrush is CompositionSurfaceBrush;
+        EnsureFactory(compositor);
 
-        if (_blurVisual is not null
-            && ReferenceEquals(_glassHost, glass)
-            && ReferenceEquals(_blurCompositor, compositor)
-            && _blurBrush is not null
-            && ((!wantSurface && _blurSourceBrush is CompositionBackdropBrush)
+        var imagePath = ShellBackground.BoundImagePath(light);
+        EnsureSharedSurface(imagePath, light);
+
+        var wantSurface = !string.IsNullOrWhiteSpace(imagePath) && _sharedSurface is not null;
+        var surfaceReady = wantSurface
+            && slot.SourceBrush is CompositionSurfaceBrush
+            && _sharedSurfacePath == imagePath;
+
+        if (slot.Visual is not null
+            && ReferenceEquals(slot.Host, glass)
+            && ReferenceEquals(_compositor, compositor)
+            && slot.Brush is not null
+            && ((!wantSurface && slot.SourceBrush is CompositionBackdropBrush)
                 || surfaceReady))
+        {
+            SyncBlurVisualSize(slot, glass);
+            return;
+        }
+
+        if (!ReferenceEquals(slot.Host, glass))
+        {
+            if (slot.Host is not null)
+            {
+                DetachHost(slot);
+            }
+
+            slot.Host = glass;
+        }
+
+        ReleaseSlotResources(slot);
+        _compositor = compositor;
+
+        slot.Brush = _effectFactory!.CreateBrush();
+        slot.SourceBrush = CreateSourceBrush(compositor, imagePath);
+        slot.Brush.SetSourceParameter("source", slot.SourceBrush);
+        TryInsertColor(slot.Brush, light);
+
+        slot.Visual = compositor.CreateSpriteVisual();
+        slot.Visual.Brush = slot.Brush;
+        slot.Visual.RelativeSizeAdjustment = Vector2.Zero;
+        ElementCompositionPreview.SetElementChildVisual(glass, slot.Visual);
+        glass.SizeChanged -= Glass_SizeChanged;
+        glass.SizeChanged += Glass_SizeChanged;
+        glass.Tag = slot;
+        SyncBlurVisualSize(slot, glass);
+
+        // Soft tint under the blur sprite (fixed alpha — not slider opacity).
+        var glassTint = ToColor(ShellBackground.GlassTintHex(light), Color.FromArgb(255, 12, 14, 20));
+        glass.Background = new SolidColorBrush(Color.FromArgb(28, glassTint.R, glassTint.G, glassTint.B));
+        glass.Opacity = 1;
+        glass.Visibility = Visibility.Visible;
+    }
+
+    private static void EnsureFactory(Compositor compositor)
+    {
+        if (_effectFactory is not null && ReferenceEquals(_compositor, compositor))
         {
             return;
         }
 
-        if (_glassHost is not null)
-        {
-            DetachGlassHost(_glassHost);
-        }
-
-        ReleaseGlassBlurResources();
-        _glassHost = glass;
-        _blurCompositor = compositor;
-
-        // Sharp ImgShellWallpaper is Collapsed whenever blur > 0. Image presets
-        // therefore cannot use BackdropBrush (nothing left to sample). Paint the
-        // same URI through LoadedImageSurface → SurfaceBrush, Clamp-extend, then
-        // Hard-blur. Default (gradient only) still uses BackdropBrush.
-        // Sprite size adds a DPI-aware physical-pixel margin so 150% scale cannot
-        // leave a top/right gap over the gradient.
+        ReleaseFactory();
+        _compositor = compositor;
         var sourceParam = new CompositionEffectSourceParameter("source");
         var clamped = new BorderEffect
         {
@@ -218,7 +387,7 @@ public static class ShellBackdrop
             ExtendY = CanvasEdgeBehavior.Clamp,
             Source = sourceParam
         };
-        var effect = new GaussianBlurEffect
+        var blur = new GaussianBlurEffect
         {
             Name = "Blur",
             BlurAmount = 0f,
@@ -226,108 +395,264 @@ public static class ShellBackdrop
             Optimization = EffectOptimization.Balanced,
             Source = clamped
         };
-        // One factory + brush; BlurAmount is animated. Cache key tracks preset/theme/radius
-        // so Apply can skip redundant work; GPU blur stays cheap at 4K.
-        _blurFactory = compositor.CreateEffectFactory(effect, ["Blur.BlurAmount"]);
-        _blurBrush = _blurFactory.CreateBrush();
-        _blurSourceBrush = CreateBlurSourceBrush(compositor, imagePath);
-        _blurBrush.SetSourceParameter("source", _blurSourceBrush);
-
-        _blurVisual = compositor.CreateSpriteVisual();
-        _blurVisual.Brush = _blurBrush;
-        // Manual Size/Offset (not RelativeSizeAdjustment) for DPI-snapped overscan.
-        _blurVisual.RelativeSizeAdjustment = Vector2.Zero;
-        ElementCompositionPreview.SetElementChildVisual(glass, _blurVisual);
-        glass.SizeChanged -= Glass_SizeChanged;
-        glass.SizeChanged += Glass_SizeChanged;
-        SyncBlurVisualSize(glass);
-        _appliedBlurAmount = -1f;
+        var dimColor = new ColorSourceEffect
+        {
+            Name = "DimColor",
+            Color = Color.FromArgb(255, 0, 0, 0)
+        };
+        var dim = new OpacityEffect
+        {
+            Name = "Dim",
+            Opacity = 0f,
+            Source = dimColor
+        };
+        var composite = new CompositeEffect
+        {
+            Mode = CanvasComposite.SourceOver,
+            Sources = { blur, dim }
+        };
+        _effectFactory = compositor.CreateEffectFactory(
+            composite,
+            [BlurAmountProperty, DimOpacityProperty, DimColorProperty]);
     }
 
-    private static CompositionBrush CreateBlurSourceBrush(Compositor compositor, string? imagePath)
+    private static void EnsureSharedSurface(string? imagePath, bool light)
     {
         if (string.IsNullOrWhiteSpace(imagePath))
         {
-            ReleaseBlurImageSurface();
+            ReleaseSharedSurface();
+            return;
+        }
+
+        if (_sharedSurface is not null
+            && _sharedSurfacePath == imagePath
+            && _sharedSurfaceIsLight == light)
+        {
+            return;
+        }
+
+        ReleaseSharedSurface();
+        try
+        {
+            _sharedSurfacePath = imagePath;
+            _sharedSurfaceIsLight = light;
+            _sharedSurface = LoadedImageSurface.StartLoadFromUri(new Uri(imagePath, UriKind.Absolute));
+        }
+        catch
+        {
+            ReleaseSharedSurface();
+        }
+    }
+
+    private static CompositionBrush CreateSourceBrush(Compositor compositor, string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath) || _sharedSurface is null)
+        {
             return compositor.CreateBackdropBrush();
         }
 
-        if (_blurImageSurface is null || _blurSurfacePath != imagePath)
-        {
-            ReleaseBlurImageSurface();
-            try
-            {
-                _blurSurfacePath = imagePath;
-                _blurImageSurface = LoadedImageSurface.StartLoadFromUri(
-                    new Uri(imagePath, UriKind.Absolute));
-            }
-            catch
-            {
-                ReleaseBlurImageSurface();
-                return compositor.CreateBackdropBrush();
-            }
-        }
-
-        var surfaceBrush = compositor.CreateSurfaceBrush(_blurImageSurface);
+        var surfaceBrush = compositor.CreateSurfaceBrush(_sharedSurface);
         surfaceBrush.Stretch = CompositionStretch.UniformToFill;
         return surfaceBrush;
     }
 
-    private static void ReleaseBlurImageSurface()
+    private static void InsertScalars(GlassSlot slot, float blurAmount, float dimOpacity, bool light)
     {
-        try
-        {
-            _blurImageSurface?.Dispose();
-        }
-        catch
-        {
-            // ignore
-        }
-
-        _blurImageSurface = null;
-        _blurSurfacePath = null;
-    }
-
-    private static void AnimateBlurAmount(float radius)
-    {
-        if (_blurBrush is null)
+        if (slot.Brush is null)
         {
             return;
         }
 
         try
         {
-            var compositor = _blurBrush.Compositor;
-            var anim = compositor.CreateScalarKeyFrameAnimation();
-            anim.InsertKeyFrame(1f, radius);
-            anim.Duration = TimeSpan.FromMilliseconds(BlurAnimMs);
-            anim.StopBehavior = AnimationStopBehavior.SetToFinalValue;
-            _blurBrush.Properties.StartAnimation("Blur.BlurAmount", anim);
+            TryInsertColor(slot.Brush, light);
+            slot.Brush.Properties.InsertScalar(BlurAmountProperty, blurAmount);
+            slot.Brush.Properties.InsertScalar(DimOpacityProperty, dimOpacity);
         }
         catch
         {
+            // Painted blur must never take down the process.
+        }
+
+        _liveBlurAmount = blurAmount;
+        _liveDimOpacity = dimOpacity;
+        _liveDimIsLight = light;
+    }
+
+    private static void TryInsertColor(CompositionEffectBrush brush, bool light)
+    {
+        try
+        {
+            var (r, g, b) = ShellBackground.DimRgb(light);
+            brush.Properties.InsertColor(DimColorProperty, Color.FromArgb(255, r, g, b));
+        }
+        catch
+        {
+            // Color animatable prop may be unavailable on some effect graphs — opacity still works.
+        }
+    }
+
+    private static void UpdateGlassVisibility(GlassSlot slot, float blurAmount, float dimOpacity)
+    {
+        if (slot.Host is null)
+        {
+            return;
+        }
+
+        var useGlass = UsesCompositionGlass(blurAmount, dimOpacity);
+        if (!useGlass)
+        {
+            slot.Host.Visibility = Visibility.Collapsed;
+            slot.Host.Opacity = 0;
+            return;
+        }
+
+        slot.Host.Visibility = Visibility.Visible;
+        slot.Host.Opacity = 1;
+    }
+
+    private static void ApplyXamlDim(Border? dim, bool light, float dimOpacity)
+    {
+        if (dim is null)
+        {
+            return;
+        }
+
+        if (!ShellBackground.DarknessApplies || dimOpacity <= 0.001f)
+        {
+            dim.Visibility = Visibility.Collapsed;
+            dim.Background = null;
+            dim.Opacity = 0;
+            return;
+        }
+
+        var (dr, dg, db) = ShellBackground.DimRgb(light);
+        dim.Background = new SolidColorBrush(Color.FromArgb(255, dr, dg, db));
+        dim.Opacity = dimOpacity;
+        dim.Visibility = Visibility.Visible;
+    }
+
+    private static void BindImage(GlassSlot slot, bool light)
+    {
+        if (slot.Wallpaper is null)
+        {
+            return;
+        }
+
+        var wallpaper = slot.Wallpaper;
+        var path = ShellBackground.BoundImagePath(light);
+        var epoch = ShellBackground.WallpaperEpoch;
+        if (string.IsNullOrWhiteSpace(path)
+            || (ShellBackground.Preset == ShellPresetKind.Custom && !ShellBackground.ShouldBindWallpaper))
+        {
+            wallpaper.Source = null;
+            wallpaper.Visibility = Visibility.Collapsed;
+            if (!slot.IsPreview)
+            {
+                _loadedPath = null;
+                _loadedEpoch = -1;
+            }
+
+            return;
+        }
+
+        var needsDecode = slot.IsPreview
+            ? wallpaper.Source is null
+                || !string.Equals(_sharedSurfacePath, path, StringComparison.OrdinalIgnoreCase)
+            : _loadedPath != path || _loadedEpoch != epoch;
+
+        if (needsDecode)
+        {
+            wallpaper.Source = null;
             try
             {
-                _blurBrush.Properties.InsertScalar("Blur.BlurAmount", radius);
+                wallpaper.Source = new BitmapImage
+                {
+                    DecodePixelWidth = ShellBackground.WallpaperDecodeWidth,
+                    UriSource = new Uri(path, UriKind.Absolute)
+                };
+                if (!slot.IsPreview)
+                {
+                    _loadedPath = path;
+                    _loadedEpoch = epoch;
+                }
             }
             catch
             {
-                // Painted blur must never take down the process.
+                wallpaper.Source = null;
+                if (!slot.IsPreview)
+                {
+                    _loadedPath = null;
+                    _loadedEpoch = -1;
+                }
             }
         }
+
+        UpdateWallpaperVisibility(slot);
+    }
+
+    private static void UpdateWallpaperVisibility(GlassSlot slot)
+    {
+        if (slot.Wallpaper is null)
+        {
+            return;
+        }
+
+        var light = ResolveLightChrome(slot.Gradient);
+        var blurAmount = ShellBackground.BlurApplies
+            ? ShellBackground.BlurRadius(ShellBackground.Blur)
+            : 0f;
+        var dimOpacity = ShellBackground.DarknessApplies
+            ? (float)ShellBackground.DimOpacity(light, ShellBackground.Darkness)
+            : 0f;
+        var useGlass = UsesCompositionGlass(blurAmount, dimOpacity);
+        var path = ShellBackground.BoundImagePath(light);
+        var hasPath = !string.IsNullOrWhiteSpace(path)
+            && !(ShellBackground.Preset == ShellPresetKind.Custom && !ShellBackground.ShouldBindWallpaper);
+
+        // Composition glass paints the image (blur + darkness). Keep sharp bitmap warm
+        // but hidden so slider ticks never re-decode.
+        slot.Wallpaper.Visibility = hasPath && !useGlass
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private static bool ResolveLightChrome(Border? gradient)
+    {
+        try
+        {
+            if (gradient is not null)
+            {
+                return gradient.ActualTheme == ElementTheme.Light;
+            }
+        }
+        catch
+        {
+            // fall through
+        }
+
+        return false;
     }
 
     private static void Glass_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (sender is Border glass)
+        if (sender is not Border glass)
         {
-            SyncBlurVisualSize(glass);
+            return;
+        }
+
+        var slot = ReferenceEquals(glass, MainSlot.Host) ? MainSlot
+            : ReferenceEquals(glass, PreviewSlot.Host) ? PreviewSlot
+            : null;
+        if (slot is not null)
+        {
+            SyncBlurVisualSize(slot, glass);
         }
     }
 
-    private static void SyncBlurVisualSize(Border glass)
+    private static void SyncBlurVisualSize(GlassSlot slot, Border glass)
     {
-        if (_blurVisual is null)
+        if (slot.Visual is null)
         {
             return;
         }
@@ -349,24 +674,25 @@ public static class ShellBackdrop
             scale = 1.0;
         }
 
-        // Snap host to whole physical pixels, then add kernel pad also ceiling'd
-        // in physical px so 150% DPI cannot leave a sharp strip on top/right.
         var hostW = ShellBackground.BlurHostSizeDip(w, scale);
         var hostH = ShellBackground.BlurHostSizeDip(h, scale);
         var pad = ShellBackground.BlurVisualPadDip(ShellBackground.MaxBlurRadius, scale);
-        _blurVisual.RelativeSizeAdjustment = Vector2.Zero;
-        _blurVisual.Size = new Vector2(hostW + pad * 2f, hostH + pad * 2f);
-        _blurVisual.Offset = new Vector3(-pad, -pad, 0f);
+        slot.Visual.RelativeSizeAdjustment = Vector2.Zero;
+        slot.Visual.Size = new Vector2(hostW + pad * 2f, hostH + pad * 2f);
+        slot.Visual.Offset = new Vector3(-pad, -pad, 0f);
     }
 
-    private static void ClearGlassHost(Border glass)
+    private static void ClearGlassHost(GlassSlot slot, Border glass)
     {
         glass.Visibility = Visibility.Collapsed;
         glass.Background = null;
         glass.Opacity = 0;
-        if (ReferenceEquals(_glassHost, glass))
+        // Detach the SpriteVisual + brush, but keep slot.Host so SyncLiveAmounts
+        // can reattach without losing the Border reference.
+        if (ReferenceEquals(slot.Host, glass))
         {
-            ReleaseGlassBlur();
+            DetachHost(slot);
+            ReleaseSlotResources(slot);
         }
         else
         {
@@ -381,12 +707,52 @@ public static class ShellBackdrop
         }
     }
 
-    private static void DetachGlassHost(Border glass)
+    private static void CollapseSlot(GlassSlot slot, Border glass, Border? dim, Border? tint)
     {
-        glass.SizeChanged -= Glass_SizeChanged;
+        if (slot.Gradient is not null)
+        {
+            slot.Gradient.Visibility = Visibility.Collapsed;
+            slot.Gradient.Background = null;
+        }
+
+        if (slot.Wallpaper is not null)
+        {
+            slot.Wallpaper.Source = null;
+            slot.Wallpaper.Visibility = Visibility.Collapsed;
+        }
+
+        ClearGlassHost(slot, glass);
+        if (dim is not null)
+        {
+            dim.Visibility = Visibility.Collapsed;
+            dim.Background = null;
+            dim.Opacity = 0;
+        }
+
+        if (tint is not null)
+        {
+            tint.Visibility = Visibility.Collapsed;
+            tint.Background = null;
+        }
+
+        if (!slot.IsPreview)
+        {
+            _loadedPath = null;
+            _loadedEpoch = -1;
+        }
+    }
+
+    private static void DetachHost(GlassSlot slot)
+    {
+        if (slot.Host is null)
+        {
+            return;
+        }
+
+        slot.Host.SizeChanged -= Glass_SizeChanged;
         try
         {
-            ElementCompositionPreview.SetElementChildVisual(glass, null);
+            ElementCompositionPreview.SetElementChildVisual(slot.Host, null);
         }
         catch
         {
@@ -394,92 +760,41 @@ public static class ShellBackdrop
         }
     }
 
-    private static void ReleaseGlassBlurResources()
+    private static void ReleaseSlotResources(GlassSlot slot)
     {
-        _blurVisual = null;
-        _blurBrush = null;
-        _blurFactory = null;
-        _blurCompositor = null;
-        _blurSourceBrush = null;
-        ReleaseBlurImageSurface();
-        _appliedBlurAmount = -1f;
-        _blurCacheKey = null;
+        slot.Visual = null;
+        slot.Brush = null;
+        slot.SourceBrush = null;
     }
 
-    private static void ReleaseGlassBlur()
+    private static void ReleaseSlot(GlassSlot slot)
     {
-        if (_glassHost is not null)
-        {
-            DetachGlassHost(_glassHost);
-        }
-
-        _glassHost = null;
-        ReleaseGlassBlurResources();
+        DetachHost(slot);
+        slot.Host = null;
+        ReleaseSlotResources(slot);
     }
 
-    private static void BindImage(Image wallpaper, bool light)
+    private static void ReleaseSharedSurface()
     {
-        var path = ShellBackground.BoundImagePath(light);
-        var epoch = ShellBackground.WallpaperEpoch;
-        var hideSharp = ShellBackground.BlurHidesWallpaper(ShellBackground.Blur);
-        if (string.IsNullOrWhiteSpace(path)
-            || (ShellBackground.Preset == ShellPresetKind.Custom && !ShellBackground.ShouldBindWallpaper))
+        try
         {
-            wallpaper.Source = null;
-            wallpaper.Visibility = Visibility.Collapsed;
-            _loadedPath = null;
-            _loadedEpoch = -1;
-            return;
+            _sharedSurface?.Dispose();
+        }
+        catch
+        {
+            // ignore
         }
 
-        if (_loadedPath != path || _loadedEpoch != epoch)
-        {
-            wallpaper.Source = null;
-            try
-            {
-                wallpaper.Source = new BitmapImage
-                {
-                    DecodePixelWidth = ShellBackground.WallpaperDecodeWidth,
-                    UriSource = new Uri(path, UriKind.Absolute)
-                };
-                // Keep Source warm for blur=0, but never draw sharp under glass when blur > 0.
-                wallpaper.Visibility = hideSharp ? Visibility.Collapsed : Visibility.Visible;
-                _loadedPath = path;
-                _loadedEpoch = epoch;
-            }
-            catch
-            {
-                wallpaper.Source = null;
-                wallpaper.Visibility = Visibility.Collapsed;
-                _loadedPath = null;
-                _loadedEpoch = -1;
-            }
-        }
-        else
-        {
-            wallpaper.Visibility = hideSharp ? Visibility.Collapsed : Visibility.Visible;
-        }
+        _sharedSurface = null;
+        _sharedSurfacePath = null;
     }
 
-    private static void CollapseAll(
-        Border gradient,
-        Image wallpaper,
-        Border glass,
-        Border dim,
-        Border tint)
+    private static void ReleaseFactory()
     {
-        gradient.Visibility = Visibility.Collapsed;
-        gradient.Background = null;
-        wallpaper.Source = null;
-        wallpaper.Visibility = Visibility.Collapsed;
-        ClearGlassHost(glass);
-        dim.Visibility = Visibility.Collapsed;
-        dim.Background = null;
-        tint.Visibility = Visibility.Collapsed;
-        tint.Background = null;
-        _loadedPath = null;
-        _loadedEpoch = -1;
-        ReleaseGlassBlur();
+        _effectFactory = null;
+        _compositor = null;
+        _liveBlurAmount = -1f;
+        _liveDimOpacity = -1f;
     }
 
     private static Brush GradientBrush(string startHex, string midHex, string endHex) =>

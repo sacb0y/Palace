@@ -370,6 +370,46 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
+    public void ApplyLiveAmounts_UpdatesScalarsWithoutChangedOrEpoch()
+    {
+        var changed = 0;
+        var live = 0;
+        void OnChanged(object? _, EventArgs e) => changed++;
+        void OnLive(object? _, EventArgs e) => live++;
+        ShellBackground.Changed += OnChanged;
+        ShellBackground.LiveAmountsChanged += OnLive;
+        try
+        {
+            ShellBackground.Apply(ShellPresetKind.Ribbons, null, 40, 18, false, ShellBackground.DefaultTintHex);
+            var epoch = ShellBackground.WallpaperEpoch;
+            changed = 0;
+
+            ShellBackground.ApplyLiveAmounts(70, 30);
+            Assert.Equal(70, ShellBackground.Darkness, 2);
+            Assert.Equal(30, ShellBackground.Blur, 2);
+            Assert.Equal(epoch, ShellBackground.WallpaperEpoch);
+            Assert.Equal(0, changed);
+            Assert.Equal(1, live);
+
+            ShellBackground.ApplyLiveAmounts(70, 30);
+            Assert.Equal(1, live);
+        }
+        finally
+        {
+            ShellBackground.Changed -= OnChanged;
+            ShellBackground.LiveAmountsChanged -= OnLive;
+            Reset();
+        }
+    }
+
+    [Fact]
+    public void PreviewFrame_IsSixteenByNineNear280()
+    {
+        Assert.Equal(280, ShellBackground.PreviewHeightDip, 3);
+        Assert.Equal(280 * 16.0 / 9.0, ShellBackground.PreviewWidthDip, 3);
+    }
+
+    [Fact]
     public void WallpaperLabel_PrefersChosenNameOverStoredCopy()
     {
         try
