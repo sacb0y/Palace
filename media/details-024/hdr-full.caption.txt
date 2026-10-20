@@ -1,0 +1,1 @@
+﻿c580a544: Color & HDR shows full HDR status line (OpenEXR · tonemap SDR 80 nits) with no truncation.
