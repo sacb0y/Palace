@@ -1,0 +1,1 @@
+﻿After density: Details body scrollable — Histogram/Gamut sections visible (~70% card height).
