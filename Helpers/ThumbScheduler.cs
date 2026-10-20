@@ -192,12 +192,16 @@ public static class ThumbScheduler
 
 /// <summary>
 /// In-flight cap for thumbnail work. Caller completes or cancels keys.
+/// A cancelled key leaves the cap immediately so a slow file cannot block
+/// the next visible tile. Late completion of that key is ignored.
 /// Not thread-safe; the Library page mutates it on the UI thread.
 /// </summary>
 public sealed class ThumbLoadQueue
 {
     private readonly HashSet<string> _inFlight = new(StringComparer.Ordinal);
     private readonly HashSet<string> _satisfied = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _tickets = new(StringComparer.Ordinal);
+    private int _nextTicket;
 
     public ThumbLoadQueue(int cap)
     {
@@ -208,6 +212,12 @@ public sealed class ThumbLoadQueue
 
     public int InFlight => _inFlight.Count;
 
+    public int TicketFor(string key) =>
+        !string.IsNullOrEmpty(key) && _tickets.TryGetValue(key, out var ticket) ? ticket : 0;
+
+    public bool IsCurrent(string key, int ticket) =>
+        ticket != 0 && _tickets.TryGetValue(key, out var current) && current == ticket;
+
     public void MarkSatisfied(string key)
     {
         if (string.IsNullOrEmpty(key))
@@ -217,22 +227,64 @@ public sealed class ThumbLoadQueue
 
         _satisfied.Add(key);
         _inFlight.Remove(key);
+        _tickets.Remove(key);
     }
 
     public void Complete(string key) => MarkSatisfied(key);
+
+    /// <summary>Completes the key only when <paramref name="ticket"/> is still the live slot.</summary>
+    public bool TryComplete(string key, int ticket)
+    {
+        if (!IsCurrent(key, ticket))
+        {
+            return false;
+        }
+
+        MarkSatisfied(key);
+        return true;
+    }
 
     public void Abandon(string key)
     {
         if (!string.IsNullOrEmpty(key))
         {
             _inFlight.Remove(key);
+            _tickets.Remove(key);
         }
+    }
+
+    /// <summary>Drops the slot only when <paramref name="ticket"/> is still live.</summary>
+    public bool TryAbandon(string key, int ticket)
+    {
+        if (!IsCurrent(key, ticket))
+        {
+            return false;
+        }
+
+        _inFlight.Remove(key);
+        _tickets.Remove(key);
+        return true;
     }
 
     public void Reset()
     {
         _inFlight.Clear();
         _satisfied.Clear();
+        _tickets.Clear();
+    }
+
+    /// <summary>
+    /// Mosaic reset: cancel every in-flight key, free their cap slots, and forget
+    /// satisfied ids. Callers cancel the decode tokens for the returned keys.
+    /// A later <see cref="TryComplete"/> with the old ticket does nothing.
+    /// </summary>
+    public IReadOnlyList<string> CancelOutstanding()
+    {
+        var keys = _inFlight.ToList();
+        _inFlight.Clear();
+        _tickets.Clear();
+        _satisfied.Clear();
+        return keys;
     }
 
     public ThumbPlan Plan(IReadOnlyList<ThumbTile> tiles, ThumbRect viewport, double prefetchDip)
@@ -247,9 +299,8 @@ public sealed class ThumbLoadQueue
             }
         }
 
-        // Cancelled keys stay in flight until the decode task returns and the
-        // caller Abandons them. Dropping them here lets Plan start a replacement
-        // while the cancelled WIC work is still running.
+        // A tile that left the band drops its cap slot now. The decode token is
+        // still cancelled; a slow EXR must not keep the 2–4 cap busy.
         var cancel = new List<string>();
         foreach (var key in _inFlight)
         {
@@ -257,6 +308,12 @@ public sealed class ThumbLoadQueue
             {
                 cancel.Add(key);
             }
+        }
+
+        foreach (var key in cancel)
+        {
+            _inFlight.Remove(key);
+            _tickets.Remove(key);
         }
 
         var start = new List<string>();
@@ -272,6 +329,7 @@ public sealed class ThumbLoadQueue
                 continue;
             }
 
+            _tickets[tile.Key] = ++_nextTicket;
             _inFlight.Add(tile.Key);
             start.Add(tile.Key);
         }
@@ -283,8 +341,8 @@ public sealed class ThumbLoadQueue
 public readonly record struct ThumbDecodeOutcome(bool Cancelled, double Milliseconds);
 
 /// <summary>
-/// Runs one thumbnail or preview decode. The queue slot stays occupied until this
-/// task returns, including when the token cancels the decode.
+/// Runs one thumbnail or preview decode. The queue does not keep a cap slot for
+/// this task after the key is abandoned; the token still stops the work.
 /// </summary>
 public static class ThumbDecodeRun
 {

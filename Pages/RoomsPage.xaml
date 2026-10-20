@@ -160,7 +160,7 @@
                                                 CornerRadius="{StaticResource ControlCornerRadius}">
                                                 <Image
                                                     Stretch="UniformToFill"
-                                                    Source="{x:Bind pages:LibraryPage.FileToImage(ThumbPath), Mode=OneWay}" />
+                                                    Source="{x:Bind ThumbImage, Mode=OneWay}" />
                                             </Border>
                                             <StackPanel Grid.Row="1" Spacing="4">
                                                 <TextBlock

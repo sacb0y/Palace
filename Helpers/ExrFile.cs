@@ -97,18 +97,20 @@ public static class ExrFile
         public int LinesPerChunk => Compression == 3 ? 16 : 1;
     }
 
-    public static Frame? TryDecode(ReadOnlySpan<byte> data)
+    public static Frame? TryDecode(ReadOnlySpan<byte> data, CancellationToken cancellationToken = default)
     {
-        var frame = (HasUnknownCompression(data) ? null : ExrNative.TryDecode(data)) ?? TryDecodeInHouse(data);
+        cancellationToken.ThrowIfCancellationRequested();
+        var frame = (HasUnknownCompression(data) ? null : ExrNative.TryDecode(data)) ?? TryDecodeInHouse(data, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         if (frame is not null)
         {
-            ConvertToRec709(frame.Rgba, TryReadChromaticities(data));
+            ConvertToRec709(frame.Rgba, TryReadChromaticities(data), cancellationToken);
         }
 
         return frame;
     }
 
-    public static Frame? TryDecodeInHouse(ReadOnlySpan<byte> data)
+    public static Frame? TryDecodeInHouse(ReadOnlySpan<byte> data, CancellationToken cancellationToken = default)
     {
         if (!TryReadHeader(data, out var h, out var offset) || h.Compression > 3)
         {
@@ -131,12 +133,18 @@ public static class ExrFile
 
             for (var i = 0; i < h.Width * h.Height; i++)
             {
+                if ((i & 8191) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 rgba[i * 4 + 3] = 1f;
             }
 
             var lineBytes = h.Channels.Sum(c => h.Width * SampleSize(c.Type));
             for (var chunk = 0; chunk < chunks; chunk++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var chunkOffset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(offset + chunk * 8, 8)));
                 var y = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(chunkOffset, 4));
                 var size = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(chunkOffset + 4, 4));
@@ -153,6 +161,11 @@ public static class ExrFile
                 var pos = 0;
                 for (var line = 0; line < lines; line++)
                 {
+                    if ((line & 7) == 0)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+
                     var row = row0 + line;
                     for (var ci = 0; ci < h.Channels.Count; ci++)
                     {
@@ -350,7 +363,7 @@ public static class ExrFile
     }
 
     /// <summary>Converts RGBA floats in place to BT.709 when the file declares other primaries.</summary>
-    public static void ConvertToRec709(float[] rgba, float[]? chromaticities)
+    public static void ConvertToRec709(float[] rgba, float[]? chromaticities, CancellationToken cancellationToken = default)
     {
         if (ToRec709Matrix(chromaticities) is not { } m)
         {
@@ -359,6 +372,10 @@ public static class ExrFile
 
         for (var i = 0; i + 3 < rgba.Length; i += 4)
         {
+            if ((i & 4095) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             double r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
             rgba[i] = (float)((m[0] * r) + (m[1] * g) + (m[2] * b));
             rgba[i + 1] = (float)((m[3] * r) + (m[4] * g) + (m[5] * b));

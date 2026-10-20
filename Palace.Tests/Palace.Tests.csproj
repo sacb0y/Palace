@@ -82,6 +82,8 @@
     <Compile Include="..\Helpers\TagSelection.cs" Link="TagSelection.cs" />
     <Compile Include="..\Helpers\TagSiblings.cs" Link="TagSiblings.cs" />
     <Compile Include="..\Helpers\ThumbFileName.cs" Link="ThumbFileName.cs" />
+    <Compile Include="..\Helpers\ThumbFileReplace.cs" Link="ThumbFileReplace.cs" />
+    <Compile Include="..\Helpers\ThumbSlotGate.cs" Link="ThumbSlotGate.cs" />
     <Compile Include="..\Helpers\ThumbMemoryCache.cs" Link="ThumbMemoryCache.cs" />
     <Compile Include="..\Helpers\ThumbScheduler.cs" Link="ThumbScheduler.cs" />
     <Compile Include="..\Helpers\ThumbTimingLog.cs" Link="ThumbTimingLog.cs" />

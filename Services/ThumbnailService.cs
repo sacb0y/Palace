@@ -215,16 +215,14 @@ public sealed class ThumbnailService
                 var tmp = dest + ".ff.jpg";
                 if (await FfmpegPoster.TryExtractAsync(filePath, tmp, MaxSide).ConfigureAwait(false))
                 {
-                    try
-                    {
-                        File.Move(tmp, dest, overwrite: true);
-                        var size = ImageDimensions.TryRead(dest);
-                        return Finish(dest, size?.Width ?? 0, size?.Height ?? 0);
-                    }
-                    catch (IOException)
+                    ThumbFileReplace.TryMoveOverwrite(tmp, dest);
+                    if (!File.Exists(dest))
                     {
                         return null;
                     }
+
+                    var size = ImageDimensions.TryRead(dest);
+                    return Finish(dest, size?.Width ?? 0, size?.Height ?? 0);
                 }
             }
 
@@ -411,19 +409,54 @@ public sealed class ThumbnailService
             ColorManagementMode.ColorManageToSRgb).AsTask(cancellationToken).ConfigureAwait(false);
 
         cancellationToken.ThrowIfCancellationRequested();
-        var folder = await StorageFolder.GetFolderFromPathAsync(_root).AsTask(cancellationToken).ConfigureAwait(false);
-        var outFile = await folder.CreateFileAsync(Path.GetFileName(dest), CreationCollisionOption.ReplaceExisting).AsTask(cancellationToken).ConfigureAwait(false);
-        using var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite).AsTask(cancellationToken).ConfigureAwait(false);
-        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream).AsTask(cancellationToken).ConfigureAwait(false);
-        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, tw, th, 96, 96, pixels.DetachPixelData());
-        await encoder.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+        var part = dest + ".part";
+        try
+        {
+            var folder = await StorageFolder.GetFolderFromPathAsync(_root).AsTask(cancellationToken).ConfigureAwait(false);
+            var outFile = await folder.CreateFileAsync(Path.GetFileName(part), CreationCollisionOption.ReplaceExisting).AsTask(cancellationToken).ConfigureAwait(false);
+            using var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite).AsTask(cancellationToken).ConfigureAwait(false);
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream).AsTask(cancellationToken).ConfigureAwait(false);
+            encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied, tw, th, 96, 96, pixels.DetachPixelData());
+            await encoder.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            ThumbFileReplace.TryDelete(part);
+            throw;
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            ThumbFileReplace.TryDelete(part);
+            return ExistingThumb(dest, (int)width, (int)height);
+        }
+
+        return CommitThumbFile(part, dest, (int)tw, (int)th, (int)width, (int)height);
+    }
+
+    /// <summary>
+    /// Move a finished JPEG onto <paramref name="dest"/>. If another decode has
+    /// <paramref name="dest"/> open, keep that file and do not throw.
+    /// </summary>
+    private ThumbnailInfo? CommitThumbFile(string part, string dest, int encodedWidth, int encodedHeight, int sourceWidth, int sourceHeight)
+    {
+        ThumbFileReplace.TryMoveOverwrite(part, dest);
+        return ExistingThumb(dest, encodedWidth > 0 ? encodedWidth : sourceWidth, encodedHeight > 0 ? encodedHeight : sourceHeight);
+    }
+
+    private ThumbnailInfo? ExistingThumb(string dest, int width, int height)
+    {
+        if (!File.Exists(dest))
+        {
+            return null;
+        }
+
         ThumbStatus.Write(dest, isPlaceholder: false);
         TouchLastAccess(dest);
         EnforceCacheBudget();
         var written = ImageDimensions.TryRead(dest);
         return written is { } size
             ? new ThumbnailInfo(dest, size.Width, size.Height)
-            : new ThumbnailInfo(dest, (int)width, (int)height);
+            : new ThumbnailInfo(dest, width, height);
     }
 
     /// <summary>Side of the cached full-view JPEG for stills Windows cannot show.</summary>
@@ -512,7 +545,7 @@ public sealed class ThumbnailService
             if (StillDecode.HandlesPath(filePath))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var large = await Task.Run(() => StillDecode.TryDecodeFile(filePath, LargePreviewMaxSide), cancellationToken).ConfigureAwait(false);
+                var large = await Task.Run(() => StillDecode.TryDecodeFile(filePath, LargePreviewMaxSide, cancellationToken), cancellationToken).ConfigureAwait(false);
                 if (large is null)
                 {
                     var ph = StillDecode.Placeholder();
@@ -541,7 +574,7 @@ public sealed class ThumbnailService
                 var (tw, th) = StillDecode.Fit(large.Width, large.Height, MaxSide);
                 var small = tw == large.Width && th == large.Height
                     ? large.Bgra!
-                    : StillDecode.BoxScaleBgra(large.Bgra!, large.Width, large.Height, tw, th);
+                    : StillDecode.BoxScaleBgra(large.Bgra!, large.Width, large.Height, tw, th, cancellationToken);
                 await EncodeBgraJpegAsync(small, tw, th, dest).ConfigureAwait(false);
                 return Finish(dest, tw, th);
             }
@@ -555,7 +588,7 @@ public sealed class ThumbnailService
                     var lgJ = await Task.Run(() => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide)).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(lgJ.Bgra!, lgJ.Width, lgJ.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
                     var (jw, jh) = StillDecode.Fit(lgJ.Width, lgJ.Height, MaxSide);
-                    var smallJ = jw == lgJ.Width && jh == lgJ.Height ? lgJ.Bgra! : StillDecode.BoxScaleBgra(lgJ.Bgra!, lgJ.Width, lgJ.Height, jw, jh);
+                    var smallJ = jw == lgJ.Width && jh == lgJ.Height ? lgJ.Bgra! : StillDecode.BoxScaleBgra(lgJ.Bgra!, lgJ.Width, lgJ.Height, jw, jh, cancellationToken);
                     await EncodeBgraJpegAsync(smallJ, jw, jh, dest).ConfigureAwait(false);
                     return Finish(dest, jw, jh);
                 }
@@ -658,12 +691,21 @@ public sealed class ThumbnailService
         }
 
         Directory.CreateDirectory(_root);
-        var folder = await StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(dest)!);
-        var outFile = await folder.CreateFileAsync(Path.GetFileName(dest), CreationCollisionOption.ReplaceExisting);
-        using var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite);
-        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
-        encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, (uint)width, (uint)height, 96, 96, flat);
-        await encoder.FlushAsync();
+        var part = dest + ".part";
+        try
+        {
+            var folder = await StorageFolder.GetFolderFromPathAsync(Path.GetDirectoryName(dest)!);
+            var outFile = await folder.CreateFileAsync(Path.GetFileName(part), CreationCollisionOption.ReplaceExisting);
+            using var outStream = await outFile.OpenAsync(FileAccessMode.ReadWrite);
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.JpegEncoderId, outStream);
+            encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Ignore, (uint)width, (uint)height, 96, 96, flat);
+            await encoder.FlushAsync();
+            ThumbFileReplace.TryMoveOverwrite(part, dest);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            ThumbFileReplace.TryDelete(part);
+        }
     }
 
     private ThumbnailInfo? ReadCached(string hash, string? suffix = null)

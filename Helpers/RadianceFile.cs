@@ -57,7 +57,7 @@ public static class RadianceFile
     /// so a 16384x8192 panorama never holds its 2 GB native float frame.
     /// Info stats (CIE Y max / avg / min, scRGB peak) are always native.
     /// </summary>
-    public static RadianceFrame? TryDecode(Stream stream, int destWidth = 0, int destHeight = 0)
+    public static RadianceFrame? TryDecode(Stream stream, int destWidth = 0, int destHeight = 0, CancellationToken cancellationToken = default)
     {
         if (!TryReadHeader(stream, out var width, out var height)
             || width <= 0 || height <= 0
@@ -103,6 +103,11 @@ public static class RadianceFile
             var rowEnd = scale ? Math.Max(1, (int)((long)height / outH)) : 1;
             for (var y = 0; y < height; y++)
             {
+                if ((y & 7) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 if (!ReadScanline(stream, line, width))
                 {
                     return null;
@@ -163,6 +168,10 @@ public static class RadianceFile
 
                 rowEnd = Math.Max(y + 2, (int)((long)(dy + 1) * height / outH));
             }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {

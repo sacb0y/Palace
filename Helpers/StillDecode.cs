@@ -17,8 +17,9 @@ public static class StillDecode
     /// <summary>Above this, a PSD/PSB only yields its embedded thumbnail (composite not loaded).</summary>
     public const long PsdCompositeMaxBytes = 768L * 1024 * 1024;
 
-    public static Result? TryDecodeFile(string path, int maxSide)
+    public static Result? TryDecodeFile(string path, int maxSide, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         byte[] data;
         try
         {
@@ -37,7 +38,7 @@ public static class StillDecode
                 // Stream + box-filter to the thumb size: a 16384x8192 pano
                 // never loads its 344 MB file or 2 GB float frame at once.
                 using var hs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 16);
-                return TryDecodeRadiance(hs, maxSide);
+                return TryDecodeRadiance(hs, maxSide, cancellationToken);
             }
 
             data = File.ReadAllBytes(path);
@@ -47,11 +48,12 @@ public static class StillDecode
             return null;
         }
 
-        return TryDecode(data, PathSafe.Extension(path), maxSide);
+        return TryDecode(data, PathSafe.Extension(path), maxSide, cancellationToken);
     }
 
-    public static Result? TryDecode(byte[] data, string ext, int maxSide)
+    public static Result? TryDecode(byte[] data, string ext, int maxSide, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (PathSafe.IsClip(ext))
         {
             var png = ClipFile.TryExtractPreview(data);
@@ -69,7 +71,7 @@ public static class StillDecode
             }
 
             var (pw, ph) = Fit(psd.Width, psd.Height, maxSide);
-            var ppx = pw == psd.Width && ph == psd.Height ? psd.Bgra : BoxScaleBgra(psd.Bgra, psd.Width, psd.Height, pw, ph);
+            var ppx = pw == psd.Width && ph == psd.Height ? psd.Bgra : BoxScaleBgra(psd.Bgra, psd.Width, psd.Height, pw, ph, cancellationToken);
             return new Result(ppx, pw, ph, null, false);
         }
 
@@ -82,7 +84,7 @@ public static class StillDecode
             }
 
             var (w, h) = Fit(tga.Width, tga.Height, maxSide);
-            var px = w == tga.Width && h == tga.Height ? tga.Bgra : BoxScaleBgra(tga.Bgra, tga.Width, tga.Height, w, h);
+            var px = w == tga.Width && h == tga.Height ? tga.Bgra : BoxScaleBgra(tga.Bgra, tga.Width, tga.Height, w, h, cancellationToken);
             return new Result(px, w, h, null, false);
         }
 
@@ -90,7 +92,7 @@ public static class StillDecode
         int sw = 0, sh = 0;
         if (PathSafe.IsExr(ext))
         {
-            var exr = ExrFile.TryDecode(data);
+            var exr = ExrFile.TryDecode(data, cancellationToken);
             if (exr is not null)
             {
                 (rgba, sw, sh) = (exr.Rgba, exr.Width, exr.Height);
@@ -99,15 +101,16 @@ public static class StillDecode
         else if (PathSafe.IsRadiance(ext))
         {
             using var ms = new MemoryStream(data, writable: false);
-            return TryDecodeRadiance(ms, maxSide);
+            return TryDecodeRadiance(ms, maxSide, cancellationToken);
         }
 
-        return rgba is null ? null : FromScrgb(rgba, sw, sh, maxSide);
+        return rgba is null ? null : FromScrgb(rgba, sw, sh, maxSide, cancellationToken);
     }
 
     /// <summary>Radiance at thumb size: streamed box filter, then tone map.</summary>
-    private static Result? TryDecodeRadiance(Stream stream, int maxSide)
+    private static Result? TryDecodeRadiance(Stream stream, int maxSide, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var size = RadianceFile.TryReadSize(stream);
         if (size is null)
         {
@@ -116,10 +119,10 @@ public static class StillDecode
 
         var (w, h) = Fit(size.Value.Width, size.Value.Height, maxSide);
         stream.Position = 0;
-        var hdr = RadianceFile.TryDecode(stream, w, h);
+        var hdr = RadianceFile.TryDecode(stream, w, h, cancellationToken);
         return hdr is null
             ? null
-            : new Result(ToneMap.ScrgbToBgra8(hdr.ScrgbRgba, hdr.Width, hdr.Height), hdr.Width, hdr.Height, null, true);
+            : new Result(ToneMap.ScrgbToBgra8(hdr.ScrgbRgba, hdr.Width, hdr.Height, cancellationToken), hdr.Width, hdr.Height, null, true);
     }
 
     private static bool IsUniform(byte[] bgra)
@@ -137,11 +140,12 @@ public static class StillDecode
     }
 
     /// <summary>Scale linear scRGB to fit <paramref name="maxSide"/>, then tone map to BGRA8.</summary>
-    public static Result FromScrgb(float[] rgba, int width, int height, int maxSide)
+    public static Result FromScrgb(float[] rgba, int width, int height, int maxSide, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var (w, h) = Fit(width, height, maxSide);
-        var scaled = w == width && h == height ? rgba : HdrPixels.BoxScaleScrgb(rgba, width, height, w, h);
-        return new Result(ToneMap.ScrgbToBgra8(scaled, w, h), w, h, null, true);
+        var scaled = w == width && h == height ? rgba : HdrPixels.BoxScaleScrgb(rgba, width, height, w, h, cancellationToken);
+        return new Result(ToneMap.ScrgbToBgra8(scaled, w, h, cancellationToken), w, h, null, true);
     }
 
     public static (int Width, int Height) Fit(int width, int height, int maxSide)
@@ -155,11 +159,15 @@ public static class StillDecode
         return (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
     }
 
-    public static byte[] BoxScaleBgra(byte[] src, int sw, int sh, int dw, int dh)
+    public static byte[] BoxScaleBgra(byte[] src, int sw, int sh, int dw, int dh, CancellationToken cancellationToken = default)
     {
         var dst = new byte[dw * dh * 4];
         for (var y = 0; y < dh; y++)
         {
+            if ((y & 7) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             var y0 = y * sh / dh;
             var y1 = Math.Max(y0 + 1, (y + 1) * sh / dh);
             for (var x = 0; x < dw; x++)

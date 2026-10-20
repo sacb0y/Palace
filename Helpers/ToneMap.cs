@@ -12,7 +12,7 @@ public static class ToneMap
     public const float MiddleGrey = 0.18f;
 
     /// <summary>Returns BGRA8 (straight alpha) for an RGBA float buffer.</summary>
-    public static byte[] ScrgbToBgra8(ReadOnlySpan<float> rgba, int width, int height)
+    public static byte[] ScrgbToBgra8(ReadOnlySpan<float> rgba, int width, int height, CancellationToken cancellationToken = default)
     {
         var count = checked(width * height);
         if (rgba.Length < count * 4)
@@ -20,10 +20,14 @@ public static class ToneMap
             throw new ArgumentException("Pixel buffer is smaller than width × height × 4.", nameof(rgba));
         }
 
-        var (exposure, white) = Analyze(rgba, count);
+        var (exposure, white) = Analyze(rgba, count, cancellationToken);
         var output = new byte[count * 4];
         for (var i = 0; i < count; i++)
         {
+            if ((i & 1023) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             var r = Sanitize(rgba[i * 4]) * exposure;
             var g = Sanitize(rgba[i * 4 + 1]) * exposure;
             var b = Sanitize(rgba[i * 4 + 2]) * exposure;
@@ -63,13 +67,17 @@ public static class ToneMap
     /// Exposure scale and white point (in scaled units). Content whose
     /// luminance stays within SDR range gets (1, 1): no tone mapping.
     /// </summary>
-    public static (float Exposure, float White) Analyze(ReadOnlySpan<float> rgba, int count)
+    public static (float Exposure, float White) Analyze(ReadOnlySpan<float> rgba, int count, CancellationToken cancellationToken = default)
     {
         var step = Math.Max(1, count / 65536);
         var samples = new List<float>(Math.Min(count, 65536) + 1);
         var logSum = 0.0;
         for (var i = 0; i < count; i += step)
         {
+            if ((samples.Count & 1023) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
             var l = Luminance(Sanitize(rgba[i * 4]), Sanitize(rgba[i * 4 + 1]), Sanitize(rgba[i * 4 + 2]));
             samples.Add(l);
             logSum += Math.Log(1e-4 + l);

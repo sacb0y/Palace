@@ -251,8 +251,38 @@ public sealed partial class LibraryPage : Page
         return bitmap;
     }
 
+    /// <summary>
+    /// Decode <paramref name="path"/> off the UI thread into the box, then build the
+    /// bitmap on the dispatcher. Tags and Rooms use this instead of <see cref="FileToImage"/>.
+    /// </summary>
+    public static async Task<ImageSource?> DecodeCappedSourceAsync(
+        string? path,
+        int boxWidth,
+        int boxHeight,
+        CancellationToken cancellationToken)
+    {
+        var shown = PathForPixelDecode(path);
+        if (string.IsNullOrEmpty(shown) || AppServices.Thumbnails is null)
+        {
+            return null;
+        }
+
+        var pixels = await AppServices.Thumbnails
+            .DecodeCappedBgraAsync(shown, boxWidth, boxHeight, cancellationToken)
+            .ConfigureAwait(false);
+        if (pixels is null)
+        {
+            return null;
+        }
+
+        var frame = pixels.Value;
+        ImageSource? image = null;
+        await UiDispatch.RunAsync(() => image = BgraBitmap(frame.Bgra, frame.Width, frame.Height));
+        return image;
+    }
+
     /// <summary>EXR / HDR / TGA / Clip / PSD / JXL display the cached JPEG, not the original.</summary>
-    private static string? PathForPixelDecode(string? path)
+    public static string? PathForPixelDecode(string? path)
     {
         if (string.IsNullOrEmpty(path) || GalleryMedia.IsRemoteUri(path))
         {
@@ -1137,13 +1167,15 @@ public sealed partial class LibraryPage : Page
         _mosaicGeneration++;
         _thumbsMayUpgrade = false;
         _thumbSkipped.Clear();
-        foreach (var cts in _thumbJobs.Values)
+        foreach (var id in _thumbQueue.CancelOutstanding())
         {
-            cts.Cancel();
+            if (_thumbJobs.TryGetValue(id, out var cts))
+            {
+                cts.Cancel();
+            }
         }
 
         _thumbJobs.Clear();
-        _thumbQueue.Reset();
         _realizedTiles.Clear();
         InvalidateMosaicLayout();
     }
@@ -1395,6 +1427,8 @@ public sealed partial class LibraryPage : Page
     {
         if (_thumbJobs.ContainsKey(item.Id))
         {
+            // The previous decode is still winding down and no longer holds a slot.
+            _thumbQueue.TryAbandon(item.Id, _thumbQueue.TicketFor(item.Id));
             return;
         }
 
@@ -1422,6 +1456,7 @@ public sealed partial class LibraryPage : Page
         }
 
         item.ThumbLoadStarted = true;
+        var ticket = _thumbQueue.TicketFor(item.Id);
         var cts = new CancellationTokenSource();
         _thumbJobs[item.Id] = cts;
         var filePath = item.Path;
@@ -1430,7 +1465,7 @@ public sealed partial class LibraryPage : Page
         var orphan = item.IsOrphan;
         var online = item.IsOnlineOnly || CloudFile.IsOnlineOnly(item.Path);
         var thumbPath = item.ThumbPath;
-        var job = LoadThumbJobAsync(item, cts, filePath, hash, kind, orphan, online, thumbPath, decodeWidth, decodeHeight);
+        var job = LoadThumbJobAsync(item, cts, ticket, filePath, hash, kind, orphan, online, thumbPath, decodeWidth, decodeHeight);
         _ = job.ContinueWith(
             static (_, state) => ((CancellationTokenSource)state!).Dispose(),
             cts,
@@ -1442,6 +1477,7 @@ public sealed partial class LibraryPage : Page
     private async Task LoadThumbJobAsync(
         AssetItem item,
         CancellationTokenSource cts,
+        int ticket,
         string filePath,
         string? hash,
         AssetKind kind,
@@ -1511,7 +1547,7 @@ public sealed partial class LibraryPage : Page
                     if (item.ThumbImage is not null && OwnsThumbJob(item.Id, cts))
                     {
                         _thumbJobs.Remove(item.Id);
-                        _thumbQueue.Complete(item.Id);
+                        _thumbQueue.TryComplete(item.Id, ticket);
                     }
 
                     return;
@@ -1529,7 +1565,7 @@ public sealed partial class LibraryPage : Page
                 item.ThumbImage = bitmap;
                 item.ThumbLoadStarted = true;
                 _thumbJobs.Remove(item.Id);
-                _thumbQueue.Complete(item.Id);
+                _thumbQueue.TryComplete(item.Id, ticket);
                 ThumbTimingLog.Write(ThumbTimingLog.TileLine(
                     "decode",
                     disk,
@@ -1564,7 +1600,7 @@ public sealed partial class LibraryPage : Page
                 _thumbJobs.Remove(item.Id);
                 if (item.ThumbImage is null)
                 {
-                    _thumbQueue.Abandon(item.Id);
+                    _thumbQueue.TryAbandon(item.Id, ticket);
                     item.ThumbLoadStarted = false;
                     if (outcome.Cancelled)
                     {
