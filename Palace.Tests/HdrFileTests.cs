@@ -23,6 +23,10 @@ public sealed class HdrFileTests
         Assert.True(probe.CanPresentHdr);
         Assert.True(probe.IsPq);
         Assert.Equal(9, probe.CicpPrimaries);
+        Assert.Equal(0, probe.CicpMatrix);
+        Assert.True(probe.FullRange);
+        Assert.Equal(8, probe.BitDepth);
+        Assert.True(PngFile.ShouldDecodeManaged(probe));
     }
 
     [Fact]
@@ -32,6 +36,19 @@ public sealed class HdrFileTests
         var probe = HdrFile.Probe(png);
         Assert.Equal(HdrKind.HdrPng, probe.Kind);
         Assert.True(probe.IsHlg);
+        Assert.True(probe.CanPresentHdr);
+    }
+
+    [Fact]
+    public void Probe_PqPng_16Bit_ReadsIhdrBitDepth()
+    {
+        var png = PngWithIhdr(2, 2, bitDepth: 16, colorType: 2, ("cICP", [9, 16, 0, 1]));
+        var probe = HdrFile.Probe(png);
+        Assert.Equal(HdrKind.HdrPng, probe.Kind);
+        Assert.Equal(16, probe.BitDepth);
+        Assert.True(probe.CanPresentHdr);
+        Assert.Equal("PNG · PQ", GalleryDetails.FormatLabel("LiraProfileHDR.png", probe));
+        Assert.Equal("BT.2020 · PQ", GalleryPresent.ColorLabel(probe));
     }
 
     [Fact]
@@ -41,6 +58,11 @@ public sealed class HdrFileTests
         var probe = HdrFile.Probe(png);
         Assert.Equal(HdrKind.HdrPng, probe.Kind);
         Assert.Equal(1, probe.MaxCllNits);
+        // Mastering without PQ/HLG: badge/Details HDR, but no scRGB present.
+        Assert.True(probe.IsHdr);
+        Assert.False(probe.CanPresentHdr);
+        Assert.False(PngFile.ShouldDecodeManaged(probe));
+        Assert.Equal("PNG · HDR", GalleryDetails.FormatLabel("x.png", probe));
     }
 
     [Fact]
@@ -807,11 +829,30 @@ public sealed class HdrFileTests
         Assert.Equal(0xBC00, GalleryPresent.FloatToHalf(-1f));
     }
 
-    private static byte[] PngWithChunks(params (string Type, byte[] Payload)[] chunks)
+    private static byte[] PngWithChunks(params (string Type, byte[] Payload)[] chunks) =>
+        PngWithIhdr(1, 1, bitDepth: 8, colorType: 2, chunks);
+
+    private static byte[] PngWithIhdr(
+        int width,
+        int height,
+        int bitDepth,
+        int colorType,
+        params (string Type, byte[] Payload)[] chunks)
     {
         using var ms = new MemoryStream();
         ms.Write([0x89, (byte)'P', (byte)'N', (byte)'G', 0x0D, 0x0A, 0x1A, 0x0A]);
-        WriteChunk(ms, "IHDR", [0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0]);
+        var ihdr = new byte[13];
+        ihdr[0] = (byte)(width >> 24);
+        ihdr[1] = (byte)(width >> 16);
+        ihdr[2] = (byte)(width >> 8);
+        ihdr[3] = (byte)width;
+        ihdr[4] = (byte)(height >> 24);
+        ihdr[5] = (byte)(height >> 16);
+        ihdr[6] = (byte)(height >> 8);
+        ihdr[7] = (byte)height;
+        ihdr[8] = (byte)bitDepth;
+        ihdr[9] = (byte)colorType;
+        WriteChunk(ms, "IHDR", ihdr);
         foreach (var (type, payload) in chunks)
         {
             WriteChunk(ms, type, payload);

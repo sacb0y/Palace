@@ -300,7 +300,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                 (int)desc.BitsPerColor,
                                 windowsHdr,
                                 DisplayIsHdr,
-                                DisplayHdr.LastQuery.Summary);
+                                DisplayHdr.LastQuery.Summary,
+                                GalleryPresent.ScrgbSwapChainFormat,
+                                GalleryPresent.ScrgbColorSpace);
                             DisplayHdr.WriteDebug(DisplayProbeText);
                             if (DisplayIsHdr)
                             {
@@ -353,6 +355,14 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             reason,
             assume,
             DisplayHdr.LastQuery.Summary);
+        if (assume)
+        {
+            DisplayProbeText +=
+                " · swap=" + GalleryPresent.FormatSwapChainLabel(
+                    GalleryPresent.ScrgbSwapChainFormat,
+                    GalleryPresent.ScrgbColorSpace);
+        }
+
         DisplayHdr.WriteDebug(DisplayProbeText);
     }
 
