@@ -1,0 +1,1 @@
+﻿c580a544: Details open — single Gamut subtitle; no EXR/File meta line under Histogram.

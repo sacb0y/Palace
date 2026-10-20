@@ -1,0 +1,1 @@
+﻿c580a544: GalleryWindow Previous is clear of the Gamut · CIE 1931 xy header.
