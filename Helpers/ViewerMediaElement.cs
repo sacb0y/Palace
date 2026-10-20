@@ -24,9 +24,20 @@ public static class ViewerMediaElement
             return;
         }
 
+        // IsFullWindowButtonVisible is not on every WinAppSDK MediaTransportControls
+        // contract — hide via reflection when present; always reject IsFullWindow.
         if (element.TransportControls is MediaTransportControls transport)
         {
-            transport.IsFullWindowButtonVisible = false;
+            try
+            {
+                transport.GetType()
+                    .GetProperty("IsFullWindowButtonVisible")
+                    ?.SetValue(transport, false);
+            }
+            catch
+            {
+                // Older SDK — IsFullWindow hook below is enough.
+            }
         }
 
         if (element.IsFullWindow)

@@ -50,9 +50,7 @@
                     AutomationProperties.AutomationId="MpeGalleryWindow"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}">
                     <MediaPlayerElement.TransportControls>
-                        <MediaTransportControls
-                            IsFullWindowButtonVisible="False"
-                            IsVolumeButtonVisible="False" />
+                        <MediaTransportControls IsVolumeButtonVisible="False" />
                     </MediaPlayerElement.TransportControls>
                 </MediaPlayerElement>
                 <controls:VolumeControl

@@ -1468,9 +1468,7 @@
                         AutomationProperties.AutomationId="MpeGalleryOverlay"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
                         <MediaPlayerElement.TransportControls>
-                            <MediaTransportControls
-                                IsFullWindowButtonVisible="False"
-                                IsVolumeButtonVisible="False" />
+                            <MediaTransportControls IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
                     <controls:VolumeControl
