@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml.Media;
@@ -70,6 +71,24 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool AnimationsEnabled { get; set; } = AppearanceSettings.DefaultAnimations;
+
+    [ObservableProperty]
+    public partial bool WatchForChanges { get; set; } = LibrarySettings.DefaultWatchForChanges;
+
+    [ObservableProperty]
+    public partial bool IndexImages { get; set; } = LibrarySettings.DefaultIndexImages;
+
+    [ObservableProperty]
+    public partial bool IndexVideo { get; set; } = LibrarySettings.DefaultIndexVideo;
+
+    [ObservableProperty]
+    public partial bool GenerateThumbsOnScan { get; set; } = LibrarySettings.DefaultGenerateThumbsOnScan;
+
+    public string ImagesFormatsCaption { get; } = LibrarySettings.ImagesFormatsCaption;
+
+    public string VideoFormatsCaption { get; } = LibrarySettings.VideoFormatsCaption;
+
+    public string FormatsPlaceholderCaption { get; } = LibrarySettings.FormatsPlaceholderCaption;
 
     [ObservableProperty]
     public partial SourceFolderItem? SelectedSource { get; set; }
@@ -238,11 +257,15 @@ public partial class SettingsViewModel : ObservableObject
             Sources.Add(item);
         }
 
+        SelectedSource = Sources.FirstOrDefault(s => s.Id == SelectedSource?.Id) ?? Sources.FirstOrDefault();
+        SyncSourceSelection();
+
         var stored = ApplicationData.Current.LocalSettings.Values["Theme"] as string;
         SelectedTheme = stored is "Light" or "Dark" or "System" ? stored : "System";
         ApplyTheme(SelectedTheme);
         LoadAccent();
         LoadAppearanceChrome();
+        LoadLibraryChrome();
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
@@ -400,6 +423,25 @@ public partial class SettingsViewModel : ObservableObject
         AnimationsEnabled = AppearanceSettings.ParseAnimations(values[AppearanceSettings.AnimationsKey]);
     }
 
+    private void LoadLibraryChrome()
+    {
+        AppServices.LoadLibrarySettings();
+        WatchForChanges = LibrarySettings.WatchForChanges;
+        IndexImages = LibrarySettings.IndexImages;
+        IndexVideo = LibrarySettings.IndexVideo;
+        GenerateThumbsOnScan = LibrarySettings.GenerateThumbsOnScan;
+    }
+
+    private void PersistLibraryChrome()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        values[LibrarySettings.WatchForChangesKey] = WatchForChanges;
+        values[LibrarySettings.IndexImagesKey] = IndexImages;
+        values[LibrarySettings.IndexVideoKey] = IndexVideo;
+        values[LibrarySettings.GenerateThumbsOnScanKey] = GenerateThumbsOnScan;
+        LibrarySettings.Apply(WatchForChanges, IndexImages, IndexVideo, GenerateThumbsOnScan);
+    }
+
     partial void OnSelectedDensityChanged(string value)
     {
         if (_load.IsLoading)
@@ -421,6 +463,69 @@ public partial class SettingsViewModel : ObservableObject
 
         ApplicationData.Current.LocalSettings.Values[AppearanceSettings.AnimationsKey] = value;
         StatusText = value ? "Animations on." : "Animations off.";
+    }
+
+    partial void OnWatchForChangesChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistLibraryChrome();
+        _ = ErrorReporter.RunAsync("Watch folders", Notify, async () =>
+        {
+            await _watchers.RestartAsync();
+            StatusText = value
+                ? "Watching folders for changes."
+                : "Folder watching off — scan manually when needed.";
+        });
+    }
+
+    partial void OnIndexImagesChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistLibraryChrome();
+        StatusText = value ? "Images will be indexed." : "Images skipped on scan.";
+    }
+
+    partial void OnIndexVideoChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistLibraryChrome();
+        StatusText = value ? "Video will be indexed." : "Video skipped on scan.";
+    }
+
+    partial void OnGenerateThumbsOnScanChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistLibraryChrome();
+        StatusText = value
+            ? "Thumbnails build during scan."
+            : "Scan skips thumbnails — mosaic builds them on demand.";
+    }
+
+    partial void OnSelectedSourceChanged(SourceFolderItem? value) => SyncSourceSelection();
+
+    private void SyncSourceSelection()
+    {
+        foreach (var source in Sources)
+        {
+            source.IsSelected = SelectedSource is not null
+                && string.Equals(source.Id, SelectedSource.Id, StringComparison.Ordinal);
+        }
     }
 
     private void LoadPeakOverride()
@@ -1753,39 +1858,92 @@ public partial class SettingsViewModel : ObservableObject
     private Task AddSourceAsync() =>
         ErrorReporter.RunAsync("Add source", Notify, async () =>
         {
+            // Production uses the folder picker; UI tests seed SourceFolder rows
+            // via CatalogService (never the GUI picker).
             await AppServices.Library.AddFolderCommand.ExecuteAsync(null);
             await LoadAsync();
         });
 
     [RelayCommand]
-    private Task RemoveSourceAsync() =>
+    private void SelectSource(SourceFolderItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        SelectedSource = item;
+        StatusText = "Selected " + item.Path;
+    }
+
+    [RelayCommand]
+    private Task OpenSourceAsync(SourceFolderItem? item) =>
+        ErrorReporter.RunAsync("Open folder", Notify, () =>
+        {
+            if (item is null)
+            {
+                return Task.CompletedTask;
+            }
+
+            SelectedSource = item;
+            if (item.Kind != nameof(SourceKind.Local) || !Directory.Exists(item.Path))
+            {
+                StatusText = item.Kind == nameof(SourceKind.Local)
+                    ? "Folder is missing on disk."
+                    : "Open in Explorer is for local folders.";
+                return Task.CompletedTask;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{item.Path}\"",
+                UseShellExecute = true
+            });
+            StatusText = "Opened " + item.Path;
+            return Task.CompletedTask;
+        });
+
+    [RelayCommand]
+    private Task RemoveSourceAsync(SourceFolderItem? item) =>
         ErrorReporter.RunAsync("Remove source", Notify, async () =>
         {
-            if (SelectedSource is null)
+            item ??= SelectedSource;
+            if (item is null)
             {
                 return;
             }
 
-            var assetCount = await _catalog.CountAssetsForSourceAsync(SelectedSource.Id);
+            SelectedSource = item;
+            var assetCount = await _catalog.CountAssetsForSourceAsync(item.Id);
             if (!await SettingsConfirm.ConfirmedAsync(
                     RequestConfirm,
                     SettingsConfirm.RemoveFolderTitle,
-                    SettingsConfirm.RemoveFolderBody(SelectedSource.Path, assetCount),
+                    SettingsConfirm.RemoveFolderBody(item.Path, assetCount),
                     SettingsConfirm.RemoveFolderPrimary))
             {
                 return;
             }
 
-            var folder = await _catalog.GetSourceFolderAsync(SelectedSource.Id);
+            var folder = await _catalog.GetSourceFolderAsync(item.Id);
             if (folder is not null)
             {
                 _access.Forget(folder.AccessToken);
             }
 
-            await _catalog.DeleteSourceFolderAsync(SelectedSource.Id);
+            await _catalog.DeleteSourceFolderAsync(item.Id);
             await _watchers.RestartAsync();
             await LoadAsync();
             await AppServices.Library.LoadAsync();
+        });
+
+    [RelayCommand]
+    private Task ScanLibraryAsync() =>
+        ErrorReporter.RunAsync("Scan library", Notify, async () =>
+        {
+            StatusText = "Scanning…";
+            await AppServices.Library.ScanCommand.ExecuteAsync(null);
+            StatusText = AppServices.Library.StatusText;
         });
 
     [RelayCommand]

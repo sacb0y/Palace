@@ -38,7 +38,7 @@ This file is the always-loaded core. Topic rules live in `.cursor/rules/*.mdc` a
 - Cleanup: remove named **test** identities only. If the target PC is unreachable, skip and report — never substitute another PC.
 - HDR output verification: PC with the HDR display (**FenrirDesktop**).
 - Every UI test report includes captioned screenshots. Host PR screenshots on the media branch — never commit PNGs on the product branch.
-- Push from temp clones only when that workflow applies.
+- Push from temp clones only.
 - Unit / helper changes: `dotnet test .\Palace.Tests\Palace.Tests.csproj`. Linux Cloud Agents: tests only (no WinUI). Live UI needs a self-hosted Windows worker.
 
 ## Process and design

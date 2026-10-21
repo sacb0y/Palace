@@ -44,6 +44,11 @@ public sealed class WatcherService : IDisposable
     public async Task RestartAsync()
     {
         DisposeWatchers();
+        if (!LibrarySettings.WatchForChanges)
+        {
+            return;
+        }
+
         foreach (var source in await _catalog.GetSourceFoldersAsync())
         {
             Start(source);
@@ -52,7 +57,9 @@ public sealed class WatcherService : IDisposable
 
     public void Start(SourceFolder source)
     {
-        if (source.Kind != SourceKind.Local || !Directory.Exists(source.Path))
+        if (!LibrarySettings.WatchForChanges
+            || source.Kind != SourceKind.Local
+            || !Directory.Exists(source.Path))
         {
             return;
         }
@@ -191,7 +198,7 @@ public sealed class WatcherService : IDisposable
             return changed;
         }
 
-        if (!Helpers.PathSafe.IsCatalogExt(Path.GetExtension(path)))
+        if (!LibrarySettings.IsIndexedExt(Path.GetExtension(path)))
         {
             return changed;
         }

@@ -63,6 +63,7 @@ public static class AppServices
         LoadGalleryVolume();
         LoadShellBackground();
         LoadMediaCache();
+        LoadLibrarySettings();
         // Side-by-side/test packages must never open the real catalog.
         try
         {
@@ -257,6 +258,18 @@ public static class AppServices
             MediaCache.ParseMaxMb(values[MediaCache.MaxMbKey]),
             MediaCache.ParsePath(values[MediaCache.RootPathKey]),
             MediaCache.ParsePath(values[MediaCache.AccessTokenKey]));
+    }
+
+    internal static void LoadLibrarySettings()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        LibrarySettings.Apply(
+            LibrarySettings.ParseBool(values[LibrarySettings.WatchForChangesKey], LibrarySettings.DefaultWatchForChanges),
+            LibrarySettings.ParseBool(values[LibrarySettings.IndexImagesKey], LibrarySettings.DefaultIndexImages),
+            LibrarySettings.ParseBool(values[LibrarySettings.IndexVideoKey], LibrarySettings.DefaultIndexVideo),
+            LibrarySettings.ParseBool(
+                values[LibrarySettings.GenerateThumbsOnScanKey],
+                LibrarySettings.DefaultGenerateThumbsOnScan));
     }
 
     /// <summary>

@@ -4,8 +4,10 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Single-selection keys for the Settings background picker. Multiple GridView
-/// groups (chrome / Vivid / Creator / Custom) must share one active tile —
-/// per-group <c>SelectedItem</c> cannot. Shared contract with the blur PR (0.0.13).
+/// groups (chrome / Vivid / Creator / Custom) share one active tile via
+/// <see cref="ShellPresetItem.IsSelected"/> / these keys. Each GridView still
+/// uses <c>SelectionMode=Single</c> so UIA Select fires SelectionChanged and
+/// applies the background; SettingsPage clears sibling SelectedItems.
 /// </summary>
 public static class ShellPresetSelection
 {

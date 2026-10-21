@@ -67,6 +67,7 @@ public sealed class SettingsNavTests
         [
             "theme", "accent", "density", "animations", "background", "blur",
             "watched", "organize", "onedrive", "dropbox",
+            "scan", "thumbnail", "formats",
             "hdr", "export tags", "shortcuts",
             "media cache", "catalog", "version", "export catalog"
         ];
@@ -74,5 +75,23 @@ public sealed class SettingsNavTests
         {
             Assert.True(SettingsNav.FindHit(query) is not null, $"No hit for '{query}'");
         }
+    }
+
+    [Fact]
+    public void FindHit_LibraryScanningAndFormats()
+    {
+        var scan = SettingsNav.FindHit("watch for changes");
+        Assert.NotNull(scan);
+        Assert.Equal(SettingsNav.Library, scan.Value.SectionId);
+        Assert.Equal("CardScanning", scan.Value.CardAutomationId);
+
+        var formats = SettingsNav.FindHit("formats");
+        Assert.NotNull(formats);
+        Assert.Equal(SettingsNav.Library, formats.Value.SectionId);
+        Assert.Equal("CardFormats", formats.Value.CardAutomationId);
+
+        var thumbs = SettingsNav.FindHit("build thumbnails");
+        Assert.NotNull(thumbs);
+        Assert.Equal("CardThumbnailCache", thumbs.Value.CardAutomationId);
     }
 }
