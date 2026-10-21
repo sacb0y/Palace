@@ -1394,6 +1394,7 @@ public sealed partial class TagsPage : Page
 
     private void SyncVideoBrowseSwipeHitTest()
     {
+        GrdVideoBrowseSwipe.Margin = new Thickness(0, 0, 0, TouchGestures.VideoControlsDeadZoneDip);
         GrdVideoBrowseSwipe.IsHitTestVisible = VideoBrowseSwipeAllowedNow();
         if (!GrdVideoBrowseSwipe.IsHitTestVisible)
         {

@@ -1494,11 +1494,11 @@
                             <MediaTransportControls IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
-                    <!-- Paused/stopped browse swipe: MPE swallows touch. Pointer-tracked catcher under Play/Volume; Margin clears transport. Default hit-test True so open-paused works before PlaybackState sync. -->
+                    <!-- Paused/stopped browse swipe: MPE swallows touch. Pointer-tracked catcher under Play/Volume; bottom Margin = TouchGestures.VideoControlsDeadZoneDip (set in code) clears seek/transport. -->
                     <Grid
                         x:Name="GrdVideoBrowseSwipe"
                         Canvas.ZIndex="1"
-                        Margin="0,0,0,72"
+                        Margin="0,0,0,128"
                         Background="Transparent"
                         DoubleTapped="GalleryOverlayVideo_DoubleTapped"
                         IsDoubleTapEnabled="True"

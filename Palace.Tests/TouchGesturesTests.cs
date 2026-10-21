@@ -155,8 +155,10 @@ public sealed class TouchGesturesTests
         Assert.Equal(
             TouchGestures.VideoDoubleTapZone.RightSeekForward,
             TouchGestures.ClassifyVideoDoubleTap(290, 300));
+        Assert.Equal(128, TouchGestures.VideoControlsDeadZoneDip, 0);
         Assert.True(TouchGestures.BlocksGestureOverVideoControls(true, 40));
-        Assert.False(TouchGestures.BlocksGestureOverVideoControls(true, 80));
+        Assert.True(TouchGestures.BlocksGestureOverVideoControls(true, 120));
+        Assert.False(TouchGestures.BlocksGestureOverVideoControls(true, 140));
         Assert.False(TouchGestures.BlocksGestureOverVideoControls(false, 10));
         // Paused/stopped video browse swipe; playing blocks; transport dead zone separate.
         Assert.True(TouchGestures.AllowsVideoBrowseSwipe(isVideo: true, isPlaying: false, touchGesturesEnabled: true));

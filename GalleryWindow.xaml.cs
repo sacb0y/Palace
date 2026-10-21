@@ -341,6 +341,7 @@ public sealed partial class GalleryWindow : Window
 
     private void SyncVideoBrowseSwipeHitTest()
     {
+        GrdVideoBrowseSwipe.Margin = new Thickness(0, 0, 0, TouchGestures.VideoControlsDeadZoneDip);
         GrdVideoBrowseSwipe.IsHitTestVisible = VideoBrowseSwipeAllowedNow();
         if (!GrdVideoBrowseSwipe.IsHitTestVisible)
         {

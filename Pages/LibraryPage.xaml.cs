@@ -1392,6 +1392,8 @@ public sealed partial class LibraryPage : Page
 
     private void SyncVideoBrowseSwipeHitTest()
     {
+        // Bottom inset clears seek bar + transport (hit-test does not fall through siblings).
+        GrdVideoBrowseSwipe.Margin = new Thickness(0, 0, 0, TouchGestures.VideoControlsDeadZoneDip);
         // XAML defaults True; only clear while Playing so transport/seek get taps.
         GrdVideoBrowseSwipe.IsHitTestVisible = VideoBrowseSwipeAllowedNow();
         if (!GrdVideoBrowseSwipe.IsHitTestVisible)

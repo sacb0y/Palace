@@ -34,7 +34,12 @@ public static class TouchGestures
     public const double DoubleTapActualMinFit = 1.25;
     public const double DoubleTapFallbackFit = 2.5;
     public const double VideoSeekSeconds = 10;
-    public const double VideoControlsDeadZoneDip = 72;
+    /// <summary>
+    /// Bottom inset for the paused-video browse-swipe catcher so MediaTransportControls
+    /// (seek bar + command row) stay hittable. 72 was too short — finger-drag on the
+    /// paused seek bar hit the catcher instead of the slider. Keep XAML/code margins in sync.
+    /// </summary>
+    public const double VideoControlsDeadZoneDip = 128;
 
     public enum SwipeAction
     {
