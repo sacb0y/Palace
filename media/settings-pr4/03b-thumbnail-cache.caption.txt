@@ -1,0 +1,1 @@
+﻿Thumbnail cache: Build thumbnails while scanning toggle.

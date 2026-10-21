@@ -1,0 +1,1 @@
+﻿Window after UIA Select on Ribbons: Appearance background picker shows Ribbons selected.

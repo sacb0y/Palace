@@ -1,0 +1,1 @@
+﻿After UIA SelectionItem.Select on Mica (not ItemClick/Invoke): Mica checkmark — SelectionChanged applies background.

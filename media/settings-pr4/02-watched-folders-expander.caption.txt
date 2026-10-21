@@ -1,0 +1,1 @@
+﻿Watched folders expander: path row with Open and Remove, plus Add folder in the header.

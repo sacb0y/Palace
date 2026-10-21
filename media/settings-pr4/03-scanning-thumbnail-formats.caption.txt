@@ -1,0 +1,1 @@
+﻿Scanning (Watch for changes + Scan now), Thumbnail cache (build while scanning), and Formats (Images/Video on; 3D/Audio placeholders).

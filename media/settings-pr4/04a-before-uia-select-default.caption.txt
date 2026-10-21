@@ -1,0 +1,1 @@
+﻿Appearance before UIA SelectionItem.Select: Default gradient selected (checkmark).

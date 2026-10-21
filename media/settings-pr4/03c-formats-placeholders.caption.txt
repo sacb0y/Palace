@@ -1,0 +1,1 @@
+﻿Formats: Images and Video toggles on; disabled 3D and Audio placeholders.

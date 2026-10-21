@@ -1,0 +1,1 @@
+﻿Library & Folders overview: Watched folders expander with seeded path, Open/Remove/Add, plus collapsed Scanning / Thumbnail / Formats / Cloud.

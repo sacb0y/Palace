@@ -1,0 +1,1 @@
+﻿Scanning expander: Watch for changes toggle and Scan now.

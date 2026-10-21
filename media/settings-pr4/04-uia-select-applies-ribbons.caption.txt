@@ -1,0 +1,1 @@
+﻿UIA SelectionItem.Select on Ribbons applies selection (checkmark) via SelectionChanged — same path as keyboard/Narrator Select.
