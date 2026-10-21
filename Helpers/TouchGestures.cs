@@ -195,14 +195,20 @@ public static class TouchGestures
     /// <summary>
     /// Non-review browse swipe when not zoomed: left/right = next/prev.
     /// Prefer <see cref="ClassifyReviewSwipe"/> for keep/reject Review.
+    /// Axis lock matches Review (distance or dominant flick velocity) so a
+    /// tall-portrait swipe-left with slight vertical drift still commits next.
     /// </summary>
     public static SwipeAction ClassifyBrowseSwipe(
         double dx,
         double dy,
         double viewportWidth,
-        double velocityXPxPerMs)
+        double velocityXPxPerMs,
+        double velocityYPxPerMs = 0)
     {
-        if (!IsHorizontalAxis(dx, dy))
+        var horizontal = IsHorizontalAxis(dx, dy)
+            || (Math.Abs(velocityXPxPerMs) > SwipeFlickPxPerMs
+                && Math.Abs(velocityXPxPerMs) > AxisLockRatio * Math.Abs(velocityYPxPerMs));
+        if (!horizontal)
         {
             return SwipeAction.None;
         }
@@ -214,8 +220,10 @@ public static class TouchGestures
             return SwipeAction.SpringBack;
         }
 
-        // Content follows finger: swipe left → next.
-        return dx < 0 ? SwipeAction.BrowseNext : SwipeAction.BrowsePrevious;
+        // Content follows finger: swipe left → next. Prefer displacement;
+        // fall back to velocity for short flicks (parity with Review).
+        var left = dx < 0 || (Math.Abs(dx) < 0.0001 && velocityXPxPerMs < 0);
+        return left ? SwipeAction.BrowseNext : SwipeAction.BrowsePrevious;
     }
 
     public const string RejectedFolderName = "_rejected";
@@ -525,7 +533,7 @@ public static class TouchGestures
         double velocityYPxPerMs) =>
         reviewMode
             ? ClassifyReviewSwipe(dx, dy, viewportWidth, viewportHeight, velocityXPxPerMs, velocityYPxPerMs)
-            : ClassifyBrowseSwipe(dx, dy, viewportWidth, velocityXPxPerMs);
+            : ClassifyBrowseSwipe(dx, dy, viewportWidth, velocityXPxPerMs, velocityYPxPerMs);
 
     /// <summary>
     /// Double-tap: Fit → 1:1 at tap (or 2.5× Fit if 1:1 ≤ 1.25× Fit) → Fit.

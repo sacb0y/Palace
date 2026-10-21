@@ -85,6 +85,18 @@ public sealed class GalleryScaleTests
         Assert.False(GalleryScale.Scrolls(ImageScaling.Fit));
         Assert.True(GalleryScale.Scrolls(ImageScaling.Fit, 1.5));
         Assert.False(GalleryScale.Scrolls(ImageScaling.Fit, 1.0));
+        // Tall Fit letterbox: content height == view, width narrower → no pan.
+        Assert.False(GalleryScale.AllowsTouchPan(
+            ImageScaling.Fit, 1.0, contentWidth: 400, contentHeight: 800,
+            viewportWidth: 800, viewportHeight: 800));
+        // Zoomed tall: overflows → pan.
+        Assert.True(GalleryScale.AllowsTouchPan(
+            ImageScaling.Fit, 2.0, contentWidth: 400, contentHeight: 1600,
+            viewportWidth: 800, viewportHeight: 800));
+        // Fit with noisy extent taller than view must still not pan (Scrolls false).
+        Assert.False(GalleryScale.AllowsTouchPan(
+            ImageScaling.Fit, 1.0, contentWidth: 400, contentHeight: 900,
+            viewportWidth: 800, viewportHeight: 800));
         Assert.Equal("1:1", GalleryScale.Label(ImageScaling.Actual));
     }
 
