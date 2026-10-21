@@ -80,6 +80,9 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
         SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
         SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
+        // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
+        SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
+        MpeOverlay.ContextFlyout = FlyOverlayAsset;
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
@@ -1243,29 +1246,64 @@ public sealed partial class LibraryPage : Page
 
     private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)
     {
-        // Fallback when the press is outside the still (Manipulation cancels
-        // Holding on the image — LongPressCommitted on SrfOverlayStill is primary).
+        // Fallback when Holding reaches the overlay chrome (still uses LongPressCommitted
+        // because Manipulation cancels Holding on the image).
         if (e.HoldingState != HoldingState.Started
             || !TouchGestures.IsTouchOnly(_lastPressWasTouch)
             || !ViewerSettings.TouchGesturesEnabled
-            || !SelectMode.ViewerHoldTogglesSelection(ViewModel.IsGalleryOverlayOpen))
+            || !SelectMode.ViewerHoldOpensContext(
+                ViewModel.IsGalleryOverlayOpen, ViewModel.IsReviewMode))
         {
             return;
         }
 
-        ViewModel.ToggleOverlaySelectionFromHold();
+        ShowOverlayAssetContextFlyout(BtnGalleryMore);
         e.Handled = true;
     }
 
     private void OnOverlayStillLongPress()
     {
         if (!ViewerSettings.TouchGesturesEnabled
-            || !SelectMode.ViewerHoldTogglesSelection(ViewModel.IsGalleryOverlayOpen))
+            || !SelectMode.ViewerHoldOpensContext(
+                ViewModel.IsGalleryOverlayOpen, ViewModel.IsReviewMode))
         {
             return;
         }
 
-        ViewModel.ToggleOverlaySelectionFromHold();
+        ShowOverlayAssetContextFlyout(SrfOverlayStill);
+    }
+
+    private void BtnGalleryMore_Click(object sender, RoutedEventArgs e) =>
+        ShowOverlayAssetContextFlyout(BtnGalleryMore);
+
+    private void MnuOverlaySelect_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.SelectOverlayCurrentFromMenu();
+
+    private void OverlayAssetMenu_Opening(object sender, object e)
+    {
+        if (ViewModel.OverlayGallery?.Current is not { IsFolderHeader: false } current)
+        {
+            if (sender is MenuFlyout flyout)
+            {
+                flyout.Hide();
+            }
+
+            return;
+        }
+
+        // Commands act on Library selection — keep overlay current selected.
+        EnsureSelectedForContext(current);
+    }
+
+    private void ShowOverlayAssetContextFlyout(FrameworkElement anchor)
+    {
+        if (ViewModel.OverlayGallery?.Current is not { IsFolderHeader: false } current)
+        {
+            return;
+        }
+
+        EnsureSelectedForContext(current);
+        FlyOverlayAsset.ShowAt(anchor);
     }
 
     private void SyncViewerOverlayAutoHide()

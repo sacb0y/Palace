@@ -1701,6 +1701,15 @@
                             Orientation="Horizontal"
                             Spacing="8">
                         <Button
+                            x:Name="BtnGalleryMore"
+                            AutomationProperties.AutomationId="BtnGalleryMore"
+                            AutomationProperties.Name="More"
+                            Click="BtnGalleryMore_Click"
+                            Style="{StaticResource ViewerOverlayButtonStyle}"
+                            ToolTipService.ToolTip="More">
+                            <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
+                        <Button
                             x:Name="BtnGalleryClose"
                             AutomationProperties.AutomationId="BtnGalleryClose"
                             AutomationProperties.Name="Close"
@@ -1710,26 +1719,70 @@
                             <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
                         </Button>
                         </StackPanel>
-                        <!-- Viewer long-press selection check badge -->
-                        <Border
-                            Width="36"
-                            Height="36"
-                            Margin="0,16,64,0"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Top"
-                            AutomationProperties.AutomationId="BrdGalleryOverlaySelected"
-                            Background="{ThemeResource AccentFillColorDefaultBrush}"
-                            CornerRadius="18"
-                            IsHitTestVisible="False"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayCurrentIsSelected), Mode=OneWay, FallbackValue=Collapsed}">
-                            <ic:FluentIcon
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
-                                Icon="Checkmark"
-                                IconSize="Size20"
-                                IconVariant="Regular" />
-                        </Border>
+                        <!-- Shared with long-press + right-click on the still (Select is a menu item; no select badge). -->
+                        <MenuFlyout
+                            x:Name="FlyOverlayAsset"
+                            Opening="OverlayAssetMenu_Opening">
+                            <MenuFlyoutItem
+                                x:Name="MnuOverlaySelect"
+                                AutomationProperties.AutomationId="MnuOverlaySelect"
+                                Click="MnuOverlaySelect_Click"
+                                Text="Select">
+                                <MenuFlyoutItem.Icon>
+                                    <ic:FluentIcon Icon="Checkmark" IconSize="Size16" IconVariant="Regular" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuOverlayShowInExplorer"
+                                Command="{x:Bind pages:LibraryPage.GetShowInExplorerCommand()}"
+                                Text="Show in File Explorer">
+                                <MenuFlyoutItem.Icon>
+                                    <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuOverlayCopy"
+                                Command="{x:Bind pages:LibraryPage.GetCopyFilesCommand()}"
+                                Text="Copy">
+                                <MenuFlyoutItem.Icon>
+                                    <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuOverlayCopyPath"
+                                Command="{x:Bind pages:LibraryPage.GetCopyPathCommand()}"
+                                Text="Copy path">
+                                <MenuFlyoutItem.Icon>
+                                    <ic:FluentIcon Icon="DocumentCopy" IconSize="Size16" IconVariant="Regular" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuOverlayMoveToFolder"
+                                Command="{x:Bind pages:LibraryPage.GetMoveToFolderCommand()}"
+                                Text="Move to folder…">
+                                <MenuFlyoutItem.Icon>
+                                    <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuOverlayAddTag"
+                                Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
+                                Text="Add tag…">
+                                <MenuFlyoutItem.Icon>
+                                    <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="MnuOverlayDelete"
+                                Command="{x:Bind pages:LibraryPage.GetDeleteFilesCommand()}"
+                                Text="Delete">
+                                <MenuFlyoutItem.Icon>
+                                    <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
                     </Grid>
                 </Grid>
 

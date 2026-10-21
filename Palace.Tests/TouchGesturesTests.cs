@@ -17,8 +17,11 @@ public sealed class TouchGesturesTests
         Assert.False(TouchGestures.OpensContextFromTouchHold());
         Assert.True(TouchGestures.MosaicHoldEntersSelect(false, false, false));
         Assert.False(TouchGestures.MosaicHoldEntersSelect(true, false, false));
-        Assert.True(TouchGestures.ViewerHoldTogglesSelection(true));
-        Assert.False(TouchGestures.ViewerHoldTogglesSelection(false));
+        // Viewer long-press → ContextFlyout (not select badge); Review = no-op.
+        Assert.False(TouchGestures.ViewerHoldTogglesSelection(true));
+        Assert.True(TouchGestures.ViewerHoldOpensContext(overlayOpen: true, reviewMode: false));
+        Assert.False(TouchGestures.ViewerHoldOpensContext(overlayOpen: true, reviewMode: true));
+        Assert.False(TouchGestures.ViewerHoldOpensContext(overlayOpen: false, reviewMode: false));
     }
 
     [Fact]

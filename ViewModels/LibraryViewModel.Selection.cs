@@ -105,7 +105,6 @@ public partial class LibraryViewModel
 
         HasSelection = _selection.Count > 0;
         RefreshSelectionSummary();
-        OnPropertyChanged(nameof(OverlayCurrentIsSelected));
         CanEditNotes = _selection.Count == 1;
         var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
         if (!ReferenceEquals(SelectedAsset, next))

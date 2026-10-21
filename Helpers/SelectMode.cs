@@ -23,11 +23,18 @@ public static class SelectMode
         !selectMode && !overlayOpen && !isFolderHeader;
 
     /// <summary>
-    /// Viewer overlay long-press toggles the current asset's selection and
-    /// shows a check badge. Video long-press is select, not 2× speed.
+    /// Viewer overlay long-press opens ContextFlyout (not a select badge).
+    /// Prefer <see cref="TouchGestures.ViewerHoldOpensContext"/>.
     /// </summary>
     public static bool ViewerHoldTogglesSelection(bool overlayOpen) =>
         TouchGestures.ViewerHoldTogglesSelection(overlayOpen);
+
+    /// <summary>
+    /// Viewer long-press / … / right-click share one ContextFlyout. Review mode
+    /// (#129) does nothing on long-press.
+    /// </summary>
+    public static bool ViewerHoldOpensContext(bool overlayOpen, bool reviewMode) =>
+        TouchGestures.ViewerHoldOpensContext(overlayOpen, reviewMode);
 
     /// <summary>Count line beside the toggle. Empty when select mode is off and nothing is selected.</summary>
     public static string Summary(bool selectMode, int selectedCount)

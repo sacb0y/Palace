@@ -72,16 +72,28 @@ public static class TouchGestures
         !LongPressReady(elapsedMs) && ExceedsSlop(dx, dy);
 
     /// <summary>
-    /// Mosaic long-press enters multi-select. Overlay long-press toggles the
-    /// current item's selection (check badge). Video long-press is select, not 2×.
+    /// Mosaic long-press enters multi-select. Viewer long-press opens the
+    /// context menu (not select badge). Video long-press in the mosaic is select.
     /// </summary>
     public static bool MosaicHoldEntersSelect(bool selectMode, bool overlayOpen, bool isFolderHeader) =>
         SelectMode.EnterFromHold(selectMode, overlayOpen, isFolderHeader);
 
-    public static bool ViewerHoldTogglesSelection(bool overlayOpen) => overlayOpen;
+    /// <summary>
+    /// Superseded 2026-10-21: viewer long-press opens ContextFlyout, not a
+    /// select badge. Kept returning false so old call sites stay safe.
+    /// </summary>
+    public static bool ViewerHoldTogglesSelection(bool overlayOpen) => false;
 
     /// <summary>
-    /// Context menu is "…" / right-click only — not touch long-press.
+    /// Single-image viewer long-press opens the shared ContextFlyout (same as
+    /// … / right-click). No-op in Review mode (#129).
+    /// </summary>
+    public static bool ViewerHoldOpensContext(bool overlayOpen, bool reviewMode) =>
+        overlayOpen && !reviewMode;
+
+    /// <summary>
+    /// Mosaic: touch long-press is select — suppress ItemContainer ContextFlyout.
+    /// Viewer uses <see cref="ViewerHoldOpensContext"/> instead.
     /// </summary>
     public static bool OpensContextFromTouchHold() => false;
 
