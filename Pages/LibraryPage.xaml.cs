@@ -1216,9 +1216,11 @@ public sealed partial class LibraryPage : Page
             next = TimeSpan.Zero;
         }
 
-        if (session.NaturalDuration.HasTimeSpan && next > session.NaturalDuration.TimeSpan)
+        // PlaybackSession.NaturalDuration is already a TimeSpan (not WinRT Duration).
+        var duration = session.NaturalDuration;
+        if (duration > TimeSpan.Zero && next > duration)
         {
-            next = session.NaturalDuration.TimeSpan;
+            next = duration;
         }
 
         session.Position = next;
