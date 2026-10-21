@@ -1,0 +1,1 @@
+﻿Settings two-pane shell overview (Appearance): nav + search + Density (Comfortable/Compact) and polish cards.
