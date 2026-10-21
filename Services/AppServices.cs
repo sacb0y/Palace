@@ -279,7 +279,10 @@ public static class AppServices
         var values = ApplicationData.Current.LocalSettings.Values;
         ViewerSettings.Apply(
             ViewerSettings.ParseZoom(values[ViewerSettings.DefaultZoomKey]),
-            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures));
+            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures),
+            ViewerSettings.ParseBool(
+                values[ViewerSettings.KeepZoomBetweenImagesKey],
+                ViewerSettings.DefaultKeepZoomBetweenImages));
     }
 
     internal static void LoadPerformanceSettings()

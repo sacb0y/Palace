@@ -303,14 +303,45 @@ public static class GalleryScale
         stillChanged || scalingChanged || viewportChanged;
 
     /// <summary>
-    /// Scale mode for a freshly opened / navigated-to still. Sticky Actual/Fill
-    /// from a prior image was opening HDR AVIF cropped; restore the open default
-    /// (product default Fit via <see cref="ViewerSettings.DefaultZoomMode"/>).
+    /// Scale after open/navigate. Keep-zoom on: carry Actual/Fill. Keep-zoom off:
+    /// <paramref name="defaultZoom"/>. HDR presentable stills always Fit when the
+    /// carried (or default) mode cannot present (sticky Actual cropped AVIF).
     /// </summary>
-    public static ImageScaling OpenStillScaling() => ViewerSettings.DefaultZoomMode;
+    public static ImageScaling ScalingAfterStillOpen(
+        ImageScaling current,
+        bool keepZoomBetweenImages,
+        ImageScaling defaultZoom,
+        bool hdrPresentable)
+    {
+        var desired = keepZoomBetweenImages
+            ? current
+            : ViewerSettings.NormalizeZoom(defaultZoom);
+        // HDR swapchain cannot keep a sticky Actual/Fill crop — open at Fit.
+        return hdrPresentable ? ImageScaling.Fit : desired;
+    }
 
     /// <summary>
-    /// Open/navigate landed at Fit with no leftover pinch or scroll offset.
+    /// Fit at pinch 1 must clear translation (content equals viewport). Actual/Fill
+    /// keep pan offset after release — otherwise 1:1 pans snap top-left and Fill
+    /// loses its centered cover crop.
+    /// </summary>
+    public static bool ClearsScrollOnPinchRelease(ImageScaling scaling, double pinchZoom) =>
+        scaling == ImageScaling.Fit && pinchZoom <= MinPinchZoom + 0.0001;
+
+    /// <summary>
+    /// After a touch pan/pinch release in Actual (or Fill), scroll offset must stay
+    /// — <see cref="ClearsScrollOnPinchRelease"/> is false so ChangeView(0,0) is skipped.
+    /// </summary>
+    public static bool KeepsPanOffsetAfterPinchRelease(
+        ImageScaling scaling,
+        double pinchZoom,
+        double horizontalOffset,
+        double verticalOffset) =>
+        !ClearsScrollOnPinchRelease(scaling, pinchZoom)
+        && (Math.Abs(horizontalOffset) > 0.5 || Math.Abs(verticalOffset) > 0.5);
+
+    /// <summary>
+    /// Open landed at Fit with no leftover pinch or scroll offset (HDR path).
     /// </summary>
     public static bool IsOpenAtFit(
         ImageScaling scaling,
@@ -471,10 +502,7 @@ public static class GalleryScale
 
     /// <summary>
     /// One scroll target for a pinch frame: keep the pinch origin, then apply
-    /// the same-frame translation. Do not DragPan from a stale offset after
-    /// ChangeView — ScrollViewer has not updated HorizontalOffset yet.
-    /// Prefer content-size <see cref="TouchGestures.ZoomAroundPoint"/> +
-    /// <see cref="DragPanContent"/> in the still surface (viewport origins).
+    /// the same-frame translation without reading a stale HorizontalOffset.
     /// </summary>
     public static (double Horizontal, double Vertical) PinchThenDrag(
         double horizontalOffset,

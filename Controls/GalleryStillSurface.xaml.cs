@@ -1202,7 +1202,15 @@ public sealed partial class GalleryStillSurface : UserControl
         var point = e.GetCurrentPoint(ScrStill);
         if (type == PointerDeviceType.Touch && e.Pointer.IsInContact)
         {
-            BeginTouchHold(point.PointerId, point.Position.X, point.Position.Y);
+            // Two fingers resting: cancel long-press; do not start a second hold.
+            if (_holdCts is not null && _holdPointerId != point.PointerId)
+            {
+                CancelTouchHold();
+            }
+            else
+            {
+                BeginTouchHold(point.PointerId, point.Position.X, point.Position.Y);
+            }
         }
 
         CancelScrollViewerDirectManipulation();
@@ -1532,8 +1540,9 @@ public sealed partial class GalleryStillSurface : UserControl
             ApplyPinchFrame(mid.X, mid.Y, hard, 0, 0);
         }
 
-        // Fit (zoom 1) must clear translation — content equals viewport.
-        if (_pinchZoom <= 1.0001)
+        // Fit at pinch 1: clear translation. Actual/Fill keep pan (incl. 1:1).
+        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        if (GalleryScale.ClearsScrollOnPinchRelease(scaling, _pinchZoom))
         {
             ScrStill.ChangeView(0, 0, null, true);
         }

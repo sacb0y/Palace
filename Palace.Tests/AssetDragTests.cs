@@ -45,12 +45,15 @@ public sealed class AssetDragTests
     [Fact]
     public void ItemContainer_CanDrag_only_arms_for_mouse_so_touch_can_scroll()
     {
-        // Touch must not arm CanDrag — otherwise mosaic finger-pan is stolen.
+        // XAML starts CanDrag=False; first mouse press arms folder-drag without
+        // leaving tiles sticky for a later touch pan.
         Assert.False(AssetDrag.ArmsItemContainerCanDrag(
             isMouse: false, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
         Assert.True(AssetDrag.AllowsMosaicTouchScroll(itemContainerCanDrag: false));
         Assert.False(AssetDrag.AllowsMosaicTouchScroll(itemContainerCanDrag: true));
         Assert.True(AssetDrag.ArmsItemContainerCanDrag(
+            isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
+        Assert.True(AssetDrag.CanStart(
             isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
         Assert.False(AssetDrag.ArmsItemContainerCanDrag(
             isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: true, overlayOpen: false));

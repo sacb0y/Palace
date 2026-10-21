@@ -35,6 +35,7 @@
     <Compile Include="..\Helpers\DisplayHdr.cs" Link="DisplayHdr.cs" />
     <Compile Include="..\Helpers\GalleryScale.cs" Link="GalleryScale.cs" />
     <Compile Include="..\Helpers\TouchGestures.cs" Link="TouchGestures.cs" />
+    <Compile Include="..\Helpers\VideoBrowseSwipe.cs" Link="VideoBrowseSwipe.cs" />
     <Compile Include="..\Helpers\GifFrames.cs" Link="GifFrames.cs" />
     <Compile Include="..\Helpers\GenerationFields.cs" Link="GenerationFields.cs" />
     <Compile Include="..\Helpers\LoadGate.cs" Link="LoadGate.cs" />

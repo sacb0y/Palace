@@ -15,6 +15,9 @@ public sealed class TouchGesturesTests
         Assert.True(TouchGestures.CancelsLongPress(100, 9, 0));
         Assert.False(TouchGestures.CancelsLongPress(100, 3, 4));
         Assert.False(TouchGestures.OpensContextFromTouchHold());
+        Assert.True(TouchGestures.SuppressesContextForTouch(lastPressWasTouch: true, hasPointerPosition: true));
+        Assert.False(TouchGestures.SuppressesContextForTouch(lastPressWasTouch: true, hasPointerPosition: false));
+        Assert.False(TouchGestures.SuppressesContextForTouch(lastPressWasTouch: false, hasPointerPosition: true));
         Assert.True(TouchGestures.MosaicHoldEntersSelect(false, false, false));
         Assert.False(TouchGestures.MosaicHoldEntersSelect(true, false, false));
         // Viewer long-press → ContextFlyout (not select badge); Review = no-op.

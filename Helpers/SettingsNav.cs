@@ -96,6 +96,7 @@ public static class SettingsNav
         new(Library, "CardFormats", ["formats", "images", "video", "gif", "3d", "audio", "extensions"]),
         new(Library, "CardCloudAccounts", ["cloud", "onedrive", "dropbox", "oauth", "redirect", "connect"]),
         new(Viewer, "CardDefaultZoom", ["zoom", "fit", "fill", "1:1", "default zoom", "scale"]),
+        new(Viewer, "CardKeepZoomBetweenImages", ["keep zoom", "sticky zoom", "between images", "carry zoom"]),
         new(Viewer, "CardHdr", ["hdr", "tonemap", "sdr tonemap"]),
         new(Viewer, "CardHdrPeak", ["hdr", "peak", "brightness", "override", "override hdr"]),
         new(Viewer, "CardHdrPeakNits", ["nits", "peak nits"]),

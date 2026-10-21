@@ -1058,6 +1058,20 @@
                                 ItemsSource="{x:Bind ViewModel.ZoomOptions, Mode=OneWay}"
                                 SelectedItem="{x:Bind ViewModel.SelectedDefaultZoom, Mode=TwoWay}" />
                         </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardKeepZoomBetweenImages"
+                            AutomationProperties.AutomationId="CardKeepZoomBetweenImages"
+                            Description="{x:Bind ViewModel.KeepZoomBetweenImagesCaption, Mode=OneWay}"
+                            Header="Keep zoom between images"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ToggleSwitch
+                                x:Name="TglKeepZoomBetweenImages"
+                                AutomationProperties.AutomationId="TglKeepZoomBetweenImages"
+                                AutomationProperties.Name="Keep zoom between images"
+                                IsOn="{x:Bind ViewModel.KeepZoomBetweenImages, Mode=TwoWay}"
+                                OffContent="Off"
+                                OnContent="On" />
+                        </controls:SettingsCard>
                         <controls:SettingsExpander
                             x:Name="CardHdr"
                             HorizontalContentAlignment="Stretch"

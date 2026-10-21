@@ -35,9 +35,8 @@ public static class TouchGestures
     public const double DoubleTapFallbackFit = 2.5;
     public const double VideoSeekSeconds = 10;
     /// <summary>
-    /// Bottom inset for the paused-video browse-swipe catcher so MediaTransportControls
-    /// (seek bar + command row) stay hittable. 72 was too short — finger-drag on the
-    /// paused seek bar hit the catcher instead of the slider. Keep XAML/code margins in sync.
+    /// Bottom band (dip) where paused-video browse swipe yields to transport/seek
+    /// when chrome is visible. Used by <see cref="BlocksGestureOverVideoControls"/>.
     /// </summary>
     public const double VideoControlsDeadZoneDip = 128;
 
@@ -101,6 +100,14 @@ public static class TouchGestures
     /// Viewer uses <see cref="ViewerHoldOpensContext"/> instead.
     /// </summary>
     public static bool OpensContextFromTouchHold() => false;
+
+    /// <summary>
+    /// Suppress mosaic ContextFlyout after a touch press. Keyboard (Shift+F10 /
+    /// Menu) reports no pointer position — do not suppress, and clear the stale
+    /// touch flag at the call site.
+    /// </summary>
+    public static bool SuppressesContextForTouch(bool lastPressWasTouch, bool hasPointerPosition) =>
+        lastPressWasTouch && hasPointerPosition;
 
     public static bool OpensContextFromRightClick(bool isFolderHeader) =>
         GalleryMedia.ShouldShowAssetContextFlyout(isFolderHeader);
@@ -572,6 +579,13 @@ public static class TouchGestures
 
     public static bool BlocksGestureOverVideoControls(bool controlsVisible, double yFromBottom) =>
         controlsVisible && yFromBottom <= VideoControlsDeadZoneDip;
+
+    /// <summary>
+    /// Catcher bottom inset when a hit-test overlay is used. Zero while transport
+    /// chrome is hidden so browse swipe can use the full frame.
+    /// </summary>
+    public static double VideoBrowseSwipeBottomInset(bool transportChromeVisible) =>
+        transportChromeVisible ? VideoControlsDeadZoneDip : 0;
 
     /// <summary>
     /// Browse swipe on video when paused/stopped (incl. before first play).

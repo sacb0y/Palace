@@ -10,7 +10,8 @@ public sealed class GalleryScaleTests
     {
         ViewerSettings.Apply(
             ViewerSettings.DefaultZoom,
-            ViewerSettings.DefaultTouchGestures);
+            ViewerSettings.DefaultTouchGestures,
+            ViewerSettings.DefaultKeepZoomBetweenImages);
     }
 
     [Fact]
@@ -178,8 +179,29 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: true, viewportChanged: false));
         Assert.True(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: true));
         Assert.False(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: false));
-        // Open/navigate: Fit + no pinch/offset (HDR AVIF must not open cropped).
-        Assert.Equal(ImageScaling.Fit, GalleryScale.OpenStillScaling());
+        // Open/navigate: HDR always Fit; keep-zoom carries Actual; off → default.
+        Assert.Equal(
+            ImageScaling.Actual,
+            GalleryScale.ScalingAfterStillOpen(
+                ImageScaling.Actual, keepZoomBetweenImages: true, ImageScaling.Fit, hdrPresentable: false));
+        Assert.Equal(
+            ImageScaling.Fit,
+            GalleryScale.ScalingAfterStillOpen(
+                ImageScaling.Actual, keepZoomBetweenImages: true, ImageScaling.Fit, hdrPresentable: true));
+        Assert.Equal(
+            ImageScaling.Fill,
+            GalleryScale.ScalingAfterStillOpen(
+                ImageScaling.Actual, keepZoomBetweenImages: false, ImageScaling.Fill, hdrPresentable: false));
+        Assert.Equal(
+            ImageScaling.Fit,
+            GalleryScale.ScalingAfterStillOpen(
+                ImageScaling.Actual, keepZoomBetweenImages: false, ImageScaling.Actual, hdrPresentable: true));
+        // Fit pinch-1 clears scroll; Actual pan keeps offset (no ChangeView 0,0 snap).
+        Assert.True(GalleryScale.ClearsScrollOnPinchRelease(ImageScaling.Fit, 1.0));
+        Assert.False(GalleryScale.ClearsScrollOnPinchRelease(ImageScaling.Actual, 1.0));
+        Assert.False(GalleryScale.ClearsScrollOnPinchRelease(ImageScaling.Fill, 1.0));
+        Assert.True(GalleryScale.KeepsPanOffsetAfterPinchRelease(ImageScaling.Actual, 1.0, 40, 0));
+        Assert.False(GalleryScale.KeepsPanOffsetAfterPinchRelease(ImageScaling.Fit, 1.0, 40, 0));
         Assert.True(GalleryScale.IsOpenAtFit(ImageScaling.Fit, 1.0, 0, 0));
         Assert.False(GalleryScale.IsOpenAtFit(ImageScaling.Actual, 1.0, 0, 0));
         Assert.False(GalleryScale.IsOpenAtFit(ImageScaling.Fit, 2.0, 0, 0));
