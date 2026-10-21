@@ -117,5 +117,5 @@ public static class ViewerSettings
         "Timed slideshow advances land in a later update.";
 
     public static string KeepZoomBetweenImagesCaption { get; } =
-        "When on, Fit / Fill / 1:1 stays as you move between images. When off, each image opens at Default zoom. HDR stills that cannot keep the carried zoom open at Fit.";
+        "When on, Fit / Fill / 1:1 carries to the next image. When off, each image opens at Default zoom. HDR stills always show at Fit on screen; your kept zoom returns on the next normal image.";
 }

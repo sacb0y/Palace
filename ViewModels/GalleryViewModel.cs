@@ -75,8 +75,18 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanOpenInExplorer { get; set; }
 
+    /// <summary>
+    /// Sticky Fit / Fill / 1:1 the user chose (toolbar + keep-zoom). HDR stills
+    /// show Fit via <see cref="DisplayScaling"/> without overwriting this.
+    /// </summary>
     [ObservableProperty]
     public partial ImageScaling Scaling { get; set; } = ImageScaling.Fit;
+
+    private bool _hdrForcesDisplayFit;
+
+    /// <summary>On-screen scale — Fit while the current still is HDR presentable.</summary>
+    public ImageScaling DisplayScaling =>
+        GalleryScale.DisplayScaling(Scaling, _hdrForcesDisplayFit);
 
     [ObservableProperty]
     public partial string DetailsText { get; set; } = "";
@@ -382,6 +392,18 @@ public partial class GalleryViewModel : ObservableObject
         IsScaleFit = value == ImageScaling.Fit;
         IsScaleActual = value == ImageScaling.Actual;
         IsScaleFill = value == ImageScaling.Fill;
+        OnPropertyChanged(nameof(DisplayScaling));
+    }
+
+    private void SetHdrForcesDisplayFit(bool hdrPresentable)
+    {
+        if (_hdrForcesDisplayFit == hdrPresentable)
+        {
+            return;
+        }
+
+        _hdrForcesDisplayFit = hdrPresentable;
+        OnPropertyChanged(nameof(DisplayScaling));
     }
 
     [RelayCommand]
@@ -1074,6 +1096,7 @@ public partial class GalleryViewModel : ObservableObject
                 DetailsText = "";
                 HdrStatus = "";
                 HdrPresented = false;
+                SetHdrForcesDisplayFit(false);
                 ClearHistogram();
                 ApplyGifState(false, null);
                 RefreshImageInfo();
@@ -1230,12 +1253,12 @@ public partial class GalleryViewModel : ObservableObject
                 });
             }
 
-            // Keep-zoom on: carry Actual/Fill. Off: DefaultZoomMode. HDR presentable → Fit.
-            Scaling = GalleryScale.ScalingAfterStillOpen(
+            // Sticky keep-zoom / default only — HDR Fit is DisplayScaling, not Scaling.
+            Scaling = GalleryScale.StickyScalingAfterStillOpen(
                 Scaling,
                 ViewerSettings.KeepZoomBetweenImages,
-                ViewerSettings.DefaultZoomMode,
-                probe.CanPresentHdr);
+                ViewerSettings.DefaultZoomMode);
+            SetHdrForcesDisplayFit(probe.CanPresentHdr);
             StillRevision++;
         });
 

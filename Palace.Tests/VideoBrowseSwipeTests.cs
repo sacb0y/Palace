@@ -34,10 +34,8 @@ public sealed class VideoBrowseSwipeTests
             isTouch: true, pointerId: 1, x: 10, y: 10, timestampMs: 0,
             swipeAllowed: true, transportChromeVisible: false, yFromBottom: 40));
         swipe.Cancel();
-        Assert.Equal(0, TouchGestures.VideoBrowseSwipeBottomInset(transportChromeVisible: false));
-        Assert.Equal(
-            TouchGestures.VideoControlsDeadZoneDip,
-            TouchGestures.VideoBrowseSwipeBottomInset(transportChromeVisible: true));
+        Assert.True(TouchGestures.BlocksGestureOverVideoControls(true, 40));
+        Assert.False(TouchGestures.BlocksGestureOverVideoControls(false, 40));
     }
 
     [Fact]

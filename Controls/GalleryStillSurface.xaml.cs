@@ -61,6 +61,10 @@ public sealed partial class GalleryStillSurface : UserControl
     /// </summary>
     public event Action? LongPressCommitted;
 
+    private ImageScaling CurrentDisplayScaling() =>
+        _gallery?.DisplayScaling ?? ImageScaling.Fit;
+
+
     private CancellationTokenSource? _holdCts;
     private double _holdStartX;
     private double _holdStartY;
@@ -186,7 +190,8 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (e.PropertyName is nameof(GalleryViewModel.Scaling))
+        if (e.PropertyName is nameof(GalleryViewModel.Scaling)
+            or nameof(GalleryViewModel.DisplayScaling))
         {
             if (GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: true, viewportChanged: false))
             {
@@ -203,7 +208,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     _hdrFrame.NativeHeight,
                     (int)Math.Round(Math.Max(dipW, 0) * raster),
                     (int)Math.Round(Math.Max(dipH, 0) * raster),
-                    g.Scaling);
+                    g.DisplayScaling);
                 if (GalleryPresent.NeedsBetterDecode(
                         _hdrFrame.Width, _hdrFrame.Height, want.Width, want.Height))
                 {
@@ -269,7 +274,7 @@ public sealed partial class GalleryStillSurface : UserControl
                 _hdrFrame.NativeHeight,
                 (int)Math.Round(Math.Max(dipW, 0) * raster),
                 (int)Math.Round(Math.Max(dipH, 0) * raster),
-                gallery.Scaling);
+                gallery.DisplayScaling);
             if (GalleryPresent.NeedsBetterDecode(
                     _hdrFrame.Width, _hdrFrame.Height, want.Width, want.Height))
             {
@@ -371,7 +376,7 @@ public sealed partial class GalleryStillSurface : UserControl
         if (frame is not null)
         {
             var want = GalleryPresent.PresentDecodeSize(
-                frame.NativeWidth, frame.NativeHeight, viewPxW, viewPxH, gallery.Scaling);
+                frame.NativeWidth, frame.NativeHeight, viewPxW, viewPxH, gallery.DisplayScaling);
             if (GalleryPresent.NeedsBetterDecode(frame.Width, frame.Height, want.Width, want.Height))
             {
                 frame = null;
@@ -388,7 +393,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     gallery.CurrentProbe,
                     viewPxW,
                     viewPxH,
-                    gallery.Scaling,
+                    gallery.DisplayScaling,
                     _hdrLoadCts.Token);
             }
             catch
@@ -595,7 +600,7 @@ public sealed partial class GalleryStillSurface : UserControl
             gallery = g;
             frame = f;
             contentProbe = _hdrFrameProbe;
-            scaling = g.Scaling;
+            scaling = g.DisplayScaling;
             // Heatmap applies once an HDR present exists; the first present of
             // a still is normal, and VizMode re-presents when it turns on.
             viz = WantedViz(g);
@@ -802,7 +807,7 @@ public sealed partial class GalleryStillSurface : UserControl
         var (dipW, dipH) = HdrPanelDips();
         var viewPxW = (int)Math.Round(Math.Max(dipW, 0) * raster);
         var viewPxH = (int)Math.Round(Math.Max(dipH, 0) * raster);
-        var scaling = gallery.Scaling;
+        var scaling = gallery.DisplayScaling;
         _ = Task.Run(async () =>
         {
             HdrAnalysisResult bins;
@@ -907,7 +912,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void ApplyScaleLayout()
     {
-        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        var scaling = CurrentDisplayScaling();
         var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
         var bars = GalleryScale.ShowsScrollBars()
             ? ScrollBarVisibility.Auto
@@ -1179,7 +1184,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         // Fit also needs a re-layout once pixels are known — FitContain with
         // 0×0 still size falls back to the viewport (SDR letterbox / wrong pan).
-        if (_gallery?.Scaling is ImageScaling.Fit or ImageScaling.Actual or ImageScaling.Fill)
+        if (CurrentDisplayScaling() is ImageScaling.Fit or ImageScaling.Actual or ImageScaling.Fill)
         {
             ApplyScaleLayout();
         }
@@ -1215,7 +1220,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         CancelScrollViewerDirectManipulation();
         if (!GalleryScale.UsesPointerCapturePan(
-                GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit, _pinchZoom),
+                GalleryScale.Scrolls(CurrentDisplayScaling(), _pinchZoom),
                 type == PointerDeviceType.Mouse,
                 point.Properties.IsLeftButtonPressed))
         {
@@ -1396,7 +1401,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         // Spec: PointerDeviceType==Touch only for these new gesture paths.
         // Pen / trackpad keep the prior Manipulation pan/pinch behavior.
-        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        var scaling = CurrentDisplayScaling();
         var scaleDelta = e.Delta.Scale;
         var baseLong = PinchBaseLongEdgeDip();
         var nextZoom = isTouch
@@ -1478,13 +1483,15 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        var (h, v) = GalleryScale.DragPan(
+        var (h, v) = GalleryScale.DragPanContent(
             ScrStill.HorizontalOffset,
             ScrStill.VerticalOffset,
             deltaX,
             deltaY,
-            ScrStill.ScrollableWidth,
-            ScrStill.ScrollableHeight);
+            PanContentWidth(),
+            PanContentHeight(),
+            PanViewportWidth(),
+            PanViewportHeight());
         ScrStill.ChangeView(h, v, null, true);
         e.Handled = true;
     }
@@ -1541,7 +1548,7 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         // Fit at pinch 1: clear translation. Actual/Fill keep pan (incl. 1:1).
-        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        var scaling = CurrentDisplayScaling();
         if (GalleryScale.ClearsScrollOnPinchRelease(scaling, _pinchZoom))
         {
             ScrStill.ChangeView(0, 0, null, true);
@@ -1568,7 +1575,7 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        var scaling = _gallery.Scaling;
+        var scaling = CurrentDisplayScaling();
         var currentlyFit = scaling == ImageScaling.Fit && _pinchZoom <= 1.0001;
         var step = TouchGestures.NextDoubleTapStep(currentlyFit);
         if (step == TouchGestures.DoubleTapZoomStep.Fit)
@@ -1651,7 +1658,7 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var viewW = ScrStill.ActualWidth;
         var viewH = ScrStill.ActualHeight;
-        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        var scaling = CurrentDisplayScaling();
         var (iw, ih) = StillPixelSize();
         if (scaling == ImageScaling.Actual)
         {
@@ -1688,7 +1695,7 @@ public sealed partial class GalleryStillSurface : UserControl
         var delta = point.Properties.MouseWheelDelta;
         CancelScrollViewerDirectManipulation();
         var controlDown = e.KeyModifiers.HasFlag(Windows.System.VirtualKeyModifiers.Control);
-        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        var scaling = CurrentDisplayScaling();
         var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
 
         if (GalleryScale.UsesWheelPinch(controlDown, delta))
@@ -1710,13 +1717,15 @@ public sealed partial class GalleryStillSurface : UserControl
 
         var pan = GalleryScale.WheelToPanDelta(delta);
         var horizontalWheel = point.Properties.IsHorizontalMouseWheel;
-        var (horizontal, vertical) = GalleryScale.DragPan(
+        var (horizontal, vertical) = GalleryScale.DragPanContent(
             ScrStill.HorizontalOffset,
             ScrStill.VerticalOffset,
             horizontalWheel ? pan : 0,
             horizontalWheel ? 0 : pan,
-            ScrStill.ScrollableWidth,
-            ScrStill.ScrollableHeight);
+            PanContentWidth(),
+            PanContentHeight(),
+            PanViewportWidth(),
+            PanViewportHeight());
         ScrStill.ChangeView(horizontal, vertical, null, true);
         e.Handled = true;
     }

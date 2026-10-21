@@ -121,20 +121,8 @@ public sealed class GalleryScaleTests
     }
 
     [Fact]
-    public void DragPan_SubtractsDeltaAndClamps()
+    public void DragPanContent_AndStickyDisplayScaling()
     {
-        var moved = GalleryScale.DragPan(10, 20, 4, -3, 100, 80);
-        Assert.Equal(6, moved.Horizontal, 3);
-        Assert.Equal(23, moved.Vertical, 3);
-        var low = GalleryScale.DragPan(2, 5, 10, 20, 50, 40);
-        Assert.Equal(0, low.Horizontal, 3);
-        Assert.Equal(0, low.Vertical, 3);
-        var high = GalleryScale.DragPan(48, 38, -10, -10, 50, 40);
-        Assert.Equal(50, high.Horizontal, 3);
-        Assert.Equal(40, high.Vertical, 3);
-        var none = GalleryScale.DragPan(4, 4, 1, 1, 0, 0);
-        Assert.Equal(0, none.Horizontal, 3);
-        Assert.Equal(0, none.Vertical, 3);
         Assert.True(GalleryScale.UsesDragPan(true, isMouse: true, leftButton: true, isTouch: false, isPen: false));
         Assert.False(GalleryScale.UsesDragPan(true, isMouse: true, leftButton: false, isTouch: false, isPen: false));
         Assert.True(GalleryScale.UsesDragPan(true, isMouse: false, leftButton: false, isTouch: true, isPen: false));
@@ -151,14 +139,6 @@ public sealed class GalleryScaleTests
         var zoomed = GalleryScale.ApplyPinchZoom(100, 50, 2);
         Assert.Equal(200, zoomed.Width, 3);
         Assert.Equal(100, zoomed.Height, 3);
-        var pinchPan = GalleryScale.PinchPan(10, 0, 40, 20, 1, 2, 200, 100);
-        Assert.Equal(60, pinchPan.Horizontal, 3);
-        Assert.Equal(20, pinchPan.Vertical, 3);
-        var composed = GalleryScale.PinchThenDrag(10, 0, 40, 20, 1, 2, 4, -3, 200, 100);
-        Assert.Equal(56, composed.Horizontal, 3);
-        Assert.Equal(23, composed.Vertical, 3);
-        var staleDrag = GalleryScale.DragPan(10, 0, 4, -3, 200, 100);
-        Assert.NotEqual(composed.Horizontal, staleDrag.Horizontal);
         Assert.True(GalleryScale.UsesManipulationGesture(isTouch: true, isPen: false, isMouse: false, leftButton: false));
         Assert.True(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: true, isMouse: false, leftButton: false));
         Assert.True(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: false, isMouse: true, leftButton: false));
@@ -179,29 +159,29 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: true, viewportChanged: false));
         Assert.True(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: true));
         Assert.False(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: false));
-        // Open/navigate: HDR always Fit; keep-zoom carries Actual; off → default.
-        Assert.Equal(
-            ImageScaling.Actual,
-            GalleryScale.ScalingAfterStillOpen(
-                ImageScaling.Actual, keepZoomBetweenImages: true, ImageScaling.Fit, hdrPresentable: false));
-        Assert.Equal(
-            ImageScaling.Fit,
-            GalleryScale.ScalingAfterStillOpen(
-                ImageScaling.Actual, keepZoomBetweenImages: true, ImageScaling.Fit, hdrPresentable: true));
-        Assert.Equal(
-            ImageScaling.Fill,
-            GalleryScale.ScalingAfterStillOpen(
-                ImageScaling.Actual, keepZoomBetweenImages: false, ImageScaling.Fill, hdrPresentable: false));
-        Assert.Equal(
-            ImageScaling.Fit,
-            GalleryScale.ScalingAfterStillOpen(
-                ImageScaling.Actual, keepZoomBetweenImages: false, ImageScaling.Actual, hdrPresentable: true));
-        // Fit pinch-1 clears scroll; Actual pan keeps offset (no ChangeView 0,0 snap).
+
+        // Keep-zoom sticky must survive HDR; DisplayScaling is Fit only on screen.
+        var sticky = ImageScaling.Actual;
+        sticky = GalleryScale.StickyScalingAfterStillOpen(
+            sticky, keepZoomBetweenImages: true, ImageScaling.Fit);
+        Assert.Equal(ImageScaling.Actual, sticky);
+        Assert.Equal(ImageScaling.Fit, GalleryScale.DisplayScaling(sticky, hdrPresentable: true));
+        // 1:1 → HDR → normal stays 1:1
+        sticky = GalleryScale.StickyScalingAfterStillOpen(
+            sticky, keepZoomBetweenImages: true, ImageScaling.Fit);
+        Assert.Equal(ImageScaling.Actual, sticky);
+        Assert.Equal(ImageScaling.Actual, GalleryScale.DisplayScaling(sticky, hdrPresentable: false));
+        // Keep-zoom off + Fill default: sticky becomes Fill; HDR still displays Fit.
+        sticky = GalleryScale.StickyScalingAfterStillOpen(
+            ImageScaling.Actual, keepZoomBetweenImages: false, ImageScaling.Fill);
+        Assert.Equal(ImageScaling.Fill, sticky);
+        Assert.Equal(ImageScaling.Fit, GalleryScale.DisplayScaling(sticky, hdrPresentable: true));
+        Assert.Equal(ImageScaling.Fill, GalleryScale.DisplayScaling(sticky, hdrPresentable: false));
+
+        // Fit pinch-1 clears scroll; Actual does not (no ChangeView 0,0 snap).
         Assert.True(GalleryScale.ClearsScrollOnPinchRelease(ImageScaling.Fit, 1.0));
         Assert.False(GalleryScale.ClearsScrollOnPinchRelease(ImageScaling.Actual, 1.0));
         Assert.False(GalleryScale.ClearsScrollOnPinchRelease(ImageScaling.Fill, 1.0));
-        Assert.True(GalleryScale.KeepsPanOffsetAfterPinchRelease(ImageScaling.Actual, 1.0, 40, 0));
-        Assert.False(GalleryScale.KeepsPanOffsetAfterPinchRelease(ImageScaling.Fit, 1.0, 40, 0));
         Assert.True(GalleryScale.IsOpenAtFit(ImageScaling.Fit, 1.0, 0, 0));
         Assert.False(GalleryScale.IsOpenAtFit(ImageScaling.Actual, 1.0, 0, 0));
         Assert.False(GalleryScale.IsOpenAtFit(ImageScaling.Fit, 2.0, 0, 0));
@@ -219,7 +199,8 @@ public sealed class GalleryScaleTests
         Assert.Equal(1 / 1.1, GalleryScale.WheelPinchFactor(-120), 5);
         Assert.Equal(1.0, GalleryScale.WheelPinchFactor(0), 5);
         Assert.Equal(30, GalleryScale.WheelToPanDelta(120), 3);
-        var wheelPan = GalleryScale.DragPan(40, 40, 0, GalleryScale.WheelToPanDelta(120), 100, 100);
+        var wheelPan = GalleryScale.DragPanContent(
+            40, 40, 0, GalleryScale.WheelToPanDelta(120), 200, 200, 100, 100);
         Assert.Equal(40, wheelPan.Horizontal, 3);
         Assert.Equal(10, wheelPan.Vertical, 3);
         Assert.Equal(3.0, GalleryScale.PinchZoom(GalleryScale.PinchZoom(1, 2), 1.5), 3);

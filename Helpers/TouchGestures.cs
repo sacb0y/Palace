@@ -581,13 +581,6 @@ public static class TouchGestures
         controlsVisible && yFromBottom <= VideoControlsDeadZoneDip;
 
     /// <summary>
-    /// Catcher bottom inset when a hit-test overlay is used. Zero while transport
-    /// chrome is hidden so browse swipe can use the full frame.
-    /// </summary>
-    public static double VideoBrowseSwipeBottomInset(bool transportChromeVisible) =>
-        transportChromeVisible ? VideoControlsDeadZoneDip : 0;
-
-    /// <summary>
     /// Browse swipe on video when paused/stopped (incl. before first play).
     /// Playing leaves gestures to transport; callers also exclude the bottom
     /// dead zone so seek / transport stay hittable.

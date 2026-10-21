@@ -56,6 +56,7 @@ public sealed class ViewerSettingsTests
         Assert.True(ViewerSettings.KeepZoomBetweenImages);
         Assert.Equal("ViewerKeepZoomBetweenImages", ViewerSettings.KeepZoomBetweenImagesKey);
         Assert.Contains("Default zoom", ViewerSettings.KeepZoomBetweenImagesCaption, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("kept zoom", ViewerSettings.KeepZoomBetweenImagesCaption, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(ViewerSettings.KeepZoomBetweenImagesKey, SettingsPortable.ExportKeys);
     }
 

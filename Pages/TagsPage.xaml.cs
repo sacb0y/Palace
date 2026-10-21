@@ -76,7 +76,21 @@ public sealed partial class TagsPage : Page
             GrdTagAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdTagAssets_RangeHolding), true);
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
-            HookVideoBrowseSwipe();
+            _videoBrowseSwipe = new VideoBrowseSwipeBinder(
+                MpeOverlay,
+                VideoBrowseSwipeAllowedNow,
+                action =>
+                {
+                    if (action == TouchGestures.SwipeAction.BrowsePrevious)
+                    {
+                        ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
+                    }
+                    else if (action == TouchGestures.SwipeAction.BrowseNext)
+                    {
+                        ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
+                    }
+                });
+            _videoBrowseSwipe.Hook();
             RefreshRealizedTiles();
             HookOverlayGallery();
             await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
@@ -1271,9 +1285,7 @@ public sealed partial class TagsPage : Page
 
     private void OverlayVolume_Changed(object? sender, EventArgs e) => ApplyOverlayVolume();
 
-    private readonly VideoBrowseSwipe _videoBrowseSwipe = new();
-    private bool _videoSwipeHandlersHooked;
-    private bool _videoSwipeCaptured;
+    private VideoBrowseSwipeBinder? _videoBrowseSwipe;
 
     private bool VideoBrowseSwipeAllowedNow()
     {
@@ -1285,151 +1297,7 @@ public sealed partial class TagsPage : Page
             ViewerSettings.TouchGesturesEnabled);
     }
 
-    private bool IsOverlayTransportChromeVisible()
-    {
-        var tc = MpeOverlay.TransportControls;
-        return tc is not null
-            && MpeOverlay.AreTransportControlsEnabled
-            && tc.Visibility == Visibility.Visible
-            && tc.Opacity > 0.05;
-    }
-
-    private void HookVideoBrowseSwipe()
-    {
-        if (_videoSwipeHandlersHooked)
-        {
-            return;
-        }
-
-        MpeOverlay.AddHandler(
-            UIElement.PointerPressedEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerPressed),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerMovedEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerMoved),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerReleasedEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerReleased),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerCanceledEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerCanceled),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerCaptureLostEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerCaptureLost),
-            handledEventsToo: true);
-        _videoSwipeHandlersHooked = true;
-    }
-
-    private void VideoBrowseSwipe_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(MpeOverlay);
-        var yFromBottom = MpeOverlay.ActualHeight - point.Position.Y;
-        _videoBrowseSwipe.TryBegin(
-            isTouch: e.Pointer.PointerDeviceType == PointerDeviceType.Touch,
-            pointerId: e.Pointer.PointerId,
-            x: point.Position.X,
-            y: point.Position.Y,
-            timestampMs: Environment.TickCount64,
-            swipeAllowed: VideoBrowseSwipeAllowedNow(),
-            transportChromeVisible: IsOverlayTransportChromeVisible(),
-            yFromBottom: yFromBottom);
-    }
-
-    private void VideoBrowseSwipe_PointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(MpeOverlay);
-        if (!_videoBrowseSwipe.TryMove(
-                e.Pointer.PointerId, point.Position.X, point.Position.Y, out var crossedSlop))
-        {
-            return;
-        }
-
-        if (crossedSlop && !_videoSwipeCaptured)
-        {
-            _videoSwipeCaptured = MpeOverlay.CapturePointer(e.Pointer);
-        }
-
-        if (_videoBrowseSwipe.IsArmed)
-        {
-            e.Handled = true;
-        }
-    }
-
-    private void VideoBrowseSwipe_PointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(MpeOverlay);
-        var hadCapture = _videoSwipeCaptured;
-        var completed = _videoBrowseSwipe.TryComplete(
-            e.Pointer.PointerId,
-            point.Position.X,
-            point.Position.Y,
-            Environment.TickCount64,
-            MpeOverlay.ActualWidth,
-            out var action,
-            out var navigated);
-        EndVideoBrowseSwipeCapture(e.Pointer);
-        if (!completed || !hadCapture || !navigated || !VideoBrowseSwipeAllowedNow())
-        {
-            return;
-        }
-
-        if (action == TouchGestures.SwipeAction.BrowsePrevious)
-        {
-            ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
-            e.Handled = true;
-        }
-        else if (action == TouchGestures.SwipeAction.BrowseNext)
-        {
-            ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
-            e.Handled = true;
-        }
-    }
-
-    private void VideoBrowseSwipe_PointerCanceled(object sender, PointerRoutedEventArgs e)
-    {
-        _videoBrowseSwipe.Cancel(e.Pointer.PointerId);
-        EndVideoBrowseSwipeCapture(e.Pointer);
-    }
-
-    private void VideoBrowseSwipe_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
-    {
-        if (e.Pointer.PointerId == _videoBrowseSwipe.PointerId || !_videoBrowseSwipe.IsTracking)
-        {
-            _videoBrowseSwipe.Cancel(e.Pointer.PointerId);
-            _videoSwipeCaptured = false;
-        }
-    }
-
-    private void EndVideoBrowseSwipeCapture(Pointer? pointer)
-    {
-        var captured = _videoSwipeCaptured;
-        _videoSwipeCaptured = false;
-        if (!captured || pointer is null)
-        {
-            return;
-        }
-
-        try
-        {
-            MpeOverlay.ReleasePointerCapture(pointer);
-        }
-        catch
-        {
-        }
-    }
-
-    private void SyncVideoBrowseSwipeHitTest()
-    {
-        if (!VideoBrowseSwipeAllowedNow())
-        {
-            _videoBrowseSwipe.Cancel();
-            _videoSwipeCaptured = false;
-        }
-    }
+    private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();
 
     private void OverlayPlayback_StateChanged(
         Windows.Media.Playback.MediaPlaybackSession sender,

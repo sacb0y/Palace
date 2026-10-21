@@ -83,7 +83,11 @@ public sealed partial class LibraryPage : Page
         // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
         SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
         MpeOverlay.ContextFlyout = FlyOverlayAsset;
-        HookVideoBrowseSwipe();
+        _videoBrowseSwipe = new VideoBrowseSwipeBinder(
+            MpeOverlay,
+            VideoBrowseSwipeAllowedNow,
+            OnOverlayReviewSwipe);
+        _videoBrowseSwipe.Hook();
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
@@ -1208,6 +1212,8 @@ public sealed partial class LibraryPage : Page
     {
         _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
         _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+        // New press starts a new long-press gesture (flyout once per hold).
+        _overlayHoldFlyoutShown = false;
     }
 
     private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)
@@ -1245,7 +1251,9 @@ public sealed partial class LibraryPage : Page
 
         var pos = e.GetPosition(MpeOverlay);
         var yFromBottom = MpeOverlay.ActualHeight - pos.Y;
-        if (TouchGestures.BlocksGestureOverVideoControls(IsOverlayTransportChromeVisible(), yFromBottom))
+        if (TouchGestures.BlocksGestureOverVideoControls(
+                VideoBrowseSwipeBinder.IsTransportChromeVisible(MpeOverlay.TransportControls),
+                yFromBottom))
         {
             return;
         }
@@ -1278,10 +1286,8 @@ public sealed partial class LibraryPage : Page
         e.Handled = true;
     }
 
-    private readonly VideoBrowseSwipe _videoBrowseSwipe = new();
-    private bool _videoSwipeHandlersHooked;
-    private bool _videoSwipeCaptured;
-    private long _overlayContextShownMs;
+    private VideoBrowseSwipeBinder? _videoBrowseSwipe;
+    private bool _overlayHoldFlyoutShown;
 
     private bool VideoBrowseSwipeAllowedNow()
     {
@@ -1293,148 +1299,7 @@ public sealed partial class LibraryPage : Page
             ViewerSettings.TouchGesturesEnabled);
     }
 
-    private bool IsOverlayTransportChromeVisible()
-    {
-        var tc = MpeOverlay.TransportControls;
-        return tc is not null
-            && MpeOverlay.AreTransportControlsEnabled
-            && tc.Visibility == Visibility.Visible
-            && tc.Opacity > 0.05;
-    }
-
-    private void HookVideoBrowseSwipe()
-    {
-        if (_videoSwipeHandlersHooked)
-        {
-            return;
-        }
-
-        // handledEventsToo: MPE swallows touch; mouse/pen still hit-test the element itself
-        // (no overlay catcher) so ContextFlyout / transport stay intact.
-        MpeOverlay.AddHandler(
-            UIElement.PointerPressedEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerPressed),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerMovedEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerMoved),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerReleasedEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerReleased),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerCanceledEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerCanceled),
-            handledEventsToo: true);
-        MpeOverlay.AddHandler(
-            UIElement.PointerCaptureLostEvent,
-            new PointerEventHandler(VideoBrowseSwipe_PointerCaptureLost),
-            handledEventsToo: true);
-        _videoSwipeHandlersHooked = true;
-    }
-
-    private void VideoBrowseSwipe_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(MpeOverlay);
-        var yFromBottom = MpeOverlay.ActualHeight - point.Position.Y;
-        _videoBrowseSwipe.TryBegin(
-            isTouch: e.Pointer.PointerDeviceType == PointerDeviceType.Touch,
-            pointerId: e.Pointer.PointerId,
-            x: point.Position.X,
-            y: point.Position.Y,
-            timestampMs: Environment.TickCount64,
-            swipeAllowed: VideoBrowseSwipeAllowedNow(),
-            transportChromeVisible: IsOverlayTransportChromeVisible(),
-            yFromBottom: yFromBottom);
-        // Do not capture / Handled yet — preserve double-tap seek until drag exceeds slop.
-    }
-
-    private void VideoBrowseSwipe_PointerMoved(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(MpeOverlay);
-        if (!_videoBrowseSwipe.TryMove(
-                e.Pointer.PointerId, point.Position.X, point.Position.Y, out var crossedSlop))
-        {
-            return;
-        }
-
-        if (crossedSlop && !_videoSwipeCaptured)
-        {
-            _videoSwipeCaptured = MpeOverlay.CapturePointer(e.Pointer);
-        }
-
-        if (_videoBrowseSwipe.IsArmed)
-        {
-            e.Handled = true;
-        }
-    }
-
-    private void VideoBrowseSwipe_PointerReleased(object sender, PointerRoutedEventArgs e)
-    {
-        var point = e.GetCurrentPoint(MpeOverlay);
-        var hadCapture = _videoSwipeCaptured;
-        var completed = _videoBrowseSwipe.TryComplete(
-            e.Pointer.PointerId,
-            point.Position.X,
-            point.Position.Y,
-            Environment.TickCount64,
-            MpeOverlay.ActualWidth,
-            out var action,
-            out var navigated);
-        EndVideoBrowseSwipeCapture(e.Pointer);
-        if (!completed || !hadCapture || !navigated || !VideoBrowseSwipeAllowedNow())
-        {
-            return;
-        }
-
-        OnOverlayReviewSwipe(action);
-        e.Handled = true;
-    }
-
-    private void VideoBrowseSwipe_PointerCanceled(object sender, PointerRoutedEventArgs e)
-    {
-        _videoBrowseSwipe.Cancel(e.Pointer.PointerId);
-        EndVideoBrowseSwipeCapture(e.Pointer);
-    }
-
-    private void VideoBrowseSwipe_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
-    {
-        if (e.Pointer.PointerId == _videoBrowseSwipe.PointerId || !_videoBrowseSwipe.IsTracking)
-        {
-            _videoBrowseSwipe.Cancel(e.Pointer.PointerId);
-            _videoSwipeCaptured = false;
-        }
-    }
-
-    private void EndVideoBrowseSwipeCapture(Pointer? pointer)
-    {
-        var captured = _videoSwipeCaptured;
-        _videoSwipeCaptured = false;
-        if (!captured || pointer is null)
-        {
-            return;
-        }
-
-        try
-        {
-            MpeOverlay.ReleasePointerCapture(pointer);
-        }
-        catch
-        {
-            // Capture may already be released.
-        }
-    }
-
-    private void SyncVideoBrowseSwipeHitTest()
-    {
-        // No overlay catcher — cancel an in-flight touch swipe when playback starts.
-        if (!VideoBrowseSwipeAllowedNow())
-        {
-            _videoBrowseSwipe.Cancel();
-            _videoSwipeCaptured = false;
-        }
-    }
+    private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();
 
     private void OverlayPlayback_StateChanged(
         Windows.Media.Playback.MediaPlaybackSession sender,
@@ -1499,13 +1364,12 @@ public sealed partial class LibraryPage : Page
         }
 
         // Holding + LongPressCommitted can both fire — one flyout per gesture.
-        var now = Environment.TickCount64;
-        if (now - _overlayContextShownMs < TouchGestures.LongPressMs)
+        if (_overlayHoldFlyoutShown)
         {
             return false;
         }
 
-        _overlayContextShownMs = now;
+        _overlayHoldFlyoutShown = true;
         EnsureSelectedForContext(current);
         FlyOverlayAsset.ShowAt(anchor);
         return true;
