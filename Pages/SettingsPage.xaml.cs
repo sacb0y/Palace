@@ -444,8 +444,9 @@ public sealed partial class SettingsPage : Page
         _highlightRepaintTimer.Tick -= HighlightRepaintTimer_Tick;
         _highlightRepaintTimer.Tick += HighlightRepaintTimer_Tick;
         // Passes at ~50ms and ~200ms cover Release MSIX VSM settle (Sacb0y scanned 0.2s + 3s).
+        // WinUI DispatcherTimer has no Tag — track pass with a field.
+        _highlightRepaintPass = 0;
         _highlightRepaintTimer.Interval = TimeSpan.FromMilliseconds(50);
-        _highlightRepaintTimer.Tag = 0;
         _highlightRepaintTimer.Start();
     }
 
@@ -456,11 +457,10 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        var pass = _highlightRepaintTimer.Tag is int n ? n : 0;
         RepaintActiveHighlights();
-        if (pass == 0)
+        if (_highlightRepaintPass == 0)
         {
-            _highlightRepaintTimer.Tag = 1;
+            _highlightRepaintPass = 1;
             _highlightRepaintTimer.Interval = TimeSpan.FromMilliseconds(150);
             return;
         }
