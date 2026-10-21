@@ -6,7 +6,7 @@ namespace Palace.Helpers;
 public static class AppVersion
 {
     /// <summary>Current 0.x slice name. Keep in lockstep with the Version table in AGENTS.md.</summary>
-    public const string Milestone = "Library core · initial public preview";
+    public const string Milestone = "Settings restructure";
 
     /// <summary>Honest status for Settings → About. Rooms and Organization are not finished.</summary>
     public const string InfancyNote =

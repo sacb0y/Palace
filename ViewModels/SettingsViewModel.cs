@@ -114,6 +114,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string StatusText { get; set; } = "";
 
+    /// <summary>Empty watched-folders caption lives inside CardWatchedFolders, not below all cards.</summary>
+    [ObservableProperty]
+    public partial bool ShowWatchedFoldersEmpty { get; set; } = true;
+
     [ObservableProperty]
     public partial string OneDriveClientId { get; set; } = "";
 
@@ -313,7 +317,8 @@ public partial class SettingsViewModel : ObservableObject
         DropboxAppKey = _cloud.DropboxAppKey;
         RedirectUri = _cloud.RedirectUriDisplay;
         await RefreshCloudStatusAsync();
-        StatusText = Sources.Count == 0 ? "No watched folders yet." : $"{Sources.Count} watched folders.";
+        ShowWatchedFoldersEmpty = Sources.Count == 0;
+        StatusText = Sources.Count == 0 ? "" : $"{Sources.Count} watched folders.";
     }
 
     private void LoadCatalogStore()

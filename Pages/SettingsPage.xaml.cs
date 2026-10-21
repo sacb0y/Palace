@@ -1,6 +1,8 @@
+using System.Text;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -21,9 +23,19 @@ public sealed partial class SettingsPage : Page
     private bool _ignoreTintChanges;
     private bool _ignoreNavSelection;
     private bool _ignorePresetSelection;
-    private Control? _highlightedCard;
-    private Brush? _highlightRestoreBrush;
+    private bool _ignoreSearchClear;
+    private bool _searchFiltering;
+    /// <summary>
+    /// Parent Border around each SettingsNav card. Pink lives in Padding + BorderThickness
+    /// outside the expander’s composition surface (peer overlay loses to expander layers).
+    /// Pixel-scan must use Host_* AutomationId bounds (include the 8px padding ring).
+    /// </summary>
+    private readonly Dictionary<string, Border> _searchHosts = new(StringComparer.Ordinal);
+    private readonly List<Border> _highlightedHosts = [];
     private DispatcherTimer? _highlightTimer;
+    private const string SearchHostTag = "PalaceSettingsSearchHost";
+    private static readonly Thickness SearchHostChromePadding = new(8);
+    private static readonly Thickness SearchHostHighlightBorder = new(3);
 
     public SettingsViewModel ViewModel => AppServices.Settings;
 
@@ -56,6 +68,8 @@ public sealed partial class SettingsPage : Page
             ViewModel.RefreshBackgroundPresetSwatches();
             SyncPresetGridSelection();
             ApplyContentCap(ActualWidth);
+            EnsureSearchHighlightHosts();
+            ApplyDensity(ViewModel.SelectedDensity);
             RestoreLastSection(scrollToTop: true);
             ShellBackground.Changed += ShellBackground_PreviewChanged;
             ShellBackground.LiveAmountsChanged += ShellBackground_PreviewLiveAmounts;
@@ -154,33 +168,165 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
+        // Manual nav clears an active search filter so one section shows fully.
+        if (!string.IsNullOrWhiteSpace(TxtSettingsSearch.Text))
+        {
+            _ignoreSearchClear = true;
+            TxtSettingsSearch.Text = "";
+            _ignoreSearchClear = false;
+            ClearSearchFilter();
+        }
+
         var id = item.Tag as string ?? SettingsNav.DefaultSectionId;
         SelectSection(id, persist: true, scrollToTop: true);
     }
 
     private void TxtSettingsSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
-        var hit = SettingsNav.FindHit(TxtSettingsSearch.Text);
-        if (hit is null)
+        if (_ignoreSearchClear)
         {
-            ClearSearchHighlight();
             return;
         }
 
-        SelectSection(hit.Value.SectionId, persist: true, scrollToTop: hit.Value.CardAutomationId is null);
-        if (hit.Value.CardAutomationId is { } cardId)
+        ApplySearchQuery(TxtSettingsSearch.Text);
+    }
+
+    private void TxtSettingsSearch_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape)
         {
-            HighlightCard(cardId);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(TxtSettingsSearch.Text))
+        {
+            TxtSettingsSearch.Text = "";
+            e.Handled = true;
+        }
+
+        ScrSettingsContent.Focus(FocusState.Programmatic);
+    }
+
+    private void FocusSettingsSearch_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        TxtSettingsSearch.Focus(FocusState.Programmatic);
+        TxtSettingsSearch.SelectAll();
+        args.Handled = true;
+    }
+
+    private void ApplySearchQuery(string? query)
+    {
+        var hits = SettingsNav.FindHits(query);
+        if (hits.Count == 0)
+        {
+            var hadFilter = _searchFiltering;
+            ClearSearchFilter();
+            if (hadFilter)
+            {
+                RestoreLastSection(scrollToTop: true);
+            }
+            else
+            {
+                ClearSearchHighlight();
+            }
+
+            return;
+        }
+
+        _searchFiltering = true;
+        // Re-ensure hosts before filter/highlight — wrap must succeed for Host_* UIA.
+        EnsureSearchHighlightHosts();
+        var sectionIds = SettingsNav.VisibleSectionIds(hits);
+        var cardIds = SettingsNav.VisibleCardIds(hits);
+
+        foreach (var panel in SectionPanels())
+        {
+            var id = panel.Name["PnlSection_".Length..];
+            panel.Visibility = sectionIds.Contains(id) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (FindName(target.CardAutomationId) is not UIElement card)
+            {
+                continue;
+            }
+
+            var show = cardIds.Contains(target.CardAutomationId);
+            // Filter Visibility on the owned Host Border only.
+            if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
+            {
+                host.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                card.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                card.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (show)
+            {
+                EnsureAncestorsVisible(card);
+            }
+        }
+
+        var primary = SettingsNav.FindHit(query) ?? hits[0];
+        SelectNavItem(primary.SectionId, persist: true);
+        HighlightMatchingCards(cardIds);
+        if (primary.CardAutomationId is { } firstCard
+            && (_searchHosts.TryGetValue(firstCard, out var firstHost)
+                ? (UIElement)firstHost
+                : FindName(firstCard) as UIElement) is { } firstElement)
+        {
+            firstElement.StartBringIntoView();
         }
         else
         {
-            ClearSearchHighlight();
+            ScrSettingsContent.ChangeView(null, 0, null, disableAnimation: true);
+        }
+    }
+
+    private void ClearSearchFilter()
+    {
+        _searchFiltering = false;
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
+            {
+                host.Visibility = Visibility.Visible;
+            }
+
+            if (FindName(target.CardAutomationId) is UIElement card)
+            {
+                card.Visibility = Visibility.Visible;
+            }
+        }
+
+        ClearSearchHighlight();
+    }
+
+    private static void EnsureAncestorsVisible(DependencyObject element)
+    {
+        var parent = VisualTreeHelper.GetParent(element);
+        while (parent is not null)
+        {
+            if (parent is UIElement ue
+                && (parent is CommunityToolkit.WinUI.Controls.SettingsExpander
+                    || parent is CommunityToolkit.WinUI.Controls.SettingsCard
+                    || (parent is Border border
+                        && string.Equals(border.Tag as string, SearchHostTag, StringComparison.Ordinal))))
+            {
+                ue.Visibility = Visibility.Visible;
+            }
+
+            parent = VisualTreeHelper.GetParent(parent);
         }
     }
 
     private void SelectSection(string sectionId, bool persist, bool scrollToTop)
     {
         var id = SettingsNav.Normalize(sectionId);
+        ClearSearchFilter();
 
         // Content panes first so list highlight and content never diverge.
         foreach (var panel in SectionPanels())
@@ -190,6 +336,17 @@ public sealed partial class SettingsPage : Page
                 : Visibility.Collapsed;
         }
 
+        SelectNavItem(id, persist);
+
+        if (scrollToTop)
+        {
+            ScrSettingsContent.ChangeView(null, 0, null, disableAnimation: true);
+        }
+    }
+
+    private void SelectNavItem(string sectionId, bool persist)
+    {
+        var id = SettingsNav.Normalize(sectionId);
         ListViewItem? match = null;
         foreach (var item in LstSettingsNav.Items.OfType<ListViewItem>())
         {
@@ -211,11 +368,6 @@ public sealed partial class SettingsPage : Page
         {
             ApplicationData.Current.LocalSettings.Values[SettingsNav.LastSectionKey] = id;
         }
-
-        if (scrollToTop)
-        {
-            ScrSettingsContent.ChangeView(null, 0, null, disableAnimation: true);
-        }
     }
 
     private IEnumerable<StackPanel> SectionPanels() =>
@@ -229,31 +381,366 @@ public sealed partial class SettingsPage : Page
         PnlSection_about
     ];
 
-    private void HighlightCard(string automationId)
+    /// <summary>
+    /// Wrap each SettingsNav card in a parent Border we own. Highlight paints that Border’s
+    /// Padding + BorderBrush — outside the expander composition surface.
+    /// Walks VisualTreeHelper (not only FrameworkElement.Parent) — Parent can be null/odd
+    /// while the visual parent is still a StackPanel (Host_* missing from UIA on 4006c12).
+    /// </summary>
+    private void EnsureSearchHighlightHosts()
+    {
+        var log = new StringBuilder();
+        log.AppendLine($"[{DateTime.UtcNow:o}] EnsureSearchHighlightHosts targets={SettingsNav.Targets.Count}");
+        var ok = 0;
+        var fail = 0;
+
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (_searchHosts.ContainsKey(target.CardAutomationId))
+            {
+                ok++;
+                continue;
+            }
+
+            if (FindName(target.CardAutomationId) is not FrameworkElement card)
+            {
+                fail++;
+                log.AppendLine($"MISS FindName {target.CardAutomationId}");
+                continue;
+            }
+
+            if (FindExistingSearchHost(card) is { } existing)
+            {
+                ConfigureSearchHostAutomation(existing, target.CardAutomationId);
+                existing.Padding = SearchHostChromePadding;
+                _searchHosts[target.CardAutomationId] = existing;
+                ok++;
+                log.AppendLine($"EXISTING {target.CardAutomationId} → Host_{target.CardAutomationId}");
+                continue;
+            }
+
+            log.AppendLine(
+                $"WRAP {target.CardAutomationId} logicalParent={card.Parent?.GetType().Name ?? "null"} " +
+                $"chain={DescribeParentChain(card)}");
+
+            var host = TryWrapInSearchHost(card, target.CardAutomationId);
+            if (host is not null)
+            {
+                _searchHosts[target.CardAutomationId] = host;
+                host.UpdateLayout();
+                // Force a peer so winapp ui wait-for Host_* can see it.
+                _ = FrameworkElementAutomationPeer.FromElement(host)
+                    ?? FrameworkElementAutomationPeer.CreatePeerForElement(host);
+                ok++;
+                log.AppendLine(
+                    $"OK {target.CardAutomationId} Host_{target.CardAutomationId} " +
+                    $"Actual={host.ActualWidth:0}x{host.ActualHeight:0} " +
+                    $"childParentIsHost={ReferenceEquals(card.Parent, host)}");
+            }
+            else
+            {
+                fail++;
+                log.AppendLine($"FAIL {target.CardAutomationId}");
+            }
+        }
+
+        log.AppendLine($"SUMMARY ok={ok} fail={fail} dict={_searchHosts.Count}");
+        WriteHostWrapLog(log.ToString());
+        System.Diagnostics.Debug.WriteLine(log.ToString());
+    }
+
+    private static Border? FindExistingSearchHost(FrameworkElement card)
+    {
+        if (card.Parent is Border logical
+            && string.Equals(logical.Tag as string, SearchHostTag, StringComparison.Ordinal))
+        {
+            return logical;
+        }
+
+        if (VisualTreeHelper.GetParent(card) is Border visual
+            && string.Equals(visual.Tag as string, SearchHostTag, StringComparison.Ordinal))
+        {
+            return visual;
+        }
+
+        return null;
+    }
+
+    private static void ConfigureSearchHostAutomation(Border host, string cardId)
+    {
+        AutomationProperties.SetAutomationId(host, "Host_" + cardId);
+        AutomationProperties.SetName(host, "Settings search host " + cardId);
+        AutomationProperties.SetAccessibilityView(host, AccessibilityView.Content);
+    }
+
+    private static string DescribeParentChain(FrameworkElement card)
+    {
+        var parts = new List<string>();
+        for (var p = VisualTreeHelper.GetParent(card); p is not null && parts.Count < 8;
+             p = VisualTreeHelper.GetParent(p))
+        {
+            var name = p is FrameworkElement fe && !string.IsNullOrEmpty(fe.Name)
+                ? fe.Name
+                : "";
+            parts.Add(string.IsNullOrEmpty(name) ? p.GetType().Name : $"{p.GetType().Name}#{name}");
+        }
+
+        return parts.Count == 0 ? "(none)" : string.Join(" > ", parts);
+    }
+
+    private static Border? TryWrapInSearchHost(FrameworkElement card, string cardId)
+    {
+        // WinUI Border is sealed — cannot subclass for OnCreateAutomationPeer; use peer API below.
+        var host = new Border
+        {
+            Tag = SearchHostTag,
+            // Pink lives here (outside expander composition) — keep padding even when clear.
+            Padding = SearchHostChromePadding,
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(8),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        ConfigureSearchHostAutomation(host, cardId);
+
+        var panel = FindPanelOwner(card);
+        if (panel is not null)
+        {
+            var index = panel.Children.IndexOf(card);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            panel.Children.RemoveAt(index);
+            host.Margin = card.Margin;
+            card.Margin = new Thickness(0);
+            host.Child = card;
+            panel.Children.Insert(index, host);
+            return host;
+        }
+
+        var itemsOwner = FindItemsOwner(card);
+        if (itemsOwner is not null)
+        {
+            var index = itemsOwner.Items.IndexOf(card);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            itemsOwner.Items.RemoveAt(index);
+            host.Margin = card.Margin;
+            card.Margin = new Thickness(0);
+            host.Child = card;
+            itemsOwner.Items.Insert(index, host);
+            return host;
+        }
+
+        if (card.Parent is ContentControl content
+            && ReferenceEquals(content.Content, card))
+        {
+            content.Content = null;
+            host.Margin = card.Margin;
+            card.Margin = new Thickness(0);
+            host.Child = card;
+            content.Content = host;
+            return host;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// StackPanel / Grid etc. Prefer visual tree — FrameworkElement.Parent can be null
+    /// for toolkit expanders even when they sit in a section StackPanel.
+    /// </summary>
+    private static Panel? FindPanelOwner(FrameworkElement card)
+    {
+        if (card.Parent is Panel logical && logical.Children.IndexOf(card) >= 0)
+        {
+            return logical;
+        }
+
+        for (var p = VisualTreeHelper.GetParent(card); p is not null; p = VisualTreeHelper.GetParent(p))
+        {
+            if (p is Panel panel && panel.Children.IndexOf(card) >= 0)
+            {
+                return panel;
+            }
+        }
+
+        return null;
+    }
+
+    private static ItemsControl? FindItemsOwner(FrameworkElement card)
+    {
+        for (var p = VisualTreeHelper.GetParent(card); p is not null; p = VisualTreeHelper.GetParent(p))
+        {
+            if (p is ItemsControl items && items.Items.IndexOf(card) >= 0)
+            {
+                return items;
+            }
+        }
+
+        for (DependencyObject? p = card.Parent; p is not null;)
+        {
+            if (p is ItemsControl items && items.Items.IndexOf(card) >= 0)
+            {
+                return items;
+            }
+
+            p = p is FrameworkElement fe ? fe.Parent : VisualTreeHelper.GetParent(p);
+        }
+
+        return null;
+    }
+
+    private static void WriteHostWrapLog(string text)
+    {
+        try
+        {
+            var dir = Environment.GetEnvironmentVariable("PALACE_DATA_DIR");
+            if (string.IsNullOrWhiteSpace(dir))
+            {
+                dir = Path.GetTempPath();
+            }
+
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "palace-settings-search-hosts.log");
+            File.AppendAllText(path, text + Environment.NewLine);
+        }
+        catch
+        {
+            // Logging must never break Settings.
+        }
+    }
+
+    private void HighlightMatchingCards(IReadOnlySet<string> cardIds)
     {
         ClearSearchHighlight();
-        // Card AutomationIds match x:Name (CardTheme, …). SettingsCard is a Control.
-        var card = FindName(automationId) as Control
-            ?? FindNamedControl(PnlSettingsContent, automationId);
-        if (card is null)
+        if (cardIds.Count == 0)
         {
             return;
         }
 
-        _highlightedCard = card;
-        _highlightRestoreBrush = card.Background;
-        if (Application.Current.Resources.TryGetValue("PalaceSettingsSearchHighlightBrush", out var brush)
-            && brush is Brush highlight)
+        EnsureSearchHighlightHosts();
+        var wash = CreateSearchHighlightBrush();
+        var ring = new SolidColorBrush(Color.FromArgb(0xFF, 0xE0, 0x5A, 0x8C));
+
+        foreach (var id in cardIds)
         {
-            card.Background = highlight;
+            if (!_searchHosts.TryGetValue(id, out var host))
+            {
+                System.Diagnostics.Debug.WriteLine($"Settings search highlight: no host for {id}");
+                continue;
+            }
+
+            host.Padding = SearchHostChromePadding;
+            host.Background = wash;
+            host.BorderBrush = ring;
+            host.BorderThickness = SearchHostHighlightBorder;
+            _highlightedHosts.Add(host);
+
+            host.UpdateLayout();
+            var childParentOk = host.Child is FrameworkElement fe
+                && ReferenceEquals(fe.Parent, host);
+            System.Diagnostics.Debug.WriteLine(
+                $"Settings search highlight {id}: Host_{id} Actual={host.ActualWidth:0}x{host.ActualHeight:0} " +
+                $"Padding={host.Padding.Left} Border={host.BorderThickness.Left} " +
+                $"bg={(host.Background as SolidColorBrush)?.Color} " +
+                $"ring={(host.BorderBrush as SolidColorBrush)?.Color} childParentIsHost={childParentOk}");
         }
 
-        card.StartBringIntoView();
-        _highlightTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
-        _highlightTimer.Tick -= HighlightTimer_Tick;
-        _highlightTimer.Tick += HighlightTimer_Tick;
-        _highlightTimer.Stop();
-        _highlightTimer.Start();
+        // Keep highlight while the query is active; only flash when a single timed jump remains.
+        if (!_searchFiltering)
+        {
+            _highlightTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+            _highlightTimer.Tick -= HighlightTimer_Tick;
+            _highlightTimer.Tick += HighlightTimer_Tick;
+            _highlightTimer.Stop();
+            _highlightTimer.Start();
+        }
+        else
+        {
+            _highlightTimer?.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Fresh local pink wash. Theme lookup is best-effort; always return a new brush.
+    /// </summary>
+    private Brush CreateSearchHighlightBrush()
+    {
+        // Default #B3E05A8C — high enough for Release pink-scans in the Padding ring.
+        var color = Color.FromArgb(0xB3, 0xE0, 0x5A, 0x8C);
+        if (TryResolveThemeBrush(Resources, "PalaceSettingsSearchHighlightBrush", out var fromPage)
+            && fromPage is SolidColorBrush pageBrush)
+        {
+            color = pageBrush.Color;
+            if (color.A < 0xB3)
+            {
+                color = Color.FromArgb(0xB3, color.R, color.G, color.B);
+            }
+        }
+        else if (Application.Current?.Resources is { } appRoot
+            && TryResolveThemeBrush(appRoot, "PalaceSettingsSearchHighlightBrush", out var fromApp)
+            && fromApp is SolidColorBrush appBrush)
+        {
+            color = appBrush.Color;
+            if (color.A < 0xB3)
+            {
+                color = Color.FromArgb(0xB3, color.R, color.G, color.B);
+            }
+        }
+
+        return new SolidColorBrush(color);
+    }
+
+    private bool TryResolveThemeBrush(ResourceDictionary root, string key, out object? brush)
+    {
+        brush = null;
+        var light = ActualTheme == ElementTheme.Light
+            || (ActualTheme == ElementTheme.Default
+                && Application.Current.RequestedTheme == ApplicationTheme.Light);
+        var themeKeys = light ? new[] { "Light" } : new[] { "Dark", "Default" };
+        return TryThemeBrushInTree(root, themeKeys, key, out brush);
+    }
+
+    private static bool TryThemeBrushInTree(
+        ResourceDictionary root,
+        string[] themeKeys,
+        string key,
+        out object? brush)
+    {
+        brush = null;
+        foreach (var themeKey in themeKeys)
+        {
+            if (root.ThemeDictionaries.TryGetValue(themeKey, out var themeDict)
+                && themeDict is ResourceDictionary dict
+                && dict.TryGetValue(key, out var fromTheme)
+                && fromTheme is not null)
+            {
+                brush = fromTheme;
+                return true;
+            }
+        }
+
+        if (root.TryGetValue(key, out var direct) && direct is not null)
+        {
+            brush = direct;
+            return true;
+        }
+
+        foreach (var merged in root.MergedDictionaries)
+        {
+            if (TryThemeBrushInTree(merged, themeKeys, key, out brush))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void HighlightTimer_Tick(object? sender, object e)
@@ -264,11 +751,41 @@ public sealed partial class SettingsPage : Page
 
     private void ClearSearchHighlight()
     {
-        if (_highlightedCard is not null)
+        foreach (var host in _highlightedHosts)
         {
-            _highlightedCard.Background = _highlightRestoreBrush;
-            _highlightedCard = null;
-            _highlightRestoreBrush = null;
+            host.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+            host.BorderBrush = null;
+            host.BorderThickness = new Thickness(0);
+            host.Padding = SearchHostChromePadding;
+        }
+
+        _highlightedHosts.Clear();
+    }
+
+    private void ApplyDensity(string? density)
+    {
+        var minHeight = AppearanceSettings.CardMinHeight(density);
+        var spacing = new Thickness(0, 0, 0, AppearanceSettings.CardSpacingBottom(density));
+        var padX = AppearanceSettings.CardPaddingX(density);
+        var padY = AppearanceSettings.CardPaddingY(density);
+        var padding = new Thickness(padX, padY, padX, padY);
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (FindName(target.CardAutomationId) is Control card)
+            {
+                card.MinHeight = minHeight;
+                card.Padding = padding;
+                // Margin lives on the owned Host Border so density gaps stay outside the pink ring.
+                if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
+                {
+                    card.Margin = new Thickness(0);
+                    host.Margin = spacing;
+                }
+                else
+                {
+                    card.Margin = spacing;
+                }
+            }
         }
     }
 
@@ -307,6 +824,11 @@ public sealed partial class SettingsPage : Page
         if (e.PropertyName is nameof(SettingsViewModel.SelectedPreset))
         {
             SyncPresetGridSelection();
+        }
+
+        if (e.PropertyName is nameof(SettingsViewModel.SelectedDensity))
+        {
+            ApplyDensity(ViewModel.SelectedDensity);
         }
     }
 

@@ -13,6 +13,11 @@
     mc:Ignorable="d"
     Background="Transparent">
 
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="F" Modifiers="Control" Invoked="FocusSettingsSearch_Invoked" />
+        <KeyboardAccelerator Key="E" Modifiers="Control" Invoked="FocusSettingsSearch_Invoked" />
+    </Page.KeyboardAccelerators>
+
     <Page.Resources>
         <!--
           Selection chrome is on the swatch only (IsSelected across groups).
@@ -139,7 +144,9 @@
             Padding="8,16,8,16"
             Background="Transparent"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="0,0,1,0">
+            BorderThickness="0,0,1,0"
+            AutomationProperties.LandmarkType="Navigation"
+            AutomationProperties.Name="Settings sections">
             <ListView
                 x:Name="LstSettingsNav"
                 AutomationProperties.AutomationId="LstSettingsNav"
@@ -242,7 +249,9 @@
                 x:Name="TxtSettingsSearch"
                 Margin="0,0,0,12"
                 AutomationProperties.AutomationId="TxtSettingsSearch"
+                AutomationProperties.LandmarkType="Search"
                 AutomationProperties.Name="Search settings"
+                KeyDown="TxtSettingsSearch_KeyDown"
                 PlaceholderText="Search settings"
                 TextChanged="TxtSettingsSearch_TextChanged" />
 
@@ -251,7 +260,9 @@
                 Grid.Row="1"
                 HorizontalAlignment="Stretch"
                 HorizontalScrollMode="Disabled"
-                VerticalScrollBarVisibility="Auto">
+                VerticalScrollBarVisibility="Auto"
+                AutomationProperties.LandmarkType="Main"
+                AutomationProperties.Name="Settings content">
                 <StackPanel
                     x:Name="PnlSettingsContent"
                     HorizontalAlignment="Left"
@@ -259,10 +270,14 @@
 
                     <!-- Appearance -->
                     <StackPanel x:Name="PnlSection_appearance" Spacing="0">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Appearance" />
+                        <TextBlock
+                            Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
+                            AutomationProperties.HeadingLevel="Level1"
+                            Text="Appearance" />
                         <controls:SettingsCard
                             x:Name="CardTheme"
                             AutomationProperties.AutomationId="CardTheme"
+                            AutomationProperties.HelpText="System, Light, or Dark"
                             Description="System, Light, or Dark"
                             Header="Theme"
                             Style="{StaticResource PalaceSettingsCardStyle}">
@@ -290,7 +305,8 @@
                         <controls:SettingsCard
                             x:Name="CardDensity"
                             AutomationProperties.AutomationId="CardDensity"
-                            Description="Comfortable or Compact. Layout polish lands with Settings 0.3.0."
+                            AutomationProperties.HelpText="Comfortable or Compact spacing for Settings cards"
+                            Description="Comfortable or Compact spacing for Settings cards"
                             Header="Density"
                             Style="{StaticResource PalaceSettingsCardStyle}">
                             <ComboBox
@@ -604,14 +620,19 @@
 
                     <!-- Library & Folders -->
                     <StackPanel x:Name="PnlSection_library" Spacing="0" Visibility="Collapsed">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Library &amp; Folders" />
+                        <TextBlock
+                            Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
+                            AutomationProperties.HeadingLevel="Level1"
+                            Text="Library &amp; Folders" />
                         <!--
                           Watched folders: Expander with per-path Open / Remove + Add folder.
                           UI tests seed SourceFolder rows via CatalogService — never the GUI picker.
+                          Empty-state caption lives inside the expander Items (not below all cards).
                         -->
                         <controls:SettingsExpander
                             x:Name="CardWatchedFolders"
                             AutomationProperties.AutomationId="CardWatchedFolders"
+                            AutomationProperties.HelpText="Folders Palace indexes for this project"
                             Description="Folders Palace indexes for this project"
                             Header="Watched folders"
                             IsExpanded="True"
@@ -631,74 +652,83 @@
                                 <controls:SettingsCard
                                     ContentAlignment="Vertical"
                                     Style="{StaticResource PalaceSettingsCardStyle}">
-                                    <ItemsControl
-                                        x:Name="LstSources"
-                                        AutomationProperties.AutomationId="LstSources"
-                                        ItemsSource="{x:Bind ViewModel.Sources, Mode=OneWay}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="models:SourceFolderItem">
-                                                <Grid
-                                                    Margin="0,0,0,4"
-                                                    AutomationProperties.AutomationId="{x:Bind CardAutomationId, Mode=OneWay}"
-                                                    ColumnSpacing="8">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <Button
-                                                        Grid.Column="0"
-                                                        HorizontalAlignment="Stretch"
-                                                        HorizontalContentAlignment="Left"
-                                                        AutomationProperties.AutomationId="{x:Bind SelectAutomationId, Mode=OneWay}"
-                                                        AutomationProperties.Name="{x:Bind SelectAutomationName, Mode=OneWay}"
-                                                        Background="Transparent"
-                                                        BorderThickness="0"
-                                                        Command="{x:Bind pages:SettingsPage.GetSelectSourceCommand()}"
-                                                        CommandParameter="{x:Bind}"
-                                                        Padding="0">
-                                                        <StackPanel Spacing="2">
-                                                            <TextBlock
-                                                                Style="{StaticResource BodyStrongTextBlockStyle}"
-                                                                Text="{x:Bind Path, Mode=OneWay}"
-                                                                TextWrapping="WrapWholeWords" />
-                                                            <TextBlock
-                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                                Text="{x:Bind KindCaption, Mode=OneWay}" />
+                                    <StackPanel Spacing="8">
+                                        <TextBlock
+                                            x:Name="TxtWatchedFoldersEmpty"
+                                            AutomationProperties.AutomationId="TxtWatchedFoldersEmpty"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="No watched folders yet."
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowWatchedFoldersEmpty), Mode=OneWay}" />
+                                        <ItemsControl
+                                            x:Name="LstSources"
+                                            AutomationProperties.AutomationId="LstSources"
+                                            ItemsSource="{x:Bind ViewModel.Sources, Mode=OneWay}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="models:SourceFolderItem">
+                                                    <Grid
+                                                        Margin="0,0,0,4"
+                                                        AutomationProperties.AutomationId="{x:Bind CardAutomationId, Mode=OneWay}"
+                                                        ColumnSpacing="8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Button
+                                                            Grid.Column="0"
+                                                            HorizontalAlignment="Stretch"
+                                                            HorizontalContentAlignment="Left"
+                                                            AutomationProperties.AutomationId="{x:Bind SelectAutomationId, Mode=OneWay}"
+                                                            AutomationProperties.Name="{x:Bind SelectAutomationName, Mode=OneWay}"
+                                                            Background="Transparent"
+                                                            BorderThickness="0"
+                                                            Command="{x:Bind pages:SettingsPage.GetSelectSourceCommand()}"
+                                                            CommandParameter="{x:Bind}"
+                                                            Padding="0">
+                                                            <StackPanel Spacing="2">
+                                                                <TextBlock
+                                                                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                    Text="{x:Bind Path, Mode=OneWay}"
+                                                                    TextWrapping="WrapWholeWords" />
+                                                                <TextBlock
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                                                    Text="{x:Bind KindCaption, Mode=OneWay}" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <StackPanel
+                                                            Grid.Column="1"
+                                                            VerticalAlignment="Center"
+                                                            Orientation="Horizontal"
+                                                            Spacing="8">
+                                                            <Button
+                                                                AutomationProperties.AutomationId="{x:Bind OpenAutomationId, Mode=OneWay}"
+                                                                AutomationProperties.Name="{x:Bind OpenAutomationName, Mode=OneWay}"
+                                                                Command="{x:Bind pages:SettingsPage.GetOpenSourceCommand()}"
+                                                                CommandParameter="{x:Bind}"
+                                                                ToolTipService.ToolTip="Open in File Explorer">
+                                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                    <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                                                    <TextBlock VerticalAlignment="Center" Text="Open" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                            <Button
+                                                                AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
+                                                                AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                                                Command="{x:Bind pages:SettingsPage.GetRemoveSourceCommand()}"
+                                                                CommandParameter="{x:Bind}"
+                                                                ToolTipService.ToolTip="Remove from library">
+                                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                    <ic:FluentIcon Icon="FolderArrowLeft" IconSize="Size16" IconVariant="Regular" />
+                                                                    <TextBlock VerticalAlignment="Center" Text="Remove" />
+                                                                </StackPanel>
+                                                            </Button>
                                                         </StackPanel>
-                                                    </Button>
-                                                    <StackPanel
-                                                        Grid.Column="1"
-                                                        VerticalAlignment="Center"
-                                                        Orientation="Horizontal"
-                                                        Spacing="8">
-                                                        <Button
-                                                            AutomationProperties.AutomationId="{x:Bind OpenAutomationId, Mode=OneWay}"
-                                                            AutomationProperties.Name="{x:Bind OpenAutomationName, Mode=OneWay}"
-                                                            Command="{x:Bind pages:SettingsPage.GetOpenSourceCommand()}"
-                                                            CommandParameter="{x:Bind}"
-                                                            ToolTipService.ToolTip="Open in File Explorer">
-                                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
-                                                                <TextBlock VerticalAlignment="Center" Text="Open" />
-                                                            </StackPanel>
-                                                        </Button>
-                                                        <Button
-                                                            AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
-                                                            AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
-                                                            Command="{x:Bind pages:SettingsPage.GetRemoveSourceCommand()}"
-                                                            CommandParameter="{x:Bind}"
-                                                            ToolTipService.ToolTip="Remove from library">
-                                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                                <ic:FluentIcon Icon="FolderArrowLeft" IconSize="Size16" IconVariant="Regular" />
-                                                                <TextBlock VerticalAlignment="Center" Text="Remove" />
-                                                            </StackPanel>
-                                                        </Button>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </controls:SettingsCard>
                             </controls:SettingsExpander.Items>
                         </controls:SettingsExpander>
@@ -1010,7 +1040,10 @@
 
                     <!-- Viewer -->
                     <StackPanel x:Name="PnlSection_viewer" Spacing="0" Visibility="Collapsed">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Viewer" />
+                        <TextBlock
+                            Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
+                            AutomationProperties.HeadingLevel="Level1"
+                            Text="Viewer" />
                         <controls:SettingsCard
                             x:Name="CardDefaultZoom"
                             AutomationProperties.AutomationId="CardDefaultZoom"
@@ -1134,7 +1167,10 @@
 
                     <!-- Tags & Rooms -->
                     <StackPanel x:Name="PnlSection_tags" Spacing="0" Visibility="Collapsed">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Tags &amp; Rooms" />
+                        <TextBlock
+                            Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
+                            AutomationProperties.HeadingLevel="Level1"
+                            Text="Tags &amp; Rooms" />
                         <controls:SettingsCard
                             x:Name="CardTagPortable"
                             AutomationProperties.AutomationId="CardTagPortable"
@@ -1173,7 +1209,10 @@
 
                     <!-- Input -->
                     <StackPanel x:Name="PnlSection_input" Spacing="0" Visibility="Collapsed">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Input" />
+                        <TextBlock
+                            Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
+                            AutomationProperties.HeadingLevel="Level1"
+                            Text="Input" />
                         <controls:SettingsCard
                             x:Name="CardShortcuts"
                             AutomationProperties.AutomationId="CardShortcuts"
@@ -1242,7 +1281,10 @@
 
                     <!-- Performance & Storage -->
                     <StackPanel x:Name="PnlSection_performance" Spacing="0" Visibility="Collapsed">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Performance" />
+                        <TextBlock
+                            Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
+                            AutomationProperties.HeadingLevel="Level1"
+                            Text="Performance" />
                         <controls:SettingsExpander
                             x:Name="CardMediaCache"
                             HorizontalContentAlignment="Stretch"
@@ -1433,7 +1475,10 @@
 
                     <!-- About -->
                     <StackPanel x:Name="PnlSection_about" Spacing="0" Visibility="Collapsed">
-                        <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="About" />
+                        <TextBlock
+                            Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
+                            AutomationProperties.HeadingLevel="Level1"
+                            Text="About" />
                         <controls:SettingsCard
                             x:Name="CardAppVersion"
                             HorizontalAlignment="Stretch"

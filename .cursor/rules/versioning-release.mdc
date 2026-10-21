@@ -27,7 +27,7 @@ Stay on **0.x** until the first public Store release (**1.0.0**).
 | Change | Bump |
 |---|---|
 | Fixes, polish, small features, library / viewer work | **PATCH** (e.g. `0.2.2` → `0.2.3`) |
-| Finished milestone only (explicit Sacb0y open) | **MINOR** (next: Settings restructure → **0.3.0**) |
+| Finished milestone only (explicit Sacb0y open) | **MINOR** (Settings restructure landed at **0.3.0**) |
 | Docs / CI / tests only | **No bump** — add label `no-version-bump`, **or** keep the diff on exempt paths (see `scripts/check-version.py`: `.cursor/`, `.github/`, `docs/`, `Palace.Tests/`, `scripts/`, `*.md`, `AGENTS.md`, `README.md`, `ui-tests.ps1`, …) |
 
 Stacked / parallel PRs: rebase onto `main` and **re-bump** in merge order so each tip stays greater than `main`.
@@ -43,8 +43,8 @@ Template fields live in `.github/PULL_REQUEST_TEMPLATE.md`.
 
 | Version | Milestone | Notes |
 |---|---|---|
-| **0.2.x** *(now)* | Library + viewer polish | Details/Info merge, overlay chrome, blur, tags. PATCH freely for library/viewer work. |
-| **0.3.0** | Settings restructure | Next **MINOR** — only when that milestone is finished. |
+| **0.2.x** | Library + viewer polish | Details/Info merge, overlay chrome, blur, tags. |
+| **0.3.0** *(now)* | Settings restructure | Two-pane Settings, search filter, density, Narrator polish. |
 | **bonus** | Cloud | Not a numbered main slice. On-Demand + OAuth already in 0.x; do not download originals. |
 | **later 0.x** | Rooms / gamedev / AI | Only when Sacb0y opens them. |
 | **1.0.0** | First public Store | Release/trim fixed, Store packaging. |

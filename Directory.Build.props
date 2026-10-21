@@ -6,7 +6,7 @@
     See .cursor/rules/versioning-release.mdc and AGENTS.md.
   -->
   <PropertyGroup>
-    <PalaceVersion>0.2.12</PalaceVersion>
+    <PalaceVersion>0.3.0</PalaceVersion>
     <Version>$(PalaceVersion)</Version>
     <AssemblyVersion>$(PalaceVersion).0</AssemblyVersion>
     <FileVersion>$(PalaceVersion).0</FileVersion>

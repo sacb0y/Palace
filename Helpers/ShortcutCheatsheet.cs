@@ -59,7 +59,9 @@ public static class ShortcutCheatsheet
         new("Up / Down", "Video volume (±5, Shift ±1)", "TxtShortcutVolume"),
         new("F6", "Cycle image / controls / Details", "TxtShortcutFocusCycle"),
         new("Space", "Open overlay on the focused or selected tile", "TxtShortcutSpace"),
-        new("Esc", "Close Details, then overlay", "TxtShortcutEsc")
+        new("Esc", "Close Details, then overlay", "TxtShortcutEsc"),
+        new("Ctrl+F", "Settings: Find", "TxtShortcutSettingsFind"),
+        new("Ctrl+E", "Settings: Find", "TxtShortcutSettingsFindAlt")
     ];
 
     public static ShortcutHint? Find(string keys) =>

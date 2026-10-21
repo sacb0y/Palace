@@ -25,7 +25,7 @@ This file is the always-loaded core. Topic rules live in `.cursor/rules/*.mdc` a
 ## Versioning and changelog
 
 - Source of truth: `<PalaceVersion>` in `Directory.Build.props` (Assembly / File / Informational follow it). Manifest `Identity Version` = `MAJOR.MINOR.PATCH.**0**` — sync with `python3 scripts/sync-appx-version.py`. CI enforces props ↔ manifest match and a bump over `main` for app-changing PRs.
-- Stay on **0.x** until the first public Store release (**1.0.0**). **PATCH** = fixes, polish, small features, library work. **MINOR** = finished milestones only (next: Settings restructure → **0.3.0**). Docs / CI / tests-only: no bump (`no-version-bump` label or exempt paths). Version follows merge order; rebase and re-bump stacked PRs.
+- Stay on **0.x** until the first public Store release (**1.0.0**). **PATCH** = fixes, polish, small features, library work. **MINOR** = finished milestones only (Settings restructure landed at **0.3.0**). Docs / CI / tests-only: no bump (`no-version-bump` label or exempt paths). Version follows merge order; rebase and re-bump stacked PRs.
 - Bumping PRs must state the **new version** and a **one-line user-facing summary** (for Isiac). Keep `Helpers/AppVersion.cs` `Milestone` in lockstep when opening a milestone. Do not jump to `1.0.0` because something “feels ready.”
 - No `CHANGELOG.md` in-repo. Maintainers record version-bump merges in an external changelog.
 
@@ -73,7 +73,7 @@ This file is the always-loaded core. Topic rules live in `.cursor/rules/*.mdc` a
 - Thumbnails: ~2–4 concurrent decodes, lazy in viewport order, short prefetch, cancel on scroll-away, full decodes off the UI thread.
 - Accent: Follow Windows or Palace pink (`#ED9FBC` Dark, `#A14165` Light). Retint in `OnLaunched`; do not touch `Application.Resources` in the App constructor.
 - Backgrounds: 13 presets plus Default, Mica, Mica Alt, Neutral, Custom. Recent custom images kept as copies; blur / darkness per entry.
-- Roadmap: Settings → **0.3.0**, then touch (long-press select; swipe keep/reject → `_rejected`), then 3D and audio, then moodboard.
+- Roadmap: Settings **0.3.0** done; next touch (long-press select; swipe keep/reject → `_rejected`), then 3D and audio, then moodboard.
 
 ## PR descriptions
 
