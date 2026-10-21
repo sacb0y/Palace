@@ -1016,15 +1016,20 @@ public sealed partial class GalleryStillSurface : UserControl
         _scrollViewH = viewH;
 
         ScrStill.UpdateLayout();
-        // Prefer laid-out actual size when the panel has measured (SDR Image
-        // open) so pan clamp matches the visible content rect.
+        // Adopt laid-out Actual only when it is at least the assigned size.
+        // Arranged Actual can under-report (short of Height/Width) inside the
+        // ScrollViewer and would shrink tall pan max before the image bottom.
         if (GrdStillContent.ActualWidth > 1 && GrdStillContent.ActualHeight > 1)
         {
-            contentW = GrdStillContent.ActualWidth;
-            contentH = GrdStillContent.ActualHeight;
+            contentW = Math.Max(contentW, GrdStillContent.ActualWidth);
+            contentH = Math.Max(contentH, GrdStillContent.ActualHeight);
             _scrollContentW = contentW;
             _scrollContentH = contentH;
         }
+
+        // Clamp against the true viewport (not a larger control Actual).
+        var clampW = TouchGestures.ResolvePanViewport(viewW, ScrStill.ViewportWidth);
+        var clampH = TouchGestures.ResolvePanViewport(viewH, ScrStill.ViewportHeight);
 
         double horizontal;
         double vertical;
@@ -1042,8 +1047,8 @@ public sealed partial class GalleryStillSurface : UserControl
                 oldOffV,
                 contentW,
                 contentH,
-                viewW,
-                viewH);
+                clampW,
+                clampH);
             if (panX != 0 || panY != 0)
             {
                 (horizontal, vertical) = GalleryScale.DragPanContent(
@@ -1053,14 +1058,14 @@ public sealed partial class GalleryStillSurface : UserControl
                     panY,
                     contentW,
                     contentH,
-                    viewW,
-                    viewH);
+                    clampW,
+                    clampH);
             }
         }
         else
         {
             (horizontal, vertical) = GalleryScale.InitialScrollOffset(
-                scaling, contentW, contentH, viewW, viewH);
+                scaling, contentW, contentH, clampW, clampH);
         }
 
         ScrStill.ChangeView(horizontal, vertical, null, true);
@@ -1241,8 +1246,7 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        // Prefer ScrollViewer extent (source of truth) so SDR tall pan reaches
-        // both edges symmetrically — assigned Width/Height can lag Actual/Extent.
+        // Assigned panel size wins over short Actual/Extent (tall bottom reach).
         var contentW = PanContentWidth();
         var contentH = PanContentHeight();
         var (horizontal, vertical) = GalleryScale.DragPanContent(
@@ -1252,8 +1256,8 @@ public sealed partial class GalleryStillSurface : UserControl
             point.Position.Y - _panLastY,
             contentW,
             contentH,
-            ScrStill.ActualWidth,
-            ScrStill.ActualHeight);
+            PanViewportWidth(),
+            PanViewportHeight());
         _panLastX = point.Position.X;
         _panLastY = point.Position.Y;
         ScrStill.ChangeView(horizontal, vertical, null, true);
@@ -1287,21 +1291,25 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.ReleasePointerCapture(pointer);
     }
 
-    private double PanContentWidth()
-    {
-        var extent = ScrStill.ExtentWidth;
-        var actual = GrdStillContent.ActualWidth;
-        var tracked = _scrollContentW;
-        return Math.Max(Math.Max(tracked, actual), extent);
-    }
+    private double PanContentWidth() =>
+        TouchGestures.ResolvePanContentExtent(
+            GrdStillContent.Width,
+            GrdStillContent.ActualWidth,
+            ScrStill.ExtentWidth,
+            _scrollContentW);
 
-    private double PanContentHeight()
-    {
-        var extent = ScrStill.ExtentHeight;
-        var actual = GrdStillContent.ActualHeight;
-        var tracked = _scrollContentH;
-        return Math.Max(Math.Max(tracked, actual), extent);
-    }
+    private double PanContentHeight() =>
+        TouchGestures.ResolvePanContentExtent(
+            GrdStillContent.Height,
+            GrdStillContent.ActualHeight,
+            ScrStill.ExtentHeight,
+            _scrollContentH);
+
+    private double PanViewportWidth() =>
+        TouchGestures.ResolvePanViewport(ScrStill.ActualWidth, ScrStill.ViewportWidth);
+
+    private double PanViewportHeight() =>
+        TouchGestures.ResolvePanViewport(ScrStill.ActualHeight, ScrStill.ViewportHeight);
 
     private void BeginTouchHold(uint pointerId, double x, double y)
     {
@@ -1455,8 +1463,8 @@ public sealed partial class GalleryStillSurface : UserControl
                 deltaY,
                 PanContentWidth(),
                 PanContentHeight(),
-                ScrStill.ActualWidth,
-                ScrStill.ActualHeight);
+                PanViewportWidth(),
+                PanViewportHeight());
             ScrStill.ChangeView(horizontal, vertical, null, true);
             e.Handled = true;
             return;

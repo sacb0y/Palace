@@ -72,6 +72,37 @@ public sealed class TouchGesturesTests
     }
 
     [Fact]
+    public void ResolvePanContentExtent_AssignedSizeWinsOverShortActual()
+    {
+        // Laptop fail: arranged Actual/Extent under-report vs assigned 1:1 Height
+        // → max scroll stopped at navel instead of thighs.
+        const double intended = 1866.67; // 2800px / 1.5 DPI
+        const double shortActual = 1000;
+        const double shortExtent = 1000;
+        const double trackedShort = 1000;
+        Assert.Equal(
+            intended,
+            TouchGestures.ResolvePanContentExtent(intended, shortActual, shortExtent, trackedShort),
+            3);
+
+        // Viewport Actual larger than ViewportHeight shortens max scroll.
+        Assert.Equal(900, TouchGestures.ResolvePanViewport(1100, 900), 3);
+        Assert.Equal(1100, TouchGestures.ResolvePanViewport(1100, 0), 3);
+
+        // Max offset must reach true bottom when intended wins (not shortActual−viewport).
+        var content = TouchGestures.ResolvePanContentExtent(
+            intended, shortActual, shortExtent, trackedShort);
+        var viewport = TouchGestures.ResolvePanViewport(1100, 900);
+        Assert.Equal(intended - 900, TouchGestures.MaxScrollOffset(content, viewport), 3);
+        Assert.Equal(
+            intended - 900,
+            TouchGestures.ClampScrollOffset(5000, content, viewport),
+            3);
+        // Regression: short Actual alone would have stopped at 100.
+        Assert.Equal(100, TouchGestures.MaxScrollOffset(shortActual, viewport), 3);
+    }
+
+    [Fact]
     public void RubberBand_CapsAtQuarterViewport()
     {
         Assert.Equal(0, TouchGestures.RubberBand(0, 100), 3);

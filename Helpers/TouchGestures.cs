@@ -365,6 +365,58 @@ public static class TouchGestures
             ClampScrollOffset(offsetY, contentHeight, viewportHeight, allowRubberBand));
 
     /// <summary>
+    /// Tall zoomed pan extent: take the max of every size signal. Arranged
+    /// <c>ActualHeight</c> / ScrollViewer <c>ExtentHeight</c> can report short
+    /// of the assigned panel Height (Disabled scroll measure / lag) — never
+    /// let those shrink the clamp below the layout size we set for 1:1 / pinch.
+    /// </summary>
+    public static double ResolvePanContentExtent(
+        double intended,
+        double actual,
+        double extent,
+        double tracked)
+    {
+        var best = 0.0;
+        ConsiderPanSize(ref best, intended);
+        ConsiderPanSize(ref best, actual);
+        ConsiderPanSize(ref best, extent);
+        ConsiderPanSize(ref best, tracked);
+        return best;
+    }
+
+    /// <summary>
+    /// Prefer ScrollViewer.ViewportHeight when it is the smaller positive
+    /// size — a larger control ActualHeight shortens max scroll
+    /// (content − viewport) and stops tall pan before the image bottom.
+    /// </summary>
+    public static double ResolvePanViewport(double controlActual, double scrollViewport)
+    {
+        if (scrollViewport > 1)
+        {
+            if (controlActual > 1)
+            {
+                return Math.Min(controlActual, scrollViewport);
+            }
+
+            return scrollViewport;
+        }
+
+        return controlActual > 0 ? controlActual : 0;
+    }
+
+    /// <summary>Max ScrollViewer-style offset for a content/viewport pair.</summary>
+    public static double MaxScrollOffset(double contentSize, double viewportSize) =>
+        contentSize > viewportSize ? contentSize - viewportSize : 0;
+
+    private static void ConsiderPanSize(ref double best, double value)
+    {
+        if (!double.IsNaN(value) && !double.IsInfinity(value) && value > best)
+        {
+            best = value;
+        }
+    }
+
+    /// <summary>
     /// Pinch min while dragging: 0.5× Fit. On release snap back to Fit when below 1.
     /// </summary>
     public static double ClampPinchDuringGesture(double zoomFitFactor) =>
