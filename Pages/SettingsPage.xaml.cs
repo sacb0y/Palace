@@ -28,6 +28,12 @@ public sealed partial class SettingsPage : Page
     private readonly List<Border> _highlightedHosts = [];
     private DispatcherTimer? _highlightTimer;
     private const string SearchHostTag = "PalaceSettingsSearchHost";
+    /// <summary>
+    /// Inset so Background/BorderBrush sit outside opaque SettingsCard/Expander chrome.
+    /// Without this, collapsed expanders cover the host Background (PinkWash=0).
+    /// </summary>
+    private static readonly Thickness SearchHostChromePadding = new(4);
+    private static readonly Thickness SearchHostHighlightBorder = new(3);
 
     public SettingsViewModel ViewModel => AppServices.Settings;
 
@@ -392,6 +398,7 @@ public sealed partial class SettingsPage : Page
             if (card.Parent is Border existing
                 && string.Equals(existing.Tag as string, SearchHostTag, StringComparison.Ordinal))
             {
+                existing.Padding = SearchHostChromePadding;
                 _searchHosts[target.CardAutomationId] = existing;
                 continue;
             }
@@ -409,6 +416,9 @@ public sealed partial class SettingsPage : Page
         var host = new Border
         {
             Tag = SearchHostTag,
+            // Padding keeps a ring the child cannot cover — Background wash + BorderBrush
+            // remain visible at collapsed header height (Release FAIL on 315aeac).
+            Padding = SearchHostChromePadding,
             Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(8),
@@ -484,7 +494,9 @@ public sealed partial class SettingsPage : Page
         }
 
         EnsureSearchHighlightHosts();
-        var highlight = CreateSearchHighlightBrush();
+        var wash = CreateSearchHighlightBrush();
+        // Opaque ring for pixel-scans; wash stays translucent in the padding band.
+        var ring = new SolidColorBrush(Color.FromArgb(0xFF, 0xE0, 0x5A, 0x8C));
 
         foreach (var id in cardIds)
         {
@@ -493,9 +505,11 @@ public sealed partial class SettingsPage : Page
                 continue;
             }
 
-            host.Background = highlight;
-            host.BorderBrush = highlight;
-            host.BorderThickness = new Thickness(2);
+            // Visibility/brush live on the host only — never on the expander template.
+            host.Padding = SearchHostChromePadding;
+            host.Background = wash;
+            host.BorderBrush = ring;
+            host.BorderThickness = SearchHostHighlightBorder;
             _highlightedHosts.Add(host);
         }
 
@@ -519,12 +533,13 @@ public sealed partial class SettingsPage : Page
     /// </summary>
     private Brush CreateSearchHighlightBrush()
     {
-        var color = Color.FromArgb(0xB3, 0xE0, 0x5A, 0x8C); // ~70% Palace pink
+        // Default #B3E05A8C — high enough for Release pink-scans in the Padding ring.
+        var color = Color.FromArgb(0xB3, 0xE0, 0x5A, 0x8C);
         if (TryResolveThemeBrush(Resources, "PalaceSettingsSearchHighlightBrush", out var fromPage)
             && fromPage is SolidColorBrush pageBrush)
         {
             color = pageBrush.Color;
-            if (color.A < 0x80)
+            if (color.A < 0xB3)
             {
                 color = Color.FromArgb(0xB3, color.R, color.G, color.B);
             }
@@ -534,7 +549,7 @@ public sealed partial class SettingsPage : Page
             && fromApp is SolidColorBrush appBrush)
         {
             color = appBrush.Color;
-            if (color.A < 0x80)
+            if (color.A < 0xB3)
             {
                 color = Color.FromArgb(0xB3, color.R, color.G, color.B);
             }
@@ -602,6 +617,7 @@ public sealed partial class SettingsPage : Page
             host.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
             host.BorderBrush = null;
             host.BorderThickness = new Thickness(0);
+            host.Padding = SearchHostChromePadding;
         }
 
         _highlightedHosts.Clear();
