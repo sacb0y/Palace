@@ -490,7 +490,8 @@ public sealed partial class SettingsPage : Page
 
     private static Border? TryWrapInSearchHost(FrameworkElement card, string cardId)
     {
-        var host = new SearchHighlightHostBorder
+        // WinUI Border is sealed — cannot subclass for OnCreateAutomationPeer; use peer API below.
+        var host = new Border
         {
             Tag = SearchHostTag,
             // Pink lives here (outside expander composition) — keep padding even when clear.
