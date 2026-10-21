@@ -645,7 +645,7 @@
                     <DataTemplate x:DataType="models:AssetItem">
                         <ItemContainer
                             AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
-                            CanDrag="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
+                            CanDrag="False"
                             ContextRequested="AssetItem_ContextRequested"
                             DragStarting="AssetItem_DragStarting"
                             DoubleTapped="AssetItem_DoubleTapped"
@@ -1494,6 +1494,18 @@
                             <MediaTransportControls IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
+                    <!-- Paused/stopped browse swipe: MPE swallows touch; catcher sits under Play/Volume, above transport dead zone. -->
+                    <Grid
+                        x:Name="GrdVideoBrowseSwipe"
+                        Margin="0,0,0,72"
+                        Background="Transparent"
+                        DoubleTapped="GalleryOverlayVideo_DoubleTapped"
+                        IsDoubleTapEnabled="True"
+                        IsHitTestVisible="False"
+                        ManipulationCompleted="GrdVideoBrowseSwipe_ManipulationCompleted"
+                        ManipulationDelta="GrdVideoBrowseSwipe_ManipulationDelta"
+                        ManipulationMode="TranslateX,TranslateY"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
                     <controls:VolumeControl
                         x:Name="VolOverlay"
                         Margin="24,0,0,72"

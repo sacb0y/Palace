@@ -909,16 +909,6 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
         var scrolls = GalleryScale.Scrolls(scaling, _pinchZoom);
-        // Fit / not zoomed: keep scroll modes Disabled so ScrollViewer DM cannot
-        // swallow browse swipe (tall letterbox Fit swipe-left fail on dd408c9).
-        // Zoomed / Actual / Fill: Enabled so Extent matches content for pan clamp.
-        ScrStill.HorizontalScrollMode = scrolls ? ScrollMode.Enabled : ScrollMode.Disabled;
-        ScrStill.VerticalScrollMode = scrolls ? ScrollMode.Enabled : ScrollMode.Disabled;
-        // Letterbox beside Fit content: enable Translate on ScrStill so swipe
-        // starting off-image still browses. Zoomed: None — content handles pan.
-        ScrStill.ManipulationMode = scrolls
-            ? ManipulationModes.None
-            : ManipulationModes.TranslateX | ManipulationModes.TranslateY;
         var bars = GalleryScale.ShowsScrollBars()
             ? ScrollBarVisibility.Auto
             : ScrollBarVisibility.Hidden;
@@ -1378,100 +1368,9 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         // Learn: pointer events inside a ScrollViewer are swallowed by
         // DirectManipulation unless the child cancels it.
-        ScrStill.CancelDirectManipulations();
         GrdStillContent.CancelDirectManipulations();
         ImgStill.CancelDirectManipulations();
         ScpHdr.CancelDirectManipulations();
-    }
-
-    /// <summary>
-    /// Fit letterbox (empty ScrStill around centered content): browse swipe.
-    /// Content grid handles on-image gestures; this covers off-image starts.
-    /// </summary>
-    private void ScrStill_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
-    {
-        if (e.PointerDeviceType != PointerDeviceType.Touch)
-        {
-            return;
-        }
-
-        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
-        if (GalleryScale.AllowsTouchPan(
-                scaling,
-                _pinchZoom,
-                PanContentWidth(),
-                PanContentHeight(),
-                PanViewportWidth(),
-                PanViewportHeight()))
-        {
-            return;
-        }
-
-        TrackBrowseOrReviewSwipe(e);
-    }
-
-    private void ScrStill_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e) =>
-        CompleteBrowseOrReviewSwipe(e);
-
-    private void TrackBrowseOrReviewSwipe(ManipulationDeltaRoutedEventArgs e)
-    {
-        var deltaX = e.Delta.Translation.X;
-        var deltaY = e.Delta.Translation.Y;
-        if (deltaX == 0 && deltaY == 0)
-        {
-            return;
-        }
-
-        if (!ViewerSettings.TouchGesturesEnabled
-            || !TouchGestures.AllowsSwipe(
-                zoomed: false,
-                fingerCount: 1,
-                afterPinchAwaitingLift: _afterPinchAwaitingLift))
-        {
-            return;
-        }
-
-        CancelTouchHold();
-        CancelScrollViewerDirectManipulation();
-        _reviewSwipeActive = true;
-        _reviewSwipeDx += deltaX;
-        _reviewSwipeDy += deltaY;
-        _reviewSwipeVx = e.Velocities.Linear.X;
-        _reviewSwipeVy = e.Velocities.Linear.Y;
-        e.Handled = true;
-    }
-
-    private void CompleteBrowseOrReviewSwipe(ManipulationCompletedRoutedEventArgs e)
-    {
-        if (e.PointerDeviceType != PointerDeviceType.Touch || !_reviewSwipeActive)
-        {
-            return;
-        }
-
-        var action = TouchGestures.ClassifySwipe(
-            IsReviewMode,
-            _reviewSwipeDx,
-            _reviewSwipeDy,
-            ScrStill.ActualWidth,
-            ScrStill.ActualHeight,
-            _reviewSwipeVx,
-            _reviewSwipeVy);
-        _reviewSwipeActive = false;
-        _reviewSwipeDx = 0;
-        _reviewSwipeDy = 0;
-        _reviewSwipeVx = 0;
-        _reviewSwipeVy = 0;
-        if (action is TouchGestures.SwipeAction.Reject
-            or TouchGestures.SwipeAction.Keep
-            or TouchGestures.SwipeAction.Skip
-            or TouchGestures.SwipeAction.BrowsePrevious
-            or TouchGestures.SwipeAction.BrowseNext)
-        {
-            ReviewSwipeCommitted?.Invoke(action);
-        }
-
-        _afterPinchAwaitingLift = false;
-        e.Handled = true;
     }
 
     private void GrdStillContent_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
@@ -1522,19 +1421,25 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        // Fit letterbox (no real overflow): always browse-swipe — never pan.
-        // Pan only when scale/pinch scrolls AND content exceeds the viewport.
-        var contentW = PanContentWidth();
-        var contentH = PanContentHeight();
-        var viewW = PanViewportWidth();
-        var viewH = PanViewportHeight();
-        var canPan = GalleryScale.AllowsTouchPan(
-            scaling, _pinchZoom, contentW, contentH, viewW, viewH);
-        if (!canPan)
+        if (!GalleryScale.Scrolls(scaling, _pinchZoom))
         {
-            if (isTouch && hasPan)
+            // Not zoomed: track Review swipe (touch only; after pinch wait for lift).
+            if (isTouch
+                && hasPan
+                && ViewerSettings.TouchGesturesEnabled
+                && TouchGestures.AllowsSwipe(
+                    zoomed: false,
+                    fingerCount: 1,
+                    afterPinchAwaitingLift: _afterPinchAwaitingLift))
             {
-                TrackBrowseOrReviewSwipe(e);
+                CancelTouchHold();
+                _reviewSwipeActive = true;
+                _reviewSwipeDx += deltaX;
+                _reviewSwipeDy += deltaY;
+                // ManipulationVelocities.Linear is already DIPs per millisecond.
+                _reviewSwipeVx = e.Velocities.Linear.X;
+                _reviewSwipeVy = e.Velocities.Linear.Y;
+                e.Handled = true;
             }
 
             return;
@@ -1556,10 +1461,10 @@ public sealed partial class GalleryStillSurface : UserControl
                 ScrStill.VerticalOffset,
                 deltaX,
                 deltaY,
-                contentW,
-                contentH,
-                viewW,
-                viewH);
+                PanContentWidth(),
+                PanContentHeight(),
+                PanViewportWidth(),
+                PanViewportHeight());
             ScrStill.ChangeView(horizontal, vertical, null, true);
             e.Handled = true;
             return;
@@ -1585,7 +1490,30 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (_reviewSwipeActive)
         {
-            CompleteBrowseOrReviewSwipe(e);
+            // Browse (default): prev/next only. Review mode: keep/reject/skip.
+            var action = TouchGestures.ClassifySwipe(
+                IsReviewMode,
+                _reviewSwipeDx,
+                _reviewSwipeDy,
+                ScrStill.ActualWidth,
+                ScrStill.ActualHeight,
+                _reviewSwipeVx,
+                _reviewSwipeVy);
+            _reviewSwipeActive = false;
+            _reviewSwipeDx = 0;
+            _reviewSwipeDy = 0;
+            _reviewSwipeVx = 0;
+            _reviewSwipeVy = 0;
+            if (action is TouchGestures.SwipeAction.Reject
+                or TouchGestures.SwipeAction.Keep
+                or TouchGestures.SwipeAction.Skip
+                or TouchGestures.SwipeAction.BrowsePrevious
+                or TouchGestures.SwipeAction.BrowseNext)
+            {
+                ReviewSwipeCommitted?.Invoke(action);
+            }
+
+            _afterPinchAwaitingLift = false;
             return;
         }
 

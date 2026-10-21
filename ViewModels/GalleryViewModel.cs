@@ -1076,6 +1076,8 @@ public partial class GalleryViewModel : ObservableObject
                 RefreshImageInfo();
                 ApplyGenerationPreview(GenerationFields.ForPreview(null, null, null, null));
                 Tags.Clear();
+                // Open/navigate at default zoom (Fit) — do not keep prior Actual/Fill.
+                Scaling = GalleryScale.OpenStillScaling();
                 StillRevision++;
             });
             return;
@@ -1227,6 +1229,9 @@ public partial class GalleryViewModel : ObservableObject
                 });
             }
 
+            // Every still opens / navigates at open scaling (product default Fit).
+            // Sticky Actual from a prior 1:1 left HDR AVIF cropped on open.
+            Scaling = GalleryScale.OpenStillScaling();
             StillRevision++;
         });
 

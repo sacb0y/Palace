@@ -195,20 +195,14 @@ public static class TouchGestures
     /// <summary>
     /// Non-review browse swipe when not zoomed: left/right = next/prev.
     /// Prefer <see cref="ClassifyReviewSwipe"/> for keep/reject Review.
-    /// Axis lock matches Review (distance or dominant flick velocity) so a
-    /// tall-portrait swipe-left with slight vertical drift still commits next.
     /// </summary>
     public static SwipeAction ClassifyBrowseSwipe(
         double dx,
         double dy,
         double viewportWidth,
-        double velocityXPxPerMs,
-        double velocityYPxPerMs = 0)
+        double velocityXPxPerMs)
     {
-        var horizontal = IsHorizontalAxis(dx, dy)
-            || (Math.Abs(velocityXPxPerMs) > SwipeFlickPxPerMs
-                && Math.Abs(velocityXPxPerMs) > AxisLockRatio * Math.Abs(velocityYPxPerMs));
-        if (!horizontal)
+        if (!IsHorizontalAxis(dx, dy))
         {
             return SwipeAction.None;
         }
@@ -220,10 +214,8 @@ public static class TouchGestures
             return SwipeAction.SpringBack;
         }
 
-        // Content follows finger: swipe left → next. Prefer displacement;
-        // fall back to velocity for short flicks (parity with Review).
-        var left = dx < 0 || (Math.Abs(dx) < 0.0001 && velocityXPxPerMs < 0);
-        return left ? SwipeAction.BrowseNext : SwipeAction.BrowsePrevious;
+        // Content follows finger: swipe left → next.
+        return dx < 0 ? SwipeAction.BrowseNext : SwipeAction.BrowsePrevious;
     }
 
     public const string RejectedFolderName = "_rejected";
@@ -533,7 +525,7 @@ public static class TouchGestures
         double velocityYPxPerMs) =>
         reviewMode
             ? ClassifyReviewSwipe(dx, dy, viewportWidth, viewportHeight, velocityXPxPerMs, velocityYPxPerMs)
-            : ClassifyBrowseSwipe(dx, dy, viewportWidth, velocityXPxPerMs, velocityYPxPerMs);
+            : ClassifyBrowseSwipe(dx, dy, viewportWidth, velocityXPxPerMs);
 
     /// <summary>
     /// Double-tap: Fit → 1:1 at tap (or 2.5× Fit if 1:1 ≤ 1.25× Fit) → Fit.
@@ -575,6 +567,17 @@ public static class TouchGestures
 
     public static bool BlocksGestureOverVideoControls(bool controlsVisible, double yFromBottom) =>
         controlsVisible && yFromBottom <= VideoControlsDeadZoneDip;
+
+    /// <summary>
+    /// Browse swipe on video when paused/stopped (incl. before first play).
+    /// Playing leaves gestures to transport; callers also exclude the bottom
+    /// dead zone so seek / transport stay hittable.
+    /// </summary>
+    public static bool AllowsVideoBrowseSwipe(
+        bool isVideo,
+        bool isPlaying,
+        bool touchGesturesEnabled) =>
+        isVideo && !isPlaying && touchGesturesEnabled;
 
     /// <summary>
     /// Content X/Y under a viewport tap. When content is smaller than the

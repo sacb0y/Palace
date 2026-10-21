@@ -158,6 +158,11 @@ public sealed class TouchGesturesTests
         Assert.True(TouchGestures.BlocksGestureOverVideoControls(true, 40));
         Assert.False(TouchGestures.BlocksGestureOverVideoControls(true, 80));
         Assert.False(TouchGestures.BlocksGestureOverVideoControls(false, 10));
+        // Paused/stopped video browse swipe; playing blocks; transport dead zone separate.
+        Assert.True(TouchGestures.AllowsVideoBrowseSwipe(isVideo: true, isPlaying: false, touchGesturesEnabled: true));
+        Assert.False(TouchGestures.AllowsVideoBrowseSwipe(isVideo: true, isPlaying: true, touchGesturesEnabled: true));
+        Assert.False(TouchGestures.AllowsVideoBrowseSwipe(isVideo: false, isPlaying: false, touchGesturesEnabled: true));
+        Assert.False(TouchGestures.AllowsVideoBrowseSwipe(isVideo: true, isPlaying: false, touchGesturesEnabled: false));
     }
 
     [Fact]
@@ -216,15 +221,6 @@ public sealed class TouchGesturesTests
         Assert.Equal(
             TouchGestures.SwipeAction.BrowseNext,
             TouchGestures.ClassifyBrowseSwipe(-80, 0, 200, 0));
-
-        // Tall-portrait swipe-left with vertical drift: velocity axis lock → next.
-        Assert.Equal(
-            TouchGestures.SwipeAction.BrowseNext,
-            TouchGestures.ClassifyBrowseSwipe(-12, 8, 200, -0.7, 0.2));
-        // Short left flick: velocity direction when dx ≈ 0.
-        Assert.Equal(
-            TouchGestures.SwipeAction.BrowseNext,
-            TouchGestures.ClassifyBrowseSwipe(0, 0, 200, -0.8, 0));
     }
 
     [Fact]

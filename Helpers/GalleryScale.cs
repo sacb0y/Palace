@@ -148,21 +148,6 @@ public static class GalleryScale
         || pinchZoom > MinPinchZoom + 0.0001;
 
     /// <summary>
-    /// Touch pan only when scale/pinch scrolls <b>and</b> content overflows the
-    /// viewport. Fit letterbox (tall portrait height == view, width narrower)
-    /// must browse-swipe — pan clamp / ScrollViewer must not swallow it.
-    /// </summary>
-    public static bool AllowsTouchPan(
-        ImageScaling scaling,
-        double pinchZoom,
-        double contentWidth,
-        double contentHeight,
-        double viewportWidth,
-        double viewportHeight) =>
-        Scrolls(scaling, pinchZoom)
-        && (contentWidth > viewportWidth + 0.5 || contentHeight > viewportHeight + 0.5);
-
-    /// <summary>
     /// Layout size so one image pixel is one device pixel. At 150% DPI a
     /// 200×100 image is ~133×67 DIPs, not 200×100 DIPs (which stretches).
     /// </summary>
@@ -316,6 +301,26 @@ public static class GalleryScale
         bool scalingChanged,
         bool viewportChanged) =>
         stillChanged || scalingChanged || viewportChanged;
+
+    /// <summary>
+    /// Scale mode for a freshly opened / navigated-to still. Sticky Actual/Fill
+    /// from a prior image was opening HDR AVIF cropped; restore the open default
+    /// (product default Fit via <see cref="ViewerSettings.DefaultZoomMode"/>).
+    /// </summary>
+    public static ImageScaling OpenStillScaling() => ViewerSettings.DefaultZoomMode;
+
+    /// <summary>
+    /// Open/navigate landed at Fit with no leftover pinch or scroll offset.
+    /// </summary>
+    public static bool IsOpenAtFit(
+        ImageScaling scaling,
+        double pinchZoom,
+        double horizontalOffset = 0,
+        double verticalOffset = 0) =>
+        scaling == ImageScaling.Fit
+        && pinchZoom <= MinPinchZoom + 0.0001
+        && Math.Abs(horizontalOffset) < 0.5
+        && Math.Abs(verticalOffset) < 0.5;
 
     public static bool UsesWheelPinch(bool controlDown, int wheelDelta) =>
         controlDown && wheelDelta != 0;

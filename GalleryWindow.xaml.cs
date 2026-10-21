@@ -275,18 +275,21 @@ public sealed partial class GalleryWindow : Window
                 MpeGallery.Source = MediaSource.CreateFromStorageFile(file);
                 ViewerMediaElement.SuppressFullWindow(MpeGallery);
                 ViewerMediaElement.RestoreIfVideoMaximized(AppWindow, wasMaximized);
+                HookVideoBrowseSwipe();
             }
             catch
             {
                 if (epoch == _mediaEpoch)
                 {
                     MpeGallery.Source = null;
+                    SyncVideoBrowseSwipeHitTest();
                 }
             }
         }
         else
         {
             MpeGallery.Source = null;
+            SyncVideoBrowseSwipeHitTest();
         }
     }
 
@@ -305,6 +308,94 @@ public sealed partial class GalleryWindow : Window
         Controls.VolumeControl.ApplyToPlayer(MpeGallery.MediaPlayer);
 
     private void GalleryVolume_Changed(object? sender, EventArgs e) => ApplyVolume();
+
+    private double _videoSwipeDx;
+    private double _videoSwipeDy;
+    private double _videoSwipeVx;
+    private bool _videoSwipeActive;
+
+    private void HookVideoBrowseSwipe()
+    {
+        var session = MpeGallery.MediaPlayer?.PlaybackSession;
+        if (session is not null)
+        {
+            session.PlaybackStateChanged -= GalleryPlayback_StateChanged;
+            session.PlaybackStateChanged += GalleryPlayback_StateChanged;
+        }
+
+        SyncVideoBrowseSwipeHitTest();
+    }
+
+    private void GalleryPlayback_StateChanged(MediaPlaybackSession sender, object args) =>
+        DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
+
+    private void SyncVideoBrowseSwipeHitTest()
+    {
+        var playing = MpeGallery.MediaPlayer?.PlaybackSession?.PlaybackState
+            == MediaPlaybackState.Playing;
+        GrdVideoBrowseSwipe.IsHitTestVisible = TouchGestures.AllowsVideoBrowseSwipe(
+            Gallery.IsVideo,
+            playing,
+            ViewerSettings.TouchGesturesEnabled);
+    }
+
+    private void GrdVideoBrowseSwipe_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
+        var playing = MpeGallery.MediaPlayer?.PlaybackSession?.PlaybackState
+            == MediaPlaybackState.Playing;
+        if (!TouchGestures.AllowsVideoBrowseSwipe(
+                Gallery.IsVideo, playing, ViewerSettings.TouchGesturesEnabled))
+        {
+            return;
+        }
+
+        var deltaX = e.Delta.Translation.X;
+        var deltaY = e.Delta.Translation.Y;
+        if (deltaX == 0 && deltaY == 0)
+        {
+            return;
+        }
+
+        _videoSwipeActive = true;
+        _videoSwipeDx += deltaX;
+        _videoSwipeDy += deltaY;
+        _videoSwipeVx = e.Velocities.Linear.X;
+        e.Handled = true;
+    }
+
+    private void GrdVideoBrowseSwipe_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType != PointerDeviceType.Touch || !_videoSwipeActive)
+        {
+            return;
+        }
+
+        _videoSwipeActive = false;
+        var dx = _videoSwipeDx;
+        var dy = _videoSwipeDy;
+        var vx = _videoSwipeVx;
+        _videoSwipeDx = 0;
+        _videoSwipeDy = 0;
+        _videoSwipeVx = 0;
+
+        var action = TouchGestures.ClassifyBrowseSwipe(
+            dx, dy, GrdVideoBrowseSwipe.ActualWidth, vx);
+        if (action == TouchGestures.SwipeAction.BrowsePrevious)
+        {
+            Gallery.GoPreviousCommand.Execute(null);
+        }
+        else if (action == TouchGestures.SwipeAction.BrowseNext)
+        {
+            Gallery.GoNextCommand.Execute(null);
+        }
+
+        e.Handled = true;
+    }
 
     private async void BtnGalleryWindowSetThumb_Click(object sender, RoutedEventArgs e)
     {

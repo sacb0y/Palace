@@ -12,16 +12,14 @@
         <ScrollViewer
             x:Name="ScrStill"
             HorizontalScrollBarVisibility="Hidden"
-            HorizontalScrollMode="Disabled"
-            ManipulationCompleted="ScrStill_ManipulationCompleted"
-            ManipulationDelta="ScrStill_ManipulationDelta"
+            HorizontalScrollMode="Enabled"
             ManipulationMode="None"
             PointerCaptureLost="ScrStill_PointerCaptureLost"
             PointerMoved="ScrStill_PointerMoved"
             PointerPressed="ScrStill_PointerPressed"
             PointerReleased="ScrStill_PointerReleased"
             VerticalScrollBarVisibility="Hidden"
-            VerticalScrollMode="Disabled"
+            VerticalScrollMode="Enabled"
             ZoomMode="Disabled">
             <Grid
                 x:Name="GrdStillContent"

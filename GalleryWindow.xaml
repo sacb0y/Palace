@@ -53,6 +53,15 @@
                         <MediaTransportControls IsVolumeButtonVisible="False" />
                     </MediaPlayerElement.TransportControls>
                 </MediaPlayerElement>
+                <Grid
+                    x:Name="GrdVideoBrowseSwipe"
+                    Margin="0,0,0,72"
+                    Background="Transparent"
+                    IsHitTestVisible="False"
+                    ManipulationCompleted="GrdVideoBrowseSwipe_ManipulationCompleted"
+                    ManipulationDelta="GrdVideoBrowseSwipe_ManipulationDelta"
+                    ManipulationMode="TranslateX,TranslateY"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}" />
                 <controls:VolumeControl
                     x:Name="VolGallery"
                     Margin="24,0,0,72"

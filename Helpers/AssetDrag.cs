@@ -12,6 +12,22 @@ public static class AssetDrag
     public static bool CanStart(bool isMouse, bool isSelectMode, bool isSelected, bool isFolderHeader, bool overlayOpen) =>
         isMouse && !isFolderHeader && !overlayOpen && (!isSelectMode || isSelected);
 
+    /// <summary>
+    /// <c>ItemContainer.CanDrag</c> steals touch pan from the mosaic ScrollViewer.
+    /// Arm it only for a mouse press that may start a folder drag; keep false for
+    /// touch / pen so finger drag scrolls (tap / long-press select stay intact).
+    /// </summary>
+    public static bool ArmsItemContainerCanDrag(
+        bool isMouse,
+        bool isSelectMode,
+        bool isSelected,
+        bool isFolderHeader,
+        bool overlayOpen) =>
+        CanStart(isMouse, isSelectMode, isSelected, isFolderHeader, overlayOpen);
+
+    /// <summary>Mosaic touch pan scrolls only while the tile is not drag-armed.</summary>
+    public static bool AllowsMosaicTouchScroll(bool itemContainerCanDrag) => !itemContainerCanDrag;
+
     /// <summary>Range select yields to drag when the press lands on an already selected tile.</summary>
     public static bool YieldsRangeSelect(bool isMouse, bool isSelected) => isMouse && isSelected;
 

@@ -541,6 +541,19 @@ public sealed partial class LibraryPage : Page
         _rangeConsumedTap = false;
         _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
         _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
+        // CanDrag on ItemContainer steals touch pan — arm only for mouse folder-drag.
+        if (FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject) is { } dragContainer)
+        {
+            var dragItem = FindAssetItem(dragContainer);
+            dragContainer.CanDrag = dragItem is not null
+                && AssetDrag.ArmsItemContainerCanDrag(
+                    _lastPressWasMouse,
+                    ViewModel.IsSelectMode,
+                    dragItem.IsSelected,
+                    dragItem.IsFolderHeader,
+                    ViewModel.IsGalleryOverlayOpen);
+        }
+
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -676,6 +689,12 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeReleased(object sender, PointerRoutedEventArgs e)
     {
+        // Disarm after mouse press so a recycled tile does not keep CanDrag for touch.
+        if (FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject) is { } released)
+        {
+            released.CanDrag = false;
+        }
+
         if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
         {
             return;
@@ -707,6 +726,11 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeCaptureLost(object sender, PointerRoutedEventArgs e)
     {
+        if (FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject) is { } lost)
+        {
+            lost.CanDrag = false;
+        }
+
         if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
         {
             if (_rangeSelect.IsActive)
@@ -1243,6 +1267,84 @@ public sealed partial class LibraryPage : Page
         session.Position = next;
         e.Handled = true;
     }
+
+    private double _videoSwipeDx;
+    private double _videoSwipeDy;
+    private double _videoSwipeVx;
+    private bool _videoSwipeActive;
+
+    private void GrdVideoBrowseSwipe_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
+        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
+            == Windows.Media.Playback.MediaPlaybackState.Playing;
+        if (!TouchGestures.AllowsVideoBrowseSwipe(
+                ViewModel.OverlayGallery?.IsVideo == true,
+                playing,
+                ViewerSettings.TouchGesturesEnabled))
+        {
+            return;
+        }
+
+        var deltaX = e.Delta.Translation.X;
+        var deltaY = e.Delta.Translation.Y;
+        if (deltaX == 0 && deltaY == 0)
+        {
+            return;
+        }
+
+        _videoSwipeActive = true;
+        _videoSwipeDx += deltaX;
+        _videoSwipeDy += deltaY;
+        _videoSwipeVx = e.Velocities.Linear.X;
+        e.Handled = true;
+    }
+
+    private void GrdVideoBrowseSwipe_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType != PointerDeviceType.Touch || !_videoSwipeActive)
+        {
+            return;
+        }
+
+        _videoSwipeActive = false;
+        var dx = _videoSwipeDx;
+        var dy = _videoSwipeDy;
+        var vx = _videoSwipeVx;
+        _videoSwipeDx = 0;
+        _videoSwipeDy = 0;
+        _videoSwipeVx = 0;
+
+        // Catcher Margin already clears VideoControlsDeadZoneDip so transport/seek stay hittable.
+        var action = TouchGestures.ClassifyBrowseSwipe(
+            dx, dy, GrdVideoBrowseSwipe.ActualWidth, vx);
+        if (action is TouchGestures.SwipeAction.BrowsePrevious
+            or TouchGestures.SwipeAction.BrowseNext)
+        {
+            OnOverlayReviewSwipe(action);
+        }
+
+        e.Handled = true;
+    }
+
+    private void SyncVideoBrowseSwipeHitTest()
+    {
+        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
+            == Windows.Media.Playback.MediaPlaybackState.Playing;
+        GrdVideoBrowseSwipe.IsHitTestVisible = TouchGestures.AllowsVideoBrowseSwipe(
+            ViewModel.OverlayGallery?.IsVideo == true,
+            playing,
+            ViewerSettings.TouchGesturesEnabled);
+    }
+
+    private void OverlayPlayback_StateChanged(
+        Windows.Media.Playback.MediaPlaybackSession sender,
+        object args) =>
+        DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
 
     private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)
     {
@@ -2270,12 +2372,14 @@ public sealed partial class LibraryPage : Page
                 MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 ViewerMediaElement.RestoreIfVideoMaximized(App.Window?.AppWindow, wasMaximized);
+                SyncVideoBrowseSwipeHitTest();
             }
             catch
             {
                 if (epoch == _overlayMediaEpoch)
                 {
                     MpeOverlay.Source = null;
+                    SyncVideoBrowseSwipeHitTest();
                 }
             }
         }
@@ -2283,6 +2387,7 @@ public sealed partial class LibraryPage : Page
         {
             BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
             MpeOverlay.Source = null;
+            SyncVideoBrowseSwipeHitTest();
         }
     }
 
@@ -2300,6 +2405,14 @@ public sealed partial class LibraryPage : Page
         VolOverlay.VolumeChanged -= OverlayVolume_Changed;
         VolOverlay.VolumeChanged += OverlayVolume_Changed;
         VolOverlay.SyncFromStore();
+        var session = MpeOverlay.MediaPlayer?.PlaybackSession;
+        if (session is not null)
+        {
+            session.PlaybackStateChanged -= OverlayPlayback_StateChanged;
+            session.PlaybackStateChanged += OverlayPlayback_StateChanged;
+        }
+
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private void ApplyOverlayLoop()
@@ -2329,6 +2442,7 @@ public sealed partial class LibraryPage : Page
 
         player.Play();
         BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private async Task<OrganizeChoice?> AskOrganizeChoiceAsync()

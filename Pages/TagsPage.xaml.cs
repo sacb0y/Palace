@@ -1210,12 +1210,14 @@ public sealed partial class TagsPage : Page
                 MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 ViewerMediaElement.RestoreIfVideoMaximized(App.Window?.AppWindow, wasMaximized);
+                SyncVideoBrowseSwipeHitTest();
             }
             catch
             {
                 if (epoch == _overlayMediaEpoch)
                 {
                     MpeOverlay.Source = null;
+                    SyncVideoBrowseSwipeHitTest();
                 }
             }
         }
@@ -1223,6 +1225,7 @@ public sealed partial class TagsPage : Page
         {
             BtnGalleryPlay.Visibility = Visibility.Collapsed;
             MpeOverlay.Source = null;
+            SyncVideoBrowseSwipeHitTest();
         }
     }
 
@@ -1240,6 +1243,14 @@ public sealed partial class TagsPage : Page
         VolOverlay.VolumeChanged -= OverlayVolume_Changed;
         VolOverlay.VolumeChanged += OverlayVolume_Changed;
         VolOverlay.SyncFromStore();
+        var session = MpeOverlay.MediaPlayer?.PlaybackSession;
+        if (session is not null)
+        {
+            session.PlaybackStateChanged -= OverlayPlayback_StateChanged;
+            session.PlaybackStateChanged += OverlayPlayback_StateChanged;
+        }
+
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private void ApplyOverlayLoop()
@@ -1258,6 +1269,86 @@ public sealed partial class TagsPage : Page
 
     private void OverlayVolume_Changed(object? sender, EventArgs e) => ApplyOverlayVolume();
 
+    private double _videoSwipeDx;
+    private double _videoSwipeDy;
+    private double _videoSwipeVx;
+    private bool _videoSwipeActive;
+
+    private void GrdVideoBrowseSwipe_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
+        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
+            == Windows.Media.Playback.MediaPlaybackState.Playing;
+        if (!TouchGestures.AllowsVideoBrowseSwipe(
+                ViewModel.OverlayGallery?.IsVideo == true,
+                playing,
+                ViewerSettings.TouchGesturesEnabled))
+        {
+            return;
+        }
+
+        var deltaX = e.Delta.Translation.X;
+        var deltaY = e.Delta.Translation.Y;
+        if (deltaX == 0 && deltaY == 0)
+        {
+            return;
+        }
+
+        _videoSwipeActive = true;
+        _videoSwipeDx += deltaX;
+        _videoSwipeDy += deltaY;
+        _videoSwipeVx = e.Velocities.Linear.X;
+        e.Handled = true;
+    }
+
+    private void GrdVideoBrowseSwipe_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType != PointerDeviceType.Touch || !_videoSwipeActive)
+        {
+            return;
+        }
+
+        _videoSwipeActive = false;
+        var dx = _videoSwipeDx;
+        var dy = _videoSwipeDy;
+        var vx = _videoSwipeVx;
+        _videoSwipeDx = 0;
+        _videoSwipeDy = 0;
+        _videoSwipeVx = 0;
+
+        var action = TouchGestures.ClassifyBrowseSwipe(
+            dx, dy, GrdVideoBrowseSwipe.ActualWidth, vx);
+        if (action == TouchGestures.SwipeAction.BrowsePrevious)
+        {
+            ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
+        }
+        else if (action == TouchGestures.SwipeAction.BrowseNext)
+        {
+            ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
+        }
+
+        e.Handled = true;
+    }
+
+    private void SyncVideoBrowseSwipeHitTest()
+    {
+        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
+            == Windows.Media.Playback.MediaPlaybackState.Playing;
+        GrdVideoBrowseSwipe.IsHitTestVisible = TouchGestures.AllowsVideoBrowseSwipe(
+            ViewModel.OverlayGallery?.IsVideo == true,
+            playing,
+            ViewerSettings.TouchGesturesEnabled);
+    }
+
+    private void OverlayPlayback_StateChanged(
+        Windows.Media.Playback.MediaPlaybackSession sender,
+        object args) =>
+        DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
+
     private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)
     {
         EnsureOverlayPlayer();
@@ -1269,6 +1360,7 @@ public sealed partial class TagsPage : Page
 
         player.Play();
         BtnGalleryPlay.Visibility = Visibility.Collapsed;
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private void SyncViewerOverlayAutoHide()
