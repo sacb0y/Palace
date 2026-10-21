@@ -1,4 +1,3 @@
-using System.Linq;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -25,23 +24,16 @@ public sealed partial class SettingsPage : Page
     private bool _ignoreSearchClear;
     private bool _searchFiltering;
     /// <summary>
-    /// Owned Grid around each SettingsNav card. Highlight paints an overlay Border ON TOP of
-    /// the card — SettingsExpander opaque chrome covers any behind-the-card Padding ring
-    /// (Release FAIL ab584e0/315aeac: collapsed Pink=0; expanded pink only on items sides).
+    /// Parent Border around each SettingsNav card. Pink lives in Padding + BorderThickness
+    /// outside the expander’s composition surface (peer overlay loses to expander layers).
+    /// Pixel-scan must use Host_* AutomationId bounds (include the 8px padding ring).
     /// </summary>
-    private readonly Dictionary<string, SearchHighlightHost> _searchHosts = new(StringComparer.Ordinal);
-    private readonly List<SearchHighlightHost> _highlightedHosts = [];
+    private readonly Dictionary<string, Border> _searchHosts = new(StringComparer.Ordinal);
+    private readonly List<Border> _highlightedHosts = [];
     private DispatcherTimer? _highlightTimer;
     private const string SearchHostTag = "PalaceSettingsSearchHost";
+    private static readonly Thickness SearchHostChromePadding = new(8);
     private static readonly Thickness SearchHostHighlightBorder = new(3);
-
-    private sealed class SearchHighlightHost
-    {
-        public required Grid Root { get; init; }
-        public required Border Overlay { get; init; }
-        public required FrameworkElement Card { get; init; }
-        public string CardId { get; init; } = "";
-    }
 
     public SettingsViewModel ViewModel => AppServices.Settings;
 
@@ -257,10 +249,10 @@ public sealed partial class SettingsPage : Page
             }
 
             var show = cardIds.Contains(target.CardAutomationId);
-            // Filter Visibility on the owned host only — never zero-size the card under a host.
+            // Filter Visibility on the owned Host Border only.
             if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
             {
-                host.Root.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                host.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
                 card.Visibility = Visibility.Visible;
             }
             else
@@ -279,7 +271,7 @@ public sealed partial class SettingsPage : Page
         HighlightMatchingCards(cardIds);
         if (primary.CardAutomationId is { } firstCard
             && (_searchHosts.TryGetValue(firstCard, out var firstHost)
-                ? (UIElement)firstHost.Root
+                ? (UIElement)firstHost
                 : FindName(firstCard) as UIElement) is { } firstElement)
         {
             firstElement.StartBringIntoView();
@@ -297,7 +289,7 @@ public sealed partial class SettingsPage : Page
         {
             if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
             {
-                host.Root.Visibility = Visibility.Visible;
+                host.Visibility = Visibility.Visible;
             }
 
             if (FindName(target.CardAutomationId) is UIElement card)
@@ -317,8 +309,8 @@ public sealed partial class SettingsPage : Page
             if (parent is UIElement ue
                 && (parent is CommunityToolkit.WinUI.Controls.SettingsExpander
                     || parent is CommunityToolkit.WinUI.Controls.SettingsCard
-                    || (parent is Grid grid
-                        && string.Equals(grid.Tag as string, SearchHostTag, StringComparison.Ordinal))))
+                    || (parent is Border border
+                        && string.Equals(border.Tag as string, SearchHostTag, StringComparison.Ordinal))))
             {
                 ue.Visibility = Visibility.Visible;
             }
@@ -386,8 +378,8 @@ public sealed partial class SettingsPage : Page
     ];
 
     /// <summary>
-    /// Wrap each SettingsNav card in a Grid we own. Overlay Border (z-top) carries the
-    /// pink wash/ring so opaque SettingsExpander chrome cannot cover it.
+    /// Wrap each SettingsNav card in a parent Border we own. Highlight paints that Border’s
+    /// Padding + BorderBrush — outside the expander composition surface.
     /// </summary>
     private void EnsureSearchHighlightHosts()
     {
@@ -405,21 +397,12 @@ public sealed partial class SettingsPage : Page
                 continue;
             }
 
-            if (card.Parent is Grid existing
-                && string.Equals(existing.Tag as string, SearchHostTag, StringComparison.Ordinal)
-                && existing.Children.OfType<Border>().FirstOrDefault(b =>
-                    string.Equals(
-                        AutomationProperties.GetAutomationId(b),
-                        "Overlay_" + target.CardAutomationId,
-                        StringComparison.Ordinal)) is { } existingOverlay)
+            if (card.Parent is Border existing
+                && string.Equals(existing.Tag as string, SearchHostTag, StringComparison.Ordinal))
             {
-                _searchHosts[target.CardAutomationId] = new SearchHighlightHost
-                {
-                    Root = existing,
-                    Overlay = existingOverlay,
-                    Card = card,
-                    CardId = target.CardAutomationId,
-                };
+                existing.Padding = SearchHostChromePadding;
+                AutomationProperties.SetAutomationId(existing, "Host_" + target.CardAutomationId);
+                _searchHosts[target.CardAutomationId] = existing;
                 continue;
             }
 
@@ -427,8 +410,11 @@ public sealed partial class SettingsPage : Page
             if (host is not null)
             {
                 _searchHosts[target.CardAutomationId] = host;
+                host.UpdateLayout();
                 System.Diagnostics.Debug.WriteLine(
-                    $"Settings search host wrapped {target.CardAutomationId} → Host_{target.CardAutomationId}");
+                    $"Settings search host wrapped {target.CardAutomationId}: " +
+                    $"Host_{target.CardAutomationId} Actual={host.ActualWidth:0}x{host.ActualHeight:0} " +
+                    $"Padding={host.Padding.Left} ParentIsBorder={card.Parent is Border}");
             }
             else
             {
@@ -438,25 +424,19 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private static SearchHighlightHost? TryWrapInSearchHost(FrameworkElement card, string cardId)
+    private static Border? TryWrapInSearchHost(FrameworkElement card, string cardId)
     {
-        var overlay = new Border
+        var host = new Border
         {
-            IsHitTestVisible = false,
+            Tag = SearchHostTag,
+            // Pink lives here (outside expander composition) — keep padding even when clear.
+            Padding = SearchHostChromePadding,
             Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
             BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(8),
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
         };
-        AutomationProperties.SetAutomationId(overlay, "Overlay_" + cardId);
-
-        var root = new Grid
-        {
-            Tag = SearchHostTag,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-        };
-        AutomationProperties.SetAutomationId(root, "Host_" + cardId);
+        AutomationProperties.SetAutomationId(host, "Host_" + cardId);
 
         if (card.Parent is Panel panel)
         {
@@ -467,19 +447,11 @@ public sealed partial class SettingsPage : Page
             }
 
             panel.Children.RemoveAt(index);
-            root.Margin = card.Margin;
+            host.Margin = card.Margin;
             card.Margin = new Thickness(0);
-            // Card first (behind), overlay second (on top) — paint above opaque expander chrome.
-            root.Children.Add(card);
-            root.Children.Add(overlay);
-            panel.Children.Insert(index, root);
-            return new SearchHighlightHost
-            {
-                Root = root,
-                Overlay = overlay,
-                Card = card,
-                CardId = cardId,
-            };
+            host.Child = card;
+            panel.Children.Insert(index, host);
+            return host;
         }
 
         var itemsOwner = FindItemsOwner(card);
@@ -492,18 +464,11 @@ public sealed partial class SettingsPage : Page
             }
 
             itemsOwner.Items.RemoveAt(index);
-            root.Margin = card.Margin;
+            host.Margin = card.Margin;
             card.Margin = new Thickness(0);
-            root.Children.Add(card);
-            root.Children.Add(overlay);
-            itemsOwner.Items.Insert(index, root);
-            return new SearchHighlightHost
-            {
-                Root = root,
-                Overlay = overlay,
-                Card = card,
-                CardId = cardId,
-            };
+            host.Child = card;
+            itemsOwner.Items.Insert(index, host);
+            return host;
         }
 
         return null;
@@ -541,7 +506,6 @@ public sealed partial class SettingsPage : Page
         }
 
         EnsureSearchHighlightHosts();
-        // Wash over the whole card (incl. collapsed header); solid ring for pixel-scans.
         var wash = CreateSearchHighlightBrush();
         var ring = new SolidColorBrush(Color.FromArgb(0xFF, 0xE0, 0x5A, 0x8C));
 
@@ -553,17 +517,20 @@ public sealed partial class SettingsPage : Page
                 continue;
             }
 
-            host.Overlay.Background = wash;
-            host.Overlay.BorderBrush = ring;
-            host.Overlay.BorderThickness = SearchHostHighlightBorder;
+            host.Padding = SearchHostChromePadding;
+            host.Background = wash;
+            host.BorderBrush = ring;
+            host.BorderThickness = SearchHostHighlightBorder;
             _highlightedHosts.Add(host);
 
-            host.Root.UpdateLayout();
+            host.UpdateLayout();
+            var childParentOk = host.Child is FrameworkElement fe
+                && ReferenceEquals(fe.Parent, host);
             System.Diagnostics.Debug.WriteLine(
-                $"Settings search highlight {id}: root={host.Root.ActualWidth:0}x{host.Root.ActualHeight:0} " +
-                $"overlay={host.Overlay.ActualWidth:0}x{host.Overlay.ActualHeight:0} " +
-                $"bg={(host.Overlay.Background as SolidColorBrush)?.Color} " +
-                $"border={(host.Overlay.BorderBrush as SolidColorBrush)?.Color}/{host.Overlay.BorderThickness.Left}");
+                $"Settings search highlight {id}: Host_{id} Actual={host.ActualWidth:0}x{host.ActualHeight:0} " +
+                $"Padding={host.Padding.Left} Border={host.BorderThickness.Left} " +
+                $"bg={(host.Background as SolidColorBrush)?.Color} " +
+                $"ring={(host.BorderBrush as SolidColorBrush)?.Color} childParentIsHost={childParentOk}");
         }
 
         // Keep highlight while the query is active; only flash when a single timed jump remains.
@@ -667,9 +634,10 @@ public sealed partial class SettingsPage : Page
     {
         foreach (var host in _highlightedHosts)
         {
-            host.Overlay.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
-            host.Overlay.BorderBrush = null;
-            host.Overlay.BorderThickness = new Thickness(0);
+            host.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+            host.BorderBrush = null;
+            host.BorderThickness = new Thickness(0);
+            host.Padding = SearchHostChromePadding;
         }
 
         _highlightedHosts.Clear();
@@ -688,11 +656,11 @@ public sealed partial class SettingsPage : Page
             {
                 card.MinHeight = minHeight;
                 card.Padding = padding;
-                // Margin lives on the owned host root so density gaps stay outside the overlay.
+                // Margin lives on the owned Host Border so density gaps stay outside the pink ring.
                 if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
                 {
                     card.Margin = new Thickness(0);
-                    host.Root.Margin = spacing;
+                    host.Margin = spacing;
                 }
                 else
                 {
