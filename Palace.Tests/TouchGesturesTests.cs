@@ -260,6 +260,33 @@ public sealed class TouchGesturesTests
     }
 
     [Fact]
+    public void ZoomAroundPoint_CenteredLetterbox_KeepsMidpoint()
+    {
+        // Tall Fit content centered in a wide viewport (HDR black margins outside panel).
+        const double viewW = 400;
+        const double viewH = 200;
+        const double fitW = 100;
+        const double fitH = 200;
+        // Content left at x=150; mid content at viewport x=200.
+        Assert.Equal(0, TouchGestures.ContentCoordFromViewport(150, 0, fitW, viewW), 3);
+        Assert.Equal(50, TouchGestures.ContentCoordFromViewport(200, 0, fitW, viewW), 3);
+        var (h, v) = TouchGestures.ZoomAroundPoint(
+            tapX: 200,
+            tapY: 100,
+            oldContentWidth: fitW,
+            oldContentHeight: fitH,
+            oldOffsetX: 0,
+            oldOffsetY: 0,
+            newContentWidth: 200,
+            newContentHeight: 400,
+            viewportWidth: viewW,
+            viewportHeight: viewH);
+        // New width still < viewport → centered (offset 0). Y scrolls; mid stays.
+        Assert.Equal(0, h, 3);
+        Assert.Equal(100, v, 3); // contentY 100 × 2 − 100
+    }
+
+    [Fact]
     public void IsTouchOnly_GatesGestures()
     {
         Assert.True(TouchGestures.IsTouchOnly(true));

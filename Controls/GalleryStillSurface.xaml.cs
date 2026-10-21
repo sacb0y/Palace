@@ -904,34 +904,39 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.VerticalScrollBarVisibility = bars;
         ImgStill.Stretch = BindHelpers.ImageStretch(scaling);
 
-        var align = scrolls ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
-        var valign = scrolls ? VerticalAlignment.Top : VerticalAlignment.Stretch;
+        // When content ≤ viewport: Center (letterbox margins are outside the
+        // panel — not part of pinch/pan). When zoomed/scrolling: Left/Top so
+        // scroll offsets match ZoomAroundPoint / ClampPan.
+        var align = scrolls ? HorizontalAlignment.Left : HorizontalAlignment.Center;
+        var valign = scrolls ? VerticalAlignment.Top : VerticalAlignment.Center;
         GrdStillContent.HorizontalAlignment = align;
         GrdStillContent.VerticalAlignment = valign;
-        ImgStill.HorizontalAlignment = align;
-        ImgStill.VerticalAlignment = valign;
-        ScpHdr.HorizontalAlignment = align;
-        ScpHdr.VerticalAlignment = valign;
+        // Image / swapchain fill the content panel (panel IS the image rect).
+        ImgStill.HorizontalAlignment = HorizontalAlignment.Stretch;
+        ImgStill.VerticalAlignment = VerticalAlignment.Stretch;
+        ScpHdr.HorizontalAlignment = HorizontalAlignment.Stretch;
+        ScpHdr.VerticalAlignment = VerticalAlignment.Stretch;
 
         double width;
         double height;
         var viewW = ScrStill.ActualWidth;
         var viewH = ScrStill.ActualHeight;
+        var (iw, ih) = StillPixelSize();
         if (scaling == ImageScaling.Actual)
         {
-            var (iw, ih) = StillPixelSize();
             var raster = XamlRoot?.RasterizationScale ?? 1.0;
             (width, height) = GalleryScale.ActualDipSize(iw, ih, raster);
         }
         else if (scaling == ImageScaling.Fill)
         {
-            var (iw, ih) = StillPixelSize();
             (width, height) = GalleryScale.FillCoverDipSize(iw, ih, viewW, viewH);
         }
         else
         {
-            width = viewW;
-            height = viewH;
+            // Fit: letterboxed image content rect — NOT the full viewport.
+            // Sizing ScpHdr to the viewport made HDR's opaque black backdrop
+            // part of pinch/pan bounds (drift to bottom-right).
+            (width, height) = GalleryScale.FitContainDipSize(iw, ih, viewW, viewH);
             if (width <= 1 || height <= 1)
             {
                 width = double.NaN;
@@ -940,8 +945,7 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         (width, height) = GalleryScale.ApplyPinchZoom(width, height, _pinchZoom);
-        // Cap layout DIPs so DXGI ResizeBuffers / HDR present cannot collapse
-        // the still to black at extreme pinch-out (4K EXR/PNG twin).
+        // Cap layout DIPs so DXGI ResizeBuffers cannot fail at extreme zoom.
         (width, height) = TouchGestures.CapStillPanelSize(width, height);
 
         GrdStillContent.Width = width;
@@ -1444,18 +1448,20 @@ public sealed partial class GalleryStillSurface : UserControl
         var targetFit = TouchGestures.DoubleTapZoomFitFactor(actualAsFit);
         if (Math.Abs(targetFit - actualAsFit) < 0.05 && actualAsFit > TouchGestures.DoubleTapActualMinFit)
         {
-            // Jump to 1:1 at the tap point.
+            // Jump to 1:1 at the tap point (from Fit letterbox content rect).
             _pinchZoom = 1;
             _gallery.Scaling = ImageScaling.Actual;
             ApplyScaleLayout();
             var (iw, ih) = StillPixelSize();
             var raster = XamlRoot?.RasterizationScale ?? 1.0;
             var (cw, ch) = GalleryScale.ActualDipSize(iw, ih, raster);
-            if (!double.IsNaN(cw) && !double.IsNaN(ch))
+            var (fitW, fitH) = GalleryScale.FitContainDipSize(iw, ih, viewW, viewH);
+            if (!double.IsNaN(cw) && !double.IsNaN(ch)
+                && !double.IsNaN(fitW) && !double.IsNaN(fitH))
             {
                 var (h, v) = TouchGestures.ZoomAroundPoint(
                     tap.X, tap.Y,
-                    viewW, viewH, 0, 0,
+                    fitW, fitH, 0, 0,
                     cw, ch, viewW, viewH);
                 ScrStill.ChangeView(h, v, null, true);
             }
@@ -1501,16 +1507,16 @@ public sealed partial class GalleryStillSurface : UserControl
 
     /// <summary>
     /// Pre-pinch content long edge (DIPs) for panel-size zoom caps.
-    /// Fit uses the viewport; Actual/Fill use their laid-out base size.
+    /// Fit uses the letterboxed image rect; Actual/Fill use their base size.
     /// </summary>
     private double PinchBaseLongEdgeDip()
     {
         var viewW = ScrStill.ActualWidth;
         var viewH = ScrStill.ActualHeight;
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        var (iw, ih) = StillPixelSize();
         if (scaling == ImageScaling.Actual)
         {
-            var (iw, ih) = StillPixelSize();
             var raster = XamlRoot?.RasterizationScale ?? 1.0;
             var (aw, ah) = GalleryScale.ActualDipSize(iw, ih, raster);
             if (!double.IsNaN(aw) && !double.IsNaN(ah) && aw > 0 && ah > 0)
@@ -1520,11 +1526,18 @@ public sealed partial class GalleryStillSurface : UserControl
         }
         else if (scaling == ImageScaling.Fill && viewW > 1 && viewH > 1)
         {
-            var (iw, ih) = StillPixelSize();
             var (fw, fh) = GalleryScale.FillCoverDipSize(iw, ih, viewW, viewH);
             if (!double.IsNaN(fw) && !double.IsNaN(fh) && fw > 0 && fh > 0)
             {
                 return Math.Max(fw, fh);
+            }
+        }
+        else if (viewW > 1 && viewH > 1)
+        {
+            var (cw, ch) = GalleryScale.FitContainDipSize(iw, ih, viewW, viewH);
+            if (!double.IsNaN(cw) && !double.IsNaN(ch) && cw > 0 && ch > 0)
+            {
+                return Math.Max(cw, ch);
             }
         }
 

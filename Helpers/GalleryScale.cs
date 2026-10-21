@@ -196,6 +196,38 @@ public static class GalleryScale
     }
 
     /// <summary>
+    /// Letterbox the oriented image into the viewport (Uniform Fit). Panel
+    /// matches the <b>image content rect</b>, not the full viewport — so HDR
+    /// SwapChainPanel black letterbox is not part of pinch/pan bounds.
+    /// </summary>
+    public static (double Width, double Height) FitContainDipSize(
+        int pixelWidth,
+        int pixelHeight,
+        double viewportWidth,
+        double viewportHeight)
+    {
+        if (viewportWidth <= 1 || viewportHeight <= 1)
+        {
+            return (double.NaN, double.NaN);
+        }
+
+        if (pixelWidth <= 0 || pixelHeight <= 0)
+        {
+            return (viewportWidth, viewportHeight);
+        }
+
+        var imageAspect = (double)pixelWidth / pixelHeight;
+        var viewAspect = viewportWidth / viewportHeight;
+        if (imageAspect > viewAspect)
+        {
+            // Wider than view → width matches; height letterboxed.
+            return (viewportWidth, viewportWidth / imageAspect);
+        }
+
+        return (viewportHeight * imageAspect, viewportHeight);
+    }
+
+    /// <summary>
     /// Mouse left-drag uses pointer capture. Touch, pen, and trackpad pan via
     /// ManipulationDelta so a contact does not pan twice.
     /// </summary>
@@ -449,7 +481,9 @@ public static class GalleryScale
     }
 
     /// <summary>
-    /// Fill starts centered (cover crop). 1:1 starts at the origin.
+    /// Fill starts centered (cover crop). Fit / Actual: offset 0 — when
+    /// content is smaller than the viewport, layout uses Center alignment
+    /// (see still surface); when larger, Left/Top + pan clamp.
     /// </summary>
     public static (double Horizontal, double Vertical) InitialScrollOffset(
         ImageScaling scaling,

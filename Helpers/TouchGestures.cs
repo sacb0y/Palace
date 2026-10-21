@@ -505,8 +505,28 @@ public static class TouchGestures
         controlsVisible && yFromBottom <= VideoControlsDeadZoneDip;
 
     /// <summary>
+    /// Content X/Y under a viewport tap. When content is smaller than the
+    /// viewport it is Center-aligned (offset ignored); when larger, Left/Top
+    /// with scroll offset.
+    /// </summary>
+    public static double ContentCoordFromViewport(
+        double tap,
+        double offset,
+        double contentSize,
+        double viewportSize)
+    {
+        if (contentSize <= viewportSize + 0.0001)
+        {
+            return tap - (viewportSize - contentSize) / 2.0;
+        }
+
+        return offset + tap;
+    }
+
+    /// <summary>
     /// Target scroll offsets so <paramref name="tapX"/>/<paramref name="tapY"/>
     /// (viewport) stay under the finger when jumping to a new content size.
+    /// Honors Center layout when content ≤ viewport (Fit letterbox).
     /// </summary>
     public static (double Horizontal, double Vertical) ZoomAroundPoint(
         double tapX,
@@ -520,8 +540,10 @@ public static class TouchGestures
         double viewportWidth,
         double viewportHeight)
     {
-        var contentX = oldOffsetX + tapX;
-        var contentY = oldOffsetY + tapY;
+        var contentX = ContentCoordFromViewport(
+            tapX, oldOffsetX, oldContentWidth, viewportWidth);
+        var contentY = ContentCoordFromViewport(
+            tapY, oldOffsetY, oldContentHeight, viewportHeight);
         var scaleX = oldContentWidth > 0 ? newContentWidth / oldContentWidth : 1.0;
         var scaleY = oldContentHeight > 0 ? newContentHeight / oldContentHeight : 1.0;
         var nextX = contentX * scaleX - tapX;

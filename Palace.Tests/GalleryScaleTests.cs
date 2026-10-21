@@ -221,4 +221,24 @@ public sealed class GalleryScaleTests
         Assert.Equal((50.0, 0.0), GalleryScale.InitialScrollOffset(ImageScaling.Fill, 200, 100, 100, 100));
         Assert.Equal((0.0, 0.0), GalleryScale.InitialScrollOffset(ImageScaling.Actual, 200, 100, 100, 100));
     }
+
+    [Fact]
+    public void FitContainDipSize_LetterboxesImageNotViewport()
+    {
+        // Tall image in wide viewport: height matches, width narrower (not full view).
+        var tall = GalleryScale.FitContainDipSize(100, 200, 400, 200);
+        Assert.Equal(100, tall.Width, 3);
+        Assert.Equal(200, tall.Height, 3);
+        // Wide image in tall viewport: width matches, height shorter.
+        var wide = GalleryScale.FitContainDipSize(200, 100, 200, 400);
+        Assert.Equal(200, wide.Width, 3);
+        Assert.Equal(100, wide.Height, 3);
+        // Same aspect → fills viewport.
+        var match = GalleryScale.FitContainDipSize(1920, 1080, 1920, 1080);
+        Assert.Equal(1920, match.Width, 3);
+        Assert.Equal(1080, match.Height, 3);
+        // Opposite of Fill cover on a mismatched aspect.
+        var fill = GalleryScale.FillCoverDipSize(100, 200, 400, 200);
+        Assert.True(fill.Width > tall.Width);
+    }
 }
