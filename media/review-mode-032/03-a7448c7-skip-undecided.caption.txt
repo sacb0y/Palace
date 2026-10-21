@@ -1,0 +1,2 @@
+﻿a7448c7 0.3.2 Review: Skip (S / ? / swipe up). Progress '3 of 5 · 1 skipped'. 02-teal.png left undecided in place (no move): stillInSfw=True.
+

@@ -1,0 +1,2 @@
+﻿a7448c7 0.3.2 Review: Undo (Ctrl+Z) after Skip restores the skipped item; progress back to '2 of 5' (skip count cleared for that undo).
+

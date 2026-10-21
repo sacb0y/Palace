@@ -1,0 +1,2 @@
+﻿a7448c7 0.3.2 Review: chrome with progress '1 of 5'; Reject (left), Skip (center), Keep (right), Undo. Swipe left=Reject / right=Keep / up=Skip.
+

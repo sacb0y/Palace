@@ -1,0 +1,7 @@
+_rejected contents after Reject of 01-amber.png:
+01-amber.png
+SFW root remaining:
+02-teal.png
+03-blue.png
+04-rose.png
+05-sage.png
