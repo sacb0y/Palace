@@ -1,0 +1,1 @@
+199580e 0.3.1: SDR square-amber after pinch+pan (zoomed/offset; pre-Fit).
