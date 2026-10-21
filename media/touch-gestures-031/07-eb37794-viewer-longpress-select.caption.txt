@@ -1,0 +1,1 @@
+﻿eb37794 0.3.1: viewer selection check badge top-right (BrdGalleryOverlaySelected) after long-press select.
