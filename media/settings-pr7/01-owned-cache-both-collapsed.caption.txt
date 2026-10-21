@@ -1,0 +1,1 @@
+﻿Release x64 MSIX tip 315aeac: search "cache" with Thumbnail cache + Media cache BOTH collapsed — FAIL PinkWash=0 on both owned hosts (no pink on header/outline).

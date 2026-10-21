@@ -1,0 +1,1 @@
+﻿Release x64 MSIX tip 315aeac: search "cache" with Media cache expanded (Thumbnail collapsed) — FAIL: Thumbnail PinkWash=0; Media has outline pink on expanded content only (HeaderPink=0), not collapsed-card header paint.

@@ -1,0 +1,42 @@
+﻿[
+    {
+        "File":  "01a-CardThumbnailCache.png",
+        "Size":  "715x70",
+        "PinkWash":  0,
+        "HeaderPink":  0,
+        "OutlinePink":  0,
+        "PassHeaderOrOutline":  false
+    },
+    {
+        "File":  "01b-CardMediaCache.png",
+        "Size":  "715x70",
+        "PinkWash":  0,
+        "HeaderPink":  0,
+        "OutlinePink":  0,
+        "PassHeaderOrOutline":  false
+    },
+    {
+        "File":  "02a-CardThumbnailCache.png",
+        "Size":  "715x70",
+        "PinkWash":  0,
+        "HeaderPink":  0,
+        "OutlinePink":  0,
+        "PassHeaderOrOutline":  false
+    },
+    {
+        "File":  "02b-CardMediaCache.png",
+        "Size":  "715x213",
+        "PinkWash":  3899,
+        "HeaderPink":  0,
+        "OutlinePink":  1752,
+        "PassHeaderOrOutline":  true
+    },
+    {
+        "File":  "03a-CardHdr.png",
+        "Size":  "715x70",
+        "PinkWash":  0,
+        "HeaderPink":  0,
+        "OutlinePink":  0,
+        "PassHeaderOrOutline":  false
+    }
+]

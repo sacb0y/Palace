@@ -1,0 +1,11 @@
+﻿FAIL Release x64 MSIX tip 315aeac (315aeaca20e084a59795cd78a139be5322ddc3be)
+Identity: PalaceSettingsPr7-127 only (InstallLocation ...\bin\x64\Release\...\AppX)
+Title: Palace 0.3.0 0.3.0 Release - preview
+Priority: BelowNormal; build -m:1; temp SFW + PALACE_DATA_DIR
+
+Pixel-scan (loose pink R>150 B>80 R>G+25):
+1. cache BOTH collapsed: full PinkTotal=0; CardThumbnailCache 715x70 PinkWash=0; CardMediaCache 715x70 PinkWash=0
+2. cache Media expanded (Thumb collapsed): full PinkTotal=3899 (Y~326..468 Media content only); Thumb PinkWash=0 HeaderPink=0; Media HeaderPink=0 OutlinePink=1752 (bottom/sides of expanded content — NOT header)
+3. tonemap: full PinkTotal=0; CardHdr ("HDR and tonemap") 715x70 PinkWash=0
+
+Diagnosis: owned Border host highlight does not produce measurable pink on collapsed SettingsExpander headers/outlines (Thumbnail, Media collapsed, HDR card). Pink only appears around expanded Media cache content outline (HeaderPink=0). Therefore not every matching card shows pink on header or outline of the owned Border host.
