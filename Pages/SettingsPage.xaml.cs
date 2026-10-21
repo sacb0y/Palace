@@ -29,6 +29,7 @@ public sealed partial class SettingsPage : Page
     private Brush? _activeHighlightBrush;
     private DispatcherTimer? _highlightTimer;
     private DispatcherTimer? _highlightRepaintTimer;
+    private int _highlightRepaintPass;
     private EventHandler<object>? _highlightLayoutHandler;
     private bool _paintingHighlight;
 
