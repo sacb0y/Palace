@@ -10,28 +10,24 @@ namespace Palace.ViewModels;
 /// Library: Review mode — swipe / hotkey keep·reject·skip over a queue.
 /// Reject moves into sibling <c>_rejected</c>; Skip leaves the file and is undoable.
 /// Touch swipe classify is <see cref="TouchGestures.ClassifyReviewSwipe"/> (Gesture PR).
+/// Queue is frozen at start (filter/sort mid-review does not rebuild it).
 /// </summary>
 public partial class LibraryViewModel
 {
     private ReviewSession? _review;
     private List<AssetItem> _reviewItems = [];
+    private readonly ReviewApplyGate _reviewApply = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ReviewProgressText))]
     [NotifyPropertyChangedFor(nameof(ReviewSkippedLabel))]
     [NotifyPropertyChangedFor(nameof(ShowReviewSkipped))]
     [NotifyPropertyChangedFor(nameof(ShowReviewChrome))]
+    [NotifyPropertyChangedFor(nameof(ShowReviewDecideButtons))]
+    [NotifyPropertyChangedFor(nameof(ShowReviewUndoButton))]
     [NotifyPropertyChangedFor(nameof(CanReviewDecide))]
     [NotifyPropertyChangedFor(nameof(CanReviewUndo))]
     public partial bool IsReviewMode { get; set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ReviewProgressText))]
-    [NotifyPropertyChangedFor(nameof(ReviewSkippedLabel))]
-    [NotifyPropertyChangedFor(nameof(ShowReviewSkipped))]
-    [NotifyPropertyChangedFor(nameof(CanReviewDecide))]
-    [NotifyPropertyChangedFor(nameof(CanReviewUndo))]
-    public partial int ReviewRevision { get; set; }
 
     public string ReviewProgressText => _review?.ProgressText ?? "";
 
@@ -41,13 +37,20 @@ public partial class LibraryViewModel
 
     public bool ShowReviewChrome => IsReviewMode && IsGalleryOverlayOpen;
 
-    public bool CanReviewDecide => IsReviewMode && _review?.CanDecide == true;
+    public bool CanReviewDecide => IsReviewMode && _review?.CanDecide == true && !_reviewApply.IsBusy;
 
-    public bool CanReviewUndo => IsReviewMode && _review?.CanUndo == true;
+    public bool CanReviewUndo => IsReviewMode && _review?.CanUndo == true && !_reviewApply.IsBusy;
+
+    /// <summary>Reject / Keep / Skip while a decision is still pending.</summary>
+    public bool ShowReviewDecideButtons => CanReviewDecide;
+
+    /// <summary>Undo stays visible after the last item while history remains.</summary>
+    public bool ShowReviewUndoButton => CanReviewUndo;
 
     /// <summary>
     /// Start Review on the selection when tiles are selected; otherwise the
-    /// visible mosaic (non-headers). Opens the overlay on the first item.
+    /// visible mosaic (non-headers, not already in <c>_rejected</c>). Opens the
+    /// overlay on the first item. Queue is frozen for the session.
     /// </summary>
     [RelayCommand]
     private void StartReview()
@@ -84,12 +87,21 @@ public partial class LibraryViewModel
     }
 
     [RelayCommand]
-    private void EndReview()
+    private void EndReview() => EndReviewCore(announce: false);
+
+    private void EndReviewCore(bool announce)
     {
+        var rejected = _review?.RejectedCount ?? 0;
+        var hadSession = _review is not null;
         _review = null;
         _reviewItems = [];
+        _reviewApply.End();
         IsReviewMode = false;
         BumpReview();
+        if (announce && hadSession)
+        {
+            Notify($"Review ended ({rejected} rejected)");
+        }
     }
 
     [RelayCommand]
@@ -104,7 +116,7 @@ public partial class LibraryViewModel
     [RelayCommand]
     private void ReviewSkipped()
     {
-        if (_review is null || !_review.CanReviewSkipped)
+        if (_review is null || !_review.CanReviewSkipped || _reviewApply.IsBusy)
         {
             return;
         }
@@ -122,7 +134,7 @@ public partial class LibraryViewModel
             .ToList();
         if (_reviewItems.Count == 0)
         {
-            EndReview();
+            EndReviewCore(announce: false);
             return;
         }
 
@@ -137,48 +149,83 @@ public partial class LibraryViewModel
     private Task ReviewUndoAsync() =>
         ErrorReporter.RunAsync("Undo review", Notify, async () =>
         {
-            if (_review is null || !_review.TryUndo(out var decision, out var assetId))
+            if (_review is null || !_reviewApply.TryBeginBusy())
             {
                 return;
             }
 
-            if (decision == ReviewDecision.Reject)
+            try
             {
+                BumpReview();
                 var projectId = AppServices.CurrentProject.Id;
-                var peek = await _fileOps.PeekUndoAsync(projectId);
-                var result = await _fileOps.UndoLastAsync(projectId);
-                if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
+                var (rolledBack, entry, message) = await ReviewUndoFlow.TryUndoAsync(
+                    _review,
+                    async batchId =>
+                    {
+                        var result = await _fileOps.UndoBatchAsync(projectId, batchId);
+                        if (result.Ok && result.Moves.Count > 0)
+                        {
+                            await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
+                            OverlayGallery?.ApplyPathMoves(result.Moves);
+                        }
+
+                        await RefreshUndoStateAsync();
+                        return new ReviewUndoFlow.DiskUndoResult(result.Ok, result.Message);
+                    });
+
+                if (!rolledBack)
                 {
-                    await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
-                    OverlayGallery?.ApplyPathMoves(result.Moves);
-                }
-                else if (!result.Ok)
-                {
-                    Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        Notify(message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                    }
+
+                    return;
                 }
 
-                await RefreshUndoStateAsync();
+                BumpReview();
+                SyncReviewGallery(preferId: entry?.AssetId);
             }
-
-            BumpReview();
-            SyncReviewGallery(preferId: assetId);
+            finally
+            {
+                _reviewApply.End();
+                BumpReview();
+            }
         });
 
-    /// <summary>Overlay hotkeys X / K / S and Ctrl+Z while Review is active.</summary>
-    public bool TryHandleReviewShortcut(bool controlDown, int keyCode)
+    /// <summary>
+    /// Overlay hotkeys X / K / S and Ctrl+Z while Review is active.
+    /// Ignores text focus and key auto-repeat for decision keys.
+    /// </summary>
+    public bool TryHandleReviewShortcut(
+        bool controlDown,
+        int keyCode,
+        bool focusIsTextInput = false,
+        bool isRepeat = false)
     {
-        if (!IsReviewMode)
+        if (!IsReviewMode || focusIsTextInput)
         {
             return false;
         }
 
         if (ReviewHotkeys.IsUndoChord(controlDown, keyCode))
         {
-            if (CanReviewUndo && ReviewUndoCommand.CanExecute(null))
+            if (!CanReviewUndo)
+            {
+                // Let the page Ctrl+Z undo the global file-op journal instead.
+                return false;
+            }
+
+            if (ReviewUndoCommand.CanExecute(null))
             {
                 ReviewUndoCommand.Execute(null);
             }
 
+            return true;
+        }
+
+        if (isRepeat && ReviewHotkeys.IsDecisionKey(keyCode, controlDown))
+        {
             return true;
         }
 
@@ -205,113 +252,139 @@ public partial class LibraryViewModel
     private Task ApplyReviewDecisionAsync(ReviewDecision decision) =>
         ErrorReporter.RunAsync("Review", Notify, async () =>
         {
-            if (_review is null || !_review.CanDecide || OverlayGallery?.Current is null)
+            if (_review is null
+                || !_reviewApply.TryBegin(_review.CurrentId, out var assetId))
             {
                 return;
             }
 
-            var current = OverlayGallery.Current;
-            if (decision == ReviewDecision.Reject)
+            try
             {
-                if (ReviewReject.IsAlreadyRejected(current.Path))
+                BumpReview();
+                var item = FindReviewItem(assetId);
+                if (item is null)
                 {
-                    Notify("Already in _rejected.");
                     return;
                 }
 
-                var dest = ReviewReject.DestinationDir(current.Path);
-                var parent = ReviewReject.ParentDir(current.Path);
-                if (dest is null || parent is null)
+                string? moveBatchId = null;
+                if (decision == ReviewDecision.Reject)
                 {
-                    Notify("Can't reject this file.");
-                    return;
-                }
-
-                string? absorb = null;
-                if (!Directory.Exists(dest))
-                {
-                    var created = await _fileOps.CreateFolderAsync(
-                        parent,
-                        ReviewReject.FolderName,
-                        AppServices.CurrentProject.Id);
-                    if (!created.Ok || string.IsNullOrWhiteSpace(created.Path))
+                    if (ReviewReject.IsAlreadyRejected(item.Path))
                     {
-                        if (!Directory.Exists(dest))
+                        Notify("Already in _rejected.");
+                        return;
+                    }
+
+                    var dest = ReviewReject.DestinationDir(item.Path);
+                    var parent = ReviewReject.ParentDir(item.Path);
+                    if (dest is null || parent is null)
+                    {
+                        Notify("Can't reject this file.");
+                        return;
+                    }
+
+                    string? absorb = null;
+                    if (!Directory.Exists(dest))
+                    {
+                        var created = await _fileOps.CreateFolderAsync(
+                            parent,
+                            ReviewReject.FolderName,
+                            AppServices.CurrentProject.Id);
+                        if (!created.Ok || string.IsNullOrWhiteSpace(created.Path))
                         {
-                            Notify(created.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
-                            return;
+                            if (!Directory.Exists(dest))
+                            {
+                                Notify(created.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            absorb = created.Path;
+                            await RebuildFolderTreeAsync();
                         }
                     }
-                    else
-                    {
-                        absorb = created.Path;
-                        await RebuildFolderTreeAsync();
-                    }
-                }
 
-                BeginBusy("Rejecting…");
-                FileOpResult? result = null;
-                try
-                {
-                    var assets = await _catalog.GetAssetsByIdsAsync([current.Id]);
-                    result = await _fileOps.MoveAssetsAsync(
-                        assets,
-                        dest,
-                        AppServices.CurrentProject.Id,
-                        absorbCreatedFolder: absorb);
-                    if (result.Moves.Count > 0)
+                    BeginBusy("Rejecting…");
+                    FileOpResult? result = null;
+                    try
                     {
-                        await ApplyMovesToUiAsync(result.Moves, result.Path);
-                        OverlayGallery.ApplyPathMoves(result.Moves);
-                    }
-                }
-                finally
-                {
-                    var status = result?.Message;
-                    await UiDispatch.RunAsync(() =>
-                    {
-                        EndBusy();
-                        if (!string.IsNullOrWhiteSpace(status))
+                        var assets = await _catalog.GetAssetsByIdsAsync([assetId]);
+                        result = await _fileOps.MoveAssetsAsync(
+                            assets,
+                            dest,
+                            AppServices.CurrentProject.Id,
+                            absorbCreatedFolder: absorb);
+                        if (result.Moves.Count > 0)
                         {
-                            StatusText = status!;
+                            await ApplyMovesToUiAsync(result.Moves, result.Path);
+                            OverlayGallery?.ApplyPathMoves(result.Moves);
                         }
-                    });
-                }
-
-                await RefreshUndoStateAsync();
-                if (result is null || !result.Ok || result.Moves.Count == 0)
-                {
-                    if (result is not null)
+                    }
+                    finally
                     {
-                        Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                        var status = result?.Message;
+                        await UiDispatch.RunAsync(() =>
+                        {
+                            EndBusy();
+                            if (!string.IsNullOrWhiteSpace(status))
+                            {
+                                StatusText = status!;
+                            }
+                        });
                     }
 
+                    await RefreshUndoStateAsync();
+                    if (result is null || !result.Ok || result.Moves.Count == 0)
+                    {
+                        if (result is not null)
+                        {
+                            Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                        }
+
+                        return;
+                    }
+
+                    moveBatchId = result.BatchId;
+                }
+
+                if (!_reviewApply.StillOnCaptured(_review.CurrentId))
+                {
                     return;
                 }
-            }
 
-            if (!_review.TryDecide(decision))
+                if (!_review.TryDecide(decision, moveBatchId))
+                {
+                    return;
+                }
+
+                BumpReview();
+                if (_review.IsComplete)
+                {
+                    return;
+                }
+
+                SyncReviewGallery();
+            }
+            finally
             {
-                return;
+                _reviewApply.End();
+                BumpReview();
             }
-
-            BumpReview();
-            if (_review.IsComplete)
-            {
-                return;
-            }
-
-            SyncReviewGallery();
         });
+
+    private AssetItem? FindReviewItem(string assetId) =>
+        _reviewItems.FirstOrDefault(i => string.Equals(i.Id, assetId, StringComparison.Ordinal));
 
     private List<AssetItem> ReviewTargets()
     {
-        if (_selection.Count > 0)
-        {
-            return _selection.Where(a => !a.IsFolderHeader).ToList();
-        }
-
-        return Assets.Where(a => !a.IsFolderHeader).ToList();
+        IEnumerable<AssetItem> source = _selection.Count > 0
+            ? _selection
+            : Assets;
+        return source
+            .Where(a => !a.IsFolderHeader && !ReviewReject.IsAlreadyRejected(a.Path))
+            .ToList();
     }
 
     private void SyncReviewGallery(string? preferId = null)
@@ -333,11 +406,12 @@ public partial class LibraryViewModel
 
     private void BumpReview()
     {
-        ReviewRevision++;
         OnPropertyChanged(nameof(ReviewProgressText));
         OnPropertyChanged(nameof(ReviewSkippedLabel));
         OnPropertyChanged(nameof(ShowReviewSkipped));
         OnPropertyChanged(nameof(ShowReviewChrome));
+        OnPropertyChanged(nameof(ShowReviewDecideButtons));
+        OnPropertyChanged(nameof(ShowReviewUndoButton));
         OnPropertyChanged(nameof(CanReviewDecide));
         OnPropertyChanged(nameof(CanReviewUndo));
     }
@@ -346,7 +420,7 @@ public partial class LibraryViewModel
     {
         if (!value && IsReviewMode)
         {
-            EndReview();
+            EndReviewCore(announce: true);
         }
 
         OnPropertyChanged(nameof(ShowReviewChrome));

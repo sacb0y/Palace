@@ -296,6 +296,35 @@ public sealed class FileOpServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UndoBatch_refuses_when_not_newest_then_succeeds_when_it_is()
+    {
+        var asset = await AddAssetAsync(_rootA, "review.png");
+        var rejectDir = Dir(_rootA, "_rejected");
+        var otherDir = Dir(_rootA, "Other");
+
+        var rejectMove = await _ops.MoveAssetsAsync([asset], rejectDir, _projectId);
+        Assert.True(rejectMove.Ok, rejectMove.Message);
+        Assert.False(string.IsNullOrWhiteSpace(rejectMove.BatchId));
+        var rejectBatchId = rejectMove.BatchId!;
+
+        var moved = (await _catalog.GetAssetByIdAsync(asset.Id))!;
+        var unrelated = await _ops.MoveAssetsAsync([moved], otherDir, _projectId);
+        Assert.True(unrelated.Ok, unrelated.Message);
+
+        var refused = await _ops.UndoBatchAsync(_projectId, rejectBatchId);
+        Assert.False(refused.Ok);
+        Assert.Contains("another file operation", refused.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(Path.Combine(otherDir, "review.png"), (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
+
+        var undoUnrelated = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoUnrelated.Ok, undoUnrelated.Message);
+
+        var undoReject = await _ops.UndoBatchAsync(_projectId, rejectBatchId);
+        Assert.True(undoReject.Ok, undoReject.Message);
+        Assert.Equal(asset.Path, (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
+    }
+
+    [Fact]
     public async Task CreateFolder_validates_the_name_and_refuses_duplicates_and_outside_roots()
     {
         Assert.False((await _ops.CreateFolderAsync(_rootA.Path, "  ", _projectId)).Ok);

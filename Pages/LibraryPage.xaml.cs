@@ -88,7 +88,8 @@ public sealed partial class LibraryPage : Page
         _videoBrowseSwipe = new VideoBrowseSwipeBinder(
             MpeOverlay,
             VideoBrowseSwipeAllowedNow,
-            OnOverlayReviewSwipe);
+            OnOverlayReviewSwipe,
+            isReviewMode: () => ViewModel.IsReviewMode);
         _videoBrowseSwipe.Hook();
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
@@ -1257,6 +1258,21 @@ public sealed partial class LibraryPage : Page
         // Browse swipes (IsReviewMode=false) are prev/next only — #128.
         // Review Reject/Keep/Skip go through the session (sibling _rejected,
         // skip undo, progress); never move files outside Review mode.
+        // Paused-video swipe uses ClassifyReviewSwipe when IsReviewMode.
+        if (ViewModel.IsReviewMode)
+        {
+            switch (action)
+            {
+                case TouchGestures.SwipeAction.Reject:
+                case TouchGestures.SwipeAction.Keep:
+                case TouchGestures.SwipeAction.Skip:
+                    ViewModel.CommitReviewSwipe(action);
+                    break;
+            }
+
+            return;
+        }
+
         switch (action)
         {
             case TouchGestures.SwipeAction.BrowsePrevious:
@@ -1264,11 +1280,6 @@ public sealed partial class LibraryPage : Page
                 break;
             case TouchGestures.SwipeAction.BrowseNext:
                 ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
-                break;
-            case TouchGestures.SwipeAction.Reject:
-            case TouchGestures.SwipeAction.Keep:
-            case TouchGestures.SwipeAction.Skip:
-                ViewModel.CommitReviewSwipe(action);
                 break;
         }
     }
@@ -1445,7 +1456,11 @@ public sealed partial class LibraryPage : Page
             .HasFlag(CoreVirtualKeyStates.Down);
         var alt = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu)
             .HasFlag(CoreVirtualKeyStates.Down);
-        if (ViewModel.TryHandleReviewShortcut(control, (int)e.Key))
+        if (ViewModel.TryHandleReviewShortcut(
+                control,
+                (int)e.Key,
+                FocusIsTextInput(e.OriginalSource),
+                isRepeat: e.KeyStatus.WasKeyDown))
         {
             e.Handled = true;
             return;
@@ -1518,6 +1533,13 @@ public sealed partial class LibraryPage : Page
                 e.Handled = true;
                 break;
             case VirtualKey.Left:
+                if (ViewModel.IsReviewMode)
+                {
+                    // Review advances via Keep / Reject / Skip only — not arrows.
+                    e.Handled = true;
+                    break;
+                }
+
                 if (ViewerFocusCycle.AllowsArrowNavigate(_viewerFocusZone))
                 {
                     ViewModel.OverlayGallery.GoPreviousCommand.Execute(null);
@@ -1526,6 +1548,12 @@ public sealed partial class LibraryPage : Page
 
                 break;
             case VirtualKey.Right:
+                if (ViewModel.IsReviewMode)
+                {
+                    e.Handled = true;
+                    break;
+                }
+
                 if (ViewerFocusCycle.AllowsArrowNavigate(_viewerFocusZone))
                 {
                     ViewModel.OverlayGallery.GoNextCommand.Execute(null);

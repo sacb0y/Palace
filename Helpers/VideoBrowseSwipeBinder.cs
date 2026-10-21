@@ -15,6 +15,7 @@ public sealed class VideoBrowseSwipeBinder
 {
     private readonly MediaPlayerElement _mpe;
     private readonly Func<bool> _swipeAllowed;
+    private readonly Func<bool> _isReviewMode;
     private readonly Action<TouchGestures.SwipeAction> _onNavigate;
     private readonly VideoBrowseSwipe _swipe = new();
     private bool _hooked;
@@ -23,11 +24,13 @@ public sealed class VideoBrowseSwipeBinder
     public VideoBrowseSwipeBinder(
         MediaPlayerElement mpe,
         Func<bool> swipeAllowed,
-        Action<TouchGestures.SwipeAction> onNavigate)
+        Action<TouchGestures.SwipeAction> onNavigate,
+        Func<bool>? isReviewMode = null)
     {
         _mpe = mpe;
         _swipeAllowed = swipeAllowed;
         _onNavigate = onNavigate;
+        _isReviewMode = isReviewMode ?? (() => false);
     }
 
     public void Hook()
@@ -144,10 +147,12 @@ public sealed class VideoBrowseSwipeBinder
             point.Position.Y,
             Environment.TickCount64,
             _mpe.ActualWidth,
+            _mpe.ActualHeight,
+            reviewMode: _isReviewMode(),
             out var action,
-            out var navigated);
+            out var committed);
         EndCapture(e.Pointer);
-        if (completed && hadCapture && navigated && _swipeAllowed())
+        if (completed && hadCapture && committed && _swipeAllowed())
         {
             _onNavigate(action);
             e.Handled = true;

@@ -6,7 +6,7 @@ namespace Palace.Tests;
 public sealed class ReviewSessionTests
 {
     [Fact]
-    public void Progress_CountsSkips()
+    public void Progress_CountsSkipsAndReviewed()
     {
         var session = new ReviewSession(["a", "b", "c"]);
         Assert.Equal("1 of 3", session.ProgressText);
@@ -16,7 +16,7 @@ public sealed class ReviewSessionTests
         Assert.Equal("3 of 3 · 1 skipped", session.ProgressText);
         Assert.True(session.TryDecide(ReviewDecision.Skip));
         Assert.True(session.IsComplete);
-        Assert.Equal("Done · 2 skipped", session.ProgressText);
+        Assert.Equal("Done · 3 reviewed · 2 skipped", session.ProgressText);
         Assert.Equal("Review 2 skipped", session.ReviewSkippedLabel);
         Assert.True(session.CanReviewSkipped);
     }
@@ -28,28 +28,34 @@ public sealed class ReviewSessionTests
         Assert.True(session.TryDecide(ReviewDecision.Skip));
         Assert.Equal(1, session.SkipCount);
         Assert.Equal("b", session.CurrentId);
-        Assert.True(session.TryUndo(out var decision, out var id));
-        Assert.Equal(ReviewDecision.Skip, decision);
-        Assert.Equal("a", id);
+        Assert.True(session.TryPeekUndo(out var peek));
+        Assert.Equal(ReviewDecision.Skip, peek.Decision);
+        Assert.Equal("a", peek.AssetId);
+        Assert.True(session.TryCommitUndo());
         Assert.Equal(0, session.SkipCount);
         Assert.Equal("a", session.CurrentId);
         Assert.Equal("1 of 2", session.ProgressText);
     }
 
     [Fact]
-    public void Undo_KeepAndReject()
+    public void Undo_KeepAndReject_StoresBatchId()
     {
         var session = new ReviewSession(["a", "b", "c"]);
         Assert.True(session.TryDecide(ReviewDecision.Keep));
-        Assert.True(session.TryDecide(ReviewDecision.Reject));
+        Assert.True(session.TryDecide(ReviewDecision.Reject, moveBatchId: "batch-b"));
         Assert.Equal("c", session.CurrentId);
-        Assert.True(session.TryUndo(out var reject, out var rejectId));
-        Assert.Equal(ReviewDecision.Reject, reject);
-        Assert.Equal("b", rejectId);
-        Assert.True(session.TryUndo(out var keep, out var keepId));
-        Assert.Equal(ReviewDecision.Keep, keep);
-        Assert.Equal("a", keepId);
-        Assert.False(session.TryUndo(out _, out _));
+        Assert.Equal(1, session.RejectedCount);
+        Assert.True(session.TryPeekUndo(out var reject));
+        Assert.Equal(ReviewDecision.Reject, reject.Decision);
+        Assert.Equal("b", reject.AssetId);
+        Assert.Equal("batch-b", reject.MoveBatchId);
+        Assert.True(session.TryCommitUndo());
+        Assert.True(session.TryPeekUndo(out var keep));
+        Assert.Equal(ReviewDecision.Keep, keep.Decision);
+        Assert.Equal("a", keep.AssetId);
+        Assert.Null(keep.MoveBatchId);
+        Assert.True(session.TryCommitUndo());
+        Assert.False(session.TryPeekUndo(out _));
     }
 
     [Fact]
@@ -87,15 +93,15 @@ public sealed class ReviewSessionTests
     }
 
     [Fact]
-    public void ToDecision_MapsSwipeActions()
+    public void TryToDecision_MapsSwipeActions()
     {
-        Assert.Equal(ReviewDecision.Keep, ReviewSession.ToDecision(TouchGestures.SwipeAction.Keep));
-        Assert.Equal(ReviewDecision.Reject, ReviewSession.ToDecision(TouchGestures.SwipeAction.Reject));
-        Assert.Equal(ReviewDecision.Skip, ReviewSession.ToDecision(TouchGestures.SwipeAction.Skip));
-        Assert.Throws<ArgumentOutOfRangeException>(() =>
-            ReviewSession.ToDecision(TouchGestures.SwipeAction.None));
         Assert.True(ReviewSession.TryToDecision(TouchGestures.SwipeAction.Keep, out var keep));
         Assert.Equal(ReviewDecision.Keep, keep);
+        Assert.True(ReviewSession.TryToDecision(TouchGestures.SwipeAction.Reject, out var reject));
+        Assert.Equal(ReviewDecision.Reject, reject);
+        Assert.True(ReviewSession.TryToDecision(TouchGestures.SwipeAction.Skip, out var skip));
+        Assert.Equal(ReviewDecision.Skip, skip);
         Assert.False(ReviewSession.TryToDecision(TouchGestures.SwipeAction.SpringBack, out _));
+        Assert.False(ReviewSession.TryToDecision(TouchGestures.SwipeAction.None, out _));
     }
 }

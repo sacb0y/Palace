@@ -1826,6 +1826,7 @@
                             x:Name="TxtReviewProgress"
                             HorizontalAlignment="Center"
                             AutomationProperties.AutomationId="TxtReviewProgress"
+                            AutomationProperties.LiveSetting="Polite"
                             AutomationProperties.Name="Review progress"
                             Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
@@ -1833,52 +1834,68 @@
                         <StackPanel
                             HorizontalAlignment="Center"
                             Orientation="Horizontal"
-                            Spacing="8"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.CanReviewDecide), Mode=OneWay}">
-                            <Button
-                                x:Name="BtnReviewReject"
-                                Padding="10,6"
-                                AutomationProperties.AutomationId="BtnReviewReject"
-                                AutomationProperties.Name="Reject"
-                                Command="{x:Bind ViewModel.ReviewRejectCommand}"
-                                ToolTipService.ToolTip="Reject (X) — move to _rejected">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
-                                    <TextBlock VerticalAlignment="Center" Text="Reject" />
-                                </StackPanel>
-                            </Button>
-                            <Button
-                                x:Name="BtnReviewSkip"
-                                Padding="10,6"
-                                AutomationProperties.AutomationId="BtnReviewSkip"
-                                AutomationProperties.Name="Skip"
-                                Command="{x:Bind ViewModel.ReviewSkipCommand}"
-                                ToolTipService.ToolTip="Skip (S) — leave undecided">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="ArrowUp" IconSize="Size16" IconVariant="Regular" />
-                                    <TextBlock VerticalAlignment="Center" Text="Skip" />
-                                </StackPanel>
-                            </Button>
-                            <Button
-                                x:Name="BtnReviewKeep"
-                                Padding="10,6"
-                                AutomationProperties.AutomationId="BtnReviewKeep"
-                                AutomationProperties.Name="Keep"
-                                Command="{x:Bind ViewModel.ReviewKeepCommand}"
-                                ToolTipService.ToolTip="Keep (K)">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <ic:FluentIcon Icon="Checkmark" IconSize="Size16" IconVariant="Regular" />
-                                    <TextBlock VerticalAlignment="Center" Text="Keep" />
-                                </StackPanel>
-                            </Button>
+                            Spacing="8">
+                            <StackPanel
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewDecideButtons), Mode=OneWay}">
+                                <Button
+                                    x:Name="BtnReviewReject"
+                                    Padding="10,6"
+                                    AutomationProperties.AutomationId="BtnReviewReject"
+                                    AutomationProperties.Name="Reject — move to _rejected (X)"
+                                    Command="{x:Bind ViewModel.ReviewRejectCommand}"
+                                    ToolTipService.ToolTip="Reject (X) — move to _rejected">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="X" />
+                                    </Button.KeyboardAccelerators>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Reject" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="BtnReviewSkip"
+                                    Padding="10,6"
+                                    AutomationProperties.AutomationId="BtnReviewSkip"
+                                    AutomationProperties.Name="Skip — leave undecided (S)"
+                                    Command="{x:Bind ViewModel.ReviewSkipCommand}"
+                                    ToolTipService.ToolTip="Skip (S) — leave undecided">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="S" />
+                                    </Button.KeyboardAccelerators>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <ic:FluentIcon Icon="ArrowUp" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Skip" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="BtnReviewKeep"
+                                    Padding="10,6"
+                                    AutomationProperties.AutomationId="BtnReviewKeep"
+                                    AutomationProperties.Name="Keep (K)"
+                                    Command="{x:Bind ViewModel.ReviewKeepCommand}"
+                                    ToolTipService.ToolTip="Keep (K)">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="K" />
+                                    </Button.KeyboardAccelerators>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <ic:FluentIcon Icon="Checkmark" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Keep" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
                             <Button
                                 x:Name="BtnReviewUndo"
                                 Padding="10,6"
                                 AutomationProperties.AutomationId="BtnReviewUndo"
-                                AutomationProperties.Name="Undo review"
+                                AutomationProperties.Name="Undo last review decision (Ctrl+Z)"
                                 Command="{x:Bind ViewModel.ReviewUndoCommand}"
-                                IsEnabled="{x:Bind ViewModel.CanReviewUndo, Mode=OneWay}"
-                                ToolTipService.ToolTip="Undo (Ctrl+Z)">
+                                ToolTipService.ToolTip="Undo (Ctrl+Z)"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewUndoButton), Mode=OneWay}">
+                                <Button.KeyboardAccelerators>
+                                    <KeyboardAccelerator Key="Z" Modifiers="Control" />
+                                </Button.KeyboardAccelerators>
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
                                     <TextBlock VerticalAlignment="Center" Text="Undo" />

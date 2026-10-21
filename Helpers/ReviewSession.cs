@@ -2,8 +2,9 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// One Review-mode pass over a queue of asset ids. Keep / Reject / Skip are
-/// decisions; Skip leaves the file on disk and is undoable. End of queue offers
-/// "Review n skipped". WinUI-free for Palace.Tests.
+/// decisions; Skip leaves the file on disk and is undoable. Reject stores the
+/// move <c>BatchId</c> so Undo can reverse that batch (only when it is still
+/// newest). End of queue offers "Review n skipped". WinUI-free for Palace.Tests.
 /// </summary>
 public enum ReviewDecision
 {
@@ -12,10 +13,15 @@ public enum ReviewDecision
     Skip = 3
 }
 
+public readonly record struct ReviewHistoryEntry(
+    ReviewDecision Decision,
+    string AssetId,
+    string? MoveBatchId);
+
 public sealed class ReviewSession
 {
     private readonly List<string> _queue;
-    private readonly List<ReviewDecision> _history = [];
+    private readonly List<ReviewHistoryEntry> _history = [];
     private readonly List<string> _skipped = [];
     private int _index;
 
@@ -38,6 +44,8 @@ public sealed class ReviewSession
 
     public int DecidedCount => _history.Count;
 
+    public int RejectedCount => _history.Count(e => e.Decision == ReviewDecision.Reject);
+
     public int SkipCount => _skipped.Count;
 
     public bool IsActive => Count > 0 && !IsComplete;
@@ -48,8 +56,8 @@ public sealed class ReviewSession
         IsComplete || Count == 0 ? null : _queue[_index];
 
     /// <summary>
-    /// Progress line. Counts skips: <c>3 of 20 · 2 skipped</c>, or
-    /// <c>Done · 2 skipped</c> at end of queue.
+    /// Progress line. Counts skips and, when done, reviewed total:
+    /// <c>3 of 20 · 2 skipped</c>, or <c>Done · 5 reviewed · 2 skipped</c>.
     /// </summary>
     public string ProgressText
     {
@@ -63,8 +71,8 @@ public sealed class ReviewSession
             if (IsComplete)
             {
                 return SkipCount == 0
-                    ? $"Done · {Count} reviewed"
-                    : $"Done · {SkipCount} skipped";
+                    ? $"Done · {DecidedCount} reviewed"
+                    : $"Done · {DecidedCount} reviewed · {SkipCount} skipped";
             }
 
             var position = _index + 1;
@@ -84,8 +92,11 @@ public sealed class ReviewSession
 
     public bool CanDecide => IsActive && CurrentId is not null;
 
-    /// <summary>Record a decision and advance. Returns false when the session cannot decide.</summary>
-    public bool TryDecide(ReviewDecision decision)
+    /// <summary>
+    /// Record a decision and advance. For Reject, pass the move journal
+    /// <paramref name="moveBatchId"/> so Undo can reverse that batch by id.
+    /// </summary>
+    public bool TryDecide(ReviewDecision decision, string? moveBatchId = null)
     {
         if (!CanDecide || CurrentId is null)
         {
@@ -93,7 +104,10 @@ public sealed class ReviewSession
         }
 
         var id = CurrentId;
-        _history.Add(decision);
+        _history.Add(new ReviewHistoryEntry(
+            decision,
+            id,
+            decision == ReviewDecision.Reject ? moveBatchId : null));
         if (decision == ReviewDecision.Skip)
         {
             _skipped.Add(id);
@@ -104,25 +118,38 @@ public sealed class ReviewSession
     }
 
     /// <summary>
-    /// Undo the last decision. Returns the undone decision + asset id so the
-    /// host can reverse a Reject move. Skip undoes without touching disk.
+    /// Peek the last decision without rolling the session back. Host undoes
+    /// Reject on disk first, then <see cref="TryCommitUndo"/>.
     /// </summary>
-    public bool TryUndo(out ReviewDecision decision, out string assetId)
+    public bool TryPeekUndo(out ReviewHistoryEntry entry)
     {
-        decision = default;
-        assetId = "";
+        entry = default;
         if (!CanUndo)
         {
             return false;
         }
 
-        decision = _history[^1];
+        entry = _history[^1];
+        return true;
+    }
+
+    /// <summary>
+    /// Roll back the last decision after a successful disk undo (or Keep/Skip).
+    /// Call only after Reject's batch undo succeeded — never on disk failure.
+    /// </summary>
+    public bool TryCommitUndo()
+    {
+        if (!CanUndo)
+        {
+            return false;
+        }
+
+        var entry = _history[^1];
         _history.RemoveAt(_history.Count - 1);
         _index = Math.Max(0, _index - 1);
-        assetId = _queue[_index];
-        if (decision == ReviewDecision.Skip)
+        if (entry.Decision == ReviewDecision.Skip)
         {
-            var skipAt = _skipped.LastIndexOf(assetId);
+            var skipAt = _skipped.LastIndexOf(entry.AssetId);
             if (skipAt >= 0)
             {
                 _skipped.RemoveAt(skipAt);
@@ -144,14 +171,6 @@ public sealed class ReviewSession
 
         return new ReviewSession(_skipped.ToList());
     }
-
-    public static ReviewDecision ToDecision(TouchGestures.SwipeAction action) => action switch
-    {
-        TouchGestures.SwipeAction.Keep => ReviewDecision.Keep,
-        TouchGestures.SwipeAction.Reject => ReviewDecision.Reject,
-        TouchGestures.SwipeAction.Skip => ReviewDecision.Skip,
-        _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Not a Review decision.")
-    };
 
     public static bool TryToDecision(TouchGestures.SwipeAction action, out ReviewDecision decision)
     {
