@@ -64,6 +64,7 @@ public static class AppServices
         LoadShellBackground();
         LoadMediaCache();
         LoadLibrarySettings();
+        LoadViewerSettings();
         // Side-by-side/test packages must never open the real catalog.
         try
         {
@@ -270,6 +271,17 @@ public static class AppServices
             LibrarySettings.ParseBool(
                 values[LibrarySettings.GenerateThumbsOnScanKey],
                 LibrarySettings.DefaultGenerateThumbsOnScan));
+    }
+
+    internal static void LoadViewerSettings()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        ViewerSettings.Apply(
+            ViewerSettings.ParseZoom(values[ViewerSettings.DefaultZoomKey]),
+            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures),
+            ViewerSettings.ParseBool(
+                values[ViewerSettings.SwipeDownDismissKey],
+                ViewerSettings.DefaultSwipeDownDismiss));
     }
 
     /// <summary>

@@ -94,4 +94,31 @@ public sealed class SettingsNavTests
         Assert.NotNull(thumbs);
         Assert.Equal("CardThumbnailCache", thumbs.Value.CardAutomationId);
     }
+
+    [Fact]
+    public void FindHit_ViewerAndInputCards()
+    {
+        var zoom = SettingsNav.FindHit("default zoom");
+        Assert.NotNull(zoom);
+        Assert.Equal(SettingsNav.Viewer, zoom.Value.SectionId);
+        Assert.Equal("CardDefaultZoom", zoom.Value.CardAutomationId);
+
+        var loop = SettingsNav.FindHit("replay");
+        Assert.NotNull(loop);
+        Assert.Equal(SettingsNav.Viewer, loop.Value.SectionId);
+        Assert.Equal("CardLoopVideo", loop.Value.CardAutomationId);
+
+        var details = SettingsNav.FindHit("show details");
+        Assert.NotNull(details);
+        Assert.Equal("CardShowDetails", details.Value.CardAutomationId);
+
+        var touch = SettingsNav.FindHit("touch");
+        Assert.NotNull(touch);
+        Assert.Equal(SettingsNav.Input, touch.Value.SectionId);
+        Assert.Equal("CardTouchGestures", touch.Value.CardAutomationId);
+
+        var swipe = SettingsNav.FindHit("swipe down");
+        Assert.NotNull(swipe);
+        Assert.Equal("CardSwipeDownDismiss", swipe.Value.CardAutomationId);
+    }
 }

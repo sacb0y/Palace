@@ -1011,53 +1011,111 @@
                     <StackPanel x:Name="PnlSection_viewer" Spacing="0" Visibility="Collapsed">
                         <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Viewer" />
                         <controls:SettingsCard
-                            x:Name="CardHdrPeak"
-                            AutomationProperties.AutomationId="CardHdrPeak"
-                            Description="One app-wide clip for HDR present. 203 nits is paper white."
-                            Header="Override HDR peak brightness"
+                            x:Name="CardDefaultZoom"
+                            AutomationProperties.AutomationId="CardDefaultZoom"
+                            Description="Scale when the overlay or gallery window opens"
+                            Header="Default zoom"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ComboBox
+                                x:Name="CmbDefaultZoom"
+                                MinWidth="140"
+                                AutomationProperties.AutomationId="CmbDefaultZoom"
+                                AutomationProperties.Name="Default zoom"
+                                ItemsSource="{x:Bind ViewModel.ZoomOptions, Mode=OneWay}"
+                                SelectedItem="{x:Bind ViewModel.SelectedDefaultZoom, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsExpander
+                            x:Name="CardHdr"
+                            AutomationProperties.AutomationId="CardHdr"
+                            Description="Peak override for HDR displays; SDR stills tonemap automatically"
+                            Header="HDR and tonemap"
+                            Style="{StaticResource PalaceSettingsExpanderStyle}">
+                            <controls:SettingsExpander.Items>
+                                <controls:SettingsCard
+                                    x:Name="CardHdrPeak"
+                                    AutomationProperties.AutomationId="CardHdrPeak"
+                                    Description="One app-wide clip for HDR present. 203 nits is paper white."
+                                    Header="Override HDR peak brightness"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ToggleSwitch
+                                        x:Name="TglHdrPeakOverride"
+                                        AutomationProperties.AutomationId="TglHdrPeakOverride"
+                                        AutomationProperties.Name="Override HDR peak brightness"
+                                        IsOn="{x:Bind ViewModel.PeakOverrideEnabled, Mode=TwoWay}"
+                                        OffContent="Off"
+                                        OnContent="On" />
+                                </controls:SettingsCard>
+                                <controls:SettingsCard
+                                    x:Name="CardHdrPeakNits"
+                                    AutomationProperties.AutomationId="CardHdrPeakNits"
+                                    Header="Peak nits"
+                                    Style="{StaticResource PalaceSettingsCardStyle}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}">
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <Slider
+                                            x:Name="SldHdrPeakNits"
+                                            MinWidth="180"
+                                            AutomationProperties.AutomationId="SldHdrPeakNits"
+                                            AutomationProperties.Name="Peak nits"
+                                            Maximum="4000"
+                                            Minimum="80"
+                                            StepFrequency="10"
+                                            TickFrequency="400"
+                                            TickPlacement="None"
+                                            Value="{x:Bind ViewModel.PeakOverrideNits, Mode=TwoWay}" />
+                                        <TextBlock
+                                            x:Name="TxtHdrPeakNits"
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.AutomationId="TxtHdrPeakNits"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.PeakOverrideLabel, Mode=OneWay}" />
+                                    </StackPanel>
+                                </controls:SettingsCard>
+                                <controls:SettingsCard
+                                    x:Name="CardHdrTonemap"
+                                    AutomationProperties.AutomationId="CardHdrTonemap"
+                                    Description="{x:Bind ViewModel.SdrTonemapCaption, Mode=OneWay}"
+                                    Header="SDR tonemap"
+                                    IsEnabled="False"
+                                    Style="{StaticResource PalaceSettingsCardStyle}" />
+                            </controls:SettingsExpander.Items>
+                        </controls:SettingsExpander>
+                        <controls:SettingsCard
+                            x:Name="CardShowDetails"
+                            AutomationProperties.AutomationId="CardShowDetails"
+                            Description="Open the Details card with the overlay. Toggle anytime with I / Ctrl+D."
+                            Header="Show Details by default"
                             Style="{StaticResource PalaceSettingsCardStyle}">
                             <ToggleSwitch
-                                x:Name="TglHdrPeakOverride"
-                                AutomationProperties.AutomationId="TglHdrPeakOverride"
-                                AutomationProperties.Name="Override HDR peak brightness"
-                                IsOn="{x:Bind ViewModel.PeakOverrideEnabled, Mode=TwoWay}"
+                                x:Name="TglShowDetails"
+                                AutomationProperties.AutomationId="TglShowDetails"
+                                AutomationProperties.Name="Show Details by default"
+                                IsOn="{x:Bind ViewModel.ShowDetailsByDefault, Mode=TwoWay}"
                                 OffContent="Off"
                                 OnContent="On" />
                         </controls:SettingsCard>
                         <controls:SettingsCard
-                            x:Name="CardHdrPeakNits"
-                            AutomationProperties.AutomationId="CardHdrPeakNits"
-                            Header="Peak nits"
-                            Style="{StaticResource PalaceSettingsCardStyle}"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.PeakOverrideEnabled), Mode=OneWay}">
-                            <StackPanel Orientation="Horizontal" Spacing="12">
-                                <Slider
-                                    x:Name="SldHdrPeakNits"
-                                    MinWidth="180"
-                                    AutomationProperties.AutomationId="SldHdrPeakNits"
-                                    AutomationProperties.Name="Peak nits"
-                                    Maximum="4000"
-                                    Minimum="80"
-                                    StepFrequency="10"
-                                    TickFrequency="400"
-                                    TickPlacement="None"
-                                    Value="{x:Bind ViewModel.PeakOverrideNits, Mode=TwoWay}" />
-                                <TextBlock
-                                    x:Name="TxtHdrPeakNits"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.AutomationId="TxtHdrPeakNits"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.PeakOverrideLabel, Mode=OneWay}" />
-                            </StackPanel>
-                        </controls:SettingsCard>
-                        <controls:SettingsCard
-                            x:Name="CardViewerPlaceholder"
-                            AutomationProperties.AutomationId="CardViewerPlaceholder"
-                            Description="Default zoom, Details defaults, slideshow, and video land in a later Settings update."
-                            Header="More viewer options"
+                            x:Name="CardSlideshow"
+                            AutomationProperties.AutomationId="CardSlideshow"
+                            Description="{x:Bind ViewModel.SlideshowPlaceholderCaption, Mode=OneWay}"
+                            Header="Slideshow"
                             IsEnabled="False"
                             Style="{StaticResource PalaceSettingsCardStyle}" />
+                        <controls:SettingsCard
+                            x:Name="CardLoopVideo"
+                            AutomationProperties.AutomationId="CardLoopVideo"
+                            Description="Replay video when it reaches the end"
+                            Header="Loop video"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ToggleSwitch
+                                x:Name="TglLoopVideo"
+                                AutomationProperties.AutomationId="TglLoopVideo"
+                                AutomationProperties.Name="Loop video"
+                                IsOn="{x:Bind ViewModel.LoopVideo, Mode=TwoWay}"
+                                OffContent="Off"
+                                OnContent="On" />
+                        </controls:SettingsCard>
                     </StackPanel>
 
                     <!-- Tags & Rooms -->
@@ -1106,7 +1164,7 @@
                             x:Name="CardShortcuts"
                             AutomationProperties.AutomationId="CardShortcuts"
                             ContentAlignment="Vertical"
-                            Description="Read-only shortcut list"
+                            Description="Read-only. Overlay and gallery shortcuts."
                             Header="Shortcuts"
                             Style="{StaticResource PalaceSettingsCardStyle}">
                             <ItemsControl
@@ -1115,22 +1173,71 @@
                                 ItemsSource="{x:Bind ViewModel.ShortcutHints, Mode=OneWay}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="helpers:ShortcutHint">
-                                        <TextBlock
+                                        <Grid
+                                            Margin="0,4,0,4"
                                             AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneTime}"
-                                            AutomationProperties.Name="{x:Bind Line, Mode=OneTime}"
-                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                            Text="{x:Bind Line, Mode=OneTime}" />
+                                            AutomationProperties.Name="{x:Bind Line, Mode=OneTime}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <ItemsControl ItemsSource="{x:Bind KeyParts, Mode=OneTime}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="x:String">
+                                                        <Border Style="{StaticResource PalaceShortcutKeyChipStyle}">
+                                                            <TextBlock
+                                                                HorizontalAlignment="Center"
+                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                Text="{x:Bind}" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Margin="12,0,0,0"
+                                                VerticalAlignment="Center"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind Action, Mode=OneTime}"
+                                                TextWrapping="WrapWholeWords" />
+                                        </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </controls:SettingsCard>
                         <controls:SettingsCard
-                            x:Name="CardInputPlaceholder"
-                            AutomationProperties.AutomationId="CardInputPlaceholder"
-                            Description="Touch toggle and swipe-down dismiss land in a later Settings update."
-                            Header="Touch &amp; gestures"
-                            IsEnabled="False"
-                            Style="{StaticResource PalaceSettingsCardStyle}" />
+                            x:Name="CardTouchGestures"
+                            AutomationProperties.AutomationId="CardTouchGestures"
+                            Description="Pinch and pan with touch, pen, or trackpad. Mouse left-drag pan stays on when this is off."
+                            Header="Touch gestures"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ToggleSwitch
+                                x:Name="TglTouchGestures"
+                                AutomationProperties.AutomationId="TglTouchGestures"
+                                AutomationProperties.Name="Touch gestures"
+                                IsOn="{x:Bind ViewModel.TouchGesturesEnabled, Mode=TwoWay}"
+                                OffContent="Off"
+                                OnContent="On" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardSwipeDownDismiss"
+                            AutomationProperties.AutomationId="CardSwipeDownDismiss"
+                            Description="Swipe down on the overlay to close. Wired with the touch milestone."
+                            Header="Swipe down to dismiss"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ToggleSwitch
+                                x:Name="TglSwipeDownDismiss"
+                                AutomationProperties.AutomationId="TglSwipeDownDismiss"
+                                AutomationProperties.Name="Swipe down to dismiss"
+                                IsOn="{x:Bind ViewModel.SwipeDownDismissEnabled, Mode=TwoWay}"
+                                OffContent="Off"
+                                OnContent="On" />
+                        </controls:SettingsCard>
                     </StackPanel>
 
                     <!-- Performance & Storage -->

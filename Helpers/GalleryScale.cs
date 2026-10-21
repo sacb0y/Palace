@@ -206,14 +206,40 @@ public static class GalleryScale
     /// Learn: touchpad does not raise Manipulation events. PointerWheelChanged
     /// (often with Ctrl) is pinch; two-finger pan is wheel without Ctrl.
     /// Touch/pen still use ManipulationDelta. Mouse-without-left is the
-    /// simulator, not a real precision touchpad.
+    /// simulator, not a real precision touchpad. Honors
+    /// <see cref="ViewerSettings.TouchGesturesEnabled"/>.
     /// </summary>
     public static bool UsesManipulationGesture(
         bool isTouch,
         bool isPen,
         bool isMouse,
         bool leftButton) =>
-        isTouch || isPen || (isMouse && !leftButton);
+        UsesManipulationGesture(
+            isTouch,
+            isPen,
+            isMouse,
+            leftButton,
+            ViewerSettings.TouchGesturesEnabled);
+
+    /// <summary>
+    /// When <paramref name="touchGesturesEnabled"/> is false, touch / pen /
+    /// trackpad Manipulation is off; mouse left-drag pan stays on via pointer
+    /// capture.
+    /// </summary>
+    public static bool UsesManipulationGesture(
+        bool isTouch,
+        bool isPen,
+        bool isMouse,
+        bool leftButton,
+        bool touchGesturesEnabled)
+    {
+        if (!ViewerSettings.AllowsTouchGestures(touchGesturesEnabled))
+        {
+            return false;
+        }
+
+        return isTouch || isPen || (isMouse && !leftButton);
+    }
 
     /// <summary>
     /// Learn: call CancelDirectManipulations on the element inside a

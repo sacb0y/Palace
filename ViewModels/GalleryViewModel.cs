@@ -491,6 +491,13 @@ public partial class GalleryViewModel : ObservableObject
         var values = ApplicationData.Current.LocalSettings.Values;
         ShowDetails = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
         LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
+        Scaling = ViewerSettings.ParseZoom(values[ViewerSettings.DefaultZoomKey]);
+        ViewerSettings.Apply(
+            Scaling,
+            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures),
+            ViewerSettings.ParseBool(
+                values[ViewerSettings.SwipeDownDismissKey],
+                ViewerSettings.DefaultSwipeDownDismiss));
         _chromeReady = true;
     }
 

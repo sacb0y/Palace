@@ -53,4 +53,15 @@ public sealed class ShortcutCheatsheetTests
         });
         Assert.Null(ShortcutCheatsheet.Find("Ctrl+9"));
     }
+
+    [Fact]
+    public void KeyParts_SplitChords_KeepSlashAlternatives()
+    {
+        Assert.Equal(["Ctrl", "1"], ShortcutHint.SplitKeyParts("Ctrl+1"));
+        Assert.Equal(["Alt", "Enter"], ShortcutHint.SplitKeyParts("Alt+Enter"));
+        Assert.Equal(["I"], ShortcutHint.SplitKeyParts("I"));
+        Assert.Equal(["Up / Down"], ShortcutHint.SplitKeyParts("Up / Down"));
+        Assert.Equal(["Ctrl", "1"], ShortcutCheatsheet.Find("Ctrl+1")!.KeyParts);
+        Assert.Equal(["Up / Down"], ShortcutCheatsheet.Find("Up / Down")!.KeyParts);
+    }
 }

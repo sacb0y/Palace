@@ -11,6 +11,7 @@ public sealed class ShortcutHint
         Action = action;
         AutomationId = automationId;
         Line = $"{keys}  {action}";
+        KeyParts = SplitKeyParts(keys);
     }
 
     public string Keys { get; }
@@ -20,6 +21,27 @@ public sealed class ShortcutHint
     public string AutomationId { get; }
 
     public string Line { get; }
+
+    /// <summary>Chord segments for key-chip UI (<c>Ctrl+1</c> → Ctrl, 1).</summary>
+    public IReadOnlyList<string> KeyParts { get; }
+
+    public static IReadOnlyList<string> SplitKeyParts(string keys)
+    {
+        if (string.IsNullOrWhiteSpace(keys))
+        {
+            return [];
+        }
+
+        // Keep "Up / Down" as one chip; split chords on '+'.
+        if (keys.Contains('/', StringComparison.Ordinal))
+        {
+            return [keys.Trim()];
+        }
+
+        return keys
+            .Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .ToArray();
+    }
 }
 
 public static class ShortcutCheatsheet

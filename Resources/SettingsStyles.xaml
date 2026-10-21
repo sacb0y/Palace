@@ -75,4 +75,16 @@
         <!-- Pill shape for the accent selection fill. -->
         <Setter Property="BorderThickness" Value="0" />
     </Style>
+
+    <!-- Read-only keyboard shortcut key chips (Settings → Input). -->
+    <Style x:Key="PalaceShortcutKeyChipStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource PalaceSettingsCardBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="Margin" Value="0,0,4,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="MinWidth" Value="24" />
+    </Style>
 </ResourceDictionary>
