@@ -17,6 +17,6 @@ Build: BelowNormal `-m:1` if Unity is busy; defer if needed.
 
 1. `Prepare-TestIdentity.ps1 -IdentityName PalaceSettingsPr6-126`
 2. Register **build** `bin\...\AppxManifest.xml` only - never `winapp run --no-launch` on source, never C20A7629
-3. Navigate Settings → Performance / About / Viewer via UIA (`BtnSettingsNav_Performance` / `_About` / `_Viewer`)
+3. Navigate Settings -> Performance / About / Viewer via UIA (`BtnSettingsNav_Performance` / `_About` / `_Viewer`)
 4. Expand `CardGpuPreview` (click expander button) for shot 01 prefs; keep `CardHdr` collapsed for shot 03; expand for shot 04
 5. Screenshot the test window only (do not maximize)
