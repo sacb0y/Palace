@@ -37,6 +37,16 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _coalescedPanY;
     private PointerDeviceType _lastPointerDevice = PointerDeviceType.Mouse;
     private bool _afterPinchAwaitingLift;
+    private bool _reviewSwipeActive;
+    private double _reviewSwipeDx;
+    private double _reviewSwipeDy;
+    private double _reviewSwipeVx;
+    private double _reviewSwipeVy;
+
+    /// <summary>
+    /// Fired when a touch Review swipe commits (left=reject, right=keep, up=skip).
+    /// </summary>
+    public event Action<TouchGestures.SwipeAction>? ReviewSwipeCommitted;
     private ImageScaling _scrollScaling;
     private int _scrollRevision = int.MinValue;
     private double _scrollContentW;
@@ -1216,7 +1226,30 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        if (!GalleryScale.Scrolls(scaling, _pinchZoom) || !hasPan)
+        if (!GalleryScale.Scrolls(scaling, _pinchZoom))
+        {
+            // Not zoomed: track Review swipe (touch only; after pinch wait for lift).
+            if (isTouch
+                && hasPan
+                && ViewerSettings.TouchGesturesEnabled
+                && TouchGestures.AllowsSwipe(
+                    zoomed: false,
+                    fingerCount: 1,
+                    afterPinchAwaitingLift: _afterPinchAwaitingLift))
+            {
+                _reviewSwipeActive = true;
+                _reviewSwipeDx += deltaX;
+                _reviewSwipeDy += deltaY;
+                // ManipulationVelocities.Linear is already DIPs per millisecond.
+                _reviewSwipeVx = e.Velocities.Linear.X;
+                _reviewSwipeVy = e.Velocities.Linear.Y;
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (!hasPan)
         {
             return;
         }
@@ -1254,6 +1287,31 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         if (e.PointerDeviceType != PointerDeviceType.Touch)
         {
+            return;
+        }
+
+        if (_reviewSwipeActive)
+        {
+            var action = TouchGestures.ClassifyReviewSwipe(
+                _reviewSwipeDx,
+                _reviewSwipeDy,
+                ScrStill.ActualWidth,
+                ScrStill.ActualHeight,
+                _reviewSwipeVx,
+                _reviewSwipeVy);
+            _reviewSwipeActive = false;
+            _reviewSwipeDx = 0;
+            _reviewSwipeDy = 0;
+            _reviewSwipeVx = 0;
+            _reviewSwipeVy = 0;
+            if (action is TouchGestures.SwipeAction.Reject
+                or TouchGestures.SwipeAction.Keep
+                or TouchGestures.SwipeAction.Skip)
+            {
+                ReviewSwipeCommitted?.Invoke(action);
+            }
+
+            _afterPinchAwaitingLift = false;
             return;
         }
 

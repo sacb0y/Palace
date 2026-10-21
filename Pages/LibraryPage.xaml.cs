@@ -78,6 +78,7 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOpenAssignPanel = () =>
             DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
+        SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
@@ -1162,6 +1163,66 @@ public sealed partial class LibraryPage : Page
     {
         _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
         _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+    }
+
+    private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)
+    {
+        switch (action)
+        {
+            case TouchGestures.SwipeAction.Reject:
+                ViewModel.ReviewRejectCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.Keep:
+                ViewModel.ReviewKeepCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.Skip:
+                ViewModel.ReviewSkipCommand.Execute(null);
+                break;
+        }
+    }
+
+    private void GalleryOverlayVideo_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (!TouchGestures.IsTouchOnly(_lastPressWasTouch)
+            || !ViewerSettings.TouchGesturesEnabled
+            || MpeOverlay.MediaPlayer?.PlaybackSession is not { } session)
+        {
+            return;
+        }
+
+        var pos = e.GetPosition(MpeOverlay);
+        var height = MpeOverlay.ActualHeight;
+        var yFromBottom = height - pos.Y;
+        var controlsVisible = MpeOverlay.TransportControls is not null;
+        if (TouchGestures.BlocksGestureOverVideoControls(controlsVisible, yFromBottom))
+        {
+            return;
+        }
+
+        var zone = TouchGestures.ClassifyVideoDoubleTap(pos.X, MpeOverlay.ActualWidth);
+        if (zone == TouchGestures.VideoDoubleTapZone.CenterZoom)
+        {
+            // Video center: play/pause (tap already does); no still zoom cycle.
+            return;
+        }
+
+        var delta = TimeSpan.FromSeconds(
+            zone == TouchGestures.VideoDoubleTapZone.LeftSeekBack
+                ? -TouchGestures.VideoSeekSeconds
+                : TouchGestures.VideoSeekSeconds);
+        var next = session.Position + delta;
+        if (next < TimeSpan.Zero)
+        {
+            next = TimeSpan.Zero;
+        }
+
+        if (session.NaturalDuration.HasTimeSpan && next > session.NaturalDuration.TimeSpan)
+        {
+            next = session.NaturalDuration.TimeSpan;
+        }
+
+        session.Position = next;
+        e.Handled = true;
     }
 
     private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)

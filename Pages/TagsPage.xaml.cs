@@ -41,6 +41,8 @@ public sealed partial class TagsPage : Page
     private Pointer? _rangePointer;
     private bool _rangeCaptured;
     private bool _rangeConsumedTap;
+    private bool _lastPressWasTouch;
+    private bool _suppressTouchContextFlyout;
     private ViewerOverlayAutoHide? _viewerOverlayAutoHide;
 
     public TagsPage()
@@ -660,6 +662,8 @@ public sealed partial class TagsPage : Page
 
     private void TagAsset_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        _suppressTouchContextFlyout = false;
+        _lastPressWasTouch = false;
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
         if (item is not null)
         {
@@ -669,12 +673,50 @@ public sealed partial class TagsPage : Page
 
     private void TagAssetMenu_Opening(object sender, object e)
     {
-        if (sender is MenuFlyout { Target: FrameworkElement target })
+        if (sender is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        if (_suppressTouchContextFlyout || _lastPressWasTouch)
+        {
+            _suppressTouchContextFlyout = false;
+            flyout.Hide();
+            return;
+        }
+
+        if (flyout.Target is FrameworkElement target)
         {
             var item = FindAssetItem(target);
             if (item is not null)
             {
                 EnsureSelectedForContext(item);
+            }
+        }
+    }
+
+    private void TagAssetMore_Click(object sender, RoutedEventArgs e)
+    {
+        _suppressTouchContextFlyout = false;
+        _lastPressWasTouch = false;
+        if (sender is not FrameworkElement fe)
+        {
+            return;
+        }
+
+        var item = FindAssetItem(fe);
+        if (item is null)
+        {
+            return;
+        }
+
+        EnsureSelectedForContext(item);
+        for (var cur = (DependencyObject)fe; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+        {
+            if (cur is FrameworkElement { ContextFlyout: { } flyout } host)
+            {
+                flyout.ShowAt(fe);
+                return;
             }
         }
     }
@@ -720,6 +762,7 @@ public sealed partial class TagsPage : Page
     private void TagAsset_RangePressed(object sender, PointerRoutedEventArgs e)
     {
         _rangeConsumedTap = false;
+        _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
         if (!ViewModel.IsSelectMode)
         {
             return;
@@ -809,6 +852,11 @@ public sealed partial class TagsPage : Page
 
             ViewModel.IsSelectMode = true;
             ViewModel.SetMosaicSelection([holdItem]);
+            if (_lastPressWasTouch)
+            {
+                _suppressTouchContextFlyout = true;
+            }
+
             e.Handled = true;
             return;
         }

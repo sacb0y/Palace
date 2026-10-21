@@ -549,6 +549,22 @@
                                                         IconSize="Size16"
                                                         IconVariant="Regular" />
                                                 </Border>
+                                                <Button
+                                                    Width="28"
+                                                    Height="28"
+                                                    Margin="4"
+                                                    Padding="0"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Bottom"
+                                                    AutomationProperties.AutomationId="BtnTagAssetMore"
+                                                    AutomationProperties.Name="More"
+                                                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                                    BorderThickness="0"
+                                                    Click="TagAssetMore_Click"
+                                                    CornerRadius="14"
+                                                    ToolTipService.ToolTip="More">
+                                                    <ic:FluentIcon Icon="MoreVertical" IconSize="Size16" IconVariant="Regular" />
+                                                </Button>
                                                 <Border
                                                     Margin="6"
                                                     Padding="2"
