@@ -323,14 +323,15 @@
                             Style="{StaticResource PalaceSettingsCardStyle}">
                             <StackPanel Spacing="8">
                                 <!--
-                                  16:9 composition preview (~280 DIP). Mock nav + card overlay
-                                  the glass host; thumbs below stay sharp (never blurred/darkened).
+                                  Order (Isiac): centered 16:9 preview → Darkness/Blur →
+                                  thumbnail grid. Mock nav + card overlay the glass host;
+                                  thumbs stay sharp (never blurred/darkened).
                                 -->
                                 <Grid
                                     x:Name="GrdShellPreview"
                                     Width="498"
                                     Height="280"
-                                    HorizontalAlignment="Left"
+                                    HorizontalAlignment="Center"
                                     AutomationProperties.AutomationId="GrdShellPreview"
                                     AutomationProperties.Name="Background preview">
                                     <Border
@@ -361,6 +362,96 @@
                                         </Grid>
                                     </Border>
                                 </Grid>
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="SldShellDarkness"
+                                        Grid.Column="0"
+                                        AutomationProperties.AutomationId="SldShellDarkness"
+                                        AutomationProperties.Name="Darkness"
+                                        Header="Darkness"
+                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
+                                        Maximum="90"
+                                        Minimum="0"
+                                        StepFrequency="1"
+                                        TickFrequency="10"
+                                        TickPlacement="None"
+                                        Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
+                                    <NumberBox
+                                        x:Name="NbShellDarkness"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="NbShellDarkness"
+                                        AutomationProperties.Name="Darkness percent"
+                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
+                                        Maximum="90"
+                                        Minimum="0"
+                                        SpinButtonPlacementMode="Hidden"
+                                        Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
+                                    <HyperlinkButton
+                                        Grid.Column="2"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="BtnResetShellDarkness"
+                                        AutomationProperties.Name="Reset darkness"
+                                        Command="{x:Bind ViewModel.ResetDarknessCommand}"
+                                        Content="Reset"
+                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="TxtShellDarkness"
+                                    AutomationProperties.AutomationId="TxtShellDarkness"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.DarknessLabel, Mode=OneWay}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="SldShellBlur"
+                                        Grid.Column="0"
+                                        AutomationProperties.AutomationId="SldShellBlur"
+                                        AutomationProperties.Name="Blur"
+                                        Header="Blur"
+                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
+                                        Maximum="40"
+                                        Minimum="0"
+                                        StepFrequency="1"
+                                        TickFrequency="5"
+                                        TickPlacement="None"
+                                        Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
+                                    <NumberBox
+                                        x:Name="NbShellBlur"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="NbShellBlur"
+                                        AutomationProperties.Name="Blur pixels"
+                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
+                                        Maximum="40"
+                                        Minimum="0"
+                                        SpinButtonPlacementMode="Hidden"
+                                        Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
+                                    <HyperlinkButton
+                                        Grid.Column="2"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="BtnResetShellBlur"
+                                        AutomationProperties.Name="Reset blur"
+                                        Command="{x:Bind ViewModel.ResetBlurCommand}"
+                                        Content="Reset"
+                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}" />
+                                </Grid>
+                                <TextBlock
+                                    x:Name="TxtShellBlur"
+                                    AutomationProperties.AutomationId="TxtShellBlur"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.BlurLabel, Mode=OneWay}" />
                                 <StackPanel
                                     x:Name="GrdShellPresets"
                                     AutomationProperties.AutomationId="GrdShellPresets"
@@ -491,96 +582,6 @@
                                         </StackPanel>
                                     </Button>
                                 </StackPanel>
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="64" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Slider
-                                        x:Name="SldShellDarkness"
-                                        Grid.Column="0"
-                                        AutomationProperties.AutomationId="SldShellDarkness"
-                                        AutomationProperties.Name="Darkness"
-                                        Header="Darkness"
-                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
-                                        Maximum="90"
-                                        Minimum="0"
-                                        StepFrequency="1"
-                                        TickFrequency="10"
-                                        TickPlacement="None"
-                                        Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
-                                    <NumberBox
-                                        x:Name="NbShellDarkness"
-                                        Grid.Column="1"
-                                        VerticalAlignment="Bottom"
-                                        AutomationProperties.AutomationId="NbShellDarkness"
-                                        AutomationProperties.Name="Darkness percent"
-                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
-                                        Maximum="90"
-                                        Minimum="0"
-                                        SpinButtonPlacementMode="Hidden"
-                                        Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
-                                    <HyperlinkButton
-                                        Grid.Column="2"
-                                        VerticalAlignment="Bottom"
-                                        AutomationProperties.AutomationId="BtnResetShellDarkness"
-                                        AutomationProperties.Name="Reset darkness"
-                                        Command="{x:Bind ViewModel.ResetDarknessCommand}"
-                                        Content="Reset"
-                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}" />
-                                </Grid>
-                                <TextBlock
-                                    x:Name="TxtShellDarkness"
-                                    AutomationProperties.AutomationId="TxtShellDarkness"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.DarknessLabel, Mode=OneWay}" />
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="64" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Slider
-                                        x:Name="SldShellBlur"
-                                        Grid.Column="0"
-                                        AutomationProperties.AutomationId="SldShellBlur"
-                                        AutomationProperties.Name="Blur"
-                                        Header="Blur"
-                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
-                                        Maximum="40"
-                                        Minimum="0"
-                                        StepFrequency="1"
-                                        TickFrequency="5"
-                                        TickPlacement="None"
-                                        Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
-                                    <NumberBox
-                                        x:Name="NbShellBlur"
-                                        Grid.Column="1"
-                                        VerticalAlignment="Bottom"
-                                        AutomationProperties.AutomationId="NbShellBlur"
-                                        AutomationProperties.Name="Blur pixels"
-                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
-                                        Maximum="40"
-                                        Minimum="0"
-                                        SpinButtonPlacementMode="Hidden"
-                                        Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
-                                    <HyperlinkButton
-                                        Grid.Column="2"
-                                        VerticalAlignment="Bottom"
-                                        AutomationProperties.AutomationId="BtnResetShellBlur"
-                                        AutomationProperties.Name="Reset blur"
-                                        Command="{x:Bind ViewModel.ResetBlurCommand}"
-                                        Content="Reset"
-                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}" />
-                                </Grid>
-                                <TextBlock
-                                    x:Name="TxtShellBlur"
-                                    AutomationProperties.AutomationId="TxtShellBlur"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.BlurLabel, Mode=OneWay}" />
                                 <ToggleSwitch
                                     x:Name="TglShellTint"
                                     AutomationProperties.AutomationId="TglShellTint"
