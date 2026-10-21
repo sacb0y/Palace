@@ -325,6 +325,25 @@ public sealed class FileOpServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UndoBatch_already_undone_is_success_with_no_moves()
+    {
+        var asset = await AddAssetAsync(_rootA, "already.png");
+        var rejectDir = Dir(_rootA, "_rejected");
+        var rejectMove = await _ops.MoveAssetsAsync([asset], rejectDir, _projectId);
+        Assert.True(rejectMove.Ok, rejectMove.Message);
+        var rejectBatchId = rejectMove.BatchId!;
+
+        var viaToolbar = await _ops.UndoLastAsync(_projectId);
+        Assert.True(viaToolbar.Ok, viaToolbar.Message);
+        Assert.Equal(asset.Path, (await _catalog.GetAssetByIdAsync(asset.Id))!.Path);
+
+        var again = await _ops.UndoBatchAsync(_projectId, rejectBatchId);
+        Assert.True(again.Ok, again.Message);
+        Assert.Empty(again.Moves);
+        Assert.Equal(rejectBatchId, again.BatchId);
+    }
+
+    [Fact]
     public async Task CreateFolder_validates_the_name_and_refuses_duplicates_and_outside_roots()
     {
         Assert.False((await _ops.CreateFolderAsync(_rootA.Path, "  ", _projectId)).Ok);

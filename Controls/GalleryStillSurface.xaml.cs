@@ -1712,6 +1712,12 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (!GalleryScale.UsesWheelPan(scrolls, controlDown, delta))
         {
+            // Review mode: swallow non-pan wheel so it cannot browse next/prev.
+            if (IsReviewMode)
+            {
+                e.Handled = true;
+            }
+
             return;
         }
 

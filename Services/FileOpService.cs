@@ -909,18 +909,33 @@ public sealed partial class FileOpService
         }
 
         var newest = await _catalog.GetLastUndoableFileOpAsync(projectId).ConfigureAwait(false);
+        if (newest is not null && string.Equals(newest.Id, batchId, StringComparison.Ordinal))
+        {
+            return await UndoKnownBatchAsync(newest, projectId).ConfigureAwait(false);
+        }
+
+        // Toolbar Undo / Ctrl+Z may already have reversed this reject move.
+        // Treat already-undone as success with no further moves so Review session
+        // can still roll back.
+        var known = await _catalog.GetFileOpBatchAsync(batchId).ConfigureAwait(false);
+        if (known is not null && known.IsUndone)
+        {
+            return new FileOpResult
+            {
+                Ok = true,
+                Message = "Already undone.",
+                BatchId = batchId,
+                Moves = []
+            };
+        }
+
         if (newest is null)
         {
             return FileOpResult.Fail("Nothing to undo.");
         }
 
-        if (!string.Equals(newest.Id, batchId, StringComparison.Ordinal))
-        {
-            return FileOpResult.Fail(
-                "Can't undo this reject — another file operation happened after it.");
-        }
-
-        return await UndoKnownBatchAsync(newest, projectId).ConfigureAwait(false);
+        return FileOpResult.Fail(
+            "Can't undo this reject — another file operation happened after it.");
     }
 
     private async Task<FileOpResult> UndoKnownBatchAsync(FileOpBatch batch, string projectId)

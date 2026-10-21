@@ -1561,6 +1561,16 @@ public sealed partial class LibraryPage : Page
                 }
 
                 break;
+            case VirtualKey.PageUp:
+            case VirtualKey.PageDown:
+            case VirtualKey.Home:
+            case VirtualKey.End:
+                if (ViewModel.IsReviewMode)
+                {
+                    e.Handled = true;
+                }
+
+                break;
         }
     }
 

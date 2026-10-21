@@ -37,15 +37,21 @@ public partial class LibraryViewModel
 
     public bool ShowReviewChrome => IsReviewMode && IsGalleryOverlayOpen;
 
-    public bool CanReviewDecide => IsReviewMode && _review?.CanDecide == true && !_reviewApply.IsBusy;
+    /// <summary>
+    /// Reject / Keep / Skip stay visible for the open item; disable while busy
+    /// (no visibility blink).
+    /// </summary>
+    public bool ShowReviewDecideButtons =>
+        IsReviewMode && IsGalleryOverlayOpen && _review is not null && !_review.IsComplete;
 
-    public bool CanReviewUndo => IsReviewMode && _review?.CanUndo == true && !_reviewApply.IsBusy;
-
-    /// <summary>Reject / Keep / Skip while a decision is still pending.</summary>
-    public bool ShowReviewDecideButtons => CanReviewDecide;
+    public bool CanReviewDecide =>
+        ShowReviewDecideButtons && !_reviewApply.IsBusy && _review?.CanDecide == true;
 
     /// <summary>Undo stays visible after the last item while history remains.</summary>
-    public bool ShowReviewUndoButton => CanReviewUndo;
+    public bool ShowReviewUndoButton =>
+        IsReviewMode && IsGalleryOverlayOpen && _review?.CanUndo == true;
+
+    public bool CanReviewUndo => ShowReviewUndoButton && !_reviewApply.IsBusy;
 
     /// <summary>
     /// Start Review on the selection when tiles are selected; otherwise the
@@ -89,13 +95,16 @@ public partial class LibraryViewModel
     [RelayCommand]
     private void EndReview() => EndReviewCore(announce: false);
 
+    /// <summary>
+    /// Clears the session. Does <b>not</b> release <see cref="_reviewApply"/> —
+    /// an in-flight Reject/Undo task’s <c>finally</c> owns that.
+    /// </summary>
     private void EndReviewCore(bool announce)
     {
         var rejected = _review?.RejectedCount ?? 0;
         var hadSession = _review is not null;
         _review = null;
         _reviewItems = [];
-        _reviewApply.End();
         IsReviewMode = false;
         BumpReview();
         if (announce && hadSession)
@@ -149,7 +158,8 @@ public partial class LibraryViewModel
     private Task ReviewUndoAsync() =>
         ErrorReporter.RunAsync("Undo review", Notify, async () =>
         {
-            if (_review is null || !_reviewApply.TryBeginBusy())
+            var session = _review;
+            if (session is null || !_reviewApply.TryBeginBusy())
             {
                 return;
             }
@@ -159,10 +169,15 @@ public partial class LibraryViewModel
                 BumpReview();
                 var projectId = AppServices.CurrentProject.Id;
                 var (rolledBack, entry, message) = await ReviewUndoFlow.TryUndoAsync(
-                    _review,
+                    session,
                     async batchId =>
                     {
                         var result = await _fileOps.UndoBatchAsync(projectId, batchId);
+                        if (!ReferenceEquals(_review, session))
+                        {
+                            return new ReviewUndoFlow.DiskUndoResult(result.Ok, result.Message);
+                        }
+
                         if (result.Ok && result.Moves.Count > 0)
                         {
                             await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
@@ -172,6 +187,11 @@ public partial class LibraryViewModel
                         await RefreshUndoStateAsync();
                         return new ReviewUndoFlow.DiskUndoResult(result.Ok, result.Message);
                     });
+
+                if (!ReferenceEquals(_review, session))
+                {
+                    return;
+                }
 
                 if (!rolledBack)
                 {
@@ -196,6 +216,8 @@ public partial class LibraryViewModel
     /// <summary>
     /// Overlay hotkeys X / K / S and Ctrl+Z while Review is active.
     /// Ignores text focus and key auto-repeat for decision keys.
+    /// Swallows Ctrl+Z while busy so Review undo cannot get stuck behind a
+    /// fall-through global Undo.
     /// </summary>
     public bool TryHandleReviewShortcut(
         bool controlDown,
@@ -210,6 +232,11 @@ public partial class LibraryViewModel
 
         if (ReviewHotkeys.IsUndoChord(controlDown, keyCode))
         {
+            if (_reviewApply.IsBusy)
+            {
+                return true;
+            }
+
             if (!CanReviewUndo)
             {
                 // Let the page Ctrl+Z undo the global file-op journal instead.
@@ -252,8 +279,9 @@ public partial class LibraryViewModel
     private Task ApplyReviewDecisionAsync(ReviewDecision decision) =>
         ErrorReporter.RunAsync("Review", Notify, async () =>
         {
-            if (_review is null
-                || !_reviewApply.TryBegin(_review.CurrentId, out var assetId))
+            var session = _review;
+            if (session is null
+                || !_reviewApply.TryBegin(session.CurrentId, out var assetId))
             {
                 return;
             }
@@ -291,6 +319,11 @@ public partial class LibraryViewModel
                             parent,
                             ReviewReject.FolderName,
                             AppServices.CurrentProject.Id);
+                        if (!ReferenceEquals(_review, session))
+                        {
+                            return;
+                        }
+
                         if (!created.Ok || string.IsNullOrWhiteSpace(created.Path))
                         {
                             if (!Directory.Exists(dest))
@@ -303,6 +336,10 @@ public partial class LibraryViewModel
                         {
                             absorb = created.Path;
                             await RebuildFolderTreeAsync();
+                            if (!ReferenceEquals(_review, session))
+                            {
+                                return;
+                            }
                         }
                     }
 
@@ -311,14 +348,29 @@ public partial class LibraryViewModel
                     try
                     {
                         var assets = await _catalog.GetAssetsByIdsAsync([assetId]);
+                        if (!ReferenceEquals(_review, session))
+                        {
+                            return;
+                        }
+
                         result = await _fileOps.MoveAssetsAsync(
                             assets,
                             dest,
                             AppServices.CurrentProject.Id,
                             absorbCreatedFolder: absorb);
+                        if (!ReferenceEquals(_review, session))
+                        {
+                            return;
+                        }
+
                         if (result.Moves.Count > 0)
                         {
                             await ApplyMovesToUiAsync(result.Moves, result.Path);
+                            if (!ReferenceEquals(_review, session))
+                            {
+                                return;
+                            }
+
                             OverlayGallery?.ApplyPathMoves(result.Moves);
                         }
                     }
@@ -335,7 +387,17 @@ public partial class LibraryViewModel
                         });
                     }
 
+                    if (!ReferenceEquals(_review, session))
+                    {
+                        return;
+                    }
+
                     await RefreshUndoStateAsync();
+                    if (!ReferenceEquals(_review, session))
+                    {
+                        return;
+                    }
+
                     if (result is null || !result.Ok || result.Moves.Count == 0)
                     {
                         if (result is not null)
@@ -349,18 +411,19 @@ public partial class LibraryViewModel
                     moveBatchId = result.BatchId;
                 }
 
-                if (!_reviewApply.StillOnCaptured(_review.CurrentId))
+                if (!ReferenceEquals(_review, session)
+                    || !_reviewApply.StillOnCaptured(session.CurrentId))
                 {
                     return;
                 }
 
-                if (!_review.TryDecide(decision, moveBatchId))
+                if (!session.TryDecide(decision, moveBatchId))
                 {
                     return;
                 }
 
                 BumpReview();
-                if (_review.IsComplete)
+                if (session.IsComplete)
                 {
                     return;
                 }

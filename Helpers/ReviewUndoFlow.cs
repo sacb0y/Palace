@@ -30,7 +30,7 @@ public static class ReviewUndoFlow
                 return (false, entry, "Can't undo this reject — missing move journal.");
             }
 
-            var disk = await undoBatch(entry.MoveBatchId).ConfigureAwait(false);
+            var disk = await undoBatch(entry.MoveBatchId);
             if (!disk.Ok)
             {
                 // Session stays on the post-reject position.
