@@ -1,1 +1,1 @@
-Viewer: HDR expander collapsed — SettingsCards stay full-width; Show Details / Loop switches stay on the right (no wrap under text).
+Viewer: HDR expander collapsed - SettingsCards stay full-width; Show Details / Loop switches stay on the right (no wrap under text).
