@@ -17,10 +17,16 @@ public static class SelectMode
     /// Press-and-hold / click-and-hold on a mosaic tile (not a folder header,
     /// not while the overlay is open) enters select mode and selects that tile.
     /// Does not open the overlay — double-click / Enter / context Open still do.
-    /// Touch long-press is select (not the context menu — that is "…" / right-click).
     /// </summary>
     public static bool EnterFromHold(bool selectMode, bool overlayOpen, bool isFolderHeader) =>
         !selectMode && !overlayOpen && !isFolderHeader;
+
+    /// <summary>
+    /// In select mode, long-press opens the batch ContextFlyout (same as right-click).
+    /// Enter-select hold still uses <see cref="EnterFromHold"/> when mode is off.
+    /// </summary>
+    public static bool OpensBatchContextFromHold(bool selectMode, bool overlayOpen, bool isFolderHeader) =>
+        selectMode && !overlayOpen && !isFolderHeader;
 
     /// <summary>
     /// Viewer overlay long-press opens ContextFlyout (not a select badge).
@@ -37,11 +43,40 @@ public static class SelectMode
         TouchGestures.ViewerHoldOpensContext(overlayOpen, reviewMode);
 
     /// <summary>
+    /// Batch context: when the pressed tile is not already selected, add it —
+    /// never replace the existing selection. Outside select mode, right-click
+    /// still replaces (single-item context).
+    /// </summary>
+    public static bool AddsPressedToSelection(bool selectMode, bool alreadySelected) =>
+        selectMode && !alreadySelected;
+
+    /// <summary>Outside select mode, context open replaces the selection with the pressed tile.</summary>
+    public static bool ReplacesSelectionForContext(bool selectMode) => !selectMode;
+
+    /// <summary>
+    /// Batch ContextFlyout header: <c>N selected</c>, plus collapsed clause when
+    /// some of those tiles are under collapsed sections. Empty when count is 0
+    /// (caller should hide the header rather than show "0 selected").
+    /// </summary>
+    public static string BatchMenuHeader(int selectedCount, int collapsedSelectedCount = 0)
+    {
+        if (selectedCount <= 0)
+        {
+            return "";
+        }
+
+        return $"{selectedCount} selected{CollapsedClause(collapsedSelectedCount)}";
+    }
+
+    /// <summary>
     /// Esc exits select mode while the overlay is closed (selection kept —
     /// Clear is the path that drops tiles).
     /// </summary>
     public static bool ExitsSelectModeOnEscape(bool selectMode, bool overlayOpen) =>
         selectMode && !overlayOpen;
+
+    /// <summary>Clear selection exits select mode.</summary>
+    public static bool ExitsSelectModeOnClear(bool selectMode) => selectMode;
 
     /// <summary>
     /// Trailing clause when some selected tiles live under collapsed sections:
@@ -120,4 +155,11 @@ public static class SelectMode
     /// mode is on (collapse is view-only). Single preview replace does not merge.
     /// </summary>
     public static bool MergesHiddenSelection(bool selectMode) => selectMode;
+
+    /// <summary>
+    /// Confirm before a large / partially-hidden batch reject or delete.
+    /// Threshold matches delete: above ~20 files, or any collapsed/hidden tiles.
+    /// </summary>
+    public static bool NeedsBatchConfirm(int selectedCount, int collapsedSelectedCount) =>
+        selectedCount > 20 || collapsedSelectedCount > 0;
 }

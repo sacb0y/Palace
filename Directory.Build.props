@@ -6,7 +6,11 @@
     See .cursor/rules/versioning-release.mdc and AGENTS.md.
   -->
   <PropertyGroup>
+<<<<<<< HEAD
     <PalaceVersion>0.3.4</PalaceVersion>
+=======
+    <PalaceVersion>0.3.5</PalaceVersion>
+>>>>>>> a9fd1fa (Grid select mode 0.3.4: batch ContextFlyout on long-press)
     <Version>$(PalaceVersion)</Version>
     <AssemblyVersion>$(PalaceVersion).0</AssemblyVersion>
     <FileVersion>$(PalaceVersion).0</FileVersion>

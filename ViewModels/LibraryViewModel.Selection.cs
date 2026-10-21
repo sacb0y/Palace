@@ -349,6 +349,182 @@ public partial class LibraryViewModel
         SelectedAsset = null;
     }
 
+    /// <summary>Select every non-header tile in the visible mosaic.</summary>
+    [RelayCommand]
+    private void SelectAllVisible()
+    {
+        var tiles = Assets.Where(a => !a.IsFolderHeader).ToList();
+        SetSelection(tiles);
+        RequestRestoreMosaicSelection?.Invoke();
+    }
+
+    /// <summary>
+    /// Clear tiles and exit select mode (batch menu / Esc companion).
+    /// Esc alone keeps the selection — see <see cref="ExitSelectMode"/>.
+    /// </summary>
+    [RelayCommand]
+    private void ClearSelectionAndExit()
+    {
+        ClearSelection();
+        if (SelectMode.ExitsSelectModeOnClear(IsSelectMode))
+        {
+            IsSelectMode = false;
+        }
+
+        RequestRestoreMosaicSelection?.Invoke();
+    }
+
+    /// <summary>Esc exits select mode without clearing the selection.</summary>
+    [RelayCommand]
+    private void ExitSelectMode()
+    {
+        if (!SelectMode.ExitsSelectModeOnEscape(IsSelectMode, IsGalleryOverlayOpen))
+        {
+            return;
+        }
+
+        IsSelectMode = false;
+    }
+
+    /// <summary>
+    /// Batch Keep: leave files on disk (same as Review Keep). Toast only.
+    /// </summary>
+    [RelayCommand]
+    private void KeepSelected()
+    {
+        var count = _selection.Count(s => !s.IsFolderHeader);
+        if (count == 0)
+        {
+            Notify("Select assets first.");
+            return;
+        }
+
+        Notify(count == 1 ? "Kept 1 file." : $"Kept {count} files.");
+    }
+
+    /// <summary>
+    /// Batch Reject: move each selected file into a sibling <c>_rejected</c>
+    /// (same destination as Review). Undo toast dismisses after 5 s.
+    /// </summary>
+    [RelayCommand]
+    private Task RejectSelectedAsync() =>
+        ErrorReporter.RunAsync("Reject", Notify, async () =>
+        {
+            var ids = _selection
+                .Where(s => !s.IsFolderHeader && !string.IsNullOrEmpty(s.Id))
+                .Select(s => s.Id)
+                .ToList();
+            if (ids.Count == 0)
+            {
+                Notify("Select assets first.");
+                return;
+            }
+
+            var assets = await _catalog.GetAssetsByIdsAsync(ids);
+            if (assets.Count == 0)
+            {
+                Notify("Select assets first.");
+                return;
+            }
+
+            var already = assets.Where(a => ReviewReject.IsAlreadyRejected(a.Path)).ToList();
+            var movers = assets.Where(a => !ReviewReject.IsAlreadyRejected(a.Path)).ToList();
+            if (movers.Count == 0)
+            {
+                Notify(already.Count == 1
+                    ? "Already in _rejected."
+                    : $"All {already.Count} already in _rejected.");
+                return;
+            }
+
+            var projectId = AppServices.CurrentProject.Id;
+            var groups = movers
+                .GroupBy(a => ReviewReject.DestinationDir(a.Path) ?? "", StringComparer.OrdinalIgnoreCase)
+                .Where(g => !string.IsNullOrEmpty(g.Key))
+                .ToList();
+
+            BeginBusy(movers.Count == 1 ? "Rejecting…" : $"Rejecting {movers.Count}…");
+            var moved = 0;
+            string? lastMessage = null;
+            string? lastBatchId = null;
+            try
+            {
+                foreach (var group in groups)
+                {
+                    var dest = group.Key;
+                    var parent = ReviewReject.ParentDir(group.First().Path);
+                    if (parent is null)
+                    {
+                        continue;
+                    }
+
+                    string? absorb = null;
+                    if (!Directory.Exists(dest))
+                    {
+                        var created = await _fileOps.CreateFolderAsync(
+                            parent,
+                            ReviewReject.FolderName,
+                            projectId);
+                        if (!created.Ok || string.IsNullOrWhiteSpace(created.Path))
+                        {
+                            if (!Directory.Exists(dest))
+                            {
+                                Notify(created.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                                continue;
+                            }
+                        }
+                        else
+                        {
+                            absorb = created.Path;
+                            await RebuildFolderTreeAsync();
+                        }
+                    }
+
+                    var result = await _fileOps.MoveAssetsAsync(
+                        group.ToList(),
+                        dest,
+                        projectId,
+                        absorbCreatedFolder: absorb);
+                    if (result.Moves.Count > 0)
+                    {
+                        moved += result.Moves.Count;
+                        lastMessage = result.Message;
+                        lastBatchId = result.BatchId;
+                        await ApplyMovesToUiAsync(result.Moves, result.Path);
+                    }
+                    else if (!result.Ok)
+                    {
+                        Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                    }
+                }
+            }
+            finally
+            {
+                await UiDispatch.RunAsync(() =>
+                {
+                    EndBusy();
+                    if (!string.IsNullOrWhiteSpace(lastMessage))
+                    {
+                        StatusText = lastMessage!;
+                    }
+                });
+            }
+
+            await RefreshUndoStateAsync();
+            if (moved > 0 && lastBatchId is not null)
+            {
+                // Spec: Reject offers a 5 s undo window.
+                ShowUndoToastFor(
+                    moved == 1 ? "Rejected 1 file." : $"Rejected {moved} files.",
+                    offerUndo: true,
+                    dismissSeconds: 5);
+            }
+            else if (already.Count > 0 && moved == 0)
+            {
+                Notify("Nothing rejected.");
+            }
+        });
+
     private IReadOnlyList<AssetItem> TagTargets()
     {
         if (_selection.Count > 0)
