@@ -1,1 +1,0 @@
-﻿eb37794 0.3.1: 1:1 Actual (double-tap zoom cycle Zoomed end). Toolbar 1:1 active; tall crop for pan clamp.

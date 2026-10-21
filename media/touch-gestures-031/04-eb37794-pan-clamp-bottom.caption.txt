@@ -1,1 +1,0 @@
-﻿eb37794 0.3.1: zoomed (1:1) pan clamped at BOTTOM — BOTTOM label at lower edge; symmetric with top.

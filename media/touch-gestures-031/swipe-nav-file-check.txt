@@ -1,0 +1,4 @@
+before=ordinary-portrait.jpg,Pregmata_SteamAVIF.png,square-amber.png,tall-blue.png,tall-teal.png
+after=ordinary-portrait.jpg,Pregmata_SteamAVIF.png,square-amber.png,tall-blue.png,tall-teal.png
+_rejected=absent
+tip=a979fde

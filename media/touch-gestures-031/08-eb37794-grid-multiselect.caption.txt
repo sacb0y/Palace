@@ -1,1 +1,0 @@
-﻿eb37794 0.3.1: Library Select mode multi-select — 3 tiles with check badges. Also shows _rejected from Review swipe-left reject.

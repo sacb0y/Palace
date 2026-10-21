@@ -1,0 +1,1 @@
+a979fde 0.3.1: HDR twin after pinch-out - image stays on-screen under fingers (not empty black).
