@@ -616,13 +616,6 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    /// <summary>Border that always exposes a UIA peer for Host_* wait-for.</summary>
-    private sealed class SearchHighlightHostBorder : Border
-    {
-        protected override AutomationPeer OnCreateAutomationPeer() =>
-            new FrameworkElementAutomationPeer(this);
-    }
-
     private void HighlightMatchingCards(IReadOnlySet<string> cardIds)
     {
         ClearSearchHighlight();
