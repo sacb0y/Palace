@@ -109,9 +109,6 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool TouchGesturesEnabled { get; set; } = ViewerSettings.DefaultTouchGestures;
 
     [ObservableProperty]
-    public partial bool SwipeDownDismissEnabled { get; set; } = ViewerSettings.DefaultSwipeDownDismiss;
-
-    [ObservableProperty]
     public partial SourceFolderItem? SelectedSource { get; set; }
 
     [ObservableProperty]
@@ -469,7 +466,6 @@ public partial class SettingsViewModel : ObservableObject
         AppServices.LoadViewerSettings();
         SelectedDefaultZoom = ViewerSettings.ZoomLabel(ViewerSettings.DefaultZoomMode);
         TouchGesturesEnabled = ViewerSettings.TouchGesturesEnabled;
-        SwipeDownDismissEnabled = ViewerSettings.SwipeDownDismissEnabled;
         var values = ApplicationData.Current.LocalSettings.Values;
         ShowDetailsByDefault = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
         LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
@@ -481,10 +477,9 @@ public partial class SettingsViewModel : ObservableObject
         var zoom = ViewerSettings.ParseZoomLabel(SelectedDefaultZoom);
         values[ViewerSettings.DefaultZoomKey] = ViewerSettings.PersistZoom(zoom);
         values[ViewerSettings.TouchGesturesKey] = TouchGesturesEnabled;
-        values[ViewerSettings.SwipeDownDismissKey] = SwipeDownDismissEnabled;
         values[GalleryChrome.ShowDetailsKey] = ShowDetailsByDefault;
         values[GalleryChrome.LoopVideoKey] = LoopVideo;
-        ViewerSettings.Apply(zoom, TouchGesturesEnabled, SwipeDownDismissEnabled);
+        ViewerSettings.Apply(zoom, TouchGesturesEnabled);
     }
 
     partial void OnSelectedDensityChanged(string value)
@@ -612,19 +607,6 @@ public partial class SettingsViewModel : ObservableObject
 
         PersistViewerChrome();
         StatusText = value ? "Touch gestures on." : "Touch gestures off — mouse left-drag pan stays.";
-    }
-
-    partial void OnSwipeDownDismissEnabledChanged(bool value)
-    {
-        if (_load.IsLoading)
-        {
-            return;
-        }
-
-        PersistViewerChrome();
-        StatusText = value
-            ? "Swipe down to dismiss when touch lands."
-            : "Swipe down to dismiss off.";
     }
 
     partial void OnSelectedSourceChanged(SourceFolderItem? value) => SyncSourceSelection();

@@ -116,9 +116,5 @@ public sealed class SettingsNavTests
         Assert.NotNull(touch);
         Assert.Equal(SettingsNav.Input, touch.Value.SectionId);
         Assert.Equal("CardTouchGestures", touch.Value.CardAutomationId);
-
-        var swipe = SettingsNav.FindHit("swipe down");
-        Assert.NotNull(swipe);
-        Assert.Equal("CardSwipeDownDismiss", swipe.Value.CardAutomationId);
     }
 }

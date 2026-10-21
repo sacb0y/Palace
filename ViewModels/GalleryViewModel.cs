@@ -494,10 +494,7 @@ public partial class GalleryViewModel : ObservableObject
         Scaling = ViewerSettings.ParseZoom(values[ViewerSettings.DefaultZoomKey]);
         ViewerSettings.Apply(
             Scaling,
-            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures),
-            ViewerSettings.ParseBool(
-                values[ViewerSettings.SwipeDownDismissKey],
-                ViewerSettings.DefaultSwipeDownDismiss));
+            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures));
         _chromeReady = true;
     }
 

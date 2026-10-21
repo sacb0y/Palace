@@ -3,17 +3,16 @@ namespace Palace.Helpers;
 /// <summary>
 /// Viewer + Input prefs (LocalSettings). Off WinUI for Palace.Tests.
 /// Default zoom opens the overlay; Details / loop share <see cref="GalleryChrome"/> keys.
-/// Touch / swipe-down gates are ready for the touch milestone.
+/// Touch-gesture gate is ready for the touch milestone. Swipe settings land later
+/// (swipe down will mean reject — see touch-gestures design).
 /// </summary>
 public static class ViewerSettings
 {
     public const string DefaultZoomKey = "ViewerDefaultZoom";
     public const string TouchGesturesKey = "ViewerTouchGestures";
-    public const string SwipeDownDismissKey = "ViewerSwipeDownDismiss";
 
     public const ImageScaling DefaultZoom = ImageScaling.Fit;
     public const bool DefaultTouchGestures = true;
-    public const bool DefaultSwipeDownDismiss = true;
 
     public static readonly string[] ZoomOptions =
     [
@@ -26,25 +25,17 @@ public static class ViewerSettings
 
     public static bool TouchGesturesEnabled { get; private set; } = DefaultTouchGestures;
 
-    public static bool SwipeDownDismissEnabled { get; private set; } = DefaultSwipeDownDismiss;
-
     public static event EventHandler? Changed;
 
-    public static void Apply(
-        ImageScaling defaultZoom,
-        bool touchGestures,
-        bool swipeDownDismiss)
+    public static void Apply(ImageScaling defaultZoom, bool touchGestures)
     {
-        if (DefaultZoomMode == defaultZoom
-            && TouchGesturesEnabled == touchGestures
-            && SwipeDownDismissEnabled == swipeDownDismiss)
+        if (DefaultZoomMode == defaultZoom && TouchGesturesEnabled == touchGestures)
         {
             return;
         }
 
         DefaultZoomMode = defaultZoom;
         TouchGesturesEnabled = touchGestures;
-        SwipeDownDismissEnabled = swipeDownDismiss;
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
@@ -110,11 +101,6 @@ public static class ViewerSettings
     /// Mouse left-drag pan stays available when touch gestures are off.
     /// </summary>
     public static bool AllowsTouchGestures(bool touchGesturesEnabled) => touchGesturesEnabled;
-
-    /// <summary>
-    /// Swipe-down-to-dismiss overlay. Honored when the touch milestone wires the gesture.
-    /// </summary>
-    public static bool AllowsSwipeDownDismiss(bool swipeDownDismissEnabled) => swipeDownDismissEnabled;
 
     public static string SdrTonemapCaption { get; } =
         "On SDR displays, HDR stills tonemap to 80 nits (scRGB 1.0). Peak override clips on HDR displays only.";

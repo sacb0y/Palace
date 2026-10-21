@@ -1224,20 +1224,6 @@
                                 OffContent="Off"
                                 OnContent="On" />
                         </controls:SettingsCard>
-                        <controls:SettingsCard
-                            x:Name="CardSwipeDownDismiss"
-                            AutomationProperties.AutomationId="CardSwipeDownDismiss"
-                            Description="Swipe down on the overlay to close. Wired with the touch milestone."
-                            Header="Swipe down to dismiss"
-                            Style="{StaticResource PalaceSettingsCardStyle}">
-                            <ToggleSwitch
-                                x:Name="TglSwipeDownDismiss"
-                                AutomationProperties.AutomationId="TglSwipeDownDismiss"
-                                AutomationProperties.Name="Swipe down to dismiss"
-                                IsOn="{x:Bind ViewModel.SwipeDownDismissEnabled, Mode=TwoWay}"
-                                OffContent="Off"
-                                OnContent="On" />
-                        </controls:SettingsCard>
                     </StackPanel>
 
                     <!-- Performance & Storage -->

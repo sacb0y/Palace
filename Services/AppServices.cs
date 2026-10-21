@@ -278,10 +278,7 @@ public static class AppServices
         var values = ApplicationData.Current.LocalSettings.Values;
         ViewerSettings.Apply(
             ViewerSettings.ParseZoom(values[ViewerSettings.DefaultZoomKey]),
-            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures),
-            ViewerSettings.ParseBool(
-                values[ViewerSettings.SwipeDownDismissKey],
-                ViewerSettings.DefaultSwipeDownDismiss));
+            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures));
     }
 
     /// <summary>

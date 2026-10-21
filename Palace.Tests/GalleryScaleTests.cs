@@ -3,14 +3,14 @@ using Xunit;
 
 namespace Palace.Tests;
 
+[Collection("ViewerSettingsStatic")]
 public sealed class GalleryScaleTests
 {
     public GalleryScaleTests()
     {
         ViewerSettings.Apply(
             ViewerSettings.DefaultZoom,
-            ViewerSettings.DefaultTouchGestures,
-            ViewerSettings.DefaultSwipeDownDismiss);
+            ViewerSettings.DefaultTouchGestures);
     }
 
     [Fact]

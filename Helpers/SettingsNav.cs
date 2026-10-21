@@ -63,7 +63,7 @@ public static class SettingsNav
             "Input",
             "Keyboard",
             "BtnSettingsNav_Input",
-            ["input", "shortcuts", "keyboard", "hotkey", "touch", "swipe"]),
+            ["input", "shortcuts", "keyboard", "hotkey", "touch"]),
         new(
             Performance,
             "Performance",
@@ -106,7 +106,6 @@ public static class SettingsNav
         new(Tags, "CardTagPortable", ["export tags", "import tags", "tags json"]),
         new(Input, "CardShortcuts", ["shortcut", "shortcuts", "keyboard", "hotkey", "ctrl"]),
         new(Input, "CardTouchGestures", ["touch", "gestures", "pinch", "pan"]),
-        new(Input, "CardSwipeDownDismiss", ["swipe", "swipe down", "dismiss", "gesture"]),
         new(Performance, "CardMediaCache", ["cache", "media cache", "max mb", "clear cache"]),
         new(Performance, "CardCatalogPath", ["catalog", "palace.db", "durable", "catalog folder"]),
         new(About, "CardAppVersion", ["version", "about", "palace", "infancy"]),

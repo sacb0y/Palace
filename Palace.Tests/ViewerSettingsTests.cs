@@ -3,14 +3,14 @@ using Xunit;
 
 namespace Palace.Tests;
 
+[Collection("ViewerSettingsStatic")]
 public sealed class ViewerSettingsTests
 {
     public ViewerSettingsTests()
     {
         ViewerSettings.Apply(
             ViewerSettings.DefaultZoom,
-            ViewerSettings.DefaultTouchGestures,
-            ViewerSettings.DefaultSwipeDownDismiss);
+            ViewerSettings.DefaultTouchGestures);
     }
 
     [Fact]
@@ -40,12 +40,10 @@ public sealed class ViewerSettingsTests
     [Fact]
     public void Apply_UpdatesStaticGates()
     {
-        ViewerSettings.Apply(ImageScaling.Fill, touchGestures: false, swipeDownDismiss: false);
+        ViewerSettings.Apply(ImageScaling.Fill, touchGestures: false);
         Assert.Equal(ImageScaling.Fill, ViewerSettings.DefaultZoomMode);
         Assert.False(ViewerSettings.TouchGesturesEnabled);
-        Assert.False(ViewerSettings.SwipeDownDismissEnabled);
         Assert.False(ViewerSettings.AllowsTouchGestures(false));
-        Assert.False(ViewerSettings.AllowsSwipeDownDismiss(false));
         Assert.True(ViewerSettings.AllowsTouchGestures(true));
     }
 
