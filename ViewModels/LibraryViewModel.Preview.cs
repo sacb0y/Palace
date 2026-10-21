@@ -55,9 +55,12 @@ public partial class LibraryViewModel
 
         var targets = _selection.Count > 0 ? _selection.ToList() : [item];
         var perAsset = new List<IReadOnlyList<AssignedTag>>();
+        var ratings = new List<int?>();
         foreach (var target in targets)
         {
             perAsset.Add(await _catalog.GetAssignedTagsAsync(target.Id));
+            var row = await _catalog.GetAssetByIdAsync(target.Id);
+            ratings.Add(row?.Rating);
         }
 
         if (epoch != _previewEpoch)
@@ -66,6 +69,7 @@ public partial class LibraryViewModel
         }
 
         var total = targets.Count;
+        var multi = SelectCommandBar.ShowMultiSelectPreview(total);
         var union = new Dictionary<string, (AssignedTag Sample, int Count, HashSet<TagSource> Sources)>(StringComparer.Ordinal);
         foreach (var list in perAsset)
         {
@@ -90,16 +94,27 @@ public partial class LibraryViewModel
         var originalOk = GalleryMedia.CanShowPreview(asset.Path);
         var cloudish = GalleryMedia.IsLiveOnlineOnly(
             asset.IsOnlineOnly, hydrateOnOpen, apiOnly, originalOk);
-        var previewPath = GalleryMedia.OverlayStillPath(
-            asset.IsOrphan, cloudish, originalOk, asset.Path, item.ThumbPath, null);
+        var previewPath = multi
+            ? null
+            : GalleryMedia.OverlayStillPath(
+                asset.IsOrphan, cloudish, originalOk, asset.Path, item.ThumbPath, null);
         if (!GalleryMedia.CanShowPreview(previewPath))
         {
             previewPath = null;
         }
 
-        var canEdit = total == 1;
-        var generation = GenerationFields.ForPreview(
-            asset.Model, asset.Prompt, asset.NegativePrompt, asset.Seed);
+        var canEditNotes = total == 1;
+        var ratingMixed = SelectCommandBar.RatingIsMixed(ratings);
+        var ratingValue = SelectCommandBar.RatingDisplayValue(ratings);
+        var multiDetail = multi
+            ? SelectCommandBar.MultiSelectDetail(
+                targets.Select(t => t.Kind).ToList(),
+                targets.Select(t => t.FileSize).ToList())
+            : "";
+        var generation = multi
+            ? GenerationFields.ForPreview(null, null, null, null)
+            : GenerationFields.ForPreview(
+                asset.Model, asset.Prompt, asset.NegativePrompt, asset.Seed);
         await UiDispatch.RunAsync(() =>
         {
             if (epoch != _previewEpoch)
@@ -107,18 +122,26 @@ public partial class LibraryViewModel
                 return;
             }
 
-            CanEditNotes = canEdit;
+            CanEditNotes = canEditNotes;
+            CanEditRating = total > 0;
+            IsMultiSelectPreview = multi;
+            AddTagButtonLabel = multi ? "Add tag to all" : "Add tag";
+            MultiSelectDetail = multiDetail;
+            PreviewRatingMixed = ratingMixed;
+            RatingCaption = SelectCommandBar.RatingCaption(ratingMixed);
             _previewTargets = targets;
             PreviewPath = previewPath;
-            IsVideoPreview = !cloudish && asset.Kind == AssetKind.Video && previewPath is not null;
-            IsImagePreview = previewPath is not null &&
+            IsVideoPreview = !multi && !cloudish && asset.Kind == AssetKind.Video && previewPath is not null;
+            IsImagePreview = !multi && previewPath is not null &&
                 (cloudish || asset.Kind is AssetKind.Image or AssetKind.Gif);
-            ShowPreviewPlaceholder = GalleryMedia.ShowPlaceholderTile(
+            ShowPreviewPlaceholder = !multi && GalleryMedia.ShowPlaceholderTile(
                 cloudish, asset.IsOrphan, previewPath is not null);
             PreviewPlaceholderKind = asset.Kind;
             ApplyGenerationPreview(generation);
-            PreviewFileName = asset.FileName;
-            SetPreviewNotes(asset.Notes, asset.Rating ?? 0, asset.Id);
+            PreviewFileName = multi
+                ? SelectMode.Summary(true, total)
+                : asset.FileName;
+            SetPreviewNotes(canEditNotes ? asset.Notes : null, ratingValue, canEditNotes ? asset.Id : null);
 
             AssignedTags.Clear();
             foreach (var entry in union.Values
@@ -150,14 +173,17 @@ public partial class LibraryViewModel
             ShowAssignedTagsSummary = AssignedTags.Count == 0;
 
             Suggestions.Clear();
-            foreach (var suggestion in suggestions)
+            if (!multi)
             {
-                if (AssignedTags.Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
+                foreach (var suggestion in suggestions)
                 {
-                    continue;
-                }
+                    if (AssignedTags.Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        continue;
+                    }
 
-                Suggestions.Add(suggestion);
+                    Suggestions.Add(suggestion);
+                }
             }
 
             RebuildAssignPanel();
@@ -200,6 +226,11 @@ public partial class LibraryViewModel
         IsImagePreview = false;
         IsVideoPreview = false;
         ShowPreviewPlaceholder = false;
+        IsMultiSelectPreview = false;
+        MultiSelectDetail = "";
+        PreviewRatingMixed = false;
+        RatingCaption = SelectCommandBar.RatingCaption(false);
+        CanEditRating = false;
         PreviewPath = null;
         ClearGenerationPreview();
         PreviewFileName = null;

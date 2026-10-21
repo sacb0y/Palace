@@ -116,26 +116,33 @@ public sealed partial class LibraryPage : Page
                 SrfOverlayStill.IsReviewMode = ViewModel.IsReviewMode;
             }
 
-            if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode))
+            if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode)
+                or nameof(LibraryViewModel.ShowTagSelectedCta)
+                or nameof(LibraryViewModel.HasSelection))
             {
-                // Esc / Clear exit select mode via the VM — keep ItemsView SelectionMode in sync
-                // even if the toggle's Checked/Unchecked did not fire.
-                var on = ViewModel.IsSelectMode;
-                _suppressMosaicSelection = true;
-                try
+                if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode))
                 {
-                    GrdAssets.SelectionMode = SelectMode.ClickTogglesTile(on)
-                        ? ItemsViewSelectionMode.Multiple
-                        : ItemsViewSelectionMode.Single;
-                    if (on)
+                    // Esc / Clear exit select mode via the VM — keep ItemsView SelectionMode in sync
+                    // even if the toggle's Checked/Unchecked did not fire.
+                    var on = ViewModel.IsSelectMode;
+                    _suppressMosaicSelection = true;
+                    try
                     {
-                        RestoreMosaicSelectionHighlights();
+                        GrdAssets.SelectionMode = SelectMode.ClickTogglesTile(on)
+                            ? ItemsViewSelectionMode.Multiple
+                            : ItemsViewSelectionMode.Single;
+                        if (on)
+                        {
+                            RestoreMosaicSelectionHighlights();
+                        }
+                    }
+                    finally
+                    {
+                        _suppressMosaicSelection = false;
                     }
                 }
-                finally
-                {
-                    _suppressMosaicSelection = false;
-                }
+
+                ApplySelectBarOverflow(GrdSelectBar.ActualWidth);
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.IsTagBrowse) or nameof(LibraryViewModel.TagFilterMode))
@@ -449,6 +456,39 @@ public sealed partial class LibraryPage : Page
         {
             _suppressMosaicSelection = false;
         }
+
+        ApplySelectBarOverflow(GrdSelectBar.ActualWidth);
+    }
+
+    private void GrdSelectBar_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        ApplySelectBarOverflow(e.NewSize.Width);
+
+    /// <summary>
+    /// Fold Move → Add to room → Tag selected… into ⋯ from the right (selection mockups v2).
+    /// Sort stays in ⋯ for the whole select session.
+    /// </summary>
+    private void ApplySelectBarOverflow(double widthDip)
+    {
+        if (!ViewModel.IsSelectMode)
+        {
+            return;
+        }
+
+        var overflow = SelectCommandBar.ResolveOverflow(widthDip);
+        BtnBarMove.Visibility = overflow.ShowMove ? Visibility.Visible : Visibility.Collapsed;
+        BtnBarAddToRoom.Visibility = overflow.ShowAddToRoom ? Visibility.Visible : Visibility.Collapsed;
+        // Tag CTA also needs selection; keep collapsed when ShowTagSelectedCta is false via IsEnabled+empty.
+        var showTag = overflow.ShowTagSelected && ViewModel.ShowTagSelectedCta;
+        BtnTagSelected.Visibility = showTag ? Visibility.Visible : Visibility.Collapsed;
+
+        MnuBarOverflowMove.Visibility = overflow.ShowMove ? Visibility.Collapsed : Visibility.Visible;
+        MnuBarOverflowAddToRoom.Visibility = overflow.ShowAddToRoom ? Visibility.Collapsed : Visibility.Visible;
+        MnuBarOverflowTag.Visibility = (!overflow.ShowTagSelected && ViewModel.HasSelection)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        var anyFolded = SelectCommandBar.OverflowHasFoldedActions(overflow)
+            || (!overflow.ShowTagSelected && ViewModel.HasSelection);
+        MnuBarOverflowSep.Visibility = anyFolded ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RestoreMosaicSelectionHighlights()
@@ -2587,9 +2627,22 @@ public sealed partial class LibraryPage : Page
             Content = body,
             PrimaryButtonText = primary,
             CloseButtonText = "Cancel",
+            // Cancel is the accent/safe default (#101 / selection mockups v2).
             DefaultButton = ContentDialogButton.Close
         };
         dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
+        if (string.Equals(primary, SelectCommandBar.DeletePrimary, StringComparison.Ordinal)
+            && Application.Current.Resources.TryGetValue("SystemFillColorCriticalBrush", out var critical)
+            && critical is Brush criticalBrush
+            && Application.Current.Resources.TryGetValue("TextOnAccentFillColorPrimaryBrush", out var onAccent)
+            && onAccent is Brush onAccentBrush)
+        {
+            var deleteStyle = new Style(typeof(Button));
+            deleteStyle.Setters.Add(new Setter(Control.BackgroundProperty, criticalBrush));
+            deleteStyle.Setters.Add(new Setter(Control.ForegroundProperty, onAccentBrush));
+            dialog.PrimaryButtonStyle = deleteStyle;
+        }
+
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 

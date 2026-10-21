@@ -24,4 +24,14 @@ public static class PreviewPersist
 
         return string.Equals(selectedAssetId, previewAssetId, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Multi-select rating stars apply to every selected asset. Single-select
+    /// still goes through <see cref="ShouldWriteNotes"/> (same canEdit gate).
+    /// </summary>
+    public static bool ShouldWriteRating(
+        bool applyingPreview,
+        bool canEditRating,
+        int targetCount) =>
+        !applyingPreview && canEditRating && targetCount > 0;
 }
