@@ -1,0 +1,1 @@
+Release x64 MSIX tip 3c5c3e2: Settings search cache ~0.2s after type; pink highlight present (PinkWash=3866).

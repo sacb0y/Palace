@@ -1,1 +1,1 @@
-﻿Settings search "cache": matching SettingsExpander cards (Thumbnail cache + Media cache) show pink/accent highlight (2px border ring + header paint); non-matching cards filtered out. Tip 51ecff2, identity PalaceSettingsPr7-127.
+Settings search "cache" on Release x64 MSIX (tip 3c5c3e2, identity PalaceSettingsPr7-127): matching SettingsExpander cards (Thumbnail cache + Media cache) show durable pink/accent highlight (~#E05A8C wash + border ring) after settle; non-matching cards filtered out. Pixel-scan settle: PinkWash=3866.
