@@ -14,10 +14,16 @@ public static class AppearanceSettings
     public const string DefaultDensity = DensityComfortable;
     public const bool DefaultAnimations = true;
 
-    public const double ComfortableCardMinHeight = 40;
-    public const double CompactCardMinHeight = 32;
+    // Comfortable ≈ toolkit default (~68 DIP with 16×12 padding). Compact cuts
+    // vertical padding hard so the same SettingsCard reads clearly shorter.
+    public const double ComfortableCardMinHeight = 56;
+    public const double CompactCardMinHeight = 40;
     public const double ComfortableCardSpacingBottom = 4;
     public const double CompactCardSpacingBottom = 2;
+    public const double ComfortableCardPaddingX = 16;
+    public const double ComfortableCardPaddingY = 12;
+    public const double CompactCardPaddingX = 12;
+    public const double CompactCardPaddingY = 4;
 
     public static readonly string[] DensityOptions =
     [
@@ -52,6 +58,12 @@ public static class AppearanceSettings
 
     public static double CardSpacingBottom(string? density) =>
         IsCompact(density) ? CompactCardSpacingBottom : ComfortableCardSpacingBottom;
+
+    public static double CardPaddingX(string? density) =>
+        IsCompact(density) ? CompactCardPaddingX : ComfortableCardPaddingX;
+
+    public static double CardPaddingY(string? density) =>
+        IsCompact(density) ? CompactCardPaddingY : ComfortableCardPaddingY;
 
     public static bool ParseAnimations(object? stored) => stored switch
     {

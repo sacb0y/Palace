@@ -356,11 +356,9 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        if (!Application.Current.Resources.TryGetValue("PalaceSettingsSearchHighlightBrush", out var brush)
-            || brush is not Brush highlight)
-        {
-            return;
-        }
+        // Theme brush lives in SettingsStyles ThemeDictionaries — never look up only
+        // Application.Current.Resources (silent miss). Always paint with a real brush.
+        var highlight = ResolveSearchHighlightBrush();
 
         foreach (var id in cardIds)
         {
@@ -390,6 +388,89 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    /// <summary>
+    /// Resolve <c>PalaceSettingsSearchHighlightBrush</c> from this page's / app
+    /// ThemeDictionaries. Falls back to an explicit pink wash — never a silent no-op.
+    /// </summary>
+    private Brush ResolveSearchHighlightBrush()
+    {
+        const string key = "PalaceSettingsSearchHighlightBrush";
+        const string fallbackKey = "PalaceSettingsSearchHighlightBrushFallback";
+
+        if (TryResolveThemeBrush(Resources, key, out var fromPage) && fromPage is Brush pageBrush)
+        {
+            return pageBrush;
+        }
+
+        if (Application.Current?.Resources is { } appRoot
+            && TryResolveThemeBrush(appRoot, key, out var fromApp)
+            && fromApp is Brush appBrush)
+        {
+            return appBrush;
+        }
+
+        if (Application.Current?.Resources.TryGetValue(fallbackKey, out var fallbackObj) == true
+            && fallbackObj is Brush namedFallback)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Settings search highlight: theme key '{key}' missing; using '{fallbackKey}'.");
+            System.Diagnostics.Debug.Assert(false, $"Missing ThemeResource {key}");
+            return namedFallback;
+        }
+
+        System.Diagnostics.Debug.WriteLine(
+            $"Settings search highlight: '{key}' and '{fallbackKey}' missing; using hard-coded pink.");
+        System.Diagnostics.Debug.Assert(false, $"Missing ThemeResource {key} and {fallbackKey}");
+        return new SolidColorBrush(Color.FromArgb(0x66, 0xE0, 0x5A, 0x8C));
+    }
+
+    private bool TryResolveThemeBrush(ResourceDictionary root, string key, out object? brush)
+    {
+        brush = null;
+        var light = ActualTheme == ElementTheme.Light
+            || (ActualTheme == ElementTheme.Default
+                && Application.Current.RequestedTheme == ApplicationTheme.Light);
+        // Prefer Dark over Default when present (WASDK 2.x); Light alone for light chrome.
+        var themeKeys = light ? new[] { "Light" } : new[] { "Dark", "Default" };
+        return TryThemeBrushInTree(root, themeKeys, key, out brush);
+    }
+
+    private static bool TryThemeBrushInTree(
+        ResourceDictionary root,
+        string[] themeKeys,
+        string key,
+        out object? brush)
+    {
+        brush = null;
+        foreach (var themeKey in themeKeys)
+        {
+            if (root.ThemeDictionaries.TryGetValue(themeKey, out var themeDict)
+                && themeDict is ResourceDictionary dict
+                && dict.TryGetValue(key, out var fromTheme)
+                && fromTheme is not null)
+            {
+                brush = fromTheme;
+                return true;
+            }
+        }
+
+        if (root.TryGetValue(key, out var direct) && direct is not null)
+        {
+            brush = direct;
+            return true;
+        }
+
+        foreach (var merged in root.MergedDictionaries)
+        {
+            if (TryThemeBrushInTree(merged, themeKeys, key, out brush))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void HighlightTimer_Tick(object? sender, object e)
     {
         _highlightTimer?.Stop();
@@ -410,12 +491,16 @@ public sealed partial class SettingsPage : Page
     {
         var minHeight = AppearanceSettings.CardMinHeight(density);
         var spacing = new Thickness(0, 0, 0, AppearanceSettings.CardSpacingBottom(density));
+        var padX = AppearanceSettings.CardPaddingX(density);
+        var padY = AppearanceSettings.CardPaddingY(density);
+        var padding = new Thickness(padX, padY, padX, padY);
         foreach (var target in SettingsNav.Targets)
         {
             if (FindName(target.CardAutomationId) is Control card)
             {
                 card.MinHeight = minHeight;
                 card.Margin = spacing;
+                card.Padding = padding;
             }
         }
     }
