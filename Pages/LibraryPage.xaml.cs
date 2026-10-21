@@ -1273,9 +1273,6 @@ public sealed partial class LibraryPage : Page
         ShowOverlayAssetContextFlyout(SrfOverlayStill);
     }
 
-    private void BtnGalleryMore_Click(object sender, RoutedEventArgs e) =>
-        ShowOverlayAssetContextFlyout(BtnGalleryMore);
-
     private void MnuOverlaySelect_Click(object sender, RoutedEventArgs e) =>
         ViewModel.SelectOverlayCurrentFromMenu();
 
