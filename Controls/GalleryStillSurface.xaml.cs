@@ -32,7 +32,6 @@ public sealed partial class GalleryStillSurface : UserControl
     private bool _preservePinchPan;
     private double _pinchOriginX;
     private double _pinchOriginY;
-    private double _pinchOldZoom = 1;
     private double _coalescedPanX;
     private double _coalescedPanY;
     private PointerDeviceType _lastPointerDevice = PointerDeviceType.Mouse;
@@ -972,10 +971,14 @@ public sealed partial class GalleryStillSurface : UserControl
         var preserve = _preservePinchPan;
         var originX = _pinchOriginX;
         var originY = _pinchOriginY;
-        var oldZoom = _pinchOldZoom;
-        var newZoom = _pinchZoom;
         var panX = _coalescedPanX;
         var panY = _coalescedPanY;
+        // Prior content size for midpoint math (before we overwrite tracking).
+        // Use actual size delta — CapStillPanelSize can diverge from zoom ratio.
+        var oldContentW = _scrollContentW > 1 ? _scrollContentW : contentW;
+        var oldContentH = _scrollContentH > 1 ? _scrollContentH : contentH;
+        var oldOffH = ScrStill.HorizontalOffset;
+        var oldOffV = ScrStill.VerticalOffset;
         ResetPinchPanIntent();
 
         if (!preserve
@@ -997,20 +1000,43 @@ public sealed partial class GalleryStillSurface : UserControl
         _scrollViewH = viewH;
 
         ScrStill.UpdateLayout();
-        var (horizontal, vertical) = preserve
-            ? GalleryScale.PinchThenDrag(
-                ScrStill.HorizontalOffset,
-                ScrStill.VerticalOffset,
+        double horizontal;
+        double vertical;
+        if (preserve)
+        {
+            // originX/Y must be ScrStill viewport coords (not GrdStillContent).
+            // ZoomAroundPoint keeps the pinch midpoint on-screen; DragPanContent
+            // clamps so the image cannot leave the viewport.
+            (horizontal, vertical) = TouchGestures.ZoomAroundPoint(
                 originX,
                 originY,
-                oldZoom,
-                newZoom,
-                panX,
-                panY,
-                ScrStill.ScrollableWidth,
-                ScrStill.ScrollableHeight)
-            : GalleryScale.InitialScrollOffset(
+                oldContentW,
+                oldContentH,
+                oldOffH,
+                oldOffV,
+                contentW,
+                contentH,
+                viewW,
+                viewH);
+            if (panX != 0 || panY != 0)
+            {
+                (horizontal, vertical) = GalleryScale.DragPanContent(
+                    horizontal,
+                    vertical,
+                    panX,
+                    panY,
+                    contentW,
+                    contentH,
+                    viewW,
+                    viewH);
+            }
+        }
+        else
+        {
+            (horizontal, vertical) = GalleryScale.InitialScrollOffset(
                 scaling, contentW, contentH, viewW, viewH);
+        }
+
         ScrStill.ChangeView(horizontal, vertical, null, true);
     }
 
@@ -1019,6 +1045,9 @@ public sealed partial class GalleryStillSurface : UserControl
         _panning = false;
         ResetScrollTracking();
         ResetPinchTracking();
+        // Fit / scale-mode / still change must clear translation too — a prior
+        // pinch can leave HorizontalOffset/VerticalOffset far off-screen.
+        ScrStill.ChangeView(0, 0, null, true);
     }
 
     private void ResetScrollTracking()
@@ -1034,7 +1063,6 @@ public sealed partial class GalleryStillSurface : UserControl
     private void ResetPinchTracking()
     {
         _pinchZoom = 1;
-        _pinchOldZoom = 1;
         _pinchOriginX = 0;
         _pinchOriginY = 0;
         ResetPinchPanIntent();
@@ -1074,23 +1102,41 @@ public sealed partial class GalleryStillSurface : UserControl
         return (0, 0);
     }
 
+    /// <summary>
+    /// Manipulation events are on <see cref="GrdStillContent"/> so
+    /// <c>e.Position</c> is content-local. Pinch midpoint math needs
+    /// <see cref="ScrStill"/> viewport coordinates — content-space origins
+    /// throw the still off-screen (HDR black bg looks like a black image).
+    /// </summary>
+    private Windows.Foundation.Point ToViewport(Windows.Foundation.Point contentLocal)
+    {
+        try
+        {
+            return GrdStillContent.TransformToVisual(ScrStill).TransformPoint(contentLocal);
+        }
+        catch
+        {
+            return new Windows.Foundation.Point(
+                contentLocal.X - ScrStill.HorizontalOffset,
+                contentLocal.Y - ScrStill.VerticalOffset);
+        }
+    }
+
     private void ApplyPinchFrame(
-        double originX,
-        double originY,
+        double originViewportX,
+        double originViewportY,
         double nextZoom,
         double panX,
         double panY)
     {
         _preservePinchPan = true;
-        _pinchOriginX = originX;
-        _pinchOriginY = originY;
-        _pinchOldZoom = _pinchZoom;
+        _pinchOriginX = originViewportX;
+        _pinchOriginY = originViewportY;
         _pinchZoom = nextZoom;
         _coalescedPanX = panX;
         _coalescedPanY = panY;
         ApplyScaleLayout();
-        // Re-present HDR at the new (capped) panel size so a failed extreme
-        // ResizeBuffers does not leave ScpHdr blank with no SDR fallback.
+        // Re-present HDR after layout so the swapchain matches the new size.
         if (_hdrFrame is not null)
         {
             PresentCached(HdrPresentCoalescer.SettleMs);
@@ -1239,7 +1285,8 @@ public sealed partial class GalleryStillSurface : UserControl
                 _afterPinchAwaitingLift = true;
             }
 
-            ApplyPinchFrame(e.Position.X, e.Position.Y, nextZoom, deltaX, deltaY);
+            var mid = ToViewport(e.Position);
+            ApplyPinchFrame(mid.X, mid.Y, nextZoom, deltaX, deltaY);
             e.Handled = true;
             return;
         }
@@ -1338,17 +1385,24 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         // Snap soft under-zoom back to Fit on release.
+        var mid = ToViewport(e.Position);
         var snapped = TouchGestures.SnapPinchOnRelease(_pinchZoom);
         if (Math.Abs(snapped - _pinchZoom) > 0.0001)
         {
-            ApplyPinchFrame(e.Position.X, e.Position.Y, snapped, 0, 0);
+            ApplyPinchFrame(mid.X, mid.Y, snapped, 0, 0);
         }
 
         var hard = TouchGestures.ClampPinchHard(
             _pinchZoom, FitToActualRatio(), PinchBaseLongEdgeDip());
         if (Math.Abs(hard - _pinchZoom) > 0.0001)
         {
-            ApplyPinchFrame(e.Position.X, e.Position.Y, hard, 0, 0);
+            ApplyPinchFrame(mid.X, mid.Y, hard, 0, 0);
+        }
+
+        // Fit (zoom 1) must clear translation — content equals viewport.
+        if (_pinchZoom <= 1.0001)
+        {
+            ScrStill.ChangeView(0, 0, null, true);
         }
 
         _afterPinchAwaitingLift = false;
@@ -1377,9 +1431,11 @@ public sealed partial class GalleryStillSurface : UserControl
         var step = TouchGestures.NextDoubleTapStep(currentlyFit);
         if (step == TouchGestures.DoubleTapZoomStep.Fit)
         {
-            _pinchZoom = 1;
+            ResetPinchTracking();
             _gallery.Scaling = ImageScaling.Fit;
             ApplyScaleLayout();
+            // Fit must reset translation too (pinch can leave offsets off-screen).
+            ScrStill.ChangeView(0, 0, null, true);
             e.Handled = true;
             return;
         }

@@ -394,6 +394,10 @@ public static class GalleryScale
 
     /// <summary>
     /// Keep the pinch origin on the same content point after zoom.
+    /// <paramref name="originX"/>/<paramref name="originY"/> are
+    /// <b>viewport</b> coordinates (ScrollViewer), not content-local.
+    /// Prefer <see cref="TouchGestures.ZoomAroundPoint"/> when actual content
+    /// sizes are known (panel caps can diverge from zoom ratio).
     /// </summary>
     public static (double Horizontal, double Vertical) PinchPan(
         double horizontalOffset,
@@ -417,6 +421,8 @@ public static class GalleryScale
     /// One scroll target for a pinch frame: keep the pinch origin, then apply
     /// the same-frame translation. Do not DragPan from a stale offset after
     /// ChangeView — ScrollViewer has not updated HorizontalOffset yet.
+    /// Prefer content-size <see cref="TouchGestures.ZoomAroundPoint"/> +
+    /// <see cref="DragPanContent"/> in the still surface (viewport origins).
     /// </summary>
     public static (double Horizontal, double Vertical) PinchThenDrag(
         double horizontalOffset,

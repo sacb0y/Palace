@@ -204,6 +204,62 @@ public sealed class TouchGesturesTests
     }
 
     [Fact]
+    public void ZoomAroundPoint_ClampsSoImageCannotLeaveViewport()
+    {
+        // Extreme zoom with a corner tap must still keep content covering the
+        // viewport — never translate so far that Fit/HDR shows empty black.
+        var (h, v) = TouchGestures.ZoomAroundPoint(
+            tapX: 10,
+            tapY: 10,
+            oldContentWidth: 100,
+            oldContentHeight: 100,
+            oldOffsetX: 0,
+            oldOffsetY: 0,
+            newContentWidth: 800,
+            newContentHeight: 800,
+            viewportWidth: 100,
+            viewportHeight: 100);
+        Assert.InRange(h, 0, 700);
+        Assert.InRange(v, 0, 700);
+        // Midpoint of a 4K Fit→pinch must stay on-screen (viewport coords).
+        var mid = TouchGestures.ZoomAroundPoint(
+            tapX: 960,
+            tapY: 540,
+            oldContentWidth: 1920,
+            oldContentHeight: 1080,
+            oldOffsetX: 0,
+            oldOffsetY: 0,
+            newContentWidth: 7680,
+            newContentHeight: 4320,
+            viewportWidth: 1920,
+            viewportHeight: 1080);
+        Assert.InRange(mid.Horizontal, 0, 7680 - 1920);
+        Assert.InRange(mid.Vertical, 0, 4320 - 1080);
+        // Content point under midpoint remains under midpoint.
+        Assert.Equal(960 * (7680.0 / 1920.0) - 960, mid.Horizontal, 3);
+        Assert.Equal(540 * (4320.0 / 1080.0) - 540, mid.Vertical, 3);
+    }
+
+    [Fact]
+    public void ZoomAroundPoint_FitSizedContent_ForcesZeroOffset()
+    {
+        // Zooming back to Fit (content == viewport) must reset translation.
+        var (h, v) = TouchGestures.ZoomAroundPoint(
+            tapX: 50,
+            tapY: 50,
+            oldContentWidth: 400,
+            oldContentHeight: 400,
+            oldOffsetX: 120,
+            oldOffsetY: 80,
+            newContentWidth: 100,
+            newContentHeight: 100,
+            viewportWidth: 100,
+            viewportHeight: 100);
+        Assert.Equal(0, h, 3);
+        Assert.Equal(0, v, 3);
+    }
+
+    [Fact]
     public void IsTouchOnly_GatesGestures()
     {
         Assert.True(TouchGestures.IsTouchOnly(true));
