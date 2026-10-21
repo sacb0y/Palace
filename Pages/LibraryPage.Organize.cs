@@ -31,6 +31,15 @@ public sealed partial class LibraryPage
             return;
         }
 
+        if (e.Key == VirtualKey.Escape
+            && !FocusIsTextInput(e.OriginalSource)
+            && SelectMode.ExitsSelectModeOnEscape(ViewModel.IsSelectMode, ViewModel.IsGalleryOverlayOpen))
+        {
+            ViewModel.ExitSelectModeCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != VirtualKey.Z
             || !IsKeyDown(VirtualKey.Control)
             || IsKeyDown(VirtualKey.Shift)

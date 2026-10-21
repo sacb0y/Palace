@@ -76,6 +76,7 @@ public partial class LibraryViewModel : ObservableObject
     public Func<IReadOnlyList<Room>, Task<Room?>>? RequestPickRoom { get; set; }
     public Action? RequestFocusAssignTag { get; set; }
     public Action? RequestOpenAssignPanel { get; set; }
+    public Action? RequestRestoreMosaicSelection { get; set; }
     public Action<GalleryViewModel>? RequestOpenGalleryWindow { get; set; }
     public Action? MosaicReset { get; set; }
     public Action? MosaicChunkAppended { get; set; }

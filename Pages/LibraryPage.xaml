@@ -693,20 +693,50 @@
                                 DoubleTapped="AssetItem_DoubleTapped"
                                 IsDoubleTapEnabled="True"
                                 IsHoldingEnabled="True"
-                                IsTabStop="True"
+                                IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                                 ManipulationMode="System"
                                 Tag="{x:Bind MosaicTag, Mode=OneWay}">
                                 <ItemContainer.ContextFlyout>
                                     <MenuFlyout Opening="AssetMenu_Opening">
+                                        <!-- Batch header / Keep / Reject: visible only in select mode (ConfigureAssetMenu). -->
+                                        <MenuFlyoutItem
+                                            x:Name="MnuBatchHeader"
+                                            AutomationProperties.AutomationId="MnuBatchHeader"
+                                            AutomationProperties.Name="Selection count"
+                                            IsEnabled="False"
+                                            Text="0 selected"
+                                            Visibility="Collapsed"
+                                            Tag="MnuBatchHeader" />
+                                        <MenuFlyoutSeparator
+                                            Tag="MnuBatchHeaderSep"
+                                            Visibility="Collapsed" />
+                                        <MenuFlyoutItem
+                                            Tag="MnuKeep"
+                                            Command="{x:Bind pages:LibraryPage.GetKeepSelectedCommand()}"
+                                            Text="Keep"
+                                            Visibility="Collapsed">
+                                            <MenuFlyoutItem.Icon>
+                                                <ic:FluentIcon Icon="Checkmark" IconSize="Size16" IconVariant="Regular" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
+                                        <MenuFlyoutItem
+                                            Tag="MnuReject"
+                                            Command="{x:Bind pages:LibraryPage.GetRejectSelectedCommand()}"
+                                            Text="Reject"
+                                            Visibility="Collapsed">
+                                            <MenuFlyoutItem.Icon>
+                                                <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                         <MenuFlyoutItem
                                             AutomationProperties.AutomationId="MnuOpen"
-                                        Command="{x:Bind pages:LibraryPage.GetOpenOverlayCommand()}"
-                                        CommandParameter="{x:Bind}"
-                                        Text="Open">
-                                        <MenuFlyoutItem.Icon>
-                                            <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
-                                        </MenuFlyoutItem.Icon>
-                                    </MenuFlyoutItem>
+                                            Command="{x:Bind pages:LibraryPage.GetOpenOverlayCommand()}"
+                                            CommandParameter="{x:Bind}"
+                                            Text="Open">
+                                            <MenuFlyoutItem.Icon>
+                                                <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                            </MenuFlyoutItem.Icon>
+                                        </MenuFlyoutItem>
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuOpenInNewWindow"
                                         Command="{x:Bind pages:LibraryPage.GetOpenInNewWindowCommand()}"
@@ -781,6 +811,27 @@
                                         Text="Delete">
                                         <MenuFlyoutItem.Icon>
                                             <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator
+                                        Tag="MnuBatchTailSep"
+                                        Visibility="Collapsed" />
+                                    <MenuFlyoutItem
+                                        Tag="MnuSelectAll"
+                                        Command="{x:Bind pages:LibraryPage.GetSelectAllVisibleCommand()}"
+                                        Text="Select all"
+                                        Visibility="Collapsed">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Multiselect" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        Tag="MnuClearSelection"
+                                        Command="{x:Bind pages:LibraryPage.GetClearSelectionAndExitCommand()}"
+                                        Text="Clear selection"
+                                        Visibility="Collapsed">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="DismissCircle" IconSize="Size16" IconVariant="Regular" />
                                         </MenuFlyoutItem.Icon>
                                     </MenuFlyoutItem>
                                 </MenuFlyout>

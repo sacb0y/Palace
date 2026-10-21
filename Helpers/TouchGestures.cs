@@ -96,10 +96,11 @@ public static class TouchGestures
         overlayOpen && !reviewMode;
 
     /// <summary>
-    /// Mosaic: touch long-press is select — suppress ItemContainer ContextFlyout.
+    /// Mosaic touch long-press: outside select mode enters select (suppress
+    /// ContextFlyout); in select mode opens the batch ContextFlyout.
     /// Viewer uses <see cref="ViewerHoldOpensContext"/> instead.
     /// </summary>
-    public static bool OpensContextFromTouchHold() => false;
+    public static bool OpensContextFromTouchHold(bool selectMode = false) => selectMode;
 
     /// <summary>
     /// Suppress mosaic ContextFlyout after a touch press. Keyboard (Shift+F10 /
