@@ -36,6 +36,8 @@ public partial class LibraryViewModel : ObservableObject
     private int _busyDepth;
     private Dictionary<string, bool> _sourceIsCloud = new(StringComparer.Ordinal);
     private HashSet<string> _localSourceIds = new(StringComparer.Ordinal);
+    private string _sectionBrowsePath = "";
+    private HashSet<string> _collapsedSections = new(StringComparer.OrdinalIgnoreCase);
     private const int MosaicChunkSize = 80;
 
     public LibraryViewModel(
@@ -109,6 +111,21 @@ public partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial double MosaicRowHeight { get; set; } = 140;
+
+    /// <summary>When true, folder browse shows one continuous mosaic (no section headers).</summary>
+    [ObservableProperty]
+    public partial bool FlattenSubfolders { get; set; }
+
+    /// <summary>True while the current folder browse has subfolder section chrome.</summary>
+    [ObservableProperty]
+    public partial bool ShowFolderSectionsChrome { get; set; }
+
+    /// <summary>Long scan notice text for the footer Details link; null when compact.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatusDetails))]
+    public partial string? StatusDetails { get; set; }
+
+    public bool HasStatusDetails => !string.IsNullOrWhiteSpace(StatusDetails);
 
     [ObservableProperty]
     public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
@@ -383,6 +400,17 @@ public partial class LibraryViewModel : ObservableObject
         {
             ApplicationData.Current.LocalSettings.Values[RowHeightKey(project.Id)] = clamped;
         }
+    }
+
+    partial void OnFlattenSubfoldersChanged(bool value)
+    {
+        if (_suppressFilter || string.IsNullOrEmpty(_sectionBrowsePath))
+        {
+            return;
+        }
+
+        SaveFlatten(_sectionBrowsePath, value);
+        _ = ApplyFilterAsync();
     }
 
     partial void OnSelectedAssetChanged(AssetItem? value) => _ = LoadPreviewAsync(value);

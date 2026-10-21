@@ -185,16 +185,31 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var items = await Task.Run(() => BuildMosaicItems(
+            var groupFolders = FolderGroups.ShouldGroup(
+                tagBrowse,
+                !string.IsNullOrWhiteSpace(search),
+                hasFolderPath);
+            var (flatten, collapsed) = groupFolders && folderPath is not null
+                ? ReadSectionPrefs(folderPath)
+                : (false, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            var build = await Task.Run(() => BuildMosaicItems(
                 assets,
-                FolderGroups.ShouldGroup(tagBrowse, !string.IsNullOrWhiteSpace(search), hasFolderPath),
+                groupFolders,
                 folderName ?? "",
-                folderPath ?? ""));
+                folderPath ?? "",
+                flatten,
+                collapsed));
             if (epoch != _filterEpoch)
             {
                 return;
             }
 
+            await UiDispatch.RunAsync(() =>
+            {
+                ApplyMosaicBuildChrome(build);
+                StatusDetails = null;
+            });
+            var items = build.Items;
             var assetCount = items.Count(item => !item.IsFolderHeader);
             var joiner = matchMode == TagFilterMode.All
                 ? " + "

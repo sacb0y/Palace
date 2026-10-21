@@ -249,13 +249,17 @@ public static class FolderGroups
 
     public static List<T> InterleaveHeaders<T>(
         IReadOnlyList<FolderGroup<T>> groups,
-        Func<FolderGroup<T>, T> headerFactory)
+        Func<FolderGroup<T>, T> headerFactory,
+        Func<FolderGroup<T>, bool>? includeItems = null)
     {
         var list = new List<T>();
         foreach (var group in groups)
         {
             list.Add(headerFactory(group));
-            list.AddRange(group.Items);
+            if (includeItems is null || includeItems(group))
+            {
+                list.AddRange(group.Items);
+            }
         }
 
         return list;

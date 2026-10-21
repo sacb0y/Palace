@@ -137,7 +137,7 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
             return;
         }
 
-        var specs = new (bool IsHeader, double Aspect)[count];
+        var specs = new MosaicSpec[count];
         for (var i = 0; i < count; i++)
         {
             specs[i] = SpecOf(context, i);
@@ -211,20 +211,33 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     private static bool Intersects(Rect a, Rect b) =>
         a.Left < b.Right && a.Right > b.Left && a.Top < b.Bottom && a.Bottom > b.Top;
 
-    private static (bool IsHeader, double Aspect) SpecOf(VirtualizingLayoutContext context, int index)
+    private static MosaicSpec SpecOf(VirtualizingLayoutContext context, int index)
     {
         try
         {
             if (context.GetItemAt(index) is AssetItem asset)
             {
-                return (asset.IsFolderHeader, Math.Max(0.15, asset.AspectRatio));
+                if (asset.IsFolderHeader)
+                {
+                    return new MosaicSpec(
+                        MosaicSlotKind.FullHeader,
+                        Aspect: 0,
+                        Collapsed: asset.IsFolderCollapsed,
+                        MiniWidth: MosaicRows.MiniHeaderWidth(
+                            asset.FolderGroupTitle,
+                            asset.FolderItemCount));
+                }
+
+                return new MosaicSpec(
+                    MosaicSlotKind.Asset,
+                    MosaicRows.ClampTileAspect(asset.AspectRatio));
             }
         }
         catch (ArgumentOutOfRangeException)
         {
         }
 
-        return (false, 1);
+        return new MosaicSpec(MosaicSlotKind.Asset, 1);
     }
 
     private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

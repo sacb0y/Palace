@@ -33,6 +33,7 @@ public sealed partial class LibraryPage : Page
     private long _lastPlanLogMs;
     private ScrollViewer? _mosaicScrollViewer;
     private ScrollView? _mosaicScrollView;
+    private AssetItem? _stickySection;
     private readonly ThumbLoadQueue _thumbQueue = new(
         ThumbScheduler.EffectiveConcurrencyCap(Environment.ProcessorCount));
     private readonly ThumbMemoryCache<ImageSource> _thumbMemory = new(256);
@@ -101,9 +102,12 @@ public sealed partial class LibraryPage : Page
                 UpdatePreview();
             }
 
-            if (e.PropertyName is nameof(LibraryViewModel.MosaicRowHeight))
+            if (e.PropertyName is nameof(LibraryViewModel.MosaicRowHeight)
+                or nameof(LibraryViewModel.FlattenSubfolders)
+                or nameof(LibraryViewModel.ShowFolderSectionsChrome))
             {
                 InvalidateMosaicLayout();
+                UpdateStickyFolderHeader();
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.OverlayGallery) or nameof(LibraryViewModel.IsGalleryOverlayOpen))
@@ -209,6 +213,8 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand<PromptSuggestion> GetAcceptSuggestionCommand() => AppServices.Library.AcceptSuggestionCommand;
 
     public static IRelayCommand<AssetItem?> GetActivateFolderHeaderCommand() => AppServices.Library.ActivateFolderHeaderCommand;
+
+    public static IRelayCommand<AssetItem?> GetToggleFolderSectionCommand() => AppServices.Library.ToggleFolderSectionCommand;
 
     public static IRelayCommand<AssetItem?> GetOpenOverlayCommand() => AppServices.Library.OpenOverlayCommand;
 
@@ -1657,6 +1663,7 @@ public sealed partial class LibraryPage : Page
 
     private void OnMosaicReset()
     {
+        HideStickyFolderHeader();
         if (!IsLoaded)
         {
             return;
@@ -1676,6 +1683,7 @@ public sealed partial class LibraryPage : Page
         _thumbJobs.Clear();
         _realizedTiles.Clear();
         InvalidateMosaicLayout();
+        UpdateStickyFolderHeader();
     }
 
     private void OnMosaicChunkAppended()
@@ -1687,6 +1695,7 @@ public sealed partial class LibraryPage : Page
 
         InvalidateMosaicLayout();
         RefreshRealizedTiles();
+        UpdateStickyFolderHeader();
         if (ViewModel.Assets.Count == 0)
         {
             return;
@@ -2192,7 +2201,11 @@ public sealed partial class LibraryPage : Page
         _mosaicScrollViewer = FindDescendant<ScrollViewer>(GrdAssets);
         if (_mosaicScrollViewer is not null)
         {
-            _mosaicScrollViewer.ViewChanged += (_, _) => ScheduleThumbPlan("scroll");
+            _mosaicScrollViewer.ViewChanged += (_, _) =>
+            {
+                ScheduleThumbPlan("scroll");
+                UpdateStickyFolderHeader();
+            };
             _scrollHooked = true;
             return;
         }
@@ -2200,8 +2213,122 @@ public sealed partial class LibraryPage : Page
         _mosaicScrollView = FindDescendant<ScrollView>(GrdAssets);
         if (_mosaicScrollView is not null)
         {
-            _mosaicScrollView.ViewChanged += (_, _) => ScheduleThumbPlan("scroll");
+            _mosaicScrollView.ViewChanged += (_, _) =>
+            {
+                ScheduleThumbPlan("scroll");
+                UpdateStickyFolderHeader();
+            };
             _scrollHooked = true;
+        }
+    }
+
+    private void UpdateStickyFolderHeader()
+    {
+        if (!ViewModel.ShowFolderSectionsChrome
+            || ViewModel.FlattenSubfolders
+            || ViewModel.Assets.Count == 0)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        var offset = _mosaicScrollViewer?.VerticalOffset
+            ?? _mosaicScrollView?.VerticalOffset
+            ?? 0;
+        var width = Math.Max(1, GrdAssets.ActualWidth);
+        var assets = ViewModel.Assets;
+        var specs = new MosaicSpec[assets.Count];
+        for (var i = 0; i < assets.Count; i++)
+        {
+            var asset = assets[i];
+            specs[i] = asset.IsFolderHeader
+                ? new MosaicSpec(
+                    MosaicSlotKind.FullHeader,
+                    0,
+                    asset.IsFolderCollapsed,
+                    MosaicRows.MiniHeaderWidth(asset.FolderGroupTitle, asset.FolderItemCount))
+                : new MosaicSpec(MosaicSlotKind.Asset, MosaicRows.ClampTileAspect(asset.AspectRatio));
+        }
+
+        var slots = MosaicRows.Layout(
+            specs,
+            width,
+            ViewModel.MosaicRowHeight,
+            8,
+            GalleryMedia.FolderHeaderHeight);
+        AssetItem? active = null;
+        var headerTop = 0d;
+        var headerHeight = GalleryMedia.FolderHeaderHeight;
+        for (var i = 0; i < assets.Count && i < slots.Count; i++)
+        {
+            if (!assets[i].IsFolderHeader)
+            {
+                continue;
+            }
+
+            var slot = slots[i];
+            if (slot.Y <= offset + 1)
+            {
+                active = assets[i];
+                headerTop = slot.Y;
+                headerHeight = slot.Height;
+            }
+        }
+
+        if (active is null || headerTop + headerHeight > offset + 0.5)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        _stickySection = active;
+        TxtStickyFolderTitle.Text = active.FolderGroupTitle;
+        TxtStickyFolderCount.Text = active.FolderCountText;
+        BrdStickyFolderCount.Visibility = active.ShowFolderCount ? Visibility.Visible : Visibility.Collapsed;
+        BtnStickyCollapse.Visibility = Visibility.Visible;
+        IcnStickyCollapse.Icon = active.IsFolderCollapsed
+            ? FluentIcons.Common.Icon.ChevronRight
+            : FluentIcons.Common.Icon.ChevronDown;
+        BtnStickyCollapse.SetValue(
+            AutomationProperties.NameProperty,
+            active.FolderCollapseAutomationName);
+        var flatten = ViewModel.FlattenSubfolders;
+        TglStickyFlatten.Checked -= TglStickyFlatten_Changed;
+        TglStickyFlatten.Unchecked -= TglStickyFlatten_Changed;
+        TglStickyFlatten.IsChecked = flatten;
+        TglStickyFlatten.Checked += TglStickyFlatten_Changed;
+        TglStickyFlatten.Unchecked += TglStickyFlatten_Changed;
+        BrdStickyFolderHeader.Visibility = Visibility.Visible;
+    }
+
+    private void HideStickyFolderHeader()
+    {
+        _stickySection = null;
+        BrdStickyFolderHeader.Visibility = Visibility.Collapsed;
+    }
+
+    private void BtnStickyCollapse_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stickySection is not null)
+        {
+            ViewModel.ToggleFolderSectionCommand.Execute(_stickySection);
+        }
+    }
+
+    private void BtnStickyFolderOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stickySection is not null)
+        {
+            ViewModel.SelectFolderGroup(_stickySection);
+        }
+    }
+
+    private void TglStickyFlatten_Changed(object sender, RoutedEventArgs e)
+    {
+        var want = TglStickyFlatten.IsChecked == true;
+        if (ViewModel.FlattenSubfolders != want)
+        {
+            ViewModel.FlattenSubfolders = want;
         }
     }
 

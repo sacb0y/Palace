@@ -109,10 +109,29 @@ public partial class AssetItem : ObservableObject
     public string FolderGroupTitle { get; set; } = "";
     public string FolderGroupPath { get; set; } = "";
 
+    /// <summary>Asset count in this folder section (headers only).</summary>
+    public int FolderItemCount { get; set; }
+
+    /// <summary>Collapsed section — header only, tiles omitted from the mosaic.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FolderCollapseAutomationName))]
+    [NotifyPropertyChangedFor(nameof(ShowFolderCount))]
+    public partial bool IsFolderCollapsed { get; set; }
+
     public string MosaicTag => FolderGroups.MosaicTag(IsFolderHeader, Id, FolderGroupPath);
 
     public string FolderGroupAutomationId =>
         "TxtFolderGroup_" + string.Concat((FolderGroupTitle ?? "").Where(char.IsLetterOrDigit));
+
+    public string FolderCountAutomationId =>
+        "TxtFolderCount_" + string.Concat((FolderGroupTitle ?? "").Where(char.IsLetterOrDigit));
+
+    public string FolderCountText => FolderItemCount > 0 ? FolderItemCount.ToString() : "";
+
+    public bool ShowFolderCount => IsFolderHeader && FolderItemCount > 0;
+
+    public string FolderCollapseAutomationName =>
+        IsFolderCollapsed ? "Expand section" : "Collapse section";
 
     public string MosaicItemName =>
         IsFolderHeader

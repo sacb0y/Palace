@@ -90,7 +90,7 @@ public static class GalleryMedia
     /// Compact folder-header row height in DIPs. Headers are caption rows
     /// (<see cref="MosaicRows"/>), not asset mosaic tiles / LinedFlow aspect.
     /// </summary>
-    public const double FolderHeaderHeight = 28.0;
+    public const double FolderHeaderHeight = 34.0;
 
     public static bool UsesAssetTileLayout(bool isFolderHeader) => !isFolderHeader;
 

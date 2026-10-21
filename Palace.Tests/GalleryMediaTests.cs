@@ -75,7 +75,7 @@ public sealed class GalleryMediaTests
     [Fact]
     public void MosaicAspect_HeadersAreNotAssetTiles()
     {
-        Assert.Equal(28.0, GalleryMedia.FolderHeaderHeight);
+        Assert.Equal(34.0, GalleryMedia.FolderHeaderHeight);
         Assert.True(MosaicRows.IsCompactHeader(GalleryMedia.FolderHeaderHeight, 96));
         Assert.False(GalleryMedia.UsesAssetTileLayout(true));
         Assert.True(GalleryMedia.UsesAssetTileLayout(false));
