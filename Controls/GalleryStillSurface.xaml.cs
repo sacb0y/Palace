@@ -917,8 +917,8 @@ public sealed partial class GalleryStillSurface : UserControl
         // Letterbox beside Fit content: enable Translate on ScrStill so swipe
         // starting off-image still browses. Zoomed: None — content handles pan.
         ScrStill.ManipulationMode = scrolls
-            ? ManipulationMode.None
-            : ManipulationMode.TranslateX | ManipulationMode.TranslateY;
+            ? ManipulationModes.None
+            : ManipulationModes.TranslateX | ManipulationModes.TranslateY;
         var bars = GalleryScale.ShowsScrollBars()
             ? ScrollBarVisibility.Auto
             : ScrollBarVisibility.Hidden;
