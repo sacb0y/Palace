@@ -106,10 +106,18 @@ public static class SettingsNav
         new(Tags, "CardTagPortable", ["export tags", "import tags", "tags json"]),
         new(Input, "CardShortcuts", ["shortcut", "shortcuts", "keyboard", "hotkey", "ctrl"]),
         new(Input, "CardTouchGestures", ["touch", "gestures", "pinch", "pan"]),
-        new(Performance, "CardMediaCache", ["cache", "media cache", "max mb", "clear cache"]),
+        new(Performance, "CardMediaCache", ["cache", "media cache", "max mb", "clear cache", "usage", "cache size"]),
         new(Performance, "CardCatalogPath", ["catalog", "palace.db", "durable", "catalog folder"]),
-        new(About, "CardAppVersion", ["version", "about", "palace", "infancy"]),
-        new(About, "CardExportCatalog", ["export catalog", "backup catalog"])
+        new(Performance, "CardThumbConcurrency", ["thumbnail decode", "fewer", "more", "auto decode"]),
+        new(Performance, "CardPreviewQuality", ["preview quality", "high preview", "standard preview"]),
+        new(Performance, "CardGpuPreview", ["gpu", "gpu preview", "decode load"]),
+        new(About, "CardAppVersion", ["version", "about", "palace", "infancy", "copy version"]),
+        new(About, "CardUpdateChannel", ["update", "channel", "preview channel"]),
+        new(About, "CardLicenses", ["license", "licenses", "attribution", "notices"]),
+        new(About, "CardLogs", ["log", "logs", "error-log", "diagnostics"]),
+        new(About, "CardExportImportSettings", ["export settings", "import settings", "portable settings"]),
+        new(About, "CardExportCatalog", ["export catalog", "backup catalog"]),
+        new(About, "CardGlobalReset", ["reset", "reset all", "global reset", "defaults"])
     ];
 
     public static string Normalize(string? id)

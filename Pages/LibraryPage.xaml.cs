@@ -33,7 +33,8 @@ public sealed partial class LibraryPage : Page
     private long _lastPlanLogMs;
     private ScrollViewer? _mosaicScrollViewer;
     private ScrollView? _mosaicScrollView;
-    private readonly ThumbLoadQueue _thumbQueue = new(ThumbScheduler.ConcurrencyCap(Environment.ProcessorCount));
+    private readonly ThumbLoadQueue _thumbQueue = new(
+        ThumbScheduler.EffectiveConcurrencyCap(Environment.ProcessorCount));
     private readonly ThumbMemoryCache<ImageSource> _thumbMemory = new(256);
     private int _previewEpoch;
     private CancellationTokenSource? _previewCts;
@@ -77,6 +78,7 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOpenAssignPanel = () =>
             DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
+        PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
         ViewModel.PropertyChanged += (_, e) =>
@@ -162,6 +164,7 @@ public sealed partial class LibraryPage : Page
         };
         Unloaded += (_, _) =>
         {
+            PerformanceSettings.Changed -= PerformanceSettings_Changed;
             UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
@@ -175,6 +178,12 @@ public sealed partial class LibraryPage : Page
                 _hookedOverlay = null;
             }
         };
+    }
+
+    private void PerformanceSettings_Changed(object? sender, EventArgs e)
+    {
+        _thumbQueue.SetCap(ThumbScheduler.EffectiveConcurrencyCap(Environment.ProcessorCount));
+        ScheduleThumbPlan("perf-settings");
     }
 
     public static IRelayCommand<AssignedTagItem> GetRemoveTagCommand() => AppServices.Library.RemoveAssignedTagCommand;

@@ -18,6 +18,12 @@ public static class SettingsConfirm
     public const string DisconnectTitlePrefix = "Disconnect ";
     public const string DisconnectPrimary = "Disconnect";
 
+    public const string GlobalResetTitle = "Reset all settings";
+    public const string GlobalResetPrimary = "Reset";
+
+    public const string ImportSettingsTitle = "Import settings";
+    public const string ImportSettingsPrimary = "Import";
+
     /// <summary>
     /// Body for removing a watched folder. Always states that files on disk are not touched,
     /// and includes the affected catalog asset count.
@@ -42,6 +48,12 @@ public static class SettingsConfirm
 
     public static string DisconnectBody(string providerDisplayName) =>
         $"Disconnect {providerDisplayName}? Palace forgets this account’s sign-in. Watched cloud folders stay in the catalog until you remove them.";
+
+    public static string GlobalResetBody() =>
+        "Reset Appearance, Viewer, Performance, and other app preferences to defaults? Your catalog, watched folders, tags, and media cache files stay. Restart may be needed for some chrome.";
+
+    public static string ImportSettingsBody() =>
+        "Import preferences from this file? Matching settings on this device will be replaced. Catalog, watched folders, and cloud sign-in are not changed.";
 
     /// <summary>
     /// Gate for destructive Settings actions. Fail closed: no handler means do not proceed.

@@ -65,6 +65,7 @@ public static class AppServices
         LoadMediaCache();
         LoadLibrarySettings();
         LoadViewerSettings();
+        LoadPerformanceSettings();
         // Side-by-side/test packages must never open the real catalog.
         try
         {
@@ -279,6 +280,14 @@ public static class AppServices
         ViewerSettings.Apply(
             ViewerSettings.ParseZoom(values[ViewerSettings.DefaultZoomKey]),
             ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures));
+    }
+
+    internal static void LoadPerformanceSettings()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        PerformanceSettings.Apply(
+            PerformanceSettings.ParseConcurrency(values[PerformanceSettings.ThumbConcurrencyKey]),
+            PerformanceSettings.ParsePreviewQuality(values[PerformanceSettings.PreviewQualityKey]));
     }
 
     /// <summary>

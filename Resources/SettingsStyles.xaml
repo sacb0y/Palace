@@ -50,6 +50,7 @@
         <Setter Property="Margin" Value="{StaticResource PalaceSettingsCardSpacing}" />
         <Setter Property="MinHeight" Value="32" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
 
     <Style x:Key="PalaceSettingsExpanderStyle" TargetType="controls:SettingsExpander">
@@ -59,6 +60,7 @@
         <Setter Property="CornerRadius" Value="{StaticResource PalaceSettingsCardCornerRadius}" />
         <Setter Property="Margin" Value="{StaticResource PalaceSettingsCardSpacing}" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
 
     <Style x:Key="PalaceSettingsGroupHeaderStyle" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}">

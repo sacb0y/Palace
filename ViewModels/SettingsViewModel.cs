@@ -252,6 +252,24 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string CatalogRestartHint { get; set; } = "";
 
+    public IReadOnlyList<string> ThumbConcurrencyOptions { get; } = PerformanceSettings.ConcurrencyOptions;
+
+    public IReadOnlyList<string> PreviewQualityOptions { get; } = PerformanceSettings.PreviewQualityOptions;
+
+    public string ThumbConcurrencyCaption { get; } = PerformanceSettings.ThumbConcurrencyCaption;
+
+    public string PreviewQualityCaption { get; } = PerformanceSettings.PreviewQualityCaption;
+
+    public string UpdateChannelCaption { get; } = PerformanceSettings.UpdateChannelCaption;
+
+    public string UpdateChannelLabel { get; } = PerformanceSettings.UpdateChannelLabel;
+
+    [ObservableProperty]
+    public partial string SelectedThumbConcurrency { get; set; } = PerformanceSettings.DefaultConcurrency;
+
+    [ObservableProperty]
+    public partial string SelectedPreviewQuality { get; set; } = PerformanceSettings.DefaultPreviewQuality;
+
     public async Task LoadAsync()
     {
         using var _ = _load.Begin();
@@ -288,6 +306,7 @@ public partial class SettingsViewModel : ObservableObject
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
+        LoadPerformanceChrome();
         LoadCatalogStore();
         await RefreshMediaCacheUsageAsync();
         OneDriveClientId = _cloud.OneDriveClientId;
@@ -480,6 +499,47 @@ public partial class SettingsViewModel : ObservableObject
         values[GalleryChrome.ShowDetailsKey] = ShowDetailsByDefault;
         values[GalleryChrome.LoopVideoKey] = LoopVideo;
         ViewerSettings.Apply(zoom, TouchGesturesEnabled);
+    }
+
+    private void LoadPerformanceChrome()
+    {
+        AppServices.LoadPerformanceSettings();
+        SelectedThumbConcurrency = PerformanceSettings.ThumbConcurrency;
+        SelectedPreviewQuality = PerformanceSettings.PreviewQuality;
+    }
+
+    private void PersistPerformanceChrome()
+    {
+        var concurrency = PerformanceSettings.NormalizeConcurrency(SelectedThumbConcurrency);
+        var quality = PerformanceSettings.NormalizePreviewQuality(SelectedPreviewQuality);
+        var values = ApplicationData.Current.LocalSettings.Values;
+        values[PerformanceSettings.ThumbConcurrencyKey] = concurrency;
+        values[PerformanceSettings.PreviewQualityKey] = quality;
+        PerformanceSettings.Apply(concurrency, quality);
+        SelectedThumbConcurrency = concurrency;
+        SelectedPreviewQuality = quality;
+    }
+
+    partial void OnSelectedThumbConcurrencyChanged(string value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistPerformanceChrome();
+        StatusText = "Thumbnail decode: " + PerformanceSettings.NormalizeConcurrency(value) + ".";
+    }
+
+    partial void OnSelectedPreviewQualityChanged(string value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistPerformanceChrome();
+        StatusText = "Preview quality: " + PerformanceSettings.NormalizePreviewQuality(value) + ".";
     }
 
     partial void OnSelectedDensityChanged(string value)
@@ -1701,6 +1761,126 @@ public partial class SettingsViewModel : ObservableObject
             {
                 AppServices.Library.EndBusy();
             }
+        });
+
+    [RelayCommand]
+    private void CopyAppVersion()
+    {
+        var data = new DataPackage();
+        data.SetText(AppVersionText);
+        Clipboard.SetContent(data);
+        StatusText = "Version copied.";
+    }
+
+    [RelayCommand]
+    private Task OpenLicensesAsync() =>
+        ErrorReporter.RunAsync("Open licenses", Notify, async () =>
+        {
+            var file = await StorageFile.GetFileFromApplicationUriAsync(
+                new Uri("ms-appx:///Assets/Backgrounds/LICENSES.md"));
+            await Windows.System.Launcher.LaunchFileAsync(file);
+            StatusText = "Opened licenses.";
+        });
+
+    [RelayCommand]
+    private Task OpenLogsAsync() =>
+        ErrorReporter.RunAsync("Open log folder", Notify, async () =>
+        {
+            var folder = ApplicationData.Current.LocalFolder;
+            await Windows.System.Launcher.LaunchFolderAsync(folder);
+            StatusText = "Opened log folder (" + ErrorLog.FileName + ").";
+        });
+
+    [RelayCommand]
+    private Task ExportSettingsAsync() =>
+        ErrorReporter.RunAsync("Export settings", Notify, async () =>
+        {
+            var values = ApplicationData.Current.LocalSettings.Values;
+            var pairs = new List<KeyValuePair<string, object>>();
+            foreach (var key in SettingsPortable.ExportKeys)
+            {
+                if (values.TryGetValue(key, out var stored) && stored is not null)
+                {
+                    pairs.Add(new KeyValuePair<string, object>(key, stored));
+                }
+            }
+
+            var json = SettingsPortable.Serialize(SettingsPortable.FromValues(pairs));
+            var file = await _access.PickSaveJsonAsync(
+                $"palace-settings-{DateTime.Now:yyyyMMdd}",
+                "Palace settings");
+            if (file is null)
+            {
+                return;
+            }
+
+            await FileIO.WriteTextAsync(file, json);
+            StatusText = $"Exported settings to {file.Path}";
+        });
+
+    [RelayCommand]
+    private Task ImportSettingsAsync() =>
+        ErrorReporter.RunAsync("Import settings", Notify, async () =>
+        {
+            if (!await SettingsConfirm.ConfirmedAsync(
+                    RequestConfirm,
+                    SettingsConfirm.ImportSettingsTitle,
+                    SettingsConfirm.ImportSettingsBody(),
+                    SettingsConfirm.ImportSettingsPrimary))
+            {
+                return;
+            }
+
+            var file = await _access.PickOpenJsonAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var json = await FileIO.ReadTextAsync(file);
+            var doc = SettingsPortable.Parse(json);
+            var values = ApplicationData.Current.LocalSettings.Values;
+            var count = SettingsPortable.ApplyTo(
+                doc,
+                (key, value) => values[key] = value,
+                key => values.Remove(key));
+            await LoadAsync();
+            StatusText = count > 0
+                ? $"Imported {count} settings from {file.Name}."
+                : "Import file had no matching settings.";
+        });
+
+    [RelayCommand]
+    private Task GlobalResetAsync() =>
+        ErrorReporter.RunAsync("Reset all settings", Notify, async () =>
+        {
+            if (!await SettingsConfirm.ConfirmedAsync(
+                    RequestConfirm,
+                    SettingsConfirm.GlobalResetTitle,
+                    SettingsConfirm.GlobalResetBody(),
+                    SettingsConfirm.GlobalResetPrimary))
+            {
+                return;
+            }
+
+            var values = ApplicationData.Current.LocalSettings.Values;
+            foreach (var key in SettingsPortable.ResetKeys)
+            {
+                values.Remove(key);
+            }
+
+            // Also clear per-preset darkness/blur leftovers so chrome returns to defaults.
+            var stale = values.Keys
+                .Where(k => k.StartsWith("ShellDarkness_", StringComparison.Ordinal)
+                    || k.StartsWith("ShellBlur_", StringComparison.Ordinal))
+                .ToList();
+            foreach (var key in stale)
+            {
+                values.Remove(key);
+            }
+
+            await LoadAsync();
+            StatusText = "Settings reset to defaults.";
         });
 
     [RelayCommand]
