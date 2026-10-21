@@ -1,0 +1,1 @@
+Viewer: HDR and tonemap expander open — peak override + SDR tonemap; sibling cards remain full width.

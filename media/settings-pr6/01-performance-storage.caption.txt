@@ -1,0 +1,1 @@
+Performance: Media cache usage + Clear, Catalog location, GPU & preview (Thumbnail decode Auto, Preview quality Standard).
