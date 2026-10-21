@@ -11,7 +11,7 @@ public sealed class ShortcutCheatsheetTests
         Assert.Equal(
             [
                 "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+D", "I", "Alt+Enter", "Ctrl+H", "M", "Up / Down",
-                "F6", "Space", "Esc", "Ctrl+F", "Ctrl+E"
+                "F6", "Space", "Esc", "X", "K", "S", "Ctrl+Z", "Ctrl+F", "Ctrl+E"
             ],
             ShortcutCheatsheet.Entries.Select(entry => entry.Keys));
         Assert.Equal("1:1", ShortcutCheatsheet.Find("Ctrl+1")?.Action);
@@ -48,6 +48,10 @@ public sealed class ShortcutCheatsheetTests
                 "TxtShortcutFocusCycle",
                 "TxtShortcutSpace",
                 "TxtShortcutEsc",
+                "TxtShortcutReviewReject",
+                "TxtShortcutReviewKeep",
+                "TxtShortcutReviewSkip",
+                "TxtShortcutUndo",
                 "TxtShortcutSettingsFind",
                 "TxtShortcutSettingsFindAlt"
             ],

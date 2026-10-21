@@ -60,6 +60,10 @@ public static class ShortcutCheatsheet
         new("F6", "Cycle image / controls / Details", "TxtShortcutFocusCycle"),
         new("Space", "Open overlay on the focused or selected tile", "TxtShortcutSpace"),
         new("Esc", "Close Details, then overlay", "TxtShortcutEsc"),
+        new("X", "Review: Reject (move to _rejected)", "TxtShortcutReviewReject"),
+        new("K", "Review: Keep", "TxtShortcutReviewKeep"),
+        new("S", "Review: Skip", "TxtShortcutReviewSkip"),
+        new("Ctrl+Z", "Undo (Review decisions or file ops)", "TxtShortcutUndo"),
         new("Ctrl+F", "Settings: Find", "TxtShortcutSettingsFind"),
         new("Ctrl+E", "Settings: Find", "TxtShortcutSettingsFindAlt")
     ];
