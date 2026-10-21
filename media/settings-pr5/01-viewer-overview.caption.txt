@@ -1,0 +1,1 @@
+Viewer: Default zoom (Fit), HDR and tonemap expander, Show Details by default, Slideshow placeholder, Loop video.
