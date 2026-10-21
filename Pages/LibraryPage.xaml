@@ -652,7 +652,7 @@
                             IsDoubleTapEnabled="True"
                             IsHoldingEnabled="True"
                             IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
-                            ManipulationMode="None"
+                            ManipulationMode="System"
                             Tag="{x:Bind MosaicTag, Mode=OneWay}">
                             <ItemContainer.ContextFlyout>
                                 <MenuFlyout Opening="AssetMenu_Opening">
@@ -780,7 +780,7 @@
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"
                                     IsDoubleTapEnabled="True"
-                                    ManipulationMode="None"
+                                    ManipulationMode="System"
                                     RightTapped="AssetItem_RightTapped"
                                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsFolderHeader), Mode=OneWay}">
                                     <Image
@@ -788,7 +788,7 @@
                                         DoubleTapped="AssetItem_DoubleTapped"
                                         IsDoubleTapEnabled="True"
                                         Loaded="TileImage_Loaded"
-                                        ManipulationMode="None"
+                                        ManipulationMode="System"
                                         Source="{x:Bind ThumbImage, Mode=OneWay}"
                                         Stretch="UniformToFill"
                                         Tag="{x:Bind Id, Mode=OneWay}"
@@ -1494,20 +1494,24 @@
                             <MediaTransportControls IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
-                    <!-- Paused/stopped browse swipe: MPE swallows touch; catcher sits under Play/Volume, above transport dead zone. -->
+                    <!-- Paused/stopped browse swipe: MPE swallows touch. Pointer-tracked catcher under Play/Volume; Margin clears transport. Default hit-test True so open-paused works before PlaybackState sync. -->
                     <Grid
                         x:Name="GrdVideoBrowseSwipe"
+                        Canvas.ZIndex="1"
                         Margin="0,0,0,72"
                         Background="Transparent"
                         DoubleTapped="GalleryOverlayVideo_DoubleTapped"
                         IsDoubleTapEnabled="True"
-                        IsHitTestVisible="False"
-                        ManipulationCompleted="GrdVideoBrowseSwipe_ManipulationCompleted"
-                        ManipulationDelta="GrdVideoBrowseSwipe_ManipulationDelta"
-                        ManipulationMode="TranslateX,TranslateY"
+                        IsHitTestVisible="True"
+                        PointerCanceled="GrdVideoBrowseSwipe_PointerCanceled"
+                        PointerCaptureLost="GrdVideoBrowseSwipe_PointerCaptureLost"
+                        PointerMoved="GrdVideoBrowseSwipe_PointerMoved"
+                        PointerPressed="GrdVideoBrowseSwipe_PointerPressed"
+                        PointerReleased="GrdVideoBrowseSwipe_PointerReleased"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
                     <controls:VolumeControl
                         x:Name="VolOverlay"
+                        Canvas.ZIndex="2"
                         Margin="24,0,0,72"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Bottom"
@@ -1517,6 +1521,7 @@
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
                     <Button
                         x:Name="BtnGalleryPlay"
+                        Canvas.ZIndex="2"
                         MinWidth="72"
                         MinHeight="72"
                         HorizontalAlignment="Center"

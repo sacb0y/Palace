@@ -54,5 +54,9 @@ public sealed class AssetDragTests
             isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
         Assert.False(AssetDrag.ArmsItemContainerCanDrag(
             isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: true, overlayOpen: false));
+        // ManipulationMode=None swallows ItemsView ScrollView pan; System chains it.
+        Assert.Equal("System", AssetDrag.MosaicItemManipulationMode);
+        Assert.True(AssetDrag.MosaicItemAllowsParentTouchScroll("System"));
+        Assert.False(AssetDrag.MosaicItemAllowsParentTouchScroll("None"));
     }
 }

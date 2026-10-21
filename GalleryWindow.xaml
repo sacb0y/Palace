@@ -55,15 +55,19 @@
                 </MediaPlayerElement>
                 <Grid
                     x:Name="GrdVideoBrowseSwipe"
+                    Canvas.ZIndex="1"
                     Margin="0,0,0,72"
                     Background="Transparent"
-                    IsHitTestVisible="False"
-                    ManipulationCompleted="GrdVideoBrowseSwipe_ManipulationCompleted"
-                    ManipulationDelta="GrdVideoBrowseSwipe_ManipulationDelta"
-                    ManipulationMode="TranslateX,TranslateY"
+                    IsHitTestVisible="True"
+                    PointerCanceled="GrdVideoBrowseSwipe_PointerCanceled"
+                    PointerCaptureLost="GrdVideoBrowseSwipe_PointerCaptureLost"
+                    PointerMoved="GrdVideoBrowseSwipe_PointerMoved"
+                    PointerPressed="GrdVideoBrowseSwipe_PointerPressed"
+                    PointerReleased="GrdVideoBrowseSwipe_PointerReleased"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}" />
                 <controls:VolumeControl
                     x:Name="VolGallery"
+                    Canvas.ZIndex="2"
                     Margin="24,0,0,72"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Bottom"

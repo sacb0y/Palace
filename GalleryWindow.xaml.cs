@@ -309,10 +309,12 @@ public sealed partial class GalleryWindow : Window
 
     private void GalleryVolume_Changed(object? sender, EventArgs e) => ApplyVolume();
 
-    private double _videoSwipeDx;
-    private double _videoSwipeDy;
-    private double _videoSwipeVx;
-    private bool _videoSwipeActive;
+    private double _videoSwipeStartX;
+    private double _videoSwipeStartY;
+    private long _videoSwipeStartMs;
+    private uint _videoSwipePointerId;
+    private bool _videoSwipeTracking;
+    private bool _videoSwipeCaptured;
 
     private void HookVideoBrowseSwipe()
     {
@@ -329,72 +331,129 @@ public sealed partial class GalleryWindow : Window
     private void GalleryPlayback_StateChanged(MediaPlaybackSession sender, object args) =>
         DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
 
-    private void SyncVideoBrowseSwipeHitTest()
+    private bool VideoBrowseSwipeAllowedNow()
     {
         var playing = MpeGallery.MediaPlayer?.PlaybackSession?.PlaybackState
             == MediaPlaybackState.Playing;
-        GrdVideoBrowseSwipe.IsHitTestVisible = TouchGestures.AllowsVideoBrowseSwipe(
-            Gallery.IsVideo,
-            playing,
-            ViewerSettings.TouchGesturesEnabled);
+        return TouchGestures.AllowsVideoBrowseSwipe(
+            Gallery.IsVideo, playing, ViewerSettings.TouchGesturesEnabled);
     }
 
-    private void GrdVideoBrowseSwipe_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    private void SyncVideoBrowseSwipeHitTest()
     {
-        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        GrdVideoBrowseSwipe.IsHitTestVisible = VideoBrowseSwipeAllowedNow();
+        if (!GrdVideoBrowseSwipe.IsHitTestVisible)
+        {
+            _videoSwipeTracking = false;
+            _videoSwipeCaptured = false;
+            _videoSwipePointerId = 0;
+        }
+    }
+
+    private void GrdVideoBrowseSwipe_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerDeviceType != PointerDeviceType.Touch || !VideoBrowseSwipeAllowedNow())
         {
             return;
         }
 
-        var playing = MpeGallery.MediaPlayer?.PlaybackSession?.PlaybackState
-            == MediaPlaybackState.Playing;
-        if (!TouchGestures.AllowsVideoBrowseSwipe(
-                Gallery.IsVideo, playing, ViewerSettings.TouchGesturesEnabled))
+        var point = e.GetCurrentPoint(GrdVideoBrowseSwipe);
+        _videoSwipeTracking = true;
+        _videoSwipeCaptured = false;
+        _videoSwipePointerId = e.Pointer.PointerId;
+        _videoSwipeStartX = point.Position.X;
+        _videoSwipeStartY = point.Position.Y;
+        _videoSwipeStartMs = Environment.TickCount64;
+    }
+
+    private void GrdVideoBrowseSwipe_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_videoSwipeTracking || e.Pointer.PointerId != _videoSwipePointerId)
         {
             return;
         }
 
-        var deltaX = e.Delta.Translation.X;
-        var deltaY = e.Delta.Translation.Y;
-        if (deltaX == 0 && deltaY == 0)
+        var point = e.GetCurrentPoint(GrdVideoBrowseSwipe);
+        var dx = point.Position.X - _videoSwipeStartX;
+        var dy = point.Position.Y - _videoSwipeStartY;
+        if (!TouchGestures.ExceedsSlop(dx, dy))
         {
             return;
         }
 
-        _videoSwipeActive = true;
-        _videoSwipeDx += deltaX;
-        _videoSwipeDy += deltaY;
-        _videoSwipeVx = e.Velocities.Linear.X;
+        if (!_videoSwipeCaptured)
+        {
+            _videoSwipeCaptured = GrdVideoBrowseSwipe.CapturePointer(e.Pointer);
+        }
+
         e.Handled = true;
     }
 
-    private void GrdVideoBrowseSwipe_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    private void GrdVideoBrowseSwipe_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (e.PointerDeviceType != PointerDeviceType.Touch || !_videoSwipeActive)
+        if (!_videoSwipeTracking || e.Pointer.PointerId != _videoSwipePointerId)
         {
             return;
         }
 
-        _videoSwipeActive = false;
-        var dx = _videoSwipeDx;
-        var dy = _videoSwipeDy;
-        var vx = _videoSwipeVx;
-        _videoSwipeDx = 0;
-        _videoSwipeDy = 0;
-        _videoSwipeVx = 0;
+        var point = e.GetCurrentPoint(GrdVideoBrowseSwipe);
+        var dx = point.Position.X - _videoSwipeStartX;
+        var dy = point.Position.Y - _videoSwipeStartY;
+        var elapsedMs = Math.Max(1, Environment.TickCount64 - _videoSwipeStartMs);
+        var vx = dx / (double)elapsedMs;
+        var hadCapture = _videoSwipeCaptured;
+        EndVideoBrowseSwipeTracking(e.Pointer);
+
+        if (!hadCapture || !VideoBrowseSwipeAllowedNow())
+        {
+            return;
+        }
 
         var action = TouchGestures.ClassifyBrowseSwipe(
             dx, dy, GrdVideoBrowseSwipe.ActualWidth, vx);
         if (action == TouchGestures.SwipeAction.BrowsePrevious)
         {
             Gallery.GoPreviousCommand.Execute(null);
+            e.Handled = true;
         }
         else if (action == TouchGestures.SwipeAction.BrowseNext)
         {
             Gallery.GoNextCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void GrdVideoBrowseSwipe_PointerCanceled(object sender, PointerRoutedEventArgs e) =>
+        EndVideoBrowseSwipeTracking(e.Pointer);
+
+    private void GrdVideoBrowseSwipe_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerId == _videoSwipePointerId)
+        {
+            _videoSwipeTracking = false;
+            _videoSwipeCaptured = false;
+            _videoSwipePointerId = 0;
+        }
+    }
+
+    private void EndVideoBrowseSwipeTracking(Pointer? pointer)
+    {
+        var captured = _videoSwipeCaptured;
+        _videoSwipeTracking = false;
+        _videoSwipeCaptured = false;
+        _videoSwipePointerId = 0;
+        if (!captured || pointer is null)
+        {
+            return;
         }
 
-        e.Handled = true;
+        try
+        {
+            GrdVideoBrowseSwipe.ReleasePointerCapture(pointer);
+        }
+        catch
+        {
+        }
     }
 
     private async void BtnGalleryWindowSetThumb_Click(object sender, RoutedEventArgs e)

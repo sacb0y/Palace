@@ -28,6 +28,17 @@ public static class AssetDrag
     /// <summary>Mosaic touch pan scrolls only while the tile is not drag-armed.</summary>
     public static bool AllowsMosaicTouchScroll(bool itemContainerCanDrag) => !itemContainerCanDrag;
 
+    /// <summary>
+    /// ItemsView tiles must use <c>ManipulationMode=System</c> so the parent
+    /// ScrollView/ScrollViewer receives touch pan. <c>None</c> (used historically
+    /// for DoubleTapped) swallows finger-drag and leaves the mosaic stuck.
+    /// Tap / double-tap / Holding still work with System.
+    /// </summary>
+    public const string MosaicItemManipulationMode = "System";
+
+    public static bool MosaicItemAllowsParentTouchScroll(string manipulationMode) =>
+        string.Equals(manipulationMode, MosaicItemManipulationMode, StringComparison.Ordinal);
+
     /// <summary>Range select yields to drag when the press lands on an already selected tile.</summary>
     public static bool YieldsRangeSelect(bool isMouse, bool isSelected) => isMouse && isSelected;
 
