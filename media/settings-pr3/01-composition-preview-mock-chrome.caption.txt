@@ -1,0 +1,1 @@
+Appearance 16:9 composition preview (~280 DIP) with mock nav strip and card over the live wallpaper.

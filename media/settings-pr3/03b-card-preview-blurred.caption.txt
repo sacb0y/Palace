@@ -1,0 +1,1 @@
+Background card with preview showing applied blur/darkness behind mock chrome.

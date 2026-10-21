@@ -1,0 +1,1 @@
+Preset thumbs stay sharp while Blur/Darkness update live (no thumb flicker / re-decode).

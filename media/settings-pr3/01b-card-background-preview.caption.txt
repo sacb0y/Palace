@@ -1,0 +1,1 @@
+Background card: 16:9 preview with mock chrome above the preset picker.

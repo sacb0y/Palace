@@ -1,0 +1,1 @@
+Composition preview reflects live Blur and Darkness (GaussianBlur then dim) matching the shell.
