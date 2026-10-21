@@ -73,6 +73,7 @@
     <Compile Include="..\Helpers\ShellPresetSelection.cs" Link="ShellPresetSelection.cs" />
     <Compile Include="..\Helpers\AppearanceSettings.cs" Link="AppearanceSettings.cs" />
     <Compile Include="..\Helpers\LibrarySettings.cs" Link="LibrarySettings.cs" />
+    <Compile Include="..\Helpers\ViewerSettings.cs" Link="ViewerSettings.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />
     <Compile Include="..\Models\ShellPreset.cs" Link="ShellPreset.cs" />
     <Compile Include="..\Helpers\BrandAccent.cs" Link="BrandAccent.cs" />

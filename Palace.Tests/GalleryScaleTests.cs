@@ -3,8 +3,16 @@ using Xunit;
 
 namespace Palace.Tests;
 
+[Collection("ViewerSettingsStatic")]
 public sealed class GalleryScaleTests
 {
+    public GalleryScaleTests()
+    {
+        ViewerSettings.Apply(
+            ViewerSettings.DefaultZoom,
+            ViewerSettings.DefaultTouchGestures);
+    }
+
     [Fact]
     public void FromDigit_MatchesSkivShortcuts()
     {
@@ -154,6 +162,9 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: true, isMouse: false, leftButton: false));
         Assert.True(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: false, isMouse: true, leftButton: false));
         Assert.False(GalleryScale.UsesManipulationGesture(isTouch: false, isPen: false, isMouse: true, leftButton: true));
+        Assert.False(GalleryScale.UsesManipulationGesture(
+            isTouch: true, isPen: false, isMouse: false, leftButton: false, touchGesturesEnabled: false));
+        Assert.True(GalleryScale.UsesPointerCapturePan(true, isMouse: true, leftButton: true));
         Assert.False(GalleryScale.HandlesManipulationDelta(
             isInertial: true, isTouch: true, isPen: false, isMouse: false, leftButton: false));
         Assert.True(GalleryScale.HandlesManipulationDelta(

@@ -90,6 +90,24 @@ public partial class SettingsViewModel : ObservableObject
 
     public string FormatsPlaceholderCaption { get; } = LibrarySettings.FormatsPlaceholderCaption;
 
+    public IReadOnlyList<string> ZoomOptions { get; } = ViewerSettings.ZoomOptions;
+
+    public string SdrTonemapCaption { get; } = ViewerSettings.SdrTonemapCaption;
+
+    public string SlideshowPlaceholderCaption { get; } = ViewerSettings.SlideshowPlaceholderCaption;
+
+    [ObservableProperty]
+    public partial string SelectedDefaultZoom { get; set; } = ViewerSettings.ZoomLabel(ViewerSettings.DefaultZoom);
+
+    [ObservableProperty]
+    public partial bool ShowDetailsByDefault { get; set; } = GalleryChrome.DefaultShowDetails;
+
+    [ObservableProperty]
+    public partial bool LoopVideo { get; set; } = GalleryChrome.DefaultLoopVideo;
+
+    [ObservableProperty]
+    public partial bool TouchGesturesEnabled { get; set; } = ViewerSettings.DefaultTouchGestures;
+
     [ObservableProperty]
     public partial SourceFolderItem? SelectedSource { get; set; }
 
@@ -266,6 +284,7 @@ public partial class SettingsViewModel : ObservableObject
         LoadAccent();
         LoadAppearanceChrome();
         LoadLibraryChrome();
+        LoadViewerChrome();
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
@@ -442,6 +461,27 @@ public partial class SettingsViewModel : ObservableObject
         LibrarySettings.Apply(WatchForChanges, IndexImages, IndexVideo, GenerateThumbsOnScan);
     }
 
+    private void LoadViewerChrome()
+    {
+        AppServices.LoadViewerSettings();
+        SelectedDefaultZoom = ViewerSettings.ZoomLabel(ViewerSettings.DefaultZoomMode);
+        TouchGesturesEnabled = ViewerSettings.TouchGesturesEnabled;
+        var values = ApplicationData.Current.LocalSettings.Values;
+        ShowDetailsByDefault = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
+        LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
+    }
+
+    private void PersistViewerChrome()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        var zoom = ViewerSettings.ParseZoomLabel(SelectedDefaultZoom);
+        values[ViewerSettings.DefaultZoomKey] = ViewerSettings.PersistZoom(zoom);
+        values[ViewerSettings.TouchGesturesKey] = TouchGesturesEnabled;
+        values[GalleryChrome.ShowDetailsKey] = ShowDetailsByDefault;
+        values[GalleryChrome.LoopVideoKey] = LoopVideo;
+        ViewerSettings.Apply(zoom, TouchGesturesEnabled);
+    }
+
     partial void OnSelectedDensityChanged(string value)
     {
         if (_load.IsLoading)
@@ -515,6 +555,58 @@ public partial class SettingsViewModel : ObservableObject
         StatusText = value
             ? "Thumbnails build during scan."
             : "Scan skips thumbnails — mosaic builds them on demand.";
+    }
+
+    partial void OnSelectedDefaultZoomChanged(string value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        var zoom = ViewerSettings.ParseZoomLabel(value);
+        var label = ViewerSettings.ZoomLabel(zoom);
+        if (!string.Equals(value, label, StringComparison.Ordinal))
+        {
+            SelectedDefaultZoom = label;
+            return;
+        }
+
+        PersistViewerChrome();
+        StatusText = "Default zoom: " + label + ".";
+    }
+
+    partial void OnShowDetailsByDefaultChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistViewerChrome();
+        StatusText = value ? "Details open with the overlay." : "Details stay closed until toggled.";
+    }
+
+    partial void OnLoopVideoChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistViewerChrome();
+        StatusText = value ? "Video loops." : "Video stops at the end.";
+    }
+
+    partial void OnTouchGesturesEnabledChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistViewerChrome();
+        StatusText = value ? "Touch gestures on." : "Touch gestures off — mouse left-drag pan stays.";
     }
 
     partial void OnSelectedSourceChanged(SourceFolderItem? value) => SyncSourceSelection();
