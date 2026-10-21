@@ -1,0 +1,11 @@
+﻿FAIL Release x64 MSIX tip ab584e0 (ab584e0bc38efd363945b28509bf7bae1d415951)
+Identity: PalaceSettingsPr7-127 (Release AppX). BelowNormal -m:1. Temp SFW + PALACE_DATA_DIR.
+Expected: Padding=4 + 3px #FFE05A8C ring + wash on owned Border host header/outline (incl. collapsed).
+
+Pixel-scan (strictNear / loosePink / magentaLean):
+1. cache BOTH collapsed: full magentaLean=0; Thumb 715x70=0; Media 715x70=0
+2. cache Media expanded: Thumb collapsed=0; Media expanded strictNear=3829 (content outline; HeaderPink~0-30)
+3. tonemap: full=0; CardHdr 715x70=0
+
+PASS requires pink on header/outline for EVERY matching card including collapsed — FAIL.
+Diagnosis: tip ab584e0 chrome (Padding=4 + opaque ring) still does not produce measurable pink on collapsed SettingsExpander hosts in Release MSIX screenshots. Same class of failure as 315aeac for collapsed cards; pink only when Media expander is expanded.

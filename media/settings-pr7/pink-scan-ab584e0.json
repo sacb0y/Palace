@@ -1,0 +1,20 @@
+﻿{
+    "case3":  {
+                  "full":  0,
+                  "hdr":  0
+              },
+    "case2":  {
+                  "media_expanded":  3829,
+                  "thumb":  0,
+                  "full":  3829,
+                  "media_header":  0
+              },
+    "case1":  {
+                  "media":  0,
+                  "thumb":  0,
+                  "full":  0
+              },
+    "tip":  "ab584e0bc38efd363945b28509bf7bae1d415951",
+    "diagnosis":  "Collapsed owned-Border hosts still show 0 pink pixels in Release MSIX; Padding=4 + #FFE05A8C ring not visible on collapsed expanders.",
+    "result":  "FAIL"
+}

@@ -1,0 +1,1 @@
+﻿Release x64 MSIX tip ab584e0: search cache, Media expanded / Thumb collapsed — FAIL Thumb=0; Media outline pink only when expanded.

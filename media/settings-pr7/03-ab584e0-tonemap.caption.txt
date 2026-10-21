@@ -1,0 +1,1 @@
+﻿Release x64 MSIX tip ab584e0: search tonemap — FAIL PinkWash=0 on HDR and tonemap card.
