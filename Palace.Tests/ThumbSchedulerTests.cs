@@ -17,6 +17,17 @@ public class ThumbSchedulerTests
         Assert.Equal(expected, ThumbScheduler.ConcurrencyCap(cores));
 
     [Fact]
+    public void Queue_SetCap_UpdatesCeiling()
+    {
+        var queue = new ThumbLoadQueue(2);
+        Assert.Equal(2, queue.Cap);
+        queue.SetCap(4);
+        Assert.Equal(4, queue.Cap);
+        queue.SetCap(99);
+        Assert.Equal(ThumbScheduler.MaxConcurrency, queue.Cap);
+    }
+
+    [Fact]
     public void DecodePixels_UsesDisplayScaleAndNeverFullResolution()
     {
         var tile = ThumbScheduler.DecodePixels(140, 140, 2);

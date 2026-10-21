@@ -249,7 +249,7 @@
             <ScrollViewer
                 x:Name="ScrSettingsContent"
                 Grid.Row="1"
-                HorizontalAlignment="Left"
+                HorizontalAlignment="Stretch"
                 HorizontalScrollMode="Disabled"
                 VerticalScrollBarVisibility="Auto">
                 <StackPanel
@@ -1026,6 +1026,7 @@
                         </controls:SettingsCard>
                         <controls:SettingsExpander
                             x:Name="CardHdr"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardHdr"
                             Description="Peak override for HDR displays; SDR stills tonemap automatically"
                             Header="HDR and tonemap"
@@ -1033,6 +1034,8 @@
                             <controls:SettingsExpander.Items>
                                 <controls:SettingsCard
                                     x:Name="CardHdrPeak"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
                                     AutomationProperties.AutomationId="CardHdrPeak"
                                     Description="One app-wide clip for HDR present. 203 nits is paper white."
                                     Header="Override HDR peak brightness"
@@ -1047,6 +1050,8 @@
                                 </controls:SettingsCard>
                                 <controls:SettingsCard
                                     x:Name="CardHdrPeakNits"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
                                     AutomationProperties.AutomationId="CardHdrPeakNits"
                                     Header="Peak nits"
                                     Style="{StaticResource PalaceSettingsCardStyle}"
@@ -1074,6 +1079,8 @@
                                 </controls:SettingsCard>
                                 <controls:SettingsCard
                                     x:Name="CardHdrTonemap"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
                                     AutomationProperties.AutomationId="CardHdrTonemap"
                                     Description="{x:Bind ViewModel.SdrTonemapCaption, Mode=OneWay}"
                                     Header="SDR tonemap"
@@ -1083,6 +1090,8 @@
                         </controls:SettingsExpander>
                         <controls:SettingsCard
                             x:Name="CardShowDetails"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardShowDetails"
                             Description="Open the Details card with the overlay. Toggle anytime with I / Ctrl+D."
                             Header="Show Details by default"
@@ -1097,6 +1106,8 @@
                         </controls:SettingsCard>
                         <controls:SettingsCard
                             x:Name="CardSlideshow"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardSlideshow"
                             Description="{x:Bind ViewModel.SlideshowPlaceholderCaption, Mode=OneWay}"
                             Header="Slideshow"
@@ -1104,6 +1115,8 @@
                             Style="{StaticResource PalaceSettingsCardStyle}" />
                         <controls:SettingsCard
                             x:Name="CardLoopVideo"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardLoopVideo"
                             Description="Replay video when it reaches the end"
                             Header="Loop video"
@@ -1229,91 +1242,107 @@
                     <!-- Performance & Storage -->
                     <StackPanel x:Name="PnlSection_performance" Spacing="0" Visibility="Collapsed">
                         <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Performance" />
-                        <controls:SettingsCard
+                        <controls:SettingsExpander
                             x:Name="CardMediaCache"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardMediaCache"
-                            ContentAlignment="Vertical"
-                            Description="Optional derived thumbs/preview cache. Never recalls online-only originals."
+                            Description="{x:Bind ViewModel.MediaCacheUsageLabel, Mode=OneWay}"
                             Header="Media cache"
-                            Style="{StaticResource PalaceSettingsCardStyle}">
-                            <StackPanel Spacing="8">
-                                <ToggleSwitch
-                                    x:Name="TglMediaCache"
-                                    AutomationProperties.AutomationId="TglMediaCache"
-                                    AutomationProperties.Name="Enable media cache"
-                                    Header="Enable media cache"
-                                    IsOn="{x:Bind ViewModel.MediaCacheEnabled, Mode=TwoWay}"
-                                    OffContent="Off"
-                                    OnContent="On" />
-                                <Slider
-                                    x:Name="SldMediaCacheMaxMb"
-                                    AutomationProperties.AutomationId="SldMediaCacheMaxMb"
-                                    AutomationProperties.Name="Max cache size"
-                                    Header="Max cache size (MB)"
-                                    Maximum="32768"
-                                    Minimum="256"
-                                    StepFrequency="256"
-                                    TickFrequency="2048"
-                                    TickPlacement="None"
-                                    Value="{x:Bind ViewModel.MediaCacheMaxMb, Mode=TwoWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
-                                <TextBlock
-                                    x:Name="TxtMediaCacheMaxMb"
-                                    AutomationProperties.AutomationId="TxtMediaCacheMaxMb"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Style="{StaticResource CaptionTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.MediaCacheMaxLabel, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
-                                <TextBlock
-                                    x:Name="TxtMediaCacheUsage"
-                                    AutomationProperties.AutomationId="TxtMediaCacheUsage"
-                                    Style="{StaticResource BodyTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.MediaCacheUsageLabel, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
-                                <TextBlock
-                                    x:Name="TxtMediaCachePath"
-                                    AutomationProperties.AutomationId="TxtMediaCachePath"
-                                    Style="{StaticResource BodyTextBlockStyle}"
-                                    Text="{x:Bind ViewModel.MediaCachePathLabel, Mode=OneWay}"
-                                    TextWrapping="Wrap"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}" />
-                                <StackPanel
-                                    Orientation="Horizontal"
-                                    Spacing="8"
+                            IsExpanded="True"
+                            Style="{StaticResource PalaceSettingsExpanderStyle}">
+                            <ToggleSwitch
+                                x:Name="TglMediaCache"
+                                AutomationProperties.AutomationId="TglMediaCache"
+                                AutomationProperties.Name="Enable media cache"
+                                IsOn="{x:Bind ViewModel.MediaCacheEnabled, Mode=TwoWay}"
+                                OffContent="Off"
+                                OnContent="On" />
+                            <controls:SettingsExpander.Items>
+                                <controls:SettingsCard
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    Description="Optional derived thumbs/preview cache. Never recalls online-only originals."
+                                    Header="Size limit"
+                                    Style="{StaticResource PalaceSettingsCardStyle}"
                                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.MediaCacheEnabled), Mode=OneWay}">
-                                    <Button
-                                        AutomationProperties.AutomationId="BtnPickCacheFolder"
-                                        AutomationProperties.Name="Choose cache folder"
-                                        Command="{x:Bind ViewModel.PickCacheFolderCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <Slider
+                                            x:Name="SldMediaCacheMaxMb"
+                                            MinWidth="180"
+                                            AutomationProperties.AutomationId="SldMediaCacheMaxMb"
+                                            AutomationProperties.Name="Max cache size"
+                                            Maximum="32768"
+                                            Minimum="256"
+                                            StepFrequency="256"
+                                            TickFrequency="2048"
+                                            TickPlacement="None"
+                                            Value="{x:Bind ViewModel.MediaCacheMaxMb, Mode=TwoWay}" />
+                                        <TextBlock
+                                            x:Name="TxtMediaCacheMaxMb"
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.AutomationId="TxtMediaCacheMaxMb"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.MediaCacheMaxLabel, Mode=OneWay}" />
+                                    </StackPanel>
+                                </controls:SettingsCard>
+                                <controls:SettingsCard
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    ContentAlignment="Vertical"
+                                    Header="Cache folder"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock
+                                            x:Name="TxtMediaCacheUsage"
+                                            AutomationProperties.AutomationId="TxtMediaCacheUsage"
+                                            Style="{StaticResource BodyTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.MediaCacheUsageLabel, Mode=OneWay}" />
+                                        <TextBlock
+                                            x:Name="TxtMediaCachePath"
+                                            AutomationProperties.AutomationId="TxtMediaCachePath"
+                                            Style="{StaticResource BodyTextBlockStyle}"
+                                            Text="{x:Bind ViewModel.MediaCachePathLabel, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
-                                            <TextBlock VerticalAlignment="Center" Text="Choose cache folder" />
+                                            <Button
+                                                AutomationProperties.AutomationId="BtnPickCacheFolder"
+                                                AutomationProperties.Name="Choose cache folder"
+                                                Command="{x:Bind ViewModel.PickCacheFolderCommand}"
+                                                IsEnabled="{x:Bind ViewModel.MediaCacheEnabled, Mode=OneWay}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                                    <TextBlock VerticalAlignment="Center" Text="Choose cache folder" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                AutomationProperties.AutomationId="BtnResetCacheFolder"
+                                                AutomationProperties.Name="Reset to default cache folder"
+                                                Command="{x:Bind ViewModel.ResetCacheFolderCommand}"
+                                                IsEnabled="{x:Bind ViewModel.HasCustomCacheFolder, Mode=OneWay}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
+                                                    <TextBlock VerticalAlignment="Center" Text="Reset to default" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button
+                                                AutomationProperties.AutomationId="BtnClearCache"
+                                                AutomationProperties.Name="Clear cache"
+                                                Command="{x:Bind ViewModel.ClearCacheCommand}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                                    <TextBlock VerticalAlignment="Center" Text="Clear cache" />
+                                                </StackPanel>
+                                            </Button>
                                         </StackPanel>
-                                    </Button>
-                                    <Button
-                                        AutomationProperties.AutomationId="BtnResetCacheFolder"
-                                        AutomationProperties.Name="Reset to default cache folder"
-                                        Command="{x:Bind ViewModel.ResetCacheFolderCommand}"
-                                        IsEnabled="{x:Bind ViewModel.HasCustomCacheFolder, Mode=OneWay}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
-                                            <TextBlock VerticalAlignment="Center" Text="Reset to default" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button
-                                        AutomationProperties.AutomationId="BtnClearCache"
-                                        AutomationProperties.Name="Clear cache"
-                                        Command="{x:Bind ViewModel.ClearCacheCommand}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
-                                            <TextBlock VerticalAlignment="Center" Text="Clear cache" />
-                                        </StackPanel>
-                                    </Button>
-                                </StackPanel>
-                            </StackPanel>
-                        </controls:SettingsCard>
+                                    </StackPanel>
+                                </controls:SettingsCard>
+                            </controls:SettingsExpander.Items>
+                        </controls:SettingsExpander>
                         <controls:SettingsCard
                             x:Name="CardCatalogPath"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardCatalogPath"
                             ContentAlignment="Vertical"
                             Description="Durable palace.db outside package LocalState"
@@ -1357,13 +1386,48 @@
                                 </StackPanel>
                             </StackPanel>
                         </controls:SettingsCard>
-                        <controls:SettingsCard
-                            x:Name="CardPerfPlaceholder"
-                            AutomationProperties.AutomationId="CardPerfPlaceholder"
-                            Description="GPU and preview quality land in a later Settings update."
+                        <controls:SettingsExpander
+                            x:Name="CardGpuPreview"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="CardGpuPreview"
+                            Description="Decode load for mosaic thumbs and side preview"
                             Header="GPU &amp; preview"
-                            IsEnabled="False"
-                            Style="{StaticResource PalaceSettingsCardStyle}" />
+                            Style="{StaticResource PalaceSettingsExpanderStyle}">
+                            <controls:SettingsExpander.Items>
+                                <controls:SettingsCard
+                                    x:Name="CardThumbConcurrency"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    AutomationProperties.AutomationId="CardThumbConcurrency"
+                                    Description="{x:Bind ViewModel.ThumbConcurrencyCaption, Mode=OneWay}"
+                                    Header="Thumbnail decode"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ComboBox
+                                        x:Name="CmbThumbConcurrency"
+                                        MinWidth="140"
+                                        AutomationProperties.AutomationId="CmbThumbConcurrency"
+                                        AutomationProperties.Name="Thumbnail decode concurrency"
+                                        ItemsSource="{x:Bind ViewModel.ThumbConcurrencyOptions, Mode=OneWay}"
+                                        SelectedItem="{x:Bind ViewModel.SelectedThumbConcurrency, Mode=TwoWay}" />
+                                </controls:SettingsCard>
+                                <controls:SettingsCard
+                                    x:Name="CardPreviewQuality"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    AutomationProperties.AutomationId="CardPreviewQuality"
+                                    Description="{x:Bind ViewModel.PreviewQualityCaption, Mode=OneWay}"
+                                    Header="Preview quality"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ComboBox
+                                        x:Name="CmbPreviewQuality"
+                                        MinWidth="140"
+                                        AutomationProperties.AutomationId="CmbPreviewQuality"
+                                        AutomationProperties.Name="Preview quality"
+                                        ItemsSource="{x:Bind ViewModel.PreviewQualityOptions, Mode=OneWay}"
+                                        SelectedItem="{x:Bind ViewModel.SelectedPreviewQuality, Mode=TwoWay}" />
+                                </controls:SettingsCard>
+                            </controls:SettingsExpander.Items>
+                        </controls:SettingsExpander>
                     </StackPanel>
 
                     <!-- About -->
@@ -1371,11 +1435,13 @@
                         <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="About" />
                         <controls:SettingsCard
                             x:Name="CardAppVersion"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardAppVersion"
                             ContentAlignment="Vertical"
                             Header="Version"
                             Style="{StaticResource PalaceSettingsCardStyle}">
-                            <StackPanel Spacing="4">
+                            <StackPanel Spacing="8">
                                 <TextBlock
                                     x:Name="TxtAppVersion"
                                     AutomationProperties.AutomationId="TxtAppVersion"
@@ -1389,10 +1455,102 @@
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind ViewModel.InfancyNoteText, Mode=OneWay}"
                                     TextWrapping="WrapWholeWords" />
+                                <Button
+                                    AutomationProperties.AutomationId="BtnCopyAppVersion"
+                                    AutomationProperties.Name="Copy version"
+                                    Command="{x:Bind ViewModel.CopyAppVersionCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Copy version" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardUpdateChannel"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="CardUpdateChannel"
+                            Description="{x:Bind ViewModel.UpdateChannelCaption, Mode=OneWay}"
+                            Header="Update channel"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <TextBlock
+                                x:Name="TxtUpdateChannel"
+                                VerticalAlignment="Center"
+                                AutomationProperties.AutomationId="TxtUpdateChannel"
+                                AutomationProperties.Name="Update channel"
+                                Style="{StaticResource BodyTextBlockStyle}"
+                                Text="{x:Bind ViewModel.UpdateChannelLabel, Mode=OneWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardLicenses"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="CardLicenses"
+                            Description="Background asset attributions and third-party notices"
+                            Header="Licenses"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <Button
+                                AutomationProperties.AutomationId="BtnOpenLicenses"
+                                AutomationProperties.Name="Open licenses"
+                                Command="{x:Bind ViewModel.OpenLicensesCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ic:FluentIcon Icon="DocumentCopy" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Open licenses" />
+                                </StackPanel>
+                            </Button>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardLogs"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="CardLogs"
+                            Description="error-log.txt in the app local folder (for bug reports)"
+                            Header="Diagnostic logs"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <Button
+                                AutomationProperties.AutomationId="BtnOpenLogs"
+                                AutomationProperties.Name="Open log folder"
+                                Command="{x:Bind ViewModel.OpenLogsCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Open log folder" />
+                                </StackPanel>
+                            </Button>
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardExportImportSettings"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="CardExportImportSettings"
+                            Description="Portable JSON for Appearance, Viewer, Performance, and related prefs. Not catalog or cloud sign-in."
+                            Header="Export / import settings"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    AutomationProperties.AutomationId="BtnExportSettings"
+                                    AutomationProperties.Name="Export settings"
+                                    Command="{x:Bind ViewModel.ExportSettingsCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ic:FluentIcon Icon="ArrowExport" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Export settings" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    AutomationProperties.AutomationId="BtnImportSettings"
+                                    AutomationProperties.Name="Import settings"
+                                    Command="{x:Bind ViewModel.ImportSettingsCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ic:FluentIcon Icon="ArrowImport" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Import settings" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </controls:SettingsCard>
                         <controls:SettingsCard
                             x:Name="CardExportCatalog"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
                             AutomationProperties.AutomationId="CardExportCatalog"
                             Description="Copy palace.db to a folder you choose"
                             Header="Export catalog copy"
@@ -1408,12 +1566,23 @@
                             </Button>
                         </controls:SettingsCard>
                         <controls:SettingsCard
-                            x:Name="CardAboutPlaceholder"
-                            AutomationProperties.AutomationId="CardAboutPlaceholder"
-                            Description="Update channel, licenses, logs, and global reset land later."
-                            Header="More About"
-                            IsEnabled="False"
-                            Style="{StaticResource PalaceSettingsCardStyle}" />
+                            x:Name="CardGlobalReset"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch"
+                            AutomationProperties.AutomationId="CardGlobalReset"
+                            Description="Restore app preferences to defaults. Catalog and watched folders stay."
+                            Header="Reset all settings"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <Button
+                                AutomationProperties.AutomationId="BtnGlobalReset"
+                                AutomationProperties.Name="Reset all settings"
+                                Command="{x:Bind ViewModel.GlobalResetCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Reset all settings" />
+                                </StackPanel>
+                            </Button>
+                        </controls:SettingsCard>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

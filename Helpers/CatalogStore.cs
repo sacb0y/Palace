@@ -94,13 +94,19 @@ public static class CatalogStore
 
         try
         {
-            return Path.GetFullPath(path.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            // Trim '/' and '\' explicitly — on Linux AltDirectorySeparatorChar is
+            // also '/', so Path.* alone leaves a trailing '\' from Windows-style roots.
+            var trimmed = TrimRootSeparators(path.Trim());
+            return TrimRootSeparators(Path.GetFullPath(trimmed));
         }
         catch
         {
             return null;
         }
     }
+
+    private static string TrimRootSeparators(string path) =>
+        path.TrimEnd('/', '\\');
 
     public static string? ReadPointer()
     {

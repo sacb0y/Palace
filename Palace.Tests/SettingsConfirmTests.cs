@@ -74,4 +74,20 @@ public sealed class SettingsConfirmTests
     {
         Assert.True(await SettingsConfirm.ConfirmedAsync((_, _, _) => Task.FromResult(true), "t", "b", "p"));
     }
+
+    [Fact]
+    public void GlobalResetBody_KeepsCatalog()
+    {
+        var body = SettingsConfirm.GlobalResetBody();
+        Assert.Contains("catalog", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("defaults", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ImportSettingsBody_MentionsPrefsOnly()
+    {
+        var body = SettingsConfirm.ImportSettingsBody();
+        Assert.Contains("preferences", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Catalog", body, StringComparison.OrdinalIgnoreCase);
+    }
 }

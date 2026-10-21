@@ -52,7 +52,7 @@ public sealed partial class RoomsPage : Page
 
         var (boxWidth, boxHeight) = ThumbScheduler.DecodePixels(140, 140, scale);
         var items = ViewModel.Sections.SelectMany(section => section.Items).ToList();
-        using var gate = new SemaphoreSlim(ThumbScheduler.ConcurrencyCap(Environment.ProcessorCount));
+        using var gate = new SemaphoreSlim(ThumbScheduler.EffectiveConcurrencyCap(Environment.ProcessorCount));
         var loads = new List<Task>(items.Count);
         foreach (var item in items)
         {

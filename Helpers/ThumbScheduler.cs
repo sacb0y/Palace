@@ -47,8 +47,12 @@ public static class ThumbScheduler
     /// <summary>About two default mosaic rows past the viewport.</summary>
     public const double PrefetchBandDip = 280;
 
-    /// <summary>Hard ceiling so a layout glitch cannot request a 4K decode.</summary>
+    /// <summary>Hard ceiling so a layout glitch cannot request a 4K decode (Standard preview).</summary>
     public const int MaxDecodePixels = 2048;
+
+    /// <summary>Active decode ceiling (Standard or High from Performance settings).</summary>
+    public static int EffectiveMaxDecodePixels =>
+        PerformanceSettings.ResolveMaxDecodePixels();
 
     /// <summary>Two on a small machine, three at four cores, four at eight or more.</summary>
     public static int ConcurrencyCap(int processorCount)
@@ -66,6 +70,10 @@ public static class ThumbScheduler
 
         return MinConcurrency;
     }
+
+    /// <summary>In-flight cap after Performance Settings (Auto / Fewer / More).</summary>
+    public static int EffectiveConcurrencyCap(int processorCount) =>
+        PerformanceSettings.ResolveConcurrency(processorCount);
 
     public static int LongEdge(int? width, int? height) => Math.Max(width ?? 0, height ?? 0);
 
@@ -102,11 +110,12 @@ public static class ThumbScheduler
 
     /// <summary>
     /// Fit the source inside the preview or tile box. Never upscales, never exceeds
-    /// <see cref="MaxDecodePixels"/>, and never returns the file's full-resolution size
+    /// <see cref="EffectiveMaxDecodePixels"/>, and never returns the file's full-resolution size
     /// when that size is larger than the box.
     /// </summary>
     public static (int Width, int Height) FitDecodeSize(int sourceWidth, int sourceHeight, int boxWidth, int boxHeight)
     {
+        var ceiling = EffectiveMaxDecodePixels;
         var boxW = ClampPixels(boxWidth);
         var boxH = ClampPixels(boxHeight);
         if (sourceWidth <= 0 || sourceHeight <= 0)
@@ -122,7 +131,7 @@ public static class ThumbScheduler
 
         var width = Math.Max(1, (int)Math.Round(sourceWidth * scale));
         var height = Math.Max(1, (int)Math.Round(sourceHeight * scale));
-        return (Math.Min(width, MaxDecodePixels), Math.Min(height, MaxDecodePixels));
+        return (Math.Min(width, ceiling), Math.Min(height, ceiling));
     }
 
     public static ThumbBand BandOf(ThumbRect tile, ThumbRect viewport, double prefetchDip)
@@ -176,7 +185,8 @@ public static class ThumbScheduler
             return 1;
         }
 
-        return n > MaxDecodePixels ? MaxDecodePixels : n;
+        var ceiling = EffectiveMaxDecodePixels;
+        return n > ceiling ? ceiling : n;
     }
 
     private static int CompareReadingOrder(ThumbTile a, ThumbTile b)
@@ -208,7 +218,11 @@ public sealed class ThumbLoadQueue
         Cap = Math.Clamp(cap, ThumbScheduler.MinConcurrency, ThumbScheduler.MaxConcurrency);
     }
 
-    public int Cap { get; }
+    public int Cap { get; private set; }
+
+    /// <summary>Updates the in-flight ceiling (Performance Settings Auto / Fewer / More).</summary>
+    public void SetCap(int cap) =>
+        Cap = Math.Clamp(cap, ThumbScheduler.MinConcurrency, ThumbScheduler.MaxConcurrency);
 
     public int InFlight => _inFlight.Count;
 

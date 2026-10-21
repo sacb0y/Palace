@@ -120,13 +120,21 @@ public sealed partial class SettingsPage : Page
         ApplyContentCap(e.NewSize.Width);
 
     /// <summary>
-    /// Content capped at 1000px and left-aligned when the Settings page is wider than 1100px.
+    /// Content width follows the pane (not the widest child) so collapsed expanders
+    /// cannot shrink sibling SettingsCards. Cap at 1000px and left-align when the
+    /// Settings page is wider than 1100px.
     /// </summary>
     private void ApplyContentCap(double pageWidth)
     {
         var capWindow = (double)Application.Current.Resources["PalaceSettingsContentCapWindow"];
         var cap = (double)Application.Current.Resources["PalaceSettingsContentCap"];
-        PnlSettingsContent.MaxWidth = pageWidth > capWindow ? cap : double.PositiveInfinity;
+        // Left nav 180 + content padding 40 (20 each side).
+        var available = Math.Max(240, pageWidth - 180 - 40);
+        var width = pageWidth > capWindow ? Math.Min(cap, available) : available;
+        PnlSettingsContent.Width = width;
+        PnlSettingsContent.MaxWidth = width;
+        PnlSettingsContent.HorizontalAlignment = HorizontalAlignment.Left;
+        ScrSettingsContent.HorizontalAlignment = HorizontalAlignment.Stretch;
     }
 
     private void RestoreLastSection(bool scrollToTop)

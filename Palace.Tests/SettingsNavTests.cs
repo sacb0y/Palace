@@ -117,4 +117,22 @@ public sealed class SettingsNavTests
         Assert.Equal(SettingsNav.Input, touch.Value.SectionId);
         Assert.Equal("CardTouchGestures", touch.Value.CardAutomationId);
     }
+
+    [Fact]
+    public void FindHit_PerformanceAndAboutCards()
+    {
+        var gpu = SettingsNav.FindHit("preview quality");
+        Assert.NotNull(gpu);
+        Assert.Equal(SettingsNav.Performance, gpu.Value.SectionId);
+        Assert.Equal("CardPreviewQuality", gpu.Value.CardAutomationId);
+
+        var reset = SettingsNav.FindHit("global reset");
+        Assert.NotNull(reset);
+        Assert.Equal(SettingsNav.About, reset.Value.SectionId);
+        Assert.Equal("CardGlobalReset", reset.Value.CardAutomationId);
+
+        var licenses = SettingsNav.FindHit("licenses");
+        Assert.NotNull(licenses);
+        Assert.Equal("CardLicenses", licenses.Value.CardAutomationId);
+    }
 }
