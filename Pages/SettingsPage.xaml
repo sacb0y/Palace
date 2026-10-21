@@ -15,8 +15,10 @@
 
     <Page.Resources>
         <!--
-          Selection chrome is on the swatch only (IsSelected). GridViews use
-          SelectionMode=None so group SelectedItem cannot multi-highlight.
+          Selection chrome is on the swatch only (IsSelected across groups).
+          GridViews use SelectionMode=Single so UIA/keyboard Select fires
+          SelectionChanged (same pattern as LstSettingsNav) and applies the
+          background; other groups' SelectedItem are cleared in code-behind.
           Gooey tiles: 96x54, CornerRadius 6. Recent + +Custom. Remove uses shared
           ViewerOverlayButtonStyle (24 DIP plate; style from App.xaml merge).
         -->
@@ -374,7 +376,8 @@
                                         ItemTemplate="{StaticResource ShellPresetTile}"
                                         ItemsSource="{x:Bind ViewModel.ChromeBackgroundPresets, Mode=OneWay}"
                                         KeyDown="ShellPresetGrid_KeyDown"
-                                        SelectionMode="None"
+                                        SelectionChanged="ShellPreset_SelectionChanged"
+                                        SelectionMode="Single"
                                         SingleSelectionFollowsFocus="False" />
                                     <TextBlock
                                         AutomationProperties.AutomationId="TxtShellPresetGroup_Vivid"
@@ -390,7 +393,8 @@
                                         ItemTemplate="{StaticResource ShellPresetTile}"
                                         ItemsSource="{x:Bind ViewModel.VividBackgroundPresets, Mode=OneWay}"
                                         KeyDown="ShellPresetGrid_KeyDown"
-                                        SelectionMode="None"
+                                        SelectionChanged="ShellPreset_SelectionChanged"
+                                        SelectionMode="Single"
                                         SingleSelectionFollowsFocus="False" />
                                     <TextBlock
                                         AutomationProperties.AutomationId="TxtShellPresetGroup_Creator"
@@ -406,7 +410,8 @@
                                         ItemTemplate="{StaticResource ShellPresetTile}"
                                         ItemsSource="{x:Bind ViewModel.CreatorBackgroundPresets, Mode=OneWay}"
                                         KeyDown="ShellPresetGrid_KeyDown"
-                                        SelectionMode="None"
+                                        SelectionChanged="ShellPreset_SelectionChanged"
+                                        SelectionMode="Single"
                                         SingleSelectionFollowsFocus="False" />
                                     <Border
                                         Height="1"
@@ -427,7 +432,8 @@
                                         ItemTemplate="{StaticResource ShellPresetTile}"
                                         ItemsSource="{x:Bind ViewModel.CustomBackgroundPresets, Mode=OneWay}"
                                         KeyDown="ShellPresetGrid_KeyDown"
-                                        SelectionMode="None"
+                                        SelectionChanged="ShellPreset_SelectionChanged"
+                                        SelectionMode="Single"
                                         SingleSelectionFollowsFocus="False" />
                                     <TextBlock
                                         AutomationProperties.AutomationId="TxtShellCustomEmptyCaption"

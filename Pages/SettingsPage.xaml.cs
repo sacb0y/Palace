@@ -20,6 +20,7 @@ public sealed partial class SettingsPage : Page
 {
     private bool _ignoreTintChanges;
     private bool _ignoreNavSelection;
+    private bool _ignorePresetSelection;
     private Control? _highlightedCard;
     private Brush? _highlightRestoreBrush;
     private DispatcherTimer? _highlightTimer;
@@ -53,6 +54,7 @@ public sealed partial class SettingsPage : Page
             await ErrorReporter.RunAsync("Load settings", null, ViewModel.LoadAsync);
             SyncTintPicker();
             ViewModel.RefreshBackgroundPresetSwatches();
+            SyncPresetGridSelection();
             ApplyContentCap(ActualWidth);
             RestoreLastSection(scrollToTop: true);
             ShellBackground.Changed += ShellBackground_PreviewChanged;
@@ -293,6 +295,11 @@ public sealed partial class SettingsPage : Page
         {
             SyncTintPicker();
         }
+
+        if (e.PropertyName is nameof(SettingsViewModel.SelectedPreset))
+        {
+            SyncPresetGridSelection();
+        }
     }
 
     private void SyncTintPicker()
@@ -320,10 +327,108 @@ public sealed partial class SettingsPage : Page
 
     private async void ShellPreset_ItemClick(object sender, ItemClickEventArgs e)
     {
+        // Pointer click also selects (SelectionMode=Single); SelectionChanged applies.
+        // Keep ItemClick so InvokePattern / click still applies if selection is a no-op
+        // (already-selected tile re-clicked).
         if (e.ClickedItem is ShellPresetItem item)
         {
             await ViewModel.SelectBackgroundPresetAsync(item);
+            SyncPresetGridSelection();
         }
+    }
+
+    /// <summary>
+    /// UIA SelectionItem.Select and keyboard selection set SelectedItem —
+    /// apply the background the same way as ItemClick (nav uses SelectionChanged too).
+    /// </summary>
+    private async void ShellPreset_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_ignorePresetSelection || sender is not GridView grid)
+        {
+            return;
+        }
+
+        if (grid.SelectedItem is not ShellPresetItem item)
+        {
+            return;
+        }
+
+        ClearOtherPresetGridSelections(grid);
+        await ViewModel.SelectBackgroundPresetAsync(item);
+        SyncPresetGridSelection();
+    }
+
+    private IEnumerable<GridView> ShellPresetGrids()
+    {
+        yield return GrdShellPresetsChrome;
+        yield return GrdShellPresetsVivid;
+        yield return GrdShellPresetsCreator;
+        yield return GrdShellPresetsCustom;
+    }
+
+    private void ClearOtherPresetGridSelections(GridView active)
+    {
+        _ignorePresetSelection = true;
+        try
+        {
+            foreach (var grid in ShellPresetGrids())
+            {
+                if (!ReferenceEquals(grid, active) && grid.SelectedItem is not null)
+                {
+                    grid.SelectedItem = null;
+                }
+            }
+        }
+        finally
+        {
+            _ignorePresetSelection = false;
+        }
+    }
+
+    /// <summary>
+    /// Align each group's SelectedItem with the model IsSelected tile (cross-group single-select).
+    /// </summary>
+    private void SyncPresetGridSelection()
+    {
+        _ignorePresetSelection = true;
+        try
+        {
+            var selected = ViewModel.SelectedPreset;
+            foreach (var grid in ShellPresetGrids())
+            {
+                if (selected is not null && PresetGridContains(grid, selected))
+                {
+                    if (!ReferenceEquals(grid.SelectedItem, selected))
+                    {
+                        grid.SelectedItem = selected;
+                    }
+                }
+                else if (grid.SelectedItem is not null)
+                {
+                    grid.SelectedItem = null;
+                }
+            }
+        }
+        finally
+        {
+            _ignorePresetSelection = false;
+        }
+    }
+
+    private static bool PresetGridContains(GridView grid, ShellPresetItem item)
+    {
+        if (grid.ItemsSource is System.Collections.IEnumerable items)
+        {
+            foreach (var entry in items)
+            {
+                if (ReferenceEquals(entry, item))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private async void ShellRecentCustomRemove_Click(object sender, RoutedEventArgs e)
@@ -390,6 +495,7 @@ public sealed partial class SettingsPage : Page
             {
                 e.Handled = true;
                 await ViewModel.SelectBackgroundPresetAsync(item);
+                SyncPresetGridSelection();
             }
 
             return;
