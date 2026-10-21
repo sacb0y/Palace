@@ -129,6 +129,11 @@ public sealed class SettingsNavTests
         Assert.Equal(SettingsNav.Viewer, zoom.Value.SectionId);
         Assert.Equal("CardDefaultZoom", zoom.Value.CardAutomationId);
 
+        var keepZoom = SettingsNav.FindHit("keep zoom");
+        Assert.NotNull(keepZoom);
+        Assert.Equal(SettingsNav.Viewer, keepZoom.Value.SectionId);
+        Assert.Equal("CardKeepZoomBetweenImages", keepZoom.Value.CardAutomationId);
+
         var loop = SettingsNav.FindHit("replay");
         Assert.NotNull(loop);
         Assert.Equal(SettingsNav.Viewer, loop.Value.SectionId);

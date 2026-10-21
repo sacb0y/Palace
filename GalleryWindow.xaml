@@ -55,6 +55,7 @@
                 </MediaPlayerElement>
                 <controls:VolumeControl
                     x:Name="VolGallery"
+                    Canvas.ZIndex="2"
                     Margin="24,0,0,72"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Bottom"

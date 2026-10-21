@@ -47,6 +47,8 @@ public sealed partial class LibraryPage : Page
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
+    /// <summary>ItemContainer pre-armed for mouse DnD (hover); null when touch-safe.</summary>
+    private ItemContainer? _canDragArmed;
     private long _rangePressMs;
     private Windows.Foundation.Point _rangePressPoint;
     private uint _rangePointerId;
@@ -78,6 +80,16 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOpenAssignPanel = () =>
             DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
+        SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
+        SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
+        // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
+        SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
+        MpeOverlay.ContextFlyout = FlyOverlayAsset;
+        _videoBrowseSwipe = new VideoBrowseSwipeBinder(
+            MpeOverlay,
+            VideoBrowseSwipeAllowedNow,
+            OnOverlayReviewSwipe);
+        _videoBrowseSwipe.Hook();
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
@@ -102,6 +114,11 @@ public sealed partial class LibraryPage : Page
                 {
                     GrdGalleryOverlay.Focus(FocusState.Programmatic);
                 }
+            }
+
+            if (e.PropertyName is nameof(LibraryViewModel.IsReviewMode))
+            {
+                SrfOverlayStill.IsReviewMode = ViewModel.IsReviewMode;
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.IsTagBrowse) or nameof(LibraryViewModel.TagFilterMode))
@@ -530,6 +547,11 @@ public sealed partial class LibraryPage : Page
     {
         _rangeConsumedTap = false;
         _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+        _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
+        // Touch/pen: force CanDrag off so ItemsView can pan. Mouse: hover already
+        // pre-armed (press alone is too late for WinUI's first-drag sample).
+        SyncMouseCanDragArm(e);
+
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -570,6 +592,9 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeMoved(object sender, PointerRoutedEventArgs e)
     {
+        // Pre-arm CanDrag while the mouse hovers a tile so the first drag works.
+        SyncMouseCanDragArm(e);
+
         if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
         {
             return;
@@ -626,6 +651,12 @@ public sealed partial class LibraryPage : Page
             ViewModel.SelectAsset(holdItem, toggle: false);
             ViewModel.IsSelectMode = true;
             RestoreMosaicSelectionHighlights();
+            // Touch long-press = select; context menu is "…" / right-click only.
+            if (_lastPressWasTouch)
+            {
+                _suppressTouchContextFlyout = true;
+            }
+
             e.Handled = true;
             return;
         }
@@ -659,6 +690,11 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeReleased(object sender, PointerRoutedEventArgs e)
     {
+        // Clear any prior arm, then re-arm if the mouse is still over a tile
+        // (so the next drag does not need an extra hover move).
+        DisarmCanDrag();
+        SyncMouseCanDragArm(e);
+
         if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
         {
             return;
@@ -690,6 +726,8 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeCaptureLost(object sender, PointerRoutedEventArgs e)
     {
+        DisarmCanDrag();
+
         if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
         {
             if (_rangeSelect.IsActive)
@@ -1059,8 +1097,9 @@ public sealed partial class LibraryPage : Page
 
     private void AssetItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        _suppressTouchContextFlyout = false;
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
             e.Handled = true;
             return;
@@ -1071,8 +1110,26 @@ public sealed partial class LibraryPage : Page
 
     private void AssetItem_ContextRequested(object sender, ContextRequestedEventArgs e)
     {
+        // Shift+F10 / Menu: no pointer position — clear stale touch so the menu opens.
+        var hasPointer = e.TryGetPosition(sender as UIElement, out _);
+        if (!hasPointer)
+        {
+            _lastPressWasTouch = false;
+            _suppressTouchContextFlyout = false;
+        }
+
+        // Touch long-press opens select mode, not the context menu.
+        if (TouchGestures.SuppressesContextForTouch(_lastPressWasTouch, hasPointer)
+            || _suppressTouchContextFlyout
+            || TouchGestures.OpensContextFromTouchHold())
+        {
+            _suppressTouchContextFlyout = false;
+            e.Handled = true;
+            return;
+        }
+
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
             e.Handled = true;
             return;
@@ -1088,8 +1145,16 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        if (_suppressTouchContextFlyout
+            || TouchGestures.SuppressesContextForTouch(_lastPressWasTouch, hasPointerPosition: true))
+        {
+            _suppressTouchContextFlyout = false;
+            flyout.Hide();
+            return;
+        }
+
         var item = flyout.Target is FrameworkElement target ? FindAssetItem(target) : null;
-        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
             flyout.Hide();
             return;
@@ -1097,6 +1162,253 @@ public sealed partial class LibraryPage : Page
 
         EnsureSelectedForContext(item);
         PopulateMoveRecents(flyout);
+    }
+
+    private void AssetMore_Click(object sender, RoutedEventArgs e)
+    {
+        _suppressTouchContextFlyout = false;
+        _lastPressWasTouch = false;
+        if (sender is not FrameworkElement fe)
+        {
+            return;
+        }
+
+        var item = FindAssetItem(fe);
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
+        {
+            return;
+        }
+
+        EnsureSelectedForContext(item);
+        var container = FindAncestor<ItemContainer>(fe);
+        if (container?.ContextFlyout is FlyoutBase flyout)
+        {
+            flyout.ShowAt(fe);
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? start) where T : DependencyObject
+    {
+        for (var cur = start; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+        {
+            if (cur is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    private void SyncMouseCanDragArm(PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
+        {
+            DisarmCanDrag();
+            return;
+        }
+
+        var container = FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject);
+        var item = container is null ? null : FindAssetItem(container);
+        var arm = item is not null
+            && AssetDrag.PreArmsCanDragOnMouseHover(
+                isMouse: true,
+                ViewModel.IsSelectMode,
+                item.IsSelected,
+                item.IsFolderHeader,
+                ViewModel.IsGalleryOverlayOpen);
+        if (!arm || container is null)
+        {
+            DisarmCanDrag();
+            return;
+        }
+
+        if (ReferenceEquals(_canDragArmed, container))
+        {
+            return;
+        }
+
+        DisarmCanDrag();
+        container.CanDrag = true;
+        _canDragArmed = container;
+    }
+
+    private void DisarmCanDrag()
+    {
+        if (_canDragArmed is null)
+        {
+            return;
+        }
+
+        _canDragArmed.CanDrag = false;
+        _canDragArmed = null;
+    }
+
+    private void GalleryOverlay_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
+        _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+        // New press starts a new long-press gesture (flyout once per hold).
+        _overlayHoldFlyoutShown = false;
+    }
+
+    private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)
+    {
+        // Surface already classified with IsReviewMode; ViewModel commands
+        // also gate so browse never moves files even if a Review action leaks.
+        switch (action)
+        {
+            case TouchGestures.SwipeAction.BrowsePrevious:
+                ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.BrowseNext:
+                ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.Reject:
+                ViewModel.ReviewRejectCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.Keep:
+                ViewModel.ReviewKeepCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.Skip:
+                ViewModel.ReviewSkipCommand.Execute(null);
+                break;
+        }
+    }
+
+    private void GalleryOverlayVideo_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (!TouchGestures.IsTouchOnly(_lastPressWasTouch)
+            || !ViewerSettings.TouchGesturesEnabled
+            || MpeOverlay.MediaPlayer?.PlaybackSession is not { } session)
+        {
+            return;
+        }
+
+        var pos = e.GetPosition(MpeOverlay);
+        var yFromBottom = MpeOverlay.ActualHeight - pos.Y;
+        if (TouchGestures.BlocksGestureOverVideoControls(
+                VideoBrowseSwipeBinder.IsTransportChromeVisible(MpeOverlay.TransportControls),
+                yFromBottom))
+        {
+            return;
+        }
+
+        var zone = TouchGestures.ClassifyVideoDoubleTap(pos.X, MpeOverlay.ActualWidth);
+        if (zone == TouchGestures.VideoDoubleTapZone.CenterZoom)
+        {
+            // Video center: play/pause (tap already does); no still zoom cycle.
+            return;
+        }
+
+        var delta = TimeSpan.FromSeconds(
+            zone == TouchGestures.VideoDoubleTapZone.LeftSeekBack
+                ? -TouchGestures.VideoSeekSeconds
+                : TouchGestures.VideoSeekSeconds);
+        var next = session.Position + delta;
+        if (next < TimeSpan.Zero)
+        {
+            next = TimeSpan.Zero;
+        }
+
+        // PlaybackSession.NaturalDuration is already a TimeSpan (not WinRT Duration).
+        var duration = session.NaturalDuration;
+        if (duration > TimeSpan.Zero && next > duration)
+        {
+            next = duration;
+        }
+
+        session.Position = next;
+        e.Handled = true;
+    }
+
+    private VideoBrowseSwipeBinder? _videoBrowseSwipe;
+    private bool _overlayHoldFlyoutShown;
+
+    private bool VideoBrowseSwipeAllowedNow()
+    {
+        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
+            == Windows.Media.Playback.MediaPlaybackState.Playing;
+        return TouchGestures.AllowsVideoBrowseSwipe(
+            ViewModel.OverlayGallery?.IsVideo == true,
+            playing,
+            ViewerSettings.TouchGesturesEnabled);
+    }
+
+    private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();
+
+    private void OverlayPlayback_StateChanged(
+        Windows.Media.Playback.MediaPlaybackSession sender,
+        object args) =>
+        DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
+
+    private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        // Fallback when Holding reaches the overlay chrome (still uses LongPressCommitted
+        // because Manipulation cancels Holding on the image). One flyout per hold.
+        if (e.HoldingState != HoldingState.Started
+            || !TouchGestures.IsTouchOnly(_lastPressWasTouch)
+            || !ViewerSettings.TouchGesturesEnabled
+            || !SelectMode.ViewerHoldOpensContext(
+                ViewModel.IsGalleryOverlayOpen, ViewModel.IsReviewMode))
+        {
+            return;
+        }
+
+        if (ShowOverlayAssetContextFlyout(BtnGalleryMore))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void OnOverlayStillLongPress()
+    {
+        if (!ViewerSettings.TouchGesturesEnabled
+            || !SelectMode.ViewerHoldOpensContext(
+                ViewModel.IsGalleryOverlayOpen, ViewModel.IsReviewMode))
+        {
+            return;
+        }
+
+        ShowOverlayAssetContextFlyout(SrfOverlayStill);
+    }
+
+    private void MnuOverlaySelect_Click(object sender, RoutedEventArgs e) =>
+        ViewModel.SelectOverlayCurrentFromMenu();
+
+    private void OverlayAssetMenu_Opening(object sender, object e)
+    {
+        if (ViewModel.OverlayGallery?.Current is not { IsFolderHeader: false } current)
+        {
+            if (sender is MenuFlyout flyout)
+            {
+                flyout.Hide();
+            }
+
+            return;
+        }
+
+        // Commands act on Library selection — keep overlay current selected.
+        EnsureSelectedForContext(current);
+    }
+
+    private bool ShowOverlayAssetContextFlyout(FrameworkElement anchor)
+    {
+        if (ViewModel.OverlayGallery?.Current is not { IsFolderHeader: false } current)
+        {
+            return false;
+        }
+
+        // Holding + LongPressCommitted can both fire — one flyout per gesture.
+        if (_overlayHoldFlyoutShown)
+        {
+            return false;
+        }
+
+        _overlayHoldFlyoutShown = true;
+        EnsureSelectedForContext(current);
+        FlyOverlayAsset.ShowAt(anchor);
+        return true;
     }
 
     private void SyncViewerOverlayAutoHide()
@@ -2046,6 +2358,7 @@ public sealed partial class LibraryPage : Page
     {
         var epoch = Interlocked.Increment(ref _overlayMediaEpoch);
         var gallery = ViewModel.OverlayGallery;
+        SrfOverlayStill.IsReviewMode = ViewModel.IsReviewMode;
         SrfOverlayStill.Bind(ViewModel.IsGalleryOverlayOpen && gallery is { IsImage: true } ? gallery : null);
 
         if (gallery is { IsVideo: true, CurrentPath: not null } video
@@ -2065,12 +2378,14 @@ public sealed partial class LibraryPage : Page
                 MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 ViewerMediaElement.RestoreIfVideoMaximized(App.Window?.AppWindow, wasMaximized);
+                SyncVideoBrowseSwipeHitTest();
             }
             catch
             {
                 if (epoch == _overlayMediaEpoch)
                 {
                     MpeOverlay.Source = null;
+                    SyncVideoBrowseSwipeHitTest();
                 }
             }
         }
@@ -2078,6 +2393,7 @@ public sealed partial class LibraryPage : Page
         {
             BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
             MpeOverlay.Source = null;
+            SyncVideoBrowseSwipeHitTest();
         }
     }
 
@@ -2095,6 +2411,14 @@ public sealed partial class LibraryPage : Page
         VolOverlay.VolumeChanged -= OverlayVolume_Changed;
         VolOverlay.VolumeChanged += OverlayVolume_Changed;
         VolOverlay.SyncFromStore();
+        var session = MpeOverlay.MediaPlayer?.PlaybackSession;
+        if (session is not null)
+        {
+            session.PlaybackStateChanged -= OverlayPlayback_StateChanged;
+            session.PlaybackStateChanged += OverlayPlayback_StateChanged;
+        }
+
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private void ApplyOverlayLoop()
@@ -2124,6 +2448,7 @@ public sealed partial class LibraryPage : Page
 
         player.Play();
         BtnGalleryPlay.Visibility = Microsoft.UI.Xaml.Visibility.Collapsed;
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private async Task<OrganizeChoice?> AskOrganizeChoiceAsync()

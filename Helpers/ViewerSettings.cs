@@ -3,16 +3,19 @@ namespace Palace.Helpers;
 /// <summary>
 /// Viewer + Input prefs (LocalSettings). Off WinUI for Palace.Tests.
 /// Default zoom opens the overlay; Details / loop share <see cref="GalleryChrome"/> keys.
-/// Touch-gesture gate is ready for the touch milestone. Swipe settings land later
-/// (swipe down will mean reject — see touch-gestures design).
+/// Touch-gesture gate. Review swipe: left = reject (_rejected), right = keep;
+/// swipe down is not reject (Isiac 2026-10-21).
+/// Keep-zoom (default on): Actual/Fill carries across stills; off → DefaultZoomMode each open.
 /// </summary>
 public static class ViewerSettings
 {
     public const string DefaultZoomKey = "ViewerDefaultZoom";
     public const string TouchGesturesKey = "ViewerTouchGestures";
+    public const string KeepZoomBetweenImagesKey = "ViewerKeepZoomBetweenImages";
 
     public const ImageScaling DefaultZoom = ImageScaling.Fit;
     public const bool DefaultTouchGestures = true;
+    public const bool DefaultKeepZoomBetweenImages = true;
 
     public static readonly string[] ZoomOptions =
     [
@@ -25,17 +28,22 @@ public static class ViewerSettings
 
     public static bool TouchGesturesEnabled { get; private set; } = DefaultTouchGestures;
 
+    public static bool KeepZoomBetweenImages { get; private set; } = DefaultKeepZoomBetweenImages;
+
     public static event EventHandler? Changed;
 
-    public static void Apply(ImageScaling defaultZoom, bool touchGestures)
+    public static void Apply(ImageScaling defaultZoom, bool touchGestures, bool keepZoomBetweenImages)
     {
-        if (DefaultZoomMode == defaultZoom && TouchGesturesEnabled == touchGestures)
+        if (DefaultZoomMode == defaultZoom
+            && TouchGesturesEnabled == touchGestures
+            && KeepZoomBetweenImages == keepZoomBetweenImages)
         {
             return;
         }
 
         DefaultZoomMode = defaultZoom;
         TouchGesturesEnabled = touchGestures;
+        KeepZoomBetweenImages = keepZoomBetweenImages;
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
@@ -107,4 +115,7 @@ public static class ViewerSettings
 
     public static string SlideshowPlaceholderCaption { get; } =
         "Timed slideshow advances land in a later update.";
+
+    public static string KeepZoomBetweenImagesCaption { get; } =
+        "When on, Fit / Fill / 1:1 carries to the next image. When off, each image opens at Default zoom. HDR stills always show at Fit on screen; your kept zoom returns on the next normal image.";
 }

@@ -41,4 +41,29 @@ public sealed class AssetDragTests
         Assert.False(AssetDrag.YieldsRangeSelect(true, false));
         Assert.False(AssetDrag.YieldsRangeSelect(false, true));
     }
+
+    [Fact]
+    public void ItemContainer_CanDrag_only_arms_for_mouse_so_touch_can_scroll()
+    {
+        // XAML starts CanDrag=False; WinUI samples CanDrag at pointer-down, so
+        // hover pre-arm (not press) is required for the first mouse folder-drag.
+        Assert.False(AssetDrag.ArmsItemContainerCanDrag(
+            isMouse: false, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
+        Assert.False(AssetDrag.PreArmsCanDragOnMouseHover(
+            isMouse: false, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
+        Assert.True(AssetDrag.AllowsMosaicTouchScroll(itemContainerCanDrag: false));
+        Assert.False(AssetDrag.AllowsMosaicTouchScroll(itemContainerCanDrag: true));
+        Assert.True(AssetDrag.PreArmsCanDragOnMouseHover(
+            isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
+        Assert.True(AssetDrag.ArmsItemContainerCanDrag(
+            isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
+        Assert.True(AssetDrag.CanStart(
+            isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: false, overlayOpen: false));
+        Assert.False(AssetDrag.ArmsItemContainerCanDrag(
+            isMouse: true, isSelectMode: false, isSelected: false, isFolderHeader: true, overlayOpen: false));
+        // ManipulationMode=None swallows ItemsView ScrollView pan; System chains it.
+        Assert.Equal("System", AssetDrag.MosaicItemManipulationMode);
+        Assert.True(AssetDrag.MosaicItemAllowsParentTouchScroll("System"));
+        Assert.False(AssetDrag.MosaicItemAllowsParentTouchScroll("None"));
+    }
 }

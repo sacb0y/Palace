@@ -19,6 +19,9 @@ public sealed class SelectModeTests
         Assert.False(SelectMode.EnterFromHold(true, false, false));
         Assert.False(SelectMode.EnterFromHold(false, true, false));
         Assert.False(SelectMode.EnterFromHold(false, false, true));
+        Assert.False(SelectMode.ViewerHoldTogglesSelection(true));
+        Assert.True(SelectMode.ViewerHoldOpensContext(true, reviewMode: false));
+        Assert.False(SelectMode.ViewerHoldOpensContext(true, reviewMode: true));
     }
 
     [Theory]

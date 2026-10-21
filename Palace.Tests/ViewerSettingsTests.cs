@@ -10,7 +10,8 @@ public sealed class ViewerSettingsTests
     {
         ViewerSettings.Apply(
             ViewerSettings.DefaultZoom,
-            ViewerSettings.DefaultTouchGestures);
+            ViewerSettings.DefaultTouchGestures,
+            ViewerSettings.DefaultKeepZoomBetweenImages);
     }
 
     [Fact]
@@ -40,11 +41,23 @@ public sealed class ViewerSettingsTests
     [Fact]
     public void Apply_UpdatesStaticGates()
     {
-        ViewerSettings.Apply(ImageScaling.Fill, touchGestures: false);
+        ViewerSettings.Apply(ImageScaling.Fill, touchGestures: false, keepZoomBetweenImages: false);
         Assert.Equal(ImageScaling.Fill, ViewerSettings.DefaultZoomMode);
         Assert.False(ViewerSettings.TouchGesturesEnabled);
+        Assert.False(ViewerSettings.KeepZoomBetweenImages);
         Assert.False(ViewerSettings.AllowsTouchGestures(false));
         Assert.True(ViewerSettings.AllowsTouchGestures(true));
+    }
+
+    [Fact]
+    public void KeepZoomBetweenImages_DefaultsOnAndPersistsKey()
+    {
+        Assert.True(ViewerSettings.DefaultKeepZoomBetweenImages);
+        Assert.True(ViewerSettings.KeepZoomBetweenImages);
+        Assert.Equal("ViewerKeepZoomBetweenImages", ViewerSettings.KeepZoomBetweenImagesKey);
+        Assert.Contains("Default zoom", ViewerSettings.KeepZoomBetweenImagesCaption, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("kept zoom", ViewerSettings.KeepZoomBetweenImagesCaption, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ViewerSettings.KeepZoomBetweenImagesKey, SettingsPortable.ExportKeys);
     }
 
     [Fact]

@@ -12,6 +12,47 @@ public static class AssetDrag
     public static bool CanStart(bool isMouse, bool isSelectMode, bool isSelected, bool isFolderHeader, bool overlayOpen) =>
         isMouse && !isFolderHeader && !overlayOpen && (!isSelectMode || isSelected);
 
+    /// <summary>
+    /// <c>ItemContainer.CanDrag</c> steals touch pan from the mosaic ScrollViewer.
+    /// Arm only for mouse folder-drag; keep false for touch / pen so finger drag
+    /// scrolls (tap / long-press select stay intact).
+    /// </summary>
+    public static bool ArmsItemContainerCanDrag(
+        bool isMouse,
+        bool isSelectMode,
+        bool isSelected,
+        bool isFolderHeader,
+        bool overlayOpen) =>
+        CanStart(isMouse, isSelectMode, isSelected, isFolderHeader, overlayOpen);
+
+    /// <summary>
+    /// WinUI samples <c>CanDrag</c> at pointer-down before <c>PointerPressed</c>
+    /// can arm it — so the first mouse drag fails if XAML starts false. Pre-arm
+    /// on mouse hover (not press) so the first gesture starts real DnD; touch
+    /// must leave CanDrag false.
+    /// </summary>
+    public static bool PreArmsCanDragOnMouseHover(
+        bool isMouse,
+        bool isSelectMode,
+        bool isSelected,
+        bool isFolderHeader,
+        bool overlayOpen) =>
+        ArmsItemContainerCanDrag(isMouse, isSelectMode, isSelected, isFolderHeader, overlayOpen);
+
+    /// <summary>Mosaic touch pan scrolls only while the tile is not drag-armed.</summary>
+    public static bool AllowsMosaicTouchScroll(bool itemContainerCanDrag) => !itemContainerCanDrag;
+
+    /// <summary>
+    /// ItemsView tiles must use <c>ManipulationMode=System</c> so the parent
+    /// ScrollView/ScrollViewer receives touch pan. <c>None</c> (used historically
+    /// for DoubleTapped) swallows finger-drag and leaves the mosaic stuck.
+    /// Tap / double-tap / Holding still work with System.
+    /// </summary>
+    public const string MosaicItemManipulationMode = "System";
+
+    public static bool MosaicItemAllowsParentTouchScroll(string manipulationMode) =>
+        string.Equals(manipulationMode, MosaicItemManipulationMode, StringComparison.Ordinal);
+
     /// <summary>Range select yields to drag when the press lands on an already selected tile.</summary>
     public static bool YieldsRangeSelect(bool isMouse, bool isSelected) => isMouse && isSelected;
 

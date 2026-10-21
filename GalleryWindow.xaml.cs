@@ -275,18 +275,21 @@ public sealed partial class GalleryWindow : Window
                 MpeGallery.Source = MediaSource.CreateFromStorageFile(file);
                 ViewerMediaElement.SuppressFullWindow(MpeGallery);
                 ViewerMediaElement.RestoreIfVideoMaximized(AppWindow, wasMaximized);
+                HookVideoBrowseSwipe();
             }
             catch
             {
                 if (epoch == _mediaEpoch)
                 {
                     MpeGallery.Source = null;
+                    SyncVideoBrowseSwipeHitTest();
                 }
             }
         }
         else
         {
             MpeGallery.Source = null;
+            SyncVideoBrowseSwipeHitTest();
         }
     }
 
@@ -305,6 +308,49 @@ public sealed partial class GalleryWindow : Window
         Controls.VolumeControl.ApplyToPlayer(MpeGallery.MediaPlayer);
 
     private void GalleryVolume_Changed(object? sender, EventArgs e) => ApplyVolume();
+
+    private VideoBrowseSwipeBinder? _videoBrowseSwipe;
+
+    private void HookVideoBrowseSwipe()
+    {
+        _videoBrowseSwipe ??= new VideoBrowseSwipeBinder(
+            MpeGallery,
+            VideoBrowseSwipeAllowedNow,
+            action =>
+            {
+                if (action == TouchGestures.SwipeAction.BrowsePrevious)
+                {
+                    Gallery.GoPreviousCommand.Execute(null);
+                }
+                else if (action == TouchGestures.SwipeAction.BrowseNext)
+                {
+                    Gallery.GoNextCommand.Execute(null);
+                }
+            });
+        _videoBrowseSwipe.Hook();
+
+        var session = MpeGallery.MediaPlayer?.PlaybackSession;
+        if (session is not null)
+        {
+            session.PlaybackStateChanged -= GalleryPlayback_StateChanged;
+            session.PlaybackStateChanged += GalleryPlayback_StateChanged;
+        }
+
+        SyncVideoBrowseSwipeHitTest();
+    }
+
+    private void GalleryPlayback_StateChanged(MediaPlaybackSession sender, object args) =>
+        DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
+
+    private bool VideoBrowseSwipeAllowedNow()
+    {
+        var playing = MpeGallery.MediaPlayer?.PlaybackSession?.PlaybackState
+            == MediaPlaybackState.Playing;
+        return TouchGestures.AllowsVideoBrowseSwipe(
+            Gallery.IsVideo, playing, ViewerSettings.TouchGesturesEnabled);
+    }
+
+    private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();
 
     private async void BtnGalleryWindowSetThumb_Click(object sender, RoutedEventArgs e)
     {

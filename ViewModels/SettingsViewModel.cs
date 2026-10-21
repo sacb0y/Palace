@@ -96,6 +96,8 @@ public partial class SettingsViewModel : ObservableObject
 
     public string SlideshowPlaceholderCaption { get; } = ViewerSettings.SlideshowPlaceholderCaption;
 
+    public string KeepZoomBetweenImagesCaption { get; } = ViewerSettings.KeepZoomBetweenImagesCaption;
+
     [ObservableProperty]
     public partial string SelectedDefaultZoom { get; set; } = ViewerSettings.ZoomLabel(ViewerSettings.DefaultZoom);
 
@@ -107,6 +109,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool TouchGesturesEnabled { get; set; } = ViewerSettings.DefaultTouchGestures;
+
+    [ObservableProperty]
+    public partial bool KeepZoomBetweenImages { get; set; } = ViewerSettings.DefaultKeepZoomBetweenImages;
 
     [ObservableProperty]
     public partial SourceFolderItem? SelectedSource { get; set; }
@@ -490,6 +495,7 @@ public partial class SettingsViewModel : ObservableObject
         AppServices.LoadViewerSettings();
         SelectedDefaultZoom = ViewerSettings.ZoomLabel(ViewerSettings.DefaultZoomMode);
         TouchGesturesEnabled = ViewerSettings.TouchGesturesEnabled;
+        KeepZoomBetweenImages = ViewerSettings.KeepZoomBetweenImages;
         var values = ApplicationData.Current.LocalSettings.Values;
         ShowDetailsByDefault = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
         LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
@@ -501,9 +507,10 @@ public partial class SettingsViewModel : ObservableObject
         var zoom = ViewerSettings.ParseZoomLabel(SelectedDefaultZoom);
         values[ViewerSettings.DefaultZoomKey] = ViewerSettings.PersistZoom(zoom);
         values[ViewerSettings.TouchGesturesKey] = TouchGesturesEnabled;
+        values[ViewerSettings.KeepZoomBetweenImagesKey] = KeepZoomBetweenImages;
         values[GalleryChrome.ShowDetailsKey] = ShowDetailsByDefault;
         values[GalleryChrome.LoopVideoKey] = LoopVideo;
-        ViewerSettings.Apply(zoom, TouchGesturesEnabled);
+        ViewerSettings.Apply(zoom, TouchGesturesEnabled, KeepZoomBetweenImages);
     }
 
     private void LoadPerformanceChrome()
@@ -672,6 +679,19 @@ public partial class SettingsViewModel : ObservableObject
 
         PersistViewerChrome();
         StatusText = value ? "Touch gestures on." : "Touch gestures off — mouse left-drag pan stays.";
+    }
+
+    partial void OnKeepZoomBetweenImagesChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistViewerChrome();
+        StatusText = value
+            ? "Keep zoom between images on."
+            : "Keep zoom off — each image opens at Default zoom.";
     }
 
     partial void OnSelectedSourceChanged(SourceFolderItem? value) => SyncSourceSelection();

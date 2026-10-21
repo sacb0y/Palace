@@ -32,6 +32,7 @@ public static class SettingsPortable
         LibrarySettings.GenerateThumbsOnScanKey,
         ViewerSettings.DefaultZoomKey,
         ViewerSettings.TouchGesturesKey,
+        ViewerSettings.KeepZoomBetweenImagesKey,
         GalleryChrome.ShowDetailsKey,
         GalleryChrome.LoopVideoKey,
         GalleryPeak.EnabledKey,

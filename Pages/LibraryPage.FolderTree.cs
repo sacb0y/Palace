@@ -17,6 +17,9 @@ namespace Palace.Pages;
 public sealed partial class LibraryPage
 {
     private bool _lastPressWasMouse = true;
+    private bool _lastPressWasTouch;
+    /// <summary>Touch long-press is select — suppress the ItemContainer context flyout.</summary>
+    private bool _suppressTouchContextFlyout;
 
     public static IRelayCommand<FolderNode?> GetNewFolderCommand() => AppServices.Library.NewFolderCommand;
 

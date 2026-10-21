@@ -645,14 +645,14 @@
                     <DataTemplate x:DataType="models:AssetItem">
                         <ItemContainer
                             AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
-                            CanDrag="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
+                            CanDrag="False"
                             ContextRequested="AssetItem_ContextRequested"
                             DragStarting="AssetItem_DragStarting"
                             DoubleTapped="AssetItem_DoubleTapped"
                             IsDoubleTapEnabled="True"
                             IsHoldingEnabled="True"
                             IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
-                            ManipulationMode="None"
+                            ManipulationMode="System"
                             Tag="{x:Bind MosaicTag, Mode=OneWay}">
                             <ItemContainer.ContextFlyout>
                                 <MenuFlyout Opening="AssetMenu_Opening">
@@ -780,7 +780,7 @@
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"
                                     IsDoubleTapEnabled="True"
-                                    ManipulationMode="None"
+                                    ManipulationMode="System"
                                     RightTapped="AssetItem_RightTapped"
                                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsFolderHeader), Mode=OneWay}">
                                     <Image
@@ -788,7 +788,7 @@
                                         DoubleTapped="AssetItem_DoubleTapped"
                                         IsDoubleTapEnabled="True"
                                         Loaded="TileImage_Loaded"
-                                        ManipulationMode="None"
+                                        ManipulationMode="System"
                                         Source="{x:Bind ThumbImage, Mode=OneWay}"
                                         Stretch="UniformToFill"
                                         Tag="{x:Bind Id, Mode=OneWay}"
@@ -890,6 +890,23 @@
                                             IconSize="Size16"
                                             IconVariant="Regular" />
                                     </Border>
+                                    <!-- Context menu: "…" / right-click (not touch long-press). -->
+                                    <Button
+                                        Width="28"
+                                        Height="28"
+                                        Margin="4"
+                                        Padding="0"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="BtnAssetMore"
+                                        AutomationProperties.Name="More"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderThickness="0"
+                                        Click="AssetMore_Click"
+                                        CornerRadius="14"
+                                        ToolTipService.ToolTip="More">
+                                        <ic:FluentIcon Icon="MoreVertical" IconSize="Size16" IconVariant="Regular" />
+                                    </Button>
                                 </Grid>
                             </Grid>
                         </ItemContainer>
@@ -1440,7 +1457,10 @@
             x:Name="GrdGalleryOverlay"
             AutomationProperties.AutomationId="GrdGalleryOverlay"
             AutomationProperties.Name="Gallery overlay"
+            Holding="GalleryOverlay_Holding"
+            IsHoldingEnabled="True"
             IsTabStop="True"
+            PointerPressed="GalleryOverlay_PointerPressed"
             PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
             <Grid
@@ -1467,13 +1487,17 @@
                         AreTransportControlsEnabled="True"
                         AutoPlay="False"
                         AutomationProperties.AutomationId="MpeGalleryOverlay"
+                        DoubleTapped="GalleryOverlayVideo_DoubleTapped"
+                        IsDoubleTapEnabled="True"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
                         <MediaPlayerElement.TransportControls>
                             <MediaTransportControls IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
+                    <!-- Paused browse swipe: AddHandler on MpeOverlay (touch only) so mouse/pen reach transport + ContextFlyout. -->
                     <controls:VolumeControl
                         x:Name="VolOverlay"
+                        Canvas.ZIndex="2"
                         Margin="24,0,0,72"
                         HorizontalAlignment="Left"
                         VerticalAlignment="Bottom"
@@ -1483,6 +1507,7 @@
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}" />
                     <Button
                         x:Name="BtnGalleryPlay"
+                        Canvas.ZIndex="2"
                         MinWidth="72"
                         MinHeight="72"
                         HorizontalAlignment="Center"
@@ -1678,15 +1703,90 @@
                             VerticalAlignment="Top"
                             Orientation="Horizontal"
                             Spacing="8">
-                            <Button
-                                x:Name="BtnGalleryClose"
-                                AutomationProperties.AutomationId="BtnGalleryClose"
-                                AutomationProperties.Name="Close"
-                                Command="{x:Bind ViewModel.CloseOverlayCommand}"
-                                Style="{StaticResource ViewerOverlayCloseButtonStyle}"
-                                ToolTipService.ToolTip="Close (Esc)">
-                                <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
-                            </Button>
+                        <Button
+                            x:Name="BtnGalleryMore"
+                            AutomationProperties.AutomationId="BtnGalleryMore"
+                            AutomationProperties.Name="More"
+                            Style="{StaticResource ViewerOverlayButtonStyle}"
+                            ToolTipService.ToolTip="More">
+                            <!-- MenuFlyout must not be Grid.Children (WMC0020). Shared as
+                                 Button.Flyout + still/video ContextFlyout in code-behind. -->
+                            <Button.Flyout>
+                                <MenuFlyout
+                                    x:Name="FlyOverlayAsset"
+                                    Opening="OverlayAssetMenu_Opening">
+                                    <MenuFlyoutItem
+                                        x:Name="MnuOverlaySelect"
+                                        AutomationProperties.AutomationId="MnuOverlaySelect"
+                                        Click="MnuOverlaySelect_Click"
+                                        Text="Select">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Checkmark" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOverlayShowInExplorer"
+                                        Command="{x:Bind pages:LibraryPage.GetShowInExplorerCommand()}"
+                                        Text="Show in File Explorer">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOverlayCopy"
+                                        Command="{x:Bind pages:LibraryPage.GetCopyFilesCommand()}"
+                                        Text="Copy">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Copy" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOverlayCopyPath"
+                                        Command="{x:Bind pages:LibraryPage.GetCopyPathCommand()}"
+                                        Text="Copy path">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="DocumentCopy" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOverlayMoveToFolder"
+                                        Command="{x:Bind pages:LibraryPage.GetMoveToFolderCommand()}"
+                                        Text="Move to folder…">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOverlayAddTag"
+                                        Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
+                                        Text="Add tag…">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                    <MenuFlyoutSeparator />
+                                    <MenuFlyoutItem
+                                        AutomationProperties.AutomationId="MnuOverlayDelete"
+                                        Command="{x:Bind pages:LibraryPage.GetDeleteFilesCommand()}"
+                                        Text="Delete">
+                                        <MenuFlyoutItem.Icon>
+                                            <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                        </MenuFlyoutItem.Icon>
+                                    </MenuFlyoutItem>
+                                </MenuFlyout>
+                            </Button.Flyout>
+                            <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
+                        <Button
+                            x:Name="BtnGalleryClose"
+                            AutomationProperties.AutomationId="BtnGalleryClose"
+                            AutomationProperties.Name="Close"
+                            Command="{x:Bind ViewModel.CloseOverlayCommand}"
+                            Style="{StaticResource ViewerOverlayCloseButtonStyle}"
+                            ToolTipService.ToolTip="Close (Esc)">
+                            <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
                         </StackPanel>
                     </Grid>
                 </Grid>

@@ -75,8 +75,18 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanOpenInExplorer { get; set; }
 
+    /// <summary>
+    /// Sticky Fit / Fill / 1:1 the user chose (toolbar + keep-zoom). HDR stills
+    /// show Fit via <see cref="DisplayScaling"/> without overwriting this.
+    /// </summary>
     [ObservableProperty]
     public partial ImageScaling Scaling { get; set; } = ImageScaling.Fit;
+
+    private bool _hdrForcesDisplayFit;
+
+    /// <summary>On-screen scale — Fit while the current still is HDR presentable.</summary>
+    public ImageScaling DisplayScaling =>
+        GalleryScale.DisplayScaling(Scaling, _hdrForcesDisplayFit);
 
     [ObservableProperty]
     public partial string DetailsText { get; set; } = "";
@@ -382,13 +392,39 @@ public partial class GalleryViewModel : ObservableObject
         IsScaleFit = value == ImageScaling.Fit;
         IsScaleActual = value == ImageScaling.Actual;
         IsScaleFill = value == ImageScaling.Fill;
+        OnPropertyChanged(nameof(DisplayScaling));
+    }
+
+    private void SetHdrForcesDisplayFit(bool hdrPresentable)
+    {
+        if (_hdrForcesDisplayFit == hdrPresentable)
+        {
+            return;
+        }
+
+        _hdrForcesDisplayFit = hdrPresentable;
+        OnPropertyChanged(nameof(DisplayScaling));
     }
 
     [RelayCommand]
     private void SetScaleActual() => Scaling = ImageScaling.Actual;
 
+    /// <summary>
+    /// Fit toolbar / shortcut. Pinch keeps <see cref="Scaling"/> at Fit while
+    /// zoomed — re-raise so the still surface always clears pinch zoom +
+    /// translation (SDR and HDR).
+    /// </summary>
     [RelayCommand]
-    private void SetScaleFit() => Scaling = ImageScaling.Fit;
+    private void SetScaleFit()
+    {
+        if (Scaling != ImageScaling.Fit)
+        {
+            Scaling = ImageScaling.Fit;
+            return;
+        }
+
+        OnPropertyChanged(nameof(Scaling));
+    }
 
     [RelayCommand]
     private void SetScaleFill() => Scaling = ImageScaling.Fill;
@@ -406,7 +442,15 @@ public partial class GalleryViewModel : ObservableObject
             return false;
         }
 
-        Scaling = next.Value;
+        if (next == ImageScaling.Fit)
+        {
+            SetScaleFit();
+        }
+        else
+        {
+            Scaling = next.Value;
+        }
+
         return true;
     }
 
@@ -494,7 +538,10 @@ public partial class GalleryViewModel : ObservableObject
         Scaling = ViewerSettings.ParseZoom(values[ViewerSettings.DefaultZoomKey]);
         ViewerSettings.Apply(
             Scaling,
-            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures));
+            ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures),
+            ViewerSettings.ParseBool(
+                values[ViewerSettings.KeepZoomBetweenImagesKey],
+                ViewerSettings.DefaultKeepZoomBetweenImages));
         _chromeReady = true;
     }
 
@@ -1049,6 +1096,7 @@ public partial class GalleryViewModel : ObservableObject
                 DetailsText = "";
                 HdrStatus = "";
                 HdrPresented = false;
+                SetHdrForcesDisplayFit(false);
                 ClearHistogram();
                 ApplyGifState(false, null);
                 RefreshImageInfo();
@@ -1205,6 +1253,12 @@ public partial class GalleryViewModel : ObservableObject
                 });
             }
 
+            // Sticky keep-zoom / default only — HDR Fit is DisplayScaling, not Scaling.
+            Scaling = GalleryScale.StickyScalingAfterStillOpen(
+                Scaling,
+                ViewerSettings.KeepZoomBetweenImages,
+                ViewerSettings.DefaultZoomMode);
+            SetHdrForcesDisplayFit(probe.CanPresentHdr);
             StillRevision++;
         });
 

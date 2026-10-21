@@ -196,6 +196,38 @@ public static class GalleryScale
     }
 
     /// <summary>
+    /// Letterbox the oriented image into the viewport (Uniform Fit). Panel
+    /// matches the <b>image content rect</b>, not the full viewport — so HDR
+    /// SwapChainPanel black letterbox is not part of pinch/pan bounds.
+    /// </summary>
+    public static (double Width, double Height) FitContainDipSize(
+        int pixelWidth,
+        int pixelHeight,
+        double viewportWidth,
+        double viewportHeight)
+    {
+        if (viewportWidth <= 1 || viewportHeight <= 1)
+        {
+            return (double.NaN, double.NaN);
+        }
+
+        if (pixelWidth <= 0 || pixelHeight <= 0)
+        {
+            return (viewportWidth, viewportHeight);
+        }
+
+        var imageAspect = (double)pixelWidth / pixelHeight;
+        var viewAspect = viewportWidth / viewportHeight;
+        if (imageAspect > viewAspect)
+        {
+            // Wider than view → width matches; height letterboxed.
+            return (viewportWidth, viewportWidth / imageAspect);
+        }
+
+        return (viewportHeight * imageAspect, viewportHeight);
+    }
+
+    /// <summary>
     /// Mouse left-drag uses pointer capture. Touch, pen, and trackpad pan via
     /// ManipulationDelta so a contact does not pan twice.
     /// </summary>
@@ -270,6 +302,47 @@ public static class GalleryScale
         bool viewportChanged) =>
         stillChanged || scalingChanged || viewportChanged;
 
+    /// <summary>
+    /// Sticky scale after open/navigate (user's kept zoom). Keep-zoom on: carry
+    /// Actual/Fill. Keep-zoom off: <paramref name="defaultZoom"/>. Never forces
+    /// Fit for HDR — use <see cref="DisplayScaling"/> for on-screen Fit.
+    /// </summary>
+    public static ImageScaling StickyScalingAfterStillOpen(
+        ImageScaling current,
+        bool keepZoomBetweenImages,
+        ImageScaling defaultZoom) =>
+        keepZoomBetweenImages
+            ? current
+            : ViewerSettings.NormalizeZoom(defaultZoom);
+
+    /// <summary>
+    /// On-screen scale for the current still. HDR presentable stills show Fit
+    /// without overwriting the sticky kept zoom.
+    /// </summary>
+    public static ImageScaling DisplayScaling(ImageScaling sticky, bool hdrPresentable) =>
+        hdrPresentable ? ImageScaling.Fit : sticky;
+
+    /// <summary>
+    /// Fit at pinch 1 must clear translation (content equals viewport). Actual/Fill
+    /// keep pan offset after release — otherwise 1:1 pans snap top-left and Fill
+    /// loses its centered cover crop.
+    /// </summary>
+    public static bool ClearsScrollOnPinchRelease(ImageScaling scaling, double pinchZoom) =>
+        scaling == ImageScaling.Fit && pinchZoom <= MinPinchZoom + 0.0001;
+
+    /// <summary>
+    /// Open landed at Fit with no leftover pinch or scroll offset (HDR path).
+    /// </summary>
+    public static bool IsOpenAtFit(
+        ImageScaling scaling,
+        double pinchZoom,
+        double horizontalOffset = 0,
+        double verticalOffset = 0) =>
+        scaling == ImageScaling.Fit
+        && pinchZoom <= MinPinchZoom + 0.0001
+        && Math.Abs(horizontalOffset) < 0.5
+        && Math.Abs(verticalOffset) < 0.5;
+
     public static bool UsesWheelPinch(bool controlDown, int wheelDelta) =>
         controlDown && wheelDelta != 0;
 
@@ -327,19 +400,25 @@ public static class GalleryScale
     }
 
     /// <summary>
-    /// Pointer delta subtracts from the current offset and clamps to the
-    /// scrollable range (mouse left-drag and touch/pen drag).
+    /// Pan with per-axis content/viewport clamp (larger: both edges hard;
+    /// smaller: centered). Mouse, touch, and wheel pan when zoomed.
     /// </summary>
-    public static (double Horizontal, double Vertical) DragPan(
+    public static (double Horizontal, double Vertical) DragPanContent(
         double horizontalOffset,
         double verticalOffset,
         double pointerDeltaX,
         double pointerDeltaY,
-        double scrollableWidth,
-        double scrollableHeight) =>
-        (
-            ClampOffset(horizontalOffset - pointerDeltaX, scrollableWidth),
-            ClampOffset(verticalOffset - pointerDeltaY, scrollableHeight));
+        double contentWidth,
+        double contentHeight,
+        double viewportWidth,
+        double viewportHeight) =>
+        TouchGestures.ClampPan(
+            horizontalOffset - pointerDeltaX,
+            verticalOffset - pointerDeltaY,
+            contentWidth,
+            contentHeight,
+            viewportWidth,
+            viewportHeight);
 
     public static double ClampPinchZoom(double zoom) =>
         Math.Clamp(zoom, MinPinchZoom, MaxPinchZoom);
@@ -370,57 +449,9 @@ public static class GalleryScale
     }
 
     /// <summary>
-    /// Keep the pinch origin on the same content point after zoom.
-    /// </summary>
-    public static (double Horizontal, double Vertical) PinchPan(
-        double horizontalOffset,
-        double verticalOffset,
-        double originX,
-        double originY,
-        double oldZoom,
-        double newZoom,
-        double scrollableWidth,
-        double scrollableHeight)
-    {
-        var prior = oldZoom > 0 ? oldZoom : 1.0;
-        var next = ClampPinchZoom(newZoom);
-        var scale = next / prior;
-        return (
-            ClampOffset((horizontalOffset + originX) * scale - originX, scrollableWidth),
-            ClampOffset((verticalOffset + originY) * scale - originY, scrollableHeight));
-    }
-
-    /// <summary>
-    /// One scroll target for a pinch frame: keep the pinch origin, then apply
-    /// the same-frame translation. Do not DragPan from a stale offset after
-    /// ChangeView — ScrollViewer has not updated HorizontalOffset yet.
-    /// </summary>
-    public static (double Horizontal, double Vertical) PinchThenDrag(
-        double horizontalOffset,
-        double verticalOffset,
-        double originX,
-        double originY,
-        double oldZoom,
-        double newZoom,
-        double pointerDeltaX,
-        double pointerDeltaY,
-        double scrollableWidth,
-        double scrollableHeight)
-    {
-        var (h, v) = PinchPan(
-            horizontalOffset,
-            verticalOffset,
-            originX,
-            originY,
-            oldZoom,
-            newZoom,
-            scrollableWidth,
-            scrollableHeight);
-        return DragPan(h, v, pointerDeltaX, pointerDeltaY, scrollableWidth, scrollableHeight);
-    }
-
-    /// <summary>
-    /// Fill starts centered (cover crop). 1:1 starts at the origin.
+    /// Fill starts centered (cover crop). Fit / Actual: offset 0 — when
+    /// content is smaller than the viewport, layout uses Center alignment
+    /// (see still surface); when larger, Left/Top + pan clamp.
     /// </summary>
     public static (double Horizontal, double Vertical) InitialScrollOffset(
         ImageScaling scaling,
@@ -446,20 +477,5 @@ public static class GalleryScale
         return (
             Math.Max(0, (contentWidth - viewportWidth) / 2.0),
             Math.Max(0, (contentHeight - viewportHeight) / 2.0));
-    }
-
-    private static double ClampOffset(double offset, double scrollable)
-    {
-        if (scrollable <= 0)
-        {
-            return 0;
-        }
-
-        if (offset < 0)
-        {
-            return 0;
-        }
-
-        return offset > scrollable ? scrollable : offset;
     }
 }

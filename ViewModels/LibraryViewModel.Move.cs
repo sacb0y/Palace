@@ -188,7 +188,8 @@ public partial class LibraryViewModel
     private async Task MoveAssetsToAsync(
         IReadOnlyList<Asset> assets,
         string destinationDir,
-        string? absorbCreatedFolder = null)
+        string? absorbCreatedFolder = null,
+        bool closeOverlay = true)
     {
         if (assets.Count == 0)
         {
@@ -207,7 +208,11 @@ public partial class LibraryViewModel
                 absorbCreatedFolder: absorbCreatedFolder);
             if (result.Moves.Count > 0)
             {
-                CloseOverlay();
+                if (closeOverlay)
+                {
+                    CloseOverlay();
+                }
+
                 await ApplyMovesToUiAsync(result.Moves, result.Path);
                 PushMoveRecent(result.Path!);
             }

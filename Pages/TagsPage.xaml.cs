@@ -41,6 +41,8 @@ public sealed partial class TagsPage : Page
     private Pointer? _rangePointer;
     private bool _rangeCaptured;
     private bool _rangeConsumedTap;
+    private bool _lastPressWasTouch;
+    private bool _suppressTouchContextFlyout;
     private ViewerOverlayAutoHide? _viewerOverlayAutoHide;
 
     public TagsPage()
@@ -74,6 +76,21 @@ public sealed partial class TagsPage : Page
             GrdTagAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdTagAssets_RangeHolding), true);
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
+            _videoBrowseSwipe = new VideoBrowseSwipeBinder(
+                MpeOverlay,
+                VideoBrowseSwipeAllowedNow,
+                action =>
+                {
+                    if (action == TouchGestures.SwipeAction.BrowsePrevious)
+                    {
+                        ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
+                    }
+                    else if (action == TouchGestures.SwipeAction.BrowseNext)
+                    {
+                        ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
+                    }
+                });
+            _videoBrowseSwipe.Hook();
             RefreshRealizedTiles();
             HookOverlayGallery();
             await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
@@ -660,6 +677,8 @@ public sealed partial class TagsPage : Page
 
     private void TagAsset_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        _suppressTouchContextFlyout = false;
+        _lastPressWasTouch = false;
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
         if (item is not null)
         {
@@ -669,12 +688,51 @@ public sealed partial class TagsPage : Page
 
     private void TagAssetMenu_Opening(object sender, object e)
     {
-        if (sender is MenuFlyout { Target: FrameworkElement target })
+        if (sender is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        if (_suppressTouchContextFlyout
+            || TouchGestures.SuppressesContextForTouch(_lastPressWasTouch, hasPointerPosition: true))
+        {
+            _suppressTouchContextFlyout = false;
+            flyout.Hide();
+            return;
+        }
+
+        if (flyout.Target is FrameworkElement target)
         {
             var item = FindAssetItem(target);
             if (item is not null)
             {
                 EnsureSelectedForContext(item);
+            }
+        }
+    }
+
+    private void TagAssetMore_Click(object sender, RoutedEventArgs e)
+    {
+        _suppressTouchContextFlyout = false;
+        _lastPressWasTouch = false;
+        if (sender is not FrameworkElement fe)
+        {
+            return;
+        }
+
+        var item = FindAssetItem(fe);
+        if (item is null)
+        {
+            return;
+        }
+
+        EnsureSelectedForContext(item);
+        for (var cur = (DependencyObject)fe; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+        {
+            if (cur is FrameworkElement { ContextFlyout: { } flyout } host)
+            {
+                flyout.ShowAt(fe);
+                return;
             }
         }
     }
@@ -720,6 +778,7 @@ public sealed partial class TagsPage : Page
     private void TagAsset_RangePressed(object sender, PointerRoutedEventArgs e)
     {
         _rangeConsumedTap = false;
+        _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
         if (!ViewModel.IsSelectMode)
         {
             return;
@@ -809,6 +868,11 @@ public sealed partial class TagsPage : Page
 
             ViewModel.IsSelectMode = true;
             ViewModel.SetMosaicSelection([holdItem]);
+            if (_lastPressWasTouch)
+            {
+                _suppressTouchContextFlyout = true;
+            }
+
             e.Handled = true;
             return;
         }
@@ -1162,12 +1226,14 @@ public sealed partial class TagsPage : Page
                 MpeOverlay.Source = MediaSource.CreateFromStorageFile(file);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 ViewerMediaElement.RestoreIfVideoMaximized(App.Window?.AppWindow, wasMaximized);
+                SyncVideoBrowseSwipeHitTest();
             }
             catch
             {
                 if (epoch == _overlayMediaEpoch)
                 {
                     MpeOverlay.Source = null;
+                    SyncVideoBrowseSwipeHitTest();
                 }
             }
         }
@@ -1175,6 +1241,7 @@ public sealed partial class TagsPage : Page
         {
             BtnGalleryPlay.Visibility = Visibility.Collapsed;
             MpeOverlay.Source = null;
+            SyncVideoBrowseSwipeHitTest();
         }
     }
 
@@ -1192,6 +1259,14 @@ public sealed partial class TagsPage : Page
         VolOverlay.VolumeChanged -= OverlayVolume_Changed;
         VolOverlay.VolumeChanged += OverlayVolume_Changed;
         VolOverlay.SyncFromStore();
+        var session = MpeOverlay.MediaPlayer?.PlaybackSession;
+        if (session is not null)
+        {
+            session.PlaybackStateChanged -= OverlayPlayback_StateChanged;
+            session.PlaybackStateChanged += OverlayPlayback_StateChanged;
+        }
+
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private void ApplyOverlayLoop()
@@ -1210,6 +1285,25 @@ public sealed partial class TagsPage : Page
 
     private void OverlayVolume_Changed(object? sender, EventArgs e) => ApplyOverlayVolume();
 
+    private VideoBrowseSwipeBinder? _videoBrowseSwipe;
+
+    private bool VideoBrowseSwipeAllowedNow()
+    {
+        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
+            == Windows.Media.Playback.MediaPlaybackState.Playing;
+        return TouchGestures.AllowsVideoBrowseSwipe(
+            ViewModel.OverlayGallery?.IsVideo == true,
+            playing,
+            ViewerSettings.TouchGesturesEnabled);
+    }
+
+    private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();
+
+    private void OverlayPlayback_StateChanged(
+        Windows.Media.Playback.MediaPlaybackSession sender,
+        object args) =>
+        DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
+
     private void BtnGalleryPlay_Click(object sender, RoutedEventArgs e)
     {
         EnsureOverlayPlayer();
@@ -1221,6 +1315,7 @@ public sealed partial class TagsPage : Page
 
         player.Play();
         BtnGalleryPlay.Visibility = Visibility.Collapsed;
+        SyncVideoBrowseSwipeHitTest();
     }
 
     private void SyncViewerOverlayAutoHide()
