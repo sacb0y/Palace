@@ -29,7 +29,11 @@ public sealed partial class SettingsPage : Page
     {
         InitializeComponent();
         // System theme (or late ActualTheme) must flip packaged light/dark preset thumbs.
-        ActualThemeChanged += (_, _) => ViewModel.RefreshBackgroundPresetSwatches();
+        ActualThemeChanged += (_, _) =>
+        {
+            ViewModel.RefreshBackgroundPresetSwatches();
+            RefreshShellPreview();
+        };
         SizeChanged += SettingsPage_SizeChanged;
         Loaded += async (_, _) =>
         {
@@ -40,9 +44,16 @@ public sealed partial class SettingsPage : Page
             ViewModel.RefreshBackgroundPresetSwatches();
             ApplyContentCap(ActualWidth);
             RestoreLastSection(scrollToTop: true);
+            ShellBackground.Changed += ShellBackground_PreviewChanged;
+            ShellBackground.LiveAmountsChanged += ShellBackground_PreviewLiveAmounts;
+            RefreshShellPreview();
         };
         Unloaded += (_, _) =>
         {
+            ViewModel.FlushShellPersist();
+            ShellBackground.Changed -= ShellBackground_PreviewChanged;
+            ShellBackground.LiveAmountsChanged -= ShellBackground_PreviewLiveAmounts;
+            ShellBackdrop.DetachPreview();
             ViewModel.RequestPickCloudFolder = null;
             ViewModel.RequestConfirm = null;
             ViewModel.PropertyChanged -= ViewModelOnPropertyChanged;
@@ -50,6 +61,36 @@ public sealed partial class SettingsPage : Page
             _highlightTimer?.Stop();
         };
         ViewModel.PropertyChanged += ViewModelOnPropertyChanged;
+    }
+
+    private void ShellBackground_PreviewChanged(object? sender, EventArgs e) => RefreshShellPreview();
+
+    private void ShellBackground_PreviewLiveAmounts(object? sender, EventArgs e)
+    {
+        try
+        {
+            ShellBackdrop.SyncLiveAmounts();
+        }
+        catch
+        {
+            RefreshShellPreview();
+        }
+    }
+
+    private void RefreshShellPreview()
+    {
+        try
+        {
+            ShellBackdrop.AttachPreview(
+                BrdShellPreviewGradient,
+                ImgShellPreviewWallpaper,
+                BrdShellPreviewGlass,
+                BrdShellPreviewDim);
+        }
+        catch
+        {
+            // Preview must never take down Settings.
+        }
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
