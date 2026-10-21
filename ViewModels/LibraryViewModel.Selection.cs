@@ -18,6 +18,27 @@ public partial class LibraryViewModel
     {
         SelectionSummary = SelectMode.Summary(IsSelectMode, _selection.Count);
         ShowTagSelectedCta = SelectMode.ShowBatchTagCta(IsSelectMode, _selection.Count);
+        CanToolbarAddToRoom = SelectCommandBar.ToolbarAddToRoomEnabled(IsSelectMode, _selection.Count > 0);
+        CanEditRating = _selection.Count > 0;
+        IsMultiSelectPreview = SelectCommandBar.ShowMultiSelectPreview(_selection.Count);
+        AddTagButtonLabel = IsMultiSelectPreview ? "Add tag to all" : "Add tag";
+        RebuildMultiSelectThumbs();
+    }
+
+    private void RebuildMultiSelectThumbs()
+    {
+        MultiSelectThumbs.Clear();
+        if (!IsMultiSelectPreview)
+        {
+            MultiSelectDetail = "";
+            return;
+        }
+
+        var take = SelectCommandBar.StackedThumbCount(_selection.Count);
+        for (var i = 0; i < take; i++)
+        {
+            MultiSelectThumbs.Add(_selection[i]);
+        }
     }
 
     public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
@@ -154,6 +175,10 @@ public partial class LibraryViewModel
         HasSelection = false;
         RefreshSelectionSummary();
         CanEditNotes = false;
+        CanEditRating = false;
+        PreviewRatingMixed = false;
+        RatingCaption = SelectCommandBar.RatingCaption(false);
+        MultiSelectDetail = "";
         SelectedAsset = null;
     }
 

@@ -208,6 +208,34 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowTagSelectedCta { get; set; }
 
+    /// <summary>Toolbar Add to room — dimmed while select mode owns the bar action.</summary>
+    [ObservableProperty]
+    public partial bool CanToolbarAddToRoom { get; set; }
+
+    /// <summary>2+ selected: preview pane shows stacked thumbs + summary instead of one still.</summary>
+    [ObservableProperty]
+    public partial bool IsMultiSelectPreview { get; set; }
+
+    [ObservableProperty]
+    public partial string MultiSelectDetail { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool PreviewRatingMixed { get; set; }
+
+    [ObservableProperty]
+    public partial string RatingCaption { get; set; } = "Rating";
+
+    /// <summary>Stars apply to one or many selected assets (notes stay single-only).</summary>
+    [ObservableProperty]
+    public partial bool CanEditRating { get; set; }
+
+    /// <summary>"Add tag" vs "Add tag to all" in the preview pane.</summary>
+    [ObservableProperty]
+    public partial string AddTagButtonLabel { get; set; } = "Add tag";
+
+    /// <summary>First 4–5 selected tiles for the multi-select preview stack.</summary>
+    public ObservableCollection<AssetItem> MultiSelectThumbs { get; } = [];
+
     [ObservableProperty]
     public partial bool ShowPreviewPlaceholder { get; set; }
 
@@ -401,13 +429,37 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnPreviewRatingChanged(double value)
     {
-        if (!PreviewPersist.ShouldWriteNotes(_applyingPreview, CanEditNotes, SelectedAsset?.Id, _previewAssetId)
-            || SelectedAsset is null)
+        if (!PreviewPersist.ShouldWriteRating(_applyingPreview, CanEditRating, _previewTargets.Count))
         {
             return;
         }
 
-        _ = _catalog.UpdateNotesAndRatingAsync(SelectedAsset.Id, PreviewNotes, (int)Math.Round(value));
+        var rating = (int)Math.Round(value);
+        if (_previewTargets.Count <= 1)
+        {
+            if (SelectedAsset is null
+                || !PreviewPersist.ShouldWriteNotes(
+                    _applyingPreview, CanEditNotes, SelectedAsset.Id, _previewAssetId))
+            {
+                return;
+            }
+
+            _ = _catalog.UpdateNotesAndRatingAsync(SelectedAsset.Id, PreviewNotes, rating);
+            return;
+        }
+
+        // Multi-select: stars apply to all selected; keep each asset's notes.
+        PreviewRatingMixed = false;
+        RatingCaption = SelectCommandBar.RatingCaption(false);
+        var targets = _previewTargets.ToList();
+        _ = ErrorReporter.RunAsync("Set rating", Notify, async () =>
+        {
+            foreach (var target in targets)
+            {
+                var row = await _catalog.GetAssetByIdAsync(target.Id);
+                await _catalog.UpdateNotesAndRatingAsync(target.Id, row?.Notes, rating);
+            }
+        });
     }
 
     partial void OnIsSelectModeChanged(bool value) => RefreshSelectionSummary();

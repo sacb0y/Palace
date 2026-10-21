@@ -150,13 +150,10 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var preview = targets.Count == 1
-                ? targets[0].FileName
-                : $"{targets.Count} files ({string.Join(", ", targets.Take(3).Select(t => t.FileName))}{(targets.Count > 3 ? ", …" : "")})";
             if (!await RequestConfirm(
-                    "Delete",
-                    $"Send {preview} to the Recycle Bin? This also removes them from the catalog.",
-                    "Delete"))
+                    SelectCommandBar.DeleteTitle(targets.Count),
+                    SelectCommandBar.DeleteBody(targets.Count),
+                    SelectCommandBar.DeletePrimary))
             {
                 return;
             }

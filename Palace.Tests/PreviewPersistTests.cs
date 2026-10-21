@@ -36,4 +36,13 @@ public sealed class PreviewPersistTests
         Assert.False(PreviewPersist.ShouldWriteNotes(false, false, "a", "a"));
         Assert.False(PreviewPersist.ShouldWriteNotes(false, true, null, "a"));
     }
+
+    [Fact]
+    public void ShouldWriteRating_AllowsMultiSelectWhenNotApplying()
+    {
+        Assert.True(PreviewPersist.ShouldWriteRating(false, true, 4));
+        Assert.False(PreviewPersist.ShouldWriteRating(true, true, 4));
+        Assert.False(PreviewPersist.ShouldWriteRating(false, false, 4));
+        Assert.False(PreviewPersist.ShouldWriteRating(false, true, 0));
+    }
 }
