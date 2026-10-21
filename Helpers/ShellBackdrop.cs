@@ -52,6 +52,13 @@ public static class ShellBackdrop
         public SpriteVisual? Visual;
         public CompositionEffectBrush? Brush;
         public CompositionBrush? SourceBrush;
+        /// <summary>
+        /// Path the current <see cref="SourceBrush"/> was built for. Shared-surface
+        /// path can update while this slot still holds a brush for the previous
+        /// preset — without this, Petal→Aurora early-returns and paints stale/empty.
+        /// </summary>
+        public string? BoundSourcePath;
+        public bool BoundSourceIsLight;
         public bool IsPreview;
     }
 
@@ -322,16 +329,22 @@ public static class ShellBackdrop
         EnsureSharedSurface(imagePath, light);
 
         var wantSurface = !string.IsNullOrWhiteSpace(imagePath) && _sharedSurface is not null;
+        // Slot must have been built for this exact path + theme. Matching only
+        // _sharedSurfacePath is wrong: EnsureSharedSurface updates that first,
+        // then a stale CompositionSurfaceBrush still looks "ready" and we skip
+        // rebuild — non-default → non-default preset clicks appear to do nothing.
         var surfaceReady = wantSurface
             && slot.SourceBrush is CompositionSurfaceBrush
-            && _sharedSurfacePath == imagePath;
+            && string.Equals(_sharedSurfacePath, imagePath, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(slot.BoundSourcePath, imagePath, StringComparison.OrdinalIgnoreCase)
+            && slot.BoundSourceIsLight == light;
+        var backdropReady = !wantSurface && slot.SourceBrush is CompositionBackdropBrush;
 
         if (slot.Visual is not null
             && ReferenceEquals(slot.Host, glass)
             && ReferenceEquals(_compositor, compositor)
             && slot.Brush is not null
-            && ((!wantSurface && slot.SourceBrush is CompositionBackdropBrush)
-                || surfaceReady))
+            && (backdropReady || surfaceReady))
         {
             SyncBlurVisualSize(slot, glass);
             return;
@@ -352,6 +365,8 @@ public static class ShellBackdrop
 
         slot.Brush = _effectFactory!.CreateBrush();
         slot.SourceBrush = CreateSourceBrush(compositor, imagePath);
+        slot.BoundSourcePath = wantSurface ? imagePath : null;
+        slot.BoundSourceIsLight = light;
         slot.Brush.SetSourceParameter("source", slot.SourceBrush);
         TryInsertColor(slot.Brush, light);
 
@@ -765,6 +780,8 @@ public static class ShellBackdrop
         slot.Visual = null;
         slot.Brush = null;
         slot.SourceBrush = null;
+        slot.BoundSourcePath = null;
+        slot.BoundSourceIsLight = false;
     }
 
     private static void ReleaseSlot(GlassSlot slot)

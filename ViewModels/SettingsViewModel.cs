@@ -837,14 +837,12 @@ public partial class SettingsViewModel : ObservableObject
                 SelectionKey = ShellPresetSelection.KeyFor(ShellPresetKind.Custom),
                 IsAddCustom = true,
                 Swatch = BuildAddCustomSwatch(),
-                ToolTipText = "Add a custom background image"
             };
         }
         else
         {
             add.Name = "+ Custom";
             // Keep the solid swatch instance — do not allocate a new brush each persist.
-            add.ToolTipText = "Add a custom background image";
         }
 
         var ordered = new List<ShellPresetItem>(entries.Count + 1);
@@ -875,7 +873,7 @@ public partial class SettingsViewModel : ObservableObject
             item.RecentDarkness = entry.Darkness;
             item.RecentBlur = entry.Blur;
             item.IsBroken = broken;
-            item.ToolTipText = RecentCustomBackgrounds.Tooltip(entry.DisplayName, entry.DateAddedUtc);
+            // No tile ToolTip — caption under the thumb is enough (empty tip = dark square).
             // Thumbs: DecodePixelWidth once, cached on the item. Never blur/darken tiles.
             if (broken)
             {

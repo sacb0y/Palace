@@ -152,7 +152,7 @@ public static class RecentCustomBackgrounds
         }
 
         var d = ShellBackground.ClampDarkness(darkness);
-        var b = ShellBackground.ClampBlur(blur);
+        var b = ShellBackground.NormalizeBlur(blur);
         return Normalize(existing.Select(e =>
             string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase)
                 ? e with { Darkness = d, Blur = b, LastUsedUtc = DateTimeOffset.UtcNow }

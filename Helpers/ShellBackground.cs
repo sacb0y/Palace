@@ -709,7 +709,7 @@ public static class ShellBackground
     }
 
     public static double ClampDarkness(double value) =>
-        Math.Clamp(value, MinAmount, MaxDarkness);
+        Math.Clamp(Math.Round(value), MinAmount, MaxDarkness);
 
     public static double ClampBlur(double value) =>
         Math.Clamp(value, MinAmount, MaxBlurPx);
@@ -738,9 +738,13 @@ public static class ShellBackground
 
     /// <summary>
     /// Normalize stored blur: ≤ MaxBlurPx stays px; &gt; MaxBlurPx is legacy percent → px.
+    /// Always rounds to whole px so NumberBox matches the caption (no 21.7779 vs 22 px).
     /// </summary>
-    public static double NormalizeBlur(double stored) =>
-        stored > MaxBlurPx ? MigrateBlurFromLegacyPercent(stored) : ClampBlur(stored);
+    public static double NormalizeBlur(double stored)
+    {
+        var px = stored > MaxBlurPx ? MigrateBlurFromLegacyPercent(stored) : ClampBlur(stored);
+        return Math.Clamp(Math.Round(px), MinAmount, MaxBlurPx);
+    }
 
     /// <summary>
     /// Soft-kernel half-width pad in DIPs (stdDev × <see cref="BlurEdgeKernel"/>).

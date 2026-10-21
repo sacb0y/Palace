@@ -132,7 +132,7 @@ public sealed class RecentCustomBackgroundsTests
         var json = """[{"id":"x","file":"shell-recent-x.jpg","name":"x","darkness":40,"blur":45,"hash":"aa","added":"2026-10-01T00:00:00Z"}]""";
         var list = RecentCustomBackgrounds.Parse(json);
         Assert.Single(list);
-        Assert.Equal(ShellBackground.MigrateBlurFromLegacyPercent(45), list[0].Blur, 2);
+        Assert.Equal(ShellBackground.NormalizeBlur(45), list[0].Blur, 2);
         Assert.True(list[0].Blur <= ShellBackground.MaxBlurPx);
     }
 
