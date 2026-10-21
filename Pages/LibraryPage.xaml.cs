@@ -530,6 +530,7 @@ public sealed partial class LibraryPage : Page
     {
         _rangeConsumedTap = false;
         _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+        _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
             return;
@@ -626,6 +627,12 @@ public sealed partial class LibraryPage : Page
             ViewModel.SelectAsset(holdItem, toggle: false);
             ViewModel.IsSelectMode = true;
             RestoreMosaicSelectionHighlights();
+            // Touch long-press = select; context menu is "…" / right-click only.
+            if (_lastPressWasTouch)
+            {
+                _suppressTouchContextFlyout = true;
+            }
+
             e.Handled = true;
             return;
         }
@@ -1059,8 +1066,9 @@ public sealed partial class LibraryPage : Page
 
     private void AssetItem_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
+        _suppressTouchContextFlyout = false;
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
             e.Handled = true;
             return;
@@ -1071,8 +1079,16 @@ public sealed partial class LibraryPage : Page
 
     private void AssetItem_ContextRequested(object sender, ContextRequestedEventArgs e)
     {
+        // Touch long-press opens select mode, not the context menu.
+        if (_lastPressWasTouch || _suppressTouchContextFlyout || TouchGestures.OpensContextFromTouchHold())
+        {
+            _suppressTouchContextFlyout = false;
+            e.Handled = true;
+            return;
+        }
+
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
-        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
             e.Handled = true;
             return;
@@ -1088,8 +1104,15 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        if (_suppressTouchContextFlyout || _lastPressWasTouch)
+        {
+            _suppressTouchContextFlyout = false;
+            flyout.Hide();
+            return;
+        }
+
         var item = flyout.Target is FrameworkElement target ? FindAssetItem(target) : null;
-        if (item is null || !GalleryMedia.ShouldShowAssetContextFlyout(item.IsFolderHeader))
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
             flyout.Hide();
             return;
@@ -1097,6 +1120,62 @@ public sealed partial class LibraryPage : Page
 
         EnsureSelectedForContext(item);
         PopulateMoveRecents(flyout);
+    }
+
+    private void AssetMore_Click(object sender, RoutedEventArgs e)
+    {
+        _suppressTouchContextFlyout = false;
+        _lastPressWasTouch = false;
+        if (sender is not FrameworkElement fe)
+        {
+            return;
+        }
+
+        var item = FindAssetItem(fe);
+        if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
+        {
+            return;
+        }
+
+        EnsureSelectedForContext(item);
+        var container = FindAncestor<ItemContainer>(fe);
+        if (container?.ContextFlyout is FlyoutBase flyout)
+        {
+            flyout.ShowAt(fe);
+        }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? start) where T : DependencyObject
+    {
+        for (var cur = start; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+        {
+            if (cur is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    private void GalleryOverlay_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
+        _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+    }
+
+    private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        if (e.HoldingState != HoldingState.Started
+            || !TouchGestures.IsTouchOnly(_lastPressWasTouch)
+            || !ViewerSettings.TouchGesturesEnabled
+            || !SelectMode.ViewerHoldTogglesSelection(ViewModel.IsGalleryOverlayOpen))
+        {
+            return;
+        }
+
+        ViewModel.ToggleOverlaySelectionFromHold();
+        e.Handled = true;
     }
 
     private void SyncViewerOverlayAutoHide()

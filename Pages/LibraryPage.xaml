@@ -890,6 +890,23 @@
                                             IconSize="Size16"
                                             IconVariant="Regular" />
                                     </Border>
+                                    <!-- Context menu: "…" / right-click (not touch long-press). -->
+                                    <Button
+                                        Width="28"
+                                        Height="28"
+                                        Margin="4"
+                                        Padding="0"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="BtnAssetMore"
+                                        AutomationProperties.Name="More"
+                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                        BorderThickness="0"
+                                        Click="AssetMore_Click"
+                                        CornerRadius="14"
+                                        ToolTipService.ToolTip="More">
+                                        <ic:FluentIcon Icon="MoreVertical" IconSize="Size16" IconVariant="Regular" />
+                                    </Button>
                                 </Grid>
                             </Grid>
                         </ItemContainer>
@@ -1440,7 +1457,10 @@
             x:Name="GrdGalleryOverlay"
             AutomationProperties.AutomationId="GrdGalleryOverlay"
             AutomationProperties.Name="Gallery overlay"
+            Holding="GalleryOverlay_Holding"
+            IsHoldingEnabled="True"
             IsTabStop="True"
+            PointerPressed="GalleryOverlay_PointerPressed"
             PreviewKeyDown="GalleryOverlay_PreviewKeyDown"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}">
             <Grid
@@ -1678,16 +1698,36 @@
                             VerticalAlignment="Top"
                             Orientation="Horizontal"
                             Spacing="8">
-                            <Button
-                                x:Name="BtnGalleryClose"
-                                AutomationProperties.AutomationId="BtnGalleryClose"
-                                AutomationProperties.Name="Close"
-                                Command="{x:Bind ViewModel.CloseOverlayCommand}"
-                                Style="{StaticResource ViewerOverlayCloseButtonStyle}"
-                                ToolTipService.ToolTip="Close (Esc)">
-                                <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
-                            </Button>
+                        <Button
+                            x:Name="BtnGalleryClose"
+                            AutomationProperties.AutomationId="BtnGalleryClose"
+                            AutomationProperties.Name="Close"
+                            Command="{x:Bind ViewModel.CloseOverlayCommand}"
+                            Style="{StaticResource ViewerOverlayCloseButtonStyle}"
+                            ToolTipService.ToolTip="Close (Esc)">
+                            <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
                         </StackPanel>
+                        <!-- Viewer long-press selection check badge -->
+                        <Border
+                            Width="36"
+                            Height="36"
+                            Margin="0,16,64,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            AutomationProperties.AutomationId="BrdGalleryOverlaySelected"
+                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                            CornerRadius="18"
+                            IsHitTestVisible="False"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.Current.IsSelected), Mode=OneWay, FallbackValue=Collapsed}">
+                            <ic:FluentIcon
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                                Icon="Checkmark"
+                                IconSize="Size20"
+                                IconVariant="Regular" />
+                        </Border>
                     </Grid>
                 </Grid>
 

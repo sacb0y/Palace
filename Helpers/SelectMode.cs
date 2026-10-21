@@ -17,9 +17,17 @@ public static class SelectMode
     /// Press-and-hold / click-and-hold on a mosaic tile (not a folder header,
     /// not while the overlay is open) enters select mode and selects that tile.
     /// Does not open the overlay — double-click / Enter / context Open still do.
+    /// Touch long-press is select (not the context menu — that is "…" / right-click).
     /// </summary>
     public static bool EnterFromHold(bool selectMode, bool overlayOpen, bool isFolderHeader) =>
         !selectMode && !overlayOpen && !isFolderHeader;
+
+    /// <summary>
+    /// Viewer overlay long-press toggles the current asset's selection and
+    /// shows a check badge. Video long-press is select, not 2× speed.
+    /// </summary>
+    public static bool ViewerHoldTogglesSelection(bool overlayOpen) =>
+        TouchGestures.ViewerHoldTogglesSelection(overlayOpen);
 
     /// <summary>Count line beside the toggle. Empty when select mode is off and nothing is selected.</summary>
     public static string Summary(bool selectMode, int selectedCount)

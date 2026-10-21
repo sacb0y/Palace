@@ -86,4 +86,93 @@ public partial class LibraryViewModel
 
         _ = AppServices.Hydration.HydrateAfterOpenAsync(item.Id);
     }
+
+    /// <summary>
+    /// Overlay long-press: toggle this item's selection + check badge
+    /// (video long-press is select, not 2×).
+    /// </summary>
+    public void ToggleOverlaySelectionFromHold()
+    {
+        if (!SelectMode.ViewerHoldTogglesSelection(IsGalleryOverlayOpen)
+            || OverlayGallery?.Current is not { IsFolderHeader: false } current)
+        {
+            return;
+        }
+
+        IsSelectMode = true;
+        SelectAsset(current, toggle: true);
+    }
+
+    /// <summary>Review swipe right / Keep: leave file in place and advance.</summary>
+    [RelayCommand]
+    private void ReviewKeep()
+    {
+        if (OverlayGallery is null)
+        {
+            return;
+        }
+
+        if (OverlayGallery.CanGoNext)
+        {
+            OverlayGallery.GoNextCommand.Execute(null);
+        }
+        else
+        {
+            CloseOverlay();
+        }
+    }
+
+    /// <summary>Review swipe up / Skip: undecided, no move, advance.</summary>
+    [RelayCommand]
+    private void ReviewSkip() => ReviewKeep();
+
+    /// <summary>
+    /// Review swipe left / Reject: move current file into <c>_rejected</c>
+    /// under its watched source, then advance (Undo restores).
+    /// </summary>
+    [RelayCommand]
+    private Task ReviewRejectAsync() =>
+        ErrorReporter.RunAsync("Reject", Notify, async () =>
+        {
+            if (OverlayGallery?.Current is not { IsFolderHeader: false } current
+                || string.IsNullOrEmpty(current.Id))
+            {
+                return;
+            }
+
+            var projectId = AppServices.CurrentProject.Id;
+            var sources = await _catalog.GetSourceFoldersAsync(projectId);
+            var root = FileOpService.ResolveRoot(current.Path, sources);
+            if (root is null || string.IsNullOrWhiteSpace(root.Path))
+            {
+                Notify("Cannot reject: file is outside a watched folder.");
+                return;
+            }
+
+            var dest = TouchGestures.RejectedFolderPath(root.Path);
+            if (!Directory.Exists(dest))
+            {
+                var created = await _fileOps.CreateFolderAsync(
+                    root.Path,
+                    TouchGestures.RejectedFolderName,
+                    projectId);
+                if (!created.Ok && !Directory.Exists(dest))
+                {
+                    Notify(created.Message);
+                    return;
+                }
+            }
+
+            var assets = await _catalog.GetAssetsByIdsAsync([current.Id]);
+            var canAdvance = OverlayGallery.CanGoNext;
+            await MoveAssetsToAsync(assets, dest, closeOverlay: false);
+            if (canAdvance && OverlayGallery is not null)
+            {
+                OverlayGallery.GoNextCommand.Execute(null);
+            }
+            else
+            {
+                CloseOverlay();
+            }
+        });
 }

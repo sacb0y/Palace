@@ -329,6 +329,8 @@ public static class GalleryScale
     /// <summary>
     /// Pointer delta subtracts from the current offset and clamps to the
     /// scrollable range (mouse left-drag and touch/pen drag).
+    /// Prefer <see cref="DragPanContent"/> when content and viewport sizes
+    /// are known — that path centers a smaller axis (fixes up-but-not-down).
     /// </summary>
     public static (double Horizontal, double Vertical) DragPan(
         double horizontalOffset,
@@ -340,6 +342,27 @@ public static class GalleryScale
         (
             ClampOffset(horizontalOffset - pointerDeltaX, scrollableWidth),
             ClampOffset(verticalOffset - pointerDeltaY, scrollableHeight));
+
+    /// <summary>
+    /// Pan with per-axis content/viewport clamp (larger: both edges hard;
+    /// smaller: centered). Used for touch pan when zoomed.
+    /// </summary>
+    public static (double Horizontal, double Vertical) DragPanContent(
+        double horizontalOffset,
+        double verticalOffset,
+        double pointerDeltaX,
+        double pointerDeltaY,
+        double contentWidth,
+        double contentHeight,
+        double viewportWidth,
+        double viewportHeight) =>
+        TouchGestures.ClampPan(
+            horizontalOffset - pointerDeltaX,
+            verticalOffset - pointerDeltaY,
+            contentWidth,
+            contentHeight,
+            viewportWidth,
+            viewportHeight);
 
     public static double ClampPinchZoom(double zoom) =>
         Math.Clamp(zoom, MinPinchZoom, MaxPinchZoom);

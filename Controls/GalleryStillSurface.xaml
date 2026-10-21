@@ -23,6 +23,9 @@
             ZoomMode="Disabled">
             <Grid
                 x:Name="GrdStillContent"
+                DoubleTapped="GrdStillContent_DoubleTapped"
+                IsDoubleTapEnabled="True"
+                ManipulationCompleted="GrdStillContent_ManipulationCompleted"
                 ManipulationDelta="GrdStillContent_ManipulationDelta"
                 ManipulationMode="TranslateX,TranslateY,Scale">
                 <Image

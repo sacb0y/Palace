@@ -35,6 +35,8 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _pinchOldZoom = 1;
     private double _coalescedPanX;
     private double _coalescedPanY;
+    private PointerDeviceType _lastPointerDevice = PointerDeviceType.Mouse;
+    private bool _afterPinchAwaitingLift;
     private ImageScaling _scrollScaling;
     private int _scrollRevision = int.MinValue;
     private double _scrollContentW;
@@ -1090,6 +1092,13 @@ public sealed partial class GalleryStillSurface : UserControl
     private void ScrStill_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         var type = e.Pointer.PointerDeviceType;
+        _lastPointerDevice = type;
+        if (type == PointerDeviceType.Touch && e.Pointer.IsInContact)
+        {
+            // A new touch after pinch clears the post-pinch swipe lock once all
+            // fingers had lifted (ManipulationCompleted sets the flag).
+        }
+
         var point = e.GetCurrentPoint(ScrStill);
         CancelScrollViewerDirectManipulation();
         if (!GalleryScale.UsesPointerCapturePan(
@@ -1122,13 +1131,15 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        var (horizontal, vertical) = GalleryScale.DragPan(
+        var (horizontal, vertical) = GalleryScale.DragPanContent(
             ScrStill.HorizontalOffset,
             ScrStill.VerticalOffset,
             point.Position.X - _panLastX,
             point.Position.Y - _panLastY,
-            ScrStill.ScrollableWidth,
-            ScrStill.ScrollableHeight);
+            _scrollContentW > 1 ? _scrollContentW : ScrStill.ExtentWidth,
+            _scrollContentH > 1 ? _scrollContentH : ScrStill.ExtentHeight,
+            ScrStill.ActualWidth,
+            ScrStill.ActualHeight);
         _panLastX = point.Position.X;
         _panLastY = point.Position.Y;
         ScrStill.ChangeView(horizontal, vertical, null, true);
@@ -1167,15 +1178,27 @@ public sealed partial class GalleryStillSurface : UserControl
         var isTouch = e.PointerDeviceType == PointerDeviceType.Touch;
         var isPen = e.PointerDeviceType == PointerDeviceType.Pen;
         var isMouse = e.PointerDeviceType == PointerDeviceType.Mouse;
+        _lastPointerDevice = e.PointerDeviceType;
         if (!GalleryScale.HandlesManipulationDelta(
                 e.IsInertial, isTouch, isPen, isMouse, leftButton: _panning))
         {
             return;
         }
 
+        // Spec: PointerDeviceType==Touch only for these new gesture paths.
+        // Pen / trackpad keep the prior Manipulation pan/pinch behavior.
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
         var scaleDelta = e.Delta.Scale;
-        var nextZoom = GalleryScale.PinchZoom(_pinchZoom, scaleDelta);
+        var nextZoom = isTouch
+            ? TouchGestures.ClampPinchSoft(
+                _pinchZoom * (scaleDelta > 0 ? scaleDelta : 1.0),
+                FitToActualRatio())
+            : GalleryScale.PinchZoom(_pinchZoom, scaleDelta);
+        if (isTouch)
+        {
+            nextZoom = TouchGestures.ClampPinchDuringGesture(nextZoom);
+        }
+
         var didPinch = scaleDelta > 0 && Math.Abs(nextZoom - _pinchZoom) > 0.0001;
         var deltaX = e.Delta.Translation.X;
         var deltaY = e.Delta.Translation.Y;
@@ -1183,6 +1206,11 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (didPinch)
         {
+            if (isTouch)
+            {
+                _afterPinchAwaitingLift = true;
+            }
+
             ApplyPinchFrame(e.Position.X, e.Position.Y, nextZoom, deltaX, deltaY);
             e.Handled = true;
             return;
@@ -1193,15 +1221,145 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        var (horizontal, vertical) = GalleryScale.DragPan(
+        // Touch pan: per-axis clamp so a taller/wider zoom cannot pass one
+        // edge while free on the other (up-but-not-down).
+        if (isTouch)
+        {
+            var (horizontal, vertical) = GalleryScale.DragPanContent(
+                ScrStill.HorizontalOffset,
+                ScrStill.VerticalOffset,
+                deltaX,
+                deltaY,
+                _scrollContentW > 1 ? _scrollContentW : ScrStill.ExtentWidth,
+                _scrollContentH > 1 ? _scrollContentH : ScrStill.ExtentHeight,
+                ScrStill.ActualWidth,
+                ScrStill.ActualHeight);
+            ScrStill.ChangeView(horizontal, vertical, null, true);
+            e.Handled = true;
+            return;
+        }
+
+        var (h, v) = GalleryScale.DragPan(
             ScrStill.HorizontalOffset,
             ScrStill.VerticalOffset,
             deltaX,
             deltaY,
             ScrStill.ScrollableWidth,
             ScrStill.ScrollableHeight);
-        ScrStill.ChangeView(horizontal, vertical, null, true);
+        ScrStill.ChangeView(h, v, null, true);
         e.Handled = true;
+    }
+
+    private void GrdStillContent_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        if (e.PointerDeviceType != PointerDeviceType.Touch)
+        {
+            return;
+        }
+
+        // Snap soft under-zoom back to Fit on release.
+        var snapped = TouchGestures.SnapPinchOnRelease(_pinchZoom);
+        if (Math.Abs(snapped - _pinchZoom) > 0.0001)
+        {
+            ApplyPinchFrame(e.Position.X, e.Position.Y, snapped, 0, 0);
+        }
+
+        var hard = TouchGestures.ClampPinchHard(_pinchZoom, FitToActualRatio());
+        if (Math.Abs(hard - _pinchZoom) > 0.0001)
+        {
+            ApplyPinchFrame(e.Position.X, e.Position.Y, hard, 0, 0);
+        }
+
+        _afterPinchAwaitingLift = false;
+    }
+
+    private void GrdStillContent_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        // Touch only — mouse / pen double-tap stays unchanged.
+        if (!TouchGestures.IsTouchOnly(_lastPointerDevice == PointerDeviceType.Touch)
+            || !ViewerSettings.TouchGesturesEnabled
+            || _gallery is null)
+        {
+            return;
+        }
+
+        var tap = e.GetPosition(ScrStill);
+        var viewW = ScrStill.ActualWidth;
+        var viewH = ScrStill.ActualHeight;
+        if (viewW <= 1 || viewH <= 1)
+        {
+            return;
+        }
+
+        var scaling = _gallery.Scaling;
+        var currentlyFit = scaling == ImageScaling.Fit && _pinchZoom <= 1.0001;
+        var step = TouchGestures.NextDoubleTapStep(currentlyFit);
+        if (step == TouchGestures.DoubleTapZoomStep.Fit)
+        {
+            _pinchZoom = 1;
+            _gallery.Scaling = ImageScaling.Fit;
+            ApplyScaleLayout();
+            e.Handled = true;
+            return;
+        }
+
+        var actualAsFit = FitToActualRatio();
+        var targetFit = TouchGestures.DoubleTapZoomFitFactor(actualAsFit);
+        if (Math.Abs(targetFit - actualAsFit) < 0.05 && actualAsFit > TouchGestures.DoubleTapActualMinFit)
+        {
+            // Jump to 1:1 at the tap point.
+            _pinchZoom = 1;
+            _gallery.Scaling = ImageScaling.Actual;
+            ApplyScaleLayout();
+            var (iw, ih) = StillPixelSize();
+            var raster = XamlRoot?.RasterizationScale ?? 1.0;
+            var (cw, ch) = GalleryScale.ActualDipSize(iw, ih, raster);
+            if (!double.IsNaN(cw) && !double.IsNaN(ch))
+            {
+                var (h, v) = TouchGestures.ZoomAroundPoint(
+                    tap.X, tap.Y,
+                    viewW, viewH, 0, 0,
+                    cw, ch, viewW, viewH);
+                ScrStill.ChangeView(h, v, null, true);
+            }
+
+            e.Handled = true;
+            return;
+        }
+
+        // 2.5× Fit (or Actual-as-Fit) while staying in Fit mode + pinch.
+        _gallery.Scaling = ImageScaling.Fit;
+        ApplyPinchFrame(tap.X, tap.Y, targetFit, 0, 0);
+        e.Handled = true;
+    }
+
+    /// <summary>Actual DIP size ÷ Fit DIP size (how many Fit-units = 1:1).</summary>
+    private double FitToActualRatio()
+    {
+        var viewW = ScrStill.ActualWidth;
+        var viewH = ScrStill.ActualHeight;
+        if (viewW <= 1 || viewH <= 1)
+        {
+            return 1;
+        }
+
+        var (iw, ih) = StillPixelSize();
+        if (iw <= 0 || ih <= 0)
+        {
+            return 1;
+        }
+
+        var raster = XamlRoot?.RasterizationScale ?? 1.0;
+        var (aw, ah) = GalleryScale.ActualDipSize(iw, ih, raster);
+        if (double.IsNaN(aw) || double.IsNaN(ah) || aw <= 0 || ah <= 0)
+        {
+            return 1;
+        }
+
+        // Fit letterbox: uniform scale into the viewport.
+        var fitScale = Math.Min(viewW / aw, viewH / ah);
+        var fitW = aw * fitScale;
+        return fitW > 0 ? aw / fitW : 1;
     }
 
     private void ScrStill_PointerWheelChanged(object sender, PointerRoutedEventArgs e)

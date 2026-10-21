@@ -194,6 +194,16 @@ public sealed class GalleryScaleTests
         Assert.Equal(40, wheelPan.Horizontal, 3);
         Assert.Equal(10, wheelPan.Vertical, 3);
         Assert.Equal(3.0, GalleryScale.PinchZoom(GalleryScale.PinchZoom(1, 2), 1.5), 3);
+        // Narrow content (80 < 200) centers on X (offset 0); Y scrolls.
+        var contentPan = GalleryScale.DragPanContent(10, -5, 0, -20, 80, 400, 200, 100);
+        Assert.Equal(0, contentPan.Horizontal, 3);
+        Assert.Equal(15, contentPan.Vertical, 3); // -5 - (-20) = 15, inside 0…300
+        var contentLow = GalleryScale.DragPanContent(0, 10, 0, 40, 80, 400, 200, 100);
+        Assert.Equal(0, contentLow.Horizontal, 3);
+        Assert.Equal(0, contentLow.Vertical, 3); // 10 - 40 = -30 → clamp 0
+        var contentMid = GalleryScale.DragPanContent(0, 100, 0, -50, 80, 400, 200, 100);
+        Assert.Equal(0, contentMid.Horizontal, 3);
+        Assert.Equal(150, contentMid.Vertical, 3);
     }
 
     [Fact]
