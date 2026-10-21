@@ -65,6 +65,9 @@
     <Compile Include="..\Helpers\ScanWalk.cs" Link="ScanWalk.cs" />
     <Compile Include="..\Helpers\ScanFastPath.cs" Link="ScanFastPath.cs" />
     <Compile Include="..\Helpers\SelectMode.cs" Link="SelectMode.cs" />
+    <Compile Include="..\Helpers\ReviewSwipe.cs" Link="ReviewSwipe.cs" />
+    <Compile Include="..\Helpers\ReviewReject.cs" Link="ReviewReject.cs" />
+    <Compile Include="..\Helpers\ReviewSession.cs" Link="ReviewSession.cs" />
     <Compile Include="..\Helpers\ShortcutCheatsheet.cs" Link="ShortcutCheatsheet.cs" />
     <Compile Include="..\Helpers\RangeSelect.cs" Link="RangeSelect.cs" />
     <Compile Include="..\Helpers\ShellBackground.cs" Link="ShellBackground.cs" />

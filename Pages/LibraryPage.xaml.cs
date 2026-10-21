@@ -1176,8 +1176,9 @@ public sealed partial class LibraryPage : Page
 
     private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)
     {
-        // Surface already classified with IsReviewMode; ViewModel commands
-        // also gate so browse never moves files even if a Review action leaks.
+        // Browse swipes (IsReviewMode=false) are prev/next only — #128.
+        // Review Reject/Keep/Skip go through the session (sibling _rejected,
+        // skip undo, progress); never move files outside Review mode.
         switch (action)
         {
             case TouchGestures.SwipeAction.BrowsePrevious:
@@ -1187,13 +1188,9 @@ public sealed partial class LibraryPage : Page
                 ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
                 break;
             case TouchGestures.SwipeAction.Reject:
-                ViewModel.ReviewRejectCommand.Execute(null);
-                break;
             case TouchGestures.SwipeAction.Keep:
-                ViewModel.ReviewKeepCommand.Execute(null);
-                break;
             case TouchGestures.SwipeAction.Skip:
-                ViewModel.ReviewSkipCommand.Execute(null);
+                ViewModel.CommitReviewSwipe(action);
                 break;
         }
     }
@@ -1340,6 +1337,12 @@ public sealed partial class LibraryPage : Page
             .HasFlag(CoreVirtualKeyStates.Down);
         var alt = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Menu)
             .HasFlag(CoreVirtualKeyStates.Down);
+        if (ViewModel.TryHandleReviewShortcut(control, (int)e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (ViewModel.OverlayGallery.TryHandleViewerShortcut(control, alt, (int)e.Key))
         {
             if (GalleryScale.TogglesDetails(control, alt, (int)e.Key))

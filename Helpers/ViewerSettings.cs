@@ -3,8 +3,8 @@ namespace Palace.Helpers;
 /// <summary>
 /// Viewer + Input prefs (LocalSettings). Off WinUI for Palace.Tests.
 /// Default zoom opens the overlay; Details / loop share <see cref="GalleryChrome"/> keys.
-/// Touch-gesture gate. Review swipe: left = reject (_rejected), right = keep;
-/// swipe down is not reject (Isiac 2026-10-21).
+/// Touch-gesture gate. Review mode: swipe left = reject (_rejected), right = keep,
+/// up = skip; swipe down does nothing in Review (Isiac 2026-10-21).
 /// </summary>
 public static class ViewerSettings
 {
