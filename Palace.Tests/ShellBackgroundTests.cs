@@ -90,30 +90,34 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
-    public void BlurRadius_MapsPercentWithEaseInGamma()
+    public void BlurRadius_IsDirectPixelsClampedToMax()
     {
         Assert.Equal(0f, ShellBackground.BlurRadius(0), 2);
-        Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(100), 2);
-        Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(400), 2);
+        Assert.Equal(18f, ShellBackground.BlurRadius(18), 2);
+        Assert.Equal(ShellBackground.MaxBlurRadius, ShellBackground.BlurRadius(40), 2);
         Assert.Equal(0f, ShellBackground.BlurRadius(-10), 2);
-
-        // Low end is softer than linear (gamma > 1) so 0→10 is not a hard jump.
-        var at10 = ShellBackground.BlurRadius(10);
-        var linear10 = ShellBackground.MaxBlurRadius * 0.10f;
-        Assert.True(at10 < linear10);
-        Assert.True(at10 > 0f);
+        // Values above MaxBlurPx migrate from legacy percent.
         Assert.Equal(
-            (float)(ShellBackground.MaxBlurRadius * Math.Pow(0.10, ShellBackground.BlurAmountGamma)),
-            at10,
+            (float)ShellBackground.MigrateBlurFromLegacyPercent(100),
+            ShellBackground.BlurRadius(100),
             2);
-        Assert.Equal(
-            (float)(ShellBackground.MaxBlurRadius * Math.Pow(0.50, ShellBackground.BlurAmountGamma)),
-            ShellBackground.BlurRadius(50),
-            2);
-        // Monotonic: more percent → more radius.
         Assert.True(ShellBackground.BlurRadius(10) < ShellBackground.BlurRadius(25));
-        Assert.True(ShellBackground.BlurRadius(25) < ShellBackground.BlurRadius(50));
-        Assert.True(ShellBackground.BlurRadius(50) < ShellBackground.BlurRadius(100));
+        Assert.True(ShellBackground.BlurRadius(25) < ShellBackground.BlurRadius(40));
+    }
+
+    [Fact]
+    public void MigrateBlurFromLegacyPercent_UsesOldGammaThenClamps()
+    {
+        Assert.Equal(0, ShellBackground.MigrateBlurFromLegacyPercent(0), 2);
+        var at45 = ShellBackground.MigrateBlurFromLegacyPercent(45);
+        Assert.True(at45 > 0);
+        Assert.True(at45 <= ShellBackground.MaxBlurPx);
+        Assert.Equal(
+            Math.Min(
+                ShellBackground.MaxBlurPx,
+                ShellBackground.LegacyMaxBlurRadius * Math.Pow(0.45, ShellBackground.LegacyBlurAmountGamma)),
+            at45,
+            2);
     }
 
     [Fact]
@@ -157,13 +161,13 @@ public sealed class ShellBackgroundTests
     [Fact]
     public void BlurHidesWallpaper_WhenBlurAppliesAndRadiusPositive()
     {
-        ShellBackground.Apply(ShellPresetKind.Blueprint, null, 40, 100, false, null);
-        Assert.True(ShellBackground.BlurHidesWallpaper(100));
+        ShellBackground.Apply(ShellPresetKind.Blueprint, null, 40, 40, false, null);
+        Assert.True(ShellBackground.BlurHidesWallpaper(40));
         Assert.True(ShellBackground.BlurHidesWallpaper(10));
         Assert.False(ShellBackground.BlurHidesWallpaper(0));
 
-        ShellBackground.Apply(ShellPresetKind.Neutral, null, 40, 100, false, null);
-        Assert.False(ShellBackground.BlurHidesWallpaper(100));
+        ShellBackground.Apply(ShellPresetKind.Neutral, null, 40, 40, false, null);
+        Assert.False(ShellBackground.BlurHidesWallpaper(40));
     }
 
     [Fact]
@@ -176,7 +180,7 @@ public sealed class ShellBackgroundTests
         Assert.Equal(
             ShellBackground.QuantizeRadiusDip(ShellBackground.BlurRadius(50)),
             ShellBackground.QuantizedBlurRadius(50));
-        Assert.Equal(64, ShellBackground.QuantizedBlurRadius(100));
+        Assert.Equal(40, ShellBackground.QuantizedBlurRadius(40));
         Assert.Equal(
             $"Ribbons:D:{ShellBackground.QuantizedBlurRadius(50)}",
             ShellBackground.BlurCacheKey(ShellPresetKind.Ribbons, false, 50));
@@ -189,9 +193,9 @@ public sealed class ShellBackgroundTests
     public void DefaultAmounts_FollowManifestPerTheme()
     {
         Assert.Equal(45, ShellBackground.DefaultDarknessFor(ShellPresetKind.Ribbons), 2);
-        Assert.Equal(45, ShellBackground.DefaultBlurFor(ShellPresetKind.Ribbons), 2);
+        Assert.Equal(18, ShellBackground.DefaultBlurFor(ShellPresetKind.Ribbons), 2);
         Assert.Equal(35, ShellBackground.DefaultDarknessFor(ShellPresetKind.Bokeh), 2);
-        Assert.Equal(35, ShellBackground.DefaultBlurFor(ShellPresetKind.Nebula), 2);
+        Assert.Equal(14, ShellBackground.DefaultBlurFor(ShellPresetKind.Nebula), 2);
         Assert.Equal(40, ShellBackground.DefaultDarknessFor(ShellPresetKind.Aero), 2);
         Assert.Equal(40, ShellBackground.DefaultDarknessFor(ShellPresetKind.Default), 2);
         Assert.Equal(40, ShellBackground.ParseDarknessFor(ShellPresetKind.Aurora, null), 2);
@@ -200,10 +204,10 @@ public sealed class ShellBackgroundTests
         Assert.Equal(20, ShellBackground.DefaultDarknessFor(ShellPresetKind.Ribbons, lightChrome: true), 2);
         Assert.Equal(35, ShellBackground.DefaultDarknessFor(ShellPresetKind.Aero, lightChrome: true), 2);
         Assert.Equal(15, ShellBackground.DefaultDarknessFor(ShellPresetKind.Blueprint, lightChrome: true), 2);
-        Assert.Equal(45, ShellBackground.DefaultBlurFor(ShellPresetKind.Blueprint, lightChrome: true), 2);
-        Assert.Equal(30, ShellBackground.DefaultBlurFor(ShellPresetKind.Pixel), 2);
+        Assert.Equal(18, ShellBackground.DefaultBlurFor(ShellPresetKind.Blueprint, lightChrome: true), 2);
+        Assert.Equal(12, ShellBackground.DefaultBlurFor(ShellPresetKind.Pixel), 2);
         Assert.Equal(15, ShellBackground.DefaultDarknessFor(ShellPresetKind.Nodes, lightChrome: true), 2);
-        Assert.Equal(40, ShellBackground.DefaultBlurFor(ShellPresetKind.Nodes, lightChrome: true), 2);
+        Assert.Equal(16, ShellBackground.DefaultBlurFor(ShellPresetKind.Nodes, lightChrome: true), 2);
         Assert.Equal(30, ShellBackground.DefaultDarknessFor(ShellPresetKind.Nodes), 2);
     }
 
@@ -303,10 +307,12 @@ public sealed class ShellBackgroundTests
         Assert.Equal(ShellBackground.DefaultDarkness, ShellBackground.ParseDarkness(null), 2);
         Assert.Equal(ShellBackground.DefaultBlur, ShellBackground.ParseBlur(null), 2);
         Assert.Equal(25, ShellBackground.ParseDarkness(25.0), 2);
-        Assert.Equal(80, ShellBackground.ParseBlur("80"), 2);
+        Assert.Equal(ShellBackground.MigrateBlurFromLegacyPercent(80), ShellBackground.ParseBlur("80"), 2);
         Assert.Equal(0, ShellBackground.ParseDarkness(-12), 2);
-        Assert.Equal(100, ShellBackground.ParseBlur(400), 2);
+        Assert.Equal(ShellBackground.MaxBlurPx, ShellBackground.ParseBlur(400), 2);
         Assert.Equal(33, ShellBackground.ParseDarkness(33L), 2);
+        Assert.Equal(90, ShellBackground.ParseDarkness(140), 2);
+        Assert.Equal(18, ShellBackground.ParseBlur(18), 2);
     }
 
     [Fact]
@@ -338,7 +344,7 @@ public sealed class ShellBackgroundTests
             Assert.Equal(@"C:\pics\bg.jpg", ShellBackground.WallpaperPath);
             Assert.Equal("bg.jpg", ShellBackground.WallpaperLabel);
             Assert.Equal(0, ShellBackground.Darkness, 2);
-            Assert.Equal(100, ShellBackground.Blur, 2);
+            Assert.Equal(ShellBackground.MaxBlurPx, ShellBackground.Blur, 2);
             Assert.True(ShellBackground.TintEnabled);
             Assert.Equal("#FF336699", ShellBackground.TintHex);
             Assert.Equal(1, fired);
@@ -346,12 +352,12 @@ public sealed class ShellBackgroundTests
             ShellBackground.Apply(@"C:\pics\bg.jpg", 0, 100, true, "#FF336699");
             Assert.Equal(1, fired);
 
-            ShellBackground.Apply("  ", 40, 45, false, "bad");
+            ShellBackground.Apply("  ", 40, 18, false, "bad");
             Assert.False(ShellBackground.HasWallpaper);
             Assert.Null(ShellBackground.WallpaperPath);
             Assert.Equal(ShellBackground.DefaultWallpaperLabel, ShellBackground.WallpaperLabel);
             Assert.Equal(40, ShellBackground.Darkness, 2);
-            Assert.Equal(45, ShellBackground.Blur, 2);
+            Assert.Equal(18, ShellBackground.Blur, 2);
             Assert.False(ShellBackground.TintEnabled);
             Assert.Equal(ShellBackground.DefaultTintHex, ShellBackground.TintHex);
             Assert.Equal(2, fired);
@@ -554,7 +560,7 @@ public sealed class ShellBackgroundTests
         Assert.Equal(ShellPresetKind.Mica, snap.Preset);
         Assert.Null(snap.WallpaperPath);
         Assert.Equal(40, snap.Darkness, 2);
-        Assert.Equal(45, snap.Blur, 2);
+        Assert.Equal(ShellBackground.NormalizeBlur(45), snap.Blur, 2);
     }
 
     [Fact]
@@ -612,11 +618,14 @@ public sealed class ShellBackgroundTests
     }
 
     [Fact]
-    public void AmountLabel_IsPercent()
+    public void AmountLabel_DarknessPercent_And_BlurPixels()
     {
         Assert.Equal("0%", ShellBackground.AmountLabel(-3));
         Assert.Equal("40%", ShellBackground.AmountLabel(40));
-        Assert.Equal("100%", ShellBackground.AmountLabel(140));
+        Assert.Equal("90%", ShellBackground.AmountLabel(140));
+        Assert.Equal("0 px", ShellBackground.BlurLabel(-3));
+        Assert.Equal("18 px", ShellBackground.BlurLabel(18));
+        Assert.Equal("40 px", ShellBackground.BlurLabel(140));
     }
 
     private static void Reset()

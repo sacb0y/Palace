@@ -44,6 +44,7 @@ public partial class SettingsViewModel : ObservableObject
     public IReadOnlyList<string> ThemeOptions { get; } = ["System", "Light", "Dark"];
     public IReadOnlyList<string> AccentOptions { get; } =
         [BrandAccent.FollowWindowsLabel, BrandAccent.PalacePinkLabel];
+    public IReadOnlyList<string> DensityOptions { get; } = AppearanceSettings.DensityOptions;
     public string AppVersionText { get; } = AppVersion.Display;
 
     public string InfancyNoteText { get; } = AppVersion.InfancyNote;
@@ -63,6 +64,12 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string SelectedAccent { get; set; } = BrandAccent.FollowWindowsLabel;
+
+    [ObservableProperty]
+    public partial string SelectedDensity { get; set; } = AppearanceSettings.DefaultDensity;
+
+    [ObservableProperty]
+    public partial bool AnimationsEnabled { get; set; } = AppearanceSettings.DefaultAnimations;
 
     [ObservableProperty]
     public partial SourceFolderItem? SelectedSource { get; set; }
@@ -156,13 +163,13 @@ public partial class SettingsViewModel : ObservableObject
     public partial double Darkness { get; set; } = ShellBackground.DefaultDarkness;
 
     [ObservableProperty]
-    public partial string DarknessLabel { get; set; } = ShellBackground.AmountLabel(ShellBackground.DefaultDarkness);
+    public partial string DarknessLabel { get; set; } = ShellBackground.DarknessLabel(ShellBackground.DefaultDarkness);
 
     [ObservableProperty]
     public partial double Blur { get; set; } = ShellBackground.DefaultBlur;
 
     [ObservableProperty]
-    public partial string BlurLabel { get; set; } = ShellBackground.AmountLabel(ShellBackground.DefaultBlur);
+    public partial string BlurLabel { get; set; } = ShellBackground.BlurLabel(ShellBackground.DefaultBlur);
 
     [ObservableProperty]
     public partial bool TintEnabled { get; set; }
@@ -234,6 +241,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedTheme = stored is "Light" or "Dark" or "System" ? stored : "System";
         ApplyTheme(SelectedTheme);
         LoadAccent();
+        LoadAppearanceChrome();
         LoadPeakOverride();
         LoadShellBackground();
         LoadMediaCache();
@@ -318,7 +326,14 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnDarknessChanged(double value)
     {
-        DarknessLabel = ShellBackground.AmountLabel(value);
+        var clamped = ShellBackground.ClampDarkness(value);
+        if (Math.Abs(clamped - value) > 0.01)
+        {
+            Darkness = clamped;
+            return;
+        }
+
+        DarknessLabel = ShellBackground.DarknessLabel(clamped);
         if (!_load.IsLoading)
         {
             PersistShellBackground();
@@ -327,7 +342,14 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnBlurChanged(double value)
     {
-        BlurLabel = ShellBackground.AmountLabel(value);
+        var clamped = ShellBackground.NormalizeBlur(value);
+        if (Math.Abs(clamped - value) > 0.01)
+        {
+            Blur = clamped;
+            return;
+        }
+
+        BlurLabel = ShellBackground.BlurLabel(clamped);
         if (!_load.IsLoading)
         {
             PersistShellBackground();
@@ -367,6 +389,36 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    private void LoadAppearanceChrome()
+    {
+        var values = ApplicationData.Current.LocalSettings.Values;
+        SelectedDensity = AppearanceSettings.ParseDensity(values[AppearanceSettings.DensityKey]);
+        AnimationsEnabled = AppearanceSettings.ParseAnimations(values[AppearanceSettings.AnimationsKey]);
+    }
+
+    partial void OnSelectedDensityChanged(string value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        ApplicationData.Current.LocalSettings.Values[AppearanceSettings.DensityKey] =
+            AppearanceSettings.NormalizeDensity(value);
+        StatusText = "Density: " + AppearanceSettings.NormalizeDensity(value) + ".";
+    }
+
+    partial void OnAnimationsEnabledChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        ApplicationData.Current.LocalSettings.Values[AppearanceSettings.AnimationsKey] = value;
+        StatusText = value ? "Animations on." : "Animations off.";
+    }
+
     private void LoadPeakOverride()
     {
         var values = ApplicationData.Current.LocalSettings.Values;
@@ -387,9 +439,9 @@ public partial class SettingsViewModel : ObservableObject
         SelectedPresetKind = ShellBackground.Preset;
         WallpaperLabel = ShellBackground.WallpaperLabel;
         Darkness = ShellBackground.Darkness;
-        DarknessLabel = ShellBackground.AmountLabel(Darkness);
+        DarknessLabel = ShellBackground.DarknessLabel(Darkness);
         Blur = ShellBackground.Blur;
-        BlurLabel = ShellBackground.AmountLabel(Blur);
+        BlurLabel = ShellBackground.BlurLabel(Blur);
         TintEnabled = ShellBackground.TintEnabled;
         TintHex = ShellBackground.TintHex;
         LoadRecentCustomBackgrounds();
@@ -483,55 +535,93 @@ public partial class SettingsViewModel : ObservableObject
         IReadOnlyList<RecentCustomBackgroundEntry> entries,
         string localFolder)
     {
-        // Drop prior Custom / recent tiles from the shared selection list.
-        for (var i = BackgroundPresets.Count - 1; i >= 0; i--)
+        // Stable-identity: update / reorder existing ShellPresetItem instances by RecentId
+        // so GridView containers and thumb bitmaps are not torn down on every slider tick.
+        var byId = CustomBackgroundPresets
+            .Where(i => i.IsRecentCustom)
+            .ToDictionary(i => i.RecentId!, StringComparer.OrdinalIgnoreCase);
+        var add = CustomBackgroundPresets.FirstOrDefault(i => i.IsAddCustom);
+        if (add is null)
         {
-            var row = BackgroundPresets[i];
-            if (row.Id == ShellPresetKind.Custom || row.IsRecentCustom || row.IsAddCustom)
+            add = new ShellPresetItem
             {
-                BackgroundPresets.RemoveAt(i);
-            }
+                Id = ShellPresetKind.Custom,
+                Name = "+ Custom",
+                SelectionKey = ShellPresetSelection.KeyFor(ShellPresetKind.Custom),
+                IsAddCustom = true,
+                Swatch = BuildAddCustomSwatch(),
+                ToolTipText = "Add a custom background image"
+            };
+        }
+        else
+        {
+            add.Name = "+ Custom";
+            add.Swatch = BuildAddCustomSwatch();
+            add.ToolTipText = "Add a custom background image";
         }
 
-        CustomBackgroundPresets.Clear();
-
-        var add = new ShellPresetItem
-        {
-            Id = ShellPresetKind.Custom,
-            Name = "Add image…",
-            SelectionKey = ShellPresetSelection.KeyFor(ShellPresetKind.Custom),
-            IsAddCustom = true,
-            Swatch = BuildAddCustomSwatch(),
-            ToolTipText = "Add a custom background image"
-        };
-        CustomBackgroundPresets.Add(add);
-        BackgroundPresets.Add(add);
-
+        var ordered = new List<ShellPresetItem>(entries.Count + 1);
         foreach (var entry in entries)
         {
             var path = RecentCustomBackgrounds.ResolveImagePath(entry, localFolder, File.Exists);
             var broken = path is null;
             var label = RecentCustomBackgrounds.DisplayLabel(entry.DisplayName);
-            var item = new ShellPresetItem
+            if (!byId.TryGetValue(entry.Id, out var item))
             {
-                Id = ShellPresetKind.Custom,
-                Name = label,
-                SelectionKey = ShellPresetSelection.KeyForRecent(entry.Id),
-                RecentId = entry.Id,
-                RecentFileName = entry.FileName,
-                RecentImagePath = path,
-                RecentSourcePath = entry.SourcePath,
-                RecentContentHash = entry.ContentHash,
-                RecentAddedUtc = entry.DateAddedUtc,
-                RecentDarkness = entry.Darkness,
-                RecentBlur = entry.Blur,
-                IsBroken = broken,
-                ToolTipText = RecentCustomBackgrounds.Tooltip(entry.DisplayName, entry.DateAddedUtc),
-                Swatch = broken
-                    ? BuildBrokenCustomSwatch()
-                    : BuildRecentCustomSwatch(path!)
-            };
+                item = new ShellPresetItem
+                {
+                    Id = ShellPresetKind.Custom,
+                    SelectionKey = ShellPresetSelection.KeyForRecent(entry.Id),
+                    RecentId = entry.Id
+                };
+            }
+
+            var previousPath = item.RecentImagePath;
+            var pathChanged = !string.Equals(previousPath, path, StringComparison.OrdinalIgnoreCase);
+            item.Name = label;
+            item.RecentFileName = entry.FileName;
+            item.RecentImagePath = path;
+            item.RecentSourcePath = entry.SourcePath;
+            item.RecentContentHash = entry.ContentHash;
+            item.RecentAddedUtc = entry.DateAddedUtc;
+            item.RecentLastUsedUtc = entry.LastUsedUtc;
+            item.RecentDarkness = entry.Darkness;
+            item.RecentBlur = entry.Blur;
+            item.IsBroken = broken;
+            item.ToolTipText = RecentCustomBackgrounds.Tooltip(entry.DisplayName, entry.DateAddedUtc);
+            // Keep an existing decoded swatch when the path did not change (slider persist).
+            if (broken)
+            {
+                item.Swatch = BuildBrokenCustomSwatch();
+            }
+            else if (item.Swatch is null || pathChanged)
+            {
+                item.Swatch = BuildRecentCustomSwatch(path!);
+            }
+
+            ordered.Add(item);
+        }
+
+        ordered.Add(add);
+
+        CustomBackgroundPresets.Clear();
+        foreach (var item in ordered)
+        {
             CustomBackgroundPresets.Add(item);
+        }
+
+        // Keep BackgroundPresets in sync (presets first, then Recent/+Custom).
+        for (var i = BackgroundPresets.Count - 1; i >= 0; i--)
+        {
+            var row = BackgroundPresets[i];
+            if (row.IsRecentCustom || row.IsAddCustom)
+            {
+                BackgroundPresets.RemoveAt(i);
+            }
+        }
+
+        foreach (var item in ordered)
+        {
             BackgroundPresets.Add(item);
         }
 
@@ -599,8 +689,8 @@ public partial class SettingsViewModel : ObservableObject
         HasWallpaper = ShellBackground.HasWallpaper;
         WallpaperPath = ShellBackground.WallpaperPath ?? "";
         WallpaperLabel = ShellBackground.WallpaperLabel;
-        DarknessLabel = ShellBackground.AmountLabel(ShellBackground.Darkness);
-        BlurLabel = ShellBackground.AmountLabel(ShellBackground.Blur);
+        DarknessLabel = ShellBackground.DarknessLabel(ShellBackground.Darkness);
+        BlurLabel = ShellBackground.BlurLabel(ShellBackground.Blur);
         TintHex = ShellBackground.TintHex;
         SyncPresetUi();
     }
@@ -877,6 +967,7 @@ public partial class SettingsViewModel : ObservableObject
             ShellBackground.SetWallpaperName(entry.DisplayName);
             Darkness = entry.Darkness;
             Blur = entry.Blur;
+            WriteRecentEntries(RecentCustomBackgrounds.TouchLastUsed(ReadRecentEntries(), entry.Id));
             PersistShellBackground(reloadWallpaper: true);
             if (!string.Equals(previousPath, path, StringComparison.OrdinalIgnoreCase))
             {
@@ -903,8 +994,8 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Soft-remove from the MRU. Active image → Default immediately + Undo toast;
-    /// stored copy deleted only after the Undo window passes.
+    /// Soft-remove from Recent. Active image → Default immediately + Undo toast.
+    /// Never deletes Palace's cached copy (or the user's original).
     /// </summary>
     private async Task RemoveRecentCustomCoreAsync(string id, bool notify)
     {
@@ -1035,7 +1126,7 @@ public partial class SettingsViewModel : ObservableObject
         var token = _recentUndoCts.Token;
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(12), token);
+            await Task.Delay(TimeSpan.FromSeconds(5), token);
         }
         catch (OperationCanceledException)
         {
@@ -1047,18 +1138,9 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        var pending = _pendingRecentDelete;
         _pendingRecentDelete = null;
         ShowRecentCustomUndoToast = false;
-        if (pending is null)
-        {
-            return;
-        }
-
-        var cache = RecentCustomBackgrounds.CachePath(
-            ApplicationData.Current.LocalFolder.Path,
-            pending.FileName);
-        await TryDeleteStoredWallpaperAsync(cache, ReadRecentEntries());
+        // Spec: removing never deletes the file — keep the Palace cache copy.
     }
 
     private Task ApplyPresetAsync(ShellPresetKind kind) =>
@@ -1381,6 +1463,92 @@ public partial class SettingsViewModel : ObservableObject
         });
 
     [RelayCommand]
+    private void ResetDarkness()
+    {
+        if (_load.IsLoading || !DarknessEnabled)
+        {
+            return;
+        }
+
+        Darkness = ShellBackground.DefaultDarknessFor(SelectedPresetKind, PresetSwatchLightChrome());
+    }
+
+    [RelayCommand]
+    private void ResetBlur()
+    {
+        if (_load.IsLoading || !BlurEnabled)
+        {
+            return;
+        }
+
+        Blur = ShellBackground.DefaultBlurFor(SelectedPresetKind, PresetSwatchLightChrome());
+    }
+
+    [RelayCommand]
+    private Task LocateRecentCustomAsync(ShellPresetItem? item)
+    {
+        if (item is null || _load.IsLoading || !item.IsRecentCustom || !item.IsBroken)
+        {
+            return Task.CompletedTask;
+        }
+
+        return ErrorReporter.RunAsync("Locate custom background", Notify, async () =>
+        {
+            var file = await _access.PickImageFileAsync();
+            if (file is null)
+            {
+                return;
+            }
+
+            var previous = ReadRecentEntries();
+            var entry = RecentCustomBackgrounds.FindById(previous, item.RecentId);
+            if (entry is null)
+            {
+                return;
+            }
+
+            var destName = string.IsNullOrWhiteSpace(entry.FileName)
+                ? RecentCustomBackgrounds.NewFileName(Path.GetExtension(file.Name))
+                : entry.FileName;
+            ShellBackground.ReleaseDisplay();
+            var dest = await ApplicationData.Current.LocalFolder.CreateFileAsync(
+                destName,
+                CreationCollisionOption.ReplaceExisting);
+            await file.CopyAndReplaceAsync(dest);
+            string? hash = null;
+            try
+            {
+                hash = RecentCustomBackgrounds.HashFile(dest.Path);
+            }
+            catch
+            {
+                // Hash is best-effort.
+            }
+
+            var repaired = entry with
+            {
+                FileName = destName,
+                DisplayName = file.Name,
+                SourcePath = file.Path,
+                ContentHash = hash ?? entry.ContentHash,
+                LastUsedUtc = DateTimeOffset.UtcNow
+            };
+            var list = previous.Select(e =>
+                string.Equals(e.Id, repaired.Id, StringComparison.OrdinalIgnoreCase) ? repaired : e).ToList();
+            WriteRecentEntries(list);
+            WallpaperPath = dest.Path;
+            SelectedPresetKind = ShellPresetKind.Custom;
+            SelectedRecentCustomId = repaired.Id;
+            ShellBackground.SetWallpaperName(file.Name);
+            Darkness = repaired.Darkness;
+            Blur = repaired.Blur;
+            ShowCustomBrokenWarning = false;
+            PersistShellBackground(reloadWallpaper: true);
+            StatusText = "Located custom background.";
+        });
+    }
+
+    [RelayCommand]
     private Task PickWallpaperAsync() =>
         ErrorReporter.RunAsync("Choose wallpaper", Notify, async () =>
         {
@@ -1422,7 +1590,8 @@ public partial class SettingsViewModel : ObservableObject
                         Darkness = Darkness,
                         Blur = Blur,
                         ContentHash = hash,
-                        DateAddedUtc = DateTimeOffset.UtcNow
+                        DateAddedUtc = DateTimeOffset.UtcNow,
+                        LastUsedUtc = DateTimeOffset.UtcNow
                     };
                     (pushed, evicted) = RecentCustomBackgrounds.Push(
                         previousRecents,

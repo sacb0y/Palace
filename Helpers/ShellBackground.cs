@@ -26,19 +26,21 @@ public static class ShellBackground
     public const int WallpaperDecodeWidth = 2560;
 
     public const double MinAmount = 0;
-    public const double MaxAmount = 100;
+    /// <summary>Gooey Appearance: Darkness slider 0–90%.</summary>
+    public const double MaxDarkness = 90;
+    /// <summary>Gooey Appearance: Blur slider 0–40 px (Composition BlurAmount).</summary>
+    public const double MaxBlurPx = 40;
     public const double DefaultDarkness = 40;
-    public const double DefaultBlur = 45;
-    /// <summary>
-    /// Composition GaussianBlur <c>BlurAmount</c> at slider 100%. Percent maps
-    /// through <see cref="BlurAmountGamma"/> — never an opacity cross-fade.
-    /// </summary>
-    public const float MaxBlurRadius = 64f;
-    /// <summary>
-    /// Ease-in exponent for percent → radius. &gt;1 softens the 0→10 jump so
-    /// low slider ticks stay subtle; 100% still reaches <see cref="MaxBlurRadius"/>.
-    /// </summary>
-    public const double BlurAmountGamma = 1.35;
+    /// <summary>~old 45% gamma-mapped radius, clamped into the 0–40 px model.</summary>
+    public const double DefaultBlur = 18;
+    /// <summary>Composition GaussianBlur <c>BlurAmount</c> ceiling (matches MaxBlurPx).</summary>
+    public const float MaxBlurRadius = 40f;
+    /// <summary>Legacy percent→px ease-in (pre-0.2.8). Used only when migrating stored values &gt; MaxBlurPx.</summary>
+    public const double LegacyBlurAmountGamma = 1.35;
+    /// <summary>Legacy Composition radius at 100% blur (pre-0.2.8).</summary>
+    public const float LegacyMaxBlurRadius = 64f;
+    /// <summary>Deprecated alias — prefer <see cref="MaxDarkness"/> / <see cref="MaxBlurPx"/>.</summary>
+    public const double MaxAmount = MaxDarkness;
     /// <summary>Quantize radius for cache keys / cheap 4K re-apply (2 DIP steps).</summary>
     public const int BlurRadiusStep = 2;
     /// <summary>
@@ -222,8 +224,8 @@ public static class ShellBackground
             wallpaperPath = null;
         }
 
-        darkness = ClampAmount(darkness);
-        blur = ClampAmount(blur);
+        darkness = ClampDarkness(darkness);
+        blur = NormalizeBlur(blur);
         tintHex = ParseTint(tintHex);
         var unchanged = Preset == preset
             && WallpaperPath == wallpaperPath
@@ -462,19 +464,20 @@ public static class ShellBackground
     private static ImageDefaultRow? ImageDefaults(ShellPresetKind preset) =>
         NormalizePreset(preset) switch
         {
-            ShellPresetKind.Ribbons => new(45, 45, 45, 20),
-            ShellPresetKind.Capsules => new(45, 45, 50, 25),
-            ShellPresetKind.Bokeh => new(35, 35, 45, 20),
-            ShellPresetKind.Nebula => new(35, 35, 45, 20),
-            ShellPresetKind.Aero => new(45, 40, 45, 35),
-            ShellPresetKind.Petal => new(45, 45, 45, 20),
-            ShellPresetKind.Facets => new(45, 45, 45, 20),
-            ShellPresetKind.Aurora => new(40, 40, 45, 20),
-            ShellPresetKind.Viewport => new(40, 40, 45, 20),
-            ShellPresetKind.Blueprint => new(40, 35, 45, 15),
-            ShellPresetKind.Sketchbook => new(40, 35, 40, 15),
-            ShellPresetKind.Pixel => new(30, 45, 30, 20),
-            ShellPresetKind.Nodes => new(35, 30, 40, 15),
+            // Rows are (DarkBlurPx, DarkDarkness%, LightBlurPx, LightDarkness%).
+            ShellPresetKind.Ribbons => new(18, 45, 18, 20),
+            ShellPresetKind.Capsules => new(18, 45, 20, 25),
+            ShellPresetKind.Bokeh => new(14, 35, 18, 20),
+            ShellPresetKind.Nebula => new(14, 35, 18, 20),
+            ShellPresetKind.Aero => new(18, 40, 18, 35),
+            ShellPresetKind.Petal => new(18, 45, 18, 20),
+            ShellPresetKind.Facets => new(18, 45, 18, 20),
+            ShellPresetKind.Aurora => new(16, 40, 18, 20),
+            ShellPresetKind.Viewport => new(16, 40, 18, 20),
+            ShellPresetKind.Blueprint => new(16, 35, 18, 15),
+            ShellPresetKind.Sketchbook => new(16, 35, 16, 15),
+            ShellPresetKind.Pixel => new(12, 45, 12, 20),
+            ShellPresetKind.Nodes => new(14, 30, 16, 15),
             _ => null
         };
 
@@ -552,7 +555,7 @@ public static class ShellBackground
 
     public static double DimOpacity(bool lightChrome, double darkness)
     {
-        var t = ClampAmount(darkness) / 100.0;
+        var t = ClampDarkness(darkness) / 100.0;
         return lightChrome ? t * LightDimScale : t;
     }
 
@@ -614,20 +617,20 @@ public static class ShellBackground
     };
 
     public static double ParseDarkness(object? stored) =>
-        ParseAmount(stored, DefaultDarkness);
+        ParseDarknessAmount(stored, DefaultDarkness);
 
     public static double ParseBlur(object? stored) =>
-        ParseAmount(stored, DefaultBlur);
+        ParseBlurAmount(stored, DefaultBlur);
 
     public static double ParseDarknessFor(ShellPresetKind preset, object? stored, bool lightChrome = false) =>
         stored is null
             ? DefaultDarknessFor(preset, lightChrome)
-            : ParseAmount(stored, DefaultDarknessFor(preset, lightChrome));
+            : ParseDarknessAmount(stored, DefaultDarknessFor(preset, lightChrome));
 
     public static double ParseBlurFor(ShellPresetKind preset, object? stored, bool lightChrome = false) =>
         stored is null
             ? DefaultBlurFor(preset, lightChrome)
-            : ParseAmount(stored, DefaultBlurFor(preset, lightChrome));
+            : ParseBlurAmount(stored, DefaultBlurFor(preset, lightChrome));
 
     public static string ParseTint(object? stored)
     {
@@ -674,23 +677,39 @@ public static class ShellBackground
         return true;
     }
 
-    public static double ClampAmount(double value) =>
-        Math.Clamp(value, MinAmount, MaxAmount);
+    public static double ClampDarkness(double value) =>
+        Math.Clamp(value, MinAmount, MaxDarkness);
+
+    public static double ClampBlur(double value) =>
+        Math.Clamp(value, MinAmount, MaxBlurPx);
+
+    /// <summary>Deprecated: clamps as darkness (0–90). Prefer <see cref="ClampDarkness"/> / <see cref="ClampBlur"/>.</summary>
+    public static double ClampAmount(double value) => ClampDarkness(value);
 
     /// <summary>
-    /// Map blur slider percent (0–100) to Composition GaussianBlur radius in DIPs.
-    /// Uses an ease-in power curve so the low end is perceptually smoother than linear.
+    /// Composition GaussianBlur radius in DIPs. Blur is stored as px (0–<see cref="MaxBlurPx"/>).
+    /// Values above MaxBlurPx are treated as legacy percent (0–100) and migrated.
     /// </summary>
-    public static float BlurRadius(double blurPercent)
+    public static float BlurRadius(double blurPxOrLegacyPercent) =>
+        (float)NormalizeBlur(blurPxOrLegacyPercent);
+
+    /// <summary>Map a legacy 0–100% blur slider through the pre-0.2.8 gamma curve into px.</summary>
+    public static double MigrateBlurFromLegacyPercent(double percent)
     {
-        var t = ClampAmount(blurPercent) / MaxAmount;
+        var t = Math.Clamp(percent, MinAmount, 100) / 100.0;
         if (t <= 0)
         {
-            return 0f;
+            return 0;
         }
 
-        return (float)(MaxBlurRadius * Math.Pow(t, BlurAmountGamma));
+        return ClampBlur(LegacyMaxBlurRadius * Math.Pow(t, LegacyBlurAmountGamma));
     }
+
+    /// <summary>
+    /// Normalize stored blur: ≤ MaxBlurPx stays px; &gt; MaxBlurPx is legacy percent → px.
+    /// </summary>
+    public static double NormalizeBlur(double stored) =>
+        stored > MaxBlurPx ? MigrateBlurFromLegacyPercent(stored) : ClampBlur(stored);
 
     /// <summary>
     /// Soft-kernel half-width pad in DIPs (stdDev × <see cref="BlurEdgeKernel"/>).
@@ -729,15 +748,15 @@ public static class ShellBackground
     }
 
     /// <summary>True when the blur slider should hide the sharp wallpaper layer.</summary>
-    public static bool BlurHidesWallpaper(double blurPercent) =>
-        BlurApplies && BlurRadius(blurPercent) > 0.01f;
+    public static bool BlurHidesWallpaper(double blurPx) =>
+        BlurApplies && BlurRadius(blurPx) > 0.01f;
 
     /// <summary>
     /// Quantized radius for cache keys. Step keeps nearby slider ticks on one
     /// GPU/brush entry without mid-value opacity blending.
     /// </summary>
-    public static int QuantizedBlurRadius(double blurPercent) =>
-        QuantizeRadiusDip(BlurRadius(blurPercent));
+    public static int QuantizedBlurRadius(double blurPx) =>
+        QuantizeRadiusDip(BlurRadius(blurPx));
 
     public static int QuantizeRadiusDip(float radiusDip)
     {
@@ -751,27 +770,43 @@ public static class ShellBackground
     }
 
     /// <summary>Cache key: preset id + theme + quantized radius.</summary>
-    public static string BlurCacheKey(ShellPresetKind preset, bool lightChrome, double blurPercent) =>
-        $"{PresetId(NormalizePreset(preset))}:{(lightChrome ? "L" : "D")}:{QuantizedBlurRadius(blurPercent)}";
+    public static string BlurCacheKey(ShellPresetKind preset, bool lightChrome, double blurPx) =>
+        $"{PresetId(NormalizePreset(preset))}:{(lightChrome ? "L" : "D")}:{QuantizedBlurRadius(blurPx)}";
 
-    public static string AmountLabel(double value) =>
-        $"{ClampAmount(value):0}%";
+    public static string AmountLabel(double value) => DarknessLabel(value);
 
-    public static double ParseAmount(object? stored, double fallback)
+    public static string DarknessLabel(double value) =>
+        $"{ClampDarkness(value):0}%";
+
+    public static string BlurLabel(double value) =>
+        $"{NormalizeBlur(value):0} px";
+
+    public static double ParseAmount(object? stored, double fallback) =>
+        ParseDarknessAmount(stored, fallback);
+
+    public static double ParseDarknessAmount(object? stored, double fallback)
     {
-        var value = stored switch
-        {
-            double number => number,
-            float number => number,
-            int number => number,
-            long number => number,
-            string text when double.TryParse(
-                text,
-                NumberStyles.Float,
-                CultureInfo.InvariantCulture,
-                out var parsed) => parsed,
-            _ => fallback
-        };
-        return ClampAmount(value);
+        var value = ReadNumber(stored, fallback);
+        return ClampDarkness(value);
     }
+
+    public static double ParseBlurAmount(object? stored, double fallback)
+    {
+        var value = ReadNumber(stored, fallback);
+        return NormalizeBlur(value);
+    }
+
+    private static double ReadNumber(object? stored, double fallback) => stored switch
+    {
+        double number => number,
+        float number => number,
+        int number => number,
+        long number => number,
+        string text when double.TryParse(
+            text,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var parsed) => parsed,
+        _ => fallback
+    };
 }

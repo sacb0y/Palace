@@ -65,7 +65,7 @@ public sealed class SettingsNavTests
         // Every mapped control family from the pre-restructure page should hit a card.
         string[] mustHit =
         [
-            "theme", "accent", "background", "blur",
+            "theme", "accent", "density", "animations", "background", "blur",
             "watched", "organize", "onedrive", "dropbox",
             "hdr", "export tags", "shortcuts",
             "media cache", "catalog", "version", "export catalog"

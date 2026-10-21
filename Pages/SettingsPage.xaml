@@ -16,18 +16,18 @@
         <!--
           Selection chrome is on the swatch only (IsSelected). GridViews use
           SelectionMode=None so group SelectedItem cannot multi-highlight.
-          Gooey Custom tiles: 110x62, CornerRadius 4. Remove uses shared
+          Gooey tiles: 96x54, CornerRadius 6. Recent + +Custom. Remove uses shared
           ViewerOverlayButtonStyle (24 DIP plate; style from App.xaml merge).
         -->
         <DataTemplate x:Key="ShellPresetTile" x:DataType="models:ShellPresetItem">
             <StackPanel
-                Width="118"
+                Width="104"
                 Padding="4,4,4,2"
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
                 AutomationProperties.HelpText="{x:Bind AutomationHelpText}"
                 AutomationProperties.Name="{x:Bind AutomationName}"
                 Spacing="4"
-                ToolTipService.ToolTip="{x:Bind ToolTipText}">
+                ToolTipService.ToolTip="{x:Bind ToolTipText, Mode=OneWay}">
                 <StackPanel.ContextFlyout>
                     <MenuFlyout>
                         <MenuFlyoutItem
@@ -35,14 +35,19 @@
                             IsEnabled="{x:Bind ShowRemoveChrome}"
                             Tag="{x:Bind}"
                             Text="Remove from recent" />
+                        <MenuFlyoutItem
+                            Click="ShellRecentCustomLocateMenu_Click"
+                            IsEnabled="{x:Bind ShowLocateChrome, Mode=OneWay}"
+                            Tag="{x:Bind}"
+                            Text="Locate…" />
                     </MenuFlyout>
                 </StackPanel.ContextFlyout>
-                <Grid Width="110" Height="62">
+                <Grid Width="96" Height="54">
                     <Border
                         Background="{x:Bind Swatch, Mode=OneWay}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
-                        CornerRadius="4"
+                        CornerRadius="6"
                         Opacity="{x:Bind helpers:BindHelpers.BrokenTileOpacity(IsBroken), Mode=OneWay}" />
                     <ic:FluentIcon
                         HorizontalAlignment="Center"
@@ -57,12 +62,29 @@
                         Icon="Warning"
                         IconSize="Size20"
                         IconVariant="Regular"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsBroken)}" />
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsBroken), Mode=OneWay}" />
                     <Border
                         BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
                         BorderThickness="2"
-                        CornerRadius="4"
+                        CornerRadius="6"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}" />
+                    <Border
+                        Width="18"
+                        Height="18"
+                        Margin="4"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"
+                        CornerRadius="9"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsSelected), Mode=OneWay}">
+                        <ic:FluentIcon
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                            Icon="Checkmark"
+                            IconSize="Size12"
+                            IconVariant="Filled" />
+                    </Border>
                     <Button
                         Width="24"
                         Height="24"
@@ -82,12 +104,22 @@
                             IconSize="Size16"
                             IconVariant="Regular" />
                     </Button>
+                    <HyperlinkButton
+                        Margin="0,0,0,2"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Bottom"
+                        AutomationProperties.AutomationId="{x:Bind LocateAutomationId}"
+                        AutomationProperties.Name="{x:Bind LocateAutomationName}"
+                        Click="ShellRecentCustomLocate_Click"
+                        Content="Locate"
+                        Tag="{x:Bind}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowLocateChrome), Mode=OneWay}" />
                 </Grid>
                 <TextBlock
                     Padding="2,0"
                     Opacity="{x:Bind helpers:BindHelpers.BrokenTileOpacity(IsBroken), Mode=OneWay}"
                     Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="{x:Bind Name}"
+                    Text="{x:Bind Name, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
             </StackPanel>
         </DataTemplate>
@@ -253,6 +285,33 @@
                                 SelectedItem="{x:Bind ViewModel.SelectedAccent, Mode=TwoWay}" />
                         </controls:SettingsCard>
                         <controls:SettingsCard
+                            x:Name="CardDensity"
+                            AutomationProperties.AutomationId="CardDensity"
+                            Description="Comfortable or Compact. Layout polish lands with Settings 0.3.0."
+                            Header="Density"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ComboBox
+                                x:Name="CmbDensity"
+                                MinWidth="180"
+                                AutomationProperties.AutomationId="CmbDensity"
+                                ItemsSource="{x:Bind ViewModel.DensityOptions, Mode=OneWay}"
+                                SelectedItem="{x:Bind ViewModel.SelectedDensity, Mode=TwoWay}" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardAnimations"
+                            AutomationProperties.AutomationId="CardAnimations"
+                            Description="Motion in chrome and overlays. Honored as Settings polish lands."
+                            Header="Animations"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ToggleSwitch
+                                x:Name="TglAnimations"
+                                AutomationProperties.AutomationId="TglAnimations"
+                                AutomationProperties.Name="Animations"
+                                IsOn="{x:Bind ViewModel.AnimationsEnabled, Mode=TwoWay}"
+                                OffContent="Off"
+                                OnContent="On" />
+                        </controls:SettingsCard>
+                        <controls:SettingsCard
                             x:Name="CardBackground"
                             AutomationProperties.AutomationId="CardBackground"
                             ContentAlignment="Vertical"
@@ -309,14 +368,19 @@
                                         KeyDown="ShellPresetGrid_KeyDown"
                                         SelectionMode="None"
                                         SingleSelectionFollowsFocus="False" />
+                                    <Border
+                                        Height="1"
+                                        Margin="0,8,0,4"
+                                        Background="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        AutomationProperties.AutomationId="BrdShellPresetDivider" />
                                     <TextBlock
-                                        AutomationProperties.AutomationId="TxtShellPresetGroup_Custom"
+                                        AutomationProperties.AutomationId="TxtShellPresetGroup_Recent"
                                         Style="{StaticResource PalaceSettingsGroupHeaderStyle}"
-                                        Text="Custom" />
+                                        Text="Recent" />
                                     <GridView
                                         x:Name="GrdShellPresetsCustom"
                                         AutomationProperties.AutomationId="GrdShellPresetsCustom"
-                                        AutomationProperties.Name="Custom backgrounds"
+                                        AutomationProperties.Name="Recent custom backgrounds"
                                         IsItemClickEnabled="True"
                                         IsTabStop="True"
                                         ItemClick="ShellPreset_ItemClick"
@@ -329,7 +393,7 @@
                                         AutomationProperties.AutomationId="TxtShellCustomEmptyCaption"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="Images you add appear here so you can switch back in one click."
+                                        Text="Custom images you add appear here (up to five). Palace keeps its own copy."
                                         TextWrapping="Wrap"
                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowCustomEmptyCaption), Mode=OneWay}" />
                                 </StackPanel>
@@ -381,36 +445,90 @@
                                         </StackPanel>
                                     </Button>
                                 </StackPanel>
-                                <Slider
-                                    x:Name="SldShellDarkness"
-                                    AutomationProperties.AutomationId="SldShellDarkness"
-                                    AutomationProperties.Name="Darkness"
-                                    Header="Darkness"
-                                    IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
-                                    Maximum="100"
-                                    Minimum="0"
-                                    StepFrequency="1"
-                                    TickFrequency="10"
-                                    TickPlacement="None"
-                                    Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="SldShellDarkness"
+                                        Grid.Column="0"
+                                        AutomationProperties.AutomationId="SldShellDarkness"
+                                        AutomationProperties.Name="Darkness"
+                                        Header="Darkness"
+                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
+                                        Maximum="90"
+                                        Minimum="0"
+                                        StepFrequency="1"
+                                        TickFrequency="10"
+                                        TickPlacement="None"
+                                        Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
+                                    <NumberBox
+                                        x:Name="NbShellDarkness"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="NbShellDarkness"
+                                        AutomationProperties.Name="Darkness percent"
+                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}"
+                                        Maximum="90"
+                                        Minimum="0"
+                                        SpinButtonPlacementMode="Hidden"
+                                        Value="{x:Bind ViewModel.Darkness, Mode=TwoWay}" />
+                                    <HyperlinkButton
+                                        Grid.Column="2"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="BtnResetShellDarkness"
+                                        AutomationProperties.Name="Reset darkness"
+                                        Command="{x:Bind ViewModel.ResetDarknessCommand}"
+                                        Content="Reset"
+                                        IsEnabled="{x:Bind ViewModel.DarknessEnabled, Mode=OneWay}" />
+                                </Grid>
                                 <TextBlock
                                     x:Name="TxtShellDarkness"
                                     AutomationProperties.AutomationId="TxtShellDarkness"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind ViewModel.DarknessLabel, Mode=OneWay}" />
-                                <Slider
-                                    x:Name="SldShellBlur"
-                                    AutomationProperties.AutomationId="SldShellBlur"
-                                    AutomationProperties.Name="Blur (image backgrounds)"
-                                    Header="Blur (image backgrounds)"
-                                    IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
-                                    Maximum="100"
-                                    Minimum="0"
-                                    StepFrequency="1"
-                                    TickFrequency="10"
-                                    TickPlacement="None"
-                                    Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Slider
+                                        x:Name="SldShellBlur"
+                                        Grid.Column="0"
+                                        AutomationProperties.AutomationId="SldShellBlur"
+                                        AutomationProperties.Name="Blur"
+                                        Header="Blur"
+                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
+                                        Maximum="40"
+                                        Minimum="0"
+                                        StepFrequency="1"
+                                        TickFrequency="5"
+                                        TickPlacement="None"
+                                        Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
+                                    <NumberBox
+                                        x:Name="NbShellBlur"
+                                        Grid.Column="1"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="NbShellBlur"
+                                        AutomationProperties.Name="Blur pixels"
+                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}"
+                                        Maximum="40"
+                                        Minimum="0"
+                                        SpinButtonPlacementMode="Hidden"
+                                        Value="{x:Bind ViewModel.Blur, Mode=TwoWay}" />
+                                    <HyperlinkButton
+                                        Grid.Column="2"
+                                        VerticalAlignment="Bottom"
+                                        AutomationProperties.AutomationId="BtnResetShellBlur"
+                                        AutomationProperties.Name="Reset blur"
+                                        Command="{x:Bind ViewModel.ResetBlurCommand}"
+                                        Content="Reset"
+                                        IsEnabled="{x:Bind ViewModel.BlurEnabled, Mode=OneWay}" />
+                                </Grid>
                                 <TextBlock
                                     x:Name="TxtShellBlur"
                                     AutomationProperties.AutomationId="TxtShellBlur"

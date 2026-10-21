@@ -293,6 +293,22 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    private async void ShellRecentCustomLocate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is HyperlinkButton { Tag: ShellPresetItem item })
+        {
+            await ViewModel.LocateRecentCustomCommand.ExecuteAsync(item);
+        }
+    }
+
+    private async void ShellRecentCustomLocateMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem { Tag: ShellPresetItem item })
+        {
+            await ViewModel.LocateRecentCustomCommand.ExecuteAsync(item);
+        }
+    }
+
     private async void ShellPresetGrid_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (sender is not GridView grid)
