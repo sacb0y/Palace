@@ -1,0 +1,1 @@
+﻿Release x64 MSIX tip b9ce65d: search cache, Media expanded (Thumb collapsed) — Media outline magentaLean>0; Thumb collapsed=0 — FAIL (not every match).

@@ -1,0 +1,20 @@
+﻿{
+    "case3":  {
+                  "full":  0,
+                  "hdr":  0
+              },
+    "case2":  {
+                  "media_expanded":  3484,
+                  "thumb":  0,
+                  "full":  394,
+                  "media_header":  6
+              },
+    "case1":  {
+                  "media":  0,
+                  "thumb":  0,
+                  "full":  0
+              },
+    "tip":  "b9ce65da3622d20a9ca928c0eaac298fcee96561",
+    "diagnosis":  "Collapsed overlay hosts still show 0 pink pixels in Release MSIX; overlay Border only measurable when Media expander is expanded.",
+    "result":  "FAIL"
+}

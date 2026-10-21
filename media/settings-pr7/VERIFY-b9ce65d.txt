@@ -1,0 +1,11 @@
+﻿FAIL Release x64 MSIX tip b9ce65d (b9ce65da3622d20a9ca928c0eaac298fcee96561)
+Identity: PalaceSettingsPr7-127 (Release AppX). BelowNormal -m:1. Temp SFW + PALACE_DATA_DIR.
+Expected: Overlay Border on TOP of card chrome (IsHitTestVisible=false) — pink #E05A8C on header/outline for EVERY matching card including collapsed.
+
+Pixel-scan (magentaLean / pink R-G>=40 band around #E05A8C):
+1. cache BOTH collapsed: full=0; Thumb 715x70=0; Media 715x70=0; Overlay_* shots = full-window fallback, also 0
+2. cache Media expanded: Thumb collapsed 715x70=0; Media expanded 715x213 magentaLean sample~394 / edgeDense~3484 (left ring #D2658E / R=205 G=82 B=128); full window pink only in Media region
+3. tonemap: full=0; CardHdr 715x70=0; Overlay-Hdr=0
+
+PASS requires pink on header/outline for EVERY matching card including collapsed — FAIL.
+Diagnosis: tip b9ce65d overlay-on-top still produces no measurable pink on collapsed SettingsExpander hosts in Release MSIX. Same failure class as 315aeac/ab584e0 for collapsed; pink only when Media expander is expanded.
