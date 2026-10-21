@@ -1727,7 +1727,7 @@ public sealed partial class LibraryPage : Page
 
     /// <summary>
     /// Single-tile menu vs select-mode batch menu (header + Keep/Reject/…/Clear).
-    /// Rooms stay hidden in batch (still queued).
+    /// Batch shows Add to room disabled (Rooms backend still queued). No command bar.
     /// </summary>
     private void ConfigureAssetMenu(MenuFlyout flyout)
     {
@@ -1760,8 +1760,16 @@ public sealed partial class LibraryPage : Page
                 case "MnuOpenInNewWindow":
                 case "MnuShowInExplorer":
                 case "MnuCopyPath":
-                case "MnuAddToRoom":
                     entry.Visibility = batch ? Visibility.Collapsed : Visibility.Visible;
+                    break;
+                case "MnuAddToRoom":
+                    // Visible in both menus; disabled in batch until Rooms backend is ready.
+                    entry.Visibility = Visibility.Visible;
+                    if (entry is MenuFlyoutItem addRoom)
+                    {
+                        addRoom.IsEnabled = !batch;
+                    }
+
                     break;
                 case "MnuAddTag":
                     if (entry is MenuFlyoutItem addTag)
@@ -1774,6 +1782,7 @@ public sealed partial class LibraryPage : Page
                     if (entry is MenuFlyoutItem delete)
                     {
                         // Danger style in batch; clear so theme default returns outside select mode.
+                        // Delete confirm already defaults Cancel (AskConfirmAsync → Close).
                         delete.ClearValue(Control.ForegroundProperty);
                         if (batch
                             && Application.Current.Resources.TryGetValue(
