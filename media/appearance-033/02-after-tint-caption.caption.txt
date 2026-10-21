@@ -1,0 +1,1 @@
+﻿Palace 0.3.3 — Sketchbook name centered under the 16:9 preview caption; Color tint is a clean side-by-side header + toggle at the bottom.

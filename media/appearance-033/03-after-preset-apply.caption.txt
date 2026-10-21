@@ -1,0 +1,1 @@
+﻿Palace 0.3.3 — Petal then Aurora: preset applies immediately; preview and shell paint Aurora (BoundSourcePath rebuild).

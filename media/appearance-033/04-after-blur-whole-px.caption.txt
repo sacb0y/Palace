@@ -1,0 +1,1 @@
+﻿Palace 0.3.3 — Blur NumberBox and caption both show whole pixels (21.7779 normalizes to 22 / 22 px).

@@ -1,0 +1,1 @@
+﻿Palace 0.3.3 — Facets hover: empty ToolTip square gone (ToolTipService removed from preset tiles; caption under thumb is enough).

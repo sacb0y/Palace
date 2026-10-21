@@ -1,0 +1,1 @@
+﻿Palace 0.3.0 — Sketchbook selected: preset name sits above Color tint and crowds the toggle (stacked layout).

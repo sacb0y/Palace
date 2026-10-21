@@ -1,0 +1,1 @@
+﻿Palace 0.3.0 — Facets preset tile hover shows an empty dark ToolTip square (ToolTipService bound to empty ToolTipText).

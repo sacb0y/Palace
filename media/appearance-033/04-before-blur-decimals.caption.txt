@@ -1,0 +1,1 @@
+﻿Palace 0.3.0 — Blur NumberBox shows unrounded decimals (e.g. 21.7779) while the caption reads 22 px.

@@ -1,0 +1,1 @@
+﻿Palace 0.3.0 — Petal then Aurora (no Default detour): Settings composition preview stays stale/empty while Aurora is selected.
