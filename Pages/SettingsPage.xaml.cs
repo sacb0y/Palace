@@ -1,6 +1,8 @@
+using System.Text;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -232,6 +234,8 @@ public sealed partial class SettingsPage : Page
         }
 
         _searchFiltering = true;
+        // Re-ensure hosts before filter/highlight — wrap must succeed for Host_* UIA.
+        EnsureSearchHighlightHosts();
         var sectionIds = SettingsNav.VisibleSectionIds(hits);
         var cardIds = SettingsNav.VisibleCardIds(hits);
 
@@ -380,53 +384,113 @@ public sealed partial class SettingsPage : Page
     /// <summary>
     /// Wrap each SettingsNav card in a parent Border we own. Highlight paints that Border’s
     /// Padding + BorderBrush — outside the expander composition surface.
+    /// Walks VisualTreeHelper (not only FrameworkElement.Parent) — Parent can be null/odd
+    /// while the visual parent is still a StackPanel (Host_* missing from UIA on 4006c12).
     /// </summary>
     private void EnsureSearchHighlightHosts()
     {
+        var log = new StringBuilder();
+        log.AppendLine($"[{DateTime.UtcNow:o}] EnsureSearchHighlightHosts targets={SettingsNav.Targets.Count}");
+        var ok = 0;
+        var fail = 0;
+
         foreach (var target in SettingsNav.Targets)
         {
             if (_searchHosts.ContainsKey(target.CardAutomationId))
             {
+                ok++;
                 continue;
             }
 
             if (FindName(target.CardAutomationId) is not FrameworkElement card)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Settings search host: FindName missed {target.CardAutomationId}");
+                fail++;
+                log.AppendLine($"MISS FindName {target.CardAutomationId}");
                 continue;
             }
 
-            if (card.Parent is Border existing
-                && string.Equals(existing.Tag as string, SearchHostTag, StringComparison.Ordinal))
+            if (FindExistingSearchHost(card) is { } existing)
             {
+                ConfigureSearchHostAutomation(existing, target.CardAutomationId);
                 existing.Padding = SearchHostChromePadding;
-                AutomationProperties.SetAutomationId(existing, "Host_" + target.CardAutomationId);
                 _searchHosts[target.CardAutomationId] = existing;
+                ok++;
+                log.AppendLine($"EXISTING {target.CardAutomationId} → Host_{target.CardAutomationId}");
                 continue;
             }
+
+            log.AppendLine(
+                $"WRAP {target.CardAutomationId} logicalParent={card.Parent?.GetType().Name ?? "null"} " +
+                $"chain={DescribeParentChain(card)}");
 
             var host = TryWrapInSearchHost(card, target.CardAutomationId);
             if (host is not null)
             {
                 _searchHosts[target.CardAutomationId] = host;
                 host.UpdateLayout();
-                System.Diagnostics.Debug.WriteLine(
-                    $"Settings search host wrapped {target.CardAutomationId}: " +
-                    $"Host_{target.CardAutomationId} Actual={host.ActualWidth:0}x{host.ActualHeight:0} " +
-                    $"Padding={host.Padding.Left} ParentIsBorder={card.Parent is Border}");
+                // Force a peer so winapp ui wait-for Host_* can see it.
+                _ = FrameworkElementAutomationPeer.FromElement(host)
+                    ?? FrameworkElementAutomationPeer.CreatePeerForElement(host);
+                ok++;
+                log.AppendLine(
+                    $"OK {target.CardAutomationId} Host_{target.CardAutomationId} " +
+                    $"Actual={host.ActualWidth:0}x{host.ActualHeight:0} " +
+                    $"childParentIsHost={ReferenceEquals(card.Parent, host)}");
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"Settings search host WRAP FAILED for {target.CardAutomationId} (Parent={card.Parent?.GetType().Name})");
+                fail++;
+                log.AppendLine($"FAIL {target.CardAutomationId}");
             }
         }
+
+        log.AppendLine($"SUMMARY ok={ok} fail={fail} dict={_searchHosts.Count}");
+        WriteHostWrapLog(log.ToString());
+        System.Diagnostics.Debug.WriteLine(log.ToString());
+    }
+
+    private static Border? FindExistingSearchHost(FrameworkElement card)
+    {
+        if (card.Parent is Border logical
+            && string.Equals(logical.Tag as string, SearchHostTag, StringComparison.Ordinal))
+        {
+            return logical;
+        }
+
+        if (VisualTreeHelper.GetParent(card) is Border visual
+            && string.Equals(visual.Tag as string, SearchHostTag, StringComparison.Ordinal))
+        {
+            return visual;
+        }
+
+        return null;
+    }
+
+    private static void ConfigureSearchHostAutomation(Border host, string cardId)
+    {
+        AutomationProperties.SetAutomationId(host, "Host_" + cardId);
+        AutomationProperties.SetName(host, "Settings search host " + cardId);
+        AutomationProperties.SetAccessibilityView(host, AccessibilityView.Content);
+    }
+
+    private static string DescribeParentChain(FrameworkElement card)
+    {
+        var parts = new List<string>();
+        for (var p = VisualTreeHelper.GetParent(card); p is not null && parts.Count < 8;
+             p = VisualTreeHelper.GetParent(p))
+        {
+            var name = p is FrameworkElement fe && !string.IsNullOrEmpty(fe.Name)
+                ? fe.Name
+                : "";
+            parts.Add(string.IsNullOrEmpty(name) ? p.GetType().Name : $"{p.GetType().Name}#{name}");
+        }
+
+        return parts.Count == 0 ? "(none)" : string.Join(" > ", parts);
     }
 
     private static Border? TryWrapInSearchHost(FrameworkElement card, string cardId)
     {
-        var host = new Border
+        var host = new SearchHighlightHostBorder
         {
             Tag = SearchHostTag,
             // Pink lives here (outside expander composition) — keep padding even when clear.
@@ -436,9 +500,10 @@ public sealed partial class SettingsPage : Page
             CornerRadius = new CornerRadius(8),
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        AutomationProperties.SetAutomationId(host, "Host_" + cardId);
+        ConfigureSearchHostAutomation(host, cardId);
 
-        if (card.Parent is Panel panel)
+        var panel = FindPanelOwner(card);
+        if (panel is not null)
         {
             var index = panel.Children.IndexOf(card);
             if (index < 0)
@@ -471,6 +536,39 @@ public sealed partial class SettingsPage : Page
             return host;
         }
 
+        if (card.Parent is ContentControl content
+            && ReferenceEquals(content.Content, card))
+        {
+            content.Content = null;
+            host.Margin = card.Margin;
+            card.Margin = new Thickness(0);
+            host.Child = card;
+            content.Content = host;
+            return host;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// StackPanel / Grid etc. Prefer visual tree — FrameworkElement.Parent can be null
+    /// for toolkit expanders even when they sit in a section StackPanel.
+    /// </summary>
+    private static Panel? FindPanelOwner(FrameworkElement card)
+    {
+        if (card.Parent is Panel logical && logical.Children.IndexOf(card) >= 0)
+        {
+            return logical;
+        }
+
+        for (var p = VisualTreeHelper.GetParent(card); p is not null; p = VisualTreeHelper.GetParent(p))
+        {
+            if (p is Panel panel && panel.Children.IndexOf(card) >= 0)
+            {
+                return panel;
+            }
+        }
+
         return null;
     }
 
@@ -495,6 +593,33 @@ public sealed partial class SettingsPage : Page
         }
 
         return null;
+    }
+
+    private static void WriteHostWrapLog(string text)
+    {
+        try
+        {
+            var dir = Environment.GetEnvironmentVariable("PALACE_DATA_DIR");
+            if (string.IsNullOrWhiteSpace(dir))
+            {
+                dir = Path.GetTempPath();
+            }
+
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "palace-settings-search-hosts.log");
+            File.AppendAllText(path, text + Environment.NewLine);
+        }
+        catch
+        {
+            // Logging must never break Settings.
+        }
+    }
+
+    /// <summary>Border that always exposes a UIA peer for Host_* wait-for.</summary>
+    private sealed class SearchHighlightHostBorder : Border
+    {
+        protected override AutomationPeer OnCreateAutomationPeer() =>
+            new FrameworkElementAutomationPeer(this);
     }
 
     private void HighlightMatchingCards(IReadOnlySet<string> cardIds)
