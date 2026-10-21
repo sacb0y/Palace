@@ -93,10 +93,11 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        var device = e.Pointer.PointerDeviceType;
         var point = e.GetCurrentPoint(_mpe);
         var yFromBottom = _mpe.ActualHeight - point.Position.Y;
         _swipe.TryBegin(
-            isTouch: e.Pointer.PointerDeviceType == PointerDeviceType.Touch,
+            isTouch: device == PointerDeviceType.Touch,
             pointerId: e.Pointer.PointerId,
             x: point.Position.X,
             y: point.Position.Y,
@@ -104,6 +105,13 @@ public sealed class VideoBrowseSwipeBinder
             swipeAllowed: _swipeAllowed(),
             transportChromeVisible: IsTransportChromeVisible(_mpe.TransportControls),
             yFromBottom: yFromBottom);
+
+        // Stock MPE shows transport on mouse/pen click. Our AddHandler can steal
+        // that path — restore Show for mouse/pen without arming touch swipe.
+        if (device is PointerDeviceType.Mouse or PointerDeviceType.Pen)
+        {
+            _mpe.TransportControls?.Show();
+        }
     }
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
@@ -127,6 +135,7 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        var device = e.Pointer.PointerDeviceType;
         var point = e.GetCurrentPoint(_mpe);
         var hadCapture = _captured;
         var completed = _swipe.TryComplete(
@@ -138,13 +147,19 @@ public sealed class VideoBrowseSwipeBinder
             out var action,
             out var navigated);
         EndCapture(e.Pointer);
-        if (!completed || !hadCapture || !navigated || !_swipeAllowed())
+        if (completed && hadCapture && navigated && _swipeAllowed())
         {
+            _onNavigate(action);
+            e.Handled = true;
             return;
         }
 
-        _onNavigate(action);
-        e.Handled = true;
+        // Touch tap (no swipe capture): same as stock — show transport.
+        // Mouse/pen already Show()'d on press; touch browse swipe must not.
+        if (device == PointerDeviceType.Touch && !hadCapture)
+        {
+            _mpe.TransportControls?.Show();
+        }
     }
 
     private void OnPointerCanceled(object sender, PointerRoutedEventArgs e)

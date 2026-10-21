@@ -47,6 +47,8 @@ public sealed partial class LibraryPage : Page
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
+    /// <summary>ItemContainer pre-armed for mouse DnD (hover); null when touch-safe.</summary>
+    private ItemContainer? _canDragArmed;
     private long _rangePressMs;
     private Windows.Foundation.Point _rangePressPoint;
     private uint _rangePointerId;
@@ -546,18 +548,9 @@ public sealed partial class LibraryPage : Page
         _rangeConsumedTap = false;
         _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
         _lastPressWasTouch = e.Pointer.PointerDeviceType == PointerDeviceType.Touch;
-        // CanDrag on ItemContainer steals touch pan — arm only for mouse folder-drag.
-        if (FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject) is { } dragContainer)
-        {
-            var dragItem = FindAssetItem(dragContainer);
-            dragContainer.CanDrag = dragItem is not null
-                && AssetDrag.ArmsItemContainerCanDrag(
-                    _lastPressWasMouse,
-                    ViewModel.IsSelectMode,
-                    dragItem.IsSelected,
-                    dragItem.IsFolderHeader,
-                    ViewModel.IsGalleryOverlayOpen);
-        }
+        // Touch/pen: force CanDrag off so ItemsView can pan. Mouse: hover already
+        // pre-armed (press alone is too late for WinUI's first-drag sample).
+        SyncMouseCanDragArm(e);
 
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
@@ -599,6 +592,9 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeMoved(object sender, PointerRoutedEventArgs e)
     {
+        // Pre-arm CanDrag while the mouse hovers a tile so the first drag works.
+        SyncMouseCanDragArm(e);
+
         if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
         {
             return;
@@ -694,11 +690,10 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeReleased(object sender, PointerRoutedEventArgs e)
     {
-        // Disarm after mouse press so a recycled tile does not keep CanDrag for touch.
-        if (FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject) is { } released)
-        {
-            released.CanDrag = false;
-        }
+        // Clear any prior arm, then re-arm if the mouse is still over a tile
+        // (so the next drag does not need an extra hover move).
+        DisarmCanDrag();
+        SyncMouseCanDragArm(e);
 
         if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
         {
@@ -731,10 +726,7 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_RangeCaptureLost(object sender, PointerRoutedEventArgs e)
     {
-        if (FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject) is { } lost)
-        {
-            lost.CanDrag = false;
-        }
+        DisarmCanDrag();
 
         if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
         {
@@ -1206,6 +1198,50 @@ public sealed partial class LibraryPage : Page
         }
 
         return null;
+    }
+
+    private void SyncMouseCanDragArm(PointerRoutedEventArgs e)
+    {
+        if (e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
+        {
+            DisarmCanDrag();
+            return;
+        }
+
+        var container = FindAncestor<ItemContainer>(e.OriginalSource as DependencyObject);
+        var item = container is null ? null : FindAssetItem(container);
+        var arm = item is not null
+            && AssetDrag.PreArmsCanDragOnMouseHover(
+                isMouse: true,
+                ViewModel.IsSelectMode,
+                item.IsSelected,
+                item.IsFolderHeader,
+                ViewModel.IsGalleryOverlayOpen);
+        if (!arm || container is null)
+        {
+            DisarmCanDrag();
+            return;
+        }
+
+        if (ReferenceEquals(_canDragArmed, container))
+        {
+            return;
+        }
+
+        DisarmCanDrag();
+        container.CanDrag = true;
+        _canDragArmed = container;
+    }
+
+    private void DisarmCanDrag()
+    {
+        if (_canDragArmed is null)
+        {
+            return;
+        }
+
+        _canDragArmed.CanDrag = false;
+        _canDragArmed = null;
     }
 
     private void GalleryOverlay_PointerPressed(object sender, PointerRoutedEventArgs e)

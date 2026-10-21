@@ -14,8 +14,8 @@ public static class AssetDrag
 
     /// <summary>
     /// <c>ItemContainer.CanDrag</c> steals touch pan from the mosaic ScrollViewer.
-    /// Arm it only for a mouse press that may start a folder drag; keep false for
-    /// touch / pen so finger drag scrolls (tap / long-press select stay intact).
+    /// Arm only for mouse folder-drag; keep false for touch / pen so finger drag
+    /// scrolls (tap / long-press select stay intact).
     /// </summary>
     public static bool ArmsItemContainerCanDrag(
         bool isMouse,
@@ -24,6 +24,20 @@ public static class AssetDrag
         bool isFolderHeader,
         bool overlayOpen) =>
         CanStart(isMouse, isSelectMode, isSelected, isFolderHeader, overlayOpen);
+
+    /// <summary>
+    /// WinUI samples <c>CanDrag</c> at pointer-down before <c>PointerPressed</c>
+    /// can arm it — so the first mouse drag fails if XAML starts false. Pre-arm
+    /// on mouse hover (not press) so the first gesture starts real DnD; touch
+    /// must leave CanDrag false.
+    /// </summary>
+    public static bool PreArmsCanDragOnMouseHover(
+        bool isMouse,
+        bool isSelectMode,
+        bool isSelected,
+        bool isFolderHeader,
+        bool overlayOpen) =>
+        ArmsItemContainerCanDrag(isMouse, isSelectMode, isSelected, isFolderHeader, overlayOpen);
 
     /// <summary>Mosaic touch pan scrolls only while the tile is not drag-armed.</summary>
     public static bool AllowsMosaicTouchScroll(bool itemContainerCanDrag) => !itemContainerCanDrag;
