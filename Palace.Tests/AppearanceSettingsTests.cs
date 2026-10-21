@@ -22,4 +22,15 @@ public sealed class AppearanceSettingsTests
         Assert.True(AppearanceSettings.ParseAnimations("true"));
         Assert.False(AppearanceSettings.ParseAnimations("False"));
     }
+
+    [Fact]
+    public void Density_CompactTightensCardChrome()
+    {
+        Assert.False(AppearanceSettings.IsCompact(AppearanceSettings.DensityComfortable));
+        Assert.True(AppearanceSettings.IsCompact("compact"));
+        Assert.Equal(40, AppearanceSettings.CardMinHeight(AppearanceSettings.DensityComfortable));
+        Assert.Equal(32, AppearanceSettings.CardMinHeight(AppearanceSettings.DensityCompact));
+        Assert.Equal(4, AppearanceSettings.CardSpacingBottom(AppearanceSettings.DensityComfortable));
+        Assert.Equal(2, AppearanceSettings.CardSpacingBottom(AppearanceSettings.DensityCompact));
+    }
 }

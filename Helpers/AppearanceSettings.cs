@@ -2,7 +2,7 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Appearance density + animations prefs (LocalSettings). Off WinUI for Palace.Tests.
-/// Visual density polish lands in Settings PR 7; this PR wires the model + Settings UI.
+/// Compact tightens Settings card min-height and bottom spacing (0.3.0 polish).
 /// </summary>
 public static class AppearanceSettings
 {
@@ -13,6 +13,11 @@ public static class AppearanceSettings
     public const string DensityCompact = "Compact";
     public const string DefaultDensity = DensityComfortable;
     public const bool DefaultAnimations = true;
+
+    public const double ComfortableCardMinHeight = 40;
+    public const double CompactCardMinHeight = 32;
+    public const double ComfortableCardSpacingBottom = 4;
+    public const double CompactCardSpacingBottom = 2;
 
     public static readonly string[] DensityOptions =
     [
@@ -38,6 +43,15 @@ public static class AppearanceSettings
         string text => NormalizeDensity(text),
         _ => DefaultDensity
     };
+
+    public static bool IsCompact(string? density) =>
+        NormalizeDensity(density) == DensityCompact;
+
+    public static double CardMinHeight(string? density) =>
+        IsCompact(density) ? CompactCardMinHeight : ComfortableCardMinHeight;
+
+    public static double CardSpacingBottom(string? density) =>
+        IsCompact(density) ? CompactCardSpacingBottom : ComfortableCardSpacingBottom;
 
     public static bool ParseAnimations(object? stored) => stored switch
     {

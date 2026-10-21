@@ -9,7 +9,10 @@ public sealed class ShortcutCheatsheetTests
     public void Entries_CoverViewerShortcuts()
     {
         Assert.Equal(
-            ["Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+D", "I", "Alt+Enter", "Ctrl+H", "M", "Up / Down", "F6", "Space", "Esc"],
+            [
+                "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+D", "I", "Alt+Enter", "Ctrl+H", "M", "Up / Down",
+                "F6", "Space", "Esc", "Ctrl+F", "Ctrl+E"
+            ],
             ShortcutCheatsheet.Entries.Select(entry => entry.Keys));
         Assert.Equal("1:1", ShortcutCheatsheet.Find("Ctrl+1")?.Action);
         Assert.Equal("Fit", ShortcutCheatsheet.Find("Ctrl+2")?.Action);
@@ -23,6 +26,8 @@ public sealed class ShortcutCheatsheetTests
         Assert.Contains("Cycle", ShortcutCheatsheet.Find("F6")!.Action, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("overlay", ShortcutCheatsheet.Find("Space")!.Action, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Details", ShortcutCheatsheet.Find("Esc")!.Action, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Settings: Find", ShortcutCheatsheet.Find("Ctrl+F")?.Action);
+        Assert.Equal("Settings: Find", ShortcutCheatsheet.Find("Ctrl+E")?.Action);
     }
 
     [Fact]
@@ -42,7 +47,9 @@ public sealed class ShortcutCheatsheetTests
                 "TxtShortcutVolume",
                 "TxtShortcutFocusCycle",
                 "TxtShortcutSpace",
-                "TxtShortcutEsc"
+                "TxtShortcutEsc",
+                "TxtShortcutSettingsFind",
+                "TxtShortcutSettingsFindAlt"
             ],
             ids);
         Assert.Equal(ids.Count, ids.Distinct(StringComparer.Ordinal).Count());

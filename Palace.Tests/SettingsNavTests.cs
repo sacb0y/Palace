@@ -47,9 +47,9 @@ public sealed class SettingsNavTests
         var hdr = SettingsNav.FindHit("peak nits");
         Assert.NotNull(hdr);
         Assert.Equal(SettingsNav.Viewer, hdr.Value.SectionId);
-        Assert.Equal("CardHdrPeak", hdr.Value.CardAutomationId);
+        Assert.Equal("CardHdrPeakNits", hdr.Value.CardAutomationId);
 
-        var section = SettingsNav.FindHit("Appearance");
+        var section = SettingsNav.FindHit("appearance");
         Assert.NotNull(section);
         Assert.Equal(SettingsNav.Appearance, section.Value.SectionId);
 
@@ -57,6 +57,32 @@ public sealed class SettingsNavTests
         Assert.NotNull(shortcuts);
         Assert.Equal(SettingsNav.Input, shortcuts.Value.SectionId);
         Assert.Equal("CardShortcuts", shortcuts.Value.CardAutomationId);
+    }
+
+    [Fact]
+    public void FindHits_CacheFiltersMatchingCards()
+    {
+        Assert.Empty(SettingsNav.FindHits(""));
+        Assert.Empty(SettingsNav.FindHits("   "));
+
+        var hits = SettingsNav.FindHits("cache");
+        var cards = hits.Select(h => h.CardAutomationId).Where(id => id is not null).ToHashSet();
+        Assert.Contains("CardMediaCache", cards);
+        Assert.Contains("CardThumbnailCache", cards);
+
+        var primary = SettingsNav.FindHit("cache");
+        Assert.NotNull(primary);
+        Assert.Equal("CardMediaCache", primary.Value.CardAutomationId);
+        Assert.Equal(SettingsNav.Performance, primary.Value.SectionId);
+
+        var visible = SettingsNav.VisibleCardIds(hits);
+        Assert.Contains("CardMediaCache", visible);
+        Assert.Contains("CardThumbnailCache", visible);
+        Assert.DoesNotContain("CardTheme", visible);
+
+        var sections = SettingsNav.VisibleSectionIds(hits);
+        Assert.Contains(SettingsNav.Performance, sections);
+        Assert.Contains(SettingsNav.Library, sections);
     }
 
     [Fact]

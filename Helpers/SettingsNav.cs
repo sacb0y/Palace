@@ -146,35 +146,113 @@ public static class SettingsNav
     }
 
     /// <summary>
-    /// First search hit for a query: prefers card targets, then section keywords.
-    /// Empty / whitespace query returns null.
+    /// First search hit for a query: prefers an exact card term, then any card
+    /// match, then section keywords. Empty / whitespace query returns null.
     /// </summary>
     public static SearchHit? FindHit(string? query)
     {
-        var needle = query?.Trim() ?? "";
-        if (needle.Length == 0)
+        var hits = FindHits(query);
+        if (hits.Count == 0)
         {
             return null;
         }
 
+        var needle = query!.Trim();
+        foreach (var hit in hits)
+        {
+            if (hit.CardAutomationId is not { } cardId)
+            {
+                continue;
+            }
+
+            var target = Targets.FirstOrDefault(t =>
+                string.Equals(t.CardAutomationId, cardId, StringComparison.Ordinal));
+            if (target is not null
+                && target.Terms.Any(term =>
+                    term.Equals(needle, StringComparison.OrdinalIgnoreCase)))
+            {
+                return hit;
+            }
+        }
+
+        return hits[0];
+    }
+
+    /// <summary>
+    /// All card (and, if none, section) hits for filtering Settings content.
+    /// Empty / whitespace query returns an empty list.
+    /// </summary>
+    public static IReadOnlyList<SearchHit> FindHits(string? query)
+    {
+        var needle = query?.Trim() ?? "";
+        if (needle.Length == 0)
+        {
+            return [];
+        }
+
+        var hits = new List<SearchHit>();
         foreach (var target in Targets)
         {
             if (Matches(needle, target.Terms) || Contains(needle, target.CardAutomationId))
             {
-                return new SearchHit(target.SectionId, target.CardAutomationId);
+                hits.Add(new SearchHit(target.SectionId, target.CardAutomationId));
             }
+        }
+
+        if (hits.Count > 0)
+        {
+            return hits;
         }
 
         foreach (var section in Sections)
         {
             if (Contains(needle, section.Title) || Matches(needle, section.Keywords))
             {
-                return new SearchHit(section.Id, CardAutomationId: null);
+                hits.Add(new SearchHit(section.Id, CardAutomationId: null));
             }
         }
 
-        return null;
+        return hits;
     }
+
+    /// <summary>
+    /// Card AutomationIds that should stay visible for a hit set. Section-only
+    /// hits (no card id) mean "show every card in that section."
+    /// </summary>
+    public static IReadOnlySet<string> VisibleCardIds(IReadOnlyList<SearchHit> hits)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        if (hits.Count == 0)
+        {
+            return ids;
+        }
+
+        var sectionOnly = new HashSet<string>(
+            hits.Where(h => h.CardAutomationId is null).Select(h => h.SectionId),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var target in Targets)
+        {
+            if (sectionOnly.Contains(target.SectionId))
+            {
+                ids.Add(target.CardAutomationId);
+                continue;
+            }
+
+            if (hits.Any(h =>
+                    string.Equals(h.CardAutomationId, target.CardAutomationId, StringComparison.Ordinal)))
+            {
+                ids.Add(target.CardAutomationId);
+            }
+        }
+
+        return ids;
+    }
+
+    public static IReadOnlySet<string> VisibleSectionIds(IReadOnlyList<SearchHit> hits) =>
+        new HashSet<string>(
+            hits.Select(h => h.SectionId),
+            StringComparer.OrdinalIgnoreCase);
 
     public static bool Matches(string needle, IReadOnlyList<string> terms) =>
         terms.Any(term => Contains(needle, term) || Contains(term, needle));

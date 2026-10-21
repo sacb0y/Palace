@@ -21,8 +21,9 @@ public sealed partial class SettingsPage : Page
     private bool _ignoreTintChanges;
     private bool _ignoreNavSelection;
     private bool _ignorePresetSelection;
-    private Control? _highlightedCard;
-    private Brush? _highlightRestoreBrush;
+    private bool _ignoreSearchClear;
+    private bool _searchFiltering;
+    private readonly List<(Control Card, Brush? Restore)> _highlightedCards = [];
     private DispatcherTimer? _highlightTimer;
 
     public SettingsViewModel ViewModel => AppServices.Settings;
@@ -56,6 +57,7 @@ public sealed partial class SettingsPage : Page
             ViewModel.RefreshBackgroundPresetSwatches();
             SyncPresetGridSelection();
             ApplyContentCap(ActualWidth);
+            ApplyDensity(ViewModel.SelectedDensity);
             RestoreLastSection(scrollToTop: true);
             ShellBackground.Changed += ShellBackground_PreviewChanged;
             ShellBackground.LiveAmountsChanged += ShellBackground_PreviewLiveAmounts;
@@ -154,33 +156,144 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
+        // Manual nav clears an active search filter so one section shows fully.
+        if (!string.IsNullOrWhiteSpace(TxtSettingsSearch.Text))
+        {
+            _ignoreSearchClear = true;
+            TxtSettingsSearch.Text = "";
+            _ignoreSearchClear = false;
+            ClearSearchFilter();
+        }
+
         var id = item.Tag as string ?? SettingsNav.DefaultSectionId;
         SelectSection(id, persist: true, scrollToTop: true);
     }
 
     private void TxtSettingsSearch_TextChanged(object sender, TextChangedEventArgs e)
     {
-        var hit = SettingsNav.FindHit(TxtSettingsSearch.Text);
-        if (hit is null)
+        if (_ignoreSearchClear)
         {
-            ClearSearchHighlight();
             return;
         }
 
-        SelectSection(hit.Value.SectionId, persist: true, scrollToTop: hit.Value.CardAutomationId is null);
-        if (hit.Value.CardAutomationId is { } cardId)
+        ApplySearchQuery(TxtSettingsSearch.Text);
+    }
+
+    private void TxtSettingsSearch_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape)
         {
-            HighlightCard(cardId);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(TxtSettingsSearch.Text))
+        {
+            TxtSettingsSearch.Text = "";
+            e.Handled = true;
+        }
+
+        ScrSettingsContent.Focus(FocusState.Programmatic);
+    }
+
+    private void FocusSettingsSearch_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        TxtSettingsSearch.Focus(FocusState.Programmatic);
+        TxtSettingsSearch.SelectAll();
+        args.Handled = true;
+    }
+
+    private void ApplySearchQuery(string? query)
+    {
+        var hits = SettingsNav.FindHits(query);
+        if (hits.Count == 0)
+        {
+            var hadFilter = _searchFiltering;
+            ClearSearchFilter();
+            if (hadFilter)
+            {
+                RestoreLastSection(scrollToTop: true);
+            }
+            else
+            {
+                ClearSearchHighlight();
+            }
+
+            return;
+        }
+
+        _searchFiltering = true;
+        var sectionIds = SettingsNav.VisibleSectionIds(hits);
+        var cardIds = SettingsNav.VisibleCardIds(hits);
+
+        foreach (var panel in SectionPanels())
+        {
+            var id = panel.Name["PnlSection_".Length..];
+            panel.Visibility = sectionIds.Contains(id) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (FindName(target.CardAutomationId) is not UIElement card)
+            {
+                continue;
+            }
+
+            var show = cardIds.Contains(target.CardAutomationId);
+            card.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (show)
+            {
+                EnsureAncestorsVisible(card);
+            }
+        }
+
+        var primary = SettingsNav.FindHit(query) ?? hits[0];
+        SelectNavItem(primary.SectionId, persist: true);
+        HighlightMatchingCards(cardIds);
+        if (primary.CardAutomationId is { } firstCard
+            && FindName(firstCard) is UIElement firstElement)
+        {
+            firstElement.StartBringIntoView();
         }
         else
         {
-            ClearSearchHighlight();
+            ScrSettingsContent.ChangeView(null, 0, null, disableAnimation: true);
+        }
+    }
+
+    private void ClearSearchFilter()
+    {
+        _searchFiltering = false;
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (FindName(target.CardAutomationId) is UIElement card)
+            {
+                card.Visibility = Visibility.Visible;
+            }
+        }
+
+        ClearSearchHighlight();
+    }
+
+    private static void EnsureAncestorsVisible(DependencyObject element)
+    {
+        var parent = VisualTreeHelper.GetParent(element);
+        while (parent is not null)
+        {
+            if (parent is UIElement ue
+                && (parent is CommunityToolkit.WinUI.Controls.SettingsExpander
+                    || parent is CommunityToolkit.WinUI.Controls.SettingsCard))
+            {
+                ue.Visibility = Visibility.Visible;
+            }
+
+            parent = VisualTreeHelper.GetParent(parent);
         }
     }
 
     private void SelectSection(string sectionId, bool persist, bool scrollToTop)
     {
         var id = SettingsNav.Normalize(sectionId);
+        ClearSearchFilter();
 
         // Content panes first so list highlight and content never diverge.
         foreach (var panel in SectionPanels())
@@ -190,6 +303,17 @@ public sealed partial class SettingsPage : Page
                 : Visibility.Collapsed;
         }
 
+        SelectNavItem(id, persist);
+
+        if (scrollToTop)
+        {
+            ScrSettingsContent.ChangeView(null, 0, null, disableAnimation: true);
+        }
+    }
+
+    private void SelectNavItem(string sectionId, bool persist)
+    {
+        var id = SettingsNav.Normalize(sectionId);
         ListViewItem? match = null;
         foreach (var item in LstSettingsNav.Items.OfType<ListViewItem>())
         {
@@ -211,11 +335,6 @@ public sealed partial class SettingsPage : Page
         {
             ApplicationData.Current.LocalSettings.Values[SettingsNav.LastSectionKey] = id;
         }
-
-        if (scrollToTop)
-        {
-            ScrSettingsContent.ChangeView(null, 0, null, disableAnimation: true);
-        }
     }
 
     private IEnumerable<StackPanel> SectionPanels() =>
@@ -229,31 +348,46 @@ public sealed partial class SettingsPage : Page
         PnlSection_about
     ];
 
-    private void HighlightCard(string automationId)
+    private void HighlightMatchingCards(IReadOnlySet<string> cardIds)
     {
         ClearSearchHighlight();
-        // Card AutomationIds match x:Name (CardTheme, …). SettingsCard is a Control.
-        var card = FindName(automationId) as Control
-            ?? FindNamedControl(PnlSettingsContent, automationId);
-        if (card is null)
+        if (cardIds.Count == 0)
         {
             return;
         }
 
-        _highlightedCard = card;
-        _highlightRestoreBrush = card.Background;
-        if (Application.Current.Resources.TryGetValue("PalaceSettingsSearchHighlightBrush", out var brush)
-            && brush is Brush highlight)
+        if (!Application.Current.Resources.TryGetValue("PalaceSettingsSearchHighlightBrush", out var brush)
+            || brush is not Brush highlight)
         {
+            return;
+        }
+
+        foreach (var id in cardIds)
+        {
+            var card = FindName(id) as Control
+                ?? FindNamedControl(PnlSettingsContent, id);
+            if (card is null)
+            {
+                continue;
+            }
+
+            _highlightedCards.Add((card, card.Background));
             card.Background = highlight;
         }
 
-        card.StartBringIntoView();
-        _highlightTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
-        _highlightTimer.Tick -= HighlightTimer_Tick;
-        _highlightTimer.Tick += HighlightTimer_Tick;
-        _highlightTimer.Stop();
-        _highlightTimer.Start();
+        // Keep highlight while the query is active; only flash when a single timed jump remains.
+        if (!_searchFiltering)
+        {
+            _highlightTimer ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+            _highlightTimer.Tick -= HighlightTimer_Tick;
+            _highlightTimer.Tick += HighlightTimer_Tick;
+            _highlightTimer.Stop();
+            _highlightTimer.Start();
+        }
+        else
+        {
+            _highlightTimer?.Stop();
+        }
     }
 
     private void HighlightTimer_Tick(object? sender, object e)
@@ -264,11 +398,25 @@ public sealed partial class SettingsPage : Page
 
     private void ClearSearchHighlight()
     {
-        if (_highlightedCard is not null)
+        foreach (var (card, restore) in _highlightedCards)
         {
-            _highlightedCard.Background = _highlightRestoreBrush;
-            _highlightedCard = null;
-            _highlightRestoreBrush = null;
+            card.Background = restore;
+        }
+
+        _highlightedCards.Clear();
+    }
+
+    private void ApplyDensity(string? density)
+    {
+        var minHeight = AppearanceSettings.CardMinHeight(density);
+        var spacing = new Thickness(0, 0, 0, AppearanceSettings.CardSpacingBottom(density));
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (FindName(target.CardAutomationId) is Control card)
+            {
+                card.MinHeight = minHeight;
+                card.Margin = spacing;
+            }
         }
     }
 
@@ -307,6 +455,11 @@ public sealed partial class SettingsPage : Page
         if (e.PropertyName is nameof(SettingsViewModel.SelectedPreset))
         {
             SyncPresetGridSelection();
+        }
+
+        if (e.PropertyName is nameof(SettingsViewModel.SelectedDensity))
+        {
+            ApplyDensity(ViewModel.SelectedDensity);
         }
     }
 
