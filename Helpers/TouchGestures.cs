@@ -26,6 +26,11 @@ public static class TouchGestures
     public const double PinchMaxActualFactor = 8.0;
     public const double PinchMaxFitFactor = 4.0;
     public const double PinchSoftOvershoot = 1.15;
+    /// <summary>
+    /// Layout long-edge cap (DIPs). Past this, DXGI ResizeBuffers fails and HDR
+    /// present collapses to a blank still — Sacb0y pinch-out black on 4K.
+    /// </summary>
+    public const double MaxStillPanelLongEdgeDip = 8192;
     public const double DoubleTapActualMinFit = 1.25;
     public const double DoubleTapFallbackFit = 2.5;
     public const double VideoSeekSeconds = 10;
@@ -357,22 +362,43 @@ public static class TouchGestures
         zoomFitFactor < 1.0 - 0.0001 ? 1.0 : zoomFitFactor;
 
     /// <summary>
-    /// Hard max = max(8× actual-pixel scale, 4× Fit). Soft rubber to 1.15× past.
-    /// <paramref name="fitFactor"/> is zoom relative to Fit (1 = Fit).
-    /// <paramref name="actualFactor"/> is zoom relative to 1:1 pixels.
+    /// Spec max = max(8× actual-as-Fit, 4× Fit), but layout zoom never exceeds
+    /// <see cref="GalleryScale.MaxPinchZoom"/> (8) — larger multipliers on Fit
+    /// base size a 4K still past DXGI limits and paint black.
     /// </summary>
     public static double MaxPinchFitFactor(double fitToActualRatio)
     {
-        // fitToActualRatio = how many Fit-units equal 1:1 (Actual/Fit).
-        // 8× actual in Fit units = 8 * (Actual/Fit) = 8 / fitToActual when
-        // fitToActual = Fit/Actual. Prefer: max(8 * actualAsFit, 4).
         var eightActualAsFit = PinchMaxActualFactor * Math.Max(0, fitToActualRatio);
-        return Math.Max(eightActualAsFit, PinchMaxFitFactor);
+        var spec = Math.Max(eightActualAsFit, PinchMaxFitFactor);
+        return Math.Min(spec, GalleryScale.MaxPinchZoom);
     }
 
-    public static double ClampPinchHard(double fitFactor, double fitToActualRatio)
+    /// <summary>
+    /// Further cap so baseLongEdge × zoom ≤ <see cref="MaxStillPanelLongEdgeDip"/>.
+    /// </summary>
+    public static double MaxPinchForBaseSize(double baseLongEdgeDip)
+    {
+        var layoutMax = GalleryScale.MaxPinchZoom;
+        if (baseLongEdgeDip <= 0)
+        {
+            return layoutMax;
+        }
+
+        var panelMax = MaxStillPanelLongEdgeDip / baseLongEdgeDip;
+        return Math.Min(layoutMax, Math.Max(1.0, panelMax));
+    }
+
+    public static double ClampPinchHard(
+        double fitFactor,
+        double fitToActualRatio,
+        double baseLongEdgeDip = 0)
     {
         var max = MaxPinchFitFactor(fitToActualRatio);
+        if (baseLongEdgeDip > 0)
+        {
+            max = Math.Min(max, MaxPinchForBaseSize(baseLongEdgeDip));
+        }
+
         if (fitFactor < PinchMinFitFactor)
         {
             return PinchMinFitFactor;
@@ -381,10 +407,19 @@ public static class TouchGestures
         return fitFactor > max ? max : fitFactor;
     }
 
-    public static double ClampPinchSoft(double fitFactor, double fitToActualRatio)
+    public static double ClampPinchSoft(
+        double fitFactor,
+        double fitToActualRatio,
+        double baseLongEdgeDip = 0)
     {
-        var hard = MaxPinchFitFactor(fitToActualRatio);
-        var softMax = hard * PinchSoftOvershoot;
+        // Soft ceiling from the hard max (not from an uncapped fitFactor).
+        var hardMax = MaxPinchFitFactor(fitToActualRatio);
+        if (baseLongEdgeDip > 0)
+        {
+            hardMax = Math.Min(hardMax, MaxPinchForBaseSize(baseLongEdgeDip));
+        }
+
+        var softMax = hardMax * PinchSoftOvershoot;
         if (fitFactor < PinchMinFitFactor)
         {
             return PinchMinFitFactor;
@@ -392,6 +427,41 @@ public static class TouchGestures
 
         return fitFactor > softMax ? softMax : fitFactor;
     }
+
+    public static (double Width, double Height) CapStillPanelSize(double width, double height)
+    {
+        if (double.IsNaN(width) || double.IsNaN(height) || width <= 0 || height <= 0)
+        {
+            return (width, height);
+        }
+
+        var longEdge = Math.Max(width, height);
+        if (longEdge <= MaxStillPanelLongEdgeDip)
+        {
+            return (width, height);
+        }
+
+        var scale = MaxStillPanelLongEdgeDip / longEdge;
+        return (width * scale, height * scale);
+    }
+
+    /// <summary>
+    /// Review file actions (reject → _rejected) require Review mode.
+    /// Normal viewer must never move files.
+    /// </summary>
+    public static bool AllowsReviewFileActions(bool reviewMode) => reviewMode;
+
+    public static SwipeAction ClassifySwipe(
+        bool reviewMode,
+        double dx,
+        double dy,
+        double viewportWidth,
+        double viewportHeight,
+        double velocityXPxPerMs,
+        double velocityYPxPerMs) =>
+        reviewMode
+            ? ClassifyReviewSwipe(dx, dy, viewportWidth, viewportHeight, velocityXPxPerMs, velocityYPxPerMs)
+            : ClassifyBrowseSwipe(dx, dy, viewportWidth, velocityXPxPerMs);
 
     /// <summary>
     /// Double-tap: Fit → 1:1 at tap (or 2.5× Fit if 1:1 ≤ 1.25× Fit) → Fit.

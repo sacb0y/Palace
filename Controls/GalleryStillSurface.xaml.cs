@@ -44,7 +44,14 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _reviewSwipeVy;
 
     /// <summary>
-    /// Fired when a touch Review swipe commits (left=reject, right=keep, up=skip).
+    /// When false (normal viewer), swipe is browse prev/next only.
+    /// When true (Review mode, #129), left=reject, right=keep, up=skip.
+    /// </summary>
+    public bool IsReviewMode { get; set; }
+
+    /// <summary>
+    /// Fired when a touch swipe commits. Browse: previous/next.
+    /// Review (IsReviewMode): reject/keep/skip.
     /// </summary>
     public event Action<TouchGestures.SwipeAction>? ReviewSwipeCommitted;
     private ImageScaling _scrollScaling;
@@ -934,6 +941,9 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         (width, height) = GalleryScale.ApplyPinchZoom(width, height, _pinchZoom);
+        // Cap layout DIPs so DXGI ResizeBuffers / HDR present cannot collapse
+        // the still to black at extreme pinch-out (4K EXR/PNG twin).
+        (width, height) = TouchGestures.CapStillPanelSize(width, height);
 
         GrdStillContent.Width = width;
         GrdStillContent.Height = height;
@@ -1079,6 +1089,12 @@ public sealed partial class GalleryStillSurface : UserControl
         _coalescedPanX = panX;
         _coalescedPanY = panY;
         ApplyScaleLayout();
+        // Re-present HDR at the new (capped) panel size so a failed extreme
+        // ResizeBuffers does not leave ScpHdr blank with no SDR fallback.
+        if (_hdrFrame is not null)
+        {
+            PresentCached(HdrPresentCoalescer.SettleMs);
+        }
     }
 
     private void ImgStill_ImageOpened(object sender, RoutedEventArgs e)
@@ -1199,10 +1215,12 @@ public sealed partial class GalleryStillSurface : UserControl
         // Pen / trackpad keep the prior Manipulation pan/pinch behavior.
         var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
         var scaleDelta = e.Delta.Scale;
+        var baseLong = PinchBaseLongEdgeDip();
         var nextZoom = isTouch
             ? TouchGestures.ClampPinchSoft(
                 _pinchZoom * (scaleDelta > 0 ? scaleDelta : 1.0),
-                FitToActualRatio())
+                FitToActualRatio(),
+                baseLong)
             : GalleryScale.PinchZoom(_pinchZoom, scaleDelta);
         if (isTouch)
         {
@@ -1292,7 +1310,9 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (_reviewSwipeActive)
         {
-            var action = TouchGestures.ClassifyReviewSwipe(
+            // Browse (default): prev/next only. Review mode: keep/reject/skip.
+            var action = TouchGestures.ClassifySwipe(
+                IsReviewMode,
                 _reviewSwipeDx,
                 _reviewSwipeDy,
                 ScrStill.ActualWidth,
@@ -1306,7 +1326,9 @@ public sealed partial class GalleryStillSurface : UserControl
             _reviewSwipeVy = 0;
             if (action is TouchGestures.SwipeAction.Reject
                 or TouchGestures.SwipeAction.Keep
-                or TouchGestures.SwipeAction.Skip)
+                or TouchGestures.SwipeAction.Skip
+                or TouchGestures.SwipeAction.BrowsePrevious
+                or TouchGestures.SwipeAction.BrowseNext)
             {
                 ReviewSwipeCommitted?.Invoke(action);
             }
@@ -1322,7 +1344,8 @@ public sealed partial class GalleryStillSurface : UserControl
             ApplyPinchFrame(e.Position.X, e.Position.Y, snapped, 0, 0);
         }
 
-        var hard = TouchGestures.ClampPinchHard(_pinchZoom, FitToActualRatio());
+        var hard = TouchGestures.ClampPinchHard(
+            _pinchZoom, FitToActualRatio(), PinchBaseLongEdgeDip());
         if (Math.Abs(hard - _pinchZoom) > 0.0001)
         {
             ApplyPinchFrame(e.Position.X, e.Position.Y, hard, 0, 0);
@@ -1418,6 +1441,38 @@ public sealed partial class GalleryStillSurface : UserControl
         var fitScale = Math.Min(viewW / aw, viewH / ah);
         var fitW = aw * fitScale;
         return fitW > 0 ? aw / fitW : 1;
+    }
+
+    /// <summary>
+    /// Pre-pinch content long edge (DIPs) for panel-size zoom caps.
+    /// Fit uses the viewport; Actual/Fill use their laid-out base size.
+    /// </summary>
+    private double PinchBaseLongEdgeDip()
+    {
+        var viewW = ScrStill.ActualWidth;
+        var viewH = ScrStill.ActualHeight;
+        var scaling = _gallery?.Scaling ?? ImageScaling.Fit;
+        if (scaling == ImageScaling.Actual)
+        {
+            var (iw, ih) = StillPixelSize();
+            var raster = XamlRoot?.RasterizationScale ?? 1.0;
+            var (aw, ah) = GalleryScale.ActualDipSize(iw, ih, raster);
+            if (!double.IsNaN(aw) && !double.IsNaN(ah) && aw > 0 && ah > 0)
+            {
+                return Math.Max(aw, ah);
+            }
+        }
+        else if (scaling == ImageScaling.Fill && viewW > 1 && viewH > 1)
+        {
+            var (iw, ih) = StillPixelSize();
+            var (fw, fh) = GalleryScale.FillCoverDipSize(iw, ih, viewW, viewH);
+            if (!double.IsNaN(fw) && !double.IsNaN(fh) && fw > 0 && fh > 0)
+            {
+                return Math.Max(fw, fh);
+            }
+        }
+
+        return Math.Max(viewW, viewH);
     }
 
     private void ScrStill_PointerWheelChanged(object sender, PointerRoutedEventArgs e)

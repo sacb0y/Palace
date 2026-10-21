@@ -105,6 +105,11 @@ public sealed partial class LibraryPage : Page
                 }
             }
 
+            if (e.PropertyName is nameof(LibraryViewModel.IsReviewMode))
+            {
+                SrfOverlayStill.IsReviewMode = ViewModel.IsReviewMode;
+            }
+
             if (e.PropertyName is nameof(LibraryViewModel.IsTagBrowse) or nameof(LibraryViewModel.TagFilterMode))
             {
                 _suppressBrowseChrome = true;
@@ -1167,8 +1172,16 @@ public sealed partial class LibraryPage : Page
 
     private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)
     {
+        // Surface already classified with IsReviewMode; ViewModel commands
+        // also gate so browse never moves files even if a Review action leaks.
         switch (action)
         {
+            case TouchGestures.SwipeAction.BrowsePrevious:
+                ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.BrowseNext:
+                ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
+                break;
             case TouchGestures.SwipeAction.Reject:
                 ViewModel.ReviewRejectCommand.Execute(null);
                 break;
@@ -2188,6 +2201,7 @@ public sealed partial class LibraryPage : Page
     {
         var epoch = Interlocked.Increment(ref _overlayMediaEpoch);
         var gallery = ViewModel.OverlayGallery;
+        SrfOverlayStill.IsReviewMode = ViewModel.IsReviewMode;
         SrfOverlayStill.Bind(ViewModel.IsGalleryOverlayOpen && gallery is { IsImage: true } ? gallery : null);
 
         if (gallery is { IsVideo: true, CurrentPath: not null } video

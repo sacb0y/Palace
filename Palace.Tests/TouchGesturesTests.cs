@@ -132,11 +132,16 @@ public sealed class TouchGesturesTests
         Assert.Equal(0.5, TouchGestures.ClampPinchDuringGesture(0.3), 3);
         Assert.Equal(1.0, TouchGestures.SnapPinchOnRelease(0.7), 3);
         Assert.Equal(1.2, TouchGestures.SnapPinchOnRelease(1.2), 3);
-        // fitToActual = Actual/Fit = 2 → max = max(8*2, 4) = 16.
-        Assert.Equal(16, TouchGestures.MaxPinchFitFactor(2), 3);
+        // Spec would allow max(8*2, 4)=16, but layout zoom caps at MaxPinchZoom (8).
+        Assert.Equal(8, TouchGestures.MaxPinchFitFactor(2), 3);
         Assert.Equal(4, TouchGestures.MaxPinchFitFactor(0.25), 3);
-        Assert.Equal(16, TouchGestures.ClampPinchHard(20, 2), 3);
-        Assert.Equal(16 * 1.15, TouchGestures.ClampPinchSoft(30, 2), 3);
+        Assert.Equal(8, TouchGestures.ClampPinchHard(20, 2), 3);
+        Assert.Equal(8 * 1.15, TouchGestures.ClampPinchSoft(30, 2), 3);
+        // 4K Fit base × 8 would exceed 8192 DIPs → panel-size cap.
+        Assert.Equal(2.0, TouchGestures.MaxPinchForBaseSize(4096), 3);
+        Assert.Equal(2.0, TouchGestures.ClampPinchHard(8, 2, baseLongEdgeDip: 4096), 3);
+        var (cw, ch) = TouchGestures.CapStillPanelSize(16000, 9000);
+        Assert.True(Math.Max(cw, ch) <= TouchGestures.MaxStillPanelLongEdgeDip + 0.001);
         Assert.False(TouchGestures.AllowsSwipe(zoomed: true, fingerCount: 1, afterPinchAwaitingLift: false));
         Assert.False(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 2, afterPinchAwaitingLift: false));
         Assert.True(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 1, afterPinchAwaitingLift: false));
@@ -144,6 +149,39 @@ public sealed class TouchGesturesTests
         Assert.False(TouchGestures.AllowsSwipeHandoff(true, true, 10));
         Assert.Equal("_rejected", TouchGestures.RejectedFolderName);
         Assert.EndsWith("_rejected", TouchGestures.RejectedFolderPath("/photos"));
+    }
+
+    [Fact]
+    public void BrowseSwipe_NeverRejects_ReviewRequiresMode()
+    {
+        Assert.False(TouchGestures.AllowsReviewFileActions(reviewMode: false));
+        Assert.True(TouchGestures.AllowsReviewFileActions(reviewMode: true));
+
+        // Normal viewer: left/right = next/prev — never keep/reject/skip.
+        Assert.Equal(
+            TouchGestures.SwipeAction.BrowseNext,
+            TouchGestures.ClassifySwipe(false, -80, 0, 200, 100, 0, 0));
+        Assert.Equal(
+            TouchGestures.SwipeAction.BrowsePrevious,
+            TouchGestures.ClassifySwipe(false, 80, 0, 200, 100, 0, 0));
+        Assert.Equal(
+            TouchGestures.SwipeAction.None,
+            TouchGestures.ClassifySwipe(false, 0, -80, 200, 100, 0, 0));
+
+        // Review mode: left=reject, right=keep, up=skip.
+        Assert.Equal(
+            TouchGestures.SwipeAction.Reject,
+            TouchGestures.ClassifySwipe(true, -40, 0, 200, 100, 0, 0));
+        Assert.Equal(
+            TouchGestures.SwipeAction.Keep,
+            TouchGestures.ClassifySwipe(true, 40, 0, 200, 100, 0, 0));
+        Assert.Equal(
+            TouchGestures.SwipeAction.Skip,
+            TouchGestures.ClassifySwipe(true, 0, -40, 200, 100, 0, 0));
+
+        Assert.Equal(
+            TouchGestures.SwipeAction.BrowseNext,
+            TouchGestures.ClassifyBrowseSwipe(-80, 0, 200, 0));
     }
 
     [Fact]

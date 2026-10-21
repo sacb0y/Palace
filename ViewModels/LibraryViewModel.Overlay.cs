@@ -88,6 +88,13 @@ public partial class LibraryViewModel
     }
 
     /// <summary>
+    /// Review mode (keep/reject/skip). Stays false until Review mode ships (#129).
+    /// Normal viewer must never move files — browse swipe is prev/next only.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsReviewMode { get; set; }
+
+    /// <summary>
     /// Overlay long-press: toggle this item's selection + check badge
     /// (video long-press is select, not 2×).
     /// </summary>
@@ -107,7 +114,7 @@ public partial class LibraryViewModel
     [RelayCommand]
     private void ReviewKeep()
     {
-        if (OverlayGallery is null)
+        if (!TouchGestures.AllowsReviewFileActions(IsReviewMode) || OverlayGallery is null)
         {
             return;
         }
@@ -134,6 +141,11 @@ public partial class LibraryViewModel
     private Task ReviewRejectAsync() =>
         ErrorReporter.RunAsync("Reject", Notify, async () =>
         {
+            if (!TouchGestures.AllowsReviewFileActions(IsReviewMode))
+            {
+                return;
+            }
+
             if (OverlayGallery?.Current is not { IsFolderHeader: false } current
                 || string.IsNullOrEmpty(current.Id))
             {
