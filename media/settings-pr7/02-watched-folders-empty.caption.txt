@@ -1,1 +1,0 @@
-﻿Library & Folders → Watched folders expander with zero folders: "No watched folders yet." text inside CardWatchedFolders panel.

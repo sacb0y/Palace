@@ -1,0 +1,1 @@
+﻿Comfortable (left) vs Compact (right), same Appearance section on tip 51ecff2: Compact cards visibly shorter (61px → 45px measured; MinHeight 56→40, padding 16×12→12×4).

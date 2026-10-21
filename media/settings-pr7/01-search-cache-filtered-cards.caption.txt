@@ -1,1 +1,0 @@
-﻿Settings search "cache": content filtered to matching cards (Thumbnail cache + Media cache visible; Watched folders hidden — not a mere Library nav jump).

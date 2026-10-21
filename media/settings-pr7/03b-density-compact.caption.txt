@@ -1,0 +1,1 @@
+﻿Appearance Density Compact: same Appearance section — cards visibly shorter (measured 45px; MinHeight 40 / padding 12×4).
