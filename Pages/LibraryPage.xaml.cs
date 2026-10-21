@@ -79,6 +79,7 @@ public sealed partial class LibraryPage : Page
             DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
         SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
+        SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
@@ -1242,6 +1243,8 @@ public sealed partial class LibraryPage : Page
 
     private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)
     {
+        // Fallback when the press is outside the still (Manipulation cancels
+        // Holding on the image — LongPressCommitted on SrfOverlayStill is primary).
         if (e.HoldingState != HoldingState.Started
             || !TouchGestures.IsTouchOnly(_lastPressWasTouch)
             || !ViewerSettings.TouchGesturesEnabled
@@ -1252,6 +1255,17 @@ public sealed partial class LibraryPage : Page
 
         ViewModel.ToggleOverlaySelectionFromHold();
         e.Handled = true;
+    }
+
+    private void OnOverlayStillLongPress()
+    {
+        if (!ViewerSettings.TouchGesturesEnabled
+            || !SelectMode.ViewerHoldTogglesSelection(ViewModel.IsGalleryOverlayOpen))
+        {
+            return;
+        }
+
+        ViewModel.ToggleOverlaySelectionFromHold();
     }
 
     private void SyncViewerOverlayAutoHide()

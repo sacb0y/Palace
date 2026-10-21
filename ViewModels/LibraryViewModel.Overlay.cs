@@ -95,6 +95,13 @@ public partial class LibraryViewModel
     public partial bool IsReviewMode { get; set; }
 
     /// <summary>
+    /// Overlay check-badge visibility. Nested <c>Current.IsSelected</c> x:Bind
+    /// often misses toggles on the same Current instance — expose a VM flag.
+    /// </summary>
+    public bool OverlayCurrentIsSelected =>
+        OverlayGallery?.Current is { IsFolderHeader: false, IsSelected: true };
+
+    /// <summary>
     /// Overlay long-press: toggle this item's selection + check badge
     /// (video long-press is select, not 2×).
     /// </summary>
@@ -108,7 +115,14 @@ public partial class LibraryViewModel
 
         IsSelectMode = true;
         SelectAsset(current, toggle: true);
+        OnPropertyChanged(nameof(OverlayCurrentIsSelected));
     }
+
+    partial void OnIsGalleryOverlayOpenChanged(bool value) =>
+        OnPropertyChanged(nameof(OverlayCurrentIsSelected));
+
+    partial void OnOverlayGalleryChanged(GalleryViewModel? value) =>
+        OnPropertyChanged(nameof(OverlayCurrentIsSelected));
 
     /// <summary>Review swipe right / Keep: leave file in place and advance.</summary>
     [RelayCommand]

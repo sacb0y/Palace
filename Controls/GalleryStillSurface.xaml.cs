@@ -53,6 +53,18 @@ public sealed partial class GalleryStillSurface : UserControl
     /// Review (IsReviewMode): reject/keep/skip.
     /// </summary>
     public event Action<TouchGestures.SwipeAction>? ReviewSwipeCommitted;
+
+    /// <summary>
+    /// Touch long-press on the still (500ms / &lt;slop). Holding on the overlay
+    /// is canceled by Manipulation Translate — this pointer timer is the
+    /// reliable path for the viewer select badge.
+    /// </summary>
+    public event Action? LongPressCommitted;
+
+    private CancellationTokenSource? _holdCts;
+    private double _holdStartX;
+    private double _holdStartY;
+    private uint _holdPointerId;
     private ImageScaling _scrollScaling;
     private int _scrollRevision = int.MinValue;
     private double _scrollContentW;
@@ -1004,6 +1016,16 @@ public sealed partial class GalleryStillSurface : UserControl
         _scrollViewH = viewH;
 
         ScrStill.UpdateLayout();
+        // Prefer laid-out actual size when the panel has measured (SDR Image
+        // open) so pan clamp matches the visible content rect.
+        if (GrdStillContent.ActualWidth > 1 && GrdStillContent.ActualHeight > 1)
+        {
+            contentW = GrdStillContent.ActualWidth;
+            contentH = GrdStillContent.ActualHeight;
+            _scrollContentW = contentW;
+            _scrollContentH = contentH;
+        }
+
         double horizontal;
         double vertical;
         if (preserve)
@@ -1047,6 +1069,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private void ResetView()
     {
         _panning = false;
+        CancelTouchHold();
         ResetScrollTracking();
         ResetPinchTracking();
         // Fit / scale-mode / still change must clear translation too — a prior
@@ -1149,7 +1172,9 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void ImgStill_ImageOpened(object sender, RoutedEventArgs e)
     {
-        if (_gallery?.Scaling is ImageScaling.Actual or ImageScaling.Fill)
+        // Fit also needs a re-layout once pixels are known — FitContain with
+        // 0×0 still size falls back to the viewport (SDR letterbox / wrong pan).
+        if (_gallery?.Scaling is ImageScaling.Fit or ImageScaling.Actual or ImageScaling.Fill)
         {
             ApplyScaleLayout();
         }
@@ -1169,13 +1194,12 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var type = e.Pointer.PointerDeviceType;
         _lastPointerDevice = type;
+        var point = e.GetCurrentPoint(ScrStill);
         if (type == PointerDeviceType.Touch && e.Pointer.IsInContact)
         {
-            // A new touch after pinch clears the post-pinch swipe lock once all
-            // fingers had lifted (ManipulationCompleted sets the flag).
+            BeginTouchHold(point.PointerId, point.Position.X, point.Position.Y);
         }
 
-        var point = e.GetCurrentPoint(ScrStill);
         CancelScrollViewerDirectManipulation();
         if (!GalleryScale.UsesPointerCapturePan(
                 GalleryScale.Scrolls(_gallery?.Scaling ?? ImageScaling.Fit, _pinchZoom),
@@ -1194,12 +1218,22 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void ScrStill_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        var point = e.GetCurrentPoint(ScrStill);
+        if (_holdCts is not null && point.PointerId == _holdPointerId)
+        {
+            var dx = point.Position.X - _holdStartX;
+            var dy = point.Position.Y - _holdStartY;
+            if (TouchGestures.ExceedsSlop(dx, dy))
+            {
+                CancelTouchHold();
+            }
+        }
+
         if (!_panning)
         {
             return;
         }
 
-        var point = e.GetCurrentPoint(ScrStill);
         var type = e.Pointer.PointerDeviceType;
         if (type == PointerDeviceType.Mouse && !point.Properties.IsLeftButtonPressed)
         {
@@ -1207,13 +1241,17 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
+        // Prefer ScrollViewer extent (source of truth) so SDR tall pan reaches
+        // both edges symmetrically — assigned Width/Height can lag Actual/Extent.
+        var contentW = PanContentWidth();
+        var contentH = PanContentHeight();
         var (horizontal, vertical) = GalleryScale.DragPanContent(
             ScrStill.HorizontalOffset,
             ScrStill.VerticalOffset,
             point.Position.X - _panLastX,
             point.Position.Y - _panLastY,
-            _scrollContentW > 1 ? _scrollContentW : ScrStill.ExtentWidth,
-            _scrollContentH > 1 ? _scrollContentH : ScrStill.ExtentHeight,
+            contentW,
+            contentH,
             ScrStill.ActualWidth,
             ScrStill.ActualHeight);
         _panLastX = point.Position.X;
@@ -1222,11 +1260,21 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
-    private void ScrStill_PointerReleased(object sender, PointerRoutedEventArgs e) =>
-        EndPan(e.Pointer);
+    private void ScrStill_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (e.GetCurrentPoint(ScrStill).PointerId == _holdPointerId)
+        {
+            CancelTouchHold();
+        }
 
-    private void ScrStill_PointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
+        EndPan(e.Pointer);
+    }
+
+    private void ScrStill_PointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        CancelTouchHold();
         _panning = false;
+    }
 
     private void EndPan(Pointer pointer)
     {
@@ -1237,6 +1285,75 @@ public sealed partial class GalleryStillSurface : UserControl
 
         _panning = false;
         ScrStill.ReleasePointerCapture(pointer);
+    }
+
+    private double PanContentWidth()
+    {
+        var extent = ScrStill.ExtentWidth;
+        var actual = GrdStillContent.ActualWidth;
+        var tracked = _scrollContentW;
+        return Math.Max(Math.Max(tracked, actual), extent);
+    }
+
+    private double PanContentHeight()
+    {
+        var extent = ScrStill.ExtentHeight;
+        var actual = GrdStillContent.ActualHeight;
+        var tracked = _scrollContentH;
+        return Math.Max(Math.Max(tracked, actual), extent);
+    }
+
+    private void BeginTouchHold(uint pointerId, double x, double y)
+    {
+        if (!ViewerSettings.TouchGesturesEnabled)
+        {
+            return;
+        }
+
+        CancelTouchHold();
+        _holdPointerId = pointerId;
+        _holdStartX = x;
+        _holdStartY = y;
+        var cts = new CancellationTokenSource();
+        _holdCts = cts;
+        var token = cts.Token;
+        _ = CompleteTouchHoldAsync(token);
+    }
+
+    private async Task CompleteTouchHoldAsync(CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(TouchGestures.LongPressMs, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (_holdCts is null || token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            CancelTouchHold();
+            LongPressCommitted?.Invoke();
+        });
+    }
+
+    private void CancelTouchHold()
+    {
+        _holdCts?.Cancel();
+        _holdCts?.Dispose();
+        _holdCts = null;
+        _holdPointerId = 0;
     }
 
     private void CancelScrollViewerDirectManipulation()
@@ -1287,6 +1404,7 @@ public sealed partial class GalleryStillSurface : UserControl
             if (isTouch)
             {
                 _afterPinchAwaitingLift = true;
+                CancelTouchHold();
             }
 
             var mid = ToViewport(e.Position);
@@ -1306,6 +1424,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     fingerCount: 1,
                     afterPinchAwaitingLift: _afterPinchAwaitingLift))
             {
+                CancelTouchHold();
                 _reviewSwipeActive = true;
                 _reviewSwipeDx += deltaX;
                 _reviewSwipeDy += deltaY;
@@ -1324,16 +1443,18 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         // Touch pan: per-axis clamp so a taller/wider zoom cannot pass one
-        // edge while free on the other (up-but-not-down).
+        // edge while free on the other (up-but-not-down). Use laid-out
+        // extent so SDR tall images reach top and bottom symmetrically.
         if (isTouch)
         {
+            CancelTouchHold();
             var (horizontal, vertical) = GalleryScale.DragPanContent(
                 ScrStill.HorizontalOffset,
                 ScrStill.VerticalOffset,
                 deltaX,
                 deltaY,
-                _scrollContentW > 1 ? _scrollContentW : ScrStill.ExtentWidth,
-                _scrollContentH > 1 ? _scrollContentH : ScrStill.ExtentHeight,
+                PanContentWidth(),
+                PanContentHeight(),
                 ScrStill.ActualWidth,
                 ScrStill.ActualHeight);
             ScrStill.ChangeView(horizontal, vertical, null, true);

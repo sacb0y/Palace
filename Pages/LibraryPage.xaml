@@ -1721,7 +1721,7 @@
                             Background="{ThemeResource AccentFillColorDefaultBrush}"
                             CornerRadius="18"
                             IsHitTestVisible="False"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.Current.IsSelected), Mode=OneWay, FallbackValue=Collapsed}">
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayCurrentIsSelected), Mode=OneWay, FallbackValue=Collapsed}">
                             <ic:FluentIcon
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"

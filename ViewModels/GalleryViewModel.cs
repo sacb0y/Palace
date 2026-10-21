@@ -387,8 +387,22 @@ public partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private void SetScaleActual() => Scaling = ImageScaling.Actual;
 
+    /// <summary>
+    /// Fit toolbar / shortcut. Pinch keeps <see cref="Scaling"/> at Fit while
+    /// zoomed — re-raise so the still surface always clears pinch zoom +
+    /// translation (SDR and HDR).
+    /// </summary>
     [RelayCommand]
-    private void SetScaleFit() => Scaling = ImageScaling.Fit;
+    private void SetScaleFit()
+    {
+        if (Scaling != ImageScaling.Fit)
+        {
+            Scaling = ImageScaling.Fit;
+            return;
+        }
+
+        OnPropertyChanged(nameof(Scaling));
+    }
 
     [RelayCommand]
     private void SetScaleFill() => Scaling = ImageScaling.Fill;
@@ -406,7 +420,15 @@ public partial class GalleryViewModel : ObservableObject
             return false;
         }
 
-        Scaling = next.Value;
+        if (next == ImageScaling.Fit)
+        {
+            SetScaleFit();
+        }
+        else
+        {
+            Scaling = next.Value;
+        }
+
         return true;
     }
 
