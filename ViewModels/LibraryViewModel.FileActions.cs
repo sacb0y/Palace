@@ -150,16 +150,18 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var preview = targets.Count == 1
-                ? targets[0].FileName
-                : $"{targets.Count} files ({string.Join(", ", targets.Take(3).Select(t => t.FileName))}{(targets.Count > 3 ? ", …" : "")})";
-            // Count hidden from the confirm targets (catalog ids), not _selection —
-            // SelectedAssetsAsync can resolve a single SelectedAsset / folder without a multi-select list.
+            // SelectCommandBar copy (mockups v2). Append collapsed-section clause when targets sit under collapsed headers.
             var collapsed = CountCollapsedAmongTargetIds(targets.Select(t => t.Id));
-            var body = collapsed > 0
-                ? $"Send {preview} to the Recycle Bin? This also removes them from the catalog.\n{SelectMode.Summary(true, targets.Count, collapsed)}."
-                : $"Send {preview} to the Recycle Bin? This also removes them from the catalog.";
-            if (!await RequestConfirm("Delete", body, "Delete"))
+            var body = SelectCommandBar.DeleteBody(targets.Count);
+            if (collapsed > 0)
+            {
+                body = $"{body}\n{SelectMode.Summary(true, targets.Count, collapsed)}.";
+            }
+
+            if (!await RequestConfirm(
+                    SelectCommandBar.DeleteTitle(targets.Count),
+                    body,
+                    SelectCommandBar.DeletePrimary))
             {
                 return;
             }
