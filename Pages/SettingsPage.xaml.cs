@@ -23,15 +23,11 @@ public sealed partial class SettingsPage : Page
     private bool _ignorePresetSelection;
     private bool _ignoreSearchClear;
     private bool _searchFiltering;
-    private readonly List<(Control Card, Brush? Background, Brush? BorderBrush, Thickness BorderThickness)> _highlightedCards = [];
-    private readonly List<(Border Surface, Brush? Background)> _highlightedSurfaces = [];
-    private readonly HashSet<Control> _highlightTargets = [];
-    private Brush? _activeHighlightBrush;
+    /// <summary>Owned Borders around each SettingsNav card — highlight lives here, not in toolkit templates.</summary>
+    private readonly Dictionary<string, Border> _searchHosts = new(StringComparer.Ordinal);
+    private readonly List<Border> _highlightedHosts = [];
     private DispatcherTimer? _highlightTimer;
-    private DispatcherTimer? _highlightRepaintTimer;
-    private int _highlightRepaintPass;
-    private EventHandler<object>? _highlightLayoutHandler;
-    private bool _paintingHighlight;
+    private const string SearchHostTag = "PalaceSettingsSearchHost";
 
     public SettingsViewModel ViewModel => AppServices.Settings;
 
@@ -64,6 +60,7 @@ public sealed partial class SettingsPage : Page
             ViewModel.RefreshBackgroundPresetSwatches();
             SyncPresetGridSelection();
             ApplyContentCap(ActualWidth);
+            EnsureSearchHighlightHosts();
             ApplyDensity(ViewModel.SelectedDensity);
             RestoreLastSection(scrollToTop: true);
             ShellBackground.Changed += ShellBackground_PreviewChanged;
@@ -246,7 +243,17 @@ public sealed partial class SettingsPage : Page
             }
 
             var show = cardIds.Contains(target.CardAutomationId);
-            card.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            // Collapse the owned host (not the toolkit control) so outlines stay with the card.
+            if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
+            {
+                host.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+                card.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                card.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            }
+
             if (show)
             {
                 EnsureAncestorsVisible(card);
@@ -257,7 +264,9 @@ public sealed partial class SettingsPage : Page
         SelectNavItem(primary.SectionId, persist: true);
         HighlightMatchingCards(cardIds);
         if (primary.CardAutomationId is { } firstCard
-            && FindName(firstCard) is UIElement firstElement)
+            && (_searchHosts.TryGetValue(firstCard, out var firstHost)
+                ? (UIElement)firstHost
+                : FindName(firstCard) as UIElement) is { } firstElement)
         {
             firstElement.StartBringIntoView();
         }
@@ -272,6 +281,11 @@ public sealed partial class SettingsPage : Page
         _searchFiltering = false;
         foreach (var target in SettingsNav.Targets)
         {
+            if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
+            {
+                host.Visibility = Visibility.Visible;
+            }
+
             if (FindName(target.CardAutomationId) is UIElement card)
             {
                 card.Visibility = Visibility.Visible;
@@ -288,7 +302,9 @@ public sealed partial class SettingsPage : Page
         {
             if (parent is UIElement ue
                 && (parent is CommunityToolkit.WinUI.Controls.SettingsExpander
-                    || parent is CommunityToolkit.WinUI.Controls.SettingsCard))
+                    || parent is CommunityToolkit.WinUI.Controls.SettingsCard
+                    || (parent is Border border
+                        && string.Equals(border.Tag as string, SearchHostTag, StringComparison.Ordinal))))
             {
                 ue.Visibility = Visibility.Visible;
             }
@@ -355,6 +371,110 @@ public sealed partial class SettingsPage : Page
         PnlSection_about
     ];
 
+    /// <summary>
+    /// Wrap each SettingsNav card in a Border we own. Search highlight paints that host
+    /// only — toolkit SettingsExpander VSM cannot wipe it (collapsed or expanded).
+    /// </summary>
+    private void EnsureSearchHighlightHosts()
+    {
+        foreach (var target in SettingsNav.Targets)
+        {
+            if (_searchHosts.ContainsKey(target.CardAutomationId))
+            {
+                continue;
+            }
+
+            if (FindName(target.CardAutomationId) is not FrameworkElement card)
+            {
+                continue;
+            }
+
+            if (card.Parent is Border existing
+                && string.Equals(existing.Tag as string, SearchHostTag, StringComparison.Ordinal))
+            {
+                _searchHosts[target.CardAutomationId] = existing;
+                continue;
+            }
+
+            var host = TryWrapInSearchHost(card);
+            if (host is not null)
+            {
+                _searchHosts[target.CardAutomationId] = host;
+            }
+        }
+    }
+
+    private static Border? TryWrapInSearchHost(FrameworkElement card)
+    {
+        var host = new Border
+        {
+            Tag = SearchHostTag,
+            Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0)),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(8),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        if (card.Parent is Panel panel)
+        {
+            var index = panel.Children.IndexOf(card);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            panel.Children.RemoveAt(index);
+            // Spacing moves to the host so the pink outline hugs the whole card/expander.
+            host.Margin = card.Margin;
+            card.Margin = new Thickness(0);
+            host.Child = card;
+            panel.Children.Insert(index, host);
+            return host;
+        }
+
+        var itemsOwner = FindItemsOwner(card);
+        if (itemsOwner is not null)
+        {
+            var index = itemsOwner.Items.IndexOf(card);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            itemsOwner.Items.RemoveAt(index);
+            host.Margin = card.Margin;
+            card.Margin = new Thickness(0);
+            host.Child = card;
+            itemsOwner.Items.Insert(index, host);
+            return host;
+        }
+
+        return null;
+    }
+
+    private static ItemsControl? FindItemsOwner(FrameworkElement card)
+    {
+        for (var p = VisualTreeHelper.GetParent(card); p is not null; p = VisualTreeHelper.GetParent(p))
+        {
+            if (p is ItemsControl items && items.Items.IndexOf(card) >= 0)
+            {
+                return items;
+            }
+        }
+
+        for (DependencyObject? p = card.Parent; p is not null;)
+        {
+            if (p is ItemsControl items && items.Items.IndexOf(card) >= 0)
+            {
+                return items;
+            }
+
+            p = p is FrameworkElement fe ? fe.Parent : VisualTreeHelper.GetParent(p);
+        }
+
+        return null;
+    }
+
     private void HighlightMatchingCards(IReadOnlySet<string> cardIds)
     {
         ClearSearchHighlight();
@@ -363,29 +483,21 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        // Own SolidColorBrush — never share a ThemeDictionary instance that VSM / Release
-        // can leave unresolved or overwrite. High alpha so Release pixel-scans see pink.
+        EnsureSearchHighlightHosts();
         var highlight = CreateSearchHighlightBrush();
-        _activeHighlightBrush = highlight;
 
         foreach (var id in cardIds)
         {
-            var card = FindName(id) as Control
-                ?? FindNamedControl(PnlSettingsContent, id);
-            if (card is null)
+            if (!_searchHosts.TryGetValue(id, out var host))
             {
                 continue;
             }
 
-            ApplyHighlight(card, highlight);
+            host.Background = highlight;
+            host.BorderBrush = highlight;
+            host.BorderThickness = new Thickness(2);
+            _highlightedHosts.Add(host);
         }
-
-        // Release x64 is faster than Debug: filter Visibility + toolkit VSM often
-        // rebuild/repaint expander headers after the first paint. Re-apply until durable.
-        DispatcherQueue.TryEnqueue(
-            Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => RepaintActiveHighlights());
-        ScheduleHighlightRepaintPasses();
 
         // Keep highlight while the query is active; only flash when a single timed jump remains.
         if (!_searchFiltering)
@@ -403,178 +515,7 @@ public sealed partial class SettingsPage : Page
     }
 
     /// <summary>
-    /// SettingsCard Background paints the row; SettingsExpander Background does not
-    /// (header chrome is an inner Border / ToggleButton). Paint those surfaces + a
-    /// border ring. Hook LayoutUpdated so Release rebuilds still show pink.
-    /// </summary>
-    private void ApplyHighlight(Control card, Brush highlight)
-    {
-        _highlightedCards.Add((card, card.Background, card.BorderBrush, card.BorderThickness));
-        _highlightTargets.Add(card);
-        PaintHighlightOnControl(card, highlight, recordSurfaces: true);
-
-        _highlightLayoutHandler ??= HighlightTarget_LayoutUpdated;
-        card.LayoutUpdated -= _highlightLayoutHandler;
-        card.LayoutUpdated += _highlightLayoutHandler;
-    }
-
-    private void HighlightTarget_LayoutUpdated(object? sender, object e)
-    {
-        if (_paintingHighlight
-            || !_searchFiltering
-            || _activeHighlightBrush is null
-            || sender is not Control card)
-        {
-            return;
-        }
-
-        if (!_highlightTargets.Contains(card))
-        {
-            return;
-        }
-
-        // Toolkit VSM / template expand after Visibility flips — re-wash header Borders.
-        PaintHighlightOnControl(card, _activeHighlightBrush, recordSurfaces: true);
-    }
-
-    private void ScheduleHighlightRepaintPasses()
-    {
-        _highlightRepaintTimer?.Stop();
-        _highlightRepaintTimer ??= new DispatcherTimer();
-        _highlightRepaintTimer.Tick -= HighlightRepaintTimer_Tick;
-        _highlightRepaintTimer.Tick += HighlightRepaintTimer_Tick;
-        // Passes at ~50ms and ~200ms cover Release MSIX VSM settle (Sacb0y scanned 0.2s + 3s).
-        // WinUI DispatcherTimer has no Tag — track pass with a field.
-        _highlightRepaintPass = 0;
-        _highlightRepaintTimer.Interval = TimeSpan.FromMilliseconds(50);
-        _highlightRepaintTimer.Start();
-    }
-
-    private void HighlightRepaintTimer_Tick(object? sender, object e)
-    {
-        if (_highlightRepaintTimer is null)
-        {
-            return;
-        }
-
-        RepaintActiveHighlights();
-        if (_highlightRepaintPass == 0)
-        {
-            _highlightRepaintPass = 1;
-            _highlightRepaintTimer.Interval = TimeSpan.FromMilliseconds(150);
-            return;
-        }
-
-        _highlightRepaintTimer.Stop();
-    }
-
-    private void RepaintActiveHighlights()
-    {
-        if (_activeHighlightBrush is null || _highlightTargets.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var card in _highlightTargets.ToArray())
-        {
-            PaintHighlightOnControl(card, _activeHighlightBrush, recordSurfaces: true);
-        }
-    }
-
-    private void PaintHighlightOnControl(Control card, Brush highlight, bool recordSurfaces)
-    {
-        _paintingHighlight = true;
-        try
-        {
-            card.Background = highlight;
-            card.BorderBrush = highlight;
-            if (card.BorderThickness.Left < 2)
-            {
-                card.BorderThickness = new Thickness(2);
-            }
-
-            // Expander header plates live under ToggleButton Borders — Background on the
-            // SettingsExpander itself paints zero header pixels (CommunityToolkit template).
-            var isExpander = card is CommunityToolkit.WinUI.Controls.SettingsExpander
-                || card.GetType().Name.Contains("Expander", StringComparison.Ordinal);
-            if (!isExpander)
-            {
-                return;
-            }
-
-            card.UpdateLayout();
-            foreach (var surface in FindExpanderHeaderSurfaces(card))
-            {
-                if (recordSurfaces
-                    && !_highlightedSurfaces.Any(s => ReferenceEquals(s.Surface, surface)))
-                {
-                    _highlightedSurfaces.Add((surface, surface.Background));
-                }
-
-                surface.Background = highlight;
-            }
-        }
-        finally
-        {
-            _paintingHighlight = false;
-        }
-    }
-
-    /// <summary>
-    /// Borders under the expander header ToggleButton / Expander (skip ItemsRepeater).
-    /// Also takes any early Border with a Background before items — Release trees may
-    /// not flag ToggleButton yet on the first pass after Visibility flips.
-    /// </summary>
-    private static List<Border> FindExpanderHeaderSurfaces(DependencyObject root)
-    {
-        var results = new List<Border>();
-        WalkExpanderHeader(root, underHeaderToggle: false, depth: 0, results);
-        return results;
-    }
-
-    private static void WalkExpanderHeader(
-        DependencyObject node,
-        bool underHeaderToggle,
-        int depth,
-        List<Border> results)
-    {
-        if (depth > 14)
-        {
-            return;
-        }
-
-        // Items are below the header — do not wash nested SettingsCards.
-        if (node is Microsoft.UI.Xaml.Controls.ItemsRepeater)
-        {
-            return;
-        }
-
-        var count = VisualTreeHelper.GetChildrenCount(node);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(node, i);
-            var inHeader = underHeaderToggle
-                || child is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton
-                || child is Microsoft.UI.Xaml.Controls.Expander;
-
-            if (child is Border border)
-            {
-                // Prefer header ToggleButton borders; also take shallow Borders that
-                // already have a plate brush (template root) when ToggleButton is late.
-                if (inHeader || (depth <= 4 && border.Background is not null))
-                {
-                    results.Add(border);
-                }
-            }
-
-            WalkExpanderHeader(child, inHeader, depth + 1, results);
-        }
-    }
-
-    /// <summary>
-    /// Fresh local pink wash for search hits. Theme lookup is best-effort for color;
-    /// the returned brush is always a new SolidColorBrush so Release/VSM cannot
-    /// silently leave us with a missing shared ThemeResource.
+    /// Fresh local pink wash. Theme lookup is best-effort; always return a new brush.
     /// </summary>
     private Brush CreateSearchHighlightBrush()
     {
@@ -583,7 +524,6 @@ public sealed partial class SettingsPage : Page
             && fromPage is SolidColorBrush pageBrush)
         {
             color = pageBrush.Color;
-            // Bump alpha if theme brush is too faint for Release pixel scans.
             if (color.A < 0x80)
             {
                 color = Color.FromArgb(0xB3, color.R, color.G, color.B);
@@ -599,11 +539,6 @@ public sealed partial class SettingsPage : Page
                 color = Color.FromArgb(0xB3, color.R, color.G, color.B);
             }
         }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine(
-                "Settings search highlight: theme brush missing; using hard-coded pink.");
-        }
 
         return new SolidColorBrush(color);
     }
@@ -614,7 +549,6 @@ public sealed partial class SettingsPage : Page
         var light = ActualTheme == ElementTheme.Light
             || (ActualTheme == ElementTheme.Default
                 && Application.Current.RequestedTheme == ApplicationTheme.Light);
-        // Prefer Dark over Default when present (WASDK 2.x); Light alone for light chrome.
         var themeKeys = light ? new[] { "Light" } : new[] { "Dark", "Default" };
         return TryThemeBrushInTree(root, themeKeys, key, out brush);
     }
@@ -663,34 +597,14 @@ public sealed partial class SettingsPage : Page
 
     private void ClearSearchHighlight()
     {
-        _highlightRepaintTimer?.Stop();
-        _activeHighlightBrush = null;
-
-        foreach (var card in _highlightTargets)
+        foreach (var host in _highlightedHosts)
         {
-            if (_highlightLayoutHandler is not null)
-            {
-                card.LayoutUpdated -= _highlightLayoutHandler;
-            }
+            host.Background = new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+            host.BorderBrush = null;
+            host.BorderThickness = new Thickness(0);
         }
 
-        _highlightTargets.Clear();
-
-        foreach (var (card, background, borderBrush, borderThickness) in _highlightedCards)
-        {
-            card.Background = background;
-            card.BorderBrush = borderBrush;
-            card.BorderThickness = borderThickness;
-        }
-
-        _highlightedCards.Clear();
-
-        foreach (var (surface, background) in _highlightedSurfaces)
-        {
-            surface.Background = background;
-        }
-
-        _highlightedSurfaces.Clear();
+        _highlightedHosts.Clear();
     }
 
     private void ApplyDensity(string? density)
@@ -705,8 +619,17 @@ public sealed partial class SettingsPage : Page
             if (FindName(target.CardAutomationId) is Control card)
             {
                 card.MinHeight = minHeight;
-                card.Margin = spacing;
                 card.Padding = padding;
+                // Margin lives on the owned host so density gaps stay outside the pink outline.
+                if (_searchHosts.TryGetValue(target.CardAutomationId, out var host))
+                {
+                    card.Margin = new Thickness(0);
+                    host.Margin = spacing;
+                }
+                else
+                {
+                    card.Margin = spacing;
+                }
             }
         }
     }
