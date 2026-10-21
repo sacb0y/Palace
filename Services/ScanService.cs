@@ -126,7 +126,7 @@ public sealed class ScanService
         {
             ct.ThrowIfCancellationRequested();
             var file = entry.Path;
-            if (!PathSafe.IsCatalogExt(Path.GetExtension(file)))
+            if (!LibrarySettings.IsIndexedExt(Path.GetExtension(file)))
             {
                 if (!ScanNotice.IsIgnorable(file, entry.Attributes))
                 {
@@ -189,7 +189,8 @@ public sealed class ScanService
         var kind = PathSafe.KindFromExt(info.Extension);
         if (ScanFastPath.IsUnchanged(existing, info.Length, info.LastWriteTimeUtc, onlineOnly)
             && existing!.Kind == kind
-            && (!ScanContent.MayGenerateScanThumbnail(attrs)
+            && (!LibrarySettings.GenerateThumbsOnScan
+                || !ScanContent.MayGenerateScanThumbnail(attrs)
                 || !ScanFastPath.NeedsCurrentThumb(existing)
                 || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
         {
@@ -200,7 +201,8 @@ public sealed class ScanService
         if (ScanFastPath.NeedsDateTakenOnly(existing, info.Length, info.LastWriteTimeUtc, onlineOnly)
             && existing!.Kind == kind
             && ScanContent.MayReadOriginal(attrs)
-            && (!ScanContent.MayGenerateScanThumbnail(attrs)
+            && (!LibrarySettings.GenerateThumbsOnScan
+                || !ScanContent.MayGenerateScanThumbnail(attrs)
                 || !ScanFastPath.NeedsCurrentThumb(existing)
                 || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
         {
@@ -249,7 +251,8 @@ public sealed class ScanService
             asset.NegativePrompt = meta.NegativePrompt;
             asset.MetadataJson = meta.RawJson;
             asset.DateTaken = meta.DateTaken;
-            if (ScanContent.MayGenerateScanThumbnail(attrs))
+            if (LibrarySettings.GenerateThumbsOnScan
+                && ScanContent.MayGenerateScanThumbnail(attrs))
             {
                 var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind, requireKnownStatus: true).ConfigureAwait(false);
                 if (thumb is { Width: > 0, Height: > 0 } localThumb)
@@ -362,7 +365,7 @@ public sealed class ScanService
                 continue;
             }
 
-            if (!PathSafe.IsCatalogExt(Path.GetExtension(child.Name)))
+            if (!LibrarySettings.IsIndexedExt(Path.GetExtension(child.Name)))
             {
                 if (!ScanNotice.IsIgnorable(child.Name, 0))
                 {

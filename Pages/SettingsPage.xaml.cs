@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -24,6 +25,16 @@ public sealed partial class SettingsPage : Page
     private DispatcherTimer? _highlightTimer;
 
     public SettingsViewModel ViewModel => AppServices.Settings;
+
+    /// <summary>DataTemplate-safe accessors (same pattern as LibraryPage).</summary>
+    public static IRelayCommand<SourceFolderItem?> GetSelectSourceCommand() =>
+        AppServices.Settings.SelectSourceCommand;
+
+    public static IRelayCommand<SourceFolderItem?> GetOpenSourceCommand() =>
+        AppServices.Settings.OpenSourceCommand;
+
+    public static IRelayCommand<SourceFolderItem?> GetRemoveSourceCommand() =>
+        AppServices.Settings.RemoveSourceCommand;
 
     public SettingsPage()
     {

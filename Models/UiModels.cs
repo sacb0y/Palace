@@ -374,6 +374,9 @@ public partial class SourceFolderItem : ObservableObject
     public partial string Path { get; set; } = "";
 
     [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    [ObservableProperty]
     public partial bool AutoOrganizeNewFiles { get; set; }
 
     [ObservableProperty]
@@ -409,6 +412,33 @@ public partial class SourceFolderItem : ObservableObject
     public string? CloudAccountId { get; set; }
 
     public string? CloudRootItemId { get; set; }
+
+    /// <summary>Stable AutomationId fragment from <see cref="Id"/> (no spaces).</summary>
+    public string AutomationKey =>
+        string.IsNullOrWhiteSpace(Id)
+            ? "unknown"
+            : Id.Replace('-', '_');
+
+    public string CardAutomationId => "CardSource_" + AutomationKey;
+
+    public string OpenAutomationId => "BtnOpenSource_" + AutomationKey;
+
+    public string RemoveAutomationId => "BtnRemoveSource_" + AutomationKey;
+
+    public string SelectAutomationId => "BtnSelectSource_" + AutomationKey;
+
+    public string OpenAutomationName => "Open " + Path;
+
+    public string RemoveAutomationName => "Remove " + Path;
+
+    public string SelectAutomationName => "Select " + Path;
+
+    public string KindCaption => Kind switch
+    {
+        nameof(Models.SourceKind.OneDrive) => "OneDrive",
+        nameof(Models.SourceKind.Dropbox) => "Dropbox",
+        _ => "Local"
+    };
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Path;

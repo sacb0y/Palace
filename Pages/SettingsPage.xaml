@@ -9,6 +9,7 @@
     xmlns:ic="using:FluentIcons.WinUI"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="using:Palace.Models"
+    xmlns:pages="using:Palace.Pages"
     mc:Ignorable="d"
     Background="Transparent">
 
@@ -597,48 +598,103 @@
                     <!-- Library & Folders -->
                     <StackPanel x:Name="PnlSection_library" Spacing="0" Visibility="Collapsed">
                         <TextBlock Style="{StaticResource PalaceSettingsGroupHeaderStyle}" Text="Library &amp; Folders" />
-                        <controls:SettingsCard
+                        <!--
+                          Watched folders: Expander with per-path Open / Remove + Add folder.
+                          UI tests seed SourceFolder rows via CatalogService — never the GUI picker.
+                        -->
+                        <controls:SettingsExpander
                             x:Name="CardWatchedFolders"
                             AutomationProperties.AutomationId="CardWatchedFolders"
-                            ContentAlignment="Vertical"
                             Description="Folders Palace indexes for this project"
                             Header="Watched folders"
-                            Style="{StaticResource PalaceSettingsCardStyle}">
-                            <StackPanel Spacing="8">
-                                <ListView
-                                    x:Name="LstSources"
-                                    MinHeight="120"
-                                    AutomationProperties.AutomationId="LstSources"
-                                    ItemsSource="{x:Bind ViewModel.Sources, Mode=OneWay}"
-                                    SelectedItem="{x:Bind ViewModel.SelectedSource, Mode=TwoWay}">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate x:DataType="models:SourceFolderItem">
-                                            <TextBlock Style="{StaticResource BodyTextBlockStyle}" Text="{x:Bind Path, Mode=OneWay}" />
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button
-                                        AutomationProperties.AutomationId="BtnAddSource"
-                                        AutomationProperties.Name="Add folder"
-                                        Command="{x:Bind ViewModel.AddSourceCommand}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
-                                            <TextBlock VerticalAlignment="Center" Text="Add folder" />
-                                        </StackPanel>
-                                    </Button>
-                                    <Button
-                                        AutomationProperties.AutomationId="BtnRemoveSource"
-                                        AutomationProperties.Name="Remove folder"
-                                        Command="{x:Bind ViewModel.RemoveSourceCommand}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <ic:FluentIcon Icon="FolderArrowLeft" IconSize="Size16" IconVariant="Regular" />
-                                            <TextBlock VerticalAlignment="Center" Text="Remove folder" />
-                                        </StackPanel>
-                                    </Button>
-                                </StackPanel>
-                            </StackPanel>
-                        </controls:SettingsCard>
+                            IsExpanded="True"
+                            Style="{StaticResource PalaceSettingsExpanderStyle}">
+                            <controls:SettingsExpander.Content>
+                                <Button
+                                    AutomationProperties.AutomationId="BtnAddSource"
+                                    AutomationProperties.Name="Add folder"
+                                    Command="{x:Bind ViewModel.AddSourceCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Add folder" />
+                                    </StackPanel>
+                                </Button>
+                            </controls:SettingsExpander.Content>
+                            <controls:SettingsExpander.Items>
+                                <controls:SettingsCard
+                                    ContentAlignment="Vertical"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ItemsControl
+                                        x:Name="LstSources"
+                                        AutomationProperties.AutomationId="LstSources"
+                                        ItemsSource="{x:Bind ViewModel.Sources, Mode=OneWay}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="models:SourceFolderItem">
+                                                <Grid
+                                                    Margin="0,0,0,4"
+                                                    AutomationProperties.AutomationId="{x:Bind CardAutomationId, Mode=OneWay}"
+                                                    ColumnSpacing="8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Button
+                                                        Grid.Column="0"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Left"
+                                                        AutomationProperties.AutomationId="{x:Bind SelectAutomationId, Mode=OneWay}"
+                                                        AutomationProperties.Name="{x:Bind SelectAutomationName, Mode=OneWay}"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Command="{x:Bind pages:SettingsPage.GetSelectSourceCommand()}"
+                                                        CommandParameter="{x:Bind}"
+                                                        Padding="0">
+                                                        <StackPanel Spacing="2">
+                                                            <TextBlock
+                                                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                                                Text="{x:Bind Path, Mode=OneWay}"
+                                                                TextWrapping="WrapWholeWords" />
+                                                            <TextBlock
+                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                                Text="{x:Bind KindCaption, Mode=OneWay}" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                    <StackPanel
+                                                        Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Orientation="Horizontal"
+                                                        Spacing="8">
+                                                        <Button
+                                                            AutomationProperties.AutomationId="{x:Bind OpenAutomationId, Mode=OneWay}"
+                                                            AutomationProperties.Name="{x:Bind OpenAutomationName, Mode=OneWay}"
+                                                            Command="{x:Bind pages:SettingsPage.GetOpenSourceCommand()}"
+                                                            CommandParameter="{x:Bind}"
+                                                            ToolTipService.ToolTip="Open in File Explorer">
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <ic:FluentIcon Icon="FolderOpen" IconSize="Size16" IconVariant="Regular" />
+                                                                <TextBlock VerticalAlignment="Center" Text="Open" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <Button
+                                                            AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
+                                                            AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                                            Command="{x:Bind pages:SettingsPage.GetRemoveSourceCommand()}"
+                                                            CommandParameter="{x:Bind}"
+                                                            ToolTipService.ToolTip="Remove from library">
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <ic:FluentIcon Icon="FolderArrowLeft" IconSize="Size16" IconVariant="Regular" />
+                                                                <TextBlock VerticalAlignment="Center" Text="Remove" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </controls:SettingsCard>
+                            </controls:SettingsExpander.Items>
+                        </controls:SettingsExpander>
                         <controls:SettingsExpander
                             x:Name="CardSelectedFolder"
                             AutomationProperties.AutomationId="CardSelectedFolder"
@@ -707,6 +763,109 @@
                                         </Button>
                                     </StackPanel>
                                 </controls:SettingsCard>
+                            </controls:SettingsExpander.Items>
+                        </controls:SettingsExpander>
+                        <controls:SettingsExpander
+                            x:Name="CardScanning"
+                            AutomationProperties.AutomationId="CardScanning"
+                            Description="How Palace discovers new files in watched folders"
+                            Header="Scanning"
+                            Style="{StaticResource PalaceSettingsExpanderStyle}">
+                            <controls:SettingsExpander.Items>
+                                <controls:SettingsCard
+                                    Description="Index Created, Changed, and Renamed files automatically"
+                                    Header="Watch for changes"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ToggleSwitch
+                                        x:Name="TglWatchForChanges"
+                                        AutomationProperties.AutomationId="TglWatchForChanges"
+                                        AutomationProperties.Name="Watch for changes"
+                                        IsOn="{x:Bind ViewModel.WatchForChanges, Mode=TwoWay}"
+                                        OffContent="Off"
+                                        OnContent="On" />
+                                </controls:SettingsCard>
+                                <controls:SettingsCard
+                                    Description="Walk every watched folder now"
+                                    Header="Scan library"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <Button
+                                        AutomationProperties.AutomationId="BtnScanLibrary"
+                                        AutomationProperties.Name="Scan library"
+                                        Command="{x:Bind ViewModel.ScanLibraryCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <ic:FluentIcon Icon="ArrowSync" IconSize="Size16" IconVariant="Regular" />
+                                            <TextBlock VerticalAlignment="Center" Text="Scan now" />
+                                        </StackPanel>
+                                    </Button>
+                                </controls:SettingsCard>
+                            </controls:SettingsExpander.Items>
+                        </controls:SettingsExpander>
+                        <controls:SettingsExpander
+                            x:Name="CardThumbnailCache"
+                            AutomationProperties.AutomationId="CardThumbnailCache"
+                            Description="Mosaic JPEGs. Optional size limit and folder live under Performance."
+                            Header="Thumbnail cache"
+                            Style="{StaticResource PalaceSettingsExpanderStyle}">
+                            <controls:SettingsExpander.Items>
+                                <controls:SettingsCard
+                                    Description="When off, mosaic builds thumbs on demand as tiles appear"
+                                    Header="Build thumbnails while scanning"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ToggleSwitch
+                                        x:Name="TglGenerateThumbsOnScan"
+                                        AutomationProperties.AutomationId="TglGenerateThumbsOnScan"
+                                        AutomationProperties.Name="Build thumbnails while scanning"
+                                        IsOn="{x:Bind ViewModel.GenerateThumbsOnScan, Mode=TwoWay}"
+                                        OffContent="Off"
+                                        OnContent="On" />
+                                </controls:SettingsCard>
+                            </controls:SettingsExpander.Items>
+                        </controls:SettingsExpander>
+                        <controls:SettingsExpander
+                            x:Name="CardFormats"
+                            AutomationProperties.AutomationId="CardFormats"
+                            Description="Which kinds Palace indexes. Leave room for 3D and audio."
+                            Header="Formats"
+                            Style="{StaticResource PalaceSettingsExpanderStyle}">
+                            <controls:SettingsExpander.Items>
+                                <controls:SettingsCard
+                                    Description="{x:Bind ViewModel.ImagesFormatsCaption, Mode=OneWay}"
+                                    Header="Images"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ToggleSwitch
+                                        x:Name="TglIndexImages"
+                                        AutomationProperties.AutomationId="TglIndexImages"
+                                        AutomationProperties.Name="Index images"
+                                        IsOn="{x:Bind ViewModel.IndexImages, Mode=TwoWay}"
+                                        OffContent="Off"
+                                        OnContent="On" />
+                                </controls:SettingsCard>
+                                <controls:SettingsCard
+                                    Description="{x:Bind ViewModel.VideoFormatsCaption, Mode=OneWay}"
+                                    Header="Video"
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ToggleSwitch
+                                        x:Name="TglIndexVideo"
+                                        AutomationProperties.AutomationId="TglIndexVideo"
+                                        AutomationProperties.Name="Index video"
+                                        IsOn="{x:Bind ViewModel.IndexVideo, Mode=TwoWay}"
+                                        OffContent="Off"
+                                        OnContent="On" />
+                                </controls:SettingsCard>
+                                <controls:SettingsCard
+                                    x:Name="CardFormats3dPlaceholder"
+                                    AutomationProperties.AutomationId="CardFormats3dPlaceholder"
+                                    Description="{x:Bind ViewModel.FormatsPlaceholderCaption, Mode=OneWay}"
+                                    Header="3D"
+                                    IsEnabled="False"
+                                    Style="{StaticResource PalaceSettingsCardStyle}" />
+                                <controls:SettingsCard
+                                    x:Name="CardFormatsAudioPlaceholder"
+                                    AutomationProperties.AutomationId="CardFormatsAudioPlaceholder"
+                                    Description="{x:Bind ViewModel.FormatsPlaceholderCaption, Mode=OneWay}"
+                                    Header="Audio"
+                                    IsEnabled="False"
+                                    Style="{StaticResource PalaceSettingsCardStyle}" />
                             </controls:SettingsExpander.Items>
                         </controls:SettingsExpander>
                         <controls:SettingsExpander
