@@ -1,6 +1,6 @@
 # Settings PR #126 Performance + About screenshots (media-only)
 
-Packaged Debug tip `c16278e` (0.2.12), branch `cursor/settings-perf-about-16fa` / PR #126.
+Packaged Debug tips `c16278e` (BEFORE) / `25b327e` (AFTER layout) (0.2.12), branch `cursor/settings-perf-about-16fa` / PR #126.
 Hosted on this media branch - **not** on the product tip. Pin raw URLs to this media commit SHA.
 
 Test identity: `PalaceSettingsPr6-126` (never C20A7629). Isolated package LocalState + temp SFW only.
@@ -12,6 +12,9 @@ Build: BelowNormal `-m:1` if Unity is busy; defer if needed.
 | `02-about-export-import-reset.png` | About: Version/Copy, Preview channel, licenses/logs, Export/Import settings, Export catalog, Reset all settings. |
 | `03-viewer-hdr-collapsed-fullwidth.png` | Viewer: HDR expander collapsed - SettingsCards stay full-width; Show Details / Loop switches stay on the right (no wrap under text). |
 | `04-viewer-hdr-expanded.png` | Viewer: HDR and tonemap expander open - peak override + SDR tonemap; sibling cards remain full width. |
+
+| `05a-appearance-bg-before.png` | BEFORE (c16278e): Appearance Background - composition preview then preset thumbs; Darkness/Blur sit below the grid (not between preview and thumbs). Ribbons selected. |
+| `05b-appearance-bg-after.png` | AFTER (25b327e): Appearance Background - centered preview, then Darkness/Blur (NumberBox + Reset) above the preset thumbs. Ribbons selected. |
 
 ## Capture notes
 

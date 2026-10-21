@@ -1,0 +1,1 @@
+BEFORE (c16278e): Appearance Background - composition preview then preset thumbs; Darkness/Blur sit below the grid (not between preview and thumbs). Ribbons selected.

@@ -1,0 +1,1 @@
+AFTER (25b327e): Appearance Background - centered preview, then Darkness/Blur (NumberBox + Reset) above the preset thumbs. Ribbons selected.
