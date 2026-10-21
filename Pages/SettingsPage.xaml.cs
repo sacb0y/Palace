@@ -23,7 +23,8 @@ public sealed partial class SettingsPage : Page
     private bool _ignorePresetSelection;
     private bool _ignoreSearchClear;
     private bool _searchFiltering;
-    private readonly List<(Control Card, Brush? Restore)> _highlightedCards = [];
+    private readonly List<(Control Card, Brush? Background, Brush? BorderBrush, Thickness BorderThickness)> _highlightedCards = [];
+    private readonly List<(Border Surface, Brush? Background)> _highlightedSurfaces = [];
     private DispatcherTimer? _highlightTimer;
 
     public SettingsViewModel ViewModel => AppServices.Settings;
@@ -369,8 +370,7 @@ public sealed partial class SettingsPage : Page
                 continue;
             }
 
-            _highlightedCards.Add((card, card.Background));
-            card.Background = highlight;
+            ApplyHighlight(card, highlight);
         }
 
         // Keep highlight while the query is active; only flash when a single timed jump remains.
@@ -385,6 +385,72 @@ public sealed partial class SettingsPage : Page
         else
         {
             _highlightTimer?.Stop();
+        }
+    }
+
+    /// <summary>
+    /// SettingsCard Background paints the row; SettingsExpander Background does not
+    /// (header chrome is an inner Border / ToggleButton). Paint those surfaces + a
+    /// border ring so expander hits (e.g. search "cache") show pink pixels.
+    /// </summary>
+    private void ApplyHighlight(Control card, Brush highlight)
+    {
+        _highlightedCards.Add((card, card.Background, card.BorderBrush, card.BorderThickness));
+        card.Background = highlight;
+        card.BorderBrush = highlight;
+        if (card.BorderThickness.Left < 2)
+        {
+            card.BorderThickness = new Thickness(2);
+        }
+
+        // Expander header plates live under ToggleButton Borders — Background on the
+        // SettingsExpander itself paints zero header pixels (CommunityToolkit template).
+        if (card is CommunityToolkit.WinUI.Controls.SettingsExpander
+            || card.GetType().Name.Contains("Expander", StringComparison.Ordinal))
+        {
+            foreach (var surface in FindExpanderHeaderSurfaces(card))
+            {
+                _highlightedSurfaces.Add((surface, surface.Background));
+                surface.Background = highlight;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Borders under the expander header ToggleButton (skip ItemsRepeater content).
+    /// </summary>
+    private static List<Border> FindExpanderHeaderSurfaces(DependencyObject root)
+    {
+        var results = new List<Border>();
+        WalkExpanderHeader(root, underHeaderToggle: false, results);
+        return results;
+    }
+
+    private static void WalkExpanderHeader(
+        DependencyObject node,
+        bool underHeaderToggle,
+        List<Border> results)
+    {
+        // Items are below the header — do not wash nested SettingsCards.
+        if (node is Microsoft.UI.Xaml.Controls.ItemsRepeater)
+        {
+            return;
+        }
+
+        var count = VisualTreeHelper.GetChildrenCount(node);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(node, i);
+            var inHeader = underHeaderToggle
+                || child is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton
+                || child is Microsoft.UI.Xaml.Controls.Expander;
+
+            if (inHeader && child is Border border)
+            {
+                results.Add(border);
+            }
+
+            WalkExpanderHeader(child, inHeader, results);
         }
     }
 
@@ -479,12 +545,21 @@ public sealed partial class SettingsPage : Page
 
     private void ClearSearchHighlight()
     {
-        foreach (var (card, restore) in _highlightedCards)
+        foreach (var (card, background, borderBrush, borderThickness) in _highlightedCards)
         {
-            card.Background = restore;
+            card.Background = background;
+            card.BorderBrush = borderBrush;
+            card.BorderThickness = borderThickness;
         }
 
         _highlightedCards.Clear();
+
+        foreach (var (surface, background) in _highlightedSurfaces)
+        {
+            surface.Background = background;
+        }
+
+        _highlightedSurfaces.Clear();
     }
 
     private void ApplyDensity(string? density)
