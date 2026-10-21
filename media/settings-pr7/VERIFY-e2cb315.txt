@@ -1,0 +1,10 @@
+PASS Release x64 MSIX tip e2cb315 (e2cb315e9411fb52493377fbd43b33efc0bd1526)
+Identity: PalaceSettingsPr7-127 (Release AppX). BelowNormal -m:1. Temp SFW + PALACE_DATA_DIR.
+Gate: winapp ui wait-for Host_CardThumbnailCache + Host_CardMediaCache — PASS (NamedContainerAutomationPeer).
+
+Pixel-scan (magentaLean / pink around #E05A8C on Host_* AutomationId bounds incl. Padding=8):
+1. cache BOTH collapsed: Host_Thumb 715x92 magentaLean=11081 edge=8879; Host_Media 715x92 magentaLean=11078 edge=9512
+2. cache Media expanded: Host_Thumb 715x92 magentaLean=11081; Host_Media 715x235 magentaLean=13837 edge=3378
+3. tonemap: Host_CardHdr 715x92 magentaLean=11079 edge=8887
+
+PASS: every matching Host_* has measurable pink.

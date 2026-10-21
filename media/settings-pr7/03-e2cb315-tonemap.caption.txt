@@ -1,0 +1,1 @@
+Release x64 MSIX tip e2cb315: search tonemap, Host_CardHdr collapsed — PASS magentaLean~11079 on Host_* bounds.

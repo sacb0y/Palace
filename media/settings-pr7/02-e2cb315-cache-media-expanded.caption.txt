@@ -1,0 +1,1 @@
+Release x64 MSIX tip e2cb315: search cache, Media expanded (Thumb collapsed) — PASS magentaLean~11081 Thumb + ~13837 Media on Host_* bounds.

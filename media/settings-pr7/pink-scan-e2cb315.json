@@ -1,0 +1,118 @@
+{
+    "tip":  "e2cb315e9411fb52493377fbd43b33efc0bd1526",
+    "identity":  "PalaceSettingsPr7-127",
+    "build":  "Release x64 MSIX",
+    "gate":  "PASS Host_CardThumbnailCache + Host_CardMediaCache",
+    "case1":  {
+                  "full":  {
+                               "H":  878,
+                               "EdgeDense":  0,
+                               "W":  1270,
+                               "MagentaLean":  31150
+                           },
+                  "Host_CardThumbnailCache":  {
+                                                  "source":  "Host_AutomationId",
+                                                  "pass":  true,
+                                                  "EdgeDense":  8879,
+                                                  "W":  715,
+                                                  "MagentaLean":  11081,
+                                                  "PinkSample":  11081,
+                                                  "collapsed":  true,
+                                                  "H":  92,
+                                                  "bounds":  {
+                                                                 "y":  146,
+                                                                 "w":  715,
+                                                                 "h":  92,
+                                                                 "x":  497
+                                                             }
+                                              },
+                  "Host_CardMediaCache":  {
+                                              "source":  "Host_AutomationId",
+                                              "pass":  true,
+                                              "EdgeDense":  9512,
+                                              "W":  715,
+                                              "MagentaLean":  11078,
+                                              "PinkSample":  11078,
+                                              "collapsed":  true,
+                                              "H":  92,
+                                              "bounds":  {
+                                                             "y":  298,
+                                                             "w":  715,
+                                                             "h":  92,
+                                                             "x":  497
+                                                         }
+                                          }
+              },
+    "case2":  {
+                  "full":  {
+                               "H":  878,
+                               "EdgeDense":  0,
+                               "W":  1270,
+                               "MagentaLean":  31926
+                           },
+                  "Host_CardThumbnailCache":  {
+                                                  "source":  "Host_AutomationId",
+                                                  "pass":  true,
+                                                  "EdgeDense":  8879,
+                                                  "W":  715,
+                                                  "MagentaLean":  11081,
+                                                  "PinkSample":  11081,
+                                                  "collapsed":  true,
+                                                  "H":  92,
+                                                  "bounds":  {
+                                                                 "y":  146,
+                                                                 "w":  715,
+                                                                 "h":  92,
+                                                                 "x":  497
+                                                             }
+                                              },
+                  "Host_CardMediaCache":  {
+                                              "source":  "Host_AutomationId",
+                                              "pass":  true,
+                                              "EdgeDense":  3378,
+                                              "W":  715,
+                                              "MagentaLean":  13837,
+                                              "PinkSample":  13837,
+                                              "collapsed":  false,
+                                              "H":  235,
+                                              "bounds":  {
+                                                             "y":  298,
+                                                             "w":  715,
+                                                             "h":  235,
+                                                             "x":  497
+                                                         }
+                                          }
+              },
+    "case3":  {
+                  "Host_CardHdr":  {
+                                       "source":  "Host_AutomationId",
+                                       "pass":  true,
+                                       "EdgeDense":  8887,
+                                       "W":  715,
+                                       "MagentaLean":  11079,
+                                       "PinkSample":  11079,
+                                       "collapsed":  true,
+                                       "H":  92,
+                                       "bounds":  {
+                                                      "y":  146,
+                                                      "w":  715,
+                                                      "h":  92,
+                                                      "x":  497
+                                                  }
+                                   },
+                  "full":  {
+                               "H":  878,
+                               "EdgeDense":  0,
+                               "W":  1270,
+                               "MagentaLean":  15623
+                           }
+              },
+    "case_pass":  {
+                      "c3":  true,
+                      "c2_media_expanded":  true,
+                      "c1_both_collapsed":  true,
+                      "c2":  true,
+                      "c1":  true
+                  },
+    "result":  "PASS"
+}
