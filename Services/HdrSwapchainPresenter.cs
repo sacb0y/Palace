@@ -167,15 +167,28 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             float outcomeWhite = 0f;
             if (!displayHdr)
             {
-                // Sticky Reinhard from caller (first Fit) when present; else analyze once.
+                // SdrWhiteLevel from CCD / AdvancedColorInfo (fallback 80).
+                var sdrWhite = _sdrWhiteLevelNits;
+                // Sticky content peak from first Fit; refresh exposure when the
+                // brightness slider / monitor changes SdrWhiteLevel.
                 if (resolvedExposure is null or <= 0 || resolvedWhite is null)
                 {
                     var pixelCount = checked(frame.Width * frame.Height);
                     var analyzed = await Task.Run(
-                        () => ToneMap.Analyze(frame.ScrgbRgba, pixelCount, cancellation),
+                        () => ToneMap.AnalyzeHdrPresent(
+                            frame.ScrgbRgba, pixelCount, sdrWhite, cancellation),
                         cancellation).ConfigureAwait(false);
                     resolvedExposure = analyzed.Exposure;
                     resolvedWhite = analyzed.White;
+                }
+                else
+                {
+                    var priorExposure = resolvedExposure.Value;
+                    var contentPeak = priorExposure > 1e-6f
+                        ? resolvedWhite.Value / priorExposure
+                        : resolvedWhite.Value;
+                    resolvedExposure = GalleryPresent.PresentSdrExposure(sdrWhite);
+                    resolvedWhite = Math.Max(1.01f, contentPeak * resolvedExposure.Value);
                 }
 
                 map = GalleryPresent.PresentMapSdrReinhard(
@@ -453,7 +466,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     private void AppendPresentProbeExtras()
     {
-        // Log SdrWhiteLevel for diagnostics only — present does not scale by it.
+        // SDR Reinhard present uses SdrWhiteLevel for exposure (fallback 80).
         if (_sdrWhiteLevelNits > 0 && float.IsFinite(_sdrWhiteLevelNits))
         {
             DisplayProbeText += $" sdrWhite={_sdrWhiteLevelNits:0.#}";

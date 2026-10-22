@@ -66,8 +66,61 @@ public static class ToneMap
     /// <summary>
     /// Exposure scale and white point (in scaled units). Content whose
     /// luminance stays within SDR range gets (1, 1): no tone mapping.
+    /// Thumbs / SDR previews use this. Gallery HDR→SDR present uses
+    /// <see cref="AnalyzeHdrPresent"/> so relative EXR / soft PQ cannot
+    /// skip the curve when p995 ≤ 1.
     /// </summary>
     public static (float Exposure, float White) Analyze(ReadOnlySpan<float> rgba, int count, CancellationToken cancellationToken = default)
+    {
+        var (logAvg, p995, ok) = SampleLuminance(rgba, count, cancellationToken);
+        if (!ok)
+        {
+            return (1f, 1f);
+        }
+
+        if (p995 <= 1.0f)
+        {
+            return (1f, 1f);
+        }
+
+        var exposure = Math.Clamp(MiddleGrey / Math.Max(logAvg, 1e-4f), 0.05f, 4f);
+        var white = Math.Max(1f, p995 * exposure);
+        return (exposure, white);
+    }
+
+    /// <summary>
+    /// Gallery HDR→SDR present (Isiac): exposure defaults to <b>1.0</b> so
+    /// scene-referred 1.0 (and PQ paper after absolute decode) maps toward
+    /// SDR white — never the thumb auto-boost
+    /// <c>clamp(0.18/logAvg, 0.05, 4)</c>. At most attenuate via
+    /// <see cref="GalleryPresent.PresentSdrExposure"/> (cap ≤ 1) using
+    /// <c>AdvancedColorInfo.SdrWhiteLevelInNits</c> / CCD, else 80.
+    /// Always applies extended Reinhard with <c>w</c> from content p995
+    /// (no <c>p995 ≤ 1</c> skip — that left soft EXR/JXL Fit unmapped).
+    /// </summary>
+    public static (float Exposure, float White) AnalyzeHdrPresent(
+        ReadOnlySpan<float> rgba,
+        int count,
+        float sdrWhiteLevelNits = 0f,
+        CancellationToken cancellationToken = default)
+    {
+        var exposure = GalleryPresent.PresentSdrExposure(sdrWhiteLevelNits);
+        var (logAvg, p995, ok) = SampleLuminance(rgba, count, cancellationToken);
+        _ = logAvg;
+        if (!ok)
+        {
+            return (exposure, 1.01f);
+        }
+
+        // Always engage Reinhard (white > 1); w = content peak after exposure.
+        var white = Math.Max(1.01f, Math.Max(p995, 1e-4f) * exposure);
+        return (exposure, white);
+    }
+
+    private static (float LogAvg, float P995, bool Ok) SampleLuminance(
+        ReadOnlySpan<float> rgba,
+        int count,
+        CancellationToken cancellationToken)
     {
         var step = Math.Max(1, count / 65536);
         var samples = new List<float>(Math.Min(count, 65536) + 1);
@@ -78,6 +131,7 @@ public static class ToneMap
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
+
             var l = Luminance(Sanitize(rgba[i * 4]), Sanitize(rgba[i * 4 + 1]), Sanitize(rgba[i * 4 + 2]));
             samples.Add(l);
             logSum += Math.Log(1e-4 + l);
@@ -85,20 +139,13 @@ public static class ToneMap
 
         if (samples.Count == 0)
         {
-            return (1f, 1f);
+            return (0f, 0f, false);
         }
 
         samples.Sort();
         var p995 = samples[Math.Min(samples.Count - 1, (int)(samples.Count * 0.995))];
-        if (p995 <= 1.0f)
-        {
-            return (1f, 1f);
-        }
-
         var logAvg = (float)Math.Exp(logSum / samples.Count);
-        var exposure = Math.Clamp(MiddleGrey / Math.Max(logAvg, 1e-4f), 0.05f, 4f);
-        var white = Math.Max(1f, p995 * exposure);
-        return (exposure, white);
+        return (logAvg, p995, true);
     }
 
     public static float Luminance(float r, float g, float b) =>
