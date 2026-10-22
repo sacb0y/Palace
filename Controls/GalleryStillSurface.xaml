@@ -10,8 +10,15 @@
       Visual pager (docs/specs/swipe-nav.md): current + ±1 neighbors with 16 px gap.
       Custom — not FlipView. Neighbors are hit-test invisible; drag drives Translation.
     -->
+    <!--
+      Transparent host + ScrStill fill the viewer so letterbox / beside-chrome
+      swipes hit-test. Overlay chrome (Info, nav, Details card) stays above and
+      keeps its own hit targets — only real buttons/cards steal the gesture.
+      Manipulation is on ScrStill (full viewport), not the letterboxed image panel.
+    -->
     <Grid
         x:Name="GrdStillHost"
+        Background="Transparent"
         SizeChanged="GrdStillHost_SizeChanged">
         <Image
             x:Name="ImgNeighborPrev"
@@ -39,9 +46,14 @@
         </Image>
         <ScrollViewer
             x:Name="ScrStill"
+            Background="Transparent"
+            DoubleTapped="ScrStill_DoubleTapped"
             HorizontalScrollBarVisibility="Hidden"
             HorizontalScrollMode="Enabled"
-            ManipulationMode="None"
+            IsDoubleTapEnabled="True"
+            ManipulationCompleted="ScrStill_ManipulationCompleted"
+            ManipulationDelta="ScrStill_ManipulationDelta"
+            ManipulationMode="TranslateX,TranslateY,Scale"
             PointerCaptureLost="ScrStill_PointerCaptureLost"
             PointerMoved="ScrStill_PointerMoved"
             PointerPressed="ScrStill_PointerPressed"
@@ -55,13 +67,8 @@
                     <TranslateTransform x:Name="XfCurrent" />
                 </TransformGroup>
             </ScrollViewer.RenderTransform>
-            <Grid
-                x:Name="GrdStillContent"
-                DoubleTapped="GrdStillContent_DoubleTapped"
-                IsDoubleTapEnabled="True"
-                ManipulationCompleted="GrdStillContent_ManipulationCompleted"
-                ManipulationDelta="GrdStillContent_ManipulationDelta"
-                ManipulationMode="TranslateX,TranslateY,Scale">
+            <!-- Image-sized panel only — Fit letterbox margins live outside this grid. -->
+            <Grid x:Name="GrdStillContent" ManipulationMode="None">
                 <Image
                     x:Name="ImgStill"
                     HorizontalAlignment="Stretch"

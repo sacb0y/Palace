@@ -58,6 +58,8 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _reviewSwipeVy;
     private bool _pagerHandoff;
     private double _pagerPanBeforeHandoff;
+    /// <summary>Accumulated outward travel while pinned at a zoom edge (pre-handoff).</summary>
+    private double _edgeOutwardAccum;
     private bool _pagerSettling;
     private Storyboard? _pagerStoryboard;
     private Action? _pagerOnDone;
@@ -1491,24 +1493,11 @@ public sealed partial class GalleryStillSurface : UserControl
     }
 
     /// <summary>
-    /// Manipulation events are on <see cref="GrdStillContent"/> so
-    /// <c>e.Position</c> is content-local. Pinch midpoint math needs
-    /// <see cref="ScrStill"/> viewport coordinates — content-space origins
-    /// throw the still off-screen (HDR black bg looks like a black image).
+    /// Manipulation events are on <see cref="ScrStill"/> (full viewer surface),
+    /// so <c>e.Position</c> is already viewport-local.
     /// </summary>
-    private Windows.Foundation.Point ToViewport(Windows.Foundation.Point contentLocal)
-    {
-        try
-        {
-            return GrdStillContent.TransformToVisual(ScrStill).TransformPoint(contentLocal);
-        }
-        catch
-        {
-            return new Windows.Foundation.Point(
-                contentLocal.X - ScrStill.HorizontalOffset,
-                contentLocal.Y - ScrStill.VerticalOffset);
-        }
-    }
+    private static Windows.Foundation.Point ToViewport(Windows.Foundation.Point viewportLocal) =>
+        viewportLocal;
 
     private void ApplyPinchFrame(
         double originViewportX,
@@ -1740,7 +1729,7 @@ public sealed partial class GalleryStillSurface : UserControl
         ScpHdr.CancelDirectManipulations();
     }
 
-    private void GrdStillContent_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    private void ScrStill_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
     {
         CancelScrollViewerDirectManipulation();
         var isTouch = e.PointerDeviceType == PointerDeviceType.Touch;
@@ -1885,7 +1874,7 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
-    private void GrdStillContent_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    private void ScrStill_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
     {
         if (e.PointerDeviceType != PointerDeviceType.Touch)
         {
@@ -1924,7 +1913,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _afterPinchAwaitingLift = false;
     }
 
-    private void GrdStillContent_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void ScrStill_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         // Touch only — mouse / pen double-tap stays unchanged.
         if (!TouchGestures.IsTouchOnly(_lastPointerDevice == PointerDeviceType.Touch)
@@ -2416,6 +2405,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _reviewSwipeVy = 0;
         _pagerHandoff = false;
         _pagerPanBeforeHandoff = 0;
+        _edgeOutwardAccum = 0;
         ClearAwaitingContent();
         _pendingAdvanceSlide = false;
         StopPagerAnimations(invokeOnDone: false);
@@ -2435,6 +2425,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _reviewSwipeDy = 0;
         _pagerHandoff = false;
         _pagerPanBeforeHandoff = 0;
+        _edgeOutwardAccum = 0;
     }
 
     private void StopPagerAnimations(bool invokeOnDone)
@@ -2607,19 +2598,27 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         var maxH = TouchGestures.MaxScrollOffset(PanContentWidth(), PanViewportWidth());
+        // Fill portrait often only overflows vertically — no H pan room means
+        // both edges are already pinned; page immediately (spec: pan to edge,
+        // then page).
+        var noHorizontalPan = TouchGestures.NoHorizontalPanRoom(maxH);
         var atLeft = ScrStill.HorizontalOffset <= 0.5;
-        var atRight = maxH <= 0.5 || ScrStill.HorizontalOffset >= maxH - 0.5;
+        var atRight = noHorizontalPan || ScrStill.HorizontalOffset >= maxH - 0.5;
         var outwardLeft = atLeft && deltaX > 0;
         var outwardRight = atRight && deltaX < 0;
         if (!outwardLeft && !outwardRight)
         {
+            _edgeOutwardAccum = 0;
             return false;
         }
 
+        // Accumulate outward travel across frames (not a single Delta).
+        _edgeOutwardAccum += Math.Abs(deltaX);
         if (!TouchGestures.AllowsSwipeHandoff(
                 zoomed: true,
                 pinnedAtStartEdge: true,
-                outwardDeltaPx: Math.Abs(deltaX)))
+                accumulatedOutwardPx: _edgeOutwardAccum,
+                noHorizontalPanRoom: noHorizontalPan))
         {
             // Still inside the 24 px handoff slop — pan clamps at the edge.
             var (horizontal, vertical) = GalleryScale.DragPanContent(
@@ -2635,6 +2634,7 @@ public sealed partial class GalleryStillSurface : UserControl
             return true;
         }
 
+        _edgeOutwardAccum = 0;
         _pagerHandoff = true;
         _reviewSwipeActive = true;
         _pagerPanBeforeHandoff = _reviewSwipeDx;
@@ -2805,6 +2805,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _reviewSwipeDy = 0;
         _reviewSwipeVx = 0;
         _reviewSwipeVy = 0;
+        _edgeOutwardAccum = 0;
 
         TouchGestures.SwipeAction action;
         if (IsReviewMode)
