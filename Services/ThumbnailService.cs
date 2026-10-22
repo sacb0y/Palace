@@ -595,7 +595,7 @@ public sealed class ThumbnailService
                 var jxlProbe = HdrFile.ProbePath(filePath);
                 var jxlTransfer = jxlProbe.Kind == HdrKind.HdrJxl ? jxlProbe.Transfer : HdrTransfer.Srgb;
                 var jxl = await Task.Run(
-                    () => JxlDecode.TryDecodeFile(filePath, HdrJxlPresent.ThumbMaxPixels, jxlTransfer),
+                    () => JxlDecode.TryDecodeFile(filePath, HdrJxlPresent.ThumbMaxPixels, jxlTransfer, cancellationToken),
                     cancellationToken).ConfigureAwait(false);
                 if (jxl is not null)
                 {

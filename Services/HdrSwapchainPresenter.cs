@@ -163,6 +163,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
             });
 
+            float outcomeExposure = 0f;
+            float outcomeWhite = 0f;
             if (!displayHdr)
             {
                 // Sticky Reinhard from caller (first Fit) when present; else analyze once.
@@ -179,14 +181,10 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 map = GalleryPresent.PresentMapSdrReinhard(
                     resolvedExposure!.Value,
                     resolvedWhite!.Value);
-                LastSdrExposure = resolvedExposure.Value;
-                LastSdrReinhardWhite = resolvedWhite.Value;
+                outcomeExposure = resolvedExposure.Value;
+                outcomeWhite = resolvedWhite.Value;
             }
-            else
-            {
-                LastSdrExposure = 0;
-                LastSdrReinhardWhite = 0;
-            }
+
             if (_disposed)
             {
                 return HdrPresentOutcome.Cancelled;
@@ -217,6 +215,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
             // Upload / Present must run on the UI thread even when the await
             // resume lost the WinUI SynchronizationContext (pool continuation).
+            // LastSdr* is written here with the outcome — never off the UI thread.
             var outcome = HdrPresentOutcome.Cancelled;
             await UiDispatch.RunAsync(() =>
             {
@@ -231,6 +230,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 Upload(half, vw, vh);
                 Present();
                 AppendCompositionScaleLog();
+                LastSdrExposure = outcomeExposure;
+                LastSdrReinhardWhite = outcomeWhite;
                 outcome = HdrPresentOutcome.Presented;
             });
             return outcome;
@@ -880,12 +881,14 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         }
     }
 
+    private const int ENoInterface = unchecked((int)0x80004002);
+
     private static int CallSetMatrixTransform(IntPtr swapChain, ref DxgiMatrix3x2F matrix)
     {
         var swap2 = TryQuery(swapChain, IidDxgiSwapChain2);
         if (swap2 == IntPtr.Zero)
         {
-            return -1;
+            return ENoInterface;
         }
 
         try

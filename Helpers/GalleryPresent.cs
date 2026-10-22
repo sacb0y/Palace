@@ -217,7 +217,9 @@ public static class GalleryPresent
 
     /// <summary>
     /// <c>IDXGISwapChain2::SetMatrixTransform</c> vtable slot (IUnknown=0).
-    /// Includes SetSourceSize/GetSourceSize at 32–33; SetColorSpace1 is 38.
+    /// Layout: …31 GetMaximumFrameLatency, 32–33 Set/GetSourceSize,
+    /// 34 SetMatrixTransform, 35 GetMatrixTransform; SwapChain3
+    /// SetColorSpace1 is 38.
     /// </summary>
     public const int DxgiSwapChain2SetMatrixTransformVtbl = 34;
 
@@ -970,9 +972,9 @@ public static class GalleryPresent
         transfer switch
         {
             HdrTransfer.Pq => PqEotf(encoded) * 10000f,
-            // BT.2100 HLG: EOTF → scene linear, then OOTF Y^(γ−1) with γ=1.2
-            // at 1000-nit reference (grey Y = channel for this scalar API).
-            HdrTransfer.Hlg => HlgOotfNits(HlgEotf(encoded)),
+            // HLG: EOTF only here. OOTF is luminance-based — use
+            // <see cref="HlgOotfRgb"/> / <see cref="HlgOotfNits"/> (grey).
+            HdrTransfer.Hlg => HlgEotf(encoded) * 1000f,
             HdrTransfer.Scrgb => encoded * ScrgbNits,
             HdrTransfer.Linear => encoded * SdrReferenceNits,
             _ => SrgbEotf(encoded) * SdrReferenceNits
@@ -982,8 +984,8 @@ public static class GalleryPresent
     public const float HlgOotfGamma = 1.2f;
 
     /// <summary>
-    /// Scene-linear HLG → display nits with OOTF <c>Y^(γ−1)</c> (γ=1.2).
-    /// Scalar / grey path for <see cref="EncodedToNits"/>.
+    /// Grey / scalar HLG OOTF: scene-linear → display nits with
+    /// <c>Y^(γ−1)</c> (γ=1.2, Lw=1000). Prefer <see cref="HlgOotfRgb"/> for RGB.
     /// </summary>
     public static float HlgOotfNits(float sceneLinear)
     {
@@ -995,6 +997,32 @@ public static class GalleryPresent
 
         // Rd = Y * Y^(γ−1) * Lw = Y^γ * 1000, Lw = 1000 nits.
         return y * MathF.Pow(y, HlgOotfGamma - 1f) * 1000f;
+    }
+
+    /// <summary>
+    /// BT.2100 HLG OOTF on luminance (not per channel): scene-linear RGB →
+    /// display nits. <paramref name="bt2020"/> selects BT.2020 vs BT.709 Y.
+    /// </summary>
+    public static void HlgOotfRgb(
+        float sceneR,
+        float sceneG,
+        float sceneB,
+        bool bt2020,
+        out float nitsR,
+        out float nitsG,
+        out float nitsB)
+    {
+        var y = Math.Max(LuminanceY(sceneR, sceneG, sceneB, bt2020), 0f);
+        if (y <= 0f)
+        {
+            nitsR = nitsG = nitsB = 0f;
+            return;
+        }
+
+        var k = MathF.Pow(y, HlgOotfGamma - 1f) * 1000f;
+        nitsR = sceneR * k;
+        nitsG = sceneG * k;
+        nitsB = sceneB * k;
     }
 
     public static float SrgbEotf(float v)
@@ -1143,10 +1171,22 @@ public static class GalleryPresent
         out float sb,
         out float nitsY)
     {
-        var nitsR = EncodedToNits(r, transfer);
-        var nitsG = EncodedToNits(g, transfer);
-        var nitsB = EncodedToNits(b, transfer);
+        float nitsR;
+        float nitsG;
+        float nitsB;
         var bt2020 = cicpPrimaries == 9;
+        if (transfer == HdrTransfer.Hlg)
+        {
+            // EOTF → scene, then luminance OOTF (not per-channel EncodedToNits).
+            HlgOotfRgb(HlgEotf(r), HlgEotf(g), HlgEotf(b), bt2020 || cicpPrimaries == 12, out nitsR, out nitsG, out nitsB);
+        }
+        else
+        {
+            nitsR = EncodedToNits(r, transfer);
+            nitsG = EncodedToNits(g, transfer);
+            nitsB = EncodedToNits(b, transfer);
+        }
+
         if (cicpPrimaries == 12)
         {
             // Display P3 (D65): WIC hands over the raw P3 channels, so convert here.

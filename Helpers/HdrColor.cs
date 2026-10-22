@@ -239,12 +239,28 @@ public static class HdrColor
         float encodedG,
         float encodedB,
         HdrTransfer transfer,
-        int? primaries) =>
-        GalleryPresent.LuminanceY(
+        int? primaries)
+    {
+        if (transfer == HdrTransfer.Hlg)
+        {
+            // Luminance OOTF — not EncodedToNits per channel.
+            GalleryPresent.HlgOotfRgb(
+                GalleryPresent.HlgEotf(encodedR),
+                GalleryPresent.HlgEotf(encodedG),
+                GalleryPresent.HlgEotf(encodedB),
+                primaries == 9 || primaries == 12,
+                out var nitsR,
+                out var nitsG,
+                out var nitsB);
+            return GalleryPresent.LuminanceY(nitsR, nitsG, nitsB, primaries == 9);
+        }
+
+        return GalleryPresent.LuminanceY(
             GalleryPresent.EncodedToNits(encodedR, transfer),
             GalleryPresent.EncodedToNits(encodedG, transfer),
             GalleryPresent.EncodedToNits(encodedB, transfer),
             primaries == 9);
+    }
 
     public static float YuvSourcePrimaryNitsY(float y, float u, float v, HdrProbe probe)
     {
