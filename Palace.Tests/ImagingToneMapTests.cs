@@ -17,46 +17,60 @@ public class ImagingToneMapTests
 
     public static TheoryData<float> AnchorLcValues => new() { 1.01f, 1.5f, 4f, 59.2f };
 
-    /// <summary>Q1 / v2: ref white → display white for every Lc (Sdr203).</summary>
+    /// <summary>Option A: ref white = displayWhite · PaperWhiteFraction(Lc).</summary>
     [Theory]
     [MemberData(nameof(AnchorLcValues))]
-    public void RefWhite_AnchorsToDisplayWhite_AllLc(float lc)
+    public void RefWhite_FollowsPaperFraction_AllLc(float lc)
     {
+        var expected = SdrToneCurve.PaperWhiteFraction(lc);
         var p = new ToneMapParams(StatsLc(lc, p50: 0.5f), DisplayTarget.Sdr203, 0f);
         ToneMapper.MapPixel(1f, 1f, 1f, p, out var r, out var g, out var b);
-        Assert.InRange(r, 0.98f, 1.02f);
-        Assert.InRange(g, 0.98f, 1.02f);
-        Assert.InRange(b, 0.98f, 1.02f);
+        Assert.InRange(r, expected * 0.98f, expected * 1.02f);
+        Assert.InRange(g, expected * 0.98f, expected * 1.02f);
+        Assert.InRange(b, expected * 0.98f, expected * 1.02f);
+        Assert.InRange(expected, 1f - SdrToneCurve.MaxPaperDip - 1e-4f, 1.0001f);
+        if (lc <= 1.01f + 1e-4f)
+        {
+            Assert.InRange(r, 0.98f, 1.02f);
+        }
+        else
+        {
+            Assert.True(r < 0.995f, $"Option A: Lc={lc} paper should dip below ~1, got {r}");
+        }
     }
 
-    /// <summary>Q1 / v2: mid-grey placement stable across Lc (Sdr203).</summary>
+    /// <summary>Option A: mid-grey scales with paper fraction (Sdr203).</summary>
     [Theory]
     [MemberData(nameof(AnchorLcValues))]
     public void MidGrey_Placement_AllLc_Sdr203(float lc)
     {
+        var paper = SdrToneCurve.PaperWhiteFraction(lc);
+        var expected = 0.18f * paper;
         var p = new ToneMapParams(StatsLc(lc, p50: 0.5f), DisplayTarget.Sdr203, 0f);
         ToneMapper.MapPixel(0.18f, 0.18f, 0.18f, p, out var r, out _, out _);
-        Assert.InRange(r, 0.17f, 0.19f);
+        Assert.InRange(r, expected * 0.95f, expected * 1.05f);
     }
 
-    /// <summary>Q1 / v2: ref white + mid-grey on Sdr80 for every Lc.</summary>
+    /// <summary>Option A: ref white + mid-grey on Sdr80 track paper fraction.</summary>
     [Theory]
     [MemberData(nameof(AnchorLcValues))]
     public void RefWhiteAndMidGrey_Sdr80_AllLc(float lc)
     {
         var w = DisplayTarget.Sdr80.PeakNormalized;
+        var paper = SdrToneCurve.PaperWhiteFraction(lc);
         var p = new ToneMapParams(StatsLc(lc, p50: 0.5f), DisplayTarget.Sdr80, 0f);
         ToneMapper.MapPixel(1f, 1f, 1f, p, out var r, out _, out _);
-        Assert.InRange(r, w * 0.98f, w * 1.02f);
+        Assert.InRange(r, w * paper * 0.98f, w * paper * 1.02f);
         ToneMapper.MapPixel(0.18f, 0.18f, 0.18f, p, out var m, out _, out _);
-        Assert.InRange(m, 0.18f * w * 0.95f, 0.18f * w * 1.05f);
+        Assert.InRange(m, 0.18f * w * paper * 0.95f, 0.18f * w * paper * 1.05f);
     }
 
-    /// <summary>Q1: no mid-tone jump across the old PaperWhiteWhenHdr Lc threshold.</summary>
+    /// <summary>Option A: no mid-tone step across the old PaperWhiteWhenHdr threshold.</summary>
     [Fact]
     public void Continuity_AcrossFormerPaperWhiteThreshold()
     {
-        // Old bug: Lc≤1.0101 → whiteOut=w; Lc>1.0101 → whiteOut=0.9w (10% mid-tone step).
+        // Old bug: Lc≤1.0101 → whiteOut=w; Lc>1.0101 → whiteOut=0.9w (10% step).
+        // Option A: PaperWhiteFraction is continuous — jump across 1.0101 is tiny.
         var lo = new ToneMapParams(StatsLc(1.0100f, p50: 0.5f), DisplayTarget.Sdr203, 0f);
         var hi = new ToneMapParams(StatsLc(1.0102f, p50: 0.5f), DisplayTarget.Sdr203, 0f);
         ToneMapper.MapPixel(0.18f, 0.18f, 0.18f, lo, out var m0, out _, out _);
@@ -65,6 +79,20 @@ public class ImagingToneMapTests
         ToneMapper.MapPixel(1f, 1f, 1f, hi, out var w1, out _, out _);
         Assert.True(Math.Abs(m0 - m1) < 1e-4f, $"mid-grey jump across 1.0101: {m0} vs {m1}");
         Assert.True(Math.Abs(w0 - w1) < 1e-4f, $"ref-white jump across 1.0101: {w0} vs {w1}");
+    }
+
+    [Fact]
+    public void PaperWhiteFraction_Lc1_IsUnity_AndSmoothDip()
+    {
+        Assert.Equal(1f, SdrToneCurve.PaperWhiteFraction(1f), 5);
+        Assert.Equal(1f, SdrToneCurve.PaperWhiteFraction(0.5f), 5);
+        var f101 = SdrToneCurve.PaperWhiteFraction(1.01f);
+        var f15 = SdrToneCurve.PaperWhiteFraction(1.5f);
+        var f4 = SdrToneCurve.PaperWhiteFraction(4f);
+        var f59 = SdrToneCurve.PaperWhiteFraction(59.2f);
+        Assert.True(f101 > f15 && f15 > f4 && f4 > f59, $"not monotonic dip: {f101},{f15},{f4},{f59}");
+        Assert.InRange(f59, 1f - SdrToneCurve.MaxPaperDip - 1e-3f, 1f - SdrToneCurve.MaxPaperDip + 0.02f);
+        Assert.True(f59 >= 1f - 0.12f - 1e-4f && f59 <= 1f - 0.08f + 0.02f);
     }
 
     [Fact]
@@ -78,35 +106,51 @@ public class ImagingToneMapTests
     }
 
     /// <summary>
-    /// Held pending Isiac A/B: SDR ref white = display white; peak ≤ display white
-    /// (1.12× headroom is HDR-target-only). Shoulder shape above white not chosen yet.
+    /// Option A / P1: paper dips below white when Lc&gt;1; shoulder reaches display
+    /// white at Lc; SDR output ≤ 1.0 (1.12× headroom is HDR-target-only).
     /// </summary>
     [Fact]
-    public void P1_Sdr_RefWhiteIsDisplayWhite_OutputAtMostDisplayWhite()
+    public void P1_SdrShoulder_ReachesDisplayWhiteAtLc_StrictlyIncreasing()
     {
         var stats = StatsLc(8f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
-        Assert.InRange(ToneMapper.MapScalar(1f, p), 0.98f, 1.02f);
-        foreach (var x in new[] { 1f, 1.2f, 2f, 4f, 8f })
+        var atWhite = ToneMapper.MapScalar(1f, p);
+        var paper = SdrToneCurve.PaperWhiteFraction(8f);
+        Assert.InRange(atWhite, paper * 0.98f, paper * 1.02f);
+        Assert.True(atWhite < 0.98f, $"paper should sit below display white when Lc>1, got {atWhite}");
+        float prev = atWhite;
+        for (var i = 1; i <= 32; i++)
         {
+            var x = 1f + ((stats.Lc - 1f) * (i / 32f));
             var y = ToneMapper.MapScalar(x, p);
-            Assert.True(y <= 1.0001f, $"SDR MapScalar({x})={y} exceeds display white");
+            Assert.True(y > prev + 1e-6f, $"P1 shoulder flat at {x}: {y} ≤ {prev}");
+            Assert.True(y <= 1.0001f, $"SDR MapScalar({x})={y} > 1");
+            prev = y;
         }
+
+        Assert.InRange(ToneMapper.MapScalar(stats.Lc, p), 0.98f, 1.02f);
     }
 
     [Fact]
-    public void P1_MapPixelAndLut_Sdr_OutputAtMostDisplayWhite()
+    public void P1_MapPixelAndLut_Sdr_StrictlyIncreasing_AtMostDisplayWhite()
     {
         var stats = StatsLc(8f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
         var lut = ToneMapLut.Bake(p, size: 256);
+        float prev = -1f, lutPrev = -1f;
         foreach (var x in new[] { 1f, 1.2f, 2f, 4f, 8f })
         {
             ToneMapper.MapPixel(x, x, x, p, out var r, out _, out _);
+            Assert.True(r > prev + 1e-4f, $"P1 MapPixel flat: {x} → {r} ≤ {prev}");
             Assert.True(r <= 1.0001f, $"SDR MapPixel({x})={r} > 1");
+            prev = r;
             lut.MapPixel(x, x, x, out var lr, out _, out _);
+            Assert.True(lr > lutPrev + 1e-4f, $"P1 LUT flat: {x} → {lr} ≤ {lutPrev}");
             Assert.True(lr <= 1.0001f, $"SDR LUT({x})={lr} > 1");
+            lutPrev = lr;
         }
+
+        Assert.InRange(prev, 0.98f, 1.02f);
     }
 
     /// <summary>
@@ -226,24 +270,20 @@ public class ImagingToneMapTests
     }
 
     /// <summary>
-    /// P2 SDR: +3 EV still grades below white; held plateau caps at display white
-    /// (no 1.12× headroom). Samples that stay under 1 after gain must rise.
+    /// P2 SDR: +3 EV grades through the Option A shoulder; output ≤ display white.
     /// </summary>
     [Fact]
     public void P2_PlusThreeEv_MapPixel_SoftRollNotHardClip()
     {
         var stats = StatsLc(4f, p50: 0.5f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 3f);
-        // Post-gain ×8: 0.56, 0.80, 0.96 — all below ref white so the held
-        // 1..Lc plateau does not flatten them.
-        ToneMapper.MapPixel(0.07f, 0.07f, 0.07f, p, out var a, out _, out _);
-        ToneMapper.MapPixel(0.10f, 0.10f, 0.10f, p, out var b, out _, out _);
-        ToneMapper.MapPixel(0.12f, 0.12f, 0.12f, p, out var c, out _, out _);
-        Assert.True(a < b && b < c, $"P2 no rise below white: {a}, {b}, {c}");
+        // Post-gain ×8: 1.2, 2.4, 4.0 — on the 1..Lc·8 shoulder (lcEff=32).
+        ToneMapper.MapPixel(0.15f, 0.15f, 0.15f, p, out var a, out _, out _);
+        ToneMapper.MapPixel(0.30f, 0.30f, 0.30f, p, out var b, out _, out _);
+        ToneMapper.MapPixel(0.50f, 0.50f, 0.50f, p, out var c, out _, out _);
+        Assert.True(a < b && b < c, $"P2 hard-clip: {a}, {b}, {c}");
         Assert.True(c <= 1.0001f, $"SDR +3 EV output {c} exceeds display white");
         Assert.True(Math.Abs(a - b) > 1e-3f && Math.Abs(b - c) > 1e-3f);
-        ToneMapper.MapPixel(0.50f, 0.50f, 0.50f, p, out var hot, out _, out _);
-        Assert.True(hot <= 1.0001f, $"SDR +3 EV hot {hot} > display white");
     }
 
     /// <summary>
@@ -269,12 +309,9 @@ public class ImagingToneMapTests
             $"P2 HDR flat past Lc: y2={y2} y3={y3}");
     }
 
-    /// <summary>
-    /// Held: strict rise knee→ref white; 1..Lc may be flat at display white
-    /// pending Isiac A/B (no 1.12× SDR shoulder).
-    /// </summary>
+    /// <summary>Option A: strict rise knee→Lc (paper→display white on the shoulder).</summary>
     [Fact]
-    public void Curve_StrictlyIncreasing_KneeToRefWhite()
+    public void Curve_StrictlyIncreasing_AboveKnee()
     {
         var stats = StatsLc(6f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
@@ -283,9 +320,9 @@ public class ImagingToneMapTests
         {
             var x = (i / 64f) * stats.Lc;
             var y = ToneMapper.MapScalar(x, p);
-            if (x > 0.55f && x < 1f - 1e-3f)
+            if (x > 0.55f && x < stats.Lc - 1e-3f)
             {
-                Assert.True(y > prev + 1e-6f, $"flat below white at {x}: {y} ≤ {prev}");
+                Assert.True(y > prev + 1e-6f, $"flat at {x}: {y} ≤ {prev}");
             }
             else
             {
