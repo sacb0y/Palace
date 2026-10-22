@@ -1982,12 +1982,10 @@ public sealed partial class LibraryPage : Page
 
     private bool VideoBrowseSwipeAllowedNow()
     {
-        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
-            == Windows.Media.Playback.MediaPlaybackState.Playing;
-        return TouchGestures.AllowsVideoBrowseSwipe(
-            ViewModel.OverlayGallery?.IsVideo == true,
-            playing,
-            ViewerSettings.TouchGesturesEnabled);
+        // Playing OK — binder routes scrub-bar vs page (docs/specs/swipe-nav.md).
+        // AllowsVideoBrowseSwipe stays paused-only for #128 callers/tests.
+        return ViewModel.OverlayGallery?.IsVideo == true
+            && ViewerSettings.TouchGesturesEnabled;
     }
 
     private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();

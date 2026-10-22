@@ -6,9 +6,35 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
+    <!--
+      Visual pager (docs/specs/swipe-nav.md): current + ±1 neighbors with 16 px gap.
+      Custom — not FlipView. Neighbors are hit-test invisible; drag drives Translation.
+    -->
     <Grid
         x:Name="GrdStillHost"
         SizeChanged="GrdStillHost_SizeChanged">
+        <Image
+            x:Name="ImgNeighborPrev"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Stretch="Uniform">
+            <Image.RenderTransform>
+                <TranslateTransform x:Name="XfNeighborPrev" />
+            </Image.RenderTransform>
+        </Image>
+        <Image
+            x:Name="ImgNeighborNext"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Stretch="Uniform">
+            <Image.RenderTransform>
+                <TranslateTransform x:Name="XfNeighborNext" />
+            </Image.RenderTransform>
+        </Image>
         <ScrollViewer
             x:Name="ScrStill"
             HorizontalScrollBarVisibility="Hidden"
@@ -21,6 +47,12 @@
             VerticalScrollBarVisibility="Hidden"
             VerticalScrollMode="Enabled"
             ZoomMode="Disabled">
+            <ScrollViewer.RenderTransform>
+                <TransformGroup>
+                    <RotateTransform x:Name="XfReviewTilt" />
+                    <TranslateTransform x:Name="XfCurrent" />
+                </TransformGroup>
+            </ScrollViewer.RenderTransform>
             <Grid
                 x:Name="GrdStillContent"
                 DoubleTapped="GrdStillContent_DoubleTapped"
@@ -39,7 +71,47 @@
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
                     Visibility="Collapsed" />
+                <Border
+                    x:Name="BrdReviewTint"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    IsHitTestVisible="False"
+                    Opacity="0" />
             </Grid>
         </ScrollViewer>
+        <Border
+            x:Name="BrdEdgeGlowLeft"
+            Width="28"
+            HorizontalAlignment="Left"
+            IsHitTestVisible="False"
+            Opacity="0">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                    <GradientStop Offset="0" Color="#66ED9FBC" />
+                    <GradientStop Offset="1" Color="#00ED9FBC" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+        <Border
+            x:Name="BrdEdgeGlowRight"
+            Width="28"
+            HorizontalAlignment="Right"
+            IsHitTestVisible="False"
+            Opacity="0">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="1,0.5" EndPoint="0,0.5">
+                    <GradientStop Offset="0" Color="#66ED9FBC" />
+                    <GradientStop Offset="1" Color="#00ED9FBC" />
+                </LinearGradientBrush>
+            </Border.Background>
+        </Border>
+        <TextBlock
+            x:Name="TxtEdgeHint"
+            Margin="0,0,0,56"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            IsHitTestVisible="False"
+            Opacity="0"
+            Style="{StaticResource CaptionTextBlockStyle}" />
     </Grid>
 </UserControl>

@@ -929,6 +929,49 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Peek ±1 for the visual pager preload (docs/specs/swipe-nav.md). Null at ends.
+    /// </summary>
+    public AssetItem? PeekNeighbor(int delta)
+    {
+        if (delta is not (-1 or 1) || _items.Count == 0)
+        {
+            return null;
+        }
+
+        var i = CurrentIndex + delta;
+        if (i < 0 || i >= _items.Count)
+        {
+            return null;
+        }
+
+        return _items[i];
+    }
+
+    /// <summary>
+    /// Neighbor surface source: video → mosaic poster; still → preview URI or path.
+    /// Never hydrates On-Demand originals for preload.
+    /// </summary>
+    public static string? NeighborSourcePath(AssetItem? item)
+    {
+        if (item is null || item.IsFolderHeader)
+        {
+            return null;
+        }
+
+        if (item.Kind == AssetKind.Video)
+        {
+            return string.IsNullOrWhiteSpace(item.ThumbPath) ? null : item.ThumbPath;
+        }
+
+        if (!string.IsNullOrWhiteSpace(item.ThumbPath))
+        {
+            return item.ThumbPath;
+        }
+
+        return string.IsNullOrWhiteSpace(item.Path) ? null : item.Path;
+    }
+
     /// <summary>Jump to an asset in this gallery snapshot (Review mode advance / undo).</summary>
     public bool TryShowAsset(string assetId)
     {

@@ -54,6 +54,7 @@ public sealed partial class GalleryWindow : Window
         AppWindow.Resize(new SizeInt32(desiredW, desiredH));
         ViewerMediaElement.SuppressFullWindow(MpeGallery);
         CardViewerDetails.AttachInFlow(GrdGalleryWindow);
+        SrfWindowStill.ReviewSwipeCommitted += OnWindowStillSwipe;
 
         Gallery.PropertyChanged += (_, e) =>
         {
@@ -311,22 +312,25 @@ public sealed partial class GalleryWindow : Window
 
     private VideoBrowseSwipeBinder? _videoBrowseSwipe;
 
+    private void OnWindowStillSwipe(TouchGestures.SwipeAction action)
+    {
+        switch (action)
+        {
+            case TouchGestures.SwipeAction.BrowsePrevious:
+                Gallery.GoPreviousCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.BrowseNext:
+                Gallery.GoNextCommand.Execute(null);
+                break;
+        }
+    }
+
     private void HookVideoBrowseSwipe()
     {
         _videoBrowseSwipe ??= new VideoBrowseSwipeBinder(
             MpeGallery,
             VideoBrowseSwipeAllowedNow,
-            action =>
-            {
-                if (action == TouchGestures.SwipeAction.BrowsePrevious)
-                {
-                    Gallery.GoPreviousCommand.Execute(null);
-                }
-                else if (action == TouchGestures.SwipeAction.BrowseNext)
-                {
-                    Gallery.GoNextCommand.Execute(null);
-                }
-            });
+            OnWindowStillSwipe);
         _videoBrowseSwipe.Hook();
 
         var session = MpeGallery.MediaPlayer?.PlaybackSession;
@@ -344,10 +348,8 @@ public sealed partial class GalleryWindow : Window
 
     private bool VideoBrowseSwipeAllowedNow()
     {
-        var playing = MpeGallery.MediaPlayer?.PlaybackSession?.PlaybackState
-            == MediaPlaybackState.Playing;
-        return TouchGestures.AllowsVideoBrowseSwipe(
-            Gallery.IsVideo, playing, ViewerSettings.TouchGesturesEnabled);
+        // Playing OK — binder routes scrub-bar vs page (docs/specs/swipe-nav.md).
+        return Gallery.IsVideo && ViewerSettings.TouchGesturesEnabled;
     }
 
     private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();

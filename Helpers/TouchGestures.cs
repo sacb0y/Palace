@@ -587,9 +587,9 @@ public static class TouchGestures
         controlsVisible && yFromBottom <= VideoControlsDeadZoneDip;
 
     /// <summary>
-    /// Browse swipe on video when paused/stopped (incl. before first play).
-    /// Playing leaves gestures to transport; callers also exclude the bottom
-    /// dead zone so seek / transport stay hittable.
+    /// Paused/stopped video browse swipe (incl. before first play) — #128.
+    /// Playing video uses <see cref="SwipeNav.ClassifyVideoDrag"/> (scrub bar
+    /// vs page elsewhere; docs/specs/swipe-nav.md).
     /// </summary>
     public static bool AllowsVideoBrowseSwipe(
         bool isVideo,

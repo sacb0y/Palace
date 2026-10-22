@@ -3,34 +3,44 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Media.Playback;
 
 namespace Palace.Helpers;
 
 /// <summary>
-/// WinUI hookup for paused-video browse swipe on <see cref="MediaPlayerElement"/>.
-/// Touch only via <see cref="VideoBrowseSwipe"/>; mouse/pen reach transport and
-/// ContextFlyout. Not linked into Palace.Tests.
+/// WinUI hookup for video browse swipe / playing scrub on
+/// <see cref="MediaPlayerElement"/>. Touch only via <see cref="VideoBrowseSwipe"/>.
+/// Playing: 28 DIP scrub bar scrubs; elsewhere pages (docs/specs/swipe-nav.md).
+/// Not linked into Palace.Tests.
 /// </summary>
 public sealed class VideoBrowseSwipeBinder
 {
     private readonly MediaPlayerElement _mpe;
-    private readonly Func<bool> _swipeAllowed;
+    private readonly Func<bool> _videoGesturesAllowed;
     private readonly Func<bool> _isReviewMode;
     private readonly Action<TouchGestures.SwipeAction> _onNavigate;
+    private readonly Action? _onLeavePlaying;
     private readonly VideoBrowseSwipe _swipe = new();
     private bool _hooked;
     private bool _captured;
+    private SwipeNav.DragKind _kind = SwipeNav.DragKind.None;
+    private bool _scrubbing;
+    private double _scrubStartX;
+    private TimeSpan _scrubStartPosition;
 
     public VideoBrowseSwipeBinder(
         MediaPlayerElement mpe,
         Func<bool> swipeAllowed,
         Action<TouchGestures.SwipeAction> onNavigate,
-        Func<bool>? isReviewMode = null)
+        Func<bool>? isReviewMode = null,
+        Action? onLeavePlaying = null)
     {
         _mpe = mpe;
-        _swipeAllowed = swipeAllowed;
+        // swipeAllowed kept as "video + touch gestures on" (playing OK).
+        _videoGesturesAllowed = swipeAllowed;
         _onNavigate = onNavigate;
         _isReviewMode = isReviewMode ?? (() => false);
+        _onLeavePlaying = onLeavePlaying;
     }
 
     public void Hook()
@@ -65,13 +75,12 @@ public sealed class VideoBrowseSwipeBinder
         _hooked = true;
     }
 
-    /// <summary>Cancel an in-flight swipe when playback starts / swipe disallowed.</summary>
+    /// <summary>Cancel an in-flight gesture when video / touch gestures turn off.</summary>
     public void SyncAllowed()
     {
-        if (!_swipeAllowed())
+        if (!_videoGesturesAllowed())
         {
-            _swipe.Cancel();
-            _captured = false;
+            CancelAll();
         }
     }
 
@@ -99,13 +108,32 @@ public sealed class VideoBrowseSwipeBinder
         var device = e.Pointer.PointerDeviceType;
         var point = e.GetCurrentPoint(_mpe);
         var yFromBottom = _mpe.ActualHeight - point.Position.Y;
+        var playing = IsPlaying();
+        _kind = SwipeNav.ClassifyVideoDrag(
+            isVideo: true,
+            isPlaying: playing,
+            touchGesturesEnabled: _videoGesturesAllowed(),
+            yFromBottom: yFromBottom,
+            transportChromeVisible: IsTransportChromeVisible(_mpe.TransportControls));
+
+        if (_kind == SwipeNav.DragKind.VideoScrub && device == PointerDeviceType.Touch)
+        {
+            _scrubbing = true;
+            _scrubStartX = point.Position.X;
+            _scrubStartPosition = _mpe.MediaPlayer?.PlaybackSession?.Position ?? TimeSpan.Zero;
+            _captured = _mpe.CapturePointer(e.Pointer);
+            e.Handled = true;
+            return;
+        }
+
+        _scrubbing = false;
         _swipe.TryBegin(
             isTouch: device == PointerDeviceType.Touch,
             pointerId: e.Pointer.PointerId,
             x: point.Position.X,
             y: point.Position.Y,
             timestampMs: Environment.TickCount64,
-            swipeAllowed: _swipeAllowed(),
+            swipeAllowed: _kind == SwipeNav.DragKind.BrowsePage,
             transportChromeVisible: IsTransportChromeVisible(_mpe.TransportControls),
             yFromBottom: yFromBottom);
 
@@ -119,6 +147,13 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
+        if (_scrubbing)
+        {
+            ApplyScrub(e.GetCurrentPoint(_mpe).Position.X);
+            e.Handled = true;
+            return;
+        }
+
         var point = e.GetCurrentPoint(_mpe);
         if (!_swipe.TryMove(e.Pointer.PointerId, point.Position.X, point.Position.Y, out var crossedSlop))
         {
@@ -139,8 +174,19 @@ public sealed class VideoBrowseSwipeBinder
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         var device = e.Pointer.PointerDeviceType;
+        if (_scrubbing)
+        {
+            ApplyScrub(e.GetCurrentPoint(_mpe).Position.X);
+            EndCapture(e.Pointer);
+            _scrubbing = false;
+            _kind = SwipeNav.DragKind.None;
+            e.Handled = true;
+            return;
+        }
+
         var point = e.GetCurrentPoint(_mpe);
         var hadCapture = _captured;
+        var wasPlaying = IsPlaying();
         var completed = _swipe.TryComplete(
             e.Pointer.PointerId,
             point.Position.X,
@@ -152,8 +198,17 @@ public sealed class VideoBrowseSwipeBinder
             out var action,
             out var committed);
         EndCapture(e.Pointer);
-        if (completed && hadCapture && committed && _swipeAllowed())
+        _kind = SwipeNav.DragKind.None;
+        if (completed && hadCapture && committed && _videoGesturesAllowed())
         {
+            if (SwipeNav.ShouldPauseVideoOnLeave(isVideo: true, wasPlaying: wasPlaying)
+                && action is TouchGestures.SwipeAction.BrowsePrevious
+                    or TouchGestures.SwipeAction.BrowseNext)
+            {
+                _mpe.MediaPlayer?.Pause();
+                _onLeavePlaying?.Invoke();
+            }
+
             _onNavigate(action);
             e.Handled = true;
             return;
@@ -169,12 +224,29 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerCanceled(object sender, PointerRoutedEventArgs e)
     {
+        if (_scrubbing)
+        {
+            EndCapture(e.Pointer);
+            _scrubbing = false;
+            _kind = SwipeNav.DragKind.None;
+            return;
+        }
+
         _swipe.Cancel(e.Pointer.PointerId);
         EndCapture(e.Pointer);
+        _kind = SwipeNav.DragKind.None;
     }
 
     private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
+        if (_scrubbing)
+        {
+            _scrubbing = false;
+            _captured = false;
+            _kind = SwipeNav.DragKind.None;
+            return;
+        }
+
         if (e.Pointer.PointerId != _swipe.PointerId)
         {
             return;
@@ -182,6 +254,46 @@ public sealed class VideoBrowseSwipeBinder
 
         _swipe.Cancel(e.Pointer.PointerId);
         _captured = false;
+        _kind = SwipeNav.DragKind.None;
+    }
+
+    private void ApplyScrub(double x)
+    {
+        if (_mpe.MediaPlayer?.PlaybackSession is not { } session)
+        {
+            return;
+        }
+
+        var duration = session.NaturalDuration;
+        if (duration <= TimeSpan.Zero || _mpe.ActualWidth <= 1)
+        {
+            return;
+        }
+
+        var dx = x - _scrubStartX;
+        var delta = TimeSpan.FromMilliseconds(duration.TotalMilliseconds * (dx / _mpe.ActualWidth));
+        var next = _scrubStartPosition + delta;
+        if (next < TimeSpan.Zero)
+        {
+            next = TimeSpan.Zero;
+        }
+        else if (next > duration)
+        {
+            next = duration;
+        }
+
+        session.Position = next;
+    }
+
+    private bool IsPlaying() =>
+        _mpe.MediaPlayer?.PlaybackSession?.PlaybackState == MediaPlaybackState.Playing;
+
+    private void CancelAll()
+    {
+        _swipe.Cancel();
+        _scrubbing = false;
+        _captured = false;
+        _kind = SwipeNav.DragKind.None;
     }
 
     private void EndCapture(Pointer? pointer)
