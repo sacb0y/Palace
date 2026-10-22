@@ -1146,10 +1146,18 @@ internal static class HdrWicDecode
         if (decoded is null)
         {
             LastWicError = "jxl null";
-            SdrTonemapLog.TryAppendPresent(
-                path, "fallback", 0f, 1f, "n/a", 0f, 0f, 0f, 0f);
+            SdrTonemapLog.TryAppendViewer(path, "libjxl-fail", "n/a");
             return null;
         }
+
+        // Log as soon as libjxl normalize finishes — Presenter SDR tonemap may
+        // never run (hdr-display, present cancel, or ImgStill fallback).
+        SdrTonemapLog.TryAppendViewer(
+            path,
+            "libjxl-decode",
+            HdrJxlPresent.BufferTransferLabel(decoded.BufferTransfer),
+            decoded.IntensityTarget,
+            decoded.ScaleApplied);
 
         cancellation.ThrowIfCancellationRequested();
         var frame = HdrJxlPresent.BuildPresentFrame(
@@ -1163,10 +1171,12 @@ internal static class HdrWicDecode
         if (frame is null)
         {
             LastWicError = "jxl null";
-            SdrTonemapLog.TryAppendPresent(
-                path, "fallback", decoded.IntensityTarget, decoded.ScaleApplied,
+            SdrTonemapLog.TryAppendViewer(
+                path,
+                "libjxl-frame-fail",
                 HdrJxlPresent.BufferTransferLabel(decoded.BufferTransfer),
-                0f, 0f, 0f, 0f);
+                decoded.IntensityTarget,
+                decoded.ScaleApplied);
             return null;
         }
 

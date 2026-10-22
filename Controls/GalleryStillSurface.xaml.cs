@@ -442,7 +442,13 @@ public sealed partial class GalleryStillSurface : UserControl
 
         // Do not BitmapImage the original HDR file — that is a second full
         // WIC decode. Show the mosaic thumb until scRGB present wins.
-        ImgStill.Source = ToStillImage(attempt ? item?.ThumbPath : still, animateGif: true);
+        // JXL without an HDR attempt (WideGamut / probe miss) still must not
+        // open the original via Store WIC — prefer thumb / large-preview JPEG.
+        var sdrStill = attempt
+            ? item?.ThumbPath
+            : PathSafe.IsJxl(still) ? (item?.ThumbPath ?? still) : still;
+        ImgStill.Source = ToStillImage(sdrStill, animateGif: true);
+        LogSdrStillSurface(still, sdrStill, attempt ? "mosaic-thumb" : null, gallery.CurrentProbe);
 
         if (!pathMatches)
         {
@@ -470,6 +476,11 @@ public sealed partial class GalleryStillSurface : UserControl
             QueueFileHistogram(gallery, still, hdr: false);
             return;
         }
+
+        SdrTonemapLog.TryAppendViewer(
+            still,
+            "hdr-attempt",
+            ProbeBufferLabel(gallery.CurrentProbe));
 
         var raster = XamlRoot?.RasterizationScale ?? 1.0;
         var (dipW, dipH) = HdrPanelDips();
@@ -537,7 +548,13 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ClearHdrCache();
                 HideHdr();
-                ImgStill.Source = ToStillImage(still);
+                // JXL: keep mosaic/large-preview JPEG — never WIC the PQ original
+                // (room.jxl stayed ~53% clipped on that path while Kalan fixed).
+                var failStill = PathSafe.IsJxl(still)
+                    ? (item?.ThumbPath ?? still)
+                    : still;
+                ImgStill.Source = ToStillImage(failStill);
+                LogSdrStillSurface(still, failStill, "hdr-fail", gallery.CurrentProbe);
                 gallery.SetHdrPresentResult(false, false);
                 QueueFileHistogram(gallery, still, hdr: false);
                 return;
@@ -1912,7 +1929,9 @@ public sealed partial class GalleryStillSurface : UserControl
 
             // EXR / Radiance / TGA / Clip / PSD / JXL / non-image: show Palace's
             // decoded large preview; BitmapImage would be blank or need a codec.
-            var shown = AppServices.Thumbnails is { } thumbs ? thumbs.DisplayPathFor(path) : path;
+            var shown = AppServices.Thumbnails is { } thumbs
+                ? thumbs.DisplayPathFor(path, out _)
+                : path;
             if (!string.Equals(shown, path, StringComparison.OrdinalIgnoreCase))
             {
                 return shown is null ? null : new BitmapImage { UriSource = new Uri(shown, UriKind.Absolute) };
@@ -1929,6 +1948,59 @@ public sealed partial class GalleryStillSurface : UserControl
             return null;
         }
     }
+
+    private static void LogSdrStillSurface(
+        string? sourcePath,
+        string? requestedDisplay,
+        string? forcedDecoder,
+        HdrProbe probe)
+    {
+        if (!SdrTonemapLog.IsEnabled)
+        {
+            return;
+        }
+
+        string decoder;
+        if (forcedDecoder is not null
+            && (forcedDecoder is "mosaic-thumb" or "hdr-fail")
+            && requestedDisplay is not null
+            && PathSafe.IsJxl(sourcePath)
+            && string.Equals(requestedDisplay, sourcePath, StringComparison.OrdinalIgnoreCase))
+        {
+            // Thumb missing — DisplayPathFor will refuse WIC original.
+            decoder = forcedDecoder + "+await-preview";
+        }
+        else if (forcedDecoder is "mosaic-thumb")
+        {
+            decoder = "mosaic-thumb";
+        }
+        else if (AppServices.Thumbnails is { } thumbs)
+        {
+            _ = thumbs.DisplayPathFor(requestedDisplay ?? sourcePath, out decoder);
+            if (forcedDecoder is "hdr-fail")
+            {
+                decoder = "hdr-fail+" + decoder;
+            }
+        }
+        else
+        {
+            decoder = forcedDecoder ?? "bitmap-original";
+        }
+
+        SdrTonemapLog.TryAppendViewer(sourcePath, decoder, ProbeBufferLabel(probe));
+    }
+
+    private static string ProbeBufferLabel(HdrProbe probe) =>
+        probe.Kind switch
+        {
+            HdrKind.HdrJxl when probe.IsHlg => "hlg",
+            HdrKind.HdrJxl when probe.IsPq => "pq",
+            HdrKind.HdrJxl => "hdr-jxl",
+            HdrKind.WideGamutJxl => "wide-jxl",
+            _ when probe.IsPq => "pq",
+            _ when probe.IsHlg => "hlg",
+            _ => "n/a"
+        };
 
     private async Task ShowGifScrubAsync(GalleryViewModel gallery)
     {

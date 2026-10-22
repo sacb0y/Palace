@@ -194,6 +194,56 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
+    public void ToneMappedRoomLike_BrightWindow_ClipUnderTenPercent()
+    {
+        // SKIV room.jxl on SDR: window near-white/hazy only; dresser, bed,
+        // laundry basket, posters stay mid-tone. Laptop bug: 52.7% clipped,
+        // median 253 (WIC / wrong PQ×IT path). After EOTF→scRGB + Reinhard,
+        // clipped share must stay under ~10%.
+        const int n = 256;
+        var pq = new float[n * 4];
+        // ~4% window (~1000 nits), ~12% haze (~300 nits), rest mid (~40–80 nits).
+        var pqWindow = GalleryPresent.PqOetf(1000f / 10_000f);
+        var pqHaze = GalleryPresent.PqOetf(300f / 10_000f);
+        var pqWall = GalleryPresent.PqOetf(80f / 10_000f);
+        var pqFurn = GalleryPresent.PqOetf(35f / 10_000f);
+        for (var i = 0; i < n; i++)
+        {
+            var v = i < 10 ? pqWindow : i < 40 ? pqHaze : i < 160 ? pqWall : pqFurn;
+            pq[i * 4] = pq[i * 4 + 1] = pq[i * 4 + 2] = v;
+            pq[i * 4 + 3] = 1f;
+        }
+
+        // Wrong: treat still-PQ as linear Relative with a large IT (WIC-like /
+        // pre-6ac9f2d wash → laptop room.jxl ~53% clipped, median 253).
+        var wrong = (float[])pq.Clone();
+        HdrJxlPresent.NormalizeToScrgb(
+            wrong, 10_000f, HdrTransfer.Pq, JxlBufferTransfer.Linear, cicpPrimaries: 9);
+        var wrongClip = FractionClippedAfterPresent(wrong, n);
+
+        var ok = (float[])pq.Clone();
+        var norm = HdrJxlPresent.NormalizeToScrgb(
+            ok, intensityTarget: 255f, HdrTransfer.Pq, JxlBufferTransfer.Pq, cicpPrimaries: 9);
+        Assert.Equal(0f, norm.ScaleApplied);
+        var okMean = HdrJxlPresent.ToneMappedMeanLuminance(ok, n);
+        var okClip = FractionClippedAfterPresent(ok, n);
+
+        Assert.True(wrongClip > 0.40f, $"PQ-as-linear×IT should wash room, clip={wrongClip}");
+        // SKIV target: mid-tones middle of range; only window near white.
+        Assert.InRange(okMean, 0.12f, 0.55f);
+        Assert.True(okClip < 0.10f, $"room-like clip must stay under 10%, clip={okClip}");
+    }
+
+    [Fact]
+    public void RequiresCachedStillPreview_JxlNeverWicOriginal()
+    {
+        Assert.True(GalleryPresent.RequiresCachedStillPreview(@"C:\a.jxl"));
+        Assert.True(GalleryPresent.RequiresCachedStillPreview(@"D:\room.JXL"));
+        Assert.False(GalleryPresent.RequiresCachedStillPreview(@"C:\a.png"));
+        Assert.False(GalleryPresent.RequiresCachedStillPreview(@"C:\a.jpg"));
+    }
+
+    [Fact]
     public void NormalizeToScrgb_StillPq_NoIntensityScale_NotWhiteout()
     {
         // Synthesize still-PQ float codes (CMS left PQ). Mid ~203 nits → PQ≈0.58.
@@ -314,11 +364,16 @@ public class HdrJxlPresentTests
 
             SdrTonemapLog.EnabledOverride = true;
             SdrTonemapLog.TryAppendPresent("Kalan.jxl", "libjxl", 255f, 0f, "pq", 2.5f, 2.5f, 1f, 80f);
+            SdrTonemapLog.TryAppendViewer("room.jxl", "mosaic-thumb", "pq", 255f, 0f);
+            SdrTonemapLog.TryAppendViewer("room.jxl", "large-preview", "pq", 255f, 0f);
             var text = File.ReadAllText(SdrTonemapLog.PathOverride!);
             Assert.Contains("decoder=libjxl", text, StringComparison.Ordinal);
             Assert.Contains("intensity_target=255", text, StringComparison.Ordinal);
             Assert.Contains("buffer=pq", text, StringComparison.Ordinal);
             Assert.Contains("Kalan.jxl", text, StringComparison.Ordinal);
+            Assert.Contains("decoder=mosaic-thumb", text, StringComparison.Ordinal);
+            Assert.Contains("decoder=large-preview", text, StringComparison.Ordinal);
+            Assert.Contains("room.jxl", text, StringComparison.Ordinal);
         }
         finally
         {

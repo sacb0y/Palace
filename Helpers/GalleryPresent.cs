@@ -26,6 +26,14 @@ public static class GalleryPresent
         && onDisk
         && probe.CanPresentHdr;
 
+    /// <summary>
+    /// Stills that must never open via <c>BitmapImage</c> of the original
+    /// (WIC Store codec / blank). Show Palace's cached large preview or mosaic
+    /// thumb instead — includes JPEG XL so PQ/HLG is not washed or ~50% clipped.
+    /// </summary>
+    public static bool RequiresCachedStillPreview(string? path) =>
+        StillDecode.HandlesPath(path) || PathSafe.IsJxl(path);
+
     public static string DetailsLine(
         string? fileName,
         int? width,
