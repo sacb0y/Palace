@@ -169,9 +169,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             {
                 // SdrWhiteLevel from CCD / AdvancedColorInfo (fallback 80).
                 var sdrWhite = _sdrWhiteLevelNits;
-                // Sticky content peak from first Fit; refresh exposure when the
-                // brightness slider / monitor changes SdrWhiteLevel.
-                if (resolvedExposure is null or <= 0 || resolvedWhite is null)
+                // Sticky content peak from first Fit (white must be > 1 —
+                // shoulder engaged); refresh exposure when SdrWhiteLevel moves.
+                // white ≤ 1 forces a fresh AnalyzeHdrPresent (never bypass).
+                if (resolvedExposure is null or <= 0
+                    || resolvedWhite is null or <= 1f)
                 {
                     var pixelCount = checked(frame.Width * frame.Height);
                     var analyzed = await Task.Run(
@@ -196,6 +198,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                     resolvedWhite!.Value);
                 outcomeExposure = resolvedExposure.Value;
                 outcomeWhite = resolvedWhite.Value;
+                DisplayHdr.WriteDebug(
+                    $"SdrTonemap {frame.Width}x{frame.Height} exposure={outcomeExposure:0.####} "
+                    + $"white={outcomeWhite:0.####} sdrWhite={(sdrWhite > 0 ? sdrWhite : GalleryPresent.ScrgbNits):0.#} "
+                    + $"peakScrgb={frame.MaxScrgb:0.####} maxNits={frame.MaxNits:0.#} "
+                    + $"shoulder={(map.ReinhardWhite > 1f ? 1 : 0)}");
             }
 
             if (_disposed)

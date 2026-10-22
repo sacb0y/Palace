@@ -58,10 +58,13 @@ public static class HdrJxlPresent
         || cicpPrimaries is 9 or 11 or 12;
 
     /// <summary>
-    /// libjxl linear float has 1.0 = <paramref name="intensityTarget"/> nits
-    /// for PQ/HLG. Scale so 1.0 = 80 nits (scRGB). Route on the probe transfer
-    /// so SDR / gain-map base stays 0..1. Missing / SDR-placeholder target
-    /// (0 or encoder-default 255): PQ → 10 000 nits, HLG → 1000 nits.
+    /// libjxl Relative linear float has 1.0 = <paramref name="intensityTarget"/>
+    /// nits for PQ/HLG. Scale so 1.0 = 80 nits (scRGB). Route on the probe
+    /// transfer so SDR / gain-map base stays 0..1. Missing target (≤0): PQ →
+    /// 10 000 nits, HLG → 1000 nits. Do <b>not</b> treat libjxl's default
+    /// <c>255</c> as unset — Relative already uses it as 1.0; mapping 255→10k
+    /// over-scaled ~39× and left Kalan / room.jxl almost white on SDR even
+    /// when the c8c2814 Reinhard path ran.
     /// </summary>
     public static float ScrgbScaleFromIntensityTarget(float intensityTarget, HdrTransfer transfer)
     {
@@ -70,9 +73,7 @@ public static class HdrJxlPresent
             return 1f;
         }
 
-        // Encoders may stamp 255 without a histogram (SDR placeholder). On a
-        // PQ/HLG probe that is not a real peak — treat as unset.
-        var nits = intensityTarget > 0f && intensityTarget != 255f
+        var nits = intensityTarget > 0f
             ? intensityTarget
             : transfer == HdrTransfer.Hlg ? 1000f : 10_000f;
         return nits / GalleryPresent.ScrgbNits;
