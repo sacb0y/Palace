@@ -22,6 +22,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private string? _sdrTonePath;
     private float _sdrToneExposure = 1f;
     private float _sdrToneWhite;
+    private bool? _sdrToneDisplayHdr;
     private bool _advancedColorHooked;
     private int _advancedColorHookAttempts;
     private const int AdvancedColorHookMaxAttempts = 8;
@@ -578,19 +579,12 @@ public sealed partial class GalleryStillSurface : UserControl
 
                 var failImage = ToStillImage(failPreview);
                 ImgStill.Source = failImage;
-                LogSdrStillSurface(
+                // One hdr-fail line (S4): decoder + WIC HRESULT — not a second surface log.
+                SdrTonemapLog.TryAppendViewer(
                     still,
-                    failPreview,
                     failImage is not null ? "hdr-fail+pipeline-preview" : "hdr-fail",
-                    gallery.CurrentProbe);
-                if (!string.IsNullOrEmpty(HdrWicDecode.LastWicError))
-                {
-                    SdrTonemapLog.TryAppendViewer(
-                        still,
-                        "hdr-fail",
-                        ProbeBufferLabel(gallery.CurrentProbe),
-                        detail: HdrWicDecode.LastWicError);
-                }
+                    ProbeBufferLabel(gallery.CurrentProbe),
+                    detail: HdrWicDecode.LastWicError);
 
                 gallery.SetHdrPresentResult(false, false);
                 QueueFileHistogram(gallery, still, hdr: false);
@@ -825,6 +819,7 @@ public sealed partial class GalleryStillSurface : UserControl
         using var cts = new CancellationTokenSource();
         await UiDispatch.RunAsync(() => _presentCts = cts);
         // Sticky thumb ToneMap.Analyze stats per path: first Fit; 1:1 / resize reuse.
+        // S5: presenter also drops sticky when DisplayIsHdr flips vs last present.
         float? stickyExposure = null;
         float? stickyWhite = null;
         await UiDispatch.RunAsync(() =>
@@ -832,7 +827,9 @@ public sealed partial class GalleryStillSurface : UserControl
             if (!string.IsNullOrEmpty(_hdrFramePath)
                 && string.Equals(_sdrTonePath, _hdrFramePath, StringComparison.OrdinalIgnoreCase)
                 && _sdrToneExposure > 0
-                && _sdrToneWhite > 0f)
+                && _sdrToneWhite > 0f
+                && _sdrToneDisplayHdr is { } toneHdr
+                && toneHdr == presenterRef.DisplayIsHdr)
             {
                 stickyExposure = _sdrToneExposure;
                 stickyWhite = _sdrToneWhite;
@@ -873,13 +870,14 @@ public sealed partial class GalleryStillSurface : UserControl
 
             if (outcome == HdrPresentOutcome.Presented)
             {
-                if (!presenterRef.DisplayIsHdr
-                    && presenterRef.LastSdrExposure > 0
+                // Cache thumb-match stats for SDR and hdr-display+linear (LastSdr*>0).
+                if (presenterRef.LastSdrExposure > 0
                     && !string.IsNullOrEmpty(_hdrFramePath))
                 {
                     _sdrTonePath = _hdrFramePath;
                     _sdrToneExposure = presenterRef.LastSdrExposure;
                     _sdrToneWhite = presenterRef.LastSdrReinhardWhite;
+                    _sdrToneDisplayHdr = presenterRef.DisplayIsHdr;
                 }
 
                 ImgStill.Visibility = Visibility.Collapsed;
@@ -1114,6 +1112,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _sdrTonePath = null;
         _sdrToneExposure = 1f;
         _sdrToneWhite = 0;
+        _sdrToneDisplayHdr = null;
         _hdrFrameProbe = HdrProbe.None;
     }
 

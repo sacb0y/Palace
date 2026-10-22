@@ -641,13 +641,37 @@ public static class GalleryPresent
     /// Same stats as mosaic thumbs (<see cref="ToneMap.Analyze"/> + Reinhard):
     /// exposure may exceed 1 (MidGrey boost). Use for full-view ↔ thumb match
     /// (room.jxl <c>hdr-display</c>+linear). Does not change the curve shape.
+    /// On an HDR panel, multiply scale and clip by
+    /// <c>SdrWhiteLevel/80</c> so composition white matches the thumb (absolute
+    /// scRGB 1.0 = 80 nits; Windows HDR white is SdrWhiteLevel).
     /// </summary>
-    public static HdrPresentMap PresentMapThumbMatch(float exposure, float reinhardWhite) =>
-        new(
-            exposure > 0 && float.IsFinite(exposure) ? exposure : 1f,
-            1f,
-            ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
-            SoftNegatives: false);
+    public static HdrPresentMap PresentMapThumbMatch(
+        float exposure,
+        float reinhardWhite,
+        bool displayIsHdr = false,
+        float sdrWhiteLevelNits = 0f)
+    {
+        var scale = exposure > 0 && float.IsFinite(exposure) ? exposure : 1f;
+        var clip = 1f;
+        var white = reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f;
+        if (displayIsHdr)
+        {
+            // M1: thumb JPEG is SDR (1.0 = 80 nits). HDR swapchain absolute
+            // scRGB needs ×(SdrWhite/80) or the full view is 2.5–3.5× darker.
+            var k = EffectiveSdrWhiteNits(sdrWhiteLevelNits) / ScrgbNits;
+            if (k > 0 && float.IsFinite(k))
+            {
+                scale *= k;
+                clip *= k;
+                if (white > 1f)
+                {
+                    white *= k;
+                }
+            }
+        }
+
+        return new(scale, clip, ReinhardWhite: white, SoftNegatives: false);
+    }
 
     /// <summary>
     /// Full view must share thumb ToneMap when the panel is SDR, or when

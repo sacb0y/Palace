@@ -260,6 +260,27 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
+    public void PresentMapThumbMatch_HdrDisplay_ScalesBySdrWhiteOver80()
+    {
+        // M1: HDR composition white is SdrWhiteLevel, not 80 nits — ×(sdr/80)
+        // on scale + clip or full view is 2.5–3.5× darker than the thumb JPEG.
+        const float exposure = 1.2f;
+        const float white = 4f;
+        var sdr = GalleryPresent.PresentMapThumbMatch(exposure, white, displayIsHdr: false);
+        Assert.Equal(exposure, sdr.Scale);
+        Assert.Equal(1f, sdr.ClipScrgb);
+        Assert.Equal(white, sdr.ReinhardWhite);
+
+        const float sdrWhite = 240f; // 3× paper
+        var hdr = GalleryPresent.PresentMapThumbMatch(
+            exposure, white, displayIsHdr: true, sdrWhiteLevelNits: sdrWhite);
+        var k = sdrWhite / GalleryPresent.ScrgbNits;
+        Assert.Equal(exposure * k, hdr.Scale, 3);
+        Assert.Equal(k, hdr.ClipScrgb, 3);
+        Assert.Equal(white * k, hdr.ReinhardWhite, 3);
+    }
+
+    [Fact]
     public void ResolveActualBuffer_SetOutputSuccessUnknownTf_IsLinear_ElseKeepsUnknown()
     {
         // room.jxl laptop: SetOutputColorProfile succeeded + TARGET_DATA TF
