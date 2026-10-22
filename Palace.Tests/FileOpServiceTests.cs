@@ -912,7 +912,7 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         var undoable = await _catalog.GetUndoableFileOpsAsync(_projectId);
         Assert.False(BatchReject.CanAbsorbPrior(undoable, moveA.BatchId!, rejectRefs));
         Assert.Equal(
-            "Interrupted, 1 rejected so far. Use Undo history to restore.",
+            "Interrupted, 1 rejected so far. Another change happened after this reject; Ctrl+Z undoes newest first.",
             BatchReject.InterruptedMessage(movedSoFar: 1));
 
         // Caller must not Move B. Tip undo reverses only the intervening Move;

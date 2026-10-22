@@ -351,7 +351,7 @@ public partial class LibraryViewModel
     /// Batch Reject: move each selected file into a sibling <c>_rejected</c>
     /// via <see cref="BatchRejectFlow"/>. Multi-folder runs fold into one
     /// journal batch when absorb is safe; otherwise stop with
-    /// <see cref="BatchReject.InterruptedMessage"/> (no Undo on that toast).
+    /// <see cref="BatchReject.InterruptedMessage"/> (Warning Notify, not Undo toast).
     /// </summary>
     [RelayCommand]
     private Task RejectSelectedAsync() =>
@@ -468,11 +468,10 @@ public partial class LibraryViewModel
             var undoBatchIds = run.UndoBatchIds;
             if (run.Interrupted)
             {
-                // Tip may be an intervening op — do not offer Undo on this toast.
-                ShowUndoToastFor(
+                // Tip may be an intervening op — plain warning, not the Undo toast.
+                Notify(
                     BatchReject.InterruptedMessage(moved),
-                    offerUndo: false,
-                    dismissSeconds: BatchReject.UndoToastSeconds(Math.Max(folderCount, 1)));
+                    Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
                 return;
             }
 

@@ -36,14 +36,13 @@ public static class BatchReject
 
     /// <summary>
     /// When absorbPrior is unsafe, stop the batch: completed folders stay
-    /// separately undoable — never promise a multi-ID half-undo. Points the
-    /// user at Undo history (toast has no Undo action — tip may be the
-    /// intervening op).
+    /// separately undoable — never promise a multi-ID half-undo. Explains that
+    /// Ctrl+Z undoes newest first (no Undo-history UI yet).
     /// </summary>
     public static string InterruptedMessage(int movedSoFar) =>
         movedSoFar <= 0
             ? "Interrupted."
-            : $"Interrupted, {movedSoFar} rejected so far. Use Undo history to restore.";
+            : $"Interrupted, {movedSoFar} rejected so far. Another change happened after this reject; Ctrl+Z undoes newest first.";
 
     /// <summary>
     /// Final toast after a batch Reject. Always surfaces already-rejected and
