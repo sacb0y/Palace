@@ -617,7 +617,10 @@ public sealed class ThumbnailService
                     .ConfigureAwait(false);
                 if (frame is not null && frame.Width > 0 && frame.Height > 0)
                 {
-                    var r = await Task.Run(() => StillDecode.FromScrgb(frame.ScrgbRgba, frame.Width, frame.Height, MaxSide)).ConfigureAwait(false);
+                    var r = await Task.Run(
+                        () => StillDecode.FromScrgb(
+                            frame.ScrgbRgba, frame.Width, frame.Height, MaxSide, cancellationToken),
+                        cancellationToken).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(r.Bgra!, r.Width, r.Height, dest).ConfigureAwait(false);
                     return Finish(dest, r.Width, r.Height);
                 }

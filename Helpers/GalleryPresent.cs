@@ -1136,8 +1136,9 @@ public static class GalleryPresent
     /// display 709; Info Y is source primaries before 2020→709. Invert that
     /// matrix whenever <see cref="HdrColor.UsesBt2100ToScrgbMatrix"/> (BT.2020,
     /// Display P3 12, unspecified / missing <c>colr</c>) — do not run BT.2020
-    /// <see cref="LuminanceY"/> on the display-referred channels. 2020 weights
-    /// stay only when CICP primaries are 9, matching Info.
+    /// <see cref="LuminanceY"/> on the display-referred channels. After invert,
+    /// use <see cref="HdrColor.UsesBt2020Luma"/> so Display P3 matches Info
+    /// (same 9||12 rule as HLG OOTF / <see cref="HdrColor.SourcePrimaryNitsY"/>).
     /// </summary>
     public static float LumaNitsFromPresentedScrgb(float sr, float sg, float sb, int? cicpPrimaries)
     {
@@ -1147,7 +1148,7 @@ public static class GalleryPresent
         if (HdrColor.UsesBt2100ToScrgbMatrix(cicpPrimaries))
         {
             Bt709ToBt2020(r, g, b, out r, out g, out b);
-            return LuminanceY(r, g, b, cicpPrimaries == 9);
+            return LuminanceY(r, g, b, HdrColor.UsesBt2020Luma(cicpPrimaries));
         }
 
         return LuminanceY(r, g, b, false);

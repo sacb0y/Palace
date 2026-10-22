@@ -60,7 +60,8 @@ public sealed class HydrationService
             asset.DateTaken = meta.DateTaken;
         }
 
-        var thumb = await _thumbs.EnsureThumbnailAsync(asset.Path, hash, asset.Kind).ConfigureAwait(false);
+        var thumb = await _thumbs.EnsureThumbnailAsync(
+            asset.Path, hash, asset.Kind, cancellationToken: ct).ConfigureAwait(false);
         if (thumb is { Width: > 0, Height: > 0 } sized)
         {
             asset.Width = sized.Width;

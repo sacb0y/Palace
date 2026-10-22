@@ -201,6 +201,17 @@ public class ThumbSchedulerTests
     }
 
     [Fact]
+    public async Task ThumbDecodeRun_AggregateOnlyCancellation_IsCancelledNotFailure()
+    {
+        var outcome = await ThumbDecodeRun.RunAsync(
+            CancellationToken.None,
+            _ => throw new AggregateException(
+                new TaskCanceledException(),
+                new OperationCanceledException()));
+        Assert.True(outcome.Cancelled);
+    }
+
+    [Fact]
     public void CancelOutstanding_FreesSlotsAndIgnoresTheOldTicket()
     {
         var queue = new ThumbLoadQueue(2);

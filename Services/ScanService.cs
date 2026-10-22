@@ -254,7 +254,8 @@ public sealed class ScanService
             if (LibrarySettings.GenerateThumbsOnScan
                 && ScanContent.MayGenerateScanThumbnail(attrs))
             {
-                var thumb = await _thumbs.EnsureThumbnailAsync(file, hash, kind, requireKnownStatus: true).ConfigureAwait(false);
+                var thumb = await _thumbs.EnsureThumbnailAsync(
+                    file, hash, kind, requireKnownStatus: true, cancellationToken: ct).ConfigureAwait(false);
                 if (thumb is { Width: > 0, Height: > 0 } localThumb)
                 {
                     asset.Width = localThumb.Width;
