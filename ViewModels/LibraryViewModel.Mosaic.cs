@@ -157,9 +157,17 @@ public partial class LibraryViewModel
         }
     }
 
-    /// <summary>Select every non-header asset in the full ordered mosaic (includes collapsed sections).</summary>
+    /// <summary>
+    /// Select every non-header asset in the full ordered mosaic (includes collapsed
+    /// sections). Library grid Ctrl+A; turns Select mode on when needed.
+    /// </summary>
     public void SelectAllMosaicAssets()
     {
+        if (!IsSelectMode)
+        {
+            IsSelectMode = true;
+        }
+
         IEnumerable<AssetItem> source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
         SetSelection(source.Where(a => !a.IsFolderHeader));
     }
@@ -274,9 +282,18 @@ public partial class LibraryViewModel
     private static (bool Flatten, HashSet<string> Collapsed) ReadSectionPrefs(string folderPath)
     {
         var settings = ApplicationData.Current.LocalSettings.Values;
-        foreach (var key in settings.Keys.OfType<string>().Where(FolderSectionPrefs.IsLegacySettingsKey).ToList())
+        // One-shot prune of pre-hash path keys (flagged in LocalSettings).
+        if (!FolderSectionPrefs.ParseBool(
+                settings.TryGetValue(FolderSectionPrefs.LegacyPrunedFlagKey, out var prunedFlag)
+                    ? prunedFlag
+                    : null))
         {
-            settings.Remove(key);
+            foreach (var key in settings.Keys.OfType<string>().Where(FolderSectionPrefs.IsLegacySettingsKey).ToList())
+            {
+                settings.Remove(key);
+            }
+
+            settings[FolderSectionPrefs.LegacyPrunedFlagKey] = true;
         }
 
         var flatten = FolderSectionPrefs.ParseBool(
@@ -290,7 +307,12 @@ public partial class LibraryViewModel
     {
         _sectionBrowsePath = build.BrowsePath;
         _collapsedSections = build.Collapsed;
+        // Every Assets repopulate path resets _mosaicOrder here (or clears it below).
+        // Assets must remain a subset of _mosaicOrder (shared AssetItem references).
         _mosaicOrder = build.Ordered;
+        Debug.Assert(
+            build.Display.All(item => build.Ordered.Contains(item)),
+            "Display mosaic must be a subset of the ordered mosaic.");
         var was = _suppressFilter;
         _suppressFilter = true;
         ShowFolderSectionsChrome = build.ShowSections;

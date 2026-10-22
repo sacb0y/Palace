@@ -24,6 +24,7 @@ public partial class LibraryViewModel
     {
         _selection = items.Where(item => !item.IsFolderHeader).ToList();
         var selected = new HashSet<AssetItem>(_selection);
+        var displayed = new HashSet<AssetItem>(Assets);
         foreach (var asset in Assets)
         {
             asset.IsSelected = selected.Contains(asset);
@@ -32,7 +33,7 @@ public partial class LibraryViewModel
         // Hidden (collapsed-section) tiles stay in _selection / ordered list.
         foreach (var asset in _mosaicOrder)
         {
-            if (!asset.IsFolderHeader && !Assets.Contains(asset))
+            if (!asset.IsFolderHeader && !displayed.Contains(asset))
             {
                 asset.IsSelected = selected.Contains(asset);
             }
@@ -108,6 +109,7 @@ public partial class LibraryViewModel
             }
         }
 
+        var displayed = new HashSet<AssetItem>(Assets);
         if (!toggle)
         {
             foreach (var asset in Assets)
@@ -117,7 +119,7 @@ public partial class LibraryViewModel
 
             foreach (var asset in _mosaicOrder)
             {
-                if (!asset.IsFolderHeader && !Assets.Contains(asset))
+                if (!asset.IsFolderHeader && !displayed.Contains(asset))
                 {
                     asset.IsSelected = false;
                 }
@@ -140,7 +142,7 @@ public partial class LibraryViewModel
 
             foreach (var asset in _mosaicOrder)
             {
-                if (!asset.IsFolderHeader && asset.IsSelected && !Assets.Contains(asset))
+                if (!asset.IsFolderHeader && asset.IsSelected && !displayed.Contains(asset))
                 {
                     selected.Add(asset);
                 }
@@ -216,6 +218,14 @@ public partial class LibraryViewModel
         foreach (var asset in Assets)
         {
             asset.IsSelected = false;
+        }
+
+        foreach (var asset in _mosaicOrder)
+        {
+            if (!asset.IsFolderHeader)
+            {
+                asset.IsSelected = false;
+            }
         }
 
         _selection.Clear();

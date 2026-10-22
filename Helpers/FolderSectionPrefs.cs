@@ -13,6 +13,8 @@ public static class FolderSectionPrefs
 {
     public const string FlattenPrefix = "FolderFlatten_";
     public const string CollapsedPrefix = "FolderCollapsed_";
+    /// <summary>Set once after pruning pre-hash LocalSettings keys.</summary>
+    public const string LegacyPrunedFlagKey = "FolderSectionPrefs_LegacyPruned_v1";
 
     /// <summary>Sections smaller than this fraction of the row pack side by side.</summary>
     public const double PackRowFraction = 0.6;
@@ -26,17 +28,20 @@ public static class FolderSectionPrefs
     public static string CollapsedKey(string folderPath) =>
         CollapsedPrefix + PathHash(folderPath);
 
-    /// <summary>Stable short hex of the normalized path (not reversible).</summary>
+    /// <summary>
+    /// Stable short hash of the normalized path (not reversible). Prefixed with
+    /// <c>h</c> so a 16-hex raw path fragment is never mistaken for a current key.
+    /// </summary>
     public static string PathHash(string? path)
     {
         var norm = NormalizePath(path);
         if (norm.Length == 0)
         {
-            return "0";
+            return "h0";
         }
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(norm));
-        return Convert.ToHexString(hash.AsSpan(0, 8)).ToLowerInvariant();
+        return "h" + Convert.ToHexString(hash.AsSpan(0, 8)).ToLowerInvariant();
     }
 
     public static string NormalizePath(string? path)
@@ -133,7 +138,8 @@ public static class FolderSectionPrefs
     }
 
     /// <summary>
-    /// Legacy keys stored the raw path after the prefix; hashed keys are hex only.
+    /// Legacy keys stored the raw path (or bare 16-hex) after the prefix.
+    /// Current keys are <c>h</c> + 16 hex (see <see cref="PathHash"/>).
     /// </summary>
     public static bool IsLegacySettingsKey(string? key)
     {
@@ -156,18 +162,23 @@ public static class FolderSectionPrefs
             return false;
         }
 
-        if (rest.Length == 0)
+        return !IsCurrentHashSuffix(rest);
+    }
+
+    /// <summary>Current suffix: <c>h</c> + 16 hex (or <c>h0</c> empty path).</summary>
+    public static bool IsCurrentHashSuffix(string? rest)
+    {
+        if (string.IsNullOrEmpty(rest) || rest[0] != 'h')
         {
             return false;
         }
 
-        // Hashed keys are 16 lowercase hex chars (8 bytes).
-        if (rest.Length == 16 && rest.All(IsHex))
+        if (rest == "h0")
         {
-            return false;
+            return true;
         }
 
-        return true;
+        return rest.Length == 17 && rest.Skip(1).All(IsHex);
     }
 
     public static int PruneLegacySettingsKeys(IDictionary<string, object> values)
@@ -181,20 +192,21 @@ public static class FolderSectionPrefs
         return remove.Count;
     }
 
-    /// <summary>Overload for WinRT LocalSettings (IPropertySet keys are object-enumerable).</summary>
-    public static int PruneLegacySettingsKeys(IEnumerable<KeyValuePair<string, object>> entries, Action<string> remove)
+    /// <summary>
+    /// One-shot legacy-key cleanup behind <see cref="LegacyPrunedFlagKey"/>.
+    /// </summary>
+    public static int EnsureLegacyKeysPruned(
+        IDictionary<string, object> values,
+        Action<string, object> setFlag)
     {
-        var count = 0;
-        foreach (var entry in entries.ToList())
+        if (ParseBool(values.TryGetValue(LegacyPrunedFlagKey, out var flag) ? flag : null))
         {
-            if (IsLegacySettingsKey(entry.Key))
-            {
-                remove(entry.Key);
-                count++;
-            }
+            return 0;
         }
 
-        return count;
+        var removed = PruneLegacySettingsKeys(values);
+        setFlag(LegacyPrunedFlagKey, true);
+        return removed;
     }
 
     public static bool TrySave(Action save)

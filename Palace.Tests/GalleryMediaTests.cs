@@ -129,6 +129,10 @@ public sealed class GalleryMediaTests
         Assert.True(GalleryMedia.UsesTopWeightedCrop(false, 0.5));
         Assert.False(GalleryMedia.UsesTopWeightedCrop(true, 0.5));
         Assert.False(GalleryMedia.UsesTopWeightedCrop(false, 1.5));
+        Assert.True(GalleryMedia.ShouldSelectAllMosaic(false, false, true, 65));
+        Assert.False(GalleryMedia.ShouldSelectAllMosaic(true, false, true, 65));
+        Assert.False(GalleryMedia.ShouldSelectAllMosaic(false, true, true, 65));
+        Assert.False(GalleryMedia.ShouldSelectAllMosaic(false, false, false, 65));
     }
 
     [Fact]

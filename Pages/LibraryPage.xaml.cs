@@ -995,6 +995,21 @@ public sealed partial class LibraryPage : Page
         }
 
         var typing = FocusIsTextInput(e.OriginalSource);
+        var controlDown = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+
+        // Ctrl+A — select all mosaic assets including collapsed sections.
+        if (GalleryMedia.ShouldSelectAllMosaic(
+                ViewModel.IsGalleryOverlayOpen,
+                typing,
+                controlDown,
+                (int)e.Key))
+        {
+            ViewModel.SelectAllMosaicAssets();
+            e.Handled = true;
+            return;
+        }
+
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset
             ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
@@ -2361,54 +2376,28 @@ public sealed partial class LibraryPage : Page
 
     private void FocusFolderHeader(string sectionPath)
     {
-        var header = ViewModel.Assets.FirstOrDefault(asset =>
-            asset.IsFolderHeader
-            && string.Equals(asset.FolderGroupPath, sectionPath, StringComparison.OrdinalIgnoreCase));
-        if (header is null)
+        var index = -1;
+        for (var i = 0; i < ViewModel.Assets.Count; i++)
         {
-            return;
+            var asset = ViewModel.Assets[i];
+            if (asset.IsFolderHeader
+                && string.Equals(asset.FolderGroupPath, sectionPath, StringComparison.OrdinalIgnoreCase))
+            {
+                index = i;
+                break;
+            }
         }
 
-        var index = ViewModel.Assets.IndexOf(header);
         if (index < 0)
         {
             return;
         }
 
-        try
+        // Prefer the realized element at the mosaic index — no full visual-tree walk.
+        if (GrdAssets.TryGetElement(index) is UIElement element)
         {
-            GrdAssets.Select(index);
+            element.Focus(FocusState.Programmatic);
         }
-        catch
-        {
-            // ItemsView may not expose Select for headers; focus via realized container below.
-        }
-
-        var container = FindDescendantByTag(GrdAssets, header.MosaicTag);
-        container?.Focus(FocusState.Programmatic);
-    }
-
-    private static FrameworkElement? FindDescendantByTag(DependencyObject root, string tag)
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is FrameworkElement fe
-                && fe.Tag is string text
-                && string.Equals(text, tag, StringComparison.Ordinal))
-            {
-                return fe;
-            }
-
-            var nested = FindDescendantByTag(child, tag);
-            if (nested is not null)
-            {
-                return nested;
-            }
-        }
-
-        return null;
     }
 
     private void HideStickyFolderHeader()

@@ -118,6 +118,9 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
             Recalculate(context, state, width);
         }
 
+        // Mutate IsPacked only here — Measure must not flip templates mid-pass.
+        StampPackedFlags(context, state.Slots);
+
         var realization = RealizationWindow(context, width);
         for (var i = 0; i < state.Rects.Count; i++)
         {
@@ -173,8 +176,6 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
             state.Rects.Add(new Rect(0, state.ExtentHeight, 1, HeaderHeight));
         }
 
-        StampPackedFlags(context, state.Slots);
-
         var headers = MosaicRows.CollectHeaderSlots(
             state.Slots,
             i => SpecOf(context, i).Kind == MosaicSlotKind.FullHeader);
@@ -188,6 +189,10 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         }
     }
 
+    /// <summary>
+    /// Stamp <see cref="AssetItem.IsPacked"/> only from Arrange (not Measure) so a
+    /// PropertyChanged → remeasure loop cannot flicker across the pack threshold.
+    /// </summary>
     private static void StampPackedFlags(VirtualizingLayoutContext context, IReadOnlyList<MosaicSlot> slots)
     {
         for (var i = 0; i < slots.Count; i++)

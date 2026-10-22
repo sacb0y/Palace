@@ -960,7 +960,7 @@
                                         ManipulationMode="System"
                                         Source="{x:Bind ThumbImage, Mode=OneWay}"
                                         Stretch="UniformToFill"
-                                        VerticalAlignment="Top"
+                                        VerticalAlignment="{x:Bind helpers:BindHelpers.MosaicTileVerticalAlignment(IsFolderHeader, AspectRatio), Mode=OneWay}"
                                         Tag="{x:Bind Id, Mode=OneWay}"
                                         Unloaded="TileImage_Unloaded" />
                                     <TextBlock

@@ -213,8 +213,8 @@ public partial class LibraryViewModel
         });
 
     /// <summary>
-    /// Drop deleted ids from <see cref="_allAssets"/> and the visible mosaic without
-    /// re-querying the whole project or walking source folders.
+    /// Drop deleted ids from <see cref="_allAssets"/>, the full ordered mosaic,
+    /// and the visible mosaic without re-querying the whole project.
     /// </summary>
     private async Task RemoveDeletedFromUiAsync(IReadOnlyList<string> removedIds, bool pruneAllAssets = true)
     {
@@ -231,6 +231,19 @@ public partial class LibraryViewModel
 
         await UiDispatch.RunAsync(() =>
         {
+            if (_mosaicOrder.Count > 0)
+            {
+                _mosaicOrder = MosaicDelete.PruneItems(
+                    _mosaicOrder,
+                    item => item.IsFolderHeader,
+                    item => item.Id,
+                    remove);
+                MosaicDelete.RecomputeFolderItemCounts(
+                    _mosaicOrder,
+                    item => item.IsFolderHeader,
+                    (item, count) => item.FolderItemCount = count);
+            }
+
             var pruned = MosaicDelete.PruneItems(
                 Assets,
                 item => item.IsFolderHeader,
@@ -251,13 +264,21 @@ public partial class LibraryViewModel
                 }
             }
 
+            // Assets is the display subset of _mosaicOrder (shared AssetItem refs).
+            Debug.Assert(
+                _mosaicOrder.Count == 0
+                || Assets.All(a => _mosaicOrder.Contains(a)),
+                "Assets must stay a subset of _mosaicOrder after prune.");
+
             ClearSelection();
             if (changed)
             {
                 MosaicChunkAppended?.Invoke();
             }
 
-            var assetCount = Assets.Count(item => !item.IsFolderHeader);
+            var assetCount = _mosaicOrder.Count > 0
+                ? _mosaicOrder.Count(item => !item.IsFolderHeader)
+                : Assets.Count(item => !item.IsFolderHeader);
             StatusText = !string.IsNullOrWhiteSpace(SearchQuery)
                 ? $"{assetCount} search results"
                 : IsTagBrowse && SelectedFilterTags.Count > 0

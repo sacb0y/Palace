@@ -55,6 +55,40 @@ public static class MosaicDelete
         return StripEmptyHeaders(kept, isFolderHeader);
     }
 
+    /// <summary>
+    /// Recount tiles under each folder header after a prune (ordered mosaic).
+    /// </summary>
+    public static void RecomputeFolderItemCounts<T>(
+        IReadOnlyList<T> ordered,
+        Func<T, bool> isFolderHeader,
+        Action<T, int> setCount)
+    {
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            if (!isFolderHeader(ordered[i]))
+            {
+                continue;
+            }
+
+            var count = 0;
+            for (var j = i + 1; j < ordered.Count && !isFolderHeader(ordered[j]); j++)
+            {
+                count++;
+            }
+
+            setCount(ordered[i], count);
+        }
+    }
+
+    /// <summary>
+    /// Non-header targets for Review / select-all from the full ordered mosaic
+    /// (includes tiles under collapsed headers).
+    /// </summary>
+    public static List<T> OrderedNonHeaderTargets<T>(
+        IReadOnlyList<T> ordered,
+        Func<T, bool> isFolderHeader) =>
+        ordered.Where(item => !isFolderHeader(item)).ToList();
+
     /// <summary>Filter a catalog asset list by removed ids (ordinal).</summary>
     public static List<T> ExceptIds<T>(IEnumerable<T> assets, Func<T, string> id, IReadOnlyCollection<string> removedIds)
     {

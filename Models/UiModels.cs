@@ -110,7 +110,24 @@ public partial class AssetItem : ObservableObject
     public string FolderGroupPath { get; set; } = "";
 
     /// <summary>Asset count in this folder section (headers only).</summary>
-    public int FolderItemCount { get; set; }
+    private int _folderItemCount;
+
+    public int FolderItemCount
+    {
+        get => _folderItemCount;
+        set
+        {
+            if (_folderItemCount == value)
+            {
+                return;
+            }
+
+            _folderItemCount = value;
+            OnPropertyChanged(nameof(FolderItemCount));
+            OnPropertyChanged(nameof(FolderCountText));
+            OnPropertyChanged(nameof(ShowFolderCount));
+        }
+    }
 
     /// <summary>Collapsed section — header only in the display mosaic (tiles stay in ordered list).</summary>
     [ObservableProperty]

@@ -28,8 +28,13 @@ public sealed class FolderSectionPrefsTests
             FolderSectionPrefs.FlattenPrefix + "c:/photos/forest"));
         Assert.True(FolderSectionPrefs.IsLegacySettingsKey(
             FolderSectionPrefs.CollapsedPrefix + @"c:\photos\forest"));
+        // Bare 16-hex (pre-h prefix or raw path) is legacy — must not look like current hash.
+        Assert.True(FolderSectionPrefs.IsLegacySettingsKey(
+            FolderSectionPrefs.FlattenPrefix + "deadbeefdeadbeef"));
         Assert.False(FolderSectionPrefs.IsLegacySettingsKey(
             FolderSectionPrefs.FlattenKey(@"c:\photos\forest")));
+        Assert.True(FolderSectionPrefs.IsCurrentHashSuffix(
+            FolderSectionPrefs.PathHash(@"c:\photos\forest")));
         Assert.False(FolderSectionPrefs.IsLegacySettingsKey("OtherKey"));
     }
 
@@ -39,12 +44,26 @@ public sealed class FolderSectionPrefsTests
         var values = new Dictionary<string, object>
         {
             [FolderSectionPrefs.FlattenPrefix + "c:/old"] = true,
+            [FolderSectionPrefs.FlattenPrefix + "deadbeefdeadbeef"] = true,
             [FolderSectionPrefs.FlattenKey(@"c:\new")] = true,
             ["Unrelated"] = 1
         };
-        Assert.Equal(1, FolderSectionPrefs.PruneLegacySettingsKeys(values));
+        Assert.Equal(2, FolderSectionPrefs.PruneLegacySettingsKeys(values));
         Assert.False(values.ContainsKey(FolderSectionPrefs.FlattenPrefix + "c:/old"));
+        Assert.False(values.ContainsKey(FolderSectionPrefs.FlattenPrefix + "deadbeefdeadbeef"));
         Assert.True(values.ContainsKey(FolderSectionPrefs.FlattenKey(@"c:\new")));
+    }
+
+    [Fact]
+    public void EnsureLegacyKeysPruned_RunsOnceBehindFlag()
+    {
+        var values = new Dictionary<string, object>
+        {
+            [FolderSectionPrefs.FlattenPrefix + "c:/old"] = true
+        };
+        Assert.Equal(1, FolderSectionPrefs.EnsureLegacyKeysPruned(values, (k, v) => values[k] = v));
+        Assert.True(FolderSectionPrefs.ParseBool(values[FolderSectionPrefs.LegacyPrunedFlagKey]));
+        Assert.Equal(0, FolderSectionPrefs.EnsureLegacyKeysPruned(values, (k, v) => values[k] = v));
     }
 
     [Fact]

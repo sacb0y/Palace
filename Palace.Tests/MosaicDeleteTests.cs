@@ -96,4 +96,59 @@ public sealed class MosaicDeleteTests
         Assert.Equal(["id2", "id3"], chunks[1]);
         Assert.Equal(["id4"], chunks[2]);
     }
+
+    [Fact]
+    public void DeleteInsideCollapsedSection_PrunesOrderAndReviewTargets()
+    {
+        // Ordered: A[a1], B(collapsed)[b1,b2], C[c1]. Delete b1.
+        var a = new CountTile { Header = true, Name = "A", Count = 1 };
+        var a1 = new CountTile { Id = "a1", Name = "a1" };
+        var b = new CountTile { Header = true, Name = "B", Count = 2, Collapsed = true };
+        var b1 = new CountTile { Id = "b1", Name = "b1" };
+        var b2 = new CountTile { Id = "b2", Name = "b2" };
+        var c = new CountTile { Header = true, Name = "C", Count = 1 };
+        var c1 = new CountTile { Id = "c1", Name = "c1" };
+        var ordered = new List<CountTile> { a, a1, b, b1, b2, c, c1 };
+
+        var pruned = MosaicDelete.PruneItems(ordered, t => t.Header, t => t.Id, ["b1"]);
+        MosaicDelete.RecomputeFolderItemCounts(pruned, t => t.Header, (t, n) => t.Count = n);
+
+        Assert.Equal(6, pruned.Count);
+        Assert.DoesNotContain(pruned, t => t.Id == "b1");
+        Assert.Equal(1, b.Count); // was 2
+        Assert.Contains(pruned, t => t.Id == "b2");
+
+        var display = FolderSectionPrefs.FilterCollapsedDisplay(
+            pruned, t => t.Header, t => t.Collapsed);
+        Assert.DoesNotContain(display, t => t.Id == "b2"); // still collapsed
+        Assert.Equal(["A", "a1", "B", "C", "c1"], display.Select(t => t.Name).ToArray());
+
+        var review = MosaicDelete.OrderedNonHeaderTargets(pruned, t => t.Header);
+        Assert.Equal(new[] { "a1", "b2", "c1" }, review.Select(t => t.Id!).ToArray());
+    }
+
+    [Fact]
+    public void OrderedNonHeaderTargets_IsSelectAllAcrossCollapsed()
+    {
+        var ordered = new List<CountTile>
+        {
+            new() { Header = true, Name = "A" },
+            new() { Id = "a1" },
+            new() { Header = true, Name = "B", Collapsed = true },
+            new() { Id = "b1" },
+            new() { Id = "b2" },
+        };
+        var all = MosaicDelete.OrderedNonHeaderTargets(ordered, t => t.Header);
+        Assert.Equal(3, all.Count);
+        Assert.Equal(new[] { "a1", "b1", "b2" }, all.Select(t => t.Id!).ToArray());
+    }
+
+    private sealed class CountTile
+    {
+        public bool Header { get; init; }
+        public bool Collapsed { get; init; }
+        public string? Id { get; init; }
+        public string Name { get; init; } = "";
+        public int Count { get; set; }
+    }
 }

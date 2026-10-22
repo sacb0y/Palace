@@ -182,6 +182,14 @@ public static class GalleryMedia
     public static bool UsesTopWeightedCrop(bool isFolderHeader, double aspectRatio) =>
         !isFolderHeader && aspectRatio > 0 && aspectRatio < 1;
 
+    /// <summary>Ctrl+A on the Library mosaic (not while typing / overlay).</summary>
+    public static bool ShouldSelectAllMosaic(
+        bool overlayOpen,
+        bool isTyping,
+        bool controlDown,
+        int keyCode) =>
+        !overlayOpen && !isTyping && controlDown && keyCode is 65 or 97; // A / a
+
     /// <summary>
     /// ItemsView ItemInvoked (double-tap, Enter, or automation Invoke when
     /// selection is enabled — not a single pointer tap).
