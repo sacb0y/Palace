@@ -87,7 +87,7 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
     {
         var state = GetState(context);
-        var width = FiniteWidth(availableSize.Width);
+        var width = ResolveWidth(availableSize.Width);
         Recalculate(context, state, width);
 
         var realization = RealizationWindow(context, width);
@@ -112,7 +112,7 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     protected override Size ArrangeOverride(VirtualizingLayoutContext context, Size finalSize)
     {
         var state = GetState(context);
-        var width = FiniteWidth(finalSize.Width);
+        var width = ResolveWidth(finalSize.Width);
         if (state.Rects.Count != context.ItemCount || Math.Abs(state.LaidOutWidth - width) > 0.5)
         {
             Recalculate(context, state, width);
@@ -240,8 +240,12 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         return state;
     }
 
-    private static double FiniteWidth(double width) =>
-        double.IsFinite(width) && width > 0 ? width : 640;
+    /// <summary>
+    /// Prefer a usable finite width; ignore tiny probe passes that collapse the
+    /// grid to a sliver and prevent packed mini-headers from appearing.
+    /// </summary>
+    private double ResolveWidth(double available) =>
+        MosaicLayoutWidth.Resolve(available, LastLaidOutWidth);
 
     private static Rect RealizationWindow(VirtualizingLayoutContext context, double width)
     {

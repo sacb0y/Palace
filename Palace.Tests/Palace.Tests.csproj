@@ -44,6 +44,8 @@
     <Compile Include="..\Helpers\DestinationPolicyChoice.cs" Link="DestinationPolicyChoice.cs" />
     <Compile Include="..\Helpers\MosaicDelete.cs" Link="MosaicDelete.cs" />
     <Compile Include="..\Helpers\MosaicRows.cs" Link="MosaicRows.cs" />
+    <Compile Include="..\Helpers\MosaicLayoutWidth.cs" Link="MosaicLayoutWidth.cs" />
+    <Compile Include="..\Helpers\MosaicSelection.cs" Link="MosaicSelection.cs" />
     <Compile Include="..\Helpers\FolderSectionPrefs.cs" Link="FolderSectionPrefs.cs" />
     <Compile Include="..\Helpers\ChipWrap.cs" Link="ChipWrap.cs" />
     <Compile Include="..\Helpers\PreviewPersist.cs" Link="PreviewPersist.cs" />

@@ -241,6 +241,12 @@ public partial class LibraryViewModel
             return;
         }
 
+        // Capture by id before Assets.Clear — ItemsView SelectionChanged would
+        // otherwise replace _selection with an empty visible set.
+        var selectedIds = _selection
+            .Where(item => !item.IsFolderHeader && !string.IsNullOrEmpty(item.Id))
+            .Select(item => item.Id)
+            .ToList();
         var display = FolderSectionPrefs.FilterCollapsedDisplay(
             _mosaicOrder,
             item => item.IsFolderHeader,
@@ -251,29 +257,13 @@ public partial class LibraryViewModel
             ? $"{assetCount} in {SelectedFolder.Name}"
             : $"{assetCount} assets";
         // Keep selection (collapsed tiles stay selected in the ordered list).
-        // PopulateMosaicAsync fires MosaicRestoreReady after chunks; refresh the
-        // selection bar only after that so "· N in collapsed sections" is final.
+        // Restore by id before MosaicRestoreReady so scroll/focus does not see
+        // an empty selection; page suppresses SelectionChanged for the toggle.
         await PopulateMosaicAsync(display, epoch, doneStatus, clearSelection: false);
         await UiDispatch.RunAsync(() =>
         {
-            // Re-stamp IsSelected on the new display surface.
             InvalidateDisplayedSelectionCache();
-            var selected = new HashSet<AssetItem>(_selection);
-            var displayed = DisplayedForSelection(refresh: true);
-            foreach (var asset in Assets)
-            {
-                asset.IsSelected = selected.Contains(asset);
-            }
-
-            foreach (var asset in _mosaicOrder)
-            {
-                if (!asset.IsFolderHeader && !displayed.Contains(asset))
-                {
-                    asset.IsSelected = selected.Contains(asset);
-                }
-            }
-
-            RefreshSelectionSummary();
+            RestoreSelectionByIds(selectedIds, loadPreview: false);
         });
     }
 

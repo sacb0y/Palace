@@ -114,4 +114,10 @@ public static class SelectMode
     /// </summary>
     public static bool ShowBatchTagCta(bool selectMode, int selectedCount) =>
         selectMode && selectedCount > 0;
+
+    /// <summary>
+    /// ItemsView SelectionChanged should keep collapsed-section tiles when select
+    /// mode is on (collapse is view-only). Single preview replace does not merge.
+    /// </summary>
+    public static bool MergesHiddenSelection(bool selectMode) => selectMode;
 }

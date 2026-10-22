@@ -494,7 +494,9 @@ public sealed partial class LibraryPage : Page
         _mosaicArrow = VirtualKey.None;
         if (headerIndexes.Count == 0)
         {
-            ViewModel.SetSelection(keep);
+            // Select mode: merge collapsed-section tiles so ItemsSource rebuild
+            // cannot clear a view-only collapse selection.
+            ViewModel.SetSelectionFromItemsView(keep);
             return;
         }
 
@@ -537,10 +539,9 @@ public sealed partial class LibraryPage : Page
             _suppressMosaicSelection = false;
         }
 
-        if (keep.Count > 0)
-        {
-            ViewModel.SetSelection(keep);
-        }
+        // Even when keep is empty (header-only Select for focus), merge so
+        // collapsed tiles are not wiped.
+        ViewModel.SetSelectionFromItemsView(keep);
     }
 
     private void FolderGroupHeader_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -2350,6 +2351,8 @@ public sealed partial class LibraryPage : Page
 
     private void OnSectionToggleStarting()
     {
+        // Suppress ItemsView → VM selection sync while Assets rebuild on collapse.
+        _suppressMosaicSelection = true;
         _restoreScrollOffset = CurrentMosaicVerticalOffset();
         _restoreScrollPending = true;
     }
@@ -2358,6 +2361,8 @@ public sealed partial class LibraryPage : Page
     {
         if (!_restoreScrollPending && string.IsNullOrEmpty(ViewModel.PendingSectionFocusPath))
         {
+            // Section toggle always arms suppress; clear it if there is nothing to restore.
+            EndSectionToggleSelectionGuard();
             return;
         }
 
@@ -2368,22 +2373,63 @@ public sealed partial class LibraryPage : Page
         _restoreScrollPending = false;
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
         {
-            InvalidateMosaicLayout();
-            if (restoreScroll)
+            try
             {
-                _mosaicScrollViewer?.ChangeView(null, offset, null, disableAnimation: true);
-                _mosaicScrollView?.ScrollTo(
-                    0,
-                    offset,
-                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
-            }
+                InvalidateMosaicLayout();
+                // Force extent to refresh after collapsed tiles leave the display list
+                // before clamping / restoring scroll (last-section collapse).
+                GrdAssets.UpdateLayout();
+                if (restoreScroll)
+                {
+                    offset = ClampMosaicVerticalOffset(offset);
+                    _mosaicScrollViewer?.ChangeView(null, offset, null, disableAnimation: true);
+                    _mosaicScrollView?.ScrollTo(
+                        0,
+                        offset,
+                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+                }
 
-            UpdateStickyFolderHeader();
-            if (!string.IsNullOrEmpty(path))
+                UpdateStickyFolderHeader();
+                if (!string.IsNullOrEmpty(path))
+                {
+                    FocusFolderHeader(path);
+                }
+            }
+            finally
             {
-                FocusFolderHeader(path);
+                // Re-apply ItemsView highlights from VM IsSelected (by-id restore
+                // already ran); clear suppress from SectionToggleStarting.
+                EndSectionToggleSelectionGuard();
             }
         });
+    }
+
+    private void EndSectionToggleSelectionGuard()
+    {
+        if (!_suppressMosaicSelection)
+        {
+            return;
+        }
+
+        RestoreMosaicSelectionHighlights();
+        _suppressMosaicSelection = false;
+    }
+
+    private double ClampMosaicVerticalOffset(double offset)
+    {
+        var viewport = _mosaicScrollViewer?.ViewportHeight
+            ?? _mosaicScrollView?.ViewportHeight
+            ?? 0;
+        var extent = _mosaicScrollViewer?.ExtentHeight
+            ?? _mosaicScrollView?.ExtentHeight
+            ?? 0;
+        if (viewport <= 0 || extent <= 0)
+        {
+            return Math.Max(0, offset);
+        }
+
+        var max = Math.Max(0, extent - viewport);
+        return Math.Clamp(offset, 0, max);
     }
 
     private void FocusFolderHeader(string sectionPath)
@@ -2405,7 +2451,10 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // ItemsView has no TryGetElement in WASDK 2.3 — Select + realized ItemContainer by Tag.
+        // ItemsView has no TryGetElement in WASDK 2.3 — Select realizes the
+        // container for focus. Caller must keep _suppressMosaicSelection so
+        // SelectionChanged cannot wipe asset selection; RestoreMosaicSelectionHighlights
+        // re-applies the real selection afterward.
         GrdAssets.Select(index);
         var tag = ViewModel.Assets[index].MosaicTag;
         if (string.IsNullOrEmpty(tag))
@@ -2413,7 +2462,9 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        FindRealizedItemContainerByTag(GrdAssets, tag)?.Focus(FocusState.Programmatic);
+        var container = FindRealizedItemContainerByTag(GrdAssets, tag);
+        container?.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+        container?.Focus(FocusState.Programmatic);
     }
 
     /// <summary>

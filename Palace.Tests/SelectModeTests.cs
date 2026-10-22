@@ -89,6 +89,13 @@ public sealed class SelectModeTests
         Assert.False(SelectMode.ExitsSelectModeOnEscape(false, false));
     }
 
+    [Fact]
+    public void MergesHiddenSelection_OnlyInSelectMode()
+    {
+        Assert.True(SelectMode.MergesHiddenSelection(true));
+        Assert.False(SelectMode.MergesHiddenSelection(false));
+    }
+
     private sealed class Item(string id)
     {
         public string Id { get; } = id;

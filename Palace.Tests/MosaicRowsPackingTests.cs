@@ -147,6 +147,52 @@ public sealed class MosaicRowsPackingTests
         Assert.True(slots[3].Y > slots[0].Y + 30);
     }
 
+    [Theory]
+    [InlineData(900)]
+    [InlineData(1100)]
+    [InlineData(1400)]
+    public void Layout_LaptopWidths_PackConsecutiveSmallSections(double width)
+    {
+        // Two 2-tile sections stay under 60% of these widths → packed mini headers.
+        var items = new List<MosaicSpec>
+        {
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 80),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 80),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.Asset, 1)
+        };
+
+        var slots = MosaicRows.Layout(items, width, rowHeight: 140, spacing: 8, headerHeight: 34);
+        Assert.True(slots[0].IsPacked);
+        Assert.True(slots[3].IsPacked);
+        Assert.Equal(MosaicRows.MiniHeaderHeight, slots[0].Height);
+        Assert.True(slots[0].Width < width * 0.5);
+        Assert.True(slots[3].X > slots[0].X);
+    }
+
+    [Fact]
+    public void Layout_TrailingCollapsedHeader_ExtendsPastPriorSection()
+    {
+        // Collapse last section: header must remain in extent so scroll can reach it.
+        var items = new MosaicSpec[]
+        {
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 100),
+            new(MosaicSlotKind.Asset, 1.5),
+            new(MosaicSlotKind.Asset, 1.2),
+            new(MosaicSlotKind.FullHeader, 0, Collapsed: true, MiniWidth: 100)
+        };
+
+        var slots = MosaicRows.Layout(items, width: 800, rowHeight: 140, spacing: 8, headerHeight: 34);
+        Assert.Equal(4, slots.Count);
+        Assert.False(slots[3].IsPacked);
+        Assert.Equal(34, slots[3].Height);
+        Assert.True(slots[3].Y > slots[1].Y);
+        var extent = MosaicRows.ExtentHeight(slots, 8);
+        Assert.True(extent >= slots[3].Y + slots[3].Height - 0.01);
+    }
+
     [Fact]
     public void Layout_SingleSmallSection_KeepsFullWidthHeader()
     {

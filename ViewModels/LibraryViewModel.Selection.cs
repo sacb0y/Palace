@@ -78,7 +78,50 @@ public partial class LibraryViewModel
 
     public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
     {
-        _selection = items.Where(item => !item.IsFolderHeader).ToList();
+        ApplySelectionList(items.Where(item => !item.IsFolderHeader).ToList(), loadPreview);
+    }
+
+    /// <summary>
+    /// ItemsView SelectionChanged only sees displayed tiles. In select mode,
+    /// merge with previously selected tiles that are hidden under collapsed
+    /// sections so a mosaic rebuild cannot clear them.
+    /// </summary>
+    public void SetSelectionFromItemsView(IEnumerable<AssetItem> visibleSelected, bool loadPreview = true)
+    {
+        var visible = visibleSelected.Where(item => !item.IsFolderHeader).ToList();
+        if (!SelectMode.MergesHiddenSelection(IsSelectMode) || _mosaicOrder.Count == 0)
+        {
+            ApplySelectionList(visible, loadPreview);
+            return;
+        }
+
+        var displayed = DisplayedForSelection(refresh: loadPreview);
+        var merged = MosaicSelection.MergeVisibleWithHiddenSelected(
+            visible,
+            _selection,
+            displayed,
+            item => item.IsFolderHeader);
+        ApplySelectionList(merged, loadPreview);
+    }
+
+    /// <summary>
+    /// Re-resolve <c>_selection</c> from asset ids against the ordered mosaic
+    /// (same instances after collapse filter; ids if tiles were remapped).
+    /// </summary>
+    public void RestoreSelectionByIds(IReadOnlyCollection<string> ids, bool loadPreview = false)
+    {
+        IReadOnlyList<AssetItem> ordered = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+        var resolved = MosaicSelection.ResolveByIds(
+            ordered,
+            ids,
+            item => item.IsFolderHeader,
+            item => item.Id);
+        ApplySelectionList(resolved, loadPreview);
+    }
+
+    private void ApplySelectionList(List<AssetItem> items, bool loadPreview)
+    {
+        _selection = items;
         var selected = new HashSet<AssetItem>(_selection);
         // Live drag reuses the display HashSet; end of drag / normal select rebuilds it.
         var displayed = DisplayedForSelection(refresh: loadPreview);
