@@ -192,13 +192,28 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void MapPresentRgb_HdrPassthrough_ScalesBySdrWhite()
+    public void MapPresentRgb_HdrPassthrough_AbsoluteScrgb()
     {
-        var scale = GalleryPresent.HdrCompositionScale(200f);
-        var clip = GalleryPresent.HdrCompositionClip(200f, 1000f);
+        var map = GalleryPresent.PresentMap(true, 1000, 1000);
+        Assert.Equal(1f, map.Scale);
+        Assert.Equal(1000f / 80f, map.ClipScrgb, 3);
         ToneMap.MapPresentRgb(
-            1f, 1f, 1f, scale, clip, reinhardWhite: 0f, softNegatives: true,
+            1f, 1f, 1f, map.Scale, map.ClipScrgb, reinhardWhite: 0f, softNegatives: true,
             out var r, out _, out _);
-        Assert.Equal(80f / 200f, r, 3);
+        Assert.Equal(1f, r, 3);
+        // OOG negative passes through on HDR.
+        ToneMap.MapPresentRgb(
+            -0.1f, 0.5f, 0.2f, 1f, 10f, 0f, softNegatives: true,
+            out var nr, out _, out _);
+        Assert.True(nr < 0f);
+    }
+
+    [Fact]
+    public void EncodedToNits_Hlg_AppliesOotfGamma12()
+    {
+        var scene = GalleryPresent.HlgEotf(0.75f);
+        var expected = scene * MathF.Pow(scene, GalleryPresent.HlgOotfGamma - 1f) * 1000f;
+        Assert.Equal(expected, GalleryPresent.EncodedToNits(0.75f, HdrTransfer.Hlg), 3);
+        Assert.Equal(expected, GalleryPresent.HlgOotfNits(scene), 3);
     }
 }

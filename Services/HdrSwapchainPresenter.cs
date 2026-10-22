@@ -38,6 +38,12 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public float SdrWhiteLevelNits => _sdrWhiteLevelNits;
 
+    /// <summary>Last SDR Reinhard exposure (0 when HDR present).</summary>
+    public float LastSdrExposure { get; private set; }
+
+    /// <summary>Last SDR Reinhard white (0 when HDR present / unused).</summary>
+    public float LastSdrReinhardWhite { get; private set; }
+
     public async Task<HdrPresentOutcome> TryPresentAsync(
         HdrFrame frame,
         ImageScaling scaling,
@@ -50,7 +56,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         CancellationToken cancellation,
         HdrProbe contentProbe = default,
         HdrVizMode viz = HdrVizMode.None,
-        int? vizPrimaries = null)
+        int? vizPrimaries = null,
+        float? sdrExposure = null,
+        float? sdrReinhardWhite = null)
     {
         // UI thread only for COM / XAML: layout, device, DXGI probe, resize,
         // upload and Present. The half-float raster runs on the thread pool
@@ -90,7 +98,13 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             scaleY = rasterScale > 0 ? rasterScale : 1f;
         }
 
-        if (dipW < 2 || dipH < 2 || scaleX <= 0 || scaleY <= 0)
+        if (dipW < 2 || dipH < 2)
+        {
+            // Layout not ready yet — skip, do not count as present failure.
+            return HdrPresentOutcome.Cancelled;
+        }
+
+        if (scaleX <= 0 || scaleY <= 0)
         {
             return HdrPresentOutcome.Failed;
         }
@@ -109,14 +123,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             // Re-check _disposed inside the callback: Unloaded may Dispose after
             // the opening guard and before this runs; EnsureDevice must not
             // recreate COM objects that Dispose will not release again.
-            // Analyze off UI (4K float). Used for SDR Reinhard; HDR ignores it.
-            var pixelCount = checked(frame.Width * frame.Height);
-            var (exposure, reinhardWhite) = await Task.Run(
-                () => ToneMap.Analyze(frame.ScrgbRgba, pixelCount, cancellation),
-                cancellation).ConfigureAwait(false);
             HdrPresentMap map = default;
             var displayHdr = false;
             ushort[]? half = null;
+            float? resolvedExposure = sdrExposure;
+            float? resolvedWhite = sdrReinhardWhite;
             await UiDispatch.RunAsync(() =>
             {
                 if (_disposed)
@@ -132,26 +143,50 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                         _autoDisplayNits,
                         peakOverrideNits is > 0,
                         peakOverrideNits ?? 0);
+                    // Absolute scRGB FP16 (1.0 = 80 nits). Decoders already
+                    // emit nits/80 — scale 1, clip peak/80. No SdrWhiteLevel.
                     map = GalleryPresent.PresentMap(
                         true,
                         contentMaxNits > 0
                             ? contentMaxNits
                             : GalleryPresent.ContentMaxNits(frame.MaxScrgb, frame.MaxNits),
-                        DisplayPeakNits,
-                        _sdrWhiteLevelNits);
+                        DisplayPeakNits);
                 }
                 else
                 {
                     DisplayPeakNits = _autoDisplayNits > 0
                         ? _autoDisplayNits
                         : GalleryPresent.ScrgbNits;
-                    // Extended Reinhard (same as mosaic thumbs) — not linear MaxCLL crush.
-                    map = GalleryPresent.PresentMapSdrReinhard(exposure, reinhardWhite);
                 }
 
                 displayHdr = DisplayIsHdr;
                 half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
             });
+
+            if (!displayHdr)
+            {
+                // Sticky Reinhard from caller (first Fit) when present; else analyze once.
+                if (resolvedExposure is null or <= 0 || resolvedWhite is null)
+                {
+                    var pixelCount = checked(frame.Width * frame.Height);
+                    var analyzed = await Task.Run(
+                        () => ToneMap.Analyze(frame.ScrgbRgba, pixelCount, cancellation),
+                        cancellation).ConfigureAwait(false);
+                    resolvedExposure = analyzed.Exposure;
+                    resolvedWhite = analyzed.White;
+                }
+
+                map = GalleryPresent.PresentMapSdrReinhard(
+                    resolvedExposure!.Value,
+                    resolvedWhite!.Value);
+                LastSdrExposure = resolvedExposure.Value;
+                LastSdrReinhardWhite = resolvedWhite.Value;
+            }
+            else
+            {
+                LastSdrExposure = 0;
+                LastSdrReinhardWhite = 0;
+            }
             if (_disposed)
             {
                 return HdrPresentOutcome.Cancelled;
@@ -195,6 +230,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 ApplyCompositionScaleTransform(_compositionScaleX, _compositionScaleY);
                 Upload(half, vw, vh);
                 Present();
+                AppendCompositionScaleLog();
                 outcome = HdrPresentOutcome.Presented;
             });
             return outcome;
@@ -332,9 +368,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                                 DisplayHdr.LastQuery.Summary,
                                 GalleryPresent.ScrgbSwapChainFormat,
                                 GalleryPresent.ScrgbColorSpace,
-                                _sdrWhiteLevelNits,
-                                _compositionScaleX,
-                                _compositionScaleY);
+                                _sdrWhiteLevelNits);
                             DisplayHdr.WriteDebug(DisplayProbeText);
                             if (DisplayIsHdr)
                             {
@@ -418,17 +452,14 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     private void AppendPresentProbeExtras()
     {
+        // Log SdrWhiteLevel for diagnostics only — present does not scale by it.
         if (_sdrWhiteLevelNits > 0 && float.IsFinite(_sdrWhiteLevelNits))
         {
             DisplayProbeText += $" sdrWhite={_sdrWhiteLevelNits:0.#}";
         }
 
-        if (_compositionScaleX > 0 && _compositionScaleY > 0)
-        {
-            DisplayProbeText +=
-                $" compScale={_compositionScaleX:0.###}x{_compositionScaleY:0.###}";
-        }
-
+        // compScale is logged after the first Present (see TryPresentAsync), not
+        // during probe — scale may still be a fallback before layout settles.
         if (DisplayIsHdr)
         {
             DisplayProbeText +=
@@ -436,6 +467,23 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                     GalleryPresent.ScrgbSwapChainFormat,
                     GalleryPresent.ScrgbColorSpace);
         }
+    }
+
+    private void AppendCompositionScaleLog()
+    {
+        if (_compositionScaleX <= 0 || _compositionScaleY <= 0)
+        {
+            return;
+        }
+
+        var tag = $" compScale={_compositionScaleX:0.###}x{_compositionScaleY:0.###}";
+        if (DisplayProbeText.Contains("compScale=", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DisplayProbeText += tag;
+        DisplayHdr.WriteDebug(DisplayProbeText);
     }
 
     /// <summary>IDXGIOutput::GetDesc DeviceName (<c>\\.\DISPLAYn</c>) without Output6.</summary>
@@ -811,7 +859,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             _31 = 0,
             _32 = 0
         };
-        _ = CallSetMatrixTransform(_swapChain, ref matrix);
+        var hr = CallSetMatrixTransform(_swapChain, ref matrix);
+        if (hr < 0)
+        {
+            DisplayHdr.WriteDebug($"SetMatrixTransform hr=0x{hr:X8} scale={scaleX:0.###}x{scaleY:0.###}");
+        }
     }
 
     private static int CallSetColorSpace1(IntPtr swapChain, int colorSpace)
@@ -897,7 +949,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     private const int VtblCreateSwapChainForComposition = 24;
     private const int VtblGetDesc = 7;
     private const int VtblGetDesc1 = 27;
-    private const int VtblSetMatrixTransform = 32;
+    // See GalleryPresent.DxgiSwapChain2SetMatrixTransformVtbl (34). Slot 32 is
+    // GetMaximumFrameLatency; SetColorSpace1 stays 38.
+    private const int VtblSetMatrixTransform = GalleryPresent.DxgiSwapChain2SetMatrixTransformVtbl;
     private const int VtblSetColorSpace1 = 38;
     private const int DxgiColorSpaceRgbFullG10NoneP709 = 1;
     private const uint MonitorDefaultToNearest = 2;

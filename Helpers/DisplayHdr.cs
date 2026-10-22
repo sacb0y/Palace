@@ -377,8 +377,31 @@ public static class DisplayHdr
             return 0;
         }
 
-        // Millinits: 1000 = 1 nit.
-        return req.SDRWhiteLevel / 1000f;
+        // Multiplier: 1000 = 80 nits (Windows SDR white). Reject out-of-range.
+        var nits = req.SDRWhiteLevel / 1000f * GalleryPresent.ScrgbNits;
+        if (nits < GalleryPresent.ScrgbNits || nits > 600f || !float.IsFinite(nits))
+        {
+            return 0;
+        }
+
+        return nits;
+    }
+
+    /// <summary>Convert a raw CCD SDRWhiteLevel multiplier to nits (test helper).</summary>
+    public static float SdrWhiteLevelMultiplierToNits(uint sdrWhiteLevel)
+    {
+        if (sdrWhiteLevel == 0)
+        {
+            return 0;
+        }
+
+        var nits = sdrWhiteLevel / 1000f * GalleryPresent.ScrgbNits;
+        if (nits < GalleryPresent.ScrgbNits || nits > 600f || !float.IsFinite(nits))
+        {
+            return 0;
+        }
+
+        return nits;
     }
 
     private static PathHdr ReadPathHdr(Luid adapterId, uint targetId)
