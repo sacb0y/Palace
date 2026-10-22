@@ -1727,34 +1727,49 @@ public sealed partial class LibraryPage : Page
 
     /// <summary>
     /// Single-tile menu vs select-mode batch menu (header + Keep/Reject/…/Clear).
-    /// Batch shows Add to room disabled (Rooms backend still queued). No command bar.
+    /// Batch shows Add to room disabled (Rooms backend still queued). Menu role uses
+    /// <c>Tag</c> (not AutomationId) for batch chrome. Count comes from <c>_selection</c>.
     /// </summary>
     private void ConfigureAssetMenu(MenuFlyout flyout)
     {
         var batch = ViewModel.IsSelectMode;
-        var count = ViewModel.Assets.Count(a => a.IsSelected && !a.IsFolderHeader);
+        var count = ViewModel.SelectionCount;
+        var collapsed = ViewModel.CountCollapsedSelected();
+        var showHeader = batch && count > 0;
         foreach (var entry in flyout.Items)
         {
             var id = entry is FrameworkElement fe
-                ? AutomationProperties.GetAutomationId(fe)
+                ? fe.Tag as string ?? AutomationProperties.GetAutomationId(fe)
                 : "";
             switch (id)
             {
                 case "MnuBatchHeader":
                     if (entry is MenuFlyoutItem header)
                     {
-                        header.Text = SelectMode.BatchMenuHeader(count);
+                        header.Text = SelectMode.BatchMenuHeader(count, collapsed);
+                        AutomationProperties.SetName(
+                            header,
+                            string.IsNullOrEmpty(header.Text) ? "Selection count" : header.Text);
                     }
 
-                    entry.Visibility = batch ? Visibility.Visible : Visibility.Collapsed;
+                    entry.Visibility = showHeader ? Visibility.Visible : Visibility.Collapsed;
                     break;
                 case "MnuBatchHeaderSep":
+                    entry.Visibility = showHeader ? Visibility.Visible : Visibility.Collapsed;
+                    break;
                 case "MnuKeep":
-                case "MnuReject":
                 case "MnuSelectAll":
                 case "MnuClearSelection":
                 case "MnuBatchTailSep":
                     entry.Visibility = batch ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "MnuReject":
+                    entry.Visibility = batch ? Visibility.Visible : Visibility.Collapsed;
+                    if (entry is MenuFlyoutItem reject)
+                    {
+                        ApplyCriticalMenuForeground(reject, batch);
+                    }
+
                     break;
                 case "MnuOpen":
                 case "MnuOpenInNewWindow":
@@ -1781,21 +1796,29 @@ public sealed partial class LibraryPage : Page
                 case "MnuDelete":
                     if (entry is MenuFlyoutItem delete)
                     {
-                        // Danger style in batch; clear so theme default returns outside select mode.
                         // Delete confirm already defaults Cancel (AskConfirmAsync → Close).
-                        delete.ClearValue(Control.ForegroundProperty);
-                        if (batch
-                            && Application.Current.Resources.TryGetValue(
-                                "SystemFillColorCriticalBrush",
-                                out var critical)
-                            && critical is Brush criticalBrush)
-                        {
-                            delete.Foreground = criticalBrush;
-                        }
+                        ApplyCriticalMenuForeground(delete, batch);
                     }
 
                     break;
             }
+        }
+    }
+
+    private static void ApplyCriticalMenuForeground(MenuFlyoutItem item, bool critical)
+    {
+        item.ClearValue(Control.ForegroundProperty);
+        if (!critical)
+        {
+            return;
+        }
+
+        if (Application.Current.Resources.TryGetValue(
+                "SystemFillColorCriticalBrush",
+                out var brush)
+            && brush is Brush criticalBrush)
+        {
+            item.Foreground = criticalBrush;
         }
     }
 
