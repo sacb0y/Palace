@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI.Core;
+using Palace.Controls;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -71,6 +72,12 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     private string? _sectionToggleFocusPath;
     private VirtualKey _mosaicArrow;
+    private Border? _pagerChipOld;
+    private TextBlock? _pagerChipOldTitle;
+    private TextBlock? _pagerChipOldPos;
+    private Border? _pagerChipNew;
+    private TextBlock? _pagerChipNewTitle;
+    private TextBlock? _pagerChipNewPos;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
     /// <summary>ItemContainer pre-armed for mouse DnD (hover); null when touch-safe.</summary>
@@ -109,6 +116,7 @@ public sealed partial class LibraryPage : Page
             DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
         SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
+        SrfOverlayStill.ChipCrossFadeRequested += OnOverlayChipCrossFade;
         SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
         // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
         SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
@@ -265,6 +273,9 @@ public sealed partial class LibraryPage : Page
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
             UnhookLibraryLayoutTracking();
             UnhookShellNavPaneTracking();
+            SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayReviewSwipe;
+            SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
+            SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
             UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
@@ -1904,6 +1915,62 @@ public sealed partial class LibraryPage : Page
         _lastPressWasMouse = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
         // New press starts a new long-press gesture (flyout once per hold).
         _overlayHoldFlyoutShown = false;
+    }
+
+    /// <summary>
+    /// B4: true old→new name/position chip cross-fade at pager commit start.
+    /// </summary>
+    private void OnOverlayChipCrossFade()
+    {
+        var gallery = ViewModel.OverlayGallery;
+        if (gallery is null || !ViewerSettings.TouchGesturesEnabled)
+        {
+            return;
+        }
+
+        EnsureOverlayPagerChips();
+        _pagerChipNewTitle!.Text = gallery.Title;
+        _pagerChipNewPos!.Text = gallery.PositionLabel;
+        // Capture old into overlay; after navigate enqueue updates new chip text.
+        var oldTitle = gallery.Title;
+        var oldPos = gallery.PositionLabel;
+        PagerChipCrossFade.Begin(
+            DispatcherQueue,
+            _pagerChipNew!,
+            _pagerChipOld!,
+            _pagerChipOldTitle!,
+            _pagerChipOldPos!,
+            oldTitle,
+            oldPos);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (ViewModel.OverlayGallery is { } g)
+            {
+                _pagerChipNewTitle!.Text = g.Title;
+                _pagerChipNewPos!.Text = g.PositionLabel;
+            }
+        });
+    }
+
+    private void EnsureOverlayPagerChips()
+    {
+        if (_pagerChipOld is not null)
+        {
+            return;
+        }
+
+        _pagerChipOld = PagerChipCrossFade.CreateOldOverlay(out _pagerChipOldTitle!, out _pagerChipOldPos!);
+        _pagerChipNew = PagerChipCrossFade.CreateOldOverlay(out _pagerChipNewTitle!, out _pagerChipNewPos!);
+        _pagerChipNew.Visibility = Visibility.Visible;
+        _pagerChipNew.Opacity = 1;
+        // Host under the still so chrome stays above; Canvas.ZIndex via Panel.ZIndex.
+        Canvas.SetZIndex(_pagerChipOld, 3);
+        Canvas.SetZIndex(_pagerChipNew, 3);
+        if (GrdGalleryOverlay.Children is { } children)
+        {
+            children.Add(_pagerChipNew);
+            children.Add(_pagerChipOld);
+        }
     }
 
     private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)

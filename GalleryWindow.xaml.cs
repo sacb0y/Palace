@@ -4,8 +4,10 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Palace.Controls;
 using Windows.UI.Core;
 using Palace.Helpers;
 using Palace.ViewModels;
@@ -26,6 +28,10 @@ public sealed partial class GalleryWindow : Window
     private static extern uint GetDpiForWindow(IntPtr hWnd);
 
     public GalleryViewModel Gallery { get; }
+
+    private Border? _chipFadeOld;
+    private TextBlock? _chipFadeOldTitle;
+    private TextBlock? _chipFadeOldPos;
 
     public GalleryWindow(GalleryViewModel gallery)
     {
@@ -329,8 +335,8 @@ public sealed partial class GalleryWindow : Window
     }
 
     /// <summary>
-    /// B4: brief title/position chip cross-fade at pager commit start
-    /// (docs/specs/swipe-nav.md).
+    /// B4: true old→new title/position cross-fade at pager commit start
+    /// (docs/specs/swipe-nav.md). Snapshot runs before navigation.
     /// </summary>
     private void OnWindowChipCrossFade()
     {
@@ -339,24 +345,30 @@ public sealed partial class GalleryWindow : Window
             return;
         }
 
-        try
+        EnsureChipFadeOverlay();
+        PagerChipCrossFade.Begin(
+            DispatcherQueue,
+            GalleryTitleBar,
+            _chipFadeOld!,
+            _chipFadeOldTitle!,
+            _chipFadeOldPos!,
+            Gallery.Title,
+            Gallery.PositionLabel);
+    }
+
+    private void EnsureChipFadeOverlay()
+    {
+        if (_chipFadeOld is not null)
         {
-            var board = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-            var fadeOut = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-            {
-                From = 1,
-                To = 0.35,
-                Duration = TimeSpan.FromMilliseconds(70),
-                AutoReverse = true
-            };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fadeOut, GalleryTitleBar);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fadeOut, "Opacity");
-            board.Children.Add(fadeOut);
-            board.Begin();
+            return;
         }
-        catch
+
+        _chipFadeOld = PagerChipCrossFade.CreateOldOverlay(out _chipFadeOldTitle!, out _chipFadeOldPos!);
+        // Float over the gallery content under the title bar.
+        if (GrdGalleryWindow.Children is { } children)
         {
-            // TitleBar may not animate (opacity already mid-flight).
+            Grid.SetRow(_chipFadeOld, 1);
+            children.Add(_chipFadeOld);
         }
     }
 

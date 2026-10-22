@@ -310,8 +310,86 @@ public static class SwipeNav
         _ => 0
     };
 
-    /// <summary>Stuck awaiting-content snap-back (ms).</summary>
+    /// <summary>Stuck awaiting-content snap-back (ms) — browse.</summary>
     public const int AwaitingContentTimeoutMs = 500;
+
+    /// <summary>Stuck awaiting-content snap-back (ms) — Review (slower advance).</summary>
+    public const int AwaitingContentTimeoutReviewMs = 1500;
+
+    /// <summary>
+    /// Estimate settle X when Composition TryGetScalar lags after StopAnimation.
+    /// Uses the same cubic-bezier as the pager ease (ignores overshoot peak).
+    /// </summary>
+    public static double EstimateSettleX(
+        double fromX,
+        double targetX,
+        double elapsedMs,
+        double durationMs)
+    {
+        if (durationMs <= 0 || elapsedMs >= durationMs)
+        {
+            return targetX;
+        }
+
+        if (elapsedMs <= 0)
+        {
+            return fromX;
+        }
+
+        var t = elapsedMs / durationMs;
+        var eased = CubicBezierY(t, EaseX1, EaseY1, EaseX2, EaseY2);
+        return fromX + (targetX - fromX) * eased;
+    }
+
+    /// <summary>
+    /// Unit-interval Y for cubic-bezier(x1,y1,x2,y2) via Newton solve on X.
+    /// </summary>
+    public static double CubicBezierY(double t, double x1, double y1, double x2, double y2)
+    {
+        t = Math.Clamp(t, 0.0, 1.0);
+        if (t <= 0)
+        {
+            return 0;
+        }
+
+        if (t >= 1)
+        {
+            return 1;
+        }
+
+        // Binary-search the parameter u such that Bx(u) ≈ t, then return By(u).
+        var lo = 0.0;
+        var hi = 1.0;
+        var u = t;
+        for (var i = 0; i < 12; i++)
+        {
+            var x = BezierCoord(u, x1, x2);
+            if (Math.Abs(x - t) < 1e-6)
+            {
+                break;
+            }
+
+            if (x < t)
+            {
+                lo = u;
+            }
+            else
+            {
+                hi = u;
+            }
+
+            u = (lo + hi) * 0.5;
+        }
+
+        return BezierCoord(u, y1, y2);
+    }
+
+    private static double BezierCoord(double u, double c1, double c2)
+    {
+        // (1-u)^3*0 + 3(1-u)^2*u*c1 + 3(1-u)*u^2*c2 + u^3*1
+        var o = 1.0 - u;
+        return 3.0 * o * o * u * c1 + 3.0 * o * u * u * c2 + u * u * u;
+    }
 
     /// <summary>
     /// Review card tilt (degrees) from horizontal drag. Caps soft so it never

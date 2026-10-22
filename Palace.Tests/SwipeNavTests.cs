@@ -178,6 +178,10 @@ public sealed class SwipeNavTests
         Assert.Equal(136, SwipeNav.PostCommitStartX(releaseX: -80, slot: 1, viewerWidth: 200), 3);
         Assert.Equal(-136, SwipeNav.PostCommitStartX(releaseX: 80, slot: -1, viewerWidth: 200), 3);
         Assert.Equal(500, SwipeNav.AwaitingContentTimeoutMs);
+        Assert.Equal(1500, SwipeNav.AwaitingContentTimeoutReviewMs);
+        Assert.Equal(100, SwipeNav.EstimateSettleX(100, 0, elapsedMs: 0, durationMs: 220), 3);
+        Assert.Equal(0, SwipeNav.EstimateSettleX(100, 0, elapsedMs: 220, durationMs: 220), 3);
+        Assert.True(SwipeNav.EstimateSettleX(100, 0, elapsedMs: 110, durationMs: 220) < 100);
 
         Assert.Equal(4, SwipeNav.SnapOvershootPx(1.0), 3); // capped
         Assert.True(SwipeNav.SnapOvershootPx(0.05) <= SwipeNav.MaxOvershootPx);

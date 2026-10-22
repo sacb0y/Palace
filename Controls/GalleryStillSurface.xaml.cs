@@ -68,6 +68,10 @@ public sealed partial class GalleryStillSurface : UserControl
     private int _awaitingEpoch;
     private int _pagerSettleGeneration;
     private double _pagerX;
+    private double _settleFromX;
+    private double _settleTargetX;
+    private int _settleDurationMs;
+    private long _settleStartedAtMs;
     private string? _neighborPrevPath;
     private string? _neighborNextPath;
     private SwipeZoomRestore.Snapshot? _pendingZoomRestore;
@@ -1801,8 +1805,15 @@ public sealed partial class GalleryStillSurface : UserControl
                     afterPinchAwaitingLift: _afterPinchAwaitingLift))
             {
                 CancelTouchHold();
-                // B6 / should-fix: interrupt settle or stuck awaiting; continue from offset.
-                if (_pagerSettling || _pagerAwaitingContent)
+                // Should-fix: while awaiting new still, ignore drag (avoids stride-off).
+                if (_pagerAwaitingContent)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                // B6: interrupt settle and continue from current offset.
+                if (_pagerSettling)
                 {
                     InterruptPagerSettleForDrag();
                 }
@@ -1829,7 +1840,13 @@ public sealed partial class GalleryStillSurface : UserControl
         if (isTouch)
         {
             CancelTouchHold();
-            if (_pagerSettling || _pagerAwaitingContent)
+            if (_pagerAwaitingContent)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (_pagerSettling)
             {
                 InterruptPagerSettleForDrag();
             }
@@ -2408,12 +2425,12 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void InterruptPagerSettleForDrag()
     {
-        // B6 / N2: stop Composition settle, resume from live X.
-        var x = ReadPagerX();
+        // Blocker: StopAnimation first, then read _pagerX (TryGetScalar after stop,
+        // or bezier estimate if the scalar lags a frame).
         StopPagerAnimations(invokeOnDone: false);
         _pagerSettling = false;
         ClearAwaitingContent();
-        _pagerX = x;
+        var x = _pagerX;
         _reviewSwipeDx = x;
         _reviewSwipeDy = 0;
         _pagerHandoff = false;
@@ -2426,6 +2443,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _pagerSettleGeneration++;
         var done = _pagerOnDone;
         _pagerOnDone = null;
+        var wasSettling = _pagerSettling;
         try
         {
             if (_pagerProps is not null)
@@ -2435,6 +2453,17 @@ public sealed partial class GalleryStillSurface : UserControl
                     == CompositionGetValueStatus.Succeeded)
                 {
                     _pagerX = live;
+                }
+                else if (wasSettling && _settleDurationMs > 0)
+                {
+                    // TryGetScalar can lag a frame — estimate from ease curve.
+                    var elapsed = Environment.TickCount64 - _settleStartedAtMs;
+                    _pagerX = SwipeNav.EstimateSettleX(
+                        _settleFromX,
+                        _settleTargetX,
+                        elapsed,
+                        _settleDurationMs);
+                    _pagerProps.InsertScalar("X", (float)_pagerX);
                 }
             }
         }
@@ -2454,6 +2483,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         _pagerStoryboard = null;
         _pagerSettling = false;
+        _settleDurationMs = 0;
         if (invokeOnDone)
         {
             done?.Invoke();
@@ -2488,23 +2518,19 @@ public sealed partial class GalleryStillSurface : UserControl
         _awaitingEpoch++;
     }
 
-    private void BeginAwaitingContent()
+    private void BeginAwaitingContent(bool reviewMode)
     {
         _pagerAwaitingContent = true;
         var epoch = ++_awaitingEpoch;
-        _ = SnapBackIfAwaitingStuckAsync(epoch);
+        var timeout = reviewMode
+            ? SwipeNav.AwaitingContentTimeoutReviewMs
+            : SwipeNav.AwaitingContentTimeoutMs;
+        _ = SnapBackIfAwaitingStuckAsync(epoch, timeout);
     }
 
-    private async System.Threading.Tasks.Task SnapBackIfAwaitingStuckAsync(int epoch)
+    private async System.Threading.Tasks.Task SnapBackIfAwaitingStuckAsync(int epoch, int timeoutMs)
     {
-        try
-        {
-            await System.Threading.Tasks.Task.Delay(SwipeNav.AwaitingContentTimeoutMs);
-        }
-        catch
-        {
-            return;
-        }
+        await System.Threading.Tasks.Task.Delay(timeoutMs);
 
         await UiDispatch.RunAsync(() =>
         {
@@ -2513,7 +2539,7 @@ public sealed partial class GalleryStillSurface : UserControl
                 return;
             }
 
-            // Should-fix 1: stuck awaiting — snap back.
+            // Stuck awaiting — snap back.
             ClearAwaitingContent();
             _pendingAdvanceSlide = false;
             StopPagerAnimations(invokeOnDone: false);
@@ -2825,7 +2851,7 @@ public sealed partial class GalleryStillSurface : UserControl
                 // B4: navigate + chip cross-fade at start.
                 if (canAdvance)
                 {
-                    BeginAwaitingContent();
+                    BeginAwaitingContent(reviewMode: true);
                     ChipCrossFadeRequested?.Invoke();
                 }
 
@@ -2877,7 +2903,7 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         _pendingAdvanceSlot = SwipeNav.CommitSlot(action);
-        BeginAwaitingContent();
+        BeginAwaitingContent(reviewMode: false);
         ChipCrossFadeRequested?.Invoke();
         ReviewSwipeCommitted?.Invoke(action);
     }
@@ -2907,6 +2933,10 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         _pagerSettling = true;
+        _settleFromX = from;
+        _settleTargetX = targetX;
+        _settleDurationMs = durationMs;
+        _settleStartedAtMs = Environment.TickCount64;
         var generation = _pagerSettleGeneration;
         EnsurePagerExpressions();
         if (_pagerProps is not null)
@@ -2937,6 +2967,7 @@ public sealed partial class GalleryStillSurface : UserControl
                     }
 
                     _pagerSettling = false;
+                    _settleDurationMs = 0;
                     SetPagerCompositionX(targetX, width, 0, 0);
                     var done = _pagerOnDone;
                     _pagerOnDone = null;
@@ -2949,7 +2980,16 @@ public sealed partial class GalleryStillSurface : UserControl
             catch (Exception ex)
             {
                 ErrorReporter.LogOnly("GalleryStillSurface AnimatePagerSettle composition", ex);
-                // Fall through to Storyboard.
+                // Nit: zero Composition X before Storyboard fallback (avoids 2× travel).
+                try
+                {
+                    _pagerProps.InsertScalar("X", 0f);
+                    _pagerX = 0;
+                }
+                catch
+                {
+                    // Props may be torn down.
+                }
             }
         }
 

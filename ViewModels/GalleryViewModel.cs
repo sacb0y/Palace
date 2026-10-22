@@ -961,11 +961,16 @@ public partial class GalleryViewModel : ObservableObject
     public AssetItem? PeekNeighbor(int delta) =>
         FindNavigableIndex(CurrentIndex, delta) is { } i ? _items[i] : null;
 
+    private static readonly object NeighborPathCacheGate = new();
+    private static readonly Dictionary<string, string?> NeighborPathCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    private const int NeighborPathCacheCap = 64;
+
     /// <summary>
     /// Neighbor surface source: video → mosaic poster; still → cached LargePreview
     /// JPEG (<c>_lg</c>) when present, else mosaic thumb. Never hydrates On-Demand
-    /// originals for preload (memory: one viewport decode per neighbor). Path lookup
-    /// only — callers cache Exists checks so the UI thread does not re-stat every frame.
+    /// originals for preload (memory: one viewport decode per neighbor). Results are
+    /// cached by item path so the UI thread does not re-stat every refresh.
     /// </summary>
     public static string? NeighborSourcePath(AssetItem? item)
     {
@@ -974,39 +979,68 @@ public partial class GalleryViewModel : ObservableObject
             return null;
         }
 
+        var cacheKey = !string.IsNullOrWhiteSpace(item.Path)
+            ? item.Path
+            : item.ContentHash;
+        if (!string.IsNullOrWhiteSpace(cacheKey))
+        {
+            lock (NeighborPathCacheGate)
+            {
+                if (NeighborPathCache.TryGetValue(cacheKey, out var cached))
+                {
+                    return cached;
+                }
+            }
+        }
+
+        string? resolved = null;
         if (item.Kind == AssetKind.Video)
         {
-            return string.IsNullOrWhiteSpace(item.ThumbPath) ? null : item.ThumbPath;
+            resolved = string.IsNullOrWhiteSpace(item.ThumbPath) ? null : item.ThumbPath;
         }
-
-        // Prefer cached large preview over mosaic thumb (docs/specs/swipe-nav.md).
-        try
+        else
         {
-            if (AppServices.Thumbnails is { } thumbs
-                && !string.IsNullOrWhiteSpace(item.Path)
-                && thumbs.ExistingLargePreviewForPath(item.Path) is { } lg)
+            // Prefer cached large preview over mosaic thumb (docs/specs/swipe-nav.md).
+            try
             {
-                return lg;
+                if (AppServices.Thumbnails is { } thumbs
+                    && !string.IsNullOrWhiteSpace(item.Path)
+                    && thumbs.ExistingLargePreviewForPath(item.Path) is { } lg)
+                {
+                    resolved = lg;
+                }
+                else if (!string.IsNullOrWhiteSpace(item.ContentHash)
+                    && AppServices.Thumbnails is { } t2
+                    && t2.ExistingPathForHash(item.ContentHash, ThumbnailService.LargePreviewSuffix) is { } byHash)
+                {
+                    resolved = byHash;
+                }
+            }
+            catch
+            {
+                // AppServices may be unset in unit tests — fall through to thumb.
             }
 
-            if (!string.IsNullOrWhiteSpace(item.ContentHash)
-                && AppServices.Thumbnails is { } t2
-                && t2.ExistingPathForHash(item.ContentHash, ThumbnailService.LargePreviewSuffix) is { } byHash)
+            if (resolved is null && !string.IsNullOrWhiteSpace(item.ThumbPath))
             {
-                return byHash;
+                resolved = item.ThumbPath;
             }
         }
-        catch
+
+        if (!string.IsNullOrWhiteSpace(cacheKey))
         {
-            // AppServices may be unset in unit tests — fall through to thumb.
+            lock (NeighborPathCacheGate)
+            {
+                if (NeighborPathCache.Count >= NeighborPathCacheCap)
+                {
+                    NeighborPathCache.Clear();
+                }
+
+                NeighborPathCache[cacheKey] = resolved;
+            }
         }
 
-        if (!string.IsNullOrWhiteSpace(item.ThumbPath))
-        {
-            return item.ThumbPath;
-        }
-
-        return null;
+        return resolved;
     }
 
     /// <summary>Jump to an asset in this gallery snapshot (Review mode advance / undo).</summary>
