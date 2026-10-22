@@ -603,7 +603,8 @@ public sealed partial class FileOpService
         var absorbedPrior = false;
         // Prior batch may sit under a just-created _rejected folder on the undo
         // stack. Only fold it in when every newer undoable batch is CreateFolder
-        // for this destination; otherwise leave it for multi-ID undo.
+        // for this destination; otherwise leave prior alone (caller stops the
+        // batch Reject — never multi-ID half-undo).
         if (!string.IsNullOrWhiteSpace(absorbPriorBatchId))
         {
             var prior = await _catalog.GetFileOpBatchAsync(absorbPriorBatchId).ConfigureAwait(false);
@@ -612,11 +613,7 @@ public sealed partial class FileOpService
                 && string.Equals(prior.ProjectId, projectId, StringComparison.Ordinal))
             {
                 var undoable = await _catalog.GetUndoableFileOpsAsync(projectId).ConfigureAwait(false);
-                var newer = BatchReject.NewerThanPrior(undoable, prior.Id);
-                // NewerThanPrior is empty when prior is missing from the stack → unsafe.
-                var priorOnStack = undoable.Any(b => string.Equals(b.Id, prior.Id, StringComparison.Ordinal));
-                if (priorOnStack
-                    && BatchReject.NewerBatchesAllowAbsorbPrior(newer, destinationDir))
+                if (BatchReject.CanAbsorbPrior(undoable, prior.Id, destinationDir))
                 {
                     absorbIds.Add(prior.Id);
                     journal.AddRange(prior.Items
@@ -645,12 +642,7 @@ public sealed partial class FileOpService
 
         journal.AddRange(items);
         var fileMoveCount = journal.Count(i => i.Step == FileOpStep.MoveFile);
-        var folderCount = journal
-            .Where(i => i.Step == FileOpStep.MoveFile && !string.IsNullOrWhiteSpace(i.NewPath))
-            .Select(i => Path.GetDirectoryName(i.NewPath) ?? "")
-            .Where(d => d.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
+        var folderCount = BatchReject.CountDestinationFolders(journal);
         var summary = fileMoveCount == moves.Count && folderCount <= 1
             ? MoveSummary(moves.Count, destinationDir)
             : BatchReject.JournalSummary(fileMoveCount, Math.Max(folderCount, 1));

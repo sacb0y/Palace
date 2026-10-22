@@ -100,4 +100,110 @@ public sealed class BatchRejectTests
         Assert.Equal(["a", "b"], newer.Select(x => x.Id));
         Assert.Empty(BatchReject.NewerThanPrior([a, b], "missing"));
     }
+
+    [Fact]
+    public void InterruptedMessage_ReportsMovedSoFar()
+    {
+        Assert.Equal("Interrupted.", BatchReject.InterruptedMessage(0));
+        Assert.Equal("Interrupted, 1 rejected so far.", BatchReject.InterruptedMessage(1));
+        Assert.Equal("Interrupted, 3 rejected so far.", BatchReject.InterruptedMessage(3));
+    }
+
+    [Fact]
+    public void CanAbsorbPrior_FalseWhenInterveningMoveOnTip()
+    {
+        var dest = Path.Combine("Library", "refs", "_rejected");
+        var prior = new FileOpBatch
+        {
+            Id = "A",
+            Kind = FileOpKind.Move,
+            Items =
+            [
+                new FileOpItem
+                {
+                    Step = FileOpStep.MoveFile,
+                    OldPath = Path.Combine("Library", "shots", "a.png"),
+                    NewPath = Path.Combine("Library", "shots", "_rejected", "a.png")
+                }
+            ]
+        };
+        var intervening = new FileOpBatch
+        {
+            Id = "X",
+            Kind = FileOpKind.Move,
+            Items =
+            [
+                new FileOpItem
+                {
+                    Step = FileOpStep.MoveFile,
+                    OldPath = Path.Combine("Library", "extra.png"),
+                    NewPath = Path.Combine("Library", "Other", "extra.png")
+                }
+            ]
+        };
+        // newest-first: X, A
+        Assert.False(BatchReject.CanAbsorbPrior([intervening, prior], "A", dest));
+        Assert.True(BatchReject.CanAbsorbPrior([prior], "A", dest));
+    }
+
+    [Fact]
+    public void TrackUndoBatchId_RemovesOnlyAbsorbedPrior()
+    {
+        var ids = new List<string> { "older", "chain" };
+        BatchReject.TrackUndoBatchId(ids, chainBatchId: "chain", newBatchId: "tip", absorbedPriorBatch: true);
+        Assert.Equal(["older", "tip"], ids);
+
+        var single = new List<string> { "chain" };
+        BatchReject.TrackUndoBatchId(single, "chain", "tip", absorbedPriorBatch: true);
+        Assert.Equal(["tip"], single);
+
+        var noAbsorb = new List<string> { "a" };
+        BatchReject.TrackUndoBatchId(noAbsorb, "a", "b", absorbedPriorBatch: false);
+        Assert.Equal(["a", "b"], noAbsorb);
+    }
+
+    [Fact]
+    public void PendingMultiUndoStillTip_RequiresTipMatch()
+    {
+        Assert.False(BatchReject.PendingMultiUndoStillTip(null, "tip"));
+        Assert.False(BatchReject.PendingMultiUndoStillTip(["only"], "only"));
+        Assert.True(BatchReject.PendingMultiUndoStillTip(["a", "b"], "b"));
+        Assert.False(BatchReject.PendingMultiUndoStillTip(["a", "b"], "x"));
+        Assert.False(BatchReject.PendingMultiUndoStillTip(["a", "b"], null));
+    }
+
+    [Fact]
+    public void CountDestinationFolders_UsesReviewRejectDestAndSamePath()
+    {
+        var shotsReject = Path.Combine("Library", "shots", "_rejected");
+        var refsReject = Path.Combine("Library", "refs", "_rejected");
+        var items = new[]
+        {
+            new FileOpItem
+            {
+                Step = FileOpStep.MoveFile,
+                OldPath = Path.Combine("Library", "shots", "a.png"),
+                NewPath = Path.Combine(shotsReject, "a.png")
+            },
+            new FileOpItem
+            {
+                Step = FileOpStep.MoveFile,
+                OldPath = Path.Combine("Library", "shots", "b.png"),
+                // Trailing separator on parent must not double-count.
+                NewPath = Path.Combine(shotsReject + Path.DirectorySeparatorChar, "b.png")
+            },
+            new FileOpItem
+            {
+                Step = FileOpStep.CreateDir,
+                NewPath = shotsReject
+            },
+            new FileOpItem
+            {
+                Step = FileOpStep.MoveFile,
+                OldPath = Path.Combine("Library", "refs", "c.png"),
+                NewPath = Path.Combine(refsReject, "c.png")
+            }
+        };
+        Assert.Equal(2, BatchReject.CountDestinationFolders(items));
+    }
 }

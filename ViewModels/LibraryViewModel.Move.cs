@@ -105,13 +105,16 @@ public partial class LibraryViewModel
                 ShowUndoToast = false;
                 var multi = _pendingMultiUndoBatchIds;
                 _pendingMultiUndoBatchIds = null;
-                if (multi is { Count: > 1 })
+                var tip = await _fileOps.PeekUndoAsync(projectId);
+                // Only multi-undo when the pending tip is still the newest
+                // undoable batch — a later move/delete/tag must not hijack Ctrl+Z.
+                if (BatchReject.PendingMultiUndoStillTip(multi, tip?.Id))
                 {
-                    result = await UndoRejectBatchesAsync(projectId, multi);
+                    result = await UndoRejectBatchesAsync(projectId, multi!);
                 }
                 else
                 {
-                    var peek = await _fileOps.PeekUndoAsync(projectId);
+                    var peek = tip;
                     result = await _fileOps.UndoLastAsync(projectId);
                     if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
                     {
@@ -160,8 +163,8 @@ public partial class LibraryViewModel
         });
 
     /// <summary>
-    /// Undo several Reject Move batches newest-first as one user action (when
-    /// absorbPriorBatchId was unsafe and left multiple journal entries).
+    /// Legacy multi-ID Reject undo (pre option-a interrupt). Only reached when
+    /// <see cref="BatchReject.PendingMultiUndoStillTip"/> is true.
     /// </summary>
     private async Task<FileOpResult> UndoRejectBatchesAsync(string projectId, IReadOnlyList<string> batchIds)
     {
@@ -175,11 +178,21 @@ public partial class LibraryViewModel
             return FileOpResult.Fail("Nothing to undo.");
         }
 
+        // Tip already verified by caller; stop if a newer entry appears mid-loop
+        // (never half-undo past an interleaved op).
         var allMoves = new List<FileOpMove>();
         string? lastMessage = null;
         var ok = true;
         foreach (var id in order)
         {
+            var newest = await _fileOps.PeekUndoAsync(projectId);
+            if (newest is null || !string.Equals(newest.Id, id, StringComparison.Ordinal))
+            {
+                ok = false;
+                lastMessage = BatchReject.InterruptedMessage(allMoves.Count);
+                break;
+            }
+
             var step = await _fileOps.UndoBatchAsync(projectId, id);
             if (step.Moves.Count > 0)
             {
@@ -207,8 +220,12 @@ public partial class LibraryViewModel
         };
     }
 
-    internal void RememberRejectUndoBatches(IReadOnlyList<string> batchIds) =>
-        _pendingMultiUndoBatchIds = batchIds.Count > 1 ? batchIds.ToList() : null;
+    /// <summary>
+    /// Batch Reject no longer stashes multi-ID pending (option a: interrupt when
+    /// absorb is unsafe). Clears any leftover pending from older builds.
+    /// </summary>
+    internal void RememberRejectUndoBatches(IReadOnlyList<string> _) =>
+        _pendingMultiUndoBatchIds = null;
 
     /// <summary>Move dialog "New folder": create <paramref name="name"/> under <paramref name="parentDir"/>.</summary>
     public async Task<FileOpResult> CreateFolderAsync(string parentDir, string name)
@@ -400,6 +417,12 @@ public partial class LibraryViewModel
     public async Task RefreshUndoStateAsync()
     {
         var batch = await _fileOps.PeekUndoAsync(AppServices.CurrentProject.Id);
+        // Any new journal tip that is not the multi-undo tip invalidates pending.
+        if (!BatchReject.PendingMultiUndoStillTip(_pendingMultiUndoBatchIds, batch?.Id))
+        {
+            _pendingMultiUndoBatchIds = null;
+        }
+
         await UiDispatch.RunAsync(() =>
         {
             CanUndoFileOp = batch is not null;

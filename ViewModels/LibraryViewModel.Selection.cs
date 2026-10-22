@@ -404,9 +404,11 @@ public partial class LibraryViewModel
 
     /// <summary>
     /// Batch Reject: move each selected file into a sibling <c>_rejected</c>
-    /// (same destination as Review). Multi-folder runs share <b>one</b> journal
-    /// batch so Undo restores every folder. Partial failures / already-rejected
-    /// roll into one final toast.
+    /// (same destination as Review). Multi-folder runs fold into <b>one</b>
+    /// journal batch when absorb is safe; otherwise stop with
+    /// <see cref="BatchReject.InterruptedMessage"/> so completed folders stay
+    /// separately undoable. Partial failures / already-rejected roll into one
+    /// final toast.
     /// </summary>
     [RelayCommand]
     private Task RejectSelectedAsync() =>
@@ -466,6 +468,7 @@ public partial class LibraryViewModel
             string? chainBatchId = null;
             var undoBatchIds = new List<string>();
             var cancelled = false;
+            var interrupted = false;
             try
             {
                 foreach (var group in groups)
@@ -490,6 +493,20 @@ public partial class LibraryViewModel
                         failed += group.Count();
                         failNotes.Add("missing parent folder");
                         continue;
+                    }
+
+                    // Absorb must be safe before CreateFolder / Move. When an
+                    // intervening journal entry sits on the tip, stop — completed
+                    // folders stay separately undoable (no multi-ID half-undo).
+                    if (chainBatchId is not null)
+                    {
+                        var undoable = await _catalog.GetUndoableFileOpsAsync(projectId);
+                        if (!BatchReject.CanAbsorbPrior(undoable, chainBatchId, dest))
+                        {
+                            interrupted = true;
+                            lastMessage = BatchReject.InterruptedMessage(moved);
+                            break;
+                        }
                     }
 
                     string? absorb = null;
@@ -544,25 +561,11 @@ public partial class LibraryViewModel
                         lastMessage = result.Message;
                         if (!string.IsNullOrWhiteSpace(result.BatchId))
                         {
-                            if (chainBatchId is not null
-                                && !result.AbsorbedPriorBatch
-                                && !undoBatchIds.Contains(chainBatchId, StringComparer.Ordinal))
-                            {
-                                undoBatchIds.Add(chainBatchId);
-                            }
-
-                            if (!undoBatchIds.Contains(result.BatchId, StringComparer.Ordinal))
-                            {
-                                undoBatchIds.Add(result.BatchId);
-                            }
-
-                            // When absorbed, prior ids are superseded — keep only the new tip.
-                            if (result.AbsorbedPriorBatch)
-                            {
-                                undoBatchIds.Clear();
-                                undoBatchIds.Add(result.BatchId);
-                            }
-
+                            BatchReject.TrackUndoBatchId(
+                                undoBatchIds,
+                                chainBatchId,
+                                result.BatchId,
+                                result.AbsorbedPriorBatch);
                             chainBatchId = result.BatchId;
                         }
 
@@ -593,7 +596,27 @@ public partial class LibraryViewModel
             }
 
             await RefreshUndoStateAsync();
+            // Completed folders stay separately undoable — never stash multi-ID
+            // pending (absorb folds into one batch when safe; interrupt stops early).
             RememberRejectUndoBatches(undoBatchIds);
+            if (interrupted)
+            {
+                var stop = BatchReject.InterruptedMessage(moved);
+                if (moved > 0 && undoBatchIds.Count > 0)
+                {
+                    ShowUndoToastFor(
+                        stop,
+                        offerUndo: true,
+                        dismissSeconds: BatchReject.UndoToastSeconds(undoBatchIds.Count));
+                }
+                else
+                {
+                    Notify(stop, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                }
+
+                return;
+            }
+
             var toast = BatchReject.ToastMessage(moved, already, failed, folderCount);
             if (cancelled && moved == 0)
             {

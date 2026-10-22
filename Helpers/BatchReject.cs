@@ -35,6 +35,15 @@ public static class BatchReject
     }
 
     /// <summary>
+    /// When absorbPrior is unsafe, stop the batch: completed folders stay
+    /// separately undoable — never promise a multi-ID half-undo.
+    /// </summary>
+    public static string InterruptedMessage(int movedSoFar) =>
+        movedSoFar <= 0
+            ? "Interrupted."
+            : $"Interrupted, {movedSoFar} rejected so far.";
+
+    /// <summary>
     /// Final toast after a batch Reject. Always surfaces already-rejected and
     /// failed counts — never silently drops them. Clean multi-folder success
     /// uses <see cref="JournalSummary"/> wording.
@@ -97,9 +106,35 @@ public static class BatchReject
     }
 
     /// <summary>
+    /// True when <paramref name="priorBatchId"/> is still undoable and every
+    /// newer batch is only a <see cref="FileOpKind.CreateFolder"/> for
+    /// <paramref name="destinationDir"/> (safe to fold prior into this Move).
+    /// </summary>
+    public static bool CanAbsorbPrior(
+        IReadOnlyList<FileOpBatch> undoableNewestFirst,
+        string priorBatchId,
+        string destinationDir)
+    {
+        if (string.IsNullOrWhiteSpace(priorBatchId)
+            || string.IsNullOrWhiteSpace(destinationDir)
+            || undoableNewestFirst.Count == 0)
+        {
+            return false;
+        }
+
+        if (!undoableNewestFirst.Any(b => string.Equals(b.Id, priorBatchId, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        return NewerBatchesAllowAbsorbPrior(
+            NewerThanPrior(undoableNewestFirst, priorBatchId),
+            destinationDir);
+    }
+
+    /// <summary>
     /// True when every undoable batch newer than the prior Move is only a
     /// <see cref="FileOpKind.CreateFolder"/> for <paramref name="destinationDir"/>.
-    /// Otherwise the prior must stay on the stack (multi-ID undo).
     /// </summary>
     public static bool NewerBatchesAllowAbsorbPrior(
         IEnumerable<FileOpBatch> newerUndoableNewestFirst,
@@ -157,5 +192,83 @@ public static class BatchReject
         }
 
         return found ? newer : [];
+    }
+
+    /// <summary>
+    /// Update the reject undo-id list after a Move. When prior was absorbed,
+    /// remove only that prior id (not the whole list).
+    /// </summary>
+    public static void TrackUndoBatchId(
+        List<string> undoBatchIds,
+        string? chainBatchId,
+        string newBatchId,
+        bool absorbedPriorBatch)
+    {
+        if (string.IsNullOrWhiteSpace(newBatchId))
+        {
+            return;
+        }
+
+        if (absorbedPriorBatch && chainBatchId is not null)
+        {
+            undoBatchIds.RemoveAll(id => string.Equals(id, chainBatchId, StringComparison.Ordinal));
+        }
+
+        if (!undoBatchIds.Contains(newBatchId, StringComparer.Ordinal))
+        {
+            undoBatchIds.Add(newBatchId);
+        }
+    }
+
+    /// <summary>
+    /// Distinct reject destination folders among MoveFile journal rows, using
+    /// <see cref="FolderNames.SamePath"/> trailing-separator normalization
+    /// (matches <see cref="ReviewReject.DestinationDir"/>).
+    /// </summary>
+    public static int CountDestinationFolders(IEnumerable<FileOpItem> journalItems)
+    {
+        var dirs = new List<string>();
+        foreach (var item in journalItems)
+        {
+            if (item.Step != FileOpStep.MoveFile)
+            {
+                continue;
+            }
+
+            // Prefer reject dest from the pre-move path; fall back to NewPath parent.
+            var dest = ReviewReject.DestinationDir(item.OldPath)
+                ?? Path.GetDirectoryName(item.NewPath);
+            if (string.IsNullOrWhiteSpace(dest))
+            {
+                continue;
+            }
+
+            if (dirs.Any(d => FolderNames.SamePath(d, dest)))
+            {
+                continue;
+            }
+
+            dirs.Add(dest);
+        }
+
+        return dirs.Count;
+    }
+
+    /// <summary>
+    /// True when pending multi-undo tip still matches the newest undoable batch
+    /// (stale pending after an intervening journal entry must not run).
+    /// </summary>
+    public static bool PendingMultiUndoStillTip(
+        IReadOnlyList<string>? pendingBatchIdsNewestLast,
+        string? newestUndoableBatchId)
+    {
+        if (pendingBatchIdsNewestLast is not { Count: > 1 }
+            || string.IsNullOrWhiteSpace(newestUndoableBatchId))
+        {
+            return false;
+        }
+
+        var tip = pendingBatchIdsNewestLast[^1];
+        return string.Equals(tip, newestUndoableBatchId, StringComparison.Ordinal);
     }
 }
