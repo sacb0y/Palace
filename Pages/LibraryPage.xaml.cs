@@ -61,6 +61,11 @@ public sealed partial class LibraryPage : Page
     private int _sectionToggleGuardGeneration;
     /// <summary>Epoch armed for the current section-toggle scroll restore.</summary>
     private int _sectionToggleRestoreEpoch;
+    /// <summary>
+    /// Header path to focus after republish; applied in Ended under selection
+    /// suppress so ItemsView.Select cannot wipe expand-restored selection.
+    /// </summary>
+    private string? _sectionToggleFocusPath;
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
@@ -128,6 +133,7 @@ public sealed partial class LibraryPage : Page
             {
                 InvalidateMosaicLayout();
                 UpdateStickyFolderHeader();
+                UpdateMosaicToolbarOverflow(GrdAssets.ActualWidth);
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.OverlayGallery) or nameof(LibraryViewModel.IsGalleryOverlayOpen))
@@ -456,6 +462,7 @@ public sealed partial class LibraryPage : Page
         var pad = GrdLibraryColumns.Padding;
         var contentWidth = Math.Max(0, e.NewSize.Width - pad.Left - pad.Right);
         ApplyLibraryColumnLayout(contentWidth);
+        UpdateLibraryToolbarOverflow(contentWidth);
     }
 
     private void ApplyLibraryColumnLayout(double contentWidth)
@@ -471,9 +478,48 @@ public sealed partial class LibraryPage : Page
         ColMosaic.Width = new GridLength(1, GridUnitType.Star);
         ColPreview.Width = new GridLength(widths.Preview);
         ColPreview.MinWidth = 0;
+        // Preview auto-hide at narrow widths is by design (Preview toggle rule).
         ScrPreviewPane.Visibility = widths.PreviewHidden
             ? Visibility.Collapsed
             : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Keep mosaic packing on the ItemsView's real width (not a stale last-good
+    /// from an infinite/tiny measure pass).
+    /// </summary>
+    private void GrdAssets_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        MosaicLayout.SetHostWidth(e.NewSize.Width);
+        UpdateMosaicToolbarOverflow(e.NewSize.Width);
+    }
+
+    /// <summary>
+    /// Top toolbar spans all columns — at narrow widths move New folder / Undo /
+    /// Add to room into the overflow menu so buttons are not clipped mid-element.
+    /// </summary>
+    private void UpdateLibraryToolbarOverflow(double contentWidth)
+    {
+        // ~770 content still clips the full face row; overflow a bit above min window.
+        var compact = contentWidth < 920;
+        BtnNewFolder.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        BtnUndo.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        BtnAddToRoom.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        BtnLibraryToolbarMore.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// Mosaic column toolbar: under a tight grid width, drop Flatten into More and
+    /// shrink the sort button so Select + Sort are not clipped mid-element.
+    /// </summary>
+    private void UpdateMosaicToolbarOverflow(double mosaicWidth)
+    {
+        var compact = mosaicWidth > 0 && mosaicWidth < LibraryColumnLayout.MosaicMinWidth;
+        // More menu always has Flatten; hide the face toggle when the column is tight.
+        TglFlattenSubfolders.Visibility = compact
+            ? Visibility.Collapsed
+            : BindHelpers.BoolToVisibility(ViewModel.ShowFolderSectionsChrome);
+        BtnMosaicSort.MinWidth = compact ? 0 : 200;
     }
 
     private void TglSelectMode_Changed(object sender, RoutedEventArgs e)
@@ -2437,19 +2483,14 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        var path = ViewModel.PendingSectionFocusPath;
+        // Focus runs in Ended under _suppressMosaicSelection — Select+Restore
+        // must be atomic or expand SelectionChanged wipes multi-select (87e299d).
+        _sectionToggleFocusPath = ViewModel.PendingSectionFocusPath;
         ViewModel.PendingSectionFocusPath = null;
         var offset = _restoreScrollOffset;
         var restoreScroll = _restoreScrollPending;
         _restoreScrollPending = false;
         var restoreEpoch = epoch;
-
-        // Focus/Select while still under _sectionToggleGuardDepth — SectionToggleEnded
-        // runs in Republish's finally after this returns, so do not defer Select.
-        if (!string.IsNullOrEmpty(path))
-        {
-            FocusFolderHeader(path);
-        }
 
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
         {
@@ -2486,27 +2527,44 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (_sectionToggleGuardDepth > 0)
-        {
-            _sectionToggleGuardDepth--;
-        }
-
-        if (_sectionToggleGuardDepth > 0)
+        if (_sectionToggleGuardDepth <= 0)
         {
             return;
         }
 
-        // Empty-order / ApplyFilter path never runs MosaicRestoreReady for this
-        // toggle — clear stale scroll/focus armed by SectionToggleStarting.
-        _restoreScrollPending = false;
-        ViewModel.PendingSectionFocusPath = null;
-        // Clicks during the rebuild were swallowed by the guard; re-apply
-        // VM IsSelected onto ItemsView when the last in-flight toggle ends.
-        RestoreMosaicSelectionHighlights();
-        if (epoch == _sectionToggleRestoreEpoch)
+        // Last in-flight toggle: Focus + re-stamp ItemsView while SelectionChanged
+        // is suppressed. Without suppress, RestoreMosaicSelectionHighlights'
+        // per-index Select fires SelectionChanged and expand drops multi-select
+        // (tiles are displayed again so MergeVisibleWithHiddenSelected cannot
+        // preserve them). Matches 87e299d EndSectionToggleSelectionGuard order.
+        if (_sectionToggleGuardDepth == 1)
         {
-            _sectionToggleRestoreEpoch = 0;
+            _restoreScrollPending = false;
+            ViewModel.PendingSectionFocusPath = null;
+            _suppressMosaicSelection = true;
+            try
+            {
+                var path = _sectionToggleFocusPath;
+                _sectionToggleFocusPath = null;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    FocusFolderHeader(path);
+                }
+
+                RestoreMosaicSelectionHighlights();
+            }
+            finally
+            {
+                _suppressMosaicSelection = false;
+            }
+
+            if (epoch == _sectionToggleRestoreEpoch)
+            {
+                _sectionToggleRestoreEpoch = 0;
+            }
         }
+
+        _sectionToggleGuardDepth--;
     }
 
     /// <summary>
@@ -2520,8 +2578,17 @@ public sealed partial class LibraryPage : Page
         _sectionToggleGuardGeneration = 0;
         _restoreScrollPending = false;
         _sectionToggleRestoreEpoch = 0;
+        _sectionToggleFocusPath = null;
         ViewModel.PendingSectionFocusPath = null;
-        RestoreMosaicSelectionHighlights();
+        _suppressMosaicSelection = true;
+        try
+        {
+            RestoreMosaicSelectionHighlights();
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
     }
 
     private double ClampMosaicVerticalOffset(double offset)
@@ -2561,9 +2628,9 @@ public sealed partial class LibraryPage : Page
         }
 
         // ItemsView has no TryGetElement in WASDK 2.3 — Select realizes the
-        // container for focus. Caller must keep _sectionToggleGuardDepth > 0 so
-        // SelectionChanged cannot wipe asset selection; highlights are restored
-        // when OnSectionToggleEnded brings depth back to 0.
+        // container for focus. Caller must keep _suppressMosaicSelection so
+        // SelectionChanged cannot wipe asset selection; RestoreMosaicSelectionHighlights
+        // re-applies the real selection afterward (same order as 87e299d).
         GrdAssets.Select(index);
         var tag = ViewModel.Assets[index].MosaicTag;
         if (string.IsNullOrEmpty(tag))

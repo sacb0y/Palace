@@ -25,6 +25,18 @@ public sealed class MosaicLayoutWidthTests
     }
 
     [Fact]
+    public void Resolve_PrefersHostWidthOverStaleLastGood()
+    {
+        // Tiny/infinite measure must not pack for a previous wide last-good when
+        // the ItemsView ActualWidth (host) is already known — that clipped tiles.
+        Assert.Equal(483, MosaicLayoutWidth.Resolve(2, lastGood: 1100, hostWidth: 483));
+        Assert.Equal(
+            578,
+            MosaicLayoutWidth.Resolve(double.PositiveInfinity, lastGood: 1400, hostWidth: 578));
+        Assert.Equal(728, MosaicLayoutWidth.Resolve(728, lastGood: 1400, hostWidth: 483));
+    }
+
+    [Fact]
     public void Resolve_PreventsSliverWidthsUsedInPacking()
     {
         // Laptop resize sometimes measures with a few DIPs; packing + justify at

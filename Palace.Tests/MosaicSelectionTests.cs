@@ -100,6 +100,51 @@ public sealed class MosaicSelectionTests
     }
 
     [Fact]
+    public void ExpandSection_ResolveByIds_KeepsSelectionFromCollapsedState()
+    {
+        // Laptop regression: expand cleared selection while collapse kept it.
+        // Restore-by-id must keep ids across both filter directions.
+        var ordered = new[]
+        {
+            H("Root"),
+            T("r1"),
+            H("AI"),
+            T("a1"),
+            T("a2")
+        };
+        ordered[2].Collapsed = true;
+        var ids = new[] { "r1", "a1" };
+        var whileCollapsed = MosaicSelection.ResolveByIds(
+            ordered, ids, i => i.Header, i => i.Id);
+        Assert.Equal(["r1", "a1"], whileCollapsed.Select(i => i.Id).ToArray());
+
+        ordered[2].Collapsed = false;
+        var expandedDisplay = FolderSectionPrefs.FilterCollapsedDisplay(
+            ordered, i => i.Header, i => i.Collapsed);
+        Assert.Contains(expandedDisplay, i => i.Id == "a1");
+        var afterExpand = MosaicSelection.ResolveByIds(
+            ordered, ids, i => i.Header, i => i.Id);
+        Assert.Equal(["r1", "a1"], afterExpand.Select(i => i.Id).ToArray());
+    }
+
+    [Fact]
+    public void MergeVisibleWithHiddenSelected_ExpandMakesTilesVisible_EmptyItemsViewDropsThem()
+    {
+        // Documents why Ended must suppress SelectionChanged while re-stamping
+        // highlights after expand: once tiles are displayed again, Merge cannot
+        // preserve them from an empty ItemsView report.
+        var root = T("r1");
+        var ai = T("a1");
+        var displayedExpanded = new HashSet<Item> { root, ai };
+        var merged = MosaicSelection.MergeVisibleWithHiddenSelected(
+            visibleSelected: [],
+            previousSelected: [root, ai],
+            displayedExpanded,
+            item => item.Header);
+        Assert.Empty(merged);
+    }
+
+    [Fact]
     public void ResolveAnchorAfterRestore_KeepsPriorWhenStillInOrder()
     {
         var a = T("a1");

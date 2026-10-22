@@ -58,6 +58,12 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     /// <summary>Width used by the last arrange / measure recalculation.</summary>
     public double LastLaidOutWidth { get; private set; }
 
+    /// <summary>
+    /// ItemsView ActualWidth from the page. Used when measure available width is
+    /// infinite/tiny so packing uses the real mosaic column, not a stale last-good.
+    /// </summary>
+    public double HostWidth { get; private set; }
+
     /// <summary>Pinnable (non-packed) header slots from the last arrange, sorted by Y.</summary>
     public IReadOnlyList<MosaicHeaderSlot> LastPinnableHeaders { get; private set; } = [];
 
@@ -66,6 +72,20 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     /// LibraryPage calls this instead of reaching into Layout.
     /// </summary>
     public void Relayout() => InvalidateMeasure();
+
+    /// <summary>Stamp the host ActualWidth and invalidate when it changes.</summary>
+    public void SetHostWidth(double width)
+    {
+        if (double.IsFinite(width) && width > 0 && Math.Abs(HostWidth - width) > 0.5)
+        {
+            HostWidth = width;
+            InvalidateMeasure();
+        }
+        else if (!double.IsFinite(HostWidth) || HostWidth <= 0)
+        {
+            HostWidth = double.IsFinite(width) && width > 0 ? width : 0;
+        }
+    }
 
     protected override void InitializeForContextCore(VirtualizingLayoutContext context)
     {
@@ -245,7 +265,7 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     /// grid to a sliver and prevent packed mini-headers from appearing.
     /// </summary>
     private double ResolveWidth(double available) =>
-        MosaicLayoutWidth.Resolve(available, LastLaidOutWidth);
+        MosaicLayoutWidth.Resolve(available, LastLaidOutWidth, HostWidth);
 
     private static Rect RealizationWindow(VirtualizingLayoutContext context, double width)
     {

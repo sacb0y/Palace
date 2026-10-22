@@ -74,6 +74,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+            <!-- Narrow widths: New folder / Undo / Add to room move into BtnLibraryToolbarMore. -->
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnAddFolder"
@@ -145,6 +146,7 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnAddToRoom"
                     AutomationProperties.AutomationId="BtnAddToRoom"
                     AutomationProperties.Name="Add to room"
                     Command="{x:Bind ViewModel.AddSelectionToRoomCommand}"
@@ -154,6 +156,37 @@
                         <TextBlock VerticalAlignment="Center" Text="Add to room" />
                     </StackPanel>
                 </Button>
+                <DropDownButton
+                    x:Name="BtnLibraryToolbarMore"
+                    MinWidth="32"
+                    MinHeight="32"
+                    AutomationProperties.AutomationId="BtnLibraryToolbarMore"
+                    AutomationProperties.Name="More library actions"
+                    ToolTipService.ToolTip="More"
+                    Visibility="Collapsed">
+                    <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="Bottom">
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarNewFolder"
+                                AutomationProperties.AutomationId="MnuToolbarNewFolder"
+                                Command="{x:Bind ViewModel.NewFolderCommand}"
+                                Text="New folder" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarUndo"
+                                AutomationProperties.AutomationId="MnuToolbarUndo"
+                                Command="{x:Bind ViewModel.UndoFileOpCommand}"
+                                IsEnabled="{x:Bind ViewModel.CanUndoFileOp, Mode=OneWay}"
+                                Text="Undo" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarAddToRoom"
+                                AutomationProperties.AutomationId="MnuToolbarAddToRoom"
+                                Command="{x:Bind ViewModel.AddSelectionToRoomCommand}"
+                                IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                                Text="Add to room" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
             </StackPanel>
             <ProgressBar
                 x:Name="PrgLibrary"
@@ -603,6 +636,7 @@
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
+                <!-- Visibility also toggled in UpdateMosaicToolbarOverflow (narrow → More menu). -->
                 <ToggleButton
                     x:Name="TglFlattenSubfolders"
                     VerticalAlignment="Center"
@@ -610,7 +644,7 @@
                     AutomationProperties.Name="Flatten subfolders"
                     IsChecked="{x:Bind ViewModel.FlattenSubfolders, Mode=TwoWay}"
                     ToolTipService.ToolTip="Flatten subfolders into one continuous grid"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowFolderSectionsChrome), Mode=OneWay}">
+                    Visibility="Collapsed">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="AppsList" IconSize="Size16" IconVariant="Regular" />
                         <TextBlock VerticalAlignment="Center" Text="Flatten" />
@@ -687,7 +721,8 @@
                     ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
                     PreviewKeyDown="GrdAssets_PreviewKeyDown"
                     SelectionChanged="GrdAssets_SelectionChanged"
-                    SelectionMode="Single">
+                    SelectionMode="Single"
+                    SizeChanged="GrdAssets_SizeChanged">
                     <ItemsView.Layout>
                         <helpers:JustifiedMosaicLayout
                             x:Name="MosaicLayout"
