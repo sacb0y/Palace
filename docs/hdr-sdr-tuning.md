@@ -32,11 +32,12 @@ BT.2020 linear, **1.0 = 203 nits**.
 2. **Analyze** — **PQ-spaced** histogram: p50, p99.995, max, maxRGB; `Lc` safe
    clamp. P50 = scene-average knee.
 3. **ToneMap** — `ExposureEV` as `2^EV` before the curve (Analyze Lc unchanged;
-   curve uses **Lc·2^EV** — P2). SDR (v2 / Q1): **ref white → display white for
-   every Lc**; Hermite shoulder covers **1..Lc only** (small headroom above
-   white at Lc); soft-clip safety-net above headroom. HDR: BT.2390-8 §5.4.1.
-   **P5 owns wiring Ld**. Desat vs Ld — with the curve ending near display
-   white, desat currently **never engages** (**P7**).
+   curve uses **Lc·2^EV** — P2). SDR: **ref white → display white for every Lc**;
+   **SDR output ≤ display white** (1.12× <c>HighlightHeadroom</c> is
+   **HDR-target only**). Shoulder policy above white **held** pending Isiac
+   **A** (paper dips with Lc) vs **B** (highlights clip). HDR: BT.2390-8 §5.4.1;
+   **P5 owns wiring Ld**. Desat = `smoothstep(Ld, 1.25·Ld, peak)` when
+   tone-mapped peak exceeds Ld (engages with above-Ld headroom; not a no-op).
 4. **LUT** — PQ-spaced; EV at sample time (not in cache key). **Non-zero EV
    bypasses the baked LUT** and re-evaluates `MapScalar` with Lc·2^EV (**P5**).
    Default size **256**.
@@ -58,4 +59,5 @@ for regenerate commands.
 ## Out of scope
 
 Decoders (P2), thumbs/full flags (P3–P4), HLSL / CPU–GPU agreement (P5),
-deleting legacy (P6), highlight-desat engagement (P7). No FenrirDesktop.
+deleting legacy (P6), gain maps / desat tuning (P7), Isiac A/B SDR shoulder.
+No FenrirDesktop.

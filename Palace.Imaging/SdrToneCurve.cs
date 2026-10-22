@@ -1,19 +1,22 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Palace SDR tone curve (v2). Ref white (working 1.0) maps to
-/// <b>display white for every Lc</b>. Scene average (P50) sets the knee
-/// (0.5–0.7× ref white). The Hermite shoulder covers <b>1..Lc only</b>, rising
-/// from display white to a small headroom at Lc so highlights stay ordered;
-/// soft-clip after MapPixel is only a safety net above that headroom.
+/// Palace SDR tone curve. Ref white (working 1.0) maps to display white for
+/// every Lc. Scene average (P50) sets the knee (0.5–0.7× ref white).
+/// <para>
+/// <b>Held (Isiac A/B):</b> SDR <see cref="Map"/> ends at display white
+/// (output ≤ 1.0 × display white). The 1.12× <see cref="HighlightHeadroom"/>
+/// is reserved for <b>HDR display targets</b> only — not applied on the SDR
+/// path. Shoulder policy above white (dip paper vs clip) awaits Isiac.
+/// </para>
 /// </summary>
 public static class SdrToneCurve
 {
     public const float DefaultKneeFraction = 0.6f;
 
     /// <summary>
-    /// Output at Lc as a multiple of display white (shoulder headroom above
-    /// white — not a paper-white dim). Soft-clip safety uses the same factor.
+    /// Shoulder headroom above display white for <b>HDR targets only</b>.
+    /// SDR <see cref="Map"/> uses 1.0 (output ≤ display white).
     /// </summary>
     public const float HighlightHeadroom = 1.12f;
 
@@ -21,6 +24,7 @@ public static class SdrToneCurve
     /// Map post-exposure working-space maxRGB to display-referred linear
     /// (1.0 = 203 nits). <paramref name="displayWhite"/> is PeakNormalized.
     /// <paramref name="lc"/> should already include exposure (Lc·2^EV) when EV ≠ 0.
+    /// SDR peak output is display white (no headroom).
     /// </summary>
     public static float Map(float x, float lc, float sceneAvg, float displayWhite)
     {
@@ -34,9 +38,9 @@ public static class SdrToneCurve
             ? Math.Clamp(sceneAvg, 0.5f, 0.7f)
             : DefaultKneeFraction;
         var peak = Math.Max(lc, Math.Max(1.01f, kneeIn + 0.05f));
-        // v2 / Q1: ref white → display white for every Lc (no paper dim step).
+        // Ref white → display white for every Lc. SDR: peakOut = w (≤ display white).
         var whiteOut = w;
-        var peakOut = w * HighlightHeadroom;
+        var peakOut = w;
         var kneeOut = kneeIn * whiteOut;
         var midSlope = whiteOut;
         var whiteSlope = 0.35f * whiteOut;
@@ -51,17 +55,16 @@ public static class SdrToneCurve
             return Hermite(x, kneeIn, kneeOut, midSlope, 1f, whiteOut, whiteSlope);
         }
 
+        // 1..Lc: held flat at display white on SDR pending Isiac A/B.
+        // (HDR targets use BT.2390 / headroom elsewhere — not this path.)
         if (x >= peak)
         {
             return peakOut;
         }
 
-        // Shoulder 1..Lc only: display white → headroom (strictly increasing).
-        var dx = peak - 1f;
-        var secant = (peakOut - whiteOut) / Math.Max(dx, 1e-6f);
-        var m0 = Math.Min(whiteSlope, 1.5f * secant);
-        var m1 = 0.15f * secant;
-        return Hermite(x, 1f, whiteOut, m0, peak, peakOut, m1);
+        // Degenerate Hermite white→white (identity plateau). Kept as a single
+        // branch so A (dip paper / rise to white) or B (explicit clip) can land here.
+        return whiteOut;
     }
 
     /// <summary>

@@ -77,85 +77,64 @@ public class ImagingToneMapTests
         Assert.Equal(1.2f, ToneMapper.MapScalar(1.2f, p), 5);
     }
 
-    /// <summary>P1/v2: paper = display white; shoulder 1..Lc strictly rising to headroom.</summary>
+    /// <summary>
+    /// Held pending Isiac A/B: SDR ref white = display white; peak ≤ display white
+    /// (1.12× headroom is HDR-target-only). Shoulder shape above white not chosen yet.
+    /// </summary>
     [Fact]
-    public void P1_SdrShoulder_RefWhiteIsDisplayWhite_StrictlyIncreasingToLc()
+    public void P1_Sdr_RefWhiteIsDisplayWhite_OutputAtMostDisplayWhite()
     {
         var stats = StatsLc(8f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
-        var atWhite = ToneMapper.MapScalar(1f, p);
-        Assert.InRange(atWhite, 0.98f, 1.02f);
-        float prev = atWhite;
-        for (var i = 1; i <= 32; i++)
-        {
-            var x = 1f + ((stats.Lc - 1f) * (i / 32f));
-            var y = ToneMapper.MapScalar(x, p);
-            Assert.True(y > prev + 1e-5f, $"P1 scalar flat at x={x}: {y} ≤ {prev}");
-            prev = y;
-        }
-
-        Assert.InRange(
-            ToneMapper.MapScalar(stats.Lc, p),
-            SdrToneCurve.HighlightHeadroom - 0.02f,
-            SdrToneCurve.HighlightHeadroom + 0.02f);
-    }
-
-    [Fact]
-    public void P1_MapPixel_NeutralsAboveWhite_StrictlyIncreasing()
-    {
-        var stats = StatsLc(8f);
-        var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
-        float prev = -1f;
+        Assert.InRange(ToneMapper.MapScalar(1f, p), 0.98f, 1.02f);
         foreach (var x in new[] { 1f, 1.2f, 2f, 4f, 8f })
         {
-            ToneMapper.MapPixel(x, x, x, p, out var r, out _, out _);
-            Assert.True(r > prev + 1e-4f, $"P1 MapPixel flat: {x} → {r} ≤ {prev}");
-            Assert.True(r <= SdrToneCurve.HighlightHeadroom + 1e-3f);
-            prev = r;
+            var y = ToneMapper.MapScalar(x, p);
+            Assert.True(y <= 1.0001f, $"SDR MapScalar({x})={y} exceeds display white");
         }
     }
 
     [Fact]
-    public void P1_Lut_NeutralsAboveWhite_StrictlyIncreasing()
+    public void P1_MapPixelAndLut_Sdr_OutputAtMostDisplayWhite()
     {
         var stats = StatsLc(8f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
         var lut = ToneMapLut.Bake(p, size: 256);
-        float prev = -1f;
         foreach (var x in new[] { 1f, 1.2f, 2f, 4f, 8f })
         {
-            lut.MapPixel(x, x, x, out var r, out _, out _);
-            Assert.True(r > prev + 1e-4f, $"P1 LUT flat: {x} → {r} ≤ {prev}");
-            Assert.True(r <= SdrToneCurve.HighlightHeadroom + 1e-3f);
-            prev = r;
+            ToneMapper.MapPixel(x, x, x, p, out var r, out _, out _);
+            Assert.True(r <= 1.0001f, $"SDR MapPixel({x})={r} > 1");
+            lut.MapPixel(x, x, x, out var lr, out _, out _);
+            Assert.True(lr <= 1.0001f, $"SDR LUT({x})={lr} > 1");
         }
     }
 
     /// <summary>
-    /// P3: saturated highlights at different levels must not collapse.
-    /// Tightened to fail on 7c04018 (Y-restore soft-clip → one washed colour).
+    /// P3: must fail on the 7c04018 plateau (Y-restore soft-clip → one washed colour
+    /// ~(.822,.379,.278) for every highlight). Uses non-proportional chromas so a
+    /// flat SDR shoulder still keeps distinct hues; the washed plateau does not.
     /// </summary>
     [Fact]
     public void P3_SaturatedHighlights_NotOneWashedColour()
     {
         var stats = StatsLc(8f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
-        ToneMapper.MapPixel(2f, 0.4f, 0.15f, p, out var r1, out var g1, out var b1);
-        ToneMapper.MapPixel(6f, 1.2f, 0.45f, p, out var r2, out var g2, out var b2);
-        ToneMapper.MapPixel(8f, 1.6f, 0.6f, p, out var r3, out var g3, out var b3);
+        // Non-proportional — distinct after maxRGB scale even if MapScalar is flat at white.
+        ToneMapper.MapPixel(2.0f, 0.85f, 0.10f, p, out var r1, out var g1, out var b1);
+        ToneMapper.MapPixel(5.0f, 0.35f, 0.55f, p, out var r2, out var g2, out var b2);
+        ToneMapper.MapPixel(8.0f, 1.10f, 0.20f, p, out var r3, out var g3, out var b3);
 
-        // Peak channels must separate — 7c04018 collapsed all three to ~identical.
-        Assert.True(r1 + 0.04f < r2 || g1 + 0.02f < g2,
-            $"P3 collapsed 2 vs 6: ({r1},{g1},{b1}) vs ({r2},{g2},{b2})");
-        Assert.True(Math.Abs(r2 - r3) > 0.015f || Math.Abs(g2 - g3) > 0.01f,
-            $"P3 collapsed 6 vs 8: ({r2},{g2},{b2}) vs ({r3},{g3},{b3})");
-        // Not the hard-clip washed grey-orange.
-        Assert.False(
-            Math.Abs(r1 - 0.822f) < 0.05f && Math.Abs(g1 - 0.379f) < 0.05f && Math.Abs(b1 - 0.278f) < 0.05f
-            && Math.Abs(r1 - r3) < 0.02f,
-            "P3 matched 7c04018 washed colour");
-        Assert.True(r1 > g1 && g1 > b1);
-        Assert.True(r3 > g3 && g3 > b3);
+        // 7c04018: all three collapsed to the same washed RGB within ~0.02.
+        var d12 = Math.Abs(r1 - r2) + Math.Abs(g1 - g2) + Math.Abs(b1 - b2);
+        var d13 = Math.Abs(r1 - r3) + Math.Abs(g1 - g3) + Math.Abs(b1 - b3);
+        Assert.True(d12 > 0.08f, $"P3 plateau 2 vs 5 (7c04018-style): d={d12} ({r1},{g1},{b1}) vs ({r2},{g2},{b2})");
+        Assert.True(d13 > 0.08f, $"P3 plateau 2 vs 8 (7c04018-style): d={d13} ({r1},{g1},{b1}) vs ({r3},{g3},{b3})");
+
+        // Explicit 7c04018 washed signature.
+        static bool NearWashed(float r, float g, float b) =>
+            Math.Abs(r - 0.822f) < 0.06f && Math.Abs(g - 0.379f) < 0.06f && Math.Abs(b - 0.278f) < 0.06f;
+        Assert.False(NearWashed(r1, g1, b1) && NearWashed(r2, g2, b2) && NearWashed(r3, g3, b3),
+            "P3 matched 7c04018 washed plateau");
     }
 
     [Fact]
@@ -246,17 +225,25 @@ public class ImagingToneMapTests
         Assert.Equal(lcBefore, stats.Lc);
     }
 
+    /// <summary>
+    /// P2 SDR: +3 EV still grades below white; held plateau caps at display white
+    /// (no 1.12× headroom). Samples that stay under 1 after gain must rise.
+    /// </summary>
     [Fact]
     public void P2_PlusThreeEv_MapPixel_SoftRollNotHardClip()
     {
         var stats = StatsLc(4f, p50: 0.5f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 3f);
-        ToneMapper.MapPixel(0.15f, 0.15f, 0.15f, p, out var a, out _, out _);
-        ToneMapper.MapPixel(0.30f, 0.30f, 0.30f, p, out var b, out _, out _);
-        ToneMapper.MapPixel(0.50f, 0.50f, 0.50f, p, out var c, out _, out _);
-        Assert.True(a < b && b < c, $"P2 hard-clip: {a}, {b}, {c}");
-        Assert.True(c <= SdrToneCurve.HighlightHeadroom + 1e-3f);
+        // Post-gain ×8: 0.56, 0.80, 0.96 — all below ref white so the held
+        // 1..Lc plateau does not flatten them.
+        ToneMapper.MapPixel(0.07f, 0.07f, 0.07f, p, out var a, out _, out _);
+        ToneMapper.MapPixel(0.10f, 0.10f, 0.10f, p, out var b, out _, out _);
+        ToneMapper.MapPixel(0.12f, 0.12f, 0.12f, p, out var c, out _, out _);
+        Assert.True(a < b && b < c, $"P2 no rise below white: {a}, {b}, {c}");
+        Assert.True(c <= 1.0001f, $"SDR +3 EV output {c} exceeds display white");
         Assert.True(Math.Abs(a - b) > 1e-3f && Math.Abs(b - c) > 1e-3f);
+        ToneMapper.MapPixel(0.50f, 0.50f, 0.50f, p, out var hot, out _, out _);
+        Assert.True(hot <= 1.0001f, $"SDR +3 EV hot {hot} > display white");
     }
 
     /// <summary>
@@ -282,8 +269,12 @@ public class ImagingToneMapTests
             $"P2 HDR flat past Lc: y2={y2} y3={y3}");
     }
 
+    /// <summary>
+    /// Held: strict rise knee→ref white; 1..Lc may be flat at display white
+    /// pending Isiac A/B (no 1.12× SDR shoulder).
+    /// </summary>
     [Fact]
-    public void Curve_StrictlyIncreasing_AboveKnee()
+    public void Curve_StrictlyIncreasing_KneeToRefWhite()
     {
         var stats = StatsLc(6f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
@@ -292,9 +283,9 @@ public class ImagingToneMapTests
         {
             var x = (i / 64f) * stats.Lc;
             var y = ToneMapper.MapScalar(x, p);
-            if (x > 0.55f && x < stats.Lc - 1e-3f)
+            if (x > 0.55f && x < 1f - 1e-3f)
             {
-                Assert.True(y > prev + 1e-6f, $"flat at {x}: {y} ≤ {prev}");
+                Assert.True(y > prev + 1e-6f, $"flat below white at {x}: {y} ≤ {prev}");
             }
             else
             {
