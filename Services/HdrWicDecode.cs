@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Palace.Helpers;
+using Palace.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -33,6 +34,16 @@ internal sealed class HdrFrame
     public float IntensityScale { get; init; } = 1f;
 
     public JxlBufferTransfer BufferTransfer { get; init; } = JxlBufferTransfer.Unknown;
+
+    /// <summary>
+    /// P2: BT.2020 linear working frame (1.0 = 203 nits) from
+    /// <see cref="ImagingStillNormalize"/>. Present still uses
+    /// <see cref="ScrgbRgba"/> until P3–P5.
+    /// </summary>
+    public NormalizedFrame? Working { get; init; }
+
+    /// <summary>Normalize options used for <see cref="Working"/> (transfer / primaries / peak).</summary>
+    public NormalizeOptions? WorkingOptions { get; init; }
 
     public bool HasStats => MaxNits > 0;
 
@@ -1072,6 +1083,9 @@ internal static class HdrWicDecode
             return null;
         }
 
+        // Imaging Normalize on the packed decode size (before present box-scale).
+        var (working, workingOpts) = TryBuildWorking(data, format, width, height, probe);
+
         var rgba = converted.Value.Rgba;
         var (decodeW, decodeH) = measure
             ? GalleryPresent.MeasureDecodeSize(
@@ -1098,7 +1112,9 @@ internal static class HdrWicDecode
             AvgNits = converted.Value.AvgNits,
             MinNits = converted.Value.MinNits,
             MaxScrgb = converted.Value.MaxScrgb,
-            MaxScrgbChannel = converted.Value.MaxScrgbChannel
+            MaxScrgbChannel = converted.Value.MaxScrgbChannel,
+            Working = working,
+            WorkingOptions = workingOpts
         };
     }
 
@@ -1279,7 +1295,9 @@ internal static class HdrWicDecode
             SourcePath = path,
             IntensityTarget = decoded.IntensityTarget,
             IntensityScale = decoded.ScaleApplied,
-            BufferTransfer = decoded.BufferTransfer
+            BufferTransfer = decoded.BufferTransfer,
+            Working = decoded.Working,
+            WorkingOptions = decoded.WorkingOptions
         };
     }
 
@@ -1336,7 +1354,9 @@ internal static class HdrWicDecode
                 AvgNits = frame.AvgNits,
                 MinNits = frame.MinNits,
                 MaxScrgb = frame.MaxScrgb,
-                MaxScrgbChannel = frame.MaxScrgbChannel
+                MaxScrgbChannel = frame.MaxScrgbChannel,
+                Working = frame.Working,
+                WorkingOptions = frame.WorkingOptions
             };
         }
 
@@ -1344,9 +1364,58 @@ internal static class HdrWicDecode
     }
 
     /// <summary>
+    /// P2: packed encoded / linear floats → <see cref="NormalizedFrame"/>.
+    /// YUV planes are skipped (caller lacks a float YUV path here); PNG/JXR
+    /// packed RGB and float scRGB are covered.
+    /// </summary>
+    private static (NormalizedFrame? Working, NormalizeOptions? Options) TryBuildWorking(
+        byte[] data,
+        HdrPackedFormat format,
+        int width,
+        int height,
+        HdrProbe probe)
+    {
+        var count = width * height;
+        if (count <= 0 || !HdrPixels.HasPackedData(data, format, width, height))
+        {
+            return (null, null);
+        }
+
+        if (HdrPixels.IsYuv(format))
+        {
+            return (null, null);
+        }
+
+        var encoded = new float[count * 4];
+        for (var i = 0; i < count; i++)
+        {
+            HdrPixels.Read(data, i, format, out var r, out var g, out var b, out var a);
+            var o = i * 4;
+            encoded[o] = r;
+            encoded[o + 1] = g;
+            encoded[o + 2] = b;
+            encoded[o + 3] = a;
+        }
+
+        // Float/half JXR and 1010102XR are already linear scRGB.
+        var linearScrgb = format is HdrPackedFormat.RgbaFloat or HdrPackedFormat.RgbFloat
+            or HdrPackedFormat.RgbFloatPadded or HdrPackedFormat.RgbaHalf
+            or HdrPackedFormat.RgbHalf or HdrPackedFormat.RgbHalfPadded
+            or HdrPackedFormat.Rgba1010102Xr
+            || probe.Transfer == HdrTransfer.Scrgb;
+        var opts = linearScrgb
+            ? ImagingStillNormalize.OptionsForJxr(probe.MaxCllNits)
+            : ImagingStillNormalize.OptionsForEncoded(
+                probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
+
+        return (ImagingStillNormalize.Run(encoded, width, height, opts), opts);
+    }
+
+    /// <summary>
     /// Decode at the present size (as the WIC paths do): Radiance box-filters
     /// while streaming scanlines, so huge panoramas never hold the native
     /// float frame; EXR decodes native then box-scales. Stats stay native.
+    /// P2 also fills <see cref="HdrFrame.Working"/> from scene-linear floats.
     /// </summary>
     private static HdrFrame? FromLinearFloatStill(
         string path,
@@ -1360,13 +1429,25 @@ internal static class HdrWicDecode
             RadianceFrame? frame;
             int nativeW;
             int nativeH;
+            NormalizedFrame? working = null;
+            NormalizeOptions? workingOpts = null;
             if (probe.Kind == HdrKind.HdrExr || PathSafe.IsExr(path))
             {
-                frame = ExrFile.TryDecodeScrgb(File.ReadAllBytes(path));
-                if (frame is null)
+                var bytes = File.ReadAllBytes(path);
+                // Scene-linear for Imaging; present still needs Rec.709 scRGB.
+                var scene = ExrFile.TryDecode(bytes, convertToRec709: false);
+                if (scene is null)
                 {
                     return null;
                 }
+
+                workingOpts = ImagingStillNormalize.OptionsForExr(bytes);
+                working = ImagingStillNormalize.Run(
+                    scene.Rgba, scene.Width, scene.Height, workingOpts.Value);
+
+                var presentRgba = (float[])scene.Rgba.Clone();
+                ExrFile.ConvertToRec709(presentRgba, ExrFile.TryReadChromaticities(bytes));
+                frame = RadianceFile.FrameFromScrgb(presentRgba, scene.Width, scene.Height);
 
                 nativeW = frame.Width;
                 nativeH = frame.Height;
@@ -1401,6 +1482,12 @@ internal static class HdrWicDecode
                     nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
                 stream.Position = 0;
                 frame = RadianceFile.TryDecode(stream, dw, dh);
+                if (frame is not null)
+                {
+                    workingOpts = ImagingStillNormalize.OptionsForRadiance();
+                    working = ImagingStillNormalize.Run(
+                        frame.ScrgbRgba, frame.Width, frame.Height, workingOpts.Value);
+                }
             }
 
             if (frame is null)
@@ -1419,7 +1506,9 @@ internal static class HdrWicDecode
                 AvgNits = frame.AvgNits,
                 MinNits = frame.MinNits,
                 MaxScrgb = frame.MaxScrgb,
-                MaxScrgbChannel = frame.MaxScrgbChannel
+                MaxScrgbChannel = frame.MaxScrgbChannel,
+                Working = working,
+                WorkingOptions = workingOpts
             };
         }
         catch
@@ -1598,6 +1687,7 @@ internal static class HdrWicDecode
             return null;
         }
 
+        var (working, workingOpts) = TryBuildWorking(data, format, width, height, probe);
         return new HdrFrame
         {
             ScrgbRgba = converted.Value.Rgba!,
@@ -1609,7 +1699,9 @@ internal static class HdrWicDecode
             AvgNits = converted.Value.AvgNits,
             MinNits = converted.Value.MinNits,
             MaxScrgb = converted.Value.MaxScrgb,
-            MaxScrgbChannel = converted.Value.MaxScrgbChannel
+            MaxScrgbChannel = converted.Value.MaxScrgbChannel,
+            Working = working,
+            WorkingOptions = workingOpts
         };
     }
 

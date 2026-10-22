@@ -160,6 +160,13 @@ public static class Normalize
                 r = er * w * inv203;
                 g = eg * w * inv203;
                 b = eb * w * inv203;
+                if (options.UsesCustomChromaticities
+                    && options.Chromaticities is { } chrom
+                    && Primaries.TryToBt2020(r, g, b, chrom, out r, out g, out b))
+                {
+                    return;
+                }
+
                 Primaries.ToBt2020(r, g, b, options.EffectivePrimaries, out r, out g, out b);
                 return;
             }

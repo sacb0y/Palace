@@ -4,8 +4,8 @@ using System.Text;
 namespace Palace.Imaging;
 
 /// <summary>
-/// Minimal OpenEXR header reader for attributes P1 cares about
-/// (chromaticities, whiteLuminance). Full scanline decode is P2.
+/// Minimal OpenEXR header reader for attributes used by Normalize
+/// (chromaticities, whiteLuminance). Pixel decode stays in <c>ExrFile</c> (P2).
 /// </summary>
 public static class ExrHeader
 {

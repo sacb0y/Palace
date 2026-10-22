@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Palace.Helpers;
+using Palace.Imaging;
 using Starward.Codec.AVIF;
 
 namespace Palace.Services;
@@ -47,7 +48,9 @@ internal static unsafe class HdrAvifDecode
                     AvgNits = packed.AvgNits,
                     MinNits = packed.MinNits,
                     MaxScrgb = packed.MaxScrgb,
-                    MaxScrgbChannel = packed.MaxScrgbChannel
+                    MaxScrgbChannel = packed.MaxScrgbChannel,
+                    Working = packed.Working,
+                    WorkingOptions = packed.WorkingOptions
                 }
                 : null;
         }
@@ -126,7 +129,9 @@ internal static unsafe class HdrAvifDecode
         float AvgNits,
         float MinNits,
         float MaxScrgb,
-        char MaxScrgbChannel)? Decode(
+        char MaxScrgbChannel,
+        NormalizedFrame? Working,
+        NormalizeOptions? WorkingOptions)? Decode(
         string path,
         HdrProbe probe,
         int viewportPixelWidth,
@@ -253,10 +258,14 @@ internal static unsafe class HdrAvifDecode
                     var rgba = packed.Value.Rgba;
                     var width = storedW;
                     var height = storedH;
+                    var working = packed.Value.Working;
+                    var workingOpts = packed.Value.WorkingOptions;
                     if (wantRgba && rgba is not null && orientation is >= 2 and <= 8)
                     {
                         (rgba, width, height) = HdrPixels.OrientScrgbRgba(
                             rgba, storedW, storedH, orientation);
+                        // Working stays source-oriented; present Scrgb is EXIF-oriented.
+                        // P3 may re-orient Working; P2 keeps decode-space metadata.
                     }
                     else
                     {
@@ -273,7 +282,9 @@ internal static unsafe class HdrAvifDecode
                         packed.Value.AvgNits,
                         packed.Value.MinNits,
                         packed.Value.MaxScrgb,
-                        packed.Value.MaxScrgbChannel);
+                        packed.Value.MaxScrgbChannel,
+                        working,
+                        workingOpts);
                 }
                 finally
                 {
@@ -324,7 +335,9 @@ internal static unsafe class HdrAvifDecode
         float AvgNits,
         float MinNits,
         float MaxScrgb,
-        char MaxScrgbChannel)? ToScrgb(
+        char MaxScrgbChannel,
+        NormalizedFrame? Working,
+        NormalizeOptions? WorkingOptions)? ToScrgb(
         IntPtr pixels,
         int rowBytes,
         int width,
@@ -340,6 +353,8 @@ internal static unsafe class HdrAvifDecode
         }
 
         var rgba = wantRgba ? new float[count * 4] : null;
+        // Encoded 0..1 for Imaging Normalize (PQ/HLG/SDR) — separate from scRGB present.
+        var encoded = wantRgba ? new float[count * 4] : null;
         var maxY = 0f;
         var minY = float.MaxValue;
         var sumY = 0.0;
@@ -382,6 +397,10 @@ internal static unsafe class HdrAvifDecode
                     rgba[i + 1] = sg;
                     rgba[i + 2] = sb;
                     rgba[i + 3] = a;
+                    encoded![i] = er;
+                    encoded[i + 1] = eg;
+                    encoded[i + 2] = eb;
+                    encoded[i + 3] = a;
                 }
             }
         }
@@ -396,7 +415,18 @@ internal static unsafe class HdrAvifDecode
             minY = 0;
         }
 
+        NormalizedFrame? working = null;
+        NormalizeOptions? workingOpts = null;
+        if (encoded is not null)
+        {
+            workingOpts = ImagingStillNormalize.OptionsForEncoded(
+                probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
+            working = ImagingStillNormalize.Run(encoded, width, height, workingOpts.Value);
+        }
+
         return (rgba, maxY, (float)(sumY / count), minY, maxScrgb,
-            maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(maxR, maxG, maxB));
+            maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(maxR, maxG, maxB),
+            working,
+            workingOpts);
     }
 }

@@ -97,12 +97,21 @@ public static class ExrFile
         public int LinesPerChunk => Compression == 3 ? 16 : 1;
     }
 
-    public static Frame? TryDecode(ReadOnlySpan<byte> data, CancellationToken cancellationToken = default)
+    /// <param name="convertToRec709">
+    /// When true (default), chromaticities → BT.709 scRGB for the legacy present
+    /// path. When false, leave scene-linear source primaries so P2
+    /// <c>ImagingStillNormalize</c> can run with EXR header whiteLuminance /
+    /// chromaticities.
+    /// </param>
+    public static Frame? TryDecode(
+        ReadOnlySpan<byte> data,
+        CancellationToken cancellationToken = default,
+        bool convertToRec709 = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var frame = (HasUnknownCompression(data) ? null : ExrNative.TryDecode(data)) ?? TryDecodeInHouse(data, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        if (frame is not null)
+        if (frame is not null && convertToRec709)
         {
             ConvertToRec709(frame.Rgba, TryReadChromaticities(data), cancellationToken);
         }

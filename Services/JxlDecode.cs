@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Palace.Helpers;
+using Palace.Imaging;
 using Starward.Codec.JpegXL;
 using Starward.Codec.JpegXL.CMS;
 using Starward.Codec.JpegXL.CodeStream;
@@ -18,6 +19,8 @@ namespace Palace.Services;
 /// intensity_target/80. Used for mosaic thumbs and HDR present.
 /// Present callers pass <see cref="HdrJxlPresent.PresentMaxPixels"/> (~64 MP);
 /// thumbs use <see cref="HdrJxlPresent.ThumbMaxPixels"/> (120 MP).
+/// P2 also fills <see cref="Frame.Working"/> via <see cref="ImagingStillNormalize"/>
+/// before the legacy scRGB convert.
 /// </summary>
 internal static class JxlDecode
 {
@@ -27,7 +30,9 @@ internal static class JxlDecode
         int Height,
         float IntensityTarget = 0f,
         float ScaleApplied = 1f,
-        JxlBufferTransfer BufferTransfer = JxlBufferTransfer.Unknown);
+        JxlBufferTransfer BufferTransfer = JxlBufferTransfer.Unknown,
+        NormalizedFrame? Working = null,
+        NormalizeOptions? WorkingOptions = null);
 
     public static Frame? TryDecodeFile(
         string path,
@@ -217,6 +222,15 @@ internal static class JxlDecode
                 && probeTransfer is HdrTransfer.Pq or HdrTransfer.Hlg);
         var primaries = stillEncoded ? targetDataPrimaries : probeCicpPrimaries;
 
+        var workingOpts = ImagingStillNormalize.OptionsForJxl(
+            actualBuffer,
+            probeTransfer,
+            primaries,
+            info.IntensityTarget);
+        // Imaging wants the buffer before legacy NormalizeToScrgb mutates it.
+        var working = ImagingStillNormalize.RunCopy(
+            rgba, (int)info.XSize, (int)info.YSize, workingOpts);
+
         var norm = HdrJxlPresent.NormalizeToScrgb(
             rgba,
             info.IntensityTarget,
@@ -238,6 +252,8 @@ internal static class JxlDecode
             (int)info.YSize,
             norm.IntensityTarget,
             norm.ScaleApplied,
-            norm.BufferTransfer);
+            norm.BufferTransfer,
+            working,
+            workingOpts);
     }
 }
