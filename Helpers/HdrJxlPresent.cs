@@ -9,10 +9,17 @@ namespace Palace.Helpers;
 public static class HdrJxlPresent
 {
     /// <summary>
-    /// Cap native float decode (~16 bytes/pixel RGBA). ~64 MP ≈ 1 GB peak;
-    /// kept present buffers for Fit are viewport-sized after box-scale.
+    /// Cap native float decode for HDR present (~16 bytes/pixel RGBA).
+    /// ~64 MP ≈ 1 GB peak; Fit keeps a viewport buffer after box-scale.
     /// </summary>
     public const int PresentMaxPixels = 64_000_000;
+
+    /// <summary>
+    /// Mosaic / large-preview thumb decode cap (legacy 120 MP). Separate from
+    /// <see cref="PresentMaxPixels"/> so thumbs can still open large JXL that
+    /// the swapchain present path refuses.
+    /// </summary>
+    public const int ThumbMaxPixels = 120_000_000;
 
     /// <summary>
     /// PQ/HLG JXL should present via bundled libjxl → scRGB swapchain, not
@@ -26,11 +33,20 @@ public static class HdrJxlPresent
     /// libjxl LinearSRGB float has 1.0 = <paramref name="intensityTarget"/> nits
     /// for PQ/HLG. Scale so 1.0 = 80 nits (scRGB). Route on the probe transfer
     /// (not an IntensityTarget &gt; 255 heuristic) so SDR / gain-map base stays 0..1.
+    /// Missing target: PQ → 10 000 nits, HLG → 1000 nits (HLG nominal peak).
     /// </summary>
-    public static float ScrgbScaleFromIntensityTarget(float intensityTarget, HdrTransfer transfer) =>
-        transfer is HdrTransfer.Pq or HdrTransfer.Hlg
-            ? (intensityTarget > 0f ? intensityTarget : 10_000f) / GalleryPresent.ScrgbNits
-            : 1f;
+    public static float ScrgbScaleFromIntensityTarget(float intensityTarget, HdrTransfer transfer)
+    {
+        if (transfer is not (HdrTransfer.Pq or HdrTransfer.Hlg))
+        {
+            return 1f;
+        }
+
+        var nits = intensityTarget > 0f
+            ? intensityTarget
+            : transfer == HdrTransfer.Hlg ? 1000f : 10_000f;
+        return nits / GalleryPresent.ScrgbNits;
+    }
 
     /// <summary>Multiply RGB channels by <paramref name="scale"/>; leave alpha.</summary>
     public static void ApplyIntensityScale(Span<float> rgba, float scale)

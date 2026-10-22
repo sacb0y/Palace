@@ -29,6 +29,9 @@ public class HdrJxlPresentTests
             1600f / GalleryPresent.ScrgbNits,
             HdrJxlPresent.ScrgbScaleFromIntensityTarget(1600f, HdrTransfer.Hlg),
             3);
+        // Missing IntensityTarget: PQ → 10 000, HLG → 1000 (not PQ's 10k).
+        Assert.Equal(10_000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(0f, HdrTransfer.Pq), 3);
+        Assert.Equal(1000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(0f, HdrTransfer.Hlg), 3);
         // SDR / sRGB transfer stays relative 0..1 — even if IntensityTarget looks high.
         Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f, HdrTransfer.Srgb));
         Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Srgb));
@@ -131,9 +134,11 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void PresentMaxPixels_IsAbout64M()
+    public void PixelCaps_Present64M_Thumb120M()
     {
         Assert.Equal(64_000_000, HdrJxlPresent.PresentMaxPixels);
+        Assert.Equal(120_000_000, HdrJxlPresent.ThumbMaxPixels);
+        Assert.True(HdrJxlPresent.ThumbMaxPixels > HdrJxlPresent.PresentMaxPixels);
     }
 
     [Fact]
