@@ -79,7 +79,17 @@ internal readonly record struct HdrStats(
 /// </summary>
 internal static class HdrWicDecode
 {
-    public static string? LastWicError { get; private set; }
+    /// <summary>
+    /// Per-async-flow WIC error (S4): present and thumbnail workers must not
+    /// share one static stamp. Cleared at the start of each <see cref="TryLoadAsync"/>.
+    /// </summary>
+    private static readonly AsyncLocal<string?> WicErrorSlot = new();
+
+    public static string? LastWicError
+    {
+        get => WicErrorSlot.Value;
+        private set => WicErrorSlot.Value = value;
+    }
 
     public static Task<HdrFrame?> TryLoadAsync(
         string path,
@@ -95,6 +105,7 @@ internal static class HdrWicDecode
         ImageScaling scaling,
         CancellationToken cancellation)
     {
+        LastWicError = null;
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
             return null;
@@ -151,25 +162,18 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrJxr)
         {
-            var jxr = await TryLoadJxrAsync(
-                path,
-                probe,
-                viewportPixelWidth,
-                viewportPixelHeight,
-                scaling,
-                wantRgba: true,
-                measure: false,
-                cancellation).ConfigureAwait(false);
-            if (jxr is null)
-            {
-                SdrTonemapLog.TryAppendViewer(
+            // HRESULT stamped on LastWicError; GalleryStillSurface logs hdr-fail once.
+            return Tag(
+                await TryLoadJxrAsync(
                     path,
-                    "hdr-fail",
-                    "jxr",
-                    detail: LastWicError ?? "jxr null");
-            }
-
-            return Tag(jxr, "jxr");
+                    probe,
+                    viewportPixelWidth,
+                    viewportPixelHeight,
+                    scaling,
+                    wantRgba: true,
+                    measure: false,
+                    cancellation).ConfigureAwait(false),
+                "jxr");
         }
 
         if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))

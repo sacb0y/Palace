@@ -38,11 +38,14 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
     public float SdrWhiteLevelNits => _sdrWhiteLevelNits;
 
-    /// <summary>Last SDR Reinhard exposure (0 when HDR present).</summary>
+    /// <summary>Last thumb-match ToneMap exposure (0 when unused).</summary>
     public float LastSdrExposure { get; private set; }
 
-    /// <summary>Last SDR Reinhard white (0 when HDR present / unused).</summary>
+    /// <summary>Last thumb-match ToneMap white (0 when unused).</summary>
     public float LastSdrReinhardWhite { get; private set; }
+
+    /// <summary>DisplayHdr at last sticky thumb-match present (S5 invalidation).</summary>
+    private bool? _stickyDisplayHdr;
 
     public async Task<HdrPresentOutcome> TryPresentAsync(
         HdrFrame frame,
@@ -170,6 +173,13 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             // Cached sticky exposure/white reuse Fit stats on 1:1 / resize.
             var matchThumb = GalleryPresent.PresentMatchesThumbToneMap(
                 displayHdr, frame.BufferTransfer);
+            // S5: HDR↔SDR switch must not reuse sticky Analyze from the other mode.
+            if (_stickyDisplayHdr is { } priorHdr && priorHdr != displayHdr)
+            {
+                resolvedExposure = null;
+                resolvedWhite = null;
+            }
+
             if (matchThumb)
             {
                 if (resolvedExposure is null or <= 0
@@ -186,7 +196,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
                 outcomeExposure = resolvedExposure!.Value;
                 outcomeWhite = resolvedWhite!.Value;
-                map = GalleryPresent.PresentMapThumbMatch(outcomeExposure, outcomeWhite);
+                map = GalleryPresent.PresentMapThumbMatch(
+                    outcomeExposure,
+                    outcomeWhite,
+                    displayIsHdr: displayHdr,
+                    sdrWhiteLevelNits: sdrWhite);
             }
             else
             {
@@ -275,6 +289,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 // Sticky thumb Analyze stats when the map used them.
                 LastSdrExposure = matchThumb ? outcomeExposure : 0f;
                 LastSdrReinhardWhite = matchThumb ? outcomeWhite : 0f;
+                _stickyDisplayHdr = matchThumb ? displayHdr : null;
                 outcome = HdrPresentOutcome.Presented;
             });
             return outcome;
