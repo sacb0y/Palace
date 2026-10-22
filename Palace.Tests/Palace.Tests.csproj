@@ -76,6 +76,7 @@
     <Compile Include="..\Helpers\ReviewSwipe.cs" Link="ReviewSwipe.cs" />
     <Compile Include="..\Helpers\ReviewReject.cs" Link="ReviewReject.cs" />
     <Compile Include="..\Helpers\BatchReject.cs" Link="BatchReject.cs" />
+    <Compile Include="..\Helpers\BatchRejectFlow.cs" Link="BatchRejectFlow.cs" />
     <Compile Include="..\Helpers\ReviewSession.cs" Link="ReviewSession.cs" />
     <Compile Include="..\Helpers\ReviewApplyGate.cs" Link="ReviewApplyGate.cs" />
     <Compile Include="..\Helpers\ReviewUndoFlow.cs" Link="ReviewUndoFlow.cs" />
