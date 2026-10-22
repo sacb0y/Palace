@@ -191,17 +191,17 @@ public sealed class TouchGesturesTests
         Assert.False(TouchGestures.AllowsSwipe(zoomed: true, fingerCount: 1, afterPinchAwaitingLift: false));
         Assert.False(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 2, afterPinchAwaitingLift: false));
         Assert.True(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 1, afterPinchAwaitingLift: false));
-        // Accumulated outward travel (not a single frame delta).
-        Assert.True(TouchGestures.AllowsSwipeHandoff(true, true, 25));
-        Assert.False(TouchGestures.AllowsSwipeHandoff(true, true, 10));
+        // Accumulated outward travel (not a single frame delta). Caller gates edge.
+        Assert.True(TouchGestures.AllowsSwipeHandoff(zoomed: true, accumulatedOutwardPx: 25));
+        Assert.False(TouchGestures.AllowsSwipeHandoff(zoomed: true, accumulatedOutwardPx: 10));
         // Fill portrait with only vertical overflow: page immediately.
         Assert.True(TouchGestures.NoHorizontalPanRoom(0));
         Assert.True(TouchGestures.NoHorizontalPanRoom(0.5));
         Assert.False(TouchGestures.NoHorizontalPanRoom(1));
         Assert.True(TouchGestures.AllowsSwipeHandoff(
-            zoomed: true, pinnedAtStartEdge: true, accumulatedOutwardPx: 0, noHorizontalPanRoom: true));
+            zoomed: true, accumulatedOutwardPx: 0, noHorizontalPanRoom: true));
         Assert.False(TouchGestures.AllowsSwipeHandoff(
-            zoomed: true, pinnedAtStartEdge: true, accumulatedOutwardPx: 0, noHorizontalPanRoom: false));
+            zoomed: true, accumulatedOutwardPx: 0, noHorizontalPanRoom: false));
         Assert.Equal("_rejected", TouchGestures.RejectedFolderName);
         Assert.EndsWith("_rejected", TouchGestures.RejectedFolderPath("/photos"));
     }

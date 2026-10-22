@@ -58,11 +58,9 @@ public sealed class GalleryStillSurfaceXamlTests
         Assert.True(GalleryScale.FitSwipeUsesViewportPanel(scrolls: false));
         Assert.False(GalleryScale.FitSwipeUsesViewportPanel(scrolls: true));
 
-        var (panelW, panelH) = GalleryScale.FitSwipePanelDipSize(800, 600);
-        Assert.Equal(800, panelW, 3);
-        Assert.Equal(600, panelH, 3);
-
-        var image = GalleryScale.FitContainDipSize(100, 200, 800, 600);
+        const double panelW = 800;
+        const double panelH = 600;
+        var image = GalleryScale.FitContainDipSize(100, 200, panelW, panelH);
         Assert.True(image.Width < panelW);
         Assert.Equal(600, image.Height, 3);
     }
@@ -78,8 +76,32 @@ public sealed class GalleryStillSurfaceXamlTests
         Assert.True(TouchGestures.NoHorizontalPanRoom(maxH));
         Assert.True(TouchGestures.AllowsSwipeHandoff(
             zoomed: true,
-            pinnedAtStartEdge: true,
             accumulatedOutwardPx: 0,
             noHorizontalPanRoom: true));
+    }
+
+    [Fact]
+    public void ToolbarStackPanel_TransparentBackground_SwallowsGapTaps()
+    {
+        foreach (var relative in new[]
+                 {
+                     Path.Combine("Pages", "LibraryPage.xaml"),
+                     Path.Combine("GalleryWindow.xaml"),
+                 })
+        {
+            var path = Path.Combine(RepoRoot(), relative);
+            Assert.True(File.Exists(path), path);
+            var doc = XDocument.Load(path);
+            // Info button lives in the toolbar StackPanel that must catch gap taps.
+            var info = doc.Descendants()
+                .FirstOrDefault(e =>
+                    Attr(e, "AutomationProperties.AutomationId") is "BtnGalleryImageInfo"
+                        or "BtnGalleryWindowImageInfo");
+            Assert.NotNull(info);
+            var stack = info!.Parent;
+            Assert.NotNull(stack);
+            Assert.Equal("StackPanel", stack!.Name.LocalName, StringComparer.Ordinal);
+            Assert.Equal("Transparent", Attr(stack, "Background"), StringComparer.Ordinal);
+        }
     }
 }

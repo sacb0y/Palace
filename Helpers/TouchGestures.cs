@@ -154,19 +154,17 @@ public static class TouchGestures
         maxHorizontalScroll <= 0.5;
 
     /// <summary>
-    /// Zoomed one finger always pans. Swipe handoff when pinned at an edge and
-    /// either there is no horizontal pan room (page immediately) or accumulated
-    /// outward travel past the pin exceeds <see cref="EdgeHandoffPx"/>.
+    /// Zoomed handoff past a pinned edge: either no horizontal pan room (page
+    /// immediately) or accumulated outward travel exceeds
+    /// <see cref="EdgeHandoffPx"/>. Caller must already know the drag is
+    /// outward at an edge — do not pass a dummy pinned flag.
     /// Pass the running outward total — not a single frame's delta.
     /// </summary>
     public static bool AllowsSwipeHandoff(
         bool zoomed,
-        bool pinnedAtStartEdge,
         double accumulatedOutwardPx,
         bool noHorizontalPanRoom = false) =>
-        zoomed
-        && pinnedAtStartEdge
-        && (noHorizontalPanRoom || accumulatedOutwardPx > EdgeHandoffPx);
+        zoomed && (noHorizontalPanRoom || accumulatedOutwardPx > EdgeHandoffPx);
 
     public static bool AllowsSwipe(bool zoomed, int fingerCount, bool afterPinchAwaitingLift) =>
         !zoomed && fingerCount == 1 && !afterPinchAwaitingLift;

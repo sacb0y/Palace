@@ -1312,11 +1312,10 @@ public sealed partial class GalleryStillSurface : UserControl
             && !double.IsNaN(width)
             && !double.IsNaN(height))
         {
-            var (panelW, panelH) = GalleryScale.FitSwipePanelDipSize(viewW, viewH);
             GrdStillContent.HorizontalAlignment = HorizontalAlignment.Left;
             GrdStillContent.VerticalAlignment = VerticalAlignment.Top;
-            GrdStillContent.Width = panelW;
-            GrdStillContent.Height = panelH;
+            GrdStillContent.Width = viewW;
+            GrdStillContent.Height = viewH;
             ImgStill.HorizontalAlignment = HorizontalAlignment.Center;
             ImgStill.VerticalAlignment = VerticalAlignment.Center;
             ScpHdr.HorizontalAlignment = HorizontalAlignment.Center;
@@ -2648,9 +2647,9 @@ public sealed partial class GalleryStillSurface : UserControl
 
         // Accumulate outward travel across frames (not a single Delta).
         _edgeOutwardAccum += Math.Abs(deltaX);
+        // Outward-at-edge already gated above — no dummy pinned flag.
         if (!TouchGestures.AllowsSwipeHandoff(
                 zoomed: true,
-                pinnedAtStartEdge: true,
                 accumulatedOutwardPx: _edgeOutwardAccum,
                 noHorizontalPanRoom: noHorizontalPan))
         {
