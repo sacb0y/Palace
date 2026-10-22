@@ -640,10 +640,11 @@ public static class GalleryPresent
     /// <summary>
     /// Same stats as mosaic thumbs (<see cref="ToneMap.Analyze"/> + Reinhard):
     /// exposure may exceed 1 (MidGrey boost). Use for full-view ↔ thumb match
-    /// (room.jxl <c>hdr-display</c>+linear). Does not change the curve shape.
-    /// On an HDR panel, multiply scale and clip by
-    /// <c>SdrWhiteLevel/80</c> so composition white matches the thumb (absolute
-    /// scRGB 1.0 = 80 nits; Windows HDR white is SdrWhiteLevel).
+    /// (room.jxl <c>hdr-display</c>+linear). Curve inputs match the thumb;
+    /// on an HDR panel <see cref="HdrPresentMap.OutputScale"/> /
+    /// <see cref="HdrPresentMap.ClipScrgb"/> are <c>SdrWhiteLevel/80</c> so
+    /// <see cref="ToneMap.MapPresentRgb"/> lifts the curve <em>output</em>
+    /// into composition white (absolute scRGB 1.0 = 80 nits).
     /// </summary>
     public static HdrPresentMap PresentMapThumbMatch(
         float exposure,
@@ -652,25 +653,20 @@ public static class GalleryPresent
         float sdrWhiteLevelNits = 0f)
     {
         var scale = exposure > 0 && float.IsFinite(exposure) ? exposure : 1f;
-        var clip = 1f;
         var white = reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f;
+        // M1: leave exposure/white alone (Reinhard is not linear). OutputScale
+        // and ClipScrgb = k → multiply curve output by k and fold/clip to k.
+        var k = 1f;
         if (displayIsHdr)
         {
-            // M1: thumb JPEG is SDR (1.0 = 80 nits). HDR swapchain absolute
-            // scRGB needs ×(SdrWhite/80) or the full view is 2.5–3.5× darker.
-            var k = EffectiveSdrWhiteNits(sdrWhiteLevelNits) / ScrgbNits;
-            if (k > 0 && float.IsFinite(k))
+            var paper = EffectiveSdrWhiteNits(sdrWhiteLevelNits) / ScrgbNits;
+            if (paper > 0 && float.IsFinite(paper))
             {
-                scale *= k;
-                clip *= k;
-                if (white > 1f)
-                {
-                    white *= k;
-                }
+                k = paper;
             }
         }
 
-        return new(scale, clip, ReinhardWhite: white, SoftNegatives: false);
+        return new(scale, k, ReinhardWhite: white, SoftNegatives: false, OutputScale: k);
     }
 
     /// <summary>
@@ -682,6 +678,14 @@ public static class GalleryPresent
         bool displayIsHdr,
         JxlBufferTransfer bufferTransfer) =>
         !displayIsHdr || bufferTransfer == JxlBufferTransfer.Linear;
+
+    /// <summary>
+    /// S5: sticky thumb Analyze stats must not reuse across a DisplayIsHdr flip.
+    /// </summary>
+    public static bool StickyThumbToneInvalidated(
+        bool? stickyDisplayHdr,
+        bool displayIsHdr) =>
+        stickyDisplayHdr is { } prior && prior != displayIsHdr;
 
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
@@ -1419,10 +1423,12 @@ public readonly record struct GalleryImageInfo(
 /// for absolute HDR scRGB. When <see cref="ReinhardWhite"/> &gt; 1, extended
 /// Reinhard rolls highlights (same curve as <see cref="ToneMap"/> thumbs).
 /// <see cref="SoftNegatives"/> true = pass OOG negatives through (HDR);
-/// false = plain clamp to 0 (SDR).
+/// false = plain clamp to 0 (SDR). <see cref="OutputScale"/> lifts the
+/// finished curve (M1 HDR thumb-match ×SdrWhite/80); leave Scale/White alone.
 /// </summary>
 public readonly record struct HdrPresentMap(
     float Scale,
     float ClipScrgb,
     float ReinhardWhite = 0f,
-    bool SoftNegatives = false);
+    bool SoftNegatives = false,
+    float OutputScale = 1f);

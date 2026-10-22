@@ -17,7 +17,8 @@ public readonly record struct HdrPixelMap(
     float VizWhiteScrgb = 1f,
     int? CicpPrimaries = null,
     float ReinhardWhite = 0f,
-    bool SoftNegatives = false)
+    bool SoftNegatives = false,
+    float OutputScale = 1f)
 {
     /// <summary>
     /// Palette white for visualizations: SDR reference white on an HDR
@@ -34,7 +35,8 @@ public readonly record struct HdrPixelMap(
             VizWhiteFor(displayIsHdr),
             cicpPrimaries,
             map.ReinhardWhite,
-            map.SoftNegatives);
+            map.SoftNegatives,
+            map.OutputScale);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Apply(float r, float g, float b, out float or, out float og, out float ob)
@@ -59,6 +61,7 @@ public readonly record struct HdrPixelMap(
             SoftNegatives,
             out or,
             out og,
-            out ob);
+            out ob,
+            OutputScale);
     }
 }

@@ -260,24 +260,53 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void PresentMapThumbMatch_HdrDisplay_ScalesBySdrWhiteOver80()
+    public void PresentMapThumbMatch_HdrDisplay_OutputMatchesThumbTimesSdrWhiteOver80()
     {
-        // M1: HDR composition white is SdrWhiteLevel, not 80 nits — ×(sdr/80)
-        // on scale + clip or full view is 2.5–3.5× darker than the thumb JPEG.
+        // M1: leave curve inputs alone; MapPresentRgb multiplies OUTPUT by
+        // k=SdrWhite/80 and folds/clips to k. Reinhard is not linear — scaling
+        // inputs left mid-grey ~1.3× and highlights ~3× too dark.
         const float exposure = 1.2f;
         const float white = 4f;
+        const float sdrWhite = 240f; // 3× paper
+        var k = sdrWhite / GalleryPresent.ScrgbNits;
+
         var sdr = GalleryPresent.PresentMapThumbMatch(exposure, white, displayIsHdr: false);
         Assert.Equal(exposure, sdr.Scale);
         Assert.Equal(1f, sdr.ClipScrgb);
         Assert.Equal(white, sdr.ReinhardWhite);
 
-        const float sdrWhite = 240f; // 3× paper
         var hdr = GalleryPresent.PresentMapThumbMatch(
             exposure, white, displayIsHdr: true, sdrWhiteLevelNits: sdrWhite);
-        var k = sdrWhite / GalleryPresent.ScrgbNits;
-        Assert.Equal(exposure * k, hdr.Scale, 3);
+        Assert.Equal(exposure, hdr.Scale, 3);
+        Assert.Equal(white, hdr.ReinhardWhite, 3);
         Assert.Equal(k, hdr.ClipScrgb, 3);
-        Assert.Equal(white * k, hdr.ReinhardWhite, 3);
+        Assert.Equal(k, hdr.OutputScale, 3);
+        Assert.Equal(1f, sdr.OutputScale, 3);
+
+        // Mid-grey + a hot highlight — compare mapped pixels to thumb × k.
+        foreach (var (r, g, b) in new[] { (0.18f, 0.18f, 0.18f), (2.5f, 2.0f, 1.5f) })
+        {
+            ToneMap.MapPresentRgb(
+                r, g, b, sdr.Scale, sdr.ClipScrgb, sdr.ReinhardWhite, softNegatives: false,
+                out var tr, out var tg, out var tb, sdr.OutputScale);
+            ToneMap.MapPresentRgb(
+                r, g, b, hdr.Scale, hdr.ClipScrgb, hdr.ReinhardWhite, softNegatives: false,
+                out var hr, out var hg, out var hb, hdr.OutputScale);
+            Assert.Equal(tr * k, hr, 3);
+            Assert.Equal(tg * k, hg, 3);
+            Assert.Equal(tb * k, hb, 3);
+        }
+    }
+
+    [Fact]
+    public void StickyThumbToneInvalidated_OnDisplayHdrFlip()
+    {
+        // S5: Fit→1:1 sticky Analyze must not survive HDR↔SDR.
+        Assert.False(GalleryPresent.StickyThumbToneInvalidated(null, displayIsHdr: true));
+        Assert.False(GalleryPresent.StickyThumbToneInvalidated(true, displayIsHdr: true));
+        Assert.False(GalleryPresent.StickyThumbToneInvalidated(false, displayIsHdr: false));
+        Assert.True(GalleryPresent.StickyThumbToneInvalidated(true, displayIsHdr: false));
+        Assert.True(GalleryPresent.StickyThumbToneInvalidated(false, displayIsHdr: true));
     }
 
     [Fact]

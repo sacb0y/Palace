@@ -67,6 +67,12 @@ internal readonly record struct HdrStats(
     int Height);
 
 /// <summary>
+/// Frame plus WIC/lib error from one <see cref="HdrWicDecode.TryLoadAsync"/>
+/// call (S4). Do not read a shared static after await — return the stamp.
+/// </summary>
+internal readonly record struct HdrDecodeResult(HdrFrame? Frame, string? Error);
+
+/// <summary>
 /// Local HDR still → linear scRGB. HDR AVIF prefers libavif (identity
 /// GBR). HDR JPEG XR runs native WIC COM float/half CopyPixels first
 /// (filename / handle / memory / <c>wmp</c> CoCreate /
@@ -80,24 +86,46 @@ internal readonly record struct HdrStats(
 internal static class HdrWicDecode
 {
     /// <summary>
-    /// Per-async-flow WIC error (S4): present and thumbnail workers must not
-    /// share one static stamp. Cleared at the start of each <see cref="TryLoadAsync"/>.
+    /// Mutable box in <see cref="AsyncLocal{T}"/> so async callees mutate the
+    /// same stamp the caller returns (replacing the string slot does not flow
+    /// back across await).
     /// </summary>
-    private static readonly AsyncLocal<string?> WicErrorSlot = new();
-
-    public static string? LastWicError
+    private sealed class WicErrorBox
     {
-        get => WicErrorSlot.Value;
-        private set => WicErrorSlot.Value = value;
+        public string? Value;
     }
 
-    public static Task<HdrFrame?> TryLoadAsync(
+    private static readonly AsyncLocal<WicErrorBox?> WicErrorSlot = new();
+
+    private static string? LastWicError
+    {
+        get => WicErrorSlot.Value?.Value;
+        set
+        {
+            var box = WicErrorSlot.Value;
+            if (box is null)
+            {
+                box = new WicErrorBox();
+                WicErrorSlot.Value = box;
+            }
+
+            box.Value = value;
+        }
+    }
+
+    private static void BeginErrorStamp() =>
+        WicErrorSlot.Value = new WicErrorBox();
+
+    private static HdrDecodeResult Done(HdrFrame? frame) =>
+        new(frame, frame is null ? LastWicError : null);
+
+    public static Task<HdrDecodeResult> TryLoadAsync(
         string path,
         HdrProbe probe,
         CancellationToken cancellation) =>
         TryLoadAsync(path, probe, 0, 0, ImageScaling.Fit, cancellation);
 
-    public static async Task<HdrFrame?> TryLoadAsync(
+    public static async Task<HdrDecodeResult> TryLoadAsync(
         string path,
         HdrProbe probe,
         int viewportPixelWidth,
@@ -105,10 +133,10 @@ internal static class HdrWicDecode
         ImageScaling scaling,
         CancellationToken cancellation)
     {
-        LastWicError = null;
+        BeginErrorStamp();
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
-            return null;
+            return Done(null);
         }
 
         HdrFrame? Tag(HdrFrame? frame, string decoder)
@@ -131,11 +159,11 @@ internal static class HdrWicDecode
         if (IsLinearFloatStill(probe, path))
         {
             var kind = probe.Kind == HdrKind.HdrExr || PathSafe.IsExr(path) ? "exr" : "hdr";
-            return Tag(
+            return Done(Tag(
                 await Task.Run(
                     () => FromLinearFloatStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
                     cancellation).ConfigureAwait(false),
-                kind);
+                kind));
         }
 
         if (PngFile.ShouldDecodeManaged(probe))
@@ -147,7 +175,7 @@ internal static class HdrWicDecode
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
-                    return Tag(png, "png");
+                    return Done(Tag(png, "png"));
                 }
             }
             catch (OperationCanceledException)
@@ -162,8 +190,8 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrJxr)
         {
-            // HRESULT stamped on LastWicError; GalleryStillSurface logs hdr-fail once.
-            return Tag(
+            // HRESULT on LastWicError box; returned with Done — surface logs once.
+            return Done(Tag(
                 await TryLoadJxrAsync(
                     path,
                     probe,
@@ -173,7 +201,7 @@ internal static class HdrWicDecode
                     wantRgba: true,
                     measure: false,
                     cancellation).ConfigureAwait(false),
-                "jxr");
+                "jxr"));
         }
 
         if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
@@ -186,7 +214,7 @@ internal static class HdrWicDecode
                     cancellation).ConfigureAwait(false);
                 if (avif is not null)
                 {
-                    return Tag(avif, "avif");
+                    return Done(Tag(avif, "avif"));
                 }
             }
             catch (OperationCanceledException)
@@ -209,13 +237,13 @@ internal static class HdrWicDecode
                 if (jxl is not null)
                 {
                     LastWicError = null;
-                    return Tag(jxl, "libjxl");
+                    return Done(Tag(jxl, "libjxl"));
                 }
 
                 // Do not WIC/`BitmapImage` PQ — that is an SDR preview wrongly
                 // labelled "presenting scRGB". Stamp and stop.
                 LastWicError ??= "jxl null";
-                return null;
+                return Done(null);
             }
             catch (OperationCanceledException)
             {
@@ -225,7 +253,7 @@ internal static class HdrWicDecode
             {
                 ErrorReporter.LogOnly("HdrWicDecode JXL present", ex);
                 LastWicError = "jxl ex " + ex.GetType().Name;
-                return null;
+                return Done(null);
             }
         }
 
@@ -234,7 +262,7 @@ internal static class HdrWicDecode
         if (HdrJxlPresent.SkipWicPresent(probe, path))
         {
             LastWicError ??= "jxl no wic";
-            return null;
+            return Done(null);
         }
 
         try
@@ -248,7 +276,7 @@ internal static class HdrWicDecode
             var nativeH = (int)decoder.OrientedPixelHeight;
             if (nativeW <= 0 || nativeH <= 0 || nativeW > 16384 || nativeH > 16384)
             {
-                return null;
+                return Done(null);
             }
 
             var (decodeW, decodeH) = GalleryPresent.PresentDecodeSize(
@@ -263,16 +291,16 @@ internal static class HdrWicDecode
                 decoder, decodeW, decodeH, HdrColor.NeedsYuvConvert(probe.Kind), cancellation).ConfigureAwait(false);
             if (pixels is null)
             {
-                return null;
+                return Done(null);
             }
 
             cancellation.ThrowIfCancellationRequested();
             var packed = pixels.Value;
-            return Tag(
+            return Done(Tag(
                 await Task.Run(
                     () => ToScrgb(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe),
                     cancellation).ConfigureAwait(false),
-                "wic");
+                "wic"));
         }
         catch (OperationCanceledException)
         {
@@ -293,13 +321,8 @@ internal static class HdrWicDecode
                 ErrorReporter.LogOnly($"HdrWicDecode WIC present ({leaf})", ex);
             }
 
-            SdrTonemapLog.TryAppendViewer(
-                path,
-                "hdr-fail",
-                ProbeBufferLabel(probe),
-                detail: LastWicError
-                    ?? WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.CreateAsync, ex));
-            return null;
+            // Caller (GalleryStillSurface) logs hdr-fail once with Done.Error.
+            return Done(null);
         }
     }
 
