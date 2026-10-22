@@ -785,9 +785,11 @@
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
+            <!-- Right inset matches MosaicLayoutWidth.ViewportGutterDip (overlay scrollbar). -->
             <AutoSuggestBox
                 x:Name="AsbSearch"
                 Grid.Row="2"
+                Margin="0,0,16,0"
                 AutomationProperties.AutomationId="AsbSearch"
                 PlaceholderText="Search filename, tags, prompt, model"
                 QueryIcon="Find"
@@ -1777,12 +1779,13 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Toast slot overlays the mosaic so opening/closing does not reflow the grid. -->
+        <!-- Toast slot overlays the mosaic so opening/closing does not reflow the grid.
+             Right inset matches MosaicLayoutWidth.ViewportGutterDip (overlay scrollbar). -->
         <StackPanel
             Grid.Row="1"
             Grid.Column="1"
             MaxWidth="720"
-            Margin="0,0,0,12"
+            Margin="0,0,16,12"
             Padding="8,0"
             VerticalAlignment="Bottom"
             Spacing="4">

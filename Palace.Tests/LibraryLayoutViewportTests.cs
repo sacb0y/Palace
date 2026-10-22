@@ -4,8 +4,9 @@ using Xunit;
 namespace Palace.Tests;
 
 /// <summary>
-/// Laptop retest: 770 DIP client @ 150% scale ≈ 1155 physical px — mosaic and
-/// chrome must fit the content viewport (pad + gaps + scrollbar gutter).
+/// Laptop retest: window client DIP (script sizes at 150%) → nav pane → page pad →
+/// columns → mosaic pack. Right edge must stay inside viewport − padding; toolbar
+/// tight/compact use window client DIP (not Library grid width).
 /// </summary>
 public sealed class LibraryLayoutViewportTests
 {
@@ -19,26 +20,29 @@ public sealed class LibraryLayoutViewportTests
             0.01);
     }
 
-    [Fact]
-    public void Allocate_At770DipClient_FitsPadGapsAndGutter()
+    [Theory]
+    [InlineData(770)]
+    [InlineData(833)] // 1250 px @ 150%
+    [InlineData(867)] // 1300 px @ 150%
+    [InlineData(933)] // 1400 px @ 150%
+    public void ClientDip_PackRightEdge_AtOrInsideViewportMinusPadding(double clientDip)
     {
-        // GrdLibraryColumns ActualWidth ≈ client; columns lay out inside Padding.
-        var content = LibraryColumnLayout.MinWindowWidthDip
-            - LibraryColumnLayout.PagePaddingHorizontalDip;
-        Assert.Equal(746, content, 0.01);
+        var right = LibraryColumnLayout.MosaicPackRightEdgeClientDip(clientDip);
+        var limit = clientDip - LibraryColumnLayout.PagePaddingEdgeDip;
+        Assert.True(
+            right <= limit + 0.01,
+            $"client={clientDip}: pack right {right} > viewport−pad {limit}");
 
+        // Packed row must also fit the guttered mosaic column itself.
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(clientDip);
         var w = LibraryColumnLayout.Allocate(content);
-        Assert.True(w.PreviewHidden);
+        var pack = MosaicLayoutWidth.ApplyViewportGutter(w.Mosaic);
+        Assert.True(pack <= w.Mosaic + 0.01);
         Assert.Equal(
             content,
             w.Tree + w.Mosaic + w.Preview + LibraryColumnLayout.GapsWidth,
             0.01);
 
-        var pack = MosaicLayoutWidth.ApplyViewportGutter(w.Mosaic);
-        Assert.True(pack < w.Mosaic);
-        Assert.Equal(w.Mosaic - MosaicLayoutWidth.ViewportGutterDip, pack, 0.01);
-
-        // Justified row must not extend past the guttered pack width.
         var items = new List<MosaicSpec>
         {
             new(MosaicSlotKind.FullHeader, 0, MiniWidth: 80),
@@ -52,6 +56,79 @@ public sealed class LibraryLayoutViewportTests
         Assert.True(maxRight <= pack + 0.01);
     }
 
+    [Fact]
+    public void CapToAllocatedMosaic_PreventsStaleWideActualWidth()
+    {
+        // After shrink, ColMosaic.ActualWidth can still report the prior wide extent.
+        Assert.Equal(
+            338,
+            MosaicLayoutWidth.CapToAllocatedMosaic(measured: 744, allocatedMosaic: 338),
+            0.01);
+        Assert.Equal(
+            500,
+            MosaicLayoutWidth.CapToAllocatedMosaic(measured: 500, allocatedMosaic: 744),
+            0.01);
+        Assert.Equal(
+            400,
+            MosaicLayoutWidth.CapToAllocatedMosaic(measured: 0, allocatedMosaic: 400),
+            0.01);
+    }
+
+    [Theory]
+    [InlineData(933, false)]
+    [InlineData(867, false)]
+    [InlineData(833, false)]
+    [InlineData(800, false)]
+    [InlineData(799, true)]
+    [InlineData(770, true)]
+    public void ToolbarTight_UsesWindowClientDip(double clientDip, bool expectTight)
+    {
+        Assert.Equal(expectTight, LibraryColumnLayout.IsLibraryToolbarTight(clientDip));
+
+        // Library grid width alone stays under 800 at these laptop sizes — that
+        // was why Organize/Review stayed in More. Window client is the contract.
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(clientDip);
+        Assert.True(content < LibraryColumnLayout.LibraryToolbarTightBelowDip);
+    }
+
+    [Theory]
+    [InlineData(1000, false)]
+    [InlineData(920, false)]
+    [InlineData(919, true)]
+    [InlineData(770, true)]
+    public void ToolbarCompact_UsesWindowClientDip(double clientDip, bool expectCompact) =>
+        Assert.Equal(expectCompact, LibraryColumnLayout.IsLibraryToolbarCompact(clientDip));
+
+    [Fact]
+    public void ShellNavPane_MatchesMainPageOpenPaneLength()
+    {
+        Assert.Equal(248, LibraryColumnLayout.ShellNavPaneWidthDip);
+    }
+
+    [Fact]
+    public void Allocate_At770DipClient_FitsPadGapsAndGutter()
+    {
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(
+            LibraryColumnLayout.MinWindowWidthDip);
+        Assert.Equal(
+            LibraryColumnLayout.MinWindowWidthDip
+                - LibraryColumnLayout.ShellNavPaneWidthDip
+                - LibraryColumnLayout.PagePaddingHorizontalDip,
+            content,
+            0.01);
+
+        var w = LibraryColumnLayout.Allocate(content);
+        Assert.True(w.PreviewHidden);
+        Assert.Equal(
+            content,
+            w.Tree + w.Mosaic + w.Preview + LibraryColumnLayout.GapsWidth,
+            0.01);
+
+        var pack = MosaicLayoutWidth.ApplyViewportGutter(w.Mosaic);
+        Assert.True(pack < w.Mosaic);
+        Assert.Equal(w.Mosaic - MosaicLayoutWidth.ViewportGutterDip, pack, 0.01);
+    }
+
     [Theory]
     [InlineData(1400, 1.0)]
     [InlineData(1250, 1.0)]
@@ -61,24 +138,26 @@ public sealed class LibraryLayoutViewportTests
         double reportedPx,
         double scale)
     {
-        // Script resize reports physical px; layout is DIP.
         var clientDip = reportedPx / scale;
-        var content = Math.Max(0, clientDip - LibraryColumnLayout.PagePaddingHorizontalDip);
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(clientDip);
         var w = LibraryColumnLayout.Allocate(content);
         var pack = MosaicLayoutWidth.ApplyViewportGutter(w.Mosaic);
         Assert.True(pack <= w.Mosaic);
         Assert.True(
             w.Tree + w.Mosaic + w.Preview + LibraryColumnLayout.GapsWidth
             <= content + 0.01);
+        Assert.True(
+            LibraryColumnLayout.MosaicPackRightEdgeClientDip(clientDip)
+            <= clientDip - LibraryColumnLayout.PagePaddingEdgeDip + 0.01);
     }
 
     [Fact]
-    public void ToolbarTightThreshold_CoversMinWindowContentWidth()
+    public void ToolbarTightThreshold_BelowMinWindowClient()
     {
-        var contentAtMin = LibraryColumnLayout.MinWindowWidthDip
-            - LibraryColumnLayout.PagePaddingHorizontalDip;
-        Assert.True(contentAtMin < LibraryColumnLayout.LibraryToolbarTightBelowDip);
-        Assert.True(LibraryColumnLayout.LibraryToolbarTightBelowDip
+        Assert.True(
+            LibraryColumnLayout.IsLibraryToolbarTight(LibraryColumnLayout.MinWindowWidthDip));
+        Assert.True(
+            LibraryColumnLayout.LibraryToolbarTightBelowDip
             < LibraryColumnLayout.LibraryToolbarOverflowBelowDip);
     }
 }

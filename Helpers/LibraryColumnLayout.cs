@@ -32,14 +32,22 @@ public static class LibraryColumnLayout
     public const int MinWindowHeightDip = 480;
 
     /// <summary>
-    /// Below this Library content width (DIP), New folder / Undo / Add to room
-    /// move into the top toolbar overflow menu.
+    /// <c>MainPage</c> <c>NavMain.OpenPaneLength</c> — Library content width is
+    /// window client minus this when the pane is open (Left display mode).
+    /// </summary>
+    public const double ShellNavPaneWidthDip = 248;
+
+    /// <summary>
+    /// Below this <b>window client</b> width (DIP), New folder / Undo / Add to room
+    /// move into the top toolbar overflow menu. Laptop script sizes are client DIP
+    /// (not Library grid width — that already excludes the nav pane).
     /// </summary>
     public const double LibraryToolbarOverflowBelowDip = 920;
 
     /// <summary>
-    /// Below this content width (DIP), also park Organize / Review in More —
-    /// at min window (~746 content after pad) the … control was cut at 1155 px.
+    /// Below this <b>window client</b> width (DIP), also park Organize / Review in
+    /// More. Face buttons show at ≥800 client DIP; comparing Library grid width
+    /// instead kept them collapsed (grid ≈ client − 248).
     /// </summary>
     public const double LibraryToolbarTightBelowDip = 800;
 
@@ -48,6 +56,48 @@ public static class LibraryColumnLayout
     /// Keep in sync with LibraryPage.xaml <c>Padding="12,8,12,8"</c> (Left+Right).
     /// </summary>
     public const double PagePaddingHorizontalDip = 24;
+
+    /// <summary>Left (or right) pad alone — half of <see cref="PagePaddingHorizontalDip"/>.</summary>
+    public const double PagePaddingEdgeDip = 12;
+
+    /// <summary>True when Organize / Review should leave the face toolbar.</summary>
+    public static bool IsLibraryToolbarTight(double windowClientDip) =>
+        windowClientDip < LibraryToolbarTightBelowDip;
+
+    /// <summary>True when New folder / Undo / Add to room move into More.</summary>
+    public static bool IsLibraryToolbarCompact(double windowClientDip) =>
+        windowClientDip < LibraryToolbarOverflowBelowDip;
+
+    /// <summary>
+    /// Library columns content width from a window client DIP size (nav pane open).
+    /// Matches <c>GrdLibraryColumns</c> ActualWidth minus horizontal padding.
+    /// </summary>
+    public static double ContentWidthFromClientDip(double windowClientDip)
+    {
+        if (!double.IsFinite(windowClientDip) || windowClientDip <= 0)
+        {
+            return 0;
+        }
+
+        var grid = Math.Max(0, windowClientDip - ShellNavPaneWidthDip);
+        return Math.Max(0, grid - PagePaddingHorizontalDip);
+    }
+
+    /// <summary>
+    /// Client-X of the packed mosaic's right edge (nav + pad + tree + gap + pack).
+    /// Must stay ≤ <paramref name="windowClientDip"/> − right page pad.
+    /// </summary>
+    public static double MosaicPackRightEdgeClientDip(double windowClientDip)
+    {
+        var content = ContentWidthFromClientDip(windowClientDip);
+        var widths = Allocate(content);
+        var pack = MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic);
+        return ShellNavPaneWidthDip
+            + PagePaddingEdgeDip
+            + widths.Tree
+            + ColumnSpacing
+            + pack;
+    }
 
     /// <summary>
     /// Below this mosaic column width (DIP), hide the Flatten face toggle

@@ -16,9 +16,9 @@ public static class MosaicLayoutWidth
     public const double Fallback = 640;
 
     /// <summary>
-    /// Inset from the mosaic column edge so justified tiles / search do not sit
-    /// under the overlay vertical scrollbar or flush on the window chrome.
-    /// Laptop @ 770 DIP / 150% (1155 px) clipped when packing used the full column.
+    /// Inset from the mosaic column edge so justified tiles do not sit under the
+    /// overlay vertical scrollbar. Packing must use the <b>allocated</b> mosaic
+    /// width (after nav / page pad / Preview), never a stale wider ActualWidth.
     /// </summary>
     public const double ViewportGutterDip = 16;
 
@@ -36,6 +36,25 @@ public static class MosaicLayoutWidth
         }
 
         return Math.Max(MinUsable, columnWidth - ViewportGutterDip);
+    }
+
+    /// <summary>
+    /// Cap a measured column / ItemsView width to the last <see cref="LibraryColumnLayout.Allocate"/>
+    /// mosaic width so a stale wide ActualWidth cannot raise HostWidth past the viewport.
+    /// </summary>
+    public static double CapToAllocatedMosaic(double measured, double allocatedMosaic)
+    {
+        if (!double.IsFinite(measured) || measured <= 0)
+        {
+            return double.IsFinite(allocatedMosaic) && allocatedMosaic > 0 ? allocatedMosaic : 0;
+        }
+
+        if (double.IsFinite(allocatedMosaic) && allocatedMosaic >= MinUsable)
+        {
+            return Math.Min(measured, allocatedMosaic);
+        }
+
+        return measured;
     }
 
     public static double Resolve(double available, double lastGood, double hostWidth = double.NaN)

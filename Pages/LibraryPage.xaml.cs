@@ -48,6 +48,8 @@ public sealed partial class LibraryPage : Page
     private bool _suppressBrowseChrome;
     /// <summary>Short-lived suppress for mode/range/header Select churn (not section toggle).</summary>
     private bool _suppressMosaicSelection;
+    /// <summary>Last <see cref="LibraryColumnLayout.Allocate"/> mosaic width — HostWidth ceiling.</summary>
+    private double _allocatedMosaicWidth;
     /// <summary>
     /// Section collapse republish depth + generation. Separate from
     /// <see cref="_suppressMosaicSelection"/> so TglSelectMode / range / header
@@ -465,8 +467,11 @@ public sealed partial class LibraryPage : Page
     private void ApplyLibraryColumnLayout(double contentWidth)
     {
         var widths = LibraryColumnLayout.Allocate(contentWidth);
+        _allocatedMosaicWidth = widths.Mosaic;
         ColFolderTree.Width = new GridLength(widths.Tree);
-        ColFolderTree.MinWidth = LibraryColumnLayout.TreeMinWidth;
+        // Cap MinWidth to allocated — demanding TreeMin when allocate shrank further
+        // would overflow the grid past the nav content viewport.
+        ColFolderTree.MinWidth = Math.Min(LibraryColumnLayout.TreeMinWidth, widths.Tree);
         // Never demand MinWidth > allocated mosaic (clips right edge + header
         // below ~744 DIP content before the window min size clamps).
         ColMosaic.MinWidth = LibraryColumnLayout.MosaicColumnMinWidth(widths.Mosaic);
@@ -479,17 +484,15 @@ public sealed partial class LibraryPage : Page
         ScrPreviewPane.Visibility = widths.PreviewHidden
             ? Visibility.Collapsed
             : Visibility.Visible;
-        // Stamp allocate width immediately so packing does not use a wide ItemsView
-        // extent / prior measure before the column's ActualWidth catches up.
-        // Gutter keeps the last tile / search off the overlay scrollbar and window edge.
+        // Allocate is the source of truth — stamp HostWidth before ActualWidth catches up.
         MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic));
         UpdateMosaicToolbarOverflow(widths.Mosaic);
     }
 
     /// <summary>
-    /// Keep mosaic packing on the <b>visible column</b> width. ItemsView ActualWidth
-    /// can track a prior layout extent (wider than the viewport) and must not win
-    /// over <see cref="ColMosaic"/> ActualWidth.
+    /// Keep mosaic packing on the <b>visible column</b> width. ItemsView / column
+    /// ActualWidth can lag a shrink (still reporting the prior wide extent) and must
+    /// never raise HostWidth above the last Allocate mosaic width.
     /// </summary>
     private void GrdAssets_SizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -498,22 +501,32 @@ public sealed partial class LibraryPage : Page
         UpdateMosaicToolbarOverflow(visible);
     }
 
-    /// <summary>True visible mosaic column DIP — never the hidden Preview span.</summary>
+    /// <summary>
+    /// True visible mosaic column DIP — min of column ActualWidth, ItemsView, and
+    /// last Allocate (never the hidden Preview span or a stale wide extent).
+    /// </summary>
     private double VisibleMosaicColumnWidth(double itemsViewWidth)
     {
+        double measured;
         var column = ColMosaic.ActualWidth;
         if (column >= MosaicLayoutWidth.MinUsable)
         {
             // Cap ItemsView (may report overflow extent) to the column viewport.
             if (double.IsFinite(itemsViewWidth) && itemsViewWidth >= MosaicLayoutWidth.MinUsable)
             {
-                return Math.Min(column, itemsViewWidth);
+                measured = Math.Min(column, itemsViewWidth);
             }
-
-            return column;
+            else
+            {
+                measured = column;
+            }
+        }
+        else
+        {
+            measured = itemsViewWidth;
         }
 
-        return itemsViewWidth;
+        return MosaicLayoutWidth.CapToAllocatedMosaic(measured, _allocatedMosaicWidth);
     }
 
     /// <summary>
@@ -522,9 +535,17 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     private void UpdateLibraryToolbarOverflow(double contentWidth)
     {
-        // Full face row still clips near the window floor; overflow a bit above min.
-        var compact = contentWidth < LibraryColumnLayout.LibraryToolbarOverflowBelowDip;
-        var tight = contentWidth < LibraryColumnLayout.LibraryToolbarTightBelowDip;
+        // Thresholds are window-client DIP (laptop script sizes). Library grid width
+        // already excludes NavMain (248) — comparing contentWidth kept Organize/Review
+        // stuck in More until the window was ~1048+ DIP.
+        var windowDip = XamlRoot?.Size.Width ?? 0;
+        if (windowDip < MosaicLayoutWidth.MinUsable)
+        {
+            windowDip = contentWidth + LibraryColumnLayout.ShellNavPaneWidthDip;
+        }
+
+        var compact = LibraryColumnLayout.IsLibraryToolbarCompact(windowDip);
+        var tight = LibraryColumnLayout.IsLibraryToolbarTight(windowDip);
         BtnNewFolder.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         BtnUndo.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         BtnAddToRoom.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;

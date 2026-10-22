@@ -126,6 +126,8 @@ public sealed class LibraryColumnLayoutTests
         Assert.Equal(920, LibraryColumnLayout.LibraryToolbarOverflowBelowDip);
         Assert.Equal(800, LibraryColumnLayout.LibraryToolbarTightBelowDip);
         Assert.Equal(24, LibraryColumnLayout.PagePaddingHorizontalDip);
+        Assert.Equal(12, LibraryColumnLayout.PagePaddingEdgeDip);
+        Assert.Equal(248, LibraryColumnLayout.ShellNavPaneWidthDip);
         Assert.True(LibraryColumnLayout.MosaicToolbarFlattenBelowDip > LibraryColumnLayout.MosaicToolbarSortCompactBelowDip);
         Assert.True(LibraryColumnLayout.MosaicToolbarSortCompactBelowDip > LibraryColumnLayout.MosaicToolbarSortOverflowBelowDip);
     }

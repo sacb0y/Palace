@@ -50,6 +50,14 @@ public sealed class MosaicLayoutWidthTests
     }
 
     [Fact]
+    public void CapToAllocatedMosaic_NeverExceedsAllocate()
+    {
+        Assert.Equal(400, MosaicLayoutWidth.CapToAllocatedMosaic(900, 400));
+        Assert.Equal(400, MosaicLayoutWidth.CapToAllocatedMosaic(400, 900));
+        Assert.Equal(0, MosaicLayoutWidth.CapToAllocatedMosaic(-1, 0));
+    }
+
+    [Fact]
     public void Resolve_PreventsSliverWidthsUsedInPacking()
     {
         // Laptop resize sometimes measures with a few DIPs; packing + justify at
