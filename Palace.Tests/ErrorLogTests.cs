@@ -82,6 +82,16 @@ public sealed class ErrorThrottleTests
     }
 
     [Fact]
+    public void Reset_ClearsWindowSoSameKeyReportsAgain()
+    {
+        var throttle = new ErrorThrottle(TimeSpan.FromMinutes(1));
+        Assert.True(throttle.ShouldReport("a"));
+        Assert.False(throttle.ShouldReport("a"));
+        throttle.Reset();
+        Assert.True(throttle.ShouldReport("a"));
+    }
+
+    [Fact]
     public void KeyFor_SameThrowSiteAndMessageMatches_DifferentMessageDiffers()
     {
         static Exception Make(string message)

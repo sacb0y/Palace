@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Palace.Helpers;
 
@@ -200,11 +201,12 @@ public static class WicNative
         private static readonly ErrorThrottle HeifProbeLogThrottle =
             new(TimeSpan.FromSeconds(30));
 
-        /// <summary>Clears probe cache + failure count (tests).</summary>
+        /// <summary>Clears probe cache, failure count, and log throttle (tests).</summary>
         internal static void ResetHeifWicDecoderMissingCache()
         {
             _heifDecoderMissing = 0;
-            _heifProbeFailures = 0;
+            Volatile.Write(ref _heifProbeFailures, 0);
+            HeifProbeLogThrottle.Reset();
         }
 
         /// <summary>
@@ -228,7 +230,7 @@ public static class WicNative
             }
 
             // Stop probing for the session after N failures; still not-missing.
-            if (_heifProbeFailures >= MaxHeifProbeFailures)
+            if (Volatile.Read(ref _heifProbeFailures) >= MaxHeifProbeFailures)
             {
                 return false;
             }
@@ -247,7 +249,7 @@ public static class WicNative
             catch (Exception ex)
             {
                 // Leave unset — do not cache "missing" (that silenced corrupt HEIF).
-                _heifProbeFailures++;
+                Interlocked.Increment(ref _heifProbeFailures);
                 if (HeifProbeLogThrottle.ShouldReport(HeifProbeLogKey))
                 {
                     ErrorReporter.LogOnly("HEIF WIC decoder probe", ex);
