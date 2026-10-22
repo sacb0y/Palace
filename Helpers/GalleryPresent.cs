@@ -224,11 +224,24 @@ public static class GalleryPresent
         bool displayHdr,
         string? ccd = null,
         int? swapChainFormat = null,
-        int? swapChainColorSpace = null)
+        int? swapChainColorSpace = null,
+        float sdrWhiteLevelNits = 0f,
+        float compositionScaleX = 0f,
+        float compositionScaleY = 0f)
     {
         var win = windowsHdrEnabled is null ? "?" : windowsHdrEnabled.Value ? "1" : "0";
         var line =
             $"DXGI cs={colorSpace} max={maxLuminance:0} ff={maxFullFrameLuminance:0} bits={bitsPerColor} winHdr={win} displayHdr={(displayHdr ? 1 : 0)}";
+        if (sdrWhiteLevelNits > 0 && float.IsFinite(sdrWhiteLevelNits))
+        {
+            line += $" sdrWhite={sdrWhiteLevelNits:0.#}";
+        }
+
+        if (compositionScaleX > 0 && compositionScaleY > 0)
+        {
+            line += $" compScale={compositionScaleX:0.###}x{compositionScaleY:0.###}";
+        }
+
         if (swapChainFormat.HasValue || swapChainColorSpace.HasValue)
         {
             var f = swapChainFormat ?? ScrgbSwapChainFormat;
@@ -242,6 +255,67 @@ public static class GalleryPresent
         }
 
         return line;
+    }
+
+    /// <summary>
+    /// DXGI swapchain buffer size in <b>physical</b> pixels for a
+    /// <c>SwapChainPanel</c>. Panel Width/Height are DIPs; Windows
+    /// composition also applies <paramref name="compositionScaleX"/> /
+    /// <paramref name="compositionScaleY"/>. Buffer = round(DIP × scale)
+    /// and pair with <c>IDXGISwapChain2::SetMatrixTransform(1/scale)</c>
+    /// so the panel does not double-scale (classic zoomed/cropped HDR Fit).
+    /// Prefer <c>CompositionScaleX/Y</c> over <c>XamlRoot.RasterizationScale</c>
+    /// alone — they can differ under DPI or RenderTransform.
+    /// </summary>
+    public static (int Width, int Height) SwapchainPhysicalSize(
+        double dipWidth,
+        double dipHeight,
+        double compositionScaleX,
+        double compositionScaleY)
+    {
+        var sx = compositionScaleX > 0 && double.IsFinite(compositionScaleX)
+            ? compositionScaleX
+            : 1.0;
+        var sy = compositionScaleY > 0 && double.IsFinite(compositionScaleY)
+            ? compositionScaleY
+            : 1.0;
+        var w = Math.Max(1, (int)Math.Round(Math.Max(dipWidth, 0) * sx));
+        var h = Math.Max(1, (int)Math.Round(Math.Max(dipHeight, 0) * sy));
+        return (w, h);
+    }
+
+    /// <summary>
+    /// True when Fit rasterization into a Fit-sized swapchain buffer maps the
+    /// full source frame (no zoom crop). Used for SDR present of HDR stills
+    /// (EXR / AVIF / JXL share this path).
+    /// </summary>
+    public static bool FitShowsFullFrame(
+        int imageW,
+        int imageH,
+        double viewportDipW,
+        double viewportDipH,
+        double compositionScaleX = 1.0,
+        double compositionScaleY = 1.0)
+    {
+        if (imageW <= 0 || imageH <= 0 || viewportDipW <= 1 || viewportDipH <= 1)
+        {
+            return false;
+        }
+
+        var (dipW, dipH) = GalleryScale.FitContainDipSize(
+            imageW, imageH, viewportDipW, viewportDipH);
+        if (double.IsNaN(dipW) || double.IsNaN(dipH) || dipW <= 1 || dipH <= 1)
+        {
+            return false;
+        }
+
+        var (bw, bh) = SwapchainPhysicalSize(dipW, dipH, compositionScaleX, compositionScaleY);
+        var (dx, dy, dw, dh) = DestRect(ImageScaling.Fit, imageW, imageH, bw, bh);
+        // Same-aspect Fit panel → dest fills the buffer (full UV coverage).
+        return Math.Abs(dx) < 1.5f
+            && Math.Abs(dy) < 1.5f
+            && Math.Abs(dw - bw) < 1.5f
+            && Math.Abs(dh - bh) < 1.5f;
     }
 
     /// <summary>
@@ -442,16 +516,71 @@ public static class GalleryPresent
         return HdrAnalysis.Percentile(values, n, HdrAnalysis.P99Fraction) * ScrgbNits;
     }
 
-    public static HdrPresentMap PresentMap(bool displayIsHdr, float contentMaxNits, float displayPeakNits)
+    /// <summary>
+    /// Windows HDR composition: scRGB 1.0 = <paramref name="sdrWhiteLevelNits"/>
+    /// (often 200–300), not Palace's 80-nit authoring white. Scale content so
+    /// paper white stays correct; missing/invalid white → identity (1).
+    /// </summary>
+    public static float HdrCompositionScale(float sdrWhiteLevelNits)
+    {
+        if (sdrWhiteLevelNits <= 0 || !float.IsFinite(sdrWhiteLevelNits))
+        {
+            return 1f;
+        }
+
+        return ScrgbNits / sdrWhiteLevelNits;
+    }
+
+    /// <summary>
+    /// Clip in composition units after <see cref="HdrCompositionScale"/>:
+    /// <c>MaxLuminance / SdrWhiteLevel</c>. Unknown peak → PQ 10 000 / white.
+    /// </summary>
+    public static float HdrCompositionClip(float sdrWhiteLevelNits, float displayPeakNits)
+    {
+        var white = sdrWhiteLevelNits > 0 && float.IsFinite(sdrWhiteLevelNits)
+            ? sdrWhiteLevelNits
+            : ScrgbNits;
+        var peak = displayPeakNits > 0 && float.IsFinite(displayPeakNits)
+            ? displayPeakNits
+            : 10_000f;
+        return Math.Max(1f, peak / white);
+    }
+
+    /// <summary>
+    /// HDR still present: passthrough scaled by SdrWhiteLevel, soft-clip above
+    /// display MaxLuminance. SDR stills use <see cref="PresentMapSdrReinhard"/>
+    /// (same curve as mosaic thumbs) — not a linear MaxCLL crush.
+    /// </summary>
+    public static HdrPresentMap PresentMap(
+        bool displayIsHdr,
+        float contentMaxNits,
+        float displayPeakNits,
+        float sdrWhiteLevelNits = 0f)
     {
         if (displayIsHdr)
         {
-            return new HdrPresentMap(1f, RasterizeClipScrgb(displayPeakNits));
+            var scale = HdrCompositionScale(sdrWhiteLevelNits);
+            var clip = HdrCompositionClip(sdrWhiteLevelNits, displayPeakNits);
+            return new HdrPresentMap(scale, clip, ReinhardWhite: 0f, SoftNegatives: true);
         }
 
         _ = displayPeakNits;
-        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f);
+        // Legacy linear MaxCLL→80 for callers that have not run ToneMap.Analyze.
+        // Gallery present uses PresentMapSdrReinhard so midtones are not crushed.
+        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f, SoftNegatives: true);
     }
+
+    /// <summary>
+    /// SDR / HDR-off present: extended Reinhard matching <see cref="ToneMap"/>
+    /// thumbs (log-average exposure + white from Analyze). Soft-clips OOG
+    /// negatives. Clip is composition white (scRGB 1.0).
+    /// </summary>
+    public static HdrPresentMap PresentMapSdrReinhard(float exposure, float reinhardWhite) =>
+        new(
+            exposure > 0 && float.IsFinite(exposure) ? exposure : 1f,
+            1f,
+            ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
+            SoftNegatives: true);
 
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
@@ -1108,4 +1237,15 @@ public readonly record struct GalleryImageInfo(
     double? AboveSdrWhitePercent = null,
     string? Gamut = null);
 
-public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);
+/// <summary>
+/// Present raster map. <see cref="Scale"/> is exposure (SDR Reinhard) or
+/// Windows HDR composition scale (<c>80 / SdrWhiteLevel</c>). When
+/// <see cref="ReinhardWhite"/> &gt; 1, extended Reinhard rolls highlights
+/// (same curve as <see cref="ToneMap"/> thumbs). <see cref="SoftNegatives"/>
+/// soft-clips BT.2020→709 out-of-gamut channels instead of hard clamp to 0.
+/// </summary>
+public readonly record struct HdrPresentMap(
+    float Scale,
+    float ClipScrgb,
+    float ReinhardWhite = 0f,
+    bool SoftNegatives = false);

@@ -277,6 +277,7 @@ public sealed class HdrFileTests
         Assert.Equal(DisplayHdr.NativeInfoBytes, sizes.Info);
         Assert.Equal(DisplayHdr.NativeInfo2Bytes, sizes.Info2);
         Assert.Equal(DisplayHdr.NativeSourceNameBytes, sizes.SourceName);
+        Assert.Equal(DisplayHdr.NativeSdrWhiteBytes, DisplayHdr.NativeSdrWhiteLayoutSize());
         Assert.True(GalleryPresent.IsDummySdrLuminance(270));
         Assert.False(GalleryPresent.IsDummySdrLuminance(400));
         // 8-bit G22 with a real HDR peak (not dummy 270) is still HDR.
@@ -349,6 +350,16 @@ public sealed class HdrFileTests
         var hdrPeak = GalleryPresent.PresentMap(true, 1000, 1499);
         Assert.Equal(1f, hdrPeak.Scale);
         Assert.Equal(1499f / 80f, hdrPeak.ClipScrgb, 3);
+        // Windows HDR: scRGB 1.0 = SdrWhiteLevel (e.g. 203), not authoring 80.
+        var hdrWhite = GalleryPresent.PresentMap(true, 1000, 1000, sdrWhiteLevelNits: 203f);
+        Assert.Equal(80f / 203f, hdrWhite.Scale, 3);
+        Assert.Equal(1000f / 203f, hdrWhite.ClipScrgb, 3);
+        Assert.Equal(80f / 250f, GalleryPresent.HdrCompositionScale(250f), 3);
+        Assert.Equal(1f, GalleryPresent.HdrCompositionScale(0f));
+        var sdrReinhard = GalleryPresent.PresentMapSdrReinhard(0.5f, 4f);
+        Assert.Equal(0.5f, sdrReinhard.Scale);
+        Assert.Equal(4f, sdrReinhard.ReinhardWhite);
+        Assert.True(sdrReinhard.SoftNegatives);
 
         Assert.Equal(1f, HdrColor.MapCllToDisplayScrgb(12.5f, 1000, 80), 3);
         Assert.True(HdrColor.MapCllToDisplayScrgb(

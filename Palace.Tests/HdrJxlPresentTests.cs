@@ -176,4 +176,29 @@ public class HdrJxlPresentTests
         var bgra = ToneMap.ScrgbToBgra8(rgba, 1, 1);
         Assert.InRange(bgra[0], 1, 254); // not clipped black or full white wash
     }
+
+    [Fact]
+    public void MapPresentRgb_SdrReinhard_MatchesThumbCurveShape()
+    {
+        var paper = GalleryPresent.SdrReferenceNits / GalleryPresent.ScrgbNits;
+        Span<float> rgba = stackalloc float[] { paper, paper, paper, 1f };
+        var (exposure, white) = ToneMap.Analyze(rgba, 1);
+        ToneMap.MapPresentRgb(
+            paper, paper, paper, exposure, 1f, white, softNegatives: true,
+            out var r, out var g, out var b);
+        Assert.InRange(r, 0.05f, 1f);
+        Assert.Equal(r, g, 4);
+        Assert.Equal(g, b, 4);
+    }
+
+    [Fact]
+    public void MapPresentRgb_HdrPassthrough_ScalesBySdrWhite()
+    {
+        var scale = GalleryPresent.HdrCompositionScale(200f);
+        var clip = GalleryPresent.HdrCompositionClip(200f, 1000f);
+        ToneMap.MapPresentRgb(
+            1f, 1f, 1f, scale, clip, reinhardWhite: 0f, softNegatives: true,
+            out var r, out _, out _);
+        Assert.Equal(80f / 200f, r, 3);
+    }
 }

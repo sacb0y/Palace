@@ -15,7 +15,9 @@ public readonly record struct HdrPixelMap(
     float ClipScrgb,
     HdrVizMode Viz = HdrVizMode.None,
     float VizWhiteScrgb = 1f,
-    int? CicpPrimaries = null)
+    int? CicpPrimaries = null,
+    float ReinhardWhite = 0f,
+    bool SoftNegatives = false)
 {
     /// <summary>
     /// Palette white for visualizations: SDR reference white on an HDR
@@ -25,7 +27,14 @@ public readonly record struct HdrPixelMap(
         displayIsHdr ? HistogramScale.SdrWhiteNits / GalleryPresent.ScrgbNits : 1f;
 
     public static HdrPixelMap From(HdrPresentMap map, HdrVizMode viz = HdrVizMode.None, bool displayIsHdr = false, int? cicpPrimaries = null) =>
-        new(map.Scale, map.ClipScrgb, viz, VizWhiteFor(displayIsHdr), cicpPrimaries);
+        new(
+            map.Scale,
+            map.ClipScrgb,
+            viz,
+            VizWhiteFor(displayIsHdr),
+            cicpPrimaries,
+            map.ReinhardWhite,
+            map.SoftNegatives);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Apply(float r, float g, float b, out float or, out float og, out float ob)
@@ -40,8 +49,16 @@ public readonly record struct HdrPixelMap(
             return;
         }
 
-        or = Math.Clamp(r * Scale, 0, ClipScrgb);
-        og = Math.Clamp(g * Scale, 0, ClipScrgb);
-        ob = Math.Clamp(b * Scale, 0, ClipScrgb);
+        ToneMap.MapPresentRgb(
+            r,
+            g,
+            b,
+            Scale,
+            ClipScrgb,
+            ReinhardWhite,
+            SoftNegatives,
+            out or,
+            out og,
+            out ob);
     }
 }
