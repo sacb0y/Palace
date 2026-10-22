@@ -11,7 +11,7 @@ namespace Palace.Helpers;
 public static class ThumbCacheVersion
 {
     /// <summary>Bump when thumbnail rendering changes for existing files.</summary>
-    public const int Current = 6;
+    public const int Current = 7;
 
     /// <summary>Generation 2: HDR stills, PSD, JXL, EXR, Radiance, TGA, Clip, ICO.</summary>
     public const int DecodersGeneration = 2;
@@ -36,6 +36,12 @@ public static class ThumbCacheVersion
     /// scale on PQ codes) after verifying TARGET_DATA transfer.
     /// </summary>
     public const int JxlActualTransferGeneration = 6;
+
+    /// <summary>
+    /// Generation 7: JXL never falls through to Store WIC / shell thumbs when
+    /// libjxl fails (those washed PQ became the SDR full view via ThumbPath).
+    /// </summary>
+    public const int JxlNoShellWicGeneration = 7;
 
     public static string MarkerName => MarkerNameFor(Current);
 
@@ -88,6 +94,9 @@ public static class ThumbCacheVersion
 
     /// <summary>Formats whose thumbnails changed in generation 6 (JXL actual-TF normalize).</summary>
     public static bool JxlActualTransferChanged(string path) => PathSafe.IsJxl(path);
+
+    /// <summary>Formats whose thumbnails changed in generation 7 (no JXL shell/WIC thumb).</summary>
+    public static bool JxlNoShellWicChanged(string path) => PathSafe.IsJxl(path);
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;

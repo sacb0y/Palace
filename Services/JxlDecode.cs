@@ -5,6 +5,8 @@ using Starward.Codec.JpegXL.CMS;
 using Starward.Codec.JpegXL.CodeStream;
 using Starward.Codec.JpegXL.Decode;
 
+#pragma warning disable CA1416 // Linked into Palace.Tests on Linux; natives are Windows-only.
+
 namespace Palace.Services;
 
 /// <summary>

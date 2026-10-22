@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using Palace.Helpers;
 using Palace.Services;
 using Xunit;
@@ -8,6 +9,7 @@ namespace Palace.Tests;
 /// Real libjxl fixture: tiny PQ JXL through <see cref="JxlDecode.TryDecodeFile"/>.
 /// Skips when Starward natives are missing (Linux Cloud Agents).
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class JxlDecodeFixtureTests
 {
     private static string TinyPqPath =>
@@ -25,7 +27,7 @@ public sealed class JxlDecodeFixtureTests
     }
 
     [Fact]
-    public void TinyPqFixture_TryDecodeFile_ReportsTransferAndScale()
+    public void TinyPqFixture_TryDecodeFile_ReportsTransferScaleAndPixelNits()
     {
         var path = TinyPqPath;
         var probe = HdrFile.ProbePath(path);
@@ -46,18 +48,22 @@ public sealed class JxlDecodeFixtureTests
         }
 
         Assert.True(frame.Width > 0 && frame.Height > 0);
+        Assert.True(frame.Rgba.Length >= 4);
         Assert.True(
             frame.BufferTransfer is JxlBufferTransfer.Linear or JxlBufferTransfer.Pq,
             $"unexpected buffer={frame.BufferTransfer}");
 
+        // One decoded pixel in nits (scRGB 1.0 = 80). Gray PQ fixture → finite mid.
+        var nits = frame.Rgba[0] * GalleryPresent.ScrgbNits;
+        Assert.True(float.IsFinite(nits), $"pixel nits not finite: {nits}");
+        Assert.InRange(nits, 1f, 10_000f);
+
         if (frame.BufferTransfer == JxlBufferTransfer.Pq)
         {
-            // Still-PQ: EOTF path — never intensity_target scale.
             Assert.Equal(0f, frame.ScaleApplied);
         }
         else
         {
-            // Linear Relative: 1.0 = intensity_target → scRGB via IT/80.
             var expect = HdrJxlPresent.ScrgbScaleFromIntensityTarget(
                 frame.IntensityTarget, HdrTransfer.Pq);
             Assert.Equal(expect, frame.ScaleApplied, 3);

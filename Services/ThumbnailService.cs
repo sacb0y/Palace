@@ -25,6 +25,7 @@ public sealed class ThumbnailService
     private DateTime _jxlIntensityGenerationStartUtc;
     private DateTime _jxlWideGamutGenerationStartUtc;
     private DateTime _jxlActualTransferGenerationStartUtc;
+    private DateTime _jxlNoShellWicGenerationStartUtc;
 
     public ThumbnailService(string thumbsRoot)
     {
@@ -36,6 +37,8 @@ public sealed class ThumbnailService
         _jxlWideGamutGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlWideGamutGeneration);
         _jxlActualTransferGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
             _root, ThumbCacheVersion.JxlActualTransferGeneration);
+        _jxlNoShellWicGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlNoShellWicGeneration);
     }
 
     /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
@@ -51,6 +54,8 @@ public sealed class ThumbnailService
         _jxlWideGamutGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlWideGamutGeneration);
         _jxlActualTransferGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
             _root, ThumbCacheVersion.JxlActualTransferGeneration);
+        _jxlNoShellWicGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlNoShellWicGeneration);
     }
 
     /// <summary>
@@ -120,6 +125,14 @@ public sealed class ThumbnailService
                     written,
                     _jxlActualTransferGenerationStartUtc,
                     ThumbCacheVersion.JxlActualTransferChanged(filePath)))
+            {
+                return true;
+            }
+
+            if (ThumbCacheVersion.IsStale(
+                    written,
+                    _jxlNoShellWicGenerationStartUtc,
+                    ThumbCacheVersion.JxlNoShellWicChanged(filePath)))
             {
                 return true;
             }
@@ -250,6 +263,14 @@ public sealed class ThumbnailService
             if (custom is not null)
             {
                 return custom;
+            }
+
+            // JXL: libjxl failed — do not shell/WIC the original, and do not
+            // keep a pre-gen7 washed ThumbPath (that became the SDR full view).
+            if (PathSafe.IsJxl(filePath))
+            {
+                SdrTonemapLog.TryAppendViewer(filePath, "shell-thumb-skip", "jxl");
+                return null;
             }
         }
 
@@ -526,6 +547,13 @@ public sealed class ThumbnailService
 
         try
         {
+            // Gen bumps (e.g. v7 no-shell-WIC JXL) must hide washed _lg too —
+            // DisplayPathFor would otherwise keep serving them as the full view.
+            if (filePath is not null && IsStaleGeneration(path, filePath))
+            {
+                return null;
+            }
+
             // Stale once the source changes; regenerated under the same name.
             return !File.Exists(filePath) || File.GetLastWriteTimeUtc(path) >= File.GetLastWriteTimeUtc(filePath!)
                 ? path
@@ -673,6 +701,9 @@ public sealed class ThumbnailService
                     jxlProbe.Kind == HdrKind.HdrJxl
                         ? (jxlProbe.IsHlg ? "hlg" : jxlProbe.IsPq ? "pq" : "hdr")
                         : jxlProbe.Kind == HdrKind.WideGamutJxl ? "wide" : "sdr");
+                // M1: never fall through to HdrWicDecode / shell for .jxl —
+                // Store WIC thumbs are washed PQ and become the full SDR view.
+                return null;
             }
 
             var probe = HdrFile.ProbePath(filePath);
@@ -697,7 +728,12 @@ public sealed class ThumbnailService
         }
         catch
         {
-            // Fall back to WinRT / shell thumbnail.
+            // Fall back to WinRT / shell thumbnail (not for .jxl — see above).
+            if (PathSafe.IsJxl(filePath))
+            {
+                SdrTonemapLog.TryAppendViewer(filePath, "shell-thumb-skip", "jxl-ex");
+                return null;
+            }
         }
 
         return null;

@@ -84,7 +84,7 @@ public static class SdrTonemapLog
     /// Same line shape as <see cref="TryAppendPresent"/> so laptop greps match.
     /// <paramref name="decoder"/> values: mosaic-thumb, large-preview,
     /// wic-original, hdr-attempt, hdr-fail, libjxl-thumb, libjxl-thumb-fail,
-    /// libjxl-decode, hdr-display.
+    /// shell-thumb-skip, libjxl-decode, hdr-display.
     /// </summary>
     public static void TryAppendViewer(
         string? path,
