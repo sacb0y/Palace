@@ -48,8 +48,11 @@ public sealed partial class LibraryPage : Page
     private bool _suppressBrowseChrome;
     /// <summary>Short-lived suppress for mode/range/header Select churn (not section toggle).</summary>
     private bool _suppressMosaicSelection;
-    /// <summary>Last <see cref="LibraryColumnLayout.Allocate"/> mosaic width — HostWidth ceiling.</summary>
+    /// <summary>Last allocated mosaic width — HostWidth ceiling.</summary>
     private double _allocatedMosaicWidth;
+    /// <summary>Preview reducer (#134 UserShow fixed true; 0.3.9 adds toggle UI).</summary>
+    private PreviewPaneState _previewPane = PreviewPane.Initial;
+    private PaneMode _previewPaneMode = PaneMode.Hidden;
     private bool _libraryLayoutHooked;
     private XamlRoot? _libraryLayoutXamlRoot;
     /// <summary>
@@ -459,48 +462,68 @@ public sealed partial class LibraryPage : Page
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
 
     /// <summary>
-    /// Protect the mosaic column (≥560 DIP). Shrink tree, then Preview, then
-    /// auto-hide Preview — never steal from the grid. Same floor as the queued
-    /// Preview panel toggle.
+    /// Grid SizeChanged is a backup only — available width must come from XamlRoot /
+    /// page, never from this grid's own ActualWidth (docked Preview MinWidths used to
+    /// floor DesiredSize and stop SizeChanged entirely).
     /// </summary>
     private void GrdLibraryColumns_SizeChanged(object sender, SizeChangedEventArgs e) =>
         RefreshLibraryLayout();
 
     /// <summary>
-    /// Drive column / HostWidth / toolbar from the <b>page</b> (nav content) width —
-    /// not <c>GrdLibraryColumns.ActualWidth</c>. After Preview shows, mosaic MinWidth
-    /// + Preview used to floor the grid DesiredSize so its ActualWidth (and SizeChanged)
-    /// stopped tracking the window in both directions.
+    /// OnWidth → Effective → columns, pane, HostWidth, both toolbar overflows.
+    /// Available width from XamlRoot / page (not GrdLibraryColumns.ActualWidth).
     /// </summary>
     private void RefreshLibraryLayout()
     {
-        var contentWidth = ResolveLibraryContentWidth();
+        var windowDip = ResolveWindowClientDip();
+        var contentWidth = ResolveAvailableContentWidth(windowDip);
         if (contentWidth < 1)
         {
             return;
         }
 
-        ApplyLibraryColumnLayout(contentWidth);
-        UpdateLibraryToolbarOverflow(contentWidth);
+        _previewPane = PreviewPane.OnWidth(_previewPane, contentWidth);
+        var effective = PreviewPane.Effective(_previewPane, contentWidth);
+        ApplyLibraryColumnLayout(effective);
+        UpdateLibraryToolbarOverflow(windowDip);
     }
 
-    private double ResolveLibraryContentWidth()
+    /// <summary>Window client DIP — toolbar overflow thresholds use this.</summary>
+    private double ResolveWindowClientDip()
     {
-        // Page ActualWidth is the NavView content slot — tracks the window even when
-        // the columns grid DesiredSize is floored by Preview + mosaic MinWidth.
-        var host = ActualWidth;
-        if (host < MosaicLayoutWidth.MinUsable)
+        var root = XamlRoot?.Size.Width ?? 0;
+        if (root >= MosaicLayoutWidth.MinUsable)
         {
-            var root = XamlRoot?.Size.Width ?? 0;
-            if (root >= MosaicLayoutWidth.MinUsable)
-            {
-                return LibraryColumnLayout.ContentWidthFromClientDip(root);
-            }
-
-            host = GrdLibraryColumns.ActualWidth;
+            return root;
         }
 
-        return LibraryColumnLayout.ContentWidthFromHostDip(host);
+        // Page is nav content; add shell pane to approximate client.
+        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
+        {
+            return ActualWidth + LibraryColumnLayout.ShellNavPaneWidthDip;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Library columns content width from available (window/page) space — never from
+    /// the columns grid's arranged width (that latches when Preview docks).
+    /// </summary>
+    private double ResolveAvailableContentWidth(double windowClientDip)
+    {
+        if (windowClientDip >= MosaicLayoutWidth.MinUsable)
+        {
+            return LibraryColumnLayout.ContentWidthFromClientDip(windowClientDip);
+        }
+
+        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
+        {
+            return LibraryColumnLayout.ContentWidthFromHostDip(ActualWidth);
+        }
+
+        // Last resort before first layout.
+        return LibraryColumnLayout.ContentWidthFromHostDip(GrdLibraryColumns.ActualWidth);
     }
 
     private void HookLibraryLayoutTracking()
@@ -540,26 +563,87 @@ public sealed partial class LibraryPage : Page
     private void LibraryLayoutXamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args) =>
         RefreshLibraryLayout();
 
-    private void ApplyLibraryColumnLayout(double contentWidth)
+    private void ApplyLibraryColumnLayout(PreviewPaneEffective effective)
     {
-        var widths = LibraryColumnLayout.Allocate(contentWidth);
+        var widths = effective.Widths;
+        var mode = effective.Mode;
+        var wasDocked = _previewPaneMode == PaneMode.Docked;
+        _previewPaneMode = mode;
         _allocatedMosaicWidth = widths.Mosaic;
-        // Fixed widths from Allocate — no Star, no mosaic MinWidth floor.
-        // MinWidth=560 + Preview fixed previously pinned DesiredSize so the grid
-        // ActualWidth stopped following the window after Preview first appeared.
+
+        // Fixed widths from Effective — MinWidths always 0 so column mins never sum
+        // above available width (that floored DesiredSize and froze resize).
         ColFolderTree.Width = new GridLength(widths.Tree);
         ColFolderTree.MinWidth = 0;
         ColMosaic.Width = new GridLength(widths.Mosaic);
         ColMosaic.MinWidth = 0;
         ColPreview.Width = new GridLength(widths.Preview);
         ColPreview.MinWidth = 0;
-        // Preview auto-hide at narrow widths is by design (Preview toggle rule).
-        ScrPreviewPane.Visibility = widths.PreviewHidden
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        // Allocate is the source of truth — stamp HostWidth before ActualWidth catches up.
+
+        var docked = mode == PaneMode.Docked;
+        ScrPreviewPane.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
+        if (!docked)
+        {
+            PausePreviewPaneMedia();
+            MoveFocusFromPreviewPaneIfNeeded();
+        }
+        else if (!wasDocked)
+        {
+            // Pane just docked — refresh decode for the current selection.
+            UpdatePreview();
+        }
+
+        // HostWidth from Allocate mosaic (Overlay also uses preview=0 widths).
         MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic));
         UpdateMosaicToolbarOverflow(widths.Mosaic);
+    }
+
+    private void PausePreviewPaneMedia()
+    {
+        try
+        {
+            MpePreview.MediaPlayer?.Pause();
+        }
+        catch
+        {
+            // Ignore pause failures when the player was never created.
+        }
+
+        MpePreview.Source = null;
+        ImgPreview.Source = null;
+        _previewCts?.Cancel();
+        Interlocked.Increment(ref _previewEpoch);
+    }
+
+    private void MoveFocusFromPreviewPaneIfNeeded()
+    {
+        if (XamlRoot is null)
+        {
+            return;
+        }
+
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        if (focused is null || !IsDescendantOf(focused, ScrPreviewPane))
+        {
+            return;
+        }
+
+        GrdAssets.Focus(FocusState.Programmatic);
+    }
+
+    private static bool IsDescendantOf(DependencyObject? node, DependencyObject ancestor)
+    {
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, ancestor))
+            {
+                return true;
+            }
+
+            node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node);
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -605,16 +689,14 @@ public sealed partial class LibraryPage : Page
     /// <summary>
     /// Top toolbar spans all columns — at narrow widths move New folder / Undo /
     /// Add to room into the overflow menu so buttons are not clipped mid-element.
+    /// Same available-width signal as Preview OnWidth (window client DIP).
     /// </summary>
-    private void UpdateLibraryToolbarOverflow(double contentWidth)
+    private void UpdateLibraryToolbarOverflow(double windowClientDip)
     {
-        // Thresholds are window-client DIP (laptop script sizes). Library grid width
-        // already excludes NavMain (248) — comparing contentWidth kept Organize/Review
-        // stuck in More until the window was ~1048+ DIP.
-        var windowDip = XamlRoot?.Size.Width ?? 0;
+        var windowDip = windowClientDip;
         if (windowDip < MosaicLayoutWidth.MinUsable)
         {
-            windowDip = contentWidth + LibraryColumnLayout.ShellNavPaneWidthDip;
+            windowDip = ResolveWindowClientDip();
         }
 
         var compact = LibraryColumnLayout.IsLibraryToolbarCompact(windowDip);
@@ -2990,6 +3072,13 @@ public sealed partial class LibraryPage : Page
 
     private async void UpdatePreview()
     {
+        // Collapsed / overlay / user-hidden — no decode, pause any preview video.
+        if (_previewPaneMode != PaneMode.Docked)
+        {
+            PausePreviewPaneMedia();
+            return;
+        }
+
         var epoch = Interlocked.Increment(ref _previewEpoch);
         _previewCts?.Cancel();
         _previewCts = new CancellationTokenSource();

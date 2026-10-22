@@ -107,7 +107,8 @@ public static class LibraryColumnLayout
     public static double MosaicPackRightEdgeClientDip(double windowClientDip)
     {
         var content = ContentWidthFromClientDip(windowClientDip);
-        var widths = Allocate(content);
+        var state = PreviewPane.OnWidth(PreviewPane.Initial, content);
+        var widths = PreviewPane.Effective(state, content).Widths;
         var pack = MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic);
         return ShellNavPaneWidthDip
             + PagePaddingEdgeDip
@@ -117,9 +118,14 @@ public static class LibraryColumnLayout
     }
 
     /// <summary>
-    /// True when <see cref="Allocate"/> keeps Preview visible for this content width.
+    /// True when the #134 Preview reducer docks Preview at this content width
+    /// (UserShow true, starting from <see cref="PreviewPane.Initial"/>).
     /// </summary>
-    public static bool ShowsPreview(double contentWidth) => !Allocate(contentWidth).PreviewHidden;
+    public static bool ShowsPreview(double contentWidth)
+    {
+        var state = PreviewPane.OnWidth(PreviewPane.Initial, contentWidth);
+        return PreviewPane.Effective(state, contentWidth).Mode == PaneMode.Docked;
+    }
 
     /// <summary>
     /// Below this mosaic column width (DIP), hide the Flatten face toggle
@@ -153,29 +159,35 @@ public static class LibraryColumnLayout
         Math.Min(MosaicMinWidth, Math.Max(0, allocatedMosaic));
 
     /// <summary>
-    /// Allocate tree / mosaic / preview for the Library columns' content width
-    /// (the padded grid's <c>ActualWidth</c>). Never steals below
-    /// <see cref="MosaicMinWidth"/> while preview can still shrink or hide.
+    /// One-shot allocate (legacy tests): dock Preview when it fits, else hide.
+    /// Prefer <see cref="PreviewPane.OnWidth"/> + <see cref="PreviewPane.Effective"/>
+    /// for hysteresis and UserShow.
     /// </summary>
-    /// <remarks>
-    /// TODO(0.3.9 Preview panel toggle): honor a user-set Preview width
-    /// (persisted 280–560) instead of <see cref="PreviewDefaultWidth"/>.
-    /// </remarks>
     public static LibraryColumnWidths Allocate(double availableWidth)
+    {
+        var state = PreviewPane.OnWidth(PreviewPane.Initial, availableWidth);
+        return PreviewPane.Effective(state, availableWidth).Widths;
+    }
+
+    /// <summary>
+    /// Dock Preview at <paramref name="previewWidth"/> (clamped). Shrinks tree then
+    /// preview toward minima so mosaic stays ≥560; does not fully hide Preview
+    /// (caller already decided Docked).
+    /// </summary>
+    public static LibraryColumnWidths AllocateWithPreview(double availableWidth, double previewWidth)
     {
         if (!double.IsFinite(availableWidth) || availableWidth <= 0)
         {
             return new LibraryColumnWidths(
                 TreeDefaultWidth,
                 MosaicMinWidth,
-                PreviewDefaultWidth,
+                PreviewPane.ClampUserWidth(previewWidth),
                 PreviewHidden: false);
         }
 
         var usable = Math.Max(0, availableWidth - GapsWidth);
         var tree = TreeDefaultWidth;
-        // TODO(0.3.9): start from persisted Preview width when the toggle ships.
-        var preview = PreviewDefaultWidth;
+        var preview = PreviewPane.ClampUserWidth(previewWidth);
         var mosaic = usable - tree - preview;
 
         if (mosaic >= MosaicMinWidth)
@@ -183,7 +195,6 @@ public static class LibraryColumnLayout
             return new LibraryColumnWidths(tree, mosaic, preview, PreviewHidden: false);
         }
 
-        // 1) Shrink tree toward its minimum.
         var need = MosaicMinWidth - mosaic;
         var treeCut = Math.Min(need, Math.Max(0, tree - TreeMinWidth));
         tree -= treeCut;
@@ -193,7 +204,6 @@ public static class LibraryColumnLayout
             return new LibraryColumnWidths(tree, mosaic, preview, PreviewHidden: false);
         }
 
-        // 2) Shrink preview toward its drag minimum.
         need = MosaicMinWidth - mosaic;
         var previewCut = Math.Min(need, Math.Max(0, preview - PreviewMinWidth));
         preview -= previewCut;
@@ -203,9 +213,26 @@ public static class LibraryColumnLayout
             return new LibraryColumnWidths(tree, mosaic, preview, PreviewHidden: false);
         }
 
-        // 3) Auto-hide preview (same 560 rule as the queued Preview toggle).
-        preview = 0;
-        mosaic = usable - tree;
+        // Safety: still Docked but under floor — keep preview at min, mosaic gets rest.
+        mosaic = Math.Max(0, usable - tree - preview);
+        return new LibraryColumnWidths(tree, mosaic, preview, PreviewHidden: false);
+    }
+
+    /// <summary>Tree + mosaic only (Preview column width 0).</summary>
+    public static LibraryColumnWidths AllocateWithoutPreview(double availableWidth)
+    {
+        if (!double.IsFinite(availableWidth) || availableWidth <= 0)
+        {
+            return new LibraryColumnWidths(
+                TreeMinWidth,
+                MosaicMinWidth,
+                0,
+                PreviewHidden: true);
+        }
+
+        var usable = Math.Max(0, availableWidth - GapsWidth);
+        var tree = TreeDefaultWidth;
+        var mosaic = usable - tree;
         if (mosaic < MosaicMinWidth && tree > TreeMinWidth)
         {
             var extra = Math.Min(tree - TreeMinWidth, MosaicMinWidth - mosaic);
@@ -213,10 +240,17 @@ public static class LibraryColumnLayout
             mosaic += extra;
         }
 
+        if (mosaic < 0 && tree > TreeMinWidth)
+        {
+            var cut = Math.Min(tree - TreeMinWidth, -mosaic);
+            tree -= cut;
+            mosaic += cut;
+        }
+
         return new LibraryColumnWidths(
             tree,
             Math.Max(0, mosaic),
-            preview,
+            0,
             PreviewHidden: true);
     }
 }
