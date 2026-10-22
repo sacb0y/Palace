@@ -2020,13 +2020,17 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
+                        <!-- Visual plate is hit-test invisible so letterbox/image under the
+                             toolbar still pages; only the real buttons steal the gesture. -->
+                        <Grid>
                         <Border
                             Padding="6,4"
                             Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
-                            CornerRadius="{StaticResource OverlayCornerRadius}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            CornerRadius="{StaticResource OverlayCornerRadius}"
+                            IsHitTestVisible="False" />
+                        <StackPanel Padding="6,4" Orientation="Horizontal" Spacing="8">
                             <ToggleButton
                                 x:Name="BtnGalleryImageInfo"
                                 Padding="8,4"
@@ -2143,7 +2147,7 @@
                                 </StackPanel>
                             </Border>
                         </StackPanel>
-                        </Border>
+                        </Grid>
                         <controls:ViewerDetailsCard
                             x:Name="CardViewerDetails"
                             Grid.Row="1"

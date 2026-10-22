@@ -9,12 +9,11 @@
     <!--
       Visual pager (docs/specs/swipe-nav.md): current + ±1 neighbors with 16 px gap.
       Custom — not FlipView. Neighbors are hit-test invisible; drag drives Translation.
-    -->
-    <!--
-      Transparent host + ScrStill fill the viewer so letterbox / beside-chrome
-      swipes hit-test. Overlay chrome (Info, nav, Details card) stays above and
-      keeps its own hit targets — only real buttons/cards steal the gesture.
-      Manipulation is on ScrStill (full viewport), not the letterboxed image panel.
+
+      Manipulation stays on GrdStillContent (image path) — ScrStill ManipulationMode=None
+      so ScrollViewer DirectManipulation does not eat on-image swipes. Fit at 1× sizes
+      GrdStillContent to the viewport (transparent) with the image letterboxed inside,
+      so letterbox / near-chrome swipes hit the same panel as the image.
     -->
     <Grid
         x:Name="GrdStillHost"
@@ -47,13 +46,9 @@
         <ScrollViewer
             x:Name="ScrStill"
             Background="Transparent"
-            DoubleTapped="ScrStill_DoubleTapped"
             HorizontalScrollBarVisibility="Hidden"
             HorizontalScrollMode="Enabled"
-            IsDoubleTapEnabled="True"
-            ManipulationCompleted="ScrStill_ManipulationCompleted"
-            ManipulationDelta="ScrStill_ManipulationDelta"
-            ManipulationMode="TranslateX,TranslateY,Scale"
+            ManipulationMode="None"
             PointerCaptureLost="ScrStill_PointerCaptureLost"
             PointerMoved="ScrStill_PointerMoved"
             PointerPressed="ScrStill_PointerPressed"
@@ -67,8 +62,14 @@
                     <TranslateTransform x:Name="XfCurrent" />
                 </TransformGroup>
             </ScrollViewer.RenderTransform>
-            <!-- Image-sized panel only — Fit letterbox margins live outside this grid. -->
-            <Grid x:Name="GrdStillContent" ManipulationMode="None">
+            <Grid
+                x:Name="GrdStillContent"
+                Background="Transparent"
+                DoubleTapped="GrdStillContent_DoubleTapped"
+                IsDoubleTapEnabled="True"
+                ManipulationCompleted="GrdStillContent_ManipulationCompleted"
+                ManipulationDelta="GrdStillContent_ManipulationDelta"
+                ManipulationMode="TranslateX,TranslateY,Scale">
                 <Image
                     x:Name="ImgStill"
                     HorizontalAlignment="Stretch"

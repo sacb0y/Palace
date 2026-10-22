@@ -1274,19 +1274,6 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.VerticalScrollBarVisibility = bars;
         ImgStill.Stretch = BindHelpers.ImageStretch(scaling);
 
-        // When content ≤ viewport: Center (letterbox margins are outside the
-        // panel — not part of pinch/pan). When zoomed/scrolling: Left/Top so
-        // scroll offsets match ZoomAroundPoint / ClampPan.
-        var align = scrolls ? HorizontalAlignment.Left : HorizontalAlignment.Center;
-        var valign = scrolls ? VerticalAlignment.Top : VerticalAlignment.Center;
-        GrdStillContent.HorizontalAlignment = align;
-        GrdStillContent.VerticalAlignment = valign;
-        // Image / swapchain fill the content panel (panel IS the image rect).
-        ImgStill.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ImgStill.VerticalAlignment = VerticalAlignment.Stretch;
-        ScpHdr.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ScpHdr.VerticalAlignment = VerticalAlignment.Stretch;
-
         double width;
         double height;
         var viewW = ScrStill.ActualWidth;
@@ -1303,9 +1290,8 @@ public sealed partial class GalleryStillSurface : UserControl
         }
         else
         {
-            // Fit: letterboxed image content rect — NOT the full viewport.
-            // Sizing ScpHdr to the viewport made HDR's opaque black backdrop
-            // part of pinch/pan bounds (drift to bottom-right).
+            // Fit image rect — ScpHdr stays this size (viewport-sized ScpHdr
+            // made HDR's opaque black backdrop part of pinch/pan bounds).
             (width, height) = GalleryScale.FitContainDipSize(iw, ih, viewW, viewH);
             if (width <= 1 || height <= 1)
             {
@@ -1318,12 +1304,46 @@ public sealed partial class GalleryStillSurface : UserControl
         // Cap layout DIPs so DXGI ResizeBuffers cannot fail at extreme zoom.
         (width, height) = TouchGestures.CapStillPanelSize(width, height);
 
-        GrdStillContent.Width = width;
-        GrdStillContent.Height = height;
-        ImgStill.Width = width;
-        ImgStill.Height = height;
-        ScpHdr.Width = width;
-        ScpHdr.Height = height;
+        // Fit at 1×: panel = viewport (swipe on image AND letterbox); image
+        // letterboxed inside. Zoomed / Actual / Fill: panel = image content.
+        if (GalleryScale.FitSwipeUsesViewportPanel(scrolls)
+            && viewW > 1
+            && viewH > 1
+            && !double.IsNaN(width)
+            && !double.IsNaN(height))
+        {
+            var (panelW, panelH) = GalleryScale.FitSwipePanelDipSize(viewW, viewH);
+            GrdStillContent.HorizontalAlignment = HorizontalAlignment.Left;
+            GrdStillContent.VerticalAlignment = VerticalAlignment.Top;
+            GrdStillContent.Width = panelW;
+            GrdStillContent.Height = panelH;
+            ImgStill.HorizontalAlignment = HorizontalAlignment.Center;
+            ImgStill.VerticalAlignment = VerticalAlignment.Center;
+            ScpHdr.HorizontalAlignment = HorizontalAlignment.Center;
+            ScpHdr.VerticalAlignment = VerticalAlignment.Center;
+            ImgStill.Width = width;
+            ImgStill.Height = height;
+            ScpHdr.Width = width;
+            ScpHdr.Height = height;
+        }
+        else
+        {
+            var align = scrolls ? HorizontalAlignment.Left : HorizontalAlignment.Center;
+            var valign = scrolls ? VerticalAlignment.Top : VerticalAlignment.Center;
+            GrdStillContent.HorizontalAlignment = align;
+            GrdStillContent.VerticalAlignment = valign;
+            ImgStill.HorizontalAlignment = HorizontalAlignment.Stretch;
+            ImgStill.VerticalAlignment = VerticalAlignment.Stretch;
+            ScpHdr.HorizontalAlignment = HorizontalAlignment.Stretch;
+            ScpHdr.VerticalAlignment = VerticalAlignment.Stretch;
+            GrdStillContent.Width = width;
+            GrdStillContent.Height = height;
+            ImgStill.Width = width;
+            ImgStill.Height = height;
+            ScpHdr.Width = width;
+            ScpHdr.Height = height;
+        }
+
         SyncScrollOffset(scaling, width, height, viewW, viewH);
     }
 
@@ -1493,11 +1513,25 @@ public sealed partial class GalleryStillSurface : UserControl
     }
 
     /// <summary>
-    /// Manipulation events are on <see cref="ScrStill"/> (full viewer surface),
-    /// so <c>e.Position</c> is already viewport-local.
+    /// Manipulation events are on <see cref="GrdStillContent"/> so
+    /// <c>e.Position</c> is content-local. Pinch midpoint math needs
+    /// <see cref="ScrStill"/> viewport coordinates — content-space origins
+    /// throw the still off-screen (HDR black bg looks like a black image).
+    /// Fit at 1× sizes the content panel to the viewport, so this is usually identity.
     /// </summary>
-    private static Windows.Foundation.Point ToViewport(Windows.Foundation.Point viewportLocal) =>
-        viewportLocal;
+    private Windows.Foundation.Point ToViewport(Windows.Foundation.Point contentLocal)
+    {
+        try
+        {
+            return GrdStillContent.TransformToVisual(ScrStill).TransformPoint(contentLocal);
+        }
+        catch
+        {
+            return new Windows.Foundation.Point(
+                contentLocal.X - ScrStill.HorizontalOffset,
+                contentLocal.Y - ScrStill.VerticalOffset);
+        }
+    }
 
     private void ApplyPinchFrame(
         double originViewportX,
@@ -1729,7 +1763,7 @@ public sealed partial class GalleryStillSurface : UserControl
         ScpHdr.CancelDirectManipulations();
     }
 
-    private void ScrStill_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    private void GrdStillContent_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
     {
         CancelScrollViewerDirectManipulation();
         var isTouch = e.PointerDeviceType == PointerDeviceType.Touch;
@@ -1874,7 +1908,7 @@ public sealed partial class GalleryStillSurface : UserControl
         e.Handled = true;
     }
 
-    private void ScrStill_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    private void GrdStillContent_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
     {
         if (e.PointerDeviceType != PointerDeviceType.Touch)
         {
@@ -1913,7 +1947,7 @@ public sealed partial class GalleryStillSurface : UserControl
         _afterPinchAwaitingLift = false;
     }
 
-    private void ScrStill_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private void GrdStillContent_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         // Touch only — mouse / pen double-tap stays unchanged.
         if (!TouchGestures.IsTouchOnly(_lastPointerDevice == PointerDeviceType.Touch)
