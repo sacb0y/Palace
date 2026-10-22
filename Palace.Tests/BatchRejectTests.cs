@@ -106,10 +106,10 @@ public sealed class BatchRejectTests
     {
         Assert.Equal("Interrupted.", BatchReject.InterruptedMessage(0));
         Assert.Equal(
-            "Interrupted, 1 rejected so far. Use Undo history to restore.",
+            "Interrupted, 1 rejected so far. Another change happened after this reject; Ctrl+Z undoes newest first.",
             BatchReject.InterruptedMessage(1));
         Assert.Equal(
-            "Interrupted, 3 rejected so far. Use Undo history to restore.",
+            "Interrupted, 3 rejected so far. Another change happened after this reject; Ctrl+Z undoes newest first.",
             BatchReject.InterruptedMessage(3));
     }
 

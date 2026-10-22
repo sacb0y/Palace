@@ -205,4 +205,68 @@ public sealed class BatchRejectFlowTests : IAsyncLifetime
         Assert.True(File.Exists(b.Path)); // never moved
         Assert.False(File.Exists(a.Path));
     }
+
+    /// <summary>
+    /// Race: CanAbsorbPrior says safe, but Move returns AbsorbedPriorBatch
+    /// false — interrupt, keep both batch ids, never attempt folder 3.
+    /// </summary>
+    [Fact]
+    public async Task Race_folder2_not_absorbed_interrupts_before_folder3()
+    {
+        var a = new Asset { Id = "a", Path = Path.Combine(_root.Path, "shots", "a.png") };
+        var b = new Asset { Id = "b", Path = Path.Combine(_root.Path, "refs", "b.png") };
+        var c = new Asset { Id = "c", Path = Path.Combine(_root.Path, "misc", "c.png") };
+        var groups = new[]
+        {
+            new BatchRejectFlow.FolderGroup(
+                Path.Combine(_root.Path, "shots", ReviewReject.FolderName),
+                Path.Combine(_root.Path, "shots"),
+                [a]),
+            new BatchRejectFlow.FolderGroup(
+                Path.Combine(_root.Path, "refs", ReviewReject.FolderName),
+                Path.Combine(_root.Path, "refs"),
+                [b]),
+            new BatchRejectFlow.FolderGroup(
+                Path.Combine(_root.Path, "misc", ReviewReject.FolderName),
+                Path.Combine(_root.Path, "misc"),
+                [c])
+        };
+
+        var moveCalls = 0;
+        var run = await BatchRejectFlow.RunAsync(
+            groups,
+            (_, _) => Task.FromResult(new BatchRejectFlow.CreateFolderResult(true, "unused", "")),
+            (_, _, _, prior, _) =>
+            {
+                moveCalls++;
+                return moveCalls switch
+                {
+                    1 => Task.FromResult(new BatchRejectFlow.MoveResult(
+                        1, "batch-1", AbsorbedPriorBatch: false, "moved1")),
+                    2 => Task.FromResult(new BatchRejectFlow.MoveResult(
+                        1, "batch-2", AbsorbedPriorBatch: false, "moved2")),
+                    _ => throw new InvalidOperationException("folder 3 must not be attempted")
+                };
+            },
+            // CanAbsorbPrior before folder 2: prior still tip → safe, then Move lies.
+            () => Task.FromResult<IReadOnlyList<FileOpBatch>>(
+            [
+                new FileOpBatch
+                {
+                    Id = "batch-1",
+                    Kind = FileOpKind.Move,
+                    Items =
+                    [
+                        new FileOpItem { Step = FileOpStep.MoveFile, NewPath = "x" }
+                    ]
+                }
+            ]),
+            CancellationToken.None);
+
+        Assert.True(run.Interrupted);
+        Assert.Equal(2, run.Moved);
+        Assert.Equal(2, moveCalls);
+        Assert.Equal(["batch-1", "batch-2"], run.UndoBatchIds);
+        Assert.Equal(BatchReject.InterruptedMessage(2), run.LastMessage);
+    }
 }
