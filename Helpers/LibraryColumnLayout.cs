@@ -23,16 +23,37 @@ public static class LibraryColumnLayout
     public const int ColumnGapCount = 2;
 
     /// <summary>
+    /// Main window preferred minimum width (DIP). Covers tree-min + mosaic-min
+    /// + gaps + Library page pad (~160+560+24+24 ≈ 768) so the grid is not clipped.
+    /// </summary>
+    public const int MinWindowWidthDip = 770;
+
+    /// <summary>Main window preferred minimum height (DIP).</summary>
+    public const int MinWindowHeightDip = 480;
+
+    /// <summary>
     /// Two column gaps — Grid <c>ColumnSpacing</c> still applies when Preview
     /// width is 0 (column stays in the grid for the queued toggle).
     /// </summary>
     public static double GapsWidth => ColumnSpacing * ColumnGapCount;
 
     /// <summary>
+    /// Column MinWidth for the mosaic: never demand more than the allocated
+    /// width (avoids clipping when content is under 560 before the window min
+    /// size has taken effect).
+    /// </summary>
+    public static double MosaicColumnMinWidth(double allocatedMosaic) =>
+        Math.Min(MosaicMinWidth, Math.Max(0, allocatedMosaic));
+
+    /// <summary>
     /// Allocate tree / mosaic / preview for the Library columns' content width
     /// (the padded grid's <c>ActualWidth</c>). Never steals below
     /// <see cref="MosaicMinWidth"/> while preview can still shrink or hide.
     /// </summary>
+    /// <remarks>
+    /// TODO(0.3.9 Preview panel toggle): honor a user-set Preview width
+    /// (persisted 280–560) instead of <see cref="PreviewDefaultWidth"/>.
+    /// </remarks>
     public static LibraryColumnWidths Allocate(double availableWidth)
     {
         if (!double.IsFinite(availableWidth) || availableWidth <= 0)
@@ -46,6 +67,7 @@ public static class LibraryColumnLayout
 
         var usable = Math.Max(0, availableWidth - GapsWidth);
         var tree = TreeDefaultWidth;
+        // TODO(0.3.9): start from persisted Preview width when the toggle ships.
         var preview = PreviewDefaultWidth;
         var mosaic = usable - tree - preview;
 

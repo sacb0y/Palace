@@ -99,5 +99,28 @@ public sealed class LibraryColumnLayoutTests
             500 - LibraryColumnLayout.GapsWidth - LibraryColumnLayout.TreeMinWidth,
             w.Mosaic,
             0.01);
+        // Column MinWidth must not demand more than allocated (would clip).
+        Assert.Equal(w.Mosaic, LibraryColumnLayout.MosaicColumnMinWidth(w.Mosaic), 0.01);
+        Assert.True(LibraryColumnLayout.MosaicColumnMinWidth(w.Mosaic) < LibraryColumnLayout.MosaicMinWidth);
+    }
+
+    [Fact]
+    public void MosaicColumnMinWidth_CapsAt560AndNeverExceedsAllocated()
+    {
+        Assert.Equal(560, LibraryColumnLayout.MosaicColumnMinWidth(800));
+        Assert.Equal(316, LibraryColumnLayout.MosaicColumnMinWidth(316));
+        Assert.Equal(0, LibraryColumnLayout.MosaicColumnMinWidth(0));
+        Assert.Equal(0, LibraryColumnLayout.MosaicColumnMinWidth(-10));
+    }
+
+    [Fact]
+    public void MinWindowWidthDip_CoversTreeMinPlusMosaicMinPlusGapsAndPad()
+    {
+        // ~160+560+24 gaps + ~24 page pad ≈ 768; floor is 770.
+        var contentFloor = LibraryColumnLayout.TreeMinWidth
+            + LibraryColumnLayout.MosaicMinWidth
+            + LibraryColumnLayout.GapsWidth;
+        Assert.True(LibraryColumnLayout.MinWindowWidthDip >= contentFloor);
+        Assert.Equal(770, LibraryColumnLayout.MinWindowWidthDip);
     }
 }

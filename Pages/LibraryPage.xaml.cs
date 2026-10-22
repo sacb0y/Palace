@@ -54,6 +54,11 @@ public sealed partial class LibraryPage : Page
     /// finally blocks cannot clear the toggle guard mid-rebuild.
     /// </summary>
     private int _sectionToggleGuardDepth;
+    /// <summary>
+    /// Bumped on each Starting; stale Ended after leave/return must not
+    /// decrement a newer toggle's depth.
+    /// </summary>
+    private int _sectionToggleGuardGeneration;
     /// <summary>Epoch armed for the current section-toggle scroll restore.</summary>
     private int _sectionToggleRestoreEpoch;
     private VirtualKey _mosaicArrow;
@@ -458,7 +463,9 @@ public sealed partial class LibraryPage : Page
         var widths = LibraryColumnLayout.Allocate(contentWidth);
         ColFolderTree.Width = new GridLength(widths.Tree);
         ColFolderTree.MinWidth = LibraryColumnLayout.TreeMinWidth;
-        ColMosaic.MinWidth = LibraryColumnLayout.MosaicMinWidth;
+        // Never demand MinWidth > allocated mosaic (clips right edge + header
+        // below ~744 DIP content before the window min size clamps).
+        ColMosaic.MinWidth = LibraryColumnLayout.MosaicColumnMinWidth(widths.Mosaic);
         // Star takes the remainder after fixed tree/preview — remainder is ≥560
         // whenever Allocate kept preview visible (or hid it to free space).
         ColMosaic.Width = new GridLength(1, GridUnitType.Star);
@@ -2399,13 +2406,15 @@ public sealed partial class LibraryPage : Page
         ?? _mosaicScrollView?.VerticalOffset
         ?? 0;
 
-    private void OnSectionToggleStarting()
+    private int OnSectionToggleStarting()
     {
         // Depth counter — not _suppressMosaicSelection — so mode/range/header
         // finally blocks cannot clear the guard while Assets rebuild.
         _sectionToggleGuardDepth++;
+        _sectionToggleGuardGeneration++;
         _restoreScrollOffset = CurrentMosaicVerticalOffset();
         _restoreScrollPending = true;
+        return _sectionToggleGuardGeneration;
     }
 
     private void OnSectionToggleEpochArmed(int epoch)
@@ -2468,8 +2477,15 @@ public sealed partial class LibraryPage : Page
         });
     }
 
-    private void OnSectionToggleEnded(int epoch)
+    private void OnSectionToggleEnded(int epoch, int guardGeneration)
     {
+        // Stale Ended after leave/return (Loaded reset depth/generation) must
+        // not decrement a toggle that started after we came back.
+        if (guardGeneration != _sectionToggleGuardGeneration)
+        {
+            return;
+        }
+
         if (_sectionToggleGuardDepth > 0)
         {
             _sectionToggleGuardDepth--;
@@ -2501,8 +2517,10 @@ public sealed partial class LibraryPage : Page
     private void ResetSectionToggleGuardOnLoaded()
     {
         _sectionToggleGuardDepth = 0;
+        _sectionToggleGuardGeneration = 0;
         _restoreScrollPending = false;
         _sectionToggleRestoreEpoch = 0;
+        ViewModel.PendingSectionFocusPath = null;
         RestoreMosaicSelectionHighlights();
     }
 

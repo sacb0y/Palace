@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
@@ -36,6 +37,15 @@ public sealed partial class MainWindow : Window
         var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
         var scale = GetDpiForWindow(hwnd) / 96.0;
         AppWindow.Resize(new SizeInt32((int)(1200 * scale), (int)(800 * scale)));
+        // PreferredMinimum* are physical pixels — convert DIPs like Resize above.
+        // Floor keeps Library mosaic ≥560 + tree min without clipping (~770 DIP).
+        if (AppWindow.Presenter is OverlappedPresenter overlapped)
+        {
+            overlapped.PreferredMinimumWidth =
+                (int)(LibraryColumnLayout.MinWindowWidthDip * scale);
+            overlapped.PreferredMinimumHeight =
+                (int)(LibraryColumnLayout.MinWindowHeightDip * scale);
+        }
 
         ShellBackground.Changed += ShellBackground_Changed;
         ShellBackground.LiveAmountsChanged += ShellBackground_LiveAmountsChanged;

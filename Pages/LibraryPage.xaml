@@ -53,7 +53,8 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <!-- Widths applied in code (LibraryColumnLayout): mosaic ≥560, then shrink tree, then Preview. -->
+            <!-- Widths applied in code (LibraryColumnLayout): mosaic ≥560, then shrink tree, then Preview.
+                 ColMosaic.MinWidth is set in ApplyLibraryColumnLayout to Min(560, allocated). -->
             <ColumnDefinition
                 x:Name="ColFolderTree"
                 Width="260"
@@ -61,7 +62,7 @@
             <ColumnDefinition
                 x:Name="ColMosaic"
                 Width="*"
-                MinWidth="560" />
+                MinWidth="0" />
             <ColumnDefinition
                 x:Name="ColPreview"
                 Width="340"

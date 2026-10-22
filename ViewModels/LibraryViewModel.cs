@@ -44,8 +44,11 @@ public partial class LibraryViewModel : ObservableObject
     private List<AssetItem> _mosaicOrder = [];
     private const int MosaicChunkSize = 80;
 
-    /// <summary>LibraryPage captures scroll offset before a section collapse toggle.</summary>
-    public Action? SectionToggleStarting { get; set; }
+    /// <summary>
+    /// LibraryPage captures scroll offset and returns a guard generation so a
+    /// stale Ended after leave/return cannot decrement a newer toggle's depth.
+    /// </summary>
+    public Func<int>? SectionToggleStarting { get; set; }
 
     /// <summary>
     /// Fired right after <c>_filterEpoch</c> bumps for a section republish so the
@@ -62,9 +65,9 @@ public partial class LibraryViewModel : ObservableObject
 
     /// <summary>
     /// Always fired when a section-toggle republish finishes (success, throw, or
-    /// superseded). Page decrements the section-toggle guard depth.
+    /// superseded). Args: filter epoch, guard generation from Starting.
     /// </summary>
-    public Action<int>? SectionToggleEnded { get; set; }
+    public Action<int, int>? SectionToggleEnded { get; set; }
 
     /// <summary>Section path to refocus after collapse toggle; cleared by the page.</summary>
     public string? PendingSectionFocusPath { get; set; }

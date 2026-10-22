@@ -126,13 +126,22 @@ public partial class LibraryViewModel
         }
 
         PendingSectionFocusPath = path;
-        SaveCollapsedSections(_sectionBrowsePath, collapsed);
+        // Prefs save must not block the in-memory collapse + republish (half-applied UI).
+        try
+        {
+            SaveCollapsedSections(_sectionBrowsePath, collapsed);
+        }
+        catch (Exception)
+        {
+            // TrySave already swallows most failures; keep display in sync anyway.
+        }
+
         // Arm the page guard only once Republish is about to run — a throw above
         // must not leave _sectionToggleGuardDepth > 0 with no Ended callback.
-        SectionToggleStarting?.Invoke();
+        var guardGeneration = SectionToggleStarting?.Invoke() ?? 0;
         // Fire-and-forget: Republish always ends the page section-toggle guard
         // (try/finally) even when Populate throws or the epoch is superseded.
-        _ = RepublishSectionDisplayAsync();
+        _ = RepublishSectionDisplayAsync(guardGeneration);
     }
 
     [RelayCommand]
@@ -241,7 +250,7 @@ public partial class LibraryViewModel
         return new MosaicBuild(ordered, display, folderPath, true, false, collapsed);
     }
 
-    private async Task RepublishSectionDisplayAsync()
+    private async Task RepublishSectionDisplayAsync(int guardGeneration)
     {
         // Epoch bumped even on the empty-order path so the page can ignore a
         // superseded toggle's scroll restore.
@@ -287,7 +296,7 @@ public partial class LibraryViewModel
         {
             // Always release the page guard — including throw / superseded epoch
             // (Populate returns early and never fires MosaicRestoreReady).
-            SectionToggleEnded?.Invoke(epoch);
+            SectionToggleEnded?.Invoke(epoch, guardGeneration);
         }
     }
 
