@@ -165,60 +165,61 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
             float outcomeExposure = 0f;
             float outcomeWhite = 0f;
-            if (displayHdr)
+            // Always AnalyzeHdrPresent for log white/exposure/shoulder — even on
+            // HDR passthrough (map may not apply Reinhard; laptop greps need real values).
+            var sdrWhite = _sdrWhiteLevelNits;
+            if (resolvedExposure is null or <= 0
+                || resolvedWhite is null or <= 1f)
             {
-                // Laptop retest wrote no sdr-tonemap.log when every still took
-                // this branch — still emit decoder/buffer for path triage.
-                SdrTonemapLog.TryAppendViewer(
-                    frame.SourcePath,
-                    "hdr-display",
-                    HdrJxlPresent.BufferTransferLabel(frame.BufferTransfer),
-                    frame.IntensityTarget,
-                    frame.IntensityScale,
-                    p995: frame.MaxScrgb);
+                var pixelCount = checked(frame.Width * frame.Height);
+                var analyzed = await Task.Run(
+                    () => ToneMap.AnalyzeHdrPresent(
+                        frame.ScrgbRgba, pixelCount, sdrWhite, cancellation),
+                    cancellation).ConfigureAwait(false);
+                resolvedExposure = analyzed.Exposure;
+                resolvedWhite = analyzed.White;
             }
             else
             {
-                // SdrWhiteLevel from CCD / AdvancedColorInfo (fallback 80).
-                var sdrWhite = _sdrWhiteLevelNits;
-                // Sticky content peak from first Fit (white must be > 1 —
-                // shoulder engaged); refresh exposure when SdrWhiteLevel moves.
-                // white ≤ 1 forces a fresh AnalyzeHdrPresent (never bypass).
-                if (resolvedExposure is null or <= 0
-                    || resolvedWhite is null or <= 1f)
-                {
-                    var pixelCount = checked(frame.Width * frame.Height);
-                    var analyzed = await Task.Run(
-                        () => ToneMap.AnalyzeHdrPresent(
-                            frame.ScrgbRgba, pixelCount, sdrWhite, cancellation),
-                        cancellation).ConfigureAwait(false);
-                    resolvedExposure = analyzed.Exposure;
-                    resolvedWhite = analyzed.White;
-                }
-                else
-                {
-                    var priorExposure = resolvedExposure.Value;
-                    var contentPeak = priorExposure > 1e-6f
-                        ? resolvedWhite.Value / priorExposure
-                        : resolvedWhite.Value;
-                    resolvedExposure = GalleryPresent.PresentSdrExposure(sdrWhite);
-                    resolvedWhite = Math.Max(1.01f, contentPeak * resolvedExposure.Value);
-                }
+                var priorExposure = resolvedExposure.Value;
+                var contentPeak = priorExposure > 1e-6f
+                    ? resolvedWhite.Value / priorExposure
+                    : resolvedWhite.Value;
+                resolvedExposure = GalleryPresent.PresentSdrExposure(sdrWhite);
+                resolvedWhite = Math.Max(1.01f, contentPeak * resolvedExposure.Value);
+            }
 
+            outcomeExposure = resolvedExposure!.Value;
+            outcomeWhite = resolvedWhite!.Value;
+            var p995 = outcomeExposure > 1e-6f
+                ? outcomeWhite / outcomeExposure
+                : outcomeWhite;
+
+            if (displayHdr)
+            {
+                // Clip-only scRGB — Reinhard shoulder not applied (shoulder=0).
+                SdrTonemapLog.TryAppendPresent(
+                    path: frame.SourcePath,
+                    decoder: "hdr-display",
+                    intensityTarget: frame.IntensityTarget,
+                    scale: frame.IntensityScale,
+                    bufferTransfer: HdrJxlPresent.BufferTransferLabel(frame.BufferTransfer),
+                    p995: p995,
+                    white: outcomeWhite,
+                    exposure: outcomeExposure,
+                    sdrWhiteLevelNits: sdrWhite,
+                    shoulder: 0);
+            }
+            else
+            {
                 map = GalleryPresent.PresentMapSdrReinhard(
-                    resolvedExposure!.Value,
-                    resolvedWhite!.Value);
-                outcomeExposure = resolvedExposure.Value;
-                outcomeWhite = resolvedWhite.Value;
+                    outcomeExposure,
+                    outcomeWhite);
                 DisplayHdr.WriteDebug(
                     $"SdrTonemap {frame.Width}x{frame.Height} exposure={outcomeExposure:0.####} "
                     + $"white={outcomeWhite:0.####} sdrWhite={(sdrWhite > 0 ? sdrWhite : GalleryPresent.ScrgbNits):0.#} "
                     + $"peakScrgb={frame.MaxScrgb:0.####} maxNits={frame.MaxNits:0.#} "
                     + $"shoulder={(map.ReinhardWhite > 1f ? 1 : 0)}");
-                // File log (off by default): PALACE_SDR_TONEMAP_LOG=1 → sdr-tonemap.log
-                var p995 = outcomeExposure > 1e-6f
-                    ? outcomeWhite / outcomeExposure
-                    : outcomeWhite;
                 SdrTonemapLog.TryAppendPresent(
                     path: frame.SourcePath,
                     decoder: frame.PresentDecoder,
@@ -228,7 +229,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                     p995: p995,
                     white: outcomeWhite,
                     exposure: outcomeExposure,
-                    sdrWhiteLevelNits: sdrWhite);
+                    sdrWhiteLevelNits: sdrWhite,
+                    shoulder: map.ReinhardWhite > 1f ? 1 : 0);
             }
 
             if (_disposed)
@@ -276,8 +278,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 Upload(half, vw, vh);
                 Present();
                 AppendCompositionScaleLog();
-                LastSdrExposure = outcomeExposure;
-                LastSdrReinhardWhite = outcomeWhite;
+                // Sticky Reinhard only on SDR present; HDR passthrough keeps 0.
+                LastSdrExposure = displayHdr ? 0f : outcomeExposure;
+                LastSdrReinhardWhite = displayHdr ? 0f : outcomeWhite;
                 outcome = HdrPresentOutcome.Presented;
             });
             return outcome;

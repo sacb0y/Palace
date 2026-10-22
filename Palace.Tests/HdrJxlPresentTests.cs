@@ -239,6 +239,56 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
+    public void ResolveActualBuffer_SetOutputSuccessUnknownTf_IsLinear_ElseKeepsUnknown()
+    {
+        // room.jxl laptop: SetOutputColorProfile succeeded + TARGET_DATA TF
+        // Unknown → Linear → intensity_target/80 (×125 at IT=10000).
+        // Kalan: CMS left PQ codes (TARGET_DATA TF=16) → buffer=pq, scale=0.
+        Assert.Equal(
+            JxlBufferTransfer.Linear,
+            HdrJxlPresent.ResolveActualBuffer(targetDataTransferFunction: 0, setOutputColorProfileSucceeded: true));
+        Assert.Equal(
+            JxlBufferTransfer.Unknown,
+            HdrJxlPresent.ResolveActualBuffer(targetDataTransferFunction: 0, setOutputColorProfileSucceeded: false));
+        Assert.Equal(
+            JxlBufferTransfer.Pq,
+            HdrJxlPresent.ResolveActualBuffer(targetDataTransferFunction: 16, setOutputColorProfileSucceeded: true));
+        Assert.Equal(
+            JxlBufferTransfer.Pq,
+            HdrJxlPresent.ResolveActualBuffer(targetDataTransferFunction: 16, setOutputColorProfileSucceeded: false));
+    }
+
+    [Fact]
+    public void RoomLikePixel_PqEotfVsLinearTimesIntensityTarget()
+    {
+        // One room-like mid pixel as still-PQ code. EOTF→nits vs linear×IT.
+        var pqCode = GalleryPresent.PqOetf(80f / 10_000f); // ~paper / wall
+        var eotfNits = GalleryPresent.PqEotf(pqCode) * 10_000f;
+        Assert.InRange(eotfNits, 70f, 90f);
+
+        const float intensityTarget = 10_000f;
+        var linearTimesItNits = pqCode * intensityTarget; // treat PQ code as relative linear
+        Assert.True(
+            linearTimesItNits > 4000f,
+            $"PQ-as-linear×IT must be huge vs EOTF, got {linearTimesItNits} vs EOTF {eotfNits}");
+
+        // Same pixel through NormalizeToScrgb paths (no 125× change — documents fork).
+        var asPq = new float[] { pqCode, pqCode, pqCode, 1f };
+        var pqNorm = HdrJxlPresent.NormalizeToScrgb(
+            asPq, intensityTarget, HdrTransfer.Pq, JxlBufferTransfer.Pq, cicpPrimaries: 9);
+        Assert.Equal(0f, pqNorm.ScaleApplied);
+        Assert.InRange(asPq[0] * GalleryPresent.ScrgbNits, 70f, 90f);
+
+        var asLinear = new float[] { pqCode, pqCode, pqCode, 1f };
+        var linNorm = HdrJxlPresent.NormalizeToScrgb(
+            asLinear, intensityTarget, HdrTransfer.Pq, JxlBufferTransfer.Linear, cicpPrimaries: 9);
+        Assert.Equal(intensityTarget / GalleryPresent.ScrgbNits, linNorm.ScaleApplied, 3);
+        Assert.True(
+            asLinear[0] * GalleryPresent.ScrgbNits > 4000f,
+            $"linear×IT scRGB nits should dwarf EOTF path, got {asLinear[0] * GalleryPresent.ScrgbNits}");
+    }
+
+    [Fact]
     public void NormalizeToScrgb_StillPq_NoIntensityScale_NotWhiteout()
     {
         // Synthesize still-PQ float codes (CMS left PQ). Mid ~203 nits → PQ≈0.58.
@@ -358,17 +408,25 @@ public class HdrJxlPresentTests
             Assert.False(File.Exists(SdrTonemapLog.PathOverride));
 
             SdrTonemapLog.EnabledOverride = true;
-            SdrTonemapLog.TryAppendPresent("Kalan.jxl", "libjxl", 255f, 0f, "pq", 2.5f, 2.5f, 1f, 80f);
+            SdrTonemapLog.TryAppendPresent(
+                "Kalan.jxl", "libjxl", 255f, 0f, "pq", 2.5f, 2.5f, 1f, 80f, shoulder: 1);
             SdrTonemapLog.TryAppendViewer("room.jxl", "mosaic-thumb", "pq", 255f, 0f);
-            SdrTonemapLog.TryAppendViewer("room.jxl", "large-preview", "pq", 255f, 0f);
+            SdrTonemapLog.TryAppendViewer(
+                "room.jxl", "hdr-display", "linear", 10_000f, 125f, p995: 3.03f,
+                white: 3.03f, exposure: 1f, shoulder: 0);
+            SdrTonemapLog.TryAppendViewer(
+                "Pregmata.jxr", "hdr-fail", "jxr", detail: "WIC_decoder_CreateAsync_88982F50");
             var text = File.ReadAllText(SdrTonemapLog.PathOverride!);
             Assert.Contains("decoder=libjxl", text, StringComparison.Ordinal);
             Assert.Contains("intensity_target=255", text, StringComparison.Ordinal);
             Assert.Contains("buffer=pq", text, StringComparison.Ordinal);
+            Assert.Contains("shoulder=1", text, StringComparison.Ordinal);
             Assert.Contains("Kalan.jxl", text, StringComparison.Ordinal);
             Assert.Contains("decoder=mosaic-thumb", text, StringComparison.Ordinal);
-            Assert.Contains("decoder=large-preview", text, StringComparison.Ordinal);
+            Assert.Contains("decoder=hdr-display", text, StringComparison.Ordinal);
+            Assert.Contains("shoulder=0", text, StringComparison.Ordinal);
             Assert.Contains("room.jxl", text, StringComparison.Ordinal);
+            Assert.Contains("detail=WIC_decoder_CreateAsync_88982F50", text, StringComparison.Ordinal);
         }
         finally
         {

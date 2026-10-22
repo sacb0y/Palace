@@ -191,9 +191,12 @@ public static class GalleryPresent
     /// Windows HDR vs SDR for present. <paramref name="windowsHdrEnabled"/>
     /// true is DisplayConfig HDR (<c>AdvancedColorEnabled</c> / INFO_2).
     /// DXGI ColorSpace often stays G22 with dummy 270 while that toggle is
-    /// on — that is HDR, not SDR tonemap. Peak &gt;220 (including dummy
-    /// 270) is HDR even when CCD parse fails. 203 paper white and 80–220
-    /// stay SDR. Unknown dummy peak does not clip to 203.
+    /// on — that is HDR, not SDR tonemap. Explicit Windows HDR <b>off</b>:
+    /// dummy 270 alone is SDR (Reinhard shoulder) — otherwise SDR laptops
+    /// skip the shoulder and HDR JXL looks washed. When CCD is unknown
+    /// (<c>null</c>), peak &gt;220 including dummy 270 stays HDR so Fenrir-
+    /// class panels are not false-tonemapped. 203 paper white and 80–220
+    /// stay SDR.
     /// </summary>
     public static bool IsHdrOutput(
         int dxgiColorSpace,
@@ -214,6 +217,12 @@ public static class GalleryPresent
         }
 
         var raw = Math.Max(maxLuminance, maxFullFrameLuminance);
+        // Explicit ACE=0: DXGI dummy 270 is an SDR EDID lie — apply Reinhard.
+        if (windowsHdrEnabled == false && IsDummySdrLuminance(raw))
+        {
+            return false;
+        }
+
         return IsHdrDisplay(raw);
     }
 

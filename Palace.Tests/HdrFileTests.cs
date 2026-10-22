@@ -239,12 +239,13 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.IsHdrOutput(0, 1499, 1000, 10));
         Assert.True(GalleryPresent.IsHdrOutput(12, 400, 400, 10));
         Assert.True(GalleryPresent.IsHdrOutput(1, 80, 80, 8));
-        // Dummy 270 G22 is HDR (Windows HDR-on lie). 203 / 80–220 stay SDR.
+        // Dummy 270 G22: HDR when CCD unknown / Windows HDR on; SDR when ACE=0
+        // so Reinhard shoulder runs on SDR laptops (room.jxl laptop path).
         Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8));
         Assert.False(GalleryPresent.IsHdrOutput(0, 203, 203, 8));
         Assert.False(GalleryPresent.IsHdrOutput(0, 120, 80, 8));
         Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: true));
-        Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: false));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: false));
         Assert.False(GalleryPresent.IsHdrOutput(0, 0, 0, 8));
         Assert.Equal(0f, GalleryPresent.ProbedDisplayLuminance(270, 270));
         var mainDesktop = GalleryPresent.PresentMap(

@@ -23,9 +23,10 @@ internal sealed class HdrFrame
     public char MaxScrgbChannel { get; init; }
 
     /// <summary>Present decoder label for <see cref="SdrTonemapLog"/> (libjxl / WIC / fallback).</summary>
-    public string PresentDecoder { get; init; } = "unknown";
+    public string PresentDecoder { get; set; } = "unknown";
 
-    public string? SourcePath { get; init; }
+    /// <summary>Source path for <see cref="SdrTonemapLog"/> <c>file=</c> (EXR / HDR / AVIF / JXL / JXR).</summary>
+    public string? SourcePath { get; set; }
 
     public float IntensityTarget { get; init; }
 
@@ -99,11 +100,31 @@ internal static class HdrWicDecode
             return null;
         }
 
+        HdrFrame? Tag(HdrFrame? frame, string decoder)
+        {
+            if (frame is null)
+            {
+                return null;
+            }
+
+            frame.SourcePath ??= path;
+            if (string.IsNullOrEmpty(frame.PresentDecoder)
+                || frame.PresentDecoder == "unknown")
+            {
+                frame.PresentDecoder = decoder;
+            }
+
+            return frame;
+        }
+
         if (IsLinearFloatStill(probe, path))
         {
-            return await Task.Run(
-                () => FromLinearFloatStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
-                cancellation).ConfigureAwait(false);
+            var kind = probe.Kind == HdrKind.HdrExr || PathSafe.IsExr(path) ? "exr" : "hdr";
+            return Tag(
+                await Task.Run(
+                    () => FromLinearFloatStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
+                    cancellation).ConfigureAwait(false),
+                kind);
         }
 
         if (PngFile.ShouldDecodeManaged(probe))
@@ -115,7 +136,7 @@ internal static class HdrWicDecode
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
-                    return png;
+                    return Tag(png, "png");
                 }
             }
             catch (OperationCanceledException)
@@ -130,7 +151,7 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrJxr)
         {
-            return await TryLoadJxrAsync(
+            var jxr = await TryLoadJxrAsync(
                 path,
                 probe,
                 viewportPixelWidth,
@@ -139,6 +160,16 @@ internal static class HdrWicDecode
                 wantRgba: true,
                 measure: false,
                 cancellation).ConfigureAwait(false);
+            if (jxr is null)
+            {
+                SdrTonemapLog.TryAppendViewer(
+                    path,
+                    "hdr-fail",
+                    "jxr",
+                    detail: LastWicError ?? "jxr null");
+            }
+
+            return Tag(jxr, "jxr");
         }
 
         if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
@@ -151,7 +182,7 @@ internal static class HdrWicDecode
                     cancellation).ConfigureAwait(false);
                 if (avif is not null)
                 {
-                    return avif;
+                    return Tag(avif, "avif");
                 }
             }
             catch (OperationCanceledException)
@@ -174,7 +205,7 @@ internal static class HdrWicDecode
                 if (jxl is not null)
                 {
                     LastWicError = null;
-                    return jxl;
+                    return Tag(jxl, "libjxl");
                 }
 
                 // Do not WIC/`BitmapImage` PQ — that is an SDR preview wrongly
@@ -233,9 +264,11 @@ internal static class HdrWicDecode
 
             cancellation.ThrowIfCancellationRequested();
             var packed = pixels.Value;
-            return await Task.Run(
-                () => ToScrgb(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe),
-                cancellation).ConfigureAwait(false);
+            return Tag(
+                await Task.Run(
+                    () => ToScrgb(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe),
+                    cancellation).ConfigureAwait(false),
+                "wic");
         }
         catch (OperationCanceledException)
         {
@@ -256,9 +289,30 @@ internal static class HdrWicDecode
                 ErrorReporter.LogOnly($"HdrWicDecode WIC present ({leaf})", ex);
             }
 
+            SdrTonemapLog.TryAppendViewer(
+                path,
+                "hdr-fail",
+                ProbeBufferLabel(probe),
+                detail: LastWicError
+                    ?? WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.CreateAsync, ex));
             return null;
         }
     }
+
+    private static string ProbeBufferLabel(HdrProbe probe) =>
+        probe.Kind switch
+        {
+            HdrKind.HdrJxl when probe.IsHlg => "hlg",
+            HdrKind.HdrJxl when probe.IsPq => "pq",
+            HdrKind.HdrJxr => "jxr",
+            HdrKind.HdrAvif when probe.IsPq => "pq",
+            HdrKind.HdrAvif => "avif",
+            HdrKind.HdrExr => "exr",
+            HdrKind.HdrRadiance => "hdr",
+            _ when probe.IsPq => "pq",
+            _ when probe.IsHlg => "hlg",
+            _ => "n/a"
+        };
 
     public static Task<HdrStats?> TryMeasureAsync(
         string path,

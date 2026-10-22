@@ -43,7 +43,8 @@ public static class SdrTonemapLog
 
     /// <summary>
     /// One line: decoder, intensity_target, scale, buffer TF, p995, white,
-    /// exposure, SdrWhiteLevel, leaf name. Never throws.
+    /// exposure, shoulder, SdrWhiteLevel, leaf name, optional detail (HRESULT).
+    /// Never throws.
     /// </summary>
     public static void TryAppendPresent(
         string? path,
@@ -54,7 +55,9 @@ public static class SdrTonemapLog
         float p995,
         float white,
         float exposure,
-        float sdrWhiteLevelNits)
+        float sdrWhiteLevelNits,
+        int? shoulder = null,
+        string? detail = null)
     {
         if (!IsEnabled)
         {
@@ -65,12 +68,19 @@ public static class SdrTonemapLog
         {
             var leaf = string.IsNullOrWhiteSpace(path) ? "?" : Path.GetFileName(path);
             var sdr = sdrWhiteLevelNits > 0 ? sdrWhiteLevelNits : GalleryPresent.ScrgbNits;
+            var shoulderBit = shoulder ?? (white > 1f ? 1 : 0);
             var line =
                 $"{DateTimeOffset.UtcNow:yyyy-MM-ddTHH:mm:ss.fffZ} "
                 + $"file={leaf} decoder={decoder} intensity_target={intensityTarget:0.###} "
                 + $"scale={scale:0.####} buffer={bufferTransfer} p995={p995:0.####} "
-                + $"white={white:0.####} exposure={exposure:0.####} sdrWhite={sdr:0.#}"
-                + Environment.NewLine;
+                + $"white={white:0.####} exposure={exposure:0.####} shoulder={shoulderBit} "
+                + $"sdrWhite={sdr:0.#}";
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                line += " detail=" + detail.Replace(' ', '_');
+            }
+
+            line += Environment.NewLine;
             Append(line);
         }
         catch
@@ -92,7 +102,12 @@ public static class SdrTonemapLog
         string bufferTransfer = "n/a",
         float intensityTarget = 0f,
         float scale = 1f,
-        float p995 = 0f) =>
+        float p995 = 0f,
+        float white = 0f,
+        float exposure = 0f,
+        float sdrWhiteLevelNits = 0f,
+        int? shoulder = null,
+        string? detail = null) =>
         TryAppendPresent(
             path,
             decoder,
@@ -100,9 +115,11 @@ public static class SdrTonemapLog
             scale,
             bufferTransfer,
             p995,
-            white: 0f,
-            exposure: 0f,
-            sdrWhiteLevelNits: 0f);
+            white,
+            exposure,
+            sdrWhiteLevelNits,
+            shoulder,
+            detail);
 
     public static void Append(string line)
     {
