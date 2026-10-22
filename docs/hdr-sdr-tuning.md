@@ -57,7 +57,10 @@ scRGB (~804 nits).
 JXR, EXR, HDR** plus float / `*.decoded.f32` dumps. See that folder’s README
 for regenerate commands.
 
-## Out of scope
+## Out of scope (P1)
 
-Decoders (P2), thumbs/full flags (P3–P4), HLSL / CPU–GPU agreement (P5),
-deleting legacy (P6), gain maps / desat tuning (P7). No FenrirDesktop.
+Thumbs/full flags (P3–P4), HLSL / CPU–GPU agreement (P5), deleting legacy
+(P6), gain maps / desat tuning (P7). No FenrirDesktop.
+
+**P2 (decoders):** draft [#138](https://github.com/sacb0y/Palace/pull/138) —
+`ImagingStillNormalize` + `HdrFrame.Working` beside scRGB present.
