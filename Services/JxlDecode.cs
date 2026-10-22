@@ -12,7 +12,8 @@ namespace Palace.Services;
 /// Starward.Codec — no Windows JPEG XL extension required. Output is linear
 /// scRGB float RGBA (libjxl's CMS converts PQ/HLG/wide gamut; HDR intensity
 /// is rescaled so 1.0 = 80 nits). Used for mosaic thumbs and HDR present.
-/// Present caps at <see cref="HdrJxlPresent.PresentMaxPixels"/> (~64 MP).
+/// Present callers pass <see cref="HdrJxlPresent.PresentMaxPixels"/> (~64 MP);
+/// thumbs use <see cref="HdrJxlPresent.ThumbMaxPixels"/> (120 MP).
 /// </summary>
 internal static class JxlDecode
 {

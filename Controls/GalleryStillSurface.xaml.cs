@@ -385,9 +385,16 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (frame is null)
         {
-            // Drop the prior still's float buffer before the next native
-            // decode — fast next/prev must not stack ~1 GB HDR JXL frames.
-            _hdrFrame = null;
+            // Drop a *different* still's float buffer before the next native
+            // decode (fast next/prev must not stack ~1 GB HDR JXL frames).
+            // Same-path Fit→1:1 / better-size re-decode keeps the cached frame
+            // so cancel/fail does not blank the image still on screen.
+            if (_hdrFrame is not null
+                && !string.Equals(_hdrFramePath, still, StringComparison.OrdinalIgnoreCase))
+            {
+                _hdrFrame = null;
+            }
+
             _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
             try
             {
