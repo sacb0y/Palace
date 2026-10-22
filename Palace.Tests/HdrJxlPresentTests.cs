@@ -85,11 +85,12 @@ public class HdrJxlPresentTests
             1600f / GalleryPresent.ScrgbNits,
             HdrJxlPresent.ScrgbScaleFromIntensityTarget(1600f, HdrTransfer.Hlg),
             3);
-        // Missing / SDR-placeholder 255: PQ → 10 000, HLG → 1000 (not PQ's 10k).
+        // Missing (≤0): PQ → 10 000, HLG → 1000. libjxl default 255 is real
+        // (1.0 = 255 nits under Relative) — do not remap to 10k (Kalan whiteout).
         Assert.Equal(10_000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(0f, HdrTransfer.Pq), 3);
-        Assert.Equal(10_000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Pq), 3);
+        Assert.Equal(255f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Pq), 3);
         Assert.Equal(1000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(0f, HdrTransfer.Hlg), 3);
-        Assert.Equal(1000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Hlg), 3);
+        Assert.Equal(255f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Hlg), 3);
         // SDR / sRGB transfer stays relative 0..1 — even if IntensityTarget looks high.
         Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f, HdrTransfer.Srgb));
         Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Srgb));
@@ -129,6 +130,72 @@ public class HdrJxlPresentTests
             paper, paper, paper, exposure, 1f, white, softNegatives: false,
             out var pr, out _, out _);
         Assert.InRange(pr, 0.05f, 1f);
+    }
+
+    [Fact]
+    public void IntensityTarget255_RelativeScale_NotTenThousand()
+    {
+        // Laptop: Kalan / room.jxl with libjxl default IntensityTarget=255.
+        // Treating 255 as unset (→10k/80) over-scaled ~39×; after Reinhard the
+        // whole frame sat at composition white (median 255, >50% clipped).
+        var wrong = HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Pq);
+        Assert.Equal(255f / GalleryPresent.ScrgbNits, wrong, 3);
+        Assert.True(wrong < 10f, "must not use 10k/80 for stamped 255");
+    }
+
+    [Fact]
+    public void ToneMappedPqJxl_Overscaled255AsTenK_WouldWhiteout_CorrectScaleDoesNot()
+    {
+        // Simulate Relative float where 1.0 = 255 nits, then apply scale.
+        // Wrong path (255→10k): midtones land near peak → tonemap washout.
+        // Correct path (255/80): midtones stay mid after Reinhard.
+        const int n = 64;
+        var relative = new float[n * 4];
+        for (var i = 0; i < n; i++)
+        {
+            // ~media white + mid + small highlight in IntensityTarget units.
+            var v = i == 0 ? 1f : i < 8 ? 0.8f : 0.35f;
+            relative[i * 4] = relative[i * 4 + 1] = relative[i * 4 + 2] = v;
+            relative[i * 4 + 3] = 1f;
+        }
+
+        var wrongScale = 10_000f / GalleryPresent.ScrgbNits;
+        var rightScale = HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Pq);
+        var blown = (float[])relative.Clone();
+        var ok = (float[])relative.Clone();
+        HdrJxlPresent.ApplyIntensityScale(blown, wrongScale);
+        HdrJxlPresent.ApplyIntensityScale(ok, rightScale);
+
+        var blownMean = HdrJxlPresent.ToneMappedMeanLuminance(blown, n);
+        var okMean = HdrJxlPresent.ToneMappedMeanLuminance(ok, n);
+        var blownClip = FractionClippedAfterPresent(blown, n);
+        var okClip = FractionClippedAfterPresent(ok, n);
+
+        // Wrong scale: almost-white after map (laptop retest: ~55% clipped).
+        Assert.True(blownMean > 0.85f || blownClip > 0.45f,
+            $"expected whiteout under 10k scale, mean={blownMean} clip={blownClip}");
+        // Correct scale: readable midtones, low clip rate.
+        Assert.InRange(okMean, 0.10f, 0.75f);
+        Assert.True(okClip < 0.25f, $"expected low clip under 255 scale, clip={okClip}");
+    }
+
+    private static float FractionClippedAfterPresent(float[] rgba, int n)
+    {
+        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
+        var clipped = 0;
+        for (var i = 0; i < n; i++)
+        {
+            ToneMap.MapPresentRgb(
+                rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2],
+                exposure, 1f, white, softNegatives: false,
+                out var r, out var g, out var b);
+            if (Math.Max(r, Math.Max(g, b)) >= 0.98f)
+            {
+                clipped++;
+            }
+        }
+
+        return clipped / (float)n;
     }
 
     [Fact]

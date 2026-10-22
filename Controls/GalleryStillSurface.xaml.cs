@@ -775,9 +775,12 @@ public sealed partial class GalleryStillSurface : UserControl
         float? stickyWhite = null;
         await UiDispatch.RunAsync(() =>
         {
+            // Reuse first-Fit AnalyzeHdrPresent only when the shoulder was
+            // engaged (white > 1). white ≤ 1 would bypass the c8c2814 curve.
             if (!string.IsNullOrEmpty(_hdrFramePath)
                 && string.Equals(_sdrTonePath, _hdrFramePath, StringComparison.OrdinalIgnoreCase)
-                && _sdrToneExposure > 0)
+                && _sdrToneExposure > 0
+                && _sdrToneWhite > 1f)
             {
                 stickyExposure = _sdrToneExposure;
                 stickyWhite = _sdrToneWhite;
