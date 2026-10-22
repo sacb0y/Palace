@@ -183,6 +183,10 @@ public sealed class WicNativeTests
             WicNative.IidSoftwareBitmapNative);
         Assert.True(
             WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
+        Assert.True(WicNative.WicDecoderOpen.IsBadImage(unchecked((int)0x88982F60)));
+        Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(unchecked((int)0x88982F50)));
+        Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(unchecked((int)0x88982F60)));
+        Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(unchecked((int)0x80004002)));
         Assert.True(
             WicNative.WicDecoderOpen.IsNoInterface(unchecked((int)0x80004002)));
         Assert.True(

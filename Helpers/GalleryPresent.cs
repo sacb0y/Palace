@@ -525,10 +525,32 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// Effective SDR white in nits for HDR→SDR present.
+    /// <c>AdvancedColorInfo.SdrWhiteLevelInNits</c> / CCD when &gt; 0; else
+    /// <see cref="ScrgbNits"/> (80).
+    /// </summary>
+    public static float EffectiveSdrWhiteNits(float sdrWhiteLevelNits) =>
+        sdrWhiteLevelNits > 0 && float.IsFinite(sdrWhiteLevelNits)
+            ? sdrWhiteLevelNits
+            : ScrgbNits;
+
+    /// <summary>
+    /// HDR→SDR exposure: <b>1.0</b> by default (scene-referred 1.0 → SDR
+    /// white). Absolute scRGB is nits/80 while Windows composition 1.0 =
+    /// <see cref="EffectiveSdrWhiteNits"/> — attenuate by 80/SdrWhite only
+    /// (never boost above 1).
+    /// </summary>
+    public static float PresentSdrExposure(float sdrWhiteLevelNits)
+    {
+        var white = EffectiveSdrWhiteNits(sdrWhiteLevelNits);
+        return Math.Min(1f, ScrgbNits / white);
+    }
+
+    /// <summary>
     /// Opt-in paper-white factor only (<c>80 / SdrWhiteLevel</c>). The FP16
     /// G10_P709 swapchain is absolute (1.0 = 80 nits) and decoders already
-    /// emit nits/80 — default HDR present must <b>not</b> apply this. Use only
-    /// behind an explicit sdrWhite/203 setting if one is added later.
+    /// emit nits/80 — default <b>HDR</b> present must <b>not</b> apply this.
+    /// SDR Reinhard present uses <see cref="PresentSdrExposure"/> instead.
     /// </summary>
     public static float HdrCompositionScale(float sdrWhiteLevelNits)
     {
@@ -586,13 +608,14 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// SDR / HDR-off present: extended Reinhard matching <see cref="ToneMap"/>
-    /// thumbs (log-average exposure + white from Analyze). OOG negatives are
+    /// SDR / HDR-off present: extended Reinhard from
+    /// <see cref="ToneMap.AnalyzeHdrPresent"/> (exposure ≤ 1 from SdrWhiteLevel,
+    /// white from content peak; always shoulder). OOG negatives are
     /// plain-clamped (no SoftNegChannel luminance darkening). Clip is scRGB 1.0.
     /// </summary>
     public static HdrPresentMap PresentMapSdrReinhard(float exposure, float reinhardWhite) =>
         new(
-            exposure > 0 && float.IsFinite(exposure) ? exposure : 1f,
+            exposure > 0 && float.IsFinite(exposure) ? Math.Min(exposure, 1f) : 1f,
             1f,
             ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
             SoftNegatives: false);

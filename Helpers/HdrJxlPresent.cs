@@ -39,19 +39,23 @@ public static class HdrJxlPresent
         ShouldPresentViaLibjxl(probe) || PathSafe.IsJxl(path);
 
     /// <summary>
-    /// libjxl <c>LinearSRGB</c> defaults to Perceptual intent, which maps
-    /// BT.2020 into Rec.709 and makes Gamut read "Rec.709 100%" even when the
-    /// probe is BT.2020. Absolute keeps out-of-gamut as negative scRGB so
-    /// <see cref="CieGamut"/> can classify Rec.2020 / P3 coverage.
-    /// Matches <c>JxlRenderingIntent.Absolute</c> (ISO 15076-1).
+    /// Media-relative intent for PQ/HLG → linear. Absolute LinearSRGB blew out
+    /// SDR present (Kalan almost white): Absolute changes the 1.0 = IntensityTarget
+    /// contract while we still × IntensityTarget/80. Relative keeps intensity;
+    /// BT.2020 primaries + <see cref="Bt2020LinearToScrgb"/> keep OOG negatives
+    /// for Gamut (Absolute's job without the blowout).
+    /// Matches <c>JxlRenderingIntent.Relative</c> (ISO 15076-1).
     /// </summary>
-    public const int ScrgbOutputRenderingIntentAbsolute = 3;
+    public const int ScrgbOutputRenderingIntentRelative = 1;
+
+    /// <summary>Legacy name — Absolute blew out SDR present; Relative is correct.</summary>
+    public const int ScrgbOutputRenderingIntentAbsolute = ScrgbOutputRenderingIntentRelative;
 
     /// <summary>
-    /// libjxl LinearSRGB float has 1.0 = <paramref name="intensityTarget"/> nits
+    /// libjxl linear float has 1.0 = <paramref name="intensityTarget"/> nits
     /// for PQ/HLG. Scale so 1.0 = 80 nits (scRGB). Route on the probe transfer
-    /// (not an IntensityTarget &gt; 255 heuristic) so SDR / gain-map base stays 0..1.
-    /// Missing target: PQ → 10 000 nits, HLG → 1000 nits (HLG nominal peak).
+    /// so SDR / gain-map base stays 0..1. Missing / SDR-placeholder target
+    /// (0 or encoder-default 255): PQ → 10 000 nits, HLG → 1000 nits.
     /// </summary>
     public static float ScrgbScaleFromIntensityTarget(float intensityTarget, HdrTransfer transfer)
     {
@@ -60,10 +64,63 @@ public static class HdrJxlPresent
             return 1f;
         }
 
-        var nits = intensityTarget > 0f
+        // Encoders may stamp 255 without a histogram (SDR placeholder). On a
+        // PQ/HLG probe that is not a real peak — treat as unset.
+        var nits = intensityTarget > 0f && intensityTarget != 255f
             ? intensityTarget
             : transfer == HdrTransfer.Hlg ? 1000f : 10_000f;
         return nits / GalleryPresent.ScrgbNits;
+    }
+
+    /// <summary>
+    /// BT.2020 linear RGB (1.0 = 80 nits) → scRGB BT.709, keeping negatives.
+    /// </summary>
+    public static void Bt2020LinearToScrgb(Span<float> rgba)
+    {
+        var end = rgba.Length - (rgba.Length & 3);
+        for (var i = 0; i < end; i += 4)
+        {
+            GalleryPresent.Bt2020ToBt709(rgba[i], rgba[i + 1], rgba[i + 2], out var r, out var g, out var b);
+            rgba[i] = r;
+            rgba[i + 1] = g;
+            rgba[i + 2] = b;
+        }
+    }
+
+    /// <summary>
+    /// Mean CIE Y after SDR Reinhard present map — for tests that PQ/HLG JXL
+    /// is readable (not crushed, not almost-white).
+    /// </summary>
+    public static float ToneMappedMeanLuminance(
+        ReadOnlySpan<float> scrgbRgba,
+        int pixelCount,
+        float sdrWhiteLevelNits = 0f)
+    {
+        if (pixelCount <= 0 || scrgbRgba.Length < pixelCount * 4)
+        {
+            return 0f;
+        }
+
+        var (exposure, white) = ToneMap.AnalyzeHdrPresent(
+            scrgbRgba, pixelCount, sdrWhiteLevelNits);
+        double sum = 0;
+        for (var i = 0; i < pixelCount; i++)
+        {
+            ToneMap.MapPresentRgb(
+                scrgbRgba[i * 4],
+                scrgbRgba[i * 4 + 1],
+                scrgbRgba[i * 4 + 2],
+                exposure,
+                1f,
+                white,
+                softNegatives: false,
+                out var r,
+                out var g,
+                out var b);
+            sum += ToneMap.Luminance(r, g, b);
+        }
+
+        return (float)(sum / pixelCount);
     }
 
     /// <summary>Multiply RGB channels by <paramref name="scale"/>; leave alpha.</summary>

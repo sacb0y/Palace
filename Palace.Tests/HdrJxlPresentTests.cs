@@ -31,12 +31,12 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void ScrgbOutputRenderingIntent_IsAbsoluteNotPerceptual()
+    public void ScrgbOutputRenderingIntent_IsRelativeNotPerceptual()
     {
-        // libjxl LinearSRGB defaults to Perceptual (0); Absolute (3) keeps
-        // BT.2020 out-of-gamut as negative scRGB for Gamut coverage.
-        Assert.Equal(3, HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute);
-        Assert.NotEqual(0, HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute);
+        // Absolute LinearSRGB blew out SDR present; Relative + BT.2020→709.
+        Assert.Equal(1, HdrJxlPresent.ScrgbOutputRenderingIntentRelative);
+        Assert.Equal(HdrJxlPresent.ScrgbOutputRenderingIntentRelative, HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute);
+        Assert.NotEqual(0, HdrJxlPresent.ScrgbOutputRenderingIntentRelative);
     }
 
     [Fact]
@@ -51,15 +51,171 @@ public class HdrJxlPresentTests
             1600f / GalleryPresent.ScrgbNits,
             HdrJxlPresent.ScrgbScaleFromIntensityTarget(1600f, HdrTransfer.Hlg),
             3);
-        // Missing IntensityTarget: PQ → 10 000, HLG → 1000 (not PQ's 10k).
+        // Missing / SDR-placeholder 255: PQ → 10 000, HLG → 1000 (not PQ's 10k).
         Assert.Equal(10_000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(0f, HdrTransfer.Pq), 3);
+        Assert.Equal(10_000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Pq), 3);
         Assert.Equal(1000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(0f, HdrTransfer.Hlg), 3);
+        Assert.Equal(1000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Hlg), 3);
         // SDR / sRGB transfer stays relative 0..1 — even if IntensityTarget looks high.
         Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f, HdrTransfer.Srgb));
         Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Srgb));
         Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(100f, HdrTransfer.Linear));
         // Never use BT.2408 paper white (203) as the scRGB divisor.
         Assert.NotEqual(10_000f / 203f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f, HdrTransfer.Pq), 3);
+    }
+
+    [Fact]
+    public void ToneMappedPqJxl_KalanLike_NotBlownOut()
+    {
+        // Mid-grey scene + paper-white patch + small highlight (KalanLiraDuo):
+        // exposure 1 + Reinhard — mean readable, not ~1 washout.
+        const int n = 64;
+        var rgba = new float[n * 4];
+        var paper = GalleryPresent.SdrReferenceNits / GalleryPresent.ScrgbNits;
+        var mid = 0.5f;
+        var highlight = 1000f / GalleryPresent.ScrgbNits;
+        for (var i = 0; i < n; i++)
+        {
+            var v = i == 0 ? highlight : i < 8 ? paper : mid;
+            rgba[i * 4] = v;
+            rgba[i * 4 + 1] = v;
+            rgba[i * 4 + 2] = v;
+            rgba[i * 4 + 3] = 1f;
+        }
+
+        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
+        Assert.Equal(1f, exposure);
+        Assert.True(white > 1f);
+        var mean = HdrJxlPresent.ToneMappedMeanLuminance(rgba, n);
+        Assert.InRange(mean, 0.08f, 0.85f);
+        var p90 = PercentileLumaAfterPresent(rgba, n, 0.90);
+        Assert.InRange(p90, 0.15f, 0.98f);
+        // Paper patch must not stay above composition white after map.
+        ToneMap.MapPresentRgb(
+            paper, paper, paper, exposure, 1f, white, softNegatives: false,
+            out var pr, out _, out _);
+        Assert.InRange(pr, 0.05f, 1f);
+    }
+
+    [Fact]
+    public void AnalyzeHdrPresent_ExposureOne_AlwaysShoulder_NoBoost()
+    {
+        // Dark frame: old MiddleGrey/logAvg could boost up to 4× and overblow.
+        // Present stays at exposure 1.0 (fallback SdrWhite=80) and still rolls.
+        const int n = 32;
+        var rgba = new float[n * 4];
+        for (var i = 0; i < n; i++)
+        {
+            var v = i == 0 ? 0.08f : 0.05f;
+            rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
+            rgba[i * 4 + 3] = 1f;
+        }
+
+        var thumb = ToneMap.Analyze(rgba, n);
+        Assert.Equal(1f, thumb.Exposure);
+        Assert.Equal(1f, thumb.White); // p995 ≤ 1 → thumb passthrough
+
+        var present = ToneMap.AnalyzeHdrPresent(rgba, n);
+        Assert.Equal(1f, present.Exposure);
+        Assert.True(present.White > 1f, "shoulder always on even when p995 ≤ 1");
+        Assert.True(present.Exposure <= 1f);
+    }
+
+    [Fact]
+    public void AnalyzeHdrPresent_UsesSdrWhiteLevel_AttenuatesOnly()
+    {
+        Span<float> rgba = stackalloc float[] { 1f, 1f, 1f, 1f };
+        Assert.Equal(80f, GalleryPresent.EffectiveSdrWhiteNits(0f));
+        Assert.Equal(80f, GalleryPresent.EffectiveSdrWhiteNits(-1f));
+        Assert.Equal(203f, GalleryPresent.EffectiveSdrWhiteNits(203f));
+        Assert.Equal(1f, GalleryPresent.PresentSdrExposure(0f));
+        Assert.Equal(1f, GalleryPresent.PresentSdrExposure(80f));
+        Assert.Equal(80f / 203f, GalleryPresent.PresentSdrExposure(203f), 4);
+        Assert.True(GalleryPresent.PresentSdrExposure(40f) <= 1f); // never boost
+
+        var at80 = ToneMap.AnalyzeHdrPresent(rgba, 1, sdrWhiteLevelNits: 80f);
+        Assert.Equal(1f, at80.Exposure);
+        var at203 = ToneMap.AnalyzeHdrPresent(rgba, 1, sdrWhiteLevelNits: 203f);
+        Assert.Equal(80f / 203f, at203.Exposure, 4);
+        Assert.True(at203.White > 1f);
+    }
+
+    [Fact]
+    public void AnalyzeHdrPresent_PregmataSdrReference_MeanAndPercentileInTolerance()
+    {
+        // SDR reference PNG for Pregmata: mid-grey scene + soft highlight at
+        // scRGB white — mean and p90 stay in a readable band (not crushed /
+        // not washed) with exposure 1 + always-on shoulder.
+        const int n = 64;
+        var rgba = new float[n * 4];
+        for (var i = 0; i < n; i++)
+        {
+            var v = i == 0 ? 1f : i < 8 ? 0.5f : 0.18f;
+            rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
+            rgba[i * 4 + 3] = 1f;
+        }
+
+        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
+        Assert.Equal(1f, exposure);
+        Assert.True(white > 1f);
+        var mean = HdrJxlPresent.ToneMappedMeanLuminance(rgba, n);
+        Assert.InRange(mean, 0.10f, 0.45f);
+        var p50 = PercentileLumaAfterPresent(rgba, n, 0.50);
+        var p90 = PercentileLumaAfterPresent(rgba, n, 0.90);
+        Assert.InRange(p50, 0.08f, 0.35f);
+        Assert.InRange(p90, 0.20f, 0.95f);
+    }
+
+    [Fact]
+    public void AnalyzeHdrPresent_RelativeExr_ShoulderWithoutBoost()
+    {
+        // Scene-referred EXR diffuse ≤ 1.0: thumbs skip (1,1); present always
+        // shoulders. Exposure stays 1 so scene 1.0 → SDR white (no MidGrey boost).
+        const int n = 32;
+        var rgba = new float[n * 4];
+        for (var i = 0; i < n; i++)
+        {
+            var v = i == 0 ? 0.95f : 0.7f;
+            rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
+            rgba[i * 4 + 3] = 1f;
+        }
+
+        var thumb = ToneMap.Analyze(rgba, n);
+        Assert.Equal(1f, thumb.Exposure);
+        Assert.Equal(1f, thumb.White);
+
+        var present = ToneMap.AnalyzeHdrPresent(rgba, n);
+        Assert.Equal(1f, present.Exposure);
+        Assert.True(present.White > 1f);
+        var mean = HdrJxlPresent.ToneMappedMeanLuminance(rgba, n);
+        Assert.InRange(mean, 0.40f, 0.95f);
+    }
+
+    private static float PercentileLumaAfterPresent(float[] rgba, int n, double fraction)
+    {
+        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
+        var samples = new float[n];
+        for (var i = 0; i < n; i++)
+        {
+            ToneMap.MapPresentRgb(
+                rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2],
+                exposure, 1f, white, softNegatives: false,
+                out var r, out var g, out var b);
+            samples[i] = ToneMap.Luminance(r, g, b);
+        }
+
+        Array.Sort(samples);
+        return samples[Math.Min(n - 1, (int)(n * fraction))];
+    }
+
+    [Fact]
+    public void Bt2020LinearToScrgb_KeepsOutOfGamutNegatives()
+    {
+        // Pure BT.2020 red → negative G/B in BT.709.
+        Span<float> rgba = stackalloc float[] { 1f, 0f, 0f, 1f };
+        HdrJxlPresent.Bt2020LinearToScrgb(rgba);
+        Assert.True(rgba[0] > 0f);
+        Assert.True(rgba[1] < 0f || rgba[2] < 0f);
     }
 
     [Fact]

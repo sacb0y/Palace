@@ -100,12 +100,17 @@ internal static class JxlDecode
                         break;
                     case JxlDecoderStatus.ColorEncoding:
                         cancellation.ThrowIfCancellationRequested();
-                        // Linear sRGB primaries, values above 1.0 kept (scRGB).
-                        // Absolute intent (not the LinearSRGB Perceptual default):
-                        // BT.2020 → 709 must keep negatives so Gamut can report
-                        // Rec.2020 coverage instead of a false Rec.709 100%.
+                        // PQ/HLG: linear BT.2020 + Relative intent (1.0 =
+                        // IntensityTarget). Absolute LinearSRGB blew out SDR
+                        // present. Convert to scRGB after intensity scale.
+                        // SDR / gain-map: LinearSRGB Relative, scale 1.
                         var linear = JxlColorEncoding.LinearSRGB;
-                        linear.RenderingIntent = (JxlRenderingIntent)HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute;
+                        linear.RenderingIntent = (JxlRenderingIntent)HdrJxlPresent.ScrgbOutputRenderingIntentRelative;
+                        if (transfer is HdrTransfer.Pq or HdrTransfer.Hlg)
+                        {
+                            linear.Primaries = JxlPrimaries.BT2100;
+                        }
+
                         if (JxlDecoderNativeMethod.JxlDecoderSetOutputColorProfile(dec, in linear, 0, 0)
                             != JxlDecoderStatus.Success)
                         {
@@ -173,13 +178,19 @@ internal static class JxlDecode
     /// <summary>
     /// libjxl float output is relative to the image's intensity target
     /// (1.0 = IntensityTarget nits). Rescale so 1.0 = 80 nits SDR white (scRGB)
-    /// when the probe transfer is PQ/HLG; SDR / gain-map base stays 0..1.
+    /// when the probe transfer is PQ/HLG; then BT.2020 → scRGB. SDR / gain-map
+    /// base stays 0..1 LinearSRGB.
     /// </summary>
     private static float[] Normalize(float[] rgba, JxlBasicInfo info, HdrTransfer transfer)
     {
         HdrJxlPresent.ApplyIntensityScale(
             rgba,
             HdrJxlPresent.ScrgbScaleFromIntensityTarget(info.IntensityTarget, transfer));
+
+        if (transfer is HdrTransfer.Pq or HdrTransfer.Hlg)
+        {
+            HdrJxlPresent.Bt2020LinearToScrgb(rgba);
+        }
 
         if (info.AlphaBits == 0)
         {

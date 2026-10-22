@@ -64,6 +64,9 @@ public static class WicNative
         public const string UnormClamp = "unorm";
         public const string Packaged = "packaged";
         public const uint ComponentNotFound = 0x88982F50;
+
+        /// <summary>WIC could not decode the stream (missing codec / bad payload).</summary>
+        public const uint BadImage = 0x88982F60;
         public const uint NoInterface = 0x80004002;
         public const uint WrongThread = 0x8001010E;
         public const uint Fail = 0x80004005;
@@ -163,6 +166,16 @@ public static class WicNative
 
         public static bool IsComponentNotFound(int hr) =>
             unchecked((uint)hr) == ComponentNotFound;
+
+        public static bool IsBadImage(int hr) =>
+            unchecked((uint)hr) == BadImage;
+
+        /// <summary>
+        /// Expected miss when falling through to WIC without a Store codec —
+        /// stamp Display, do not LogOnly as an app error.
+        /// </summary>
+        public static bool IsExpectedPresentMiss(int hr) =>
+            IsComponentNotFound(hr) || IsBadImage(hr);
 
         public static bool IsNoInterface(int hr) =>
             unchecked((uint)hr) == NoInterface;

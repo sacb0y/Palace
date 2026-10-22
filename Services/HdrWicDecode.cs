@@ -232,12 +232,15 @@ internal static class HdrWicDecode
         }
         catch (Exception ex)
         {
-            LastWicError = WicNative.WicDecoderOpen.Failed(
-                WicNative.WicDecoderOpen.CreateAsync, ex);
-            // Missing codec is expected for exotic stills — stamp Display, skip spam.
-            if (!WicNative.WicDecoderOpen.IsComponentNotFound(ex.HResult))
+            var leaf = Path.GetFileName(path);
+            LastWicError = WicNative.WicDecoderOpen.Join(
+                WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.CreateAsync, ex),
+                leaf);
+            // Missing codec / BADIMAGE (0x88982F60): expected fallback — stamp
+            // Display with the path, do not LogOnly as an app error.
+            if (!WicNative.WicDecoderOpen.IsExpectedPresentMiss(ex.HResult))
             {
-                ErrorReporter.LogOnly("HdrWicDecode WIC present", ex);
+                ErrorReporter.LogOnly($"HdrWicDecode WIC present ({leaf})", ex);
             }
 
             return null;
