@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices.WindowsRuntime;
+using Microsoft.Graphics.Display;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -22,6 +23,7 @@ public sealed partial class GalleryStillSurface : UserControl
     private float _sdrToneExposure = 1f;
     private float _sdrToneWhite;
     private bool _advancedColorHooked;
+    private DisplayInformation? _displayInfo;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
     private int _histEpoch;
@@ -133,45 +135,62 @@ public sealed partial class GalleryStillSurface : UserControl
 
         try
         {
-            var info = Windows.Graphics.Display.DisplayInformation.GetForCurrentView();
-            info.AdvancedColorInfoChanged += Display_AdvancedColorInfoChanged;
+            // WinUI 3 desktop: GetForCurrentView throws. WASDK DisplayInformation
+            // is CreateForWindowId — keep the instance so Unloaded can Dispose it.
+            var windowId = XamlRoot?.ContentIslandEnvironment?.AppWindowId
+                ?? App.Window?.AppWindow?.Id
+                ?? default;
+            if (windowId.Value == 0)
+            {
+                return;
+            }
+
+            _displayInfo = DisplayInformation.CreateForWindowId(windowId);
+            _displayInfo.AdvancedColorInfoChanged += Display_AdvancedColorInfoChanged;
             _advancedColorHooked = true;
         }
-        catch
+        catch (Exception ex)
         {
-            // GetForCurrentView can fail off the UI thread / early startup.
+            ErrorReporter.LogOnly("GalleryStillSurface AdvancedColor hook", ex);
+            _displayInfo = null;
+            _advancedColorHooked = false;
         }
     }
 
     private void UnhookAdvancedColor()
     {
-        if (!_advancedColorHooked)
+        if (_displayInfo is null)
         {
+            _advancedColorHooked = false;
             return;
         }
 
         try
         {
-            var info = Windows.Graphics.Display.DisplayInformation.GetForCurrentView();
-            info.AdvancedColorInfoChanged -= Display_AdvancedColorInfoChanged;
+            _displayInfo.AdvancedColorInfoChanged -= Display_AdvancedColorInfoChanged;
+            _displayInfo.Dispose();
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore teardown races.
+            ErrorReporter.LogOnly("GalleryStillSurface AdvancedColor unhook", ex);
         }
 
+        _displayInfo = null;
         _advancedColorHooked = false;
     }
 
-    private void Display_AdvancedColorInfoChanged(Windows.Graphics.Display.DisplayInformation sender, object args)
+    private void Display_AdvancedColorInfoChanged(DisplayInformation sender, object args)
     {
-        // HDR toggle / SDR white slider / monitor move — re-probe and re-present.
-        if (_hdrFrame is null)
+        // HDR toggle / SDR white slider / monitor move — re-probe on UI thread.
+        _ = DispatcherQueue.TryEnqueue(() =>
         {
-            return;
-        }
+            if (_hdrFrame is null)
+            {
+                return;
+            }
 
-        PresentCached(HdrPresentCoalescer.SettleMs);
+            PresentCached(HdrPresentCoalescer.SettleMs);
+        });
     }
 
     public void Bind(GalleryViewModel? gallery)

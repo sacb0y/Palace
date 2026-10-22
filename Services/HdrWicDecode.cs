@@ -1122,7 +1122,7 @@ internal static class HdrWicDecode
     {
         cancellation.ThrowIfCancellationRequested();
         var decoded = JxlDecode.TryDecodeFile(
-            path, HdrJxlPresent.PresentMaxPixels, probe.Transfer);
+            path, HdrJxlPresent.PresentMaxPixels, probe.Transfer, cancellation);
         if (decoded is null)
         {
             LastWicError = "jxl null";

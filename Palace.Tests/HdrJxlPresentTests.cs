@@ -209,11 +209,21 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void EncodedToNits_Hlg_AppliesOotfGamma12()
+    public void HlgOotf_AppliesOnLuminanceNotPerChannel()
     {
+        // EncodedToNits is EOTF only; OOTF is luminance-based.
         var scene = GalleryPresent.HlgEotf(0.75f);
-        var expected = scene * MathF.Pow(scene, GalleryPresent.HlgOotfGamma - 1f) * 1000f;
-        Assert.Equal(expected, GalleryPresent.EncodedToNits(0.75f, HdrTransfer.Hlg), 3);
-        Assert.Equal(expected, GalleryPresent.HlgOotfNits(scene), 3);
+        Assert.Equal(scene * 1000f, GalleryPresent.EncodedToNits(0.75f, HdrTransfer.Hlg), 3);
+        Assert.Equal(
+            scene * MathF.Pow(scene, GalleryPresent.HlgOotfGamma - 1f) * 1000f,
+            GalleryPresent.HlgOotfNits(scene),
+            3);
+
+        // Pure red vs grey: shared Y^(γ−1) scale, not independent channel OOTF.
+        GalleryPresent.HlgOotfRgb(0.5f, 0f, 0f, bt2020: true, out var rNits, out _, out _);
+        var y = GalleryPresent.LuminanceY(0.5f, 0f, 0f, bt2020: true);
+        var k = MathF.Pow(y, GalleryPresent.HlgOotfGamma - 1f) * 1000f;
+        Assert.Equal(0.5f * k, rNits, 3);
+        Assert.NotEqual(GalleryPresent.HlgOotfNits(0.5f), rNits, 2);
     }
 }

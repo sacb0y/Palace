@@ -22,11 +22,13 @@ internal static class JxlDecode
     public static Frame? TryDecodeFile(
         string path,
         int maxPixels = HdrJxlPresent.PresentMaxPixels,
-        HdrTransfer transfer = HdrTransfer.Srgb)
+        HdrTransfer transfer = HdrTransfer.Srgb,
+        CancellationToken cancellation = default)
     {
         byte[] bytes;
         try
         {
+            cancellation.ThrowIfCancellationRequested();
             bytes = File.ReadAllBytes(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -34,19 +36,21 @@ internal static class JxlDecode
             return null;
         }
 
-        return TryDecode(bytes, maxPixels, transfer);
+        return TryDecode(bytes, maxPixels, transfer, cancellation);
     }
 
     public static Frame? TryDecode(
         byte[] bytes,
         int maxPixels = HdrJxlPresent.PresentMaxPixels,
-        HdrTransfer transfer = HdrTransfer.Srgb)
+        HdrTransfer transfer = HdrTransfer.Srgb,
+        CancellationToken cancellation = default)
     {
         var dec = (nint)0;
         var input = default(GCHandle);
         var output = default(GCHandle);
         try
         {
+            cancellation.ThrowIfCancellationRequested();
             if ((uint)JxlDecoderLite.CheckSignature(bytes) <= 1u)
             {
                 return null;
@@ -81,6 +85,7 @@ internal static class JxlDecode
             float[]? pixels = null;
             for (var guard = 0; guard < 64; guard++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 var status = JxlDecoderNativeMethod.JxlDecoderProcessInput(dec);
                 switch (status)
                 {
@@ -94,6 +99,7 @@ internal static class JxlDecode
 
                         break;
                     case JxlDecoderStatus.ColorEncoding:
+                        cancellation.ThrowIfCancellationRequested();
                         // Linear sRGB primaries, values above 1.0 kept (scRGB).
                         // Absolute intent (not the LinearSRGB Perceptual default):
                         // BT.2020 → 709 must keep negatives so Gamut can report
@@ -108,13 +114,24 @@ internal static class JxlDecode
 
                         break;
                     case JxlDecoderStatus.NeedImageOutBuffer:
+                        cancellation.ThrowIfCancellationRequested();
                         nuint size = 0;
                         if (JxlDecoderNativeMethod.JxlDecoderImageOutBufferSize(dec, in format, ref size) != JxlDecoderStatus.Success)
                         {
                             return null;
                         }
 
-                        pixels = new float[(int)(size / sizeof(float))];
+                        // Reject absurd buffer sizes before allocating (BasicInfo
+                        // already capped pixels; this catches format mismatches).
+                        var floatCount = (long)(size / sizeof(float));
+                        var expected = (long)info.XSize * info.YSize * 4;
+                        if (info.XSize == 0 || floatCount <= 0 || floatCount > expected * 2
+                            || floatCount > (long)maxPixels * 4)
+                        {
+                            return null;
+                        }
+
+                        pixels = new float[(int)floatCount];
                         output = GCHandle.Alloc(pixels, GCHandleType.Pinned);
                         if (JxlDecoderNativeMethod.JxlDecoderSetImageOutBuffer(dec, in format, output.AddrOfPinnedObject(), size)
                             != JxlDecoderStatus.Success)
@@ -135,6 +152,10 @@ internal static class JxlDecode
             }
 
             return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException
                                        or JxlDecodeException or OutOfMemoryException)
