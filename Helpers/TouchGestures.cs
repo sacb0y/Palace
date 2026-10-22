@@ -11,10 +11,14 @@ public static class TouchGestures
     public const double AxisLockPx = 10;
     public const double AxisLockRatio = 1.5;
     public const double EdgeHandoffPx = 24;
-    public const double SwipeCommitFraction = 0.35;
+    /// <summary>
+    /// Browse commit fraction of viewer width. Locked to
+    /// <see cref="SwipeNav.CommitFraction"/> (0.30 — Isiac Oct 22 swipe-nav).
+    /// </summary>
+    public const double SwipeCommitFraction = SwipeNav.CommitFraction;
     /// <summary>Review keep/reject commit uses height (Isiac 2026-10-21).</summary>
     public const double ReviewCommitFraction = 0.30;
-    public const double SwipeFlickPxPerMs = 0.5;
+    public const double SwipeFlickPxPerMs = SwipeNav.FlickPxPerMs;
     public const double InertiaDecelPxPerMs2 = 0.0025;
     public const double RubberBandFactor = 0.35;
     public const double RubberBandCapFraction = 0.25;
@@ -207,6 +211,7 @@ public static class TouchGestures
 
     /// <summary>
     /// Non-review browse swipe when not zoomed: left/right = next/prev.
+    /// Threshold / flick-back cancel live in <see cref="SwipeNav"/> (visual pager).
     /// Prefer <see cref="ClassifyReviewSwipe"/> for keep/reject Review.
     /// </summary>
     public static SwipeAction ClassifyBrowseSwipe(
@@ -215,20 +220,20 @@ public static class TouchGestures
         double viewportWidth,
         double velocityXPxPerMs)
     {
-        if (!IsHorizontalAxis(dx, dy))
+        if (!IsHorizontalAxis(dx, dy)
+            && Math.Abs(velocityXPxPerMs) <= SwipeFlickPxPerMs)
         {
             return SwipeAction.None;
         }
 
-        var commit = Math.Abs(dx) >= SwipeCommitFraction * Math.Max(1, viewportWidth)
-            || Math.Abs(velocityXPxPerMs) > SwipeFlickPxPerMs;
-        if (!commit)
-        {
-            return SwipeAction.SpringBack;
-        }
-
-        // Content follows finger: swipe left → next.
-        return dx < 0 ? SwipeAction.BrowseNext : SwipeAction.BrowsePrevious;
+        // Unknown edge capacity here — assume both sides exist; callers that
+        // know CanGoPrevious/Next should use SwipeNav.ClassifyBrowseCommit.
+        return SwipeNav.ClassifyBrowseCommit(
+            travelPx: dx,
+            velocityXPxPerMs: velocityXPxPerMs,
+            viewerWidth: viewportWidth,
+            canGoPrevious: true,
+            canGoNext: true);
     }
 
     public const string RejectedFolderName = "_rejected";
