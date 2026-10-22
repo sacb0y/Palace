@@ -372,7 +372,7 @@ public static class ThumbDecodeRun
             cancellationToken.ThrowIfCancellationRequested();
             return new ThumbDecodeOutcome(false, sw.Elapsed.TotalMilliseconds);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ErrorReporter.IsCancellation(ex))
         {
             return new ThumbDecodeOutcome(true, sw.Elapsed.TotalMilliseconds);
         }

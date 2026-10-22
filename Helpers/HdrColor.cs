@@ -229,6 +229,15 @@ public static class HdrColor
     }
 
     /// <summary>
+    /// BT.2020 (9) and Display P3 (12) share BT.2020 CIE Y weights for Info
+    /// source-primary luminance and HLG OOTF. Display P3 rides the same
+    /// BT.2100→scRGB path as BT.2020 (<see cref="UsesBt2100ToScrgbMatrix"/>),
+    /// so OOTF and <see cref="GalleryPresent.LuminanceY"/> must use one rule —
+    /// never 9||12 for OOTF and 9-only for the final Y.
+    /// </summary>
+    public static bool UsesBt2020Luma(int? primaries) => primaries is 9 or 12;
+
+    /// <summary>
     /// Info CIE Y in the source primaries (PQ/HLG nits before 2020→709).
     /// Do not measure scRGB after the primaries matrix — that is display
     /// 709 and reads high versus SKIV when <c>LuminanceY</c> still uses
@@ -241,6 +250,7 @@ public static class HdrColor
         HdrTransfer transfer,
         int? primaries)
     {
+        var bt2020Luma = UsesBt2020Luma(primaries);
         if (transfer == HdrTransfer.Hlg)
         {
             // Luminance OOTF — not EncodedToNits per channel.
@@ -248,18 +258,18 @@ public static class HdrColor
                 GalleryPresent.HlgEotf(encodedR),
                 GalleryPresent.HlgEotf(encodedG),
                 GalleryPresent.HlgEotf(encodedB),
-                primaries == 9 || primaries == 12,
+                bt2020Luma,
                 out var nitsR,
                 out var nitsG,
                 out var nitsB);
-            return GalleryPresent.LuminanceY(nitsR, nitsG, nitsB, primaries == 9);
+            return GalleryPresent.LuminanceY(nitsR, nitsG, nitsB, bt2020Luma);
         }
 
         return GalleryPresent.LuminanceY(
             GalleryPresent.EncodedToNits(encodedR, transfer),
             GalleryPresent.EncodedToNits(encodedG, transfer),
             GalleryPresent.EncodedToNits(encodedB, transfer),
-            primaries == 9);
+            bt2020Luma);
     }
 
     public static float YuvSourcePrimaryNitsY(float y, float u, float v, HdrProbe probe)

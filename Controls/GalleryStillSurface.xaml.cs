@@ -100,6 +100,8 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.AddHandler(UIElement.PointerWheelChangedEvent, _wheelHandler, handledEventsToo: true);
         // DPI / composition scale changes resize physical swapchain buffers.
         ScpHdr.CompositionScaleChanged += ScpHdr_CompositionScaleChanged;
+        // AppWindowId can be 0 before the island is ready — retry on Loaded.
+        Loaded += (_, _) => HookAdvancedColor();
         Unloaded += (_, _) =>
         {
             ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
@@ -137,6 +139,8 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             // WinUI 3 desktop: GetForCurrentView throws. WASDK DisplayInformation
             // is CreateForWindowId — keep the instance so Unloaded can Dispose it.
+            // Leave _advancedColorHooked false when AppWindowId is still 0 so
+            // Loaded / RefreshAsync can attach once the island has an id.
             var windowId = XamlRoot?.ContentIslandEnvironment?.AppWindowId
                 ?? App.Window?.AppWindow?.Id
                 ?? default;
@@ -379,6 +383,8 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var gallery = _gallery;
         ApplyScaleLayout();
+        // Bind may have run before AppWindowId was ready — retry the ACE hook.
+        HookAdvancedColor();
         if (gallery is { IsImage: true, CanScrubGif: true })
         {
             _hdrLoadCts?.Cancel();
