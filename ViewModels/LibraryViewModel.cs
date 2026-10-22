@@ -43,6 +43,8 @@ public partial class LibraryViewModel : ObservableObject
     /// <summary>Full mosaic order including tiles under collapsed headers (view-only collapse).</summary>
     private List<AssetItem> _mosaicOrder = [];
     private const int MosaicChunkSize = 80;
+    /// <summary>Collapse prefs save failure Notify once per VM lifetime (log every time).</summary>
+    private bool _collapseSaveNotifyShown;
 
     /// <summary>
     /// LibraryPage captures scroll offset and returns a guard generation so a

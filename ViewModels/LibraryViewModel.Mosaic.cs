@@ -137,13 +137,18 @@ public partial class LibraryViewModel
         catch (Exception ex)
         {
             ErrorReporter.LogOnly("Save collapsed sections", ex);
-            Notify(
-                "Collapse state won't persist this time.",
-                Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+            // Once per session — repeat Notify would replace a pending Undo toast.
+            if (!_collapseSaveNotifyShown)
+            {
+                _collapseSaveNotifyShown = true;
+                Notify(
+                    "Collapse state won't persist this time.",
+                    Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+            }
         }
 
         // Arm the page guard only once Republish is about to run — a throw above
-        // must not leave _sectionToggleGuardDepth > 0 with no Ended callback.
+        // must not leave the page section-toggle guard depth > 0 with no Ended.
         var guardGeneration = SectionToggleStarting?.Invoke() ?? 0;
         // Fire-and-forget: Republish always ends the page section-toggle guard
         // (try/finally) even when Populate throws or the epoch is superseded.
