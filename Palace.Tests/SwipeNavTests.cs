@@ -124,7 +124,7 @@ public sealed class SwipeNavTests
                 isVideo: true, isPlaying: false, touchGesturesEnabled: true,
                 yFromBottom: 40, transportChromeVisible: true));
 
-        // Playing: 28 DIP scrub strip; elsewhere pages.
+        // Playing + chrome hidden: 28 DIP scrub strip; elsewhere pages.
         Assert.Equal(
             SwipeNav.DragKind.VideoScrub,
             SwipeNav.ClassifyVideoDrag(
@@ -135,6 +135,17 @@ public sealed class SwipeNavTests
             SwipeNav.ClassifyVideoDrag(
                 isVideo: true, isPlaying: true, touchGesturesEnabled: true,
                 yFromBottom: 100, transportChromeVisible: false));
+        // Playing + chrome visible: scrub only on ProgressSlider (B5 / #128).
+        Assert.Equal(
+            SwipeNav.DragKind.None,
+            SwipeNav.ClassifyVideoDrag(
+                isVideo: true, isPlaying: true, touchGesturesEnabled: true,
+                yFromBottom: 20, transportChromeVisible: true, overProgressSlider: false));
+        Assert.Equal(
+            SwipeNav.DragKind.VideoScrub,
+            SwipeNav.ClassifyVideoDrag(
+                isVideo: true, isPlaying: true, touchGesturesEnabled: true,
+                yFromBottom: 20, transportChromeVisible: true, overProgressSlider: true));
         Assert.True(SwipeNav.AllowsVideoPageSwipe(
             true, true, true, yFromBottom: 100, transportChromeVisible: false));
         Assert.True(SwipeNav.AllowsVideoScrub(
@@ -162,8 +173,37 @@ public sealed class SwipeNavTests
 
         Assert.Equal(4, SwipeNav.SnapOvershootPx(1.0), 3); // capped
         Assert.True(SwipeNav.SnapOvershootPx(0.05) <= SwipeNav.MaxOvershootPx);
-        Assert.True(SwipeNav.ResetsZoomOnCommit(TouchGestures.SwipeAction.BrowseNext));
-        Assert.False(SwipeNav.ResetsZoomOnCommit(TouchGestures.SwipeAction.SpringBack));
+        // B3: reset local zoom only when KeepZoomBetweenImages is off.
+        Assert.True(SwipeNav.ResetsLocalZoomOnCommit(
+            TouchGestures.SwipeAction.BrowseNext, keepZoomBetweenImages: false));
+        Assert.False(SwipeNav.ResetsLocalZoomOnCommit(
+            TouchGestures.SwipeAction.BrowseNext, keepZoomBetweenImages: true));
+        Assert.False(SwipeNav.ResetsLocalZoomOnCommit(
+            TouchGestures.SwipeAction.SpringBack, keepZoomBetweenImages: false));
+    }
+
+    [Fact]
+    public void ClassifyBrowseCommit_UsesRealDyForAxisLock()
+    {
+        // Dominant vertical travel must not classify as browse (S9).
+        Assert.Equal(
+            TouchGestures.SwipeAction.None,
+            SwipeNav.ClassifyBrowseCommit(
+                travelPx: -20,
+                velocityXPxPerMs: 0,
+                viewerWidth: 200,
+                canGoPrevious: true,
+                canGoNext: true,
+                travelPy: -80));
+        Assert.Equal(
+            TouchGestures.SwipeAction.BrowseNext,
+            SwipeNav.ClassifyBrowseCommit(
+                travelPx: -80,
+                velocityXPxPerMs: 0,
+                viewerWidth: 200,
+                canGoPrevious: true,
+                canGoNext: true,
+                travelPy: -10));
     }
 
     [Fact]

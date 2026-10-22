@@ -117,7 +117,11 @@ public sealed partial class LibraryPage : Page
             MpeOverlay,
             VideoBrowseSwipeAllowedNow,
             OnOverlayReviewSwipe,
-            isReviewMode: () => ViewModel.IsReviewMode);
+            isReviewMode: () => ViewModel.IsReviewMode,
+            onLeavePlaying: () =>
+            {
+                // Spec: leave pauses + saves position (Pause keeps PlaybackSession.Position).
+            });
         _videoBrowseSwipe.Hook();
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;

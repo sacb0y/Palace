@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 using Windows.Media.Playback;
 
 namespace Palace.Helpers;
@@ -10,11 +11,14 @@ namespace Palace.Helpers;
 /// <summary>
 /// WinUI hookup for video browse swipe / playing scrub on
 /// <see cref="MediaPlayerElement"/>. Touch only via <see cref="VideoBrowseSwipe"/>.
-/// Playing: 28 DIP scrub bar scrubs; elsewhere pages (docs/specs/swipe-nav.md).
-/// Not linked into Palace.Tests.
+/// Visual pager for video is deferred (docs/specs/swipe-nav.md); paging stays on
+/// this #128 path. Scrub: ProgressSlider when chrome is up, else 28 DIP strip;
+/// claim only after slop. Not linked into Palace.Tests.
 /// </summary>
 public sealed class VideoBrowseSwipeBinder
 {
+    private const long ScrubThrottleMs = 33; // ~30 Hz
+
     private readonly MediaPlayerElement _mpe;
     private readonly Func<bool> _videoGesturesAllowed;
     private readonly Func<bool> _isReviewMode;
@@ -24,9 +28,13 @@ public sealed class VideoBrowseSwipeBinder
     private bool _hooked;
     private bool _captured;
     private SwipeNav.DragKind _kind = SwipeNav.DragKind.None;
+    private bool _scrubCandidate;
     private bool _scrubbing;
     private double _scrubStartX;
+    private double _scrubStartY;
     private TimeSpan _scrubStartPosition;
+    private long _lastScrubSeekMs;
+    private FrameworkElement? _progressSlider;
 
     public VideoBrowseSwipeBinder(
         MediaPlayerElement mpe,
@@ -36,7 +44,6 @@ public sealed class VideoBrowseSwipeBinder
         Action? onLeavePlaying = null)
     {
         _mpe = mpe;
-        // swipeAllowed kept as "video + touch gestures on" (playing OK).
         _videoGesturesAllowed = swipeAllowed;
         _onNavigate = onNavigate;
         _isReviewMode = isReviewMode ?? (() => false);
@@ -50,8 +57,6 @@ public sealed class VideoBrowseSwipeBinder
             return;
         }
 
-        // handledEventsToo: MPE swallows touch; no overlay catcher so mouse/pen
-        // still hit-test the element (transport + ContextFlyout).
         _mpe.AddHandler(
             UIElement.PointerPressedEvent,
             new PointerEventHandler(OnPointerPressed),
@@ -75,7 +80,6 @@ public sealed class VideoBrowseSwipeBinder
         _hooked = true;
     }
 
-    /// <summary>Cancel an in-flight gesture when video / touch gestures turn off.</summary>
     public void SyncAllowed()
     {
         if (!_videoGesturesAllowed())
@@ -84,10 +88,6 @@ public sealed class VideoBrowseSwipeBinder
         }
     }
 
-    /// <summary>
-    /// MediaTransportControls stays Visibility=Visible; Show/Hide fades the
-    /// template's ControlPanelGrid. Fall back to the control Opacity.
-    /// </summary>
     public static bool IsTransportChromeVisible(MediaTransportControls? transport)
     {
         if (transport is null)
@@ -108,25 +108,30 @@ public sealed class VideoBrowseSwipeBinder
         var device = e.Pointer.PointerDeviceType;
         var point = e.GetCurrentPoint(_mpe);
         var yFromBottom = _mpe.ActualHeight - point.Position.Y;
+        var chrome = IsTransportChromeVisible(_mpe.TransportControls);
+        var overSlider = chrome && IsOverProgressSlider(point.Position);
         var playing = IsPlaying();
         _kind = SwipeNav.ClassifyVideoDrag(
             isVideo: true,
             isPlaying: playing,
             touchGesturesEnabled: _videoGesturesAllowed(),
             yFromBottom: yFromBottom,
-            transportChromeVisible: IsTransportChromeVisible(_mpe.TransportControls));
+            transportChromeVisible: chrome,
+            overProgressSlider: overSlider);
+
+        _scrubCandidate = false;
+        _scrubbing = false;
 
         if (_kind == SwipeNav.DragKind.VideoScrub && device == PointerDeviceType.Touch)
         {
-            _scrubbing = true;
+            // B5: arm scrub, but claim only after slop — leave transport hittable.
+            _scrubCandidate = true;
             _scrubStartX = point.Position.X;
+            _scrubStartY = point.Position.Y;
             _scrubStartPosition = _mpe.MediaPlayer?.PlaybackSession?.Position ?? TimeSpan.Zero;
-            _captured = _mpe.CapturePointer(e.Pointer);
-            e.Handled = true;
             return;
         }
 
-        _scrubbing = false;
         _swipe.TryBegin(
             isTouch: device == PointerDeviceType.Touch,
             pointerId: e.Pointer.PointerId,
@@ -134,11 +139,9 @@ public sealed class VideoBrowseSwipeBinder
             y: point.Position.Y,
             timestampMs: Environment.TickCount64,
             swipeAllowed: _kind == SwipeNav.DragKind.BrowsePage,
-            transportChromeVisible: IsTransportChromeVisible(_mpe.TransportControls),
+            transportChromeVisible: chrome,
             yFromBottom: yFromBottom);
 
-        // Stock MPE shows transport on mouse/pen click. Our AddHandler can steal
-        // that path — restore Show for mouse/pen without arming touch swipe.
         if (device is PointerDeviceType.Mouse or PointerDeviceType.Pen)
         {
             _mpe.TransportControls?.Show();
@@ -147,14 +150,28 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (_scrubbing)
+        var point = e.GetCurrentPoint(_mpe);
+        if (_scrubCandidate || _scrubbing)
         {
-            ApplyScrub(e.GetCurrentPoint(_mpe).Position.X);
+            var dx = point.Position.X - _scrubStartX;
+            var dy = point.Position.Y - _scrubStartY;
+            if (!_scrubbing)
+            {
+                if (!TouchGestures.ExceedsSlop(dx, dy))
+                {
+                    return;
+                }
+
+                _scrubbing = true;
+                _scrubCandidate = false;
+                _captured = _mpe.CapturePointer(e.Pointer);
+            }
+
+            ApplyScrubThrottled(point.Position.X);
             e.Handled = true;
             return;
         }
 
-        var point = e.GetCurrentPoint(_mpe);
         if (!_swipe.TryMove(e.Pointer.PointerId, point.Position.X, point.Position.Y, out var crossedSlop))
         {
             return;
@@ -174,13 +191,18 @@ public sealed class VideoBrowseSwipeBinder
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         var device = e.Pointer.PointerDeviceType;
-        if (_scrubbing)
+        if (_scrubbing || _scrubCandidate)
         {
-            ApplyScrub(e.GetCurrentPoint(_mpe).Position.X);
+            if (_scrubbing)
+            {
+                ApplyScrubThrottled(e.GetCurrentPoint(_mpe).Position.X, force: true);
+                e.Handled = true;
+            }
+
             EndCapture(e.Pointer);
             _scrubbing = false;
+            _scrubCandidate = false;
             _kind = SwipeNav.DragKind.None;
-            e.Handled = true;
             return;
         }
 
@@ -214,8 +236,6 @@ public sealed class VideoBrowseSwipeBinder
             return;
         }
 
-        // Touch tap (no swipe capture): same as stock — show transport.
-        // Mouse/pen already Show()'d on press; touch browse swipe must not.
         if (device == PointerDeviceType.Touch && !hadCapture)
         {
             _mpe.TransportControls?.Show();
@@ -224,10 +244,11 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerCanceled(object sender, PointerRoutedEventArgs e)
     {
-        if (_scrubbing)
+        if (_scrubbing || _scrubCandidate)
         {
             EndCapture(e.Pointer);
             _scrubbing = false;
+            _scrubCandidate = false;
             _kind = SwipeNav.DragKind.None;
             return;
         }
@@ -239,9 +260,10 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
-        if (_scrubbing)
+        if (_scrubbing || _scrubCandidate)
         {
             _scrubbing = false;
+            _scrubCandidate = false;
             _captured = false;
             _kind = SwipeNav.DragKind.None;
             return;
@@ -255,6 +277,18 @@ public sealed class VideoBrowseSwipeBinder
         _swipe.Cancel(e.Pointer.PointerId);
         _captured = false;
         _kind = SwipeNav.DragKind.None;
+    }
+
+    private void ApplyScrubThrottled(double x, bool force = false)
+    {
+        var now = Environment.TickCount64;
+        if (!force && now - _lastScrubSeekMs < ScrubThrottleMs)
+        {
+            return;
+        }
+
+        _lastScrubSeekMs = now;
+        ApplyScrub(x);
     }
 
     private void ApplyScrub(double x)
@@ -285,6 +319,34 @@ public sealed class VideoBrowseSwipeBinder
         session.Position = next;
     }
 
+    private bool IsOverProgressSlider(Point position)
+    {
+        _progressSlider ??= FindDescendantByName(_mpe.TransportControls, "ProgressSlider") as FrameworkElement
+            ?? FindDescendantByName(_mpe, "ProgressSlider") as FrameworkElement;
+        if (_progressSlider is null
+            || _progressSlider.Visibility != Visibility.Visible
+            || _progressSlider.ActualWidth <= 0
+            || _progressSlider.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var transform = _progressSlider.TransformToVisual(_mpe);
+            var topLeft = transform.TransformPoint(new Point(0, 0));
+            var rect = new Rect(topLeft.X, topLeft.Y, _progressSlider.ActualWidth, _progressSlider.ActualHeight);
+            // Small vertical pad so the thin slider is hittable.
+            rect.Y -= 8;
+            rect.Height += 16;
+            return rect.Contains(position);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private bool IsPlaying() =>
         _mpe.MediaPlayer?.PlaybackSession?.PlaybackState == MediaPlaybackState.Playing;
 
@@ -292,6 +354,7 @@ public sealed class VideoBrowseSwipeBinder
     {
         _swipe.Cancel();
         _scrubbing = false;
+        _scrubCandidate = false;
         _captured = false;
         _kind = SwipeNav.DragKind.None;
     }
@@ -315,8 +378,13 @@ public sealed class VideoBrowseSwipeBinder
         }
     }
 
-    private static FrameworkElement? FindDescendantByName(DependencyObject root, string name)
+    private static FrameworkElement? FindDescendantByName(DependencyObject? root, string name)
     {
+        if (root is null)
+        {
+            return null;
+        }
+
         var count = VisualTreeHelper.GetChildrenCount(root);
         for (var i = 0; i < count; i++)
         {

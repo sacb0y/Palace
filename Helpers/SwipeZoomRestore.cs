@@ -1,11 +1,14 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// Per-asset zoom/pan snapshot for swipe-nav: commit resets to Fit; going back
-/// restores the prior zoom/pan (docs/specs/swipe-nav.md). Off WinUI.
+/// Per-asset zoom/pan snapshot for swipe-nav. When KeepZoomBetweenImages is
+/// off, commit clears local zoom/pan; going back restores a prior snapshot
+/// (docs/specs/swipe-nav.md). LRU capped. Off WinUI.
 /// </summary>
 public sealed class SwipeZoomRestore
 {
+    public const int MaxEntries = 50;
+
     public readonly record struct Snapshot(
         ImageScaling Scaling,
         double PinchZoom,
@@ -13,6 +16,7 @@ public sealed class SwipeZoomRestore
         double OffsetY);
 
     private readonly Dictionary<string, Snapshot> _byPath = new(StringComparer.OrdinalIgnoreCase);
+    private readonly LinkedList<string> _order = new();
 
     public void Save(string? path, Snapshot snapshot)
     {
@@ -21,7 +25,19 @@ public sealed class SwipeZoomRestore
             return;
         }
 
+        if (_byPath.ContainsKey(path))
+        {
+            _order.Remove(path);
+        }
+
         _byPath[path] = snapshot;
+        _order.AddFirst(path);
+        while (_order.Count > MaxEntries)
+        {
+            var last = _order.Last!.Value;
+            _order.RemoveLast();
+            _byPath.Remove(last);
+        }
     }
 
     public bool TryRestore(string? path, out Snapshot snapshot)
@@ -32,7 +48,15 @@ public sealed class SwipeZoomRestore
             return false;
         }
 
-        return _byPath.TryGetValue(path, out snapshot);
+        if (!_byPath.TryGetValue(path, out snapshot))
+        {
+            return false;
+        }
+
+        // Touch as most-recent.
+        _order.Remove(path);
+        _order.AddFirst(path);
+        return true;
     }
 
     public void Forget(string? path)
@@ -42,10 +66,17 @@ public sealed class SwipeZoomRestore
             return;
         }
 
-        _byPath.Remove(path);
+        if (_byPath.Remove(path))
+        {
+            _order.Remove(path);
+        }
     }
 
-    public void Clear() => _byPath.Clear();
+    public void Clear()
+    {
+        _byPath.Clear();
+        _order.Clear();
+    }
 
     public int Count => _byPath.Count;
 

@@ -30,4 +30,19 @@ public sealed class SwipeZoomRestoreTests
         store.Clear();
         Assert.Equal(0, store.Count);
     }
+
+    [Fact]
+    public void Lru_EvictsOldestBeyondFifty()
+    {
+        var store = new SwipeZoomRestore();
+        var snap = new SwipeZoomRestore.Snapshot(ImageScaling.Actual, 2, 1, 1);
+        for (var i = 0; i < SwipeZoomRestore.MaxEntries + 5; i++)
+        {
+            store.Save($"C:\\p{i}.jpg", snap);
+        }
+
+        Assert.Equal(SwipeZoomRestore.MaxEntries, store.Count);
+        Assert.False(store.TryRestore("C:\\p0.jpg", out _));
+        Assert.True(store.TryRestore($"C:\\p{SwipeZoomRestore.MaxEntries + 4}.jpg", out _));
+    }
 }

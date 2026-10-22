@@ -245,9 +245,10 @@ public static class SwipeNav
         double velocityXPxPerMs,
         double viewerWidth,
         bool canGoPrevious,
-        bool canGoNext)
+        bool canGoNext,
+        double travelPy = 0)
     {
-        if (!TouchGestures.IsHorizontalAxis(travelPx, 0)
+        if (!TouchGestures.IsHorizontalAxis(travelPx, travelPy)
             && Math.Abs(velocityXPxPerMs) <= FlickPxPerMs)
         {
             return TouchGestures.SwipeAction.None;
@@ -336,15 +337,18 @@ public static class SwipeNav
     public static bool ReviewTintIsReject(double dragPx) => dragPx < 0;
 
     /// <summary>
-    /// Playing-video pointer routing: scrub bar (28 DIP) scrubs; elsewhere pages.
-    /// Not playing → always page (scrub N/A).
+    /// Playing-video pointer routing. When transport chrome is visible, scrub
+    /// only on the real ProgressSlider (pass <paramref name="overProgressSlider"/>);
+    /// the 28 DIP strip applies only when chrome is hidden. Never steal the
+    /// #128 transport dead zone.
     /// </summary>
     public static DragKind ClassifyVideoDrag(
         bool isVideo,
         bool isPlaying,
         bool touchGesturesEnabled,
         double yFromBottom,
-        bool transportChromeVisible)
+        bool transportChromeVisible,
+        bool overProgressSlider = false)
     {
         if (!isVideo || !touchGesturesEnabled)
         {
@@ -362,32 +366,44 @@ public static class SwipeNav
             return DragKind.BrowsePage;
         }
 
-        // Playing: 28 DIP scrub strip from the bottom (above transport chrome).
+        if (transportChromeVisible)
+        {
+            // Scrub only on the ProgressSlider — not the whole bottom band.
+            if (overProgressSlider)
+            {
+                return DragKind.VideoScrub;
+            }
+
+            if (TouchGestures.BlocksGestureOverVideoControls(true, yFromBottom))
+            {
+                return DragKind.None;
+            }
+
+            return DragKind.BrowsePage;
+        }
+
+        // Chrome hidden: 28 DIP scrub strip from the bottom.
         if (yFromBottom <= VideoScrubHitDip)
         {
             return DragKind.VideoScrub;
-        }
-
-        if (TouchGestures.BlocksGestureOverVideoControls(transportChromeVisible, yFromBottom))
-        {
-            return DragKind.None;
         }
 
         return DragKind.BrowsePage;
     }
 
     /// <summary>
-    /// Playing video may page (elsewhere) or scrub (bar). Replaces the old
-    /// paused-only gate for callers that also check <see cref="ClassifyVideoDrag"/>.
+    /// Playing video may page (elsewhere) or scrub (slider / hidden-chrome strip).
     /// </summary>
     public static bool AllowsVideoPageSwipe(
         bool isVideo,
         bool isPlaying,
         bool touchGesturesEnabled,
         double yFromBottom,
-        bool transportChromeVisible) =>
+        bool transportChromeVisible,
+        bool overProgressSlider = false) =>
         ClassifyVideoDrag(
-            isVideo, isPlaying, touchGesturesEnabled, yFromBottom, transportChromeVisible)
+            isVideo, isPlaying, touchGesturesEnabled, yFromBottom, transportChromeVisible,
+            overProgressSlider)
         == DragKind.BrowsePage;
 
     public static bool AllowsVideoScrub(
@@ -395,9 +411,11 @@ public static class SwipeNav
         bool isPlaying,
         bool touchGesturesEnabled,
         double yFromBottom,
-        bool transportChromeVisible) =>
+        bool transportChromeVisible,
+        bool overProgressSlider = false) =>
         ClassifyVideoDrag(
-            isVideo, isPlaying, touchGesturesEnabled, yFromBottom, transportChromeVisible)
+            isVideo, isPlaying, touchGesturesEnabled, yFromBottom, transportChromeVisible,
+            overProgressSlider)
         == DragKind.VideoScrub;
 
     /// <summary>
@@ -413,12 +431,20 @@ public static class SwipeNav
     public static bool NeighborUsesPoster(bool isVideo) => isVideo;
 
     /// <summary>
-    /// Zoom restores to Fit on browse commit; going back restores the prior
-    /// zoom/pan snapshot for that asset.
+    /// Local zoom/pan reset on browse commit only when
+    /// <see cref="ViewerSettings.KeepZoomBetweenImages"/> is off (#128).
+    /// Never write <c>GalleryViewModel.Scaling</c> from the pager.
     /// </summary>
-    public static bool ResetsZoomOnCommit(TouchGestures.SwipeAction action) =>
-        action is TouchGestures.SwipeAction.BrowseNext
+    public static bool ResetsLocalZoomOnCommit(
+        TouchGestures.SwipeAction action,
+        bool keepZoomBetweenImages) =>
+        !keepZoomBetweenImages
+        && action is TouchGestures.SwipeAction.BrowseNext
             or TouchGestures.SwipeAction.BrowsePrevious;
+
+    /// <summary>Obsolete name — use <see cref="ResetsLocalZoomOnCommit"/>.</summary>
+    public static bool ResetsZoomOnCommit(TouchGestures.SwipeAction action) =>
+        ResetsLocalZoomOnCommit(action, keepZoomBetweenImages: false);
 
     /// <summary>
     /// Snap-back overshoot keyframe (px). Cap at <see cref="MaxOvershootPx"/>.

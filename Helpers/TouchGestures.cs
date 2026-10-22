@@ -233,7 +233,8 @@ public static class TouchGestures
             velocityXPxPerMs: velocityXPxPerMs,
             viewerWidth: viewportWidth,
             canGoPrevious: true,
-            canGoNext: true);
+            canGoNext: true,
+            travelPy: dy);
     }
 
     public const string RejectedFolderName = "_rejected";

@@ -17,6 +17,7 @@
             x:Name="ImgNeighborPrev"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
+            AutomationProperties.AccessibilityView="Raw"
             IsHitTestVisible="False"
             Opacity="0"
             Stretch="Uniform">
@@ -28,6 +29,7 @@
             x:Name="ImgNeighborNext"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
+            AutomationProperties.AccessibilityView="Raw"
             IsHitTestVisible="False"
             Opacity="0"
             Stretch="Uniform">
@@ -83,6 +85,7 @@
             x:Name="BrdEdgeGlowLeft"
             Width="28"
             HorizontalAlignment="Left"
+            AutomationProperties.AccessibilityView="Raw"
             IsHitTestVisible="False"
             Opacity="0">
             <Border.Background>
@@ -96,6 +99,7 @@
             x:Name="BrdEdgeGlowRight"
             Width="28"
             HorizontalAlignment="Right"
+            AutomationProperties.AccessibilityView="Raw"
             IsHitTestVisible="False"
             Opacity="0">
             <Border.Background>
@@ -110,6 +114,7 @@
             Margin="0,0,0,56"
             HorizontalAlignment="Center"
             VerticalAlignment="Bottom"
+            AutomationProperties.AccessibilityView="Raw"
             IsHitTestVisible="False"
             Opacity="0"
             Style="{StaticResource CaptionTextBlockStyle}" />
