@@ -107,6 +107,7 @@ public partial class LibraryViewModel
     /// <summary>
     /// Re-resolve <c>_selection</c> from asset ids against the ordered mosaic
     /// (same instances after collapse filter; ids if tiles were remapped).
+    /// Keeps the prior Shift-click anchor when it still lives in the ordered list.
     /// </summary>
     public void RestoreSelectionByIds(IReadOnlyCollection<string> ids, bool loadPreview = false)
     {
@@ -116,11 +117,12 @@ public partial class LibraryViewModel
             ids,
             item => item.IsFolderHeader,
             item => item.Id);
-        ApplySelectionList(resolved, loadPreview);
+        ApplySelectionList(resolved, loadPreview, keepAnchorIfInOrder: true);
     }
 
-    private void ApplySelectionList(List<AssetItem> items, bool loadPreview)
+    private void ApplySelectionList(List<AssetItem> items, bool loadPreview, bool keepAnchorIfInOrder = false)
     {
+        var priorAnchor = _selectionAnchor;
         _selection = items;
         var selected = new HashSet<AssetItem>(_selection);
         // Live drag reuses the display HashSet; end of drag / normal select rebuilds it.
@@ -143,7 +145,12 @@ public partial class LibraryViewModel
         RefreshSelectionSummary();
         CanEditNotes = _selection.Count == 1;
         var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
-        _selectionAnchor = next;
+        IReadOnlyList<AssetItem> ordered = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+        // Collapse restore: do not move the Shift-click origin onto LastOrDefault
+        // (often a hidden tile). Keep the prior anchor when it is still in order.
+        _selectionAnchor = keepAnchorIfInOrder
+            ? MosaicSelection.ResolveAnchorAfterRestore(priorAnchor, ordered, next)
+            : next;
         if (!loadPreview)
         {
             return;
@@ -205,6 +212,21 @@ public partial class LibraryViewModel
             if (from >= 0 && to >= 0)
             {
                 ApplyMosaicRange(from, to);
+                return;
+            }
+
+            // Anchor (or click target) is under a collapsed section — range through
+            // the full ordered mosaic the same way ApplyMosaicRange does.
+            var ordered = _mosaicOrder.Count > 0 ? (IReadOnlyList<AssetItem>)_mosaicOrder : Assets;
+            var fromOrdered = MosaicSelection.IndexInOrdered(ordered, _selectionAnchor);
+            var toOrdered = MosaicSelection.IndexInOrdered(ordered, item);
+            if (fromOrdered >= 0 && toOrdered >= 0)
+            {
+                var flags = ordered.Select(asset => asset.IsFolderHeader).ToList();
+                var indexes = RangeSelect.ContiguousIndexes(flags, fromOrdered, toOrdered);
+                var priorAnchor = _selectionAnchor;
+                SetSelection(indexes.Select(i => ordered[i]));
+                _selectionAnchor = priorAnchor;
                 return;
             }
         }
@@ -275,18 +297,8 @@ public partial class LibraryViewModel
         }
     }
 
-    private static int IndexInOrdered(IReadOnlyList<AssetItem> ordered, AssetItem item)
-    {
-        for (var i = 0; i < ordered.Count; i++)
-        {
-            if (ReferenceEquals(ordered[i], item))
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
+    private static int IndexInOrdered(IReadOnlyList<AssetItem> ordered, AssetItem item) =>
+        MosaicSelection.IndexInOrdered(ordered, item);
 
     /// <summary>Resolved selection for Move dialog title and file ops (Library page + VM).</summary>
     internal async Task<IReadOnlyList<Asset>> SelectedAssetsAsync()

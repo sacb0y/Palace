@@ -46,7 +46,16 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private bool _suppressBrowseChrome;
+    /// <summary>Short-lived suppress for mode/range/header Select churn (not section toggle).</summary>
     private bool _suppressMosaicSelection;
+    /// <summary>
+    /// Depth for section collapse republish. Separate from
+    /// <see cref="_suppressMosaicSelection"/> so TglSelectMode / range / header
+    /// finally blocks cannot clear the toggle guard mid-rebuild.
+    /// </summary>
+    private int _sectionToggleGuardDepth;
+    /// <summary>Epoch armed for the current section-toggle scroll restore.</summary>
+    private int _sectionToggleRestoreEpoch;
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
@@ -98,7 +107,9 @@ public sealed partial class LibraryPage : Page
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
         ViewModel.SectionToggleStarting = OnSectionToggleStarting;
+        ViewModel.SectionToggleEpochArmed = OnSectionToggleEpochArmed;
         ViewModel.MosaicRestoreReady = OnMosaicRestoreReady;
+        ViewModel.SectionToggleEnded = OnSectionToggleEnded;
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LibraryViewModel.PreviewPath) or nameof(LibraryViewModel.IsVideoPreview) or nameof(LibraryViewModel.IsImagePreview))
@@ -147,7 +158,9 @@ public sealed partial class LibraryPage : Page
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
                 ViewModel.SectionToggleStarting = OnSectionToggleStarting;
+                ViewModel.SectionToggleEpochArmed = OnSectionToggleEpochArmed;
                 ViewModel.MosaicRestoreReady = OnMosaicRestoreReady;
+                ViewModel.SectionToggleEnded = OnSectionToggleEnded;
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
@@ -199,7 +212,9 @@ public sealed partial class LibraryPage : Page
                 ViewModel.MosaicReset = null;
                 ViewModel.MosaicChunkAppended = null;
                 ViewModel.SectionToggleStarting = null;
+                ViewModel.SectionToggleEpochArmed = null;
                 ViewModel.MosaicRestoreReady = null;
+                ViewModel.SectionToggleEnded = null;
             }
 
             if (_hookedOverlay is not null)
@@ -465,7 +480,9 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)
     {
-        if (_suppressMosaicSelection)
+        // Section-toggle rebuild ignores ItemsView churn; highlights are reapplied
+        // when the guard depth returns to 0 (clicks during a long rebuild are swallowed).
+        if (_suppressMosaicSelection || _sectionToggleGuardDepth > 0)
         {
             return;
         }
@@ -2351,18 +2368,30 @@ public sealed partial class LibraryPage : Page
 
     private void OnSectionToggleStarting()
     {
-        // Suppress ItemsView → VM selection sync while Assets rebuild on collapse.
-        _suppressMosaicSelection = true;
+        // Depth counter — not _suppressMosaicSelection — so mode/range/header
+        // finally blocks cannot clear the guard while Assets rebuild.
+        _sectionToggleGuardDepth++;
         _restoreScrollOffset = CurrentMosaicVerticalOffset();
         _restoreScrollPending = true;
     }
 
-    private void OnMosaicRestoreReady()
+    private void OnSectionToggleEpochArmed(int epoch)
     {
+        // Newer republish wins; older MosaicRestoreReady / enqueued scroll must no-op.
+        _sectionToggleRestoreEpoch = epoch;
+    }
+
+    private void OnMosaicRestoreReady(int epoch)
+    {
+        if (epoch != _sectionToggleRestoreEpoch)
+        {
+            // Superseded populate — do not apply this toggle's scroll/focus.
+            // Leave _restoreScrollPending for the newer armed epoch.
+            return;
+        }
+
         if (!_restoreScrollPending && string.IsNullOrEmpty(ViewModel.PendingSectionFocusPath))
         {
-            // Section toggle always arms suppress; clear it if there is nothing to restore.
-            EndSectionToggleSelectionGuard();
             return;
         }
 
@@ -2371,48 +2400,60 @@ public sealed partial class LibraryPage : Page
         var offset = _restoreScrollOffset;
         var restoreScroll = _restoreScrollPending;
         _restoreScrollPending = false;
+        var restoreEpoch = epoch;
+
+        // Focus/Select while still under _sectionToggleGuardDepth — SectionToggleEnded
+        // runs in Republish's finally after this returns, so do not defer Select.
+        if (!string.IsNullOrEmpty(path))
+        {
+            FocusFolderHeader(path);
+        }
+
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
         {
-            try
+            // Drop stale enqueued restores if a newer toggle armed meanwhile.
+            if (restoreEpoch != _sectionToggleRestoreEpoch)
             {
-                InvalidateMosaicLayout();
-                // Force extent to refresh after collapsed tiles leave the display list
-                // before clamping / restoring scroll (last-section collapse).
-                GrdAssets.UpdateLayout();
-                if (restoreScroll)
-                {
-                    offset = ClampMosaicVerticalOffset(offset);
-                    _mosaicScrollViewer?.ChangeView(null, offset, null, disableAnimation: true);
-                    _mosaicScrollView?.ScrollTo(
-                        0,
-                        offset,
-                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
-                }
+                return;
+            }
 
-                UpdateStickyFolderHeader();
-                if (!string.IsNullOrEmpty(path))
-                {
-                    FocusFolderHeader(path);
-                }
-            }
-            finally
+            InvalidateMosaicLayout();
+            // Force extent to refresh after collapsed tiles leave the display list
+            // before clamping / restoring scroll (last-section collapse).
+            GrdAssets.UpdateLayout();
+            if (restoreScroll)
             {
-                // Re-apply ItemsView highlights from VM IsSelected (by-id restore
-                // already ran); clear suppress from SectionToggleStarting.
-                EndSectionToggleSelectionGuard();
+                offset = ClampMosaicVerticalOffset(offset);
+                _mosaicScrollViewer?.ChangeView(null, offset, null, disableAnimation: true);
+                _mosaicScrollView?.ScrollTo(
+                    0,
+                    offset,
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
             }
+
+            UpdateStickyFolderHeader();
         });
     }
 
-    private void EndSectionToggleSelectionGuard()
+    private void OnSectionToggleEnded(int epoch)
     {
-        if (!_suppressMosaicSelection)
+        if (_sectionToggleGuardDepth > 0)
+        {
+            _sectionToggleGuardDepth--;
+        }
+
+        if (_sectionToggleGuardDepth > 0)
         {
             return;
         }
 
+        // N1: clicks during the rebuild were swallowed by the guard; re-apply
+        // VM IsSelected onto ItemsView when the last in-flight toggle ends.
         RestoreMosaicSelectionHighlights();
-        _suppressMosaicSelection = false;
+        if (epoch == _sectionToggleRestoreEpoch)
+        {
+            _sectionToggleRestoreEpoch = 0;
+        }
     }
 
     private double ClampMosaicVerticalOffset(double offset)
@@ -2452,9 +2493,9 @@ public sealed partial class LibraryPage : Page
         }
 
         // ItemsView has no TryGetElement in WASDK 2.3 — Select realizes the
-        // container for focus. Caller must keep _suppressMosaicSelection so
-        // SelectionChanged cannot wipe asset selection; RestoreMosaicSelectionHighlights
-        // re-applies the real selection afterward.
+        // container for focus. Caller must keep _sectionToggleGuardDepth > 0 so
+        // SelectionChanged cannot wipe asset selection; highlights are restored
+        // when OnSectionToggleEnded brings depth back to 0.
         GrdAssets.Select(index);
         var tag = ViewModel.Assets[index].MosaicTag;
         if (string.IsNullOrEmpty(tag))

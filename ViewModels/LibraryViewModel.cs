@@ -47,8 +47,24 @@ public partial class LibraryViewModel : ObservableObject
     /// <summary>LibraryPage captures scroll offset before a section collapse toggle.</summary>
     public Action? SectionToggleStarting { get; set; }
 
-    /// <summary>Fired after mosaic chunks finish so the page can restore scroll/focus.</summary>
-    public Action? MosaicRestoreReady { get; set; }
+    /// <summary>
+    /// Fired right after <c>_filterEpoch</c> bumps for a section republish so the
+    /// page can ignore MosaicRestoreReady from a superseded toggle.
+    /// </summary>
+    public Action<int>? SectionToggleEpochArmed { get; set; }
+
+    /// <summary>
+    /// Fired after mosaic chunks finish (and after selection restore on section
+    /// republish) so the page can restore scroll/focus. Argument is the
+    /// <c>_filterEpoch</c> for this populate — ignore when superseded.
+    /// </summary>
+    public Action<int>? MosaicRestoreReady { get; set; }
+
+    /// <summary>
+    /// Always fired when a section-toggle republish finishes (success, throw, or
+    /// superseded). Page decrements the section-toggle guard depth.
+    /// </summary>
+    public Action<int>? SectionToggleEnded { get; set; }
 
     /// <summary>Section path to refocus after collapse toggle; cleared by the page.</summary>
     public string? PendingSectionFocusPath { get; set; }

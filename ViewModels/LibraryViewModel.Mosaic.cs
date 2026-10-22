@@ -18,7 +18,8 @@ public partial class LibraryViewModel
         IReadOnlyList<AssetItem> items,
         int epoch,
         string doneStatus,
-        bool clearSelection = true)
+        bool clearSelection = true,
+        Action? beforeRestoreReady = null)
     {
         await UiDispatch.RunAsync(() =>
         {
@@ -88,7 +89,10 @@ public partial class LibraryViewModel
             }
 
             StatusText = doneStatus;
-            MosaicRestoreReady?.Invoke();
+            // Selection restore (section republish) runs before MosaicRestoreReady
+            // so scroll/focus see the re-stamped IsSelected flags.
+            beforeRestoreReady?.Invoke();
+            MosaicRestoreReady?.Invoke(epoch);
         });
     }
 
@@ -124,6 +128,8 @@ public partial class LibraryViewModel
 
         PendingSectionFocusPath = path;
         SaveCollapsedSections(_sectionBrowsePath, collapsed);
+        // Fire-and-forget: Republish always ends the page section-toggle guard
+        // (try/finally) even when Populate throws or the epoch is superseded.
         _ = RepublishSectionDisplayAsync();
     }
 
@@ -235,36 +241,52 @@ public partial class LibraryViewModel
 
     private async Task RepublishSectionDisplayAsync()
     {
-        if (_mosaicOrder.Count == 0)
-        {
-            await ApplyFilterAsync();
-            return;
-        }
-
-        // Capture by id before Assets.Clear — ItemsView SelectionChanged would
-        // otherwise replace _selection with an empty visible set.
-        var selectedIds = _selection
-            .Where(item => !item.IsFolderHeader && !string.IsNullOrEmpty(item.Id))
-            .Select(item => item.Id)
-            .ToList();
-        var display = FolderSectionPrefs.FilterCollapsedDisplay(
-            _mosaicOrder,
-            item => item.IsFolderHeader,
-            item => item.IsFolderCollapsed);
+        // Epoch bumped even on the empty-order path so the page can ignore a
+        // superseded toggle's scroll restore.
         var epoch = ++_filterEpoch;
-        var assetCount = _mosaicOrder.Count(item => !item.IsFolderHeader);
-        var doneStatus = SelectedFolder is not null
-            ? $"{assetCount} in {SelectedFolder.Name}"
-            : $"{assetCount} assets";
-        // Keep selection (collapsed tiles stay selected in the ordered list).
-        // Restore by id before MosaicRestoreReady so scroll/focus does not see
-        // an empty selection; page suppresses SelectionChanged for the toggle.
-        await PopulateMosaicAsync(display, epoch, doneStatus, clearSelection: false);
-        await UiDispatch.RunAsync(() =>
+        SectionToggleEpochArmed?.Invoke(epoch);
+        try
         {
-            InvalidateDisplayedSelectionCache();
-            RestoreSelectionByIds(selectedIds, loadPreview: false);
-        });
+            if (_mosaicOrder.Count == 0)
+            {
+                await ApplyFilterAsync();
+                return;
+            }
+
+            // Capture by id before Assets.Clear — ItemsView SelectionChanged would
+            // otherwise replace _selection with an empty visible set.
+            var selectedIds = _selection
+                .Where(item => !item.IsFolderHeader && !string.IsNullOrEmpty(item.Id))
+                .Select(item => item.Id)
+                .ToList();
+            var display = FolderSectionPrefs.FilterCollapsedDisplay(
+                _mosaicOrder,
+                item => item.IsFolderHeader,
+                item => item.IsFolderCollapsed);
+            var assetCount = _mosaicOrder.Count(item => !item.IsFolderHeader);
+            var doneStatus = SelectedFolder is not null
+                ? $"{assetCount} in {SelectedFolder.Name}"
+                : $"{assetCount} assets";
+            // Keep selection (collapsed tiles stay selected in the ordered list).
+            // beforeRestoreReady runs inside Populate immediately before
+            // MosaicRestoreReady (same UI tick) so IsSelected is stamped first.
+            await PopulateMosaicAsync(
+                display,
+                epoch,
+                doneStatus,
+                clearSelection: false,
+                beforeRestoreReady: () =>
+                {
+                    InvalidateDisplayedSelectionCache();
+                    RestoreSelectionByIds(selectedIds, loadPreview: false);
+                });
+        }
+        finally
+        {
+            // Always release the page guard — including throw / superseded epoch
+            // (Populate returns early and never fires MosaicRestoreReady).
+            SectionToggleEnded?.Invoke(epoch);
+        }
     }
 
     private static AssetItem ToFolderHeader(

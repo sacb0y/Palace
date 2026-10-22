@@ -99,6 +99,33 @@ public sealed class MosaicSelectionTests
         Assert.DoesNotContain(restored[0], display);
     }
 
+    [Fact]
+    public void ResolveAnchorAfterRestore_KeepsPriorWhenStillInOrder()
+    {
+        var a = T("a1");
+        var b = T("b1");
+        var ordered = new[] { H("A"), a, H("B"), b };
+        // LastOrDefault after restore would be b; keep a as Shift-click origin.
+        Assert.Same(a, MosaicSelection.ResolveAnchorAfterRestore(a, ordered, fallback: b));
+        Assert.Same(b, MosaicSelection.ResolveAnchorAfterRestore(T("gone"), ordered, fallback: b));
+        Assert.Null(MosaicSelection.ResolveAnchorAfterRestore(null, ordered, fallback: null));
+    }
+
+    [Fact]
+    public void IndexInOrdered_FindsHiddenAnchorForRangeSelect()
+    {
+        var a = T("a1");
+        var b = T("b1");
+        var c = T("c1");
+        var ordered = new[] { H("A"), a, H("B"), b, H("C"), c };
+        // b is under collapsed B — not in display, but still rangeable by order index.
+        Assert.Equal(3, MosaicSelection.IndexInOrdered(ordered, b));
+        Assert.Equal(-1, MosaicSelection.IndexInOrdered(ordered, T("other")));
+        var flags = ordered.Select(i => i.Header).ToList();
+        var indexes = RangeSelect.ContiguousIndexes(flags, from: 3, to: 5);
+        Assert.Equal([3, 5], indexes); // b and c; skips header at 4
+    }
+
     private static Item H(string id) => new(id, true);
 
     private static Item T(string id) => new(id, false);

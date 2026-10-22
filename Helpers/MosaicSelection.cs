@@ -79,4 +79,33 @@ public static class MosaicSelection
 
         return merged;
     }
+
+    /// <summary>Reference index in the ordered mosaic, or -1.</summary>
+    public static int IndexInOrdered<T>(IReadOnlyList<T> ordered, T item)
+        where T : class
+    {
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            if (ReferenceEquals(ordered[i], item))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// After restoring selection by id, keep the prior Shift-click anchor when it
+    /// still exists in the ordered mosaic; otherwise fall back to
+    /// <paramref name="fallback"/>.
+    /// </summary>
+    public static T? ResolveAnchorAfterRestore<T>(
+        T? priorAnchor,
+        IReadOnlyList<T> ordered,
+        T? fallback)
+        where T : class =>
+        priorAnchor is not null && IndexInOrdered(ordered, priorAnchor) >= 0
+            ? priorAnchor
+            : fallback;
 }
