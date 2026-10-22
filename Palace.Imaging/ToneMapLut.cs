@@ -89,7 +89,7 @@ public sealed class ToneMapLut
             ? Params.Display.Ld
             : Math.Max(Params.Display.PeakNormalized, 1e-6f);
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
-        // SDR output ≤ display white; HDR ≤ Ld (headroom is HDR-target-only).
+        // SDR ≤ display white; HDR ≤ Ld. Desat currently never engages (P7).
         GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
     }
 }

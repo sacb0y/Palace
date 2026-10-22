@@ -86,7 +86,9 @@ public class ImagingToneMapTests
     {
         Assert.Equal(1f, SdrToneCurve.PaperWhiteFraction(1f), 5);
         Assert.Equal(1f, SdrToneCurve.PaperWhiteFraction(0.5f), 5);
+        // MapScalar floors Lc at 1.01 — C¹ formula keeps paper ≈1 there (not 0.999 step).
         var f101 = SdrToneCurve.PaperWhiteFraction(1.01f);
+        Assert.InRange(f101, 0.9999f, 1.0001f);
         var f15 = SdrToneCurve.PaperWhiteFraction(1.5f);
         var f4 = SdrToneCurve.PaperWhiteFraction(4f);
         var f59 = SdrToneCurve.PaperWhiteFraction(59.2f);
@@ -154,31 +156,24 @@ public class ImagingToneMapTests
     }
 
     /// <summary>
-    /// P3: must fail on the 7c04018 plateau (Y-restore soft-clip → one washed colour
-    /// ~(.822,.379,.278) for every highlight). Uses non-proportional chromas so a
-    /// flat SDR shoulder still keeps distinct hues; the washed plateau does not.
+    /// P3 / S-A: chroma ratio g/r of (1, 0.25, 0.08) must stay near 0.25 at
+    /// scales ×4 / ×8 / ×12 with Lc=4. Fails on 7c04018 Y-restore soft-clip
+    /// which pushed g/r to ~0.46.
     /// </summary>
     [Fact]
     public void P3_SaturatedHighlights_NotOneWashedColour()
     {
-        var stats = StatsLc(8f);
+        const float grTarget = 0.25f;
+        var stats = StatsLc(4f, p50: 0.5f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
-        // Non-proportional — distinct after maxRGB scale even if MapScalar is flat at white.
-        ToneMapper.MapPixel(2.0f, 0.85f, 0.10f, p, out var r1, out var g1, out var b1);
-        ToneMapper.MapPixel(5.0f, 0.35f, 0.55f, p, out var r2, out var g2, out var b2);
-        ToneMapper.MapPixel(8.0f, 1.10f, 0.20f, p, out var r3, out var g3, out var b3);
-
-        // 7c04018: all three collapsed to the same washed RGB within ~0.02.
-        var d12 = Math.Abs(r1 - r2) + Math.Abs(g1 - g2) + Math.Abs(b1 - b2);
-        var d13 = Math.Abs(r1 - r3) + Math.Abs(g1 - g3) + Math.Abs(b1 - b3);
-        Assert.True(d12 > 0.08f, $"P3 plateau 2 vs 5 (7c04018-style): d={d12} ({r1},{g1},{b1}) vs ({r2},{g2},{b2})");
-        Assert.True(d13 > 0.08f, $"P3 plateau 2 vs 8 (7c04018-style): d={d13} ({r1},{g1},{b1}) vs ({r3},{g3},{b3})");
-
-        // Explicit 7c04018 washed signature.
-        static bool NearWashed(float r, float g, float b) =>
-            Math.Abs(r - 0.822f) < 0.06f && Math.Abs(g - 0.379f) < 0.06f && Math.Abs(b - 0.278f) < 0.06f;
-        Assert.False(NearWashed(r1, g1, b1) && NearWashed(r2, g2, b2) && NearWashed(r3, g3, b3),
-            "P3 matched 7c04018 washed plateau");
+        foreach (var scale in new[] { 4f, 8f, 12f })
+        {
+            ToneMapper.MapPixel(1f * scale, 0.25f * scale, 0.08f * scale, p, out var r, out var g, out _);
+            Assert.True(r > 1e-6f, $"P3 scale {scale}: r≈0");
+            var gr = g / r;
+            Assert.True(Math.Abs(gr - grTarget) <= 0.02f,
+                $"P3 g/r at ×{scale}: {gr} (7c04018≈0.46; want ~{grTarget}±0.02) rgb=({r},{g})");
+        }
     }
 
     [Fact]

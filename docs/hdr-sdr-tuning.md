@@ -33,15 +33,15 @@ BT.2020 linear, **1.0 = 203 nits**.
    clamp. P50 = scene-average knee.
 3. **ToneMap** — `ExposureEV` as `2^EV` before the curve (Analyze Lc unchanged;
    curve uses **Lc·2^EV** — P2). SDR **Option A** (Isiac): paper =
-   `displayWhite · PaperWhiteFraction(Lc)` — exactly 1 at Lc=1, smooth dip ≤
-   ~10% (`MaxPaperDip`), no step; shoulder reaches **display white at Lc**;
-   **SDR output ≤ display white** (1.12× <c>HighlightHeadroom</c> is
-   **HDR-target only**). HDR: BT.2390-8 §5.4.1; **P5 owns wiring Ld**. Desat =
-   `smoothstep(Ld, 1.25·Ld, peak)` when tone-mapped peak exceeds Ld (not a
-   no-op).
+   `displayWhite · PaperWhiteFraction(Lc)` with `t=(1−1/L)²` — exactly 1 at
+   Lc=1 (C¹, no kink), dip ≤ ~10% (`MaxPaperDip`); shoulder reaches **display
+   white at Lc**; **SDR output ≤ display white**. HDR: BT.2390-8 §5.4.1 clamps
+   at **Ld** (no headroom above white); **P5 owns wiring Ld**. Desat =
+   `smoothstep(Ld, 1.25·Ld, peak)` — with the curve ending at white / Ld, peak
+   rarely exceeds Ld, so desat **currently never engages (P7)**.
 4. **LUT** — PQ-spaced; EV at sample time (not in cache key). **Non-zero EV
    bypasses the baked LUT** and re-evaluates `MapScalar` with Lc·2^EV (**P5**).
-   Default size **256**.
+   Default size **256**. `PipelineVersion` = **6**.
 
 ## ExrRefWhite / Pregmata_SteamAVIF (M4)
 

@@ -35,12 +35,10 @@ public static class ToneMapper
         ob = b * scale;
 
         var ld = OutputLimit(in p);
-        // N2: desat when tone-mapped peak exceeds Ld (smoothstep Ld..1.25·Ld).
-        // Engages whenever any channel sits above Ld after the curve (e.g. HDR
-        // headroom or a future SDR shoulder above white) — not a no-op.
+        // N2 / P7: desat vs Ld — with Option A ending at display white (HDR at
+        // Ld), peak rarely exceeds Ld, so desat currently never engages (P7).
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
-        // SDR: clip at display white (≤ 1.0 × PeakNormalized). HDR: at Ld.
-        // HighlightHeadroom is HDR-target-only — do not multiply SDR clip peak.
+        // SDR: clip at display white. HDR: at Ld. No reserved headroom above.
         GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
     }
 

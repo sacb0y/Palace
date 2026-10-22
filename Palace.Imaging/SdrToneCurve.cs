@@ -3,10 +3,10 @@ namespace Palace.Imaging;
 /// <summary>
 /// Palace SDR tone curve (Isiac Option A). Scene average (P50) sets the knee
 /// (0.5–0.7× ref white). Working-space 1.0 maps to a paper white that dips
-/// smoothly with Lc (exactly display white at Lc = 1; at most
+/// smoothly with Lc (exactly display white at Lc ≤ 1; at most
 /// <see cref="MaxPaperDip"/>). The Hermite shoulder rises from paper to
 /// <b>display white exactly at Lc</b>. SDR output never exceeds display white;
-/// <see cref="HighlightHeadroom"/> is reserved for HDR targets only.
+/// HDR targets clamp at Ld (no reserved headroom above white).
 /// </summary>
 public static class SdrToneCurve
 {
@@ -19,21 +19,18 @@ public static class SdrToneCurve
     public const float MaxPaperDip = 0.10f;
 
     /// <summary>
-    /// Shoulder headroom above display white for <b>HDR targets only</b>.
-    /// Not applied on the SDR path (Option A ends at display white).
-    /// </summary>
-    public const float HighlightHeadroom = 1.12f;
-
-    /// <summary>
     /// Fraction of display white for working-space 1.0 as a smooth function of
     /// Lc. Exactly 1 at Lc ≤ 1; approaches <c>1 − MaxPaperDip</c> as Lc → ∞.
-    /// Continuous with continuous first derivative — no step.
+    /// Uses <c>t = (1 − 1/L)²</c> so value and first derivative match at Lc = 1
+    /// (no kink). <see cref="ToneMapper.MapScalar"/> floors Lc at 1.01 — there
+    /// paper is ≈1 (within 1e-5), not a second discrete step.
     /// </summary>
     public static float PaperWhiteFraction(float lc)
     {
         var L = Math.Max(lc, 1f);
-        // t = 1 − 1/L: 0 at L=1, →1 as L→∞.
-        var t = 1f - (1f / L);
+        // t = (1 − 1/L)²: t(1)=0, t'(1)=0 (C¹), →1 as L→∞.
+        var u = 1f - (1f / L);
+        var t = u * u;
         return 1f - (MaxPaperDip * t);
     }
 
