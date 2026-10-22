@@ -122,5 +122,7 @@ public sealed class LibraryColumnLayoutTests
             + LibraryColumnLayout.GapsWidth;
         Assert.True(LibraryColumnLayout.MinWindowWidthDip >= contentFloor);
         Assert.Equal(770, LibraryColumnLayout.MinWindowWidthDip);
+        Assert.True(LibraryColumnLayout.LibraryToolbarOverflowBelowDip > LibraryColumnLayout.MinWindowWidthDip);
+        Assert.Equal(920, LibraryColumnLayout.LibraryToolbarOverflowBelowDip);
     }
 }

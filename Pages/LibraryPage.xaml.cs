@@ -49,16 +49,11 @@ public sealed partial class LibraryPage : Page
     /// <summary>Short-lived suppress for mode/range/header Select churn (not section toggle).</summary>
     private bool _suppressMosaicSelection;
     /// <summary>
-    /// Depth for section collapse republish. Separate from
+    /// Section collapse republish depth + generation. Separate from
     /// <see cref="_suppressMosaicSelection"/> so TglSelectMode / range / header
     /// finally blocks cannot clear the toggle guard mid-rebuild.
     /// </summary>
-    private int _sectionToggleGuardDepth;
-    /// <summary>
-    /// Bumped on each Starting; stale Ended after leave/return must not
-    /// decrement a newer toggle's depth.
-    /// </summary>
-    private int _sectionToggleGuardGeneration;
+    private readonly SectionToggleGuard _sectionToggleGuard = new();
     /// <summary>Epoch armed for the current section-toggle scroll restore.</summary>
     private int _sectionToggleRestoreEpoch;
     /// <summary>
@@ -175,6 +170,7 @@ public sealed partial class LibraryPage : Page
                 // Cached page: Unloaded nulls SectionToggleEnded mid-rebuild, so
                 // depth may still be >0 — clear guard and re-stamp highlights.
                 ResetSectionToggleGuardOnLoaded();
+                UpdateMosaicToolbarOverflow(GrdAssets.ActualWidth);
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
@@ -187,6 +183,7 @@ public sealed partial class LibraryPage : Page
 
             _shellReady = true;
             ResetSectionToggleGuardOnLoaded();
+            UpdateMosaicToolbarOverflow(GrdAssets.ActualWidth);
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
@@ -500,8 +497,8 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     private void UpdateLibraryToolbarOverflow(double contentWidth)
     {
-        // ~770 content still clips the full face row; overflow a bit above min window.
-        var compact = contentWidth < 920;
+        // Full face row still clips near the window floor; overflow a bit above min.
+        var compact = contentWidth < LibraryColumnLayout.LibraryToolbarOverflowBelowDip;
         BtnNewFolder.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         BtnUndo.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         BtnAddToRoom.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
@@ -568,7 +565,7 @@ public sealed partial class LibraryPage : Page
     {
         // Section-toggle rebuild ignores ItemsView churn; highlights are reapplied
         // when the guard depth returns to 0 (clicks during a long rebuild are swallowed).
-        if (_suppressMosaicSelection || _sectionToggleGuardDepth > 0)
+        if (_suppressMosaicSelection || _sectionToggleGuard.Depth > 0)
         {
             return;
         }
@@ -2456,11 +2453,9 @@ public sealed partial class LibraryPage : Page
     {
         // Depth counter — not _suppressMosaicSelection — so mode/range/header
         // finally blocks cannot clear the guard while Assets rebuild.
-        _sectionToggleGuardDepth++;
-        _sectionToggleGuardGeneration++;
         _restoreScrollOffset = CurrentMosaicVerticalOffset();
         _restoreScrollPending = true;
-        return _sectionToggleGuardGeneration;
+        return _sectionToggleGuard.Start();
     }
 
     private void OnSectionToggleEpochArmed(int epoch)
@@ -2520,62 +2515,57 @@ public sealed partial class LibraryPage : Page
 
     private void OnSectionToggleEnded(int epoch, int guardGeneration)
     {
-        // Stale Ended after leave/return (Loaded reset depth/generation) must
-        // not decrement a toggle that started after we came back.
-        if (guardGeneration != _sectionToggleGuardGeneration)
+        // gen ≤ Loaded mark → stale (ignore). Otherwise always decrement so
+        // overlapping toggles cannot leave depth stuck at 1 (B1).
+        if (!_sectionToggleGuard.TryEnd(guardGeneration, out var shouldRestore))
         {
             return;
         }
 
-        if (_sectionToggleGuardDepth <= 0)
+        if (!shouldRestore)
         {
             return;
         }
 
-        // Last in-flight toggle: Focus + re-stamp ItemsView while SelectionChanged
-        // is suppressed. Without suppress, RestoreMosaicSelectionHighlights'
+        // Depth hit 0: Focus + re-stamp ItemsView while SelectionChanged is
+        // suppressed. Without suppress, RestoreMosaicSelectionHighlights'
         // per-index Select fires SelectionChanged and expand drops multi-select
         // (tiles are displayed again so MergeVisibleWithHiddenSelected cannot
         // preserve them). Matches 87e299d EndSectionToggleSelectionGuard order.
-        if (_sectionToggleGuardDepth == 1)
+        _restoreScrollPending = false;
+        ViewModel.PendingSectionFocusPath = null;
+        _suppressMosaicSelection = true;
+        try
         {
-            _restoreScrollPending = false;
-            ViewModel.PendingSectionFocusPath = null;
-            _suppressMosaicSelection = true;
-            try
+            var path = _sectionToggleFocusPath;
+            _sectionToggleFocusPath = null;
+            if (!string.IsNullOrEmpty(path))
             {
-                var path = _sectionToggleFocusPath;
-                _sectionToggleFocusPath = null;
-                if (!string.IsNullOrEmpty(path))
-                {
-                    FocusFolderHeader(path);
-                }
-
-                RestoreMosaicSelectionHighlights();
-            }
-            finally
-            {
-                _suppressMosaicSelection = false;
+                FocusFolderHeader(path);
             }
 
-            if (epoch == _sectionToggleRestoreEpoch)
-            {
-                _sectionToggleRestoreEpoch = 0;
-            }
+            RestoreMosaicSelectionHighlights();
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
         }
 
-        _sectionToggleGuardDepth--;
+        if (epoch == _sectionToggleRestoreEpoch)
+        {
+            _sectionToggleRestoreEpoch = 0;
+        }
     }
 
     /// <summary>
     /// NavigationCacheMode keeps this page across Unloaded. Leaving during a
     /// section republish nulls <see cref="LibraryViewModel.SectionToggleEnded"/>,
-    /// so depth never decrements — reset on every Loaded and re-stamp highlights.
+    /// so depth never decrements — stamp a reset mark (do not zero generation)
+    /// and re-stamp highlights on every Loaded.
     /// </summary>
     private void ResetSectionToggleGuardOnLoaded()
     {
-        _sectionToggleGuardDepth = 0;
-        _sectionToggleGuardGeneration = 0;
+        _sectionToggleGuard.OnLoaded();
         _restoreScrollPending = false;
         _sectionToggleRestoreEpoch = 0;
         _sectionToggleFocusPath = null;

@@ -20,6 +20,7 @@ public sealed partial class MainWindow : Window
     private AccessibilitySettings? _accessibility;
     private MicaBackdrop? _micaBackdrop;
     private bool _shellApplyQueued;
+    private XamlRoot? _minSizeXamlRoot;
 
     public MainWindow()
     {
@@ -37,15 +38,7 @@ public sealed partial class MainWindow : Window
         var hwnd = Win32Interop.GetWindowFromWindowId(AppWindow.Id);
         var scale = GetDpiForWindow(hwnd) / 96.0;
         AppWindow.Resize(new SizeInt32((int)(1200 * scale), (int)(800 * scale)));
-        // PreferredMinimum* are physical pixels — convert DIPs like Resize above.
-        // Floor keeps Library mosaic ≥560 + tree min without clipping (~770 DIP).
-        if (AppWindow.Presenter is OverlappedPresenter overlapped)
-        {
-            overlapped.PreferredMinimumWidth =
-                (int)(LibraryColumnLayout.MinWindowWidthDip * scale);
-            overlapped.PreferredMinimumHeight =
-                (int)(LibraryColumnLayout.MinWindowHeightDip * scale);
-        }
+        ApplyPreferredMinimumSize(scale);
 
         ShellBackground.Changed += ShellBackground_Changed;
         ShellBackground.LiveAmountsChanged += ShellBackground_LiveAmountsChanged;
@@ -59,6 +52,8 @@ public sealed partial class MainWindow : Window
                 // ThemeResource may paint the system accent back onto the same brushes.
                 root.DispatcherQueue.TryEnqueue(App.ApplySavedBrandAccent);
             };
+            // PreferredMinimum* are physical px — refresh when DPI / scale changes.
+            root.Loaded += Root_LoadedForMinSize;
         }
 
         try
@@ -77,6 +72,12 @@ public sealed partial class MainWindow : Window
             ShellBackground.Changed -= ShellBackground_Changed;
             ShellBackground.LiveAmountsChanged -= ShellBackground_LiveAmountsChanged;
             ShellBackground.DisplayReleasing -= ShellBackground_DisplayReleasing;
+            if (_minSizeXamlRoot is not null)
+            {
+                _minSizeXamlRoot.Changed -= XamlRoot_ChangedForMinSize;
+                _minSizeXamlRoot = null;
+            }
+
             if (_accessibility is not null)
             {
                 _accessibility.HighContrastChanged -= Accessibility_HighContrastChanged;
@@ -88,6 +89,49 @@ public sealed partial class MainWindow : Window
 
     private void Accessibility_HighContrastChanged(AccessibilitySettings sender, object args) =>
         QueueApplyShellBackdrop();
+
+    private void Root_LoadedForMinSize(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement root)
+        {
+            return;
+        }
+
+        root.Loaded -= Root_LoadedForMinSize;
+        if (root.XamlRoot is null)
+        {
+            return;
+        }
+
+        _minSizeXamlRoot = root.XamlRoot;
+        _minSizeXamlRoot.Changed += XamlRoot_ChangedForMinSize;
+        ApplyPreferredMinimumSize(_minSizeXamlRoot.RasterizationScale);
+    }
+
+    private void XamlRoot_ChangedForMinSize(XamlRoot sender, XamlRootChangedEventArgs args) =>
+        ApplyPreferredMinimumSize(sender.RasterizationScale);
+
+    /// <summary>
+    /// PreferredMinimum* are physical pixels — convert DIPs with the current scale.
+    /// Floor keeps Library mosaic ≥560 + tree min without clipping (~770 DIP).
+    /// </summary>
+    private void ApplyPreferredMinimumSize(double scale)
+    {
+        if (!double.IsFinite(scale) || scale <= 0)
+        {
+            scale = 1;
+        }
+
+        if (AppWindow.Presenter is not OverlappedPresenter overlapped)
+        {
+            return;
+        }
+
+        overlapped.PreferredMinimumWidth =
+            (int)(LibraryColumnLayout.MinWindowWidthDip * scale);
+        overlapped.PreferredMinimumHeight =
+            (int)(LibraryColumnLayout.MinWindowHeightDip * scale);
+    }
 
     private void ShellBackground_Changed(object? sender, EventArgs e) => QueueApplyShellBackdrop();
 

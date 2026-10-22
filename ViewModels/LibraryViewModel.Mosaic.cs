@@ -129,11 +129,17 @@ public partial class LibraryViewModel
         // Prefs save must not block the in-memory collapse + republish (half-applied UI).
         try
         {
-            SaveCollapsedSections(_sectionBrowsePath, collapsed);
+            // Bypass TrySave so failures are logged (TrySave swallows without a log).
+            ApplicationData.Current.LocalSettings.Values[
+                    FolderSectionPrefs.CollapsedKey(_sectionBrowsePath)] =
+                FolderSectionPrefs.SerializeCollapsed(collapsed);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // TrySave already swallows most failures; keep display in sync anyway.
+            ErrorReporter.LogOnly("Save collapsed sections", ex);
+            Notify(
+                "Collapse state won't persist this time.",
+                Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
         }
 
         // Arm the page guard only once Republish is about to run — a throw above
@@ -353,11 +359,6 @@ public partial class LibraryViewModel
     private void SaveFlatten(string folderPath, bool flatten) =>
         FolderSectionPrefs.TrySave(() =>
             ApplicationData.Current.LocalSettings.Values[FolderSectionPrefs.FlattenKey(folderPath)] = flatten);
-
-    private static void SaveCollapsedSections(string folderPath, IReadOnlySet<string> collapsed) =>
-        FolderSectionPrefs.TrySave(() =>
-            ApplicationData.Current.LocalSettings.Values[FolderSectionPrefs.CollapsedKey(folderPath)] =
-                FolderSectionPrefs.SerializeCollapsed(collapsed));
 
     private AssetItem ToItem(Asset asset)
     {

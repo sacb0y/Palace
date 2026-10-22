@@ -32,6 +32,12 @@ public static class LibraryColumnLayout
     public const int MinWindowHeightDip = 480;
 
     /// <summary>
+    /// Below this Library content width (DIP), New folder / Undo / Add to room
+    /// move into the top toolbar overflow menu.
+    /// </summary>
+    public const double LibraryToolbarOverflowBelowDip = 920;
+
+    /// <summary>
     /// Two column gaps — Grid <c>ColumnSpacing</c> still applies when Preview
     /// width is 0 (column stays in the grid for the queued toggle).
     /// </summary>
