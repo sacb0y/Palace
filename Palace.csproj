@@ -17,7 +17,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Version / AssemblyVersion / FileVersion / InformationalVersion come from Directory.Build.props (PalaceVersion). -->
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
