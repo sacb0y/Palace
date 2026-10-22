@@ -45,6 +45,8 @@ public sealed class ViewerOverlayAutoHide
         }
 
         _root.PointerMoved += Root_PointerMoved;
+        // Tap with no move must still wake faded chrome (script / finger taps).
+        _root.PointerPressed += Root_PointerPressed;
         _root.PreviewKeyDown += Root_PreviewKeyDown;
         _chrome.PointerEntered += Chrome_PointerEntered;
         _chrome.PointerExited += Chrome_PointerExited;
@@ -60,6 +62,7 @@ public sealed class ViewerOverlayAutoHide
         }
 
         _root.PointerMoved -= Root_PointerMoved;
+        _root.PointerPressed -= Root_PointerPressed;
         _root.PreviewKeyDown -= Root_PreviewKeyDown;
         _chrome.PointerEntered -= Chrome_PointerEntered;
         _chrome.PointerExited -= Chrome_PointerExited;
@@ -90,6 +93,8 @@ public sealed class ViewerOverlayAutoHide
     }
 
     private void Root_PointerMoved(object sender, PointerRoutedEventArgs e) => Show(resetIdle: true);
+
+    private void Root_PointerPressed(object sender, PointerRoutedEventArgs e) => Show(resetIdle: true);
 
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e) => Show(resetIdle: true);
 

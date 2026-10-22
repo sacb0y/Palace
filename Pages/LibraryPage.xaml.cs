@@ -2096,6 +2096,12 @@ public sealed partial class LibraryPage : Page
         object args) =>
         DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
 
+    private void ViewerToolbar_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        // Gaps between toolbar buttons must not open the asset context menu.
+        e.Handled = true;
+    }
+
     private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)
     {
         // Fallback when Holding reaches the overlay chrome (still uses LongPressCommitted

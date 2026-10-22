@@ -48,6 +48,8 @@ public sealed partial class ViewerDetailsCard : UserControl
     {
         InitializeComponent();
         RequestedTheme = ElementTheme.Dark;
+        // Closed until SyncOpenState — do not steal swipe under Info.
+        IsHitTestVisible = false;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -351,6 +353,9 @@ public sealed partial class ViewerDetailsCard : UserControl
     {
         var open = IsOpen || Gallery?.ShowDetails == true;
         ApplyLayout();
+        // Closed dock must not steal swipe/taps in the 270-wide column (letterbox
+        // / image under Info). Open card stays hit-testable for its controls.
+        IsHitTestVisible = ViewerDetailsLayout.CardHitTestVisible(open);
         // Always zero composition offset so reopen cannot stack a stale Y jump.
         ResetCompositionOffset();
         if (open)

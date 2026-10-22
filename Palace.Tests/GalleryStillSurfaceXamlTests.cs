@@ -81,7 +81,7 @@ public sealed class GalleryStillSurfaceXamlTests
     }
 
     [Fact]
-    public void ToolbarStackPanel_TransparentBackground_SwallowsGapTaps()
+    public void ToolbarHost_SwallowsGapTapsAndHolds()
     {
         foreach (var relative in new[]
                  {
@@ -92,16 +92,13 @@ public sealed class GalleryStillSurfaceXamlTests
             var path = Path.Combine(RepoRoot(), relative);
             Assert.True(File.Exists(path), path);
             var doc = XDocument.Load(path);
-            // Info button lives in the toolbar StackPanel that must catch gap taps.
-            var info = doc.Descendants()
-                .FirstOrDefault(e =>
-                    Attr(e, "AutomationProperties.AutomationId") is "BtnGalleryImageInfo"
-                        or "BtnGalleryWindowImageInfo");
-            Assert.NotNull(info);
-            var stack = info!.Parent;
-            Assert.NotNull(stack);
-            Assert.Equal("StackPanel", stack!.Name.LocalName, StringComparer.Ordinal);
-            Assert.Equal("Transparent", Attr(stack, "Background"), StringComparer.Ordinal);
+            var toolbar = doc.Descendants()
+                .FirstOrDefault(e => Attr(e, "Name") == "GrdViewerToolbar");
+            Assert.NotNull(toolbar);
+            Assert.Equal("Transparent", Attr(toolbar!, "Background"), StringComparer.Ordinal);
+            Assert.False(
+                string.IsNullOrWhiteSpace(Attr(toolbar!, "Holding")),
+                relative + ": toolbar Holding must swallow gap long-press");
         }
     }
 }

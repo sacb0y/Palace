@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Palace.Helpers;
 using Xunit;
 
 namespace Palace.Tests;
@@ -36,6 +37,13 @@ public sealed class ViewerDetailsCardXamlTests
         Assert.True(
             hit is null or "True",
             "GrdCardHost must stay hit-testable (got IsHitTestVisible=" + (hit ?? "<unset>") + ")");
+    }
+
+    [Fact]
+    public void ClosedCard_DoesNotStealSwipeUnderInfo()
+    {
+        Assert.False(ViewerDetailsLayout.CardHitTestVisible(isOpen: false));
+        Assert.True(ViewerDetailsLayout.CardHitTestVisible(isOpen: true));
     }
 
     [Fact]

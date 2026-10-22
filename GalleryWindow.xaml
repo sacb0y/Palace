@@ -82,10 +82,15 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <!-- Plate is visual-only (no hit). StackPanel Transparent swallows
-                         taps in button gaps so chrome does not toggle; buttons still
-                         receive their own hits. Letterbox outside the toolbar pages. -->
-                    <Grid>
+                    <!-- Transparent host swallows taps/holds in toolbar bounds (gaps
+                         must not toggle chrome or open the asset menu). Plate is
+                         visual-only. Buttons keep their own hits. Letterbox outside
+                         the toolbar pages; closed Details card is not hit-testable. -->
+                    <Grid
+                        x:Name="GrdViewerToolbar"
+                        Background="Transparent"
+                        Holding="ViewerToolbar_Holding"
+                        IsHoldingEnabled="True">
                     <Border
                         Padding="6,4"
                         Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
@@ -93,11 +98,7 @@
                         BorderThickness="1"
                         CornerRadius="{StaticResource OverlayCornerRadius}"
                         IsHitTestVisible="False" />
-                    <StackPanel
-                        Padding="6,4"
-                        Background="Transparent"
-                        Orientation="Horizontal"
-                        Spacing="8">
+                    <StackPanel Padding="6,4" Orientation="Horizontal" Spacing="8">
                         <ToggleButton
                             x:Name="BtnGalleryWindowImageInfo"
                             Padding="8,4"

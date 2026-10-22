@@ -111,6 +111,12 @@ public sealed partial class GalleryWindow : Window
 
     private void BtnGalleryWindowClose_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void ViewerToolbar_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        // Gaps between toolbar buttons must not open the asset context menu.
+        e.Handled = true;
+    }
+
     private ViewerFocusZone _viewerFocusZone = ViewerFocusZone.Image;
 
     private void GalleryRoot_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
