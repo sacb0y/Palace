@@ -204,13 +204,10 @@ public partial class LibraryViewModel
                 return;
             }
 
-            await UiDispatch.RunAsync(() =>
-            {
-                ApplyMosaicBuildChrome(build);
-                StatusDetails = null;
-            });
-            var items = build.Items;
-            var assetCount = items.Count(item => !item.IsFolderHeader);
+            await UiDispatch.RunAsync(() => ApplyMosaicBuildChrome(build));
+            // Display omits collapsed-section tiles; Ordered keeps them for Review/select-all/range.
+            var items = build.Display;
+            var assetCount = build.Ordered.Count(item => !item.IsFolderHeader);
             var joiner = matchMode == TagFilterMode.All
                 ? " + "
                 : matchMode == TagFilterMode.None ? " except " : " or ";

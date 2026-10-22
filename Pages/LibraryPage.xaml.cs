@@ -34,6 +34,8 @@ public sealed partial class LibraryPage : Page
     private ScrollViewer? _mosaicScrollViewer;
     private ScrollView? _mosaicScrollView;
     private AssetItem? _stickySection;
+    private double _restoreScrollOffset;
+    private bool _restoreScrollPending;
     private readonly ThumbLoadQueue _thumbQueue = new(
         ThumbScheduler.EffectiveConcurrencyCap(Environment.ProcessorCount));
     private readonly ThumbMemoryCache<ImageSource> _thumbMemory = new(256);
@@ -95,6 +97,8 @@ public sealed partial class LibraryPage : Page
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+        ViewModel.SectionToggleStarting = OnSectionToggleStarting;
+        ViewModel.MosaicRestoreReady = OnMosaicRestoreReady;
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LibraryViewModel.PreviewPath) or nameof(LibraryViewModel.IsVideoPreview) or nameof(LibraryViewModel.IsImagePreview))
@@ -142,6 +146,8 @@ public sealed partial class LibraryPage : Page
             {
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+                ViewModel.SectionToggleStarting = OnSectionToggleStarting;
+                ViewModel.MosaicRestoreReady = OnMosaicRestoreReady;
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
@@ -192,6 +198,8 @@ public sealed partial class LibraryPage : Page
             {
                 ViewModel.MosaicReset = null;
                 ViewModel.MosaicChunkAppended = null;
+                ViewModel.SectionToggleStarting = null;
+                ViewModel.MosaicRestoreReady = null;
             }
 
             if (_hookedOverlay is not null)
@@ -997,6 +1005,19 @@ public sealed partial class LibraryPage : Page
             && !typing)
         {
             ViewModel.SelectFolderGroup(item);
+            e.Handled = true;
+            return;
+        }
+
+        if (item is { IsFolderHeader: true }
+            && GalleryMedia.ShouldToggleFolderCollapse(
+                ViewModel.IsGalleryOverlayOpen,
+                typing,
+                true,
+                item.IsFolderCollapsed,
+                (int)e.Key))
+        {
+            ViewModel.ToggleFolderSectionCommand.Execute(item);
             e.Handled = true;
             return;
         }
@@ -1839,14 +1860,26 @@ public sealed partial class LibraryPage : Page
 
         var scale = RasterScale();
         var viewport = CurrentThumbViewport();
-        var specs = new (bool IsHeader, double Aspect)[ViewModel.Assets.Count];
+        var specs = new MosaicSpec[ViewModel.Assets.Count];
         for (var i = 0; i < ViewModel.Assets.Count; i++)
         {
             var asset = ViewModel.Assets[i];
-            specs[i] = (asset.IsFolderHeader, asset.AspectRatio);
+            specs[i] = asset.IsFolderHeader
+                ? new MosaicSpec(
+                    MosaicSlotKind.FullHeader,
+                    0,
+                    asset.IsFolderCollapsed,
+                    MosaicRows.MiniHeaderWidth(asset.FolderGroupTitle, asset.FolderItemCount))
+                : new MosaicSpec(MosaicSlotKind.Asset, MosaicRows.ClampTileAspect(asset.AspectRatio));
         }
 
-        var slots = MosaicRows.Layout(specs, width, ViewModel.MosaicRowHeight, 8, GalleryMedia.FolderHeaderHeight);
+        var slots = MosaicRows.Layout(
+            specs,
+            width,
+            ViewModel.MosaicRowHeight,
+            MosaicLayout.ItemSpacing,
+            MosaicLayout.HeaderHeight,
+            MosaicLayout.CaptionHeight);
         var tiles = new List<ThumbTile>();
         var cacheHits = 0;
         var count = Math.Min(ViewModel.Assets.Count, slots.Count);
@@ -2232,50 +2265,32 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        var offset = _mosaicScrollViewer?.VerticalOffset
-            ?? _mosaicScrollView?.VerticalOffset
-            ?? 0;
-        var width = Math.Max(1, GrdAssets.ActualWidth);
-        var assets = ViewModel.Assets;
-        var specs = new MosaicSpec[assets.Count];
-        for (var i = 0; i < assets.Count; i++)
+        var offset = CurrentMosaicVerticalOffset();
+        // Same inputs as the repeater: last arrange width + XAML spacing/caption/header.
+        var headers = MosaicLayout.LastPinnableHeaders;
+        if (headers.Count == 0 || MosaicLayout.LastLaidOutWidth < 1)
         {
-            var asset = assets[i];
-            specs[i] = asset.IsFolderHeader
-                ? new MosaicSpec(
-                    MosaicSlotKind.FullHeader,
-                    0,
-                    asset.IsFolderCollapsed,
-                    MosaicRows.MiniHeaderWidth(asset.FolderGroupTitle, asset.FolderItemCount))
-                : new MosaicSpec(MosaicSlotKind.Asset, MosaicRows.ClampTileAspect(asset.AspectRatio));
+            HideStickyFolderHeader();
+            return;
         }
 
-        var slots = MosaicRows.Layout(
-            specs,
-            width,
-            ViewModel.MosaicRowHeight,
-            8,
-            GalleryMedia.FolderHeaderHeight);
-        AssetItem? active = null;
-        var headerTop = 0d;
-        var headerHeight = GalleryMedia.FolderHeaderHeight;
-        for (var i = 0; i < assets.Count && i < slots.Count; i++)
+        var stickyIndex = MosaicRows.FindStickyHeaderIndex(headers, offset);
+        if (stickyIndex < 0)
         {
-            if (!assets[i].IsFolderHeader)
-            {
-                continue;
-            }
-
-            var slot = slots[i];
-            if (slot.Y <= offset + 1)
-            {
-                active = assets[i];
-                headerTop = slot.Y;
-                headerHeight = slot.Height;
-            }
+            HideStickyFolderHeader();
+            return;
         }
 
-        if (active is null || headerTop + headerHeight > offset + 0.5)
+        var slot = headers[stickyIndex];
+        if ((uint)slot.Index >= (uint)ViewModel.Assets.Count
+            || slot.Y + slot.Height > offset + 0.5)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        var active = ViewModel.Assets[slot.Index];
+        if (!active.IsFolderHeader || active.IsPacked)
         {
             HideStickyFolderHeader();
             return;
@@ -2299,6 +2314,101 @@ public sealed partial class LibraryPage : Page
         TglStickyFlatten.Checked += TglStickyFlatten_Changed;
         TglStickyFlatten.Unchecked += TglStickyFlatten_Changed;
         BrdStickyFolderHeader.Visibility = Visibility.Visible;
+    }
+
+    private double CurrentMosaicVerticalOffset() =>
+        _mosaicScrollViewer?.VerticalOffset
+        ?? _mosaicScrollView?.VerticalOffset
+        ?? 0;
+
+    private void OnSectionToggleStarting()
+    {
+        _restoreScrollOffset = CurrentMosaicVerticalOffset();
+        _restoreScrollPending = true;
+    }
+
+    private void OnMosaicRestoreReady()
+    {
+        if (!_restoreScrollPending && string.IsNullOrEmpty(ViewModel.PendingSectionFocusPath))
+        {
+            return;
+        }
+
+        var path = ViewModel.PendingSectionFocusPath;
+        ViewModel.PendingSectionFocusPath = null;
+        var offset = _restoreScrollOffset;
+        var restoreScroll = _restoreScrollPending;
+        _restoreScrollPending = false;
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
+        {
+            InvalidateMosaicLayout();
+            if (restoreScroll)
+            {
+                _mosaicScrollViewer?.ChangeView(null, offset, null, disableAnimation: true);
+                _mosaicScrollView?.ScrollTo(
+                    0,
+                    offset,
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+            }
+
+            UpdateStickyFolderHeader();
+            if (!string.IsNullOrEmpty(path))
+            {
+                FocusFolderHeader(path);
+            }
+        });
+    }
+
+    private void FocusFolderHeader(string sectionPath)
+    {
+        var header = ViewModel.Assets.FirstOrDefault(asset =>
+            asset.IsFolderHeader
+            && string.Equals(asset.FolderGroupPath, sectionPath, StringComparison.OrdinalIgnoreCase));
+        if (header is null)
+        {
+            return;
+        }
+
+        var index = ViewModel.Assets.IndexOf(header);
+        if (index < 0)
+        {
+            return;
+        }
+
+        try
+        {
+            GrdAssets.Select(index);
+        }
+        catch
+        {
+            // ItemsView may not expose Select for headers; focus via realized container below.
+        }
+
+        var container = FindDescendantByTag(GrdAssets, header.MosaicTag);
+        container?.Focus(FocusState.Programmatic);
+    }
+
+    private static FrameworkElement? FindDescendantByTag(DependencyObject root, string tag)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe
+                && fe.Tag is string text
+                && string.Equals(text, tag, StringComparison.Ordinal))
+            {
+                return fe;
+            }
+
+            var nested = FindDescendantByTag(child, tag);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void HideStickyFolderHeader()

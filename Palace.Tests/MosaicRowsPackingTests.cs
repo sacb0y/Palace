@@ -46,6 +46,10 @@ public sealed class MosaicRowsPackingTests
         var slots = MosaicRows.Layout(items, width: 1200, rowHeight: 140, spacing: 8, headerHeight: 34);
 
         Assert.Equal(9, slots.Count);
+        Assert.True(slots[0].IsPacked);
+        Assert.True(slots[4].IsPacked);
+        Assert.True(slots[7].IsPacked);
+        Assert.Equal(MosaicRows.MiniHeaderHeight, slots[0].Height);
         // Headers share the top of the packed band.
         Assert.Equal(slots[0].Y, slots[4].Y, 0.01);
         Assert.Equal(slots[0].Y, slots[7].Y, 0.01);
@@ -56,6 +60,9 @@ public sealed class MosaicRowsPackingTests
         Assert.True(slots[1].Y > slots[0].Y);
         Assert.Equal(slots[1].Y, slots[5].Y, 0.01);
         Assert.Equal(slots[1].Y, slots[8].Y, 0.01);
+        // Single gap between clusters (no double spacing).
+        Assert.True(slots[4].X >= slots[3].X + slots[3].Width - 0.01);
+        Assert.True(slots[4].X <= slots[3].X + slots[3].Width + 8 + 0.01);
     }
 
     [Fact]
@@ -72,8 +79,72 @@ public sealed class MosaicRowsPackingTests
         Assert.Equal(0, slots[0].X);
         Assert.Equal(400, slots[0].Width);
         Assert.Equal(34, slots[0].Height);
+        Assert.False(slots[0].IsPacked);
         Assert.True(slots[1].Y >= slots[0].Y + slots[0].Height);
         Assert.True(slots[2].Y >= slots[1].Y + slots[1].Height);
+    }
+
+    [Fact]
+    public void Layout_EmptySection_IsHeaderOnly()
+    {
+        var items = new MosaicSpec[]
+        {
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 100),
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 100),
+            new(MosaicSlotKind.Asset, 1.0)
+        };
+
+        var slots = MosaicRows.Layout(items, width: 500, rowHeight: 120, spacing: 8, headerHeight: 34);
+        Assert.Equal(34, slots[0].Height);
+        Assert.Equal(500, slots[0].Width);
+        Assert.False(slots[0].IsPacked);
+        // Empty section contributes no tiles; next header follows.
+        Assert.True(slots[1].Y >= slots[0].Y + slots[0].Height);
+    }
+
+    [Fact]
+    public void Layout_CollapsedBetweenSmallSections_DoesNotPackAcross()
+    {
+        var items = new List<MosaicSpec>
+        {
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 80),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.FullHeader, 0, Collapsed: true, MiniWidth: 80),
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 80),
+            new(MosaicSlotKind.Asset, 1)
+        };
+
+        var slots = MosaicRows.Layout(items, width: 1200, rowHeight: 140, spacing: 8, headerHeight: 34);
+        // Collapsed breaks the pack chain → each small section keeps a full-width header.
+        Assert.False(slots[0].IsPacked);
+        Assert.Equal(0, slots[0].X);
+        Assert.Equal(1200, slots[0].Width);
+        Assert.False(slots[3].IsPacked);
+        Assert.Equal(0, slots[3].X);
+        Assert.Equal(1200, slots[3].Width);
+        Assert.True(slots[3].Y > slots[0].Y);
+    }
+
+    [Fact]
+    public void Layout_NarrowWidth_DoesNotPackSmallSections()
+    {
+        var items = new List<MosaicSpec>
+        {
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 80),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 80),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.Asset, 1)
+        };
+
+        // Narrow: two clusters cannot share one row.
+        var slots = MosaicRows.Layout(items, width: 200, rowHeight: 140, spacing: 8, headerHeight: 34);
+        Assert.False(slots[0].IsPacked);
+        Assert.False(slots[3].IsPacked);
+        Assert.Equal(0, slots[0].X);
+        Assert.Equal(200, slots[0].Width);
+        Assert.True(slots[3].Y > slots[0].Y + 30);
     }
 
     [Fact]
@@ -89,5 +160,48 @@ public sealed class MosaicRowsPackingTests
         Assert.Equal(0, slots[0].X);
         Assert.Equal(800, slots[0].Width);
         Assert.Equal(34, slots[0].Height);
+        Assert.False(slots[0].IsPacked);
+    }
+
+    [Fact]
+    public void Layout_PackedRow_MayGrowUpToOnePointFifteen()
+    {
+        // Two one-tile sections on a wide row: leftover width may grow height ≤ 1.15×.
+        var items = new List<MosaicSpec>
+        {
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 72),
+            new(MosaicSlotKind.Asset, 1),
+            new(MosaicSlotKind.FullHeader, 0, MiniWidth: 72),
+            new(MosaicSlotKind.Asset, 1)
+        };
+
+        var slots = MosaicRows.Layout(items, width: 900, rowHeight: 100, spacing: 8, headerHeight: 34);
+        Assert.True(slots[0].IsPacked);
+        var tileHeight = slots[1].Height; // captionHeight 0
+        Assert.True(tileHeight >= 100 - 0.01);
+        Assert.True(tileHeight <= 100 * MosaicRows.PackedJustifyMaxScale + 0.01);
+    }
+
+    [Fact]
+    public void FindStickyHeaderIndex_SkipsPackedAndBinarySearches()
+    {
+        var headers = new MosaicHeaderSlot[]
+        {
+            new(0, 0, 0, 400, 34, IsPacked: false),
+            new(5, 0, 200, 400, 34, IsPacked: false),
+            new(10, 0, 400, 400, 34, IsPacked: false)
+        };
+        Assert.Equal(0, MosaicRows.FindStickyHeaderIndex(headers, offset: 10));
+        Assert.Equal(1, MosaicRows.FindStickyHeaderIndex(headers, offset: 250));
+        Assert.Equal(2, MosaicRows.FindStickyHeaderIndex(headers, offset: 500));
+        Assert.Equal(-1, MosaicRows.FindStickyHeaderIndex(headers, offset: -5));
+
+        var pinnable = MosaicRows.PinnableHeaderSlots(
+        [
+            new(0, 0, 0, 80, 22, IsPacked: true),
+            new(3, 0, 100, 400, 34, IsPacked: false)
+        ]);
+        Assert.Single(pinnable);
+        Assert.Equal(3, pinnable[0].Index);
     }
 }

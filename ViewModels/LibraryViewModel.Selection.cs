@@ -23,9 +23,19 @@ public partial class LibraryViewModel
     public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
     {
         _selection = items.Where(item => !item.IsFolderHeader).ToList();
+        var selected = new HashSet<AssetItem>(_selection);
         foreach (var asset in Assets)
         {
-            asset.IsSelected = _selection.Contains(asset);
+            asset.IsSelected = selected.Contains(asset);
+        }
+
+        // Hidden (collapsed-section) tiles stay in _selection / ordered list.
+        foreach (var asset in _mosaicOrder)
+        {
+            if (!asset.IsFolderHeader && !Assets.Contains(asset))
+            {
+                asset.IsSelected = selected.Contains(asset);
+            }
         }
 
         HasSelection = _selection.Count > 0;
@@ -50,16 +60,31 @@ public partial class LibraryViewModel
 
     /// <summary>
     /// Contiguous mosaic span from the drag origin through the last highlighted
-    /// item. Folder headers are skipped. The origin stays the Shift/range anchor.
+    /// item. Folder headers are skipped. Indexes are into the display
+    /// <see cref="Assets"/> list; the range expands through the full ordered
+    /// mosaic so collapsed-section tiles between the ends still count.
     /// Live drag passes <paramref name="loadPreview"/> false so hover does not
     /// re-query the catalog on every move.
     /// </summary>
     public void ApplyMosaicRange(int from, int to, bool loadPreview = true)
     {
-        var flags = Assets.Select(asset => asset.IsFolderHeader).ToList();
-        var indexes = RangeSelect.ContiguousIndexes(flags, from, to);
-        SetSelection(indexes.Select(i => Assets[i]), loadPreview);
-        if ((uint)from < (uint)Assets.Count && !Assets[from].IsFolderHeader)
+        var ordered = _mosaicOrder.Count > 0 ? (IReadOnlyList<AssetItem>)_mosaicOrder : Assets;
+        if ((uint)from >= (uint)Assets.Count || (uint)to >= (uint)Assets.Count)
+        {
+            return;
+        }
+
+        var fromOrdered = IndexInOrdered(ordered, Assets[from]);
+        var toOrdered = IndexInOrdered(ordered, Assets[to]);
+        if (fromOrdered < 0 || toOrdered < 0)
+        {
+            return;
+        }
+
+        var flags = ordered.Select(asset => asset.IsFolderHeader).ToList();
+        var indexes = RangeSelect.ContiguousIndexes(flags, fromOrdered, toOrdered);
+        SetSelection(indexes.Select(i => ordered[i]), loadPreview);
+        if (!Assets[from].IsFolderHeader)
         {
             _selectionAnchor = Assets[from];
         }
@@ -90,17 +115,48 @@ public partial class LibraryViewModel
                 asset.IsSelected = asset == item;
             }
 
+            foreach (var asset in _mosaicOrder)
+            {
+                if (!asset.IsFolderHeader && !Assets.Contains(asset))
+                {
+                    asset.IsSelected = false;
+                }
+            }
+
             _selection = [item];
             _selectionAnchor = item;
         }
         else
         {
             item.IsSelected = !item.IsSelected;
-            _selection = Assets.Where(a => a.IsSelected).ToList();
+            var selected = new HashSet<AssetItem>();
+            foreach (var asset in Assets)
+            {
+                if (asset.IsSelected)
+                {
+                    selected.Add(asset);
+                }
+            }
+
+            foreach (var asset in _mosaicOrder)
+            {
+                if (!asset.IsFolderHeader && asset.IsSelected && !Assets.Contains(asset))
+                {
+                    selected.Add(asset);
+                }
+            }
+
             if (item.IsSelected)
             {
+                selected.Add(item);
                 _selectionAnchor = item;
             }
+            else
+            {
+                selected.Remove(item);
+            }
+
+            _selection = selected.ToList();
         }
 
         HasSelection = _selection.Count > 0;
@@ -115,6 +171,19 @@ public partial class LibraryViewModel
         {
             _ = LoadPreviewAsync(next);
         }
+    }
+
+    private static int IndexInOrdered(IReadOnlyList<AssetItem> ordered, AssetItem item)
+    {
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            if (ReferenceEquals(ordered[i], item))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     /// <summary>Resolved selection for Move dialog title and file ops (Library page + VM).</summary>

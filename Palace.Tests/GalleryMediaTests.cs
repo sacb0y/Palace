@@ -113,6 +113,25 @@ public sealed class GalleryMediaTests
     }
 
     [Fact]
+    public void ShouldToggleFolderCollapse_SpaceAndArrowsOnHeader()
+    {
+        // Space always toggles a focused header.
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, false, 32));
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, true, 32));
+        // Left collapses when expanded; Right expands when collapsed.
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, false, 37));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, true, 37));
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, true, 39));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, false, 39));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, false, false, false, 32));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(true, false, true, false, 32));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, true, true, false, 32));
+        Assert.True(GalleryMedia.UsesTopWeightedCrop(false, 0.5));
+        Assert.False(GalleryMedia.UsesTopWeightedCrop(true, 0.5));
+        Assert.False(GalleryMedia.UsesTopWeightedCrop(false, 1.5));
+    }
+
+    [Fact]
     public void ShouldLoadTileThumb_AllowsMissingJpegWhenHashExists()
     {
         Assert.True(GalleryMedia.ShouldLoadTileThumb(false, false, false, null, "abc"));

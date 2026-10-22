@@ -141,6 +141,48 @@ public static class GalleryMedia
         GalleryScale.OpensOverlayFromEnter(overlayOpen, isTyping, keyCode) && !isFolderHeader;
 
     /// <summary>
+    /// Space on a focused folder header toggles collapse (view-only). Left collapses
+    /// when expanded; Right expands when collapsed. Never while overlay/typing.
+    /// </summary>
+    public static bool ShouldToggleFolderCollapse(
+        bool overlayOpen,
+        bool isTyping,
+        bool isFolderHeader,
+        bool isCollapsed,
+        int keyCode)
+    {
+        if (overlayOpen || isTyping || !isFolderHeader)
+        {
+            return false;
+        }
+
+        // Space
+        if (keyCode == 32)
+        {
+            return true;
+        }
+
+        // Left = collapse when expanded; Right = expand when collapsed
+        if (keyCode == 37)
+        {
+            return !isCollapsed;
+        }
+
+        if (keyCode == 39)
+        {
+            return isCollapsed;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Clamped portraits use UniformToFill with top-weighted crop so faces stay in frame.
+    /// </summary>
+    public static bool UsesTopWeightedCrop(bool isFolderHeader, double aspectRatio) =>
+        !isFolderHeader && aspectRatio > 0 && aspectRatio < 1;
+
+    /// <summary>
     /// ItemsView ItemInvoked (double-tap, Enter, or automation Invoke when
     /// selection is enabled — not a single pointer tap).
     /// </summary>

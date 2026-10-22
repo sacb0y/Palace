@@ -55,6 +55,12 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         set => SetValue(HeaderHeightProperty, value);
     }
 
+    /// <summary>Width used by the last arrange / measure recalculation.</summary>
+    public double LastLaidOutWidth { get; private set; }
+
+    /// <summary>Pinnable (non-packed) header slots from the last arrange, sorted by Y.</summary>
+    public IReadOnlyList<MosaicHeaderSlot> LastPinnableHeaders { get; private set; } = [];
+
     /// <summary>
     /// WASDK 2.4 keeps Layout.InvalidateMeasure protected.
     /// LibraryPage calls this instead of reaching into Layout.
@@ -74,6 +80,8 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         }
 
         context.LayoutState = null;
+        LastPinnableHeaders = [];
+        LastLaidOutWidth = 0;
     }
 
     protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
@@ -129,11 +137,14 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     private void Recalculate(VirtualizingLayoutContext context, MosaicState state, double width)
     {
         state.Rects.Clear();
+        state.Slots.Clear();
         state.LaidOutWidth = width;
         state.ExtentHeight = 0;
+        LastLaidOutWidth = width;
         var count = context.ItemCount;
         if (count == 0 || width <= 0)
         {
+            LastPinnableHeaders = [];
             return;
         }
 
@@ -152,19 +163,49 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
             CaptionHeight);
         foreach (var slot in slots)
         {
+            state.Slots.Add(slot);
             state.Rects.Add(new Rect(slot.X, slot.Y, slot.Width, slot.Height));
         }
 
         while (state.Rects.Count < count)
         {
+            state.Slots.Add(new MosaicSlot(0, state.ExtentHeight, 1, HeaderHeight));
             state.Rects.Add(new Rect(0, state.ExtentHeight, 1, HeaderHeight));
         }
 
-        state.ExtentHeight = MosaicRows.ExtentHeight(slots, ItemSpacing);
+        StampPackedFlags(context, state.Slots);
+
+        var headers = MosaicRows.CollectHeaderSlots(
+            state.Slots,
+            i => SpecOf(context, i).Kind == MosaicSlotKind.FullHeader);
+        LastPinnableHeaders = MosaicRows.PinnableHeaderSlots(headers);
+
+        state.ExtentHeight = MosaicRows.ExtentHeight(state.Slots, ItemSpacing);
         if (state.Rects.Count > 0)
         {
             var last = state.Rects[^1];
             state.ExtentHeight = Math.Max(state.ExtentHeight, last.Y + last.Height);
+        }
+    }
+
+    private static void StampPackedFlags(VirtualizingLayoutContext context, IReadOnlyList<MosaicSlot> slots)
+    {
+        for (var i = 0; i < slots.Count; i++)
+        {
+            try
+            {
+                if (context.GetItemAt(i) is AssetItem { IsFolderHeader: true } header)
+                {
+                    var packed = slots[i].IsPacked;
+                    if (header.IsPacked != packed)
+                    {
+                        header.IsPacked = packed;
+                    }
+                }
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+            }
         }
     }
 
@@ -251,6 +292,7 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     private sealed class MosaicState
     {
         public List<Rect> Rects { get; } = [];
+        public List<MosaicSlot> Slots { get; } = [];
         public Dictionary<int, UIElement> Realized { get; } = [];
         public double LaidOutWidth { get; set; }
         public double ExtentHeight { get; set; }

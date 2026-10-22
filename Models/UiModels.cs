@@ -112,11 +112,23 @@ public partial class AssetItem : ObservableObject
     /// <summary>Asset count in this folder section (headers only).</summary>
     public int FolderItemCount { get; set; }
 
-    /// <summary>Collapsed section — header only, tiles omitted from the mosaic.</summary>
+    /// <summary>Collapsed section — header only in the display mosaic (tiles stay in ordered list).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FolderCollapseAutomationName))]
     [NotifyPropertyChangedFor(nameof(ShowFolderCount))]
+    [NotifyPropertyChangedFor(nameof(ShowFullFolderHeader))]
+    [NotifyPropertyChangedFor(nameof(ShowMiniFolderHeader))]
     public partial bool IsFolderCollapsed { get; set; }
+
+    /// <summary>Packed side-by-side section: mini 22px label instead of full sticky header.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowFullFolderHeader))]
+    [NotifyPropertyChangedFor(nameof(ShowMiniFolderHeader))]
+    public partial bool IsPacked { get; set; }
+
+    public bool ShowFullFolderHeader => IsFolderHeader && !IsPacked;
+
+    public bool ShowMiniFolderHeader => IsFolderHeader && IsPacked;
 
     public string MosaicTag => FolderGroups.MosaicTag(IsFolderHeader, Id, FolderGroupPath);
 

@@ -14,7 +14,11 @@ namespace Palace.ViewModels;
 /// <summary>Library: mosaic population, folder headers, row height and sort.</summary>
 public partial class LibraryViewModel
 {
-    private async Task PopulateMosaicAsync(IReadOnlyList<AssetItem> items, int epoch, string doneStatus)
+    private async Task PopulateMosaicAsync(
+        IReadOnlyList<AssetItem> items,
+        int epoch,
+        string doneStatus,
+        bool clearSelection = true)
     {
         await UiDispatch.RunAsync(() =>
         {
@@ -23,20 +27,20 @@ public partial class LibraryViewModel
                 return;
             }
 
-            ClearSelection();
+            if (clearSelection)
+            {
+                ClearSelection();
+            }
+
             Assets.Clear();
             MosaicReset?.Invoke();
         });
 
         var total = items.Count;
-        var assetTotal = 0;
-        for (var n = 0; n < total; n++)
-        {
-            if (!items[n].IsFolderHeader)
-            {
-                assetTotal++;
-            }
-        }
+        // "of N" counts the full ordered mosaic (collapsed sections still count).
+        var assetTotal = _mosaicOrder.Count > 0
+            ? _mosaicOrder.Count(item => !item.IsFolderHeader)
+            : items.Count(item => !item.IsFolderHeader);
 
         var shown = 0;
         for (var i = 0; i < total; i += MosaicChunkSize)
@@ -83,6 +87,7 @@ public partial class LibraryViewModel
             }
 
             StatusText = doneStatus;
+            MosaicRestoreReady?.Invoke();
         });
     }
 
@@ -103,10 +108,22 @@ public partial class LibraryViewModel
             return;
         }
 
+        SectionToggleStarting?.Invoke();
         var collapsed = FolderSectionPrefs.ToggleCollapsed(_collapsedSections, path);
         _collapsedSections = collapsed;
+        header.IsFolderCollapsed = FolderSectionPrefs.IsCollapsed(collapsed, path);
+        foreach (var item in _mosaicOrder)
+        {
+            if (item.IsFolderHeader
+                && string.Equals(ResolveHeaderPath(item), path, StringComparison.OrdinalIgnoreCase))
+            {
+                item.IsFolderCollapsed = header.IsFolderCollapsed;
+            }
+        }
+
+        PendingSectionFocusPath = path;
         SaveCollapsedSections(_sectionBrowsePath, collapsed);
-        _ = ApplyFilterAsync();
+        _ = RepublishSectionDisplayAsync();
     }
 
     [RelayCommand]
@@ -140,6 +157,13 @@ public partial class LibraryViewModel
         }
     }
 
+    /// <summary>Select every non-header asset in the full ordered mosaic (includes collapsed sections).</summary>
+    public void SelectAllMosaicAssets()
+    {
+        var source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+        SetSelection(source.Where(a => !a.IsFolderHeader));
+    }
+
     private static string? ResolveHeaderPath(AssetItem header)
     {
         var path = header.FolderGroupPath;
@@ -152,7 +176,8 @@ public partial class LibraryViewModel
     }
 
     private readonly record struct MosaicBuild(
-        List<AssetItem> Items,
+        List<AssetItem> Ordered,
+        List<AssetItem> Display,
         string BrowsePath,
         bool ShowSections,
         bool Flatten,
@@ -169,29 +194,64 @@ public partial class LibraryViewModel
         var mapped = assets.Select(ToItem).ToList();
         if (!groupFolders)
         {
-            return new MosaicBuild(mapped, "", false, false, []);
+            return new MosaicBuild(mapped, mapped, "", false, false, []);
         }
 
         var groups = FolderGroups.GroupByTopFolders(mapped, folderName, folderPath, item => item.Path);
         if (!FolderGroups.NeedsHeaders(groups))
         {
-            return new MosaicBuild(mapped, folderPath, false, flatten, collapsed);
+            return new MosaicBuild(mapped, mapped, folderPath, false, flatten, collapsed);
         }
 
         if (flatten)
         {
-            return new MosaicBuild(mapped, folderPath, true, true, collapsed);
+            return new MosaicBuild(mapped, mapped, folderPath, true, true, collapsed);
         }
 
-        var items = FolderGroups.InterleaveHeaders(
+        var livePaths = groups
+            .Select(group => FolderGroups.CombineUnder(folderPath, group.RelativeSegments))
+            .ToList();
+        collapsed = FolderSectionPrefs.PruneCollapsed(collapsed, livePaths);
+
+        // Full ordered list always includes every section's tiles (collapse is view-only).
+        var ordered = FolderGroups.InterleaveHeaders(
             groups,
-            group => ToFolderHeader(group, folderPath, collapsed),
-            group =>
+            group => ToFolderHeader(group, folderPath, collapsed));
+        var display = FolderSectionPrefs.FilterCollapsedDisplay(
+            ordered,
+            item => item.IsFolderHeader,
+            item => item.IsFolderCollapsed);
+        return new MosaicBuild(ordered, display, folderPath, true, false, collapsed);
+    }
+
+    private async Task RepublishSectionDisplayAsync()
+    {
+        if (_mosaicOrder.Count == 0)
+        {
+            await ApplyFilterAsync();
+            return;
+        }
+
+        var display = FolderSectionPrefs.FilterCollapsedDisplay(
+            _mosaicOrder,
+            item => item.IsFolderHeader,
+            item => item.IsFolderCollapsed);
+        var epoch = ++_filterEpoch;
+        var assetCount = _mosaicOrder.Count(item => !item.IsFolderHeader);
+        var doneStatus = SelectedFolder is not null
+            ? $"{assetCount} in {SelectedFolder.Name}"
+            : $"{assetCount} assets";
+        // Keep selection (collapsed tiles stay selected in the ordered list).
+        await PopulateMosaicAsync(display, epoch, doneStatus, clearSelection: false);
+        await UiDispatch.RunAsync(() =>
+        {
+            // Re-stamp IsSelected on the new display surface.
+            var selected = new HashSet<AssetItem>(_selection);
+            foreach (var asset in Assets)
             {
-                var path = FolderGroups.CombineUnder(folderPath, group.RelativeSegments);
-                return !FolderSectionPrefs.IsCollapsed(collapsed, path);
-            });
-        return new MosaicBuild(items, folderPath, true, false, collapsed);
+                asset.IsSelected = selected.Contains(asset);
+            }
+        });
     }
 
     private static AssetItem ToFolderHeader(
@@ -214,6 +274,11 @@ public partial class LibraryViewModel
     private static (bool Flatten, HashSet<string> Collapsed) ReadSectionPrefs(string folderPath)
     {
         var settings = ApplicationData.Current.LocalSettings.Values;
+        foreach (var key in settings.Keys.OfType<string>().Where(FolderSectionPrefs.IsLegacySettingsKey).ToList())
+        {
+            settings.Remove(key);
+        }
+
         var flatten = FolderSectionPrefs.ParseBool(
             settings.TryGetValue(FolderSectionPrefs.FlattenKey(folderPath), out var f) ? f : null);
         var collapsed = FolderSectionPrefs.ParseCollapsed(
@@ -225,6 +290,7 @@ public partial class LibraryViewModel
     {
         _sectionBrowsePath = build.BrowsePath;
         _collapsedSections = build.Collapsed;
+        _mosaicOrder = build.Ordered;
         var was = _suppressFilter;
         _suppressFilter = true;
         ShowFolderSectionsChrome = build.ShowSections;
@@ -233,11 +299,13 @@ public partial class LibraryViewModel
     }
 
     private void SaveFlatten(string folderPath, bool flatten) =>
-        ApplicationData.Current.LocalSettings.Values[FolderSectionPrefs.FlattenKey(folderPath)] = flatten;
+        FolderSectionPrefs.TrySave(() =>
+            ApplicationData.Current.LocalSettings.Values[FolderSectionPrefs.FlattenKey(folderPath)] = flatten);
 
     private static void SaveCollapsedSections(string folderPath, IReadOnlySet<string> collapsed) =>
-        ApplicationData.Current.LocalSettings.Values[FolderSectionPrefs.CollapsedKey(folderPath)] =
-            FolderSectionPrefs.SerializeCollapsed(collapsed);
+        FolderSectionPrefs.TrySave(() =>
+            ApplicationData.Current.LocalSettings.Values[FolderSectionPrefs.CollapsedKey(folderPath)] =
+                FolderSectionPrefs.SerializeCollapsed(collapsed));
 
     private AssetItem ToItem(Asset asset)
     {

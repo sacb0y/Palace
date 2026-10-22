@@ -1,7 +1,21 @@
 namespace Palace.Helpers;
 
 /// <summary>One mosaic slot. Off WinUI so Palace.Tests can cover header vs tile layout.</summary>
-public readonly record struct MosaicSlot(double X, double Y, double Width, double Height);
+public readonly record struct MosaicSlot(
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    bool IsPacked = false);
+
+/// <summary>Pinned / sticky header candidate from the last layout arrange.</summary>
+public readonly record struct MosaicHeaderSlot(
+    int Index,
+    double X,
+    double Y,
+    double Width,
+    double Height,
+    bool IsPacked);
 
 /// <summary>Kind of mosaic list entry for <see cref="MosaicRows"/>.</summary>
 public enum MosaicSlotKind
@@ -28,6 +42,9 @@ public static class MosaicRows
     public const double MiniHeaderMinWidth = 72;
     public const double MiniHeaderMaxWidth = 160;
     public const double MiniHeaderCharWidth = 7.5;
+
+    /// <summary>Packed rows may grow up to this × target row height to fill width.</summary>
+    public const double PackedJustifyMaxScale = 1.15;
 
     public static double ClampTileAspect(double aspect) =>
         Math.Max(FolderSectionPrefs.MinPortraitAspect, aspect);
@@ -149,6 +166,85 @@ public static class MosaicRows
     public static bool IsCompactHeader(double height, double mosaicRowHeight) =>
         height > 0 && height < mosaicRowHeight;
 
+    /// <summary>
+    /// Last full (non-packed) header whose top is at or above <paramref name="offset"/>.
+    /// Packed mini headers are never pinned.
+    /// </summary>
+    public static int FindStickyHeaderIndex(
+        IReadOnlyList<MosaicHeaderSlot> headers,
+        double offset)
+    {
+        var lo = 0;
+        var hi = headers.Count - 1;
+        var best = -1;
+        while (lo <= hi)
+        {
+            var mid = (lo + hi) / 2;
+            var slot = headers[mid];
+            if (slot.IsPacked)
+            {
+                // Packed headers are omitted from the cache; keep search stable.
+                hi = mid - 1;
+                continue;
+            }
+
+            if (slot.Y <= offset + 1)
+            {
+                best = mid;
+                lo = mid + 1;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+
+        return best;
+    }
+
+    public static IReadOnlyList<MosaicHeaderSlot> CollectHeaderSlots(
+        IReadOnlyList<MosaicSlot> slots,
+        Func<int, bool> isHeader)
+    {
+        var headers = new List<MosaicHeaderSlot>();
+        for (var i = 0; i < slots.Count; i++)
+        {
+            if (!isHeader(i))
+            {
+                continue;
+            }
+
+            var slot = slots[i];
+            headers.Add(new MosaicHeaderSlot(
+                i,
+                slot.X,
+                slot.Y,
+                slot.Width,
+                slot.Height,
+                slot.IsPacked));
+        }
+
+        return headers;
+    }
+
+    /// <summary>
+    /// Pinnable sticky candidates only (full-width headers), sorted by Y.
+    /// </summary>
+    public static IReadOnlyList<MosaicHeaderSlot> PinnableHeaderSlots(
+        IReadOnlyList<MosaicHeaderSlot> headers)
+    {
+        var list = new List<MosaicHeaderSlot>(headers.Count);
+        foreach (var header in headers)
+        {
+            if (!header.IsPacked)
+            {
+                list.Add(header);
+            }
+        }
+
+        return list;
+    }
+
     private static bool IsSmall(Section section, double usable, double rowHeight, double spacing) =>
         section.Assets.Count > 0
         && FolderSectionPrefs.IsSmallSection(
@@ -157,13 +253,20 @@ public static class MosaicRows
             rowHeight,
             spacing);
 
+    /// <summary>
+    /// Natural width of one packed cluster: mini label + gap + tiles
+    /// (matches <see cref="PlacePacked"/> fixed parts at <paramref name="rowHeight"/>).
+    /// </summary>
     private static double EstimatePackedWidth(Section section, double rowHeight, double spacing)
     {
         var tiles = FolderSectionPrefs.SectionNaturalWidth(
             section.Assets.Select(a => a.Aspect).ToList(),
             rowHeight,
             spacing);
-        return section.MiniWidth + (section.Assets.Count > 0 ? spacing : 0) + tiles;
+        // label + (label→tiles gap when there are tiles) + tiles
+        return section.MiniWidth
+            + (section.Assets.Count > 0 ? spacing : 0)
+            + tiles;
     }
 
     private static void PlaceFullSection(
@@ -178,7 +281,7 @@ public static class MosaicRows
     {
         if (section.HeaderIndex >= 0)
         {
-            slots[section.HeaderIndex] = new MosaicSlot(0, y, usable, headerHeight);
+            slots[section.HeaderIndex] = new MosaicSlot(0, y, usable, headerHeight, IsPacked: false);
             y += headerHeight + spacing;
         }
 
@@ -273,27 +376,35 @@ public static class MosaicRows
         var labelWidths = clusters.Sum(c => c.MiniWidth);
         var clusterGaps = spacing * Math.Max(0, clusters.Count - 1);
         var tileGaps = clusters.Sum(c => spacing * Math.Max(0, c.Assets.Count - 1));
-        var innerGaps = clusters.Count * spacing;
+        // One gap between each label and its first tile.
+        var labelTileGaps = clusters.Count(c => c.Assets.Count > 0) * spacing;
         var aspectSum = clusters.Sum(c => c.TileAspectSum);
-        var fixedWidth = labelWidths + clusterGaps + tileGaps + innerGaps;
-        var height = aspectSum > 0
-            ? Math.Clamp((usable - fixedWidth) / aspectSum, 48, targetHeight)
-            : targetHeight;
+        var fixedWidth = labelWidths + clusterGaps + tileGaps + labelTileGaps;
+        var height = targetHeight;
+        if (aspectSum > 0)
+        {
+            var fillHeight = (usable - fixedWidth) / aspectSum;
+            // Shrink to fit, or grow up to 1.15× to fill leftover width. No 48px floor.
+            height = fillHeight > targetHeight
+                ? Math.Min(fillHeight, targetHeight * PackedJustifyMaxScale)
+                : Math.Max(1, Math.Min(fillHeight, targetHeight));
+        }
 
-        var tileWidth = height * aspectSum + tileGaps + innerGaps;
+        var tileWidth = height * aspectSum + tileGaps + labelTileGaps;
         var labelBudget = Math.Max(MiniHeaderMinWidth * clusters.Count, usable - clusterGaps - tileWidth);
         var labelScale = labelWidths > 0 ? Math.Min(1, labelBudget / labelWidths) : 1;
 
         var x = 0d;
-        foreach (var cluster in clusters)
+        for (var c = 0; c < clusters.Count; c++)
         {
+            var cluster = clusters[c];
             var labelW = Math.Max(MiniHeaderMinWidth, cluster.MiniWidth * labelScale);
             if (cluster.HeaderIndex >= 0)
             {
-                slots[cluster.HeaderIndex] = new MosaicSlot(x, y, labelW, labelH);
+                slots[cluster.HeaderIndex] = new MosaicSlot(x, y, labelW, labelH, IsPacked: true);
             }
 
-            var tileX = x + labelW + spacing;
+            var tileX = x + labelW + (cluster.Assets.Count > 0 ? spacing : 0);
             var tileY = y + labelH + 2;
             foreach (var (index, aspect) in cluster.Assets)
             {
@@ -303,7 +414,10 @@ public static class MosaicRows
                 tileX += itemWidth + spacing;
             }
 
-            x = tileX + spacing;
+            // Next cluster starts after the last tile's trailing spacing (one gap), not two.
+            x = cluster.Assets.Count > 0
+                ? tileX
+                : x + labelW + spacing;
         }
 
         y += labelH + 2 + height + captionHeight + spacing;

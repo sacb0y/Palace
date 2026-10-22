@@ -38,7 +38,18 @@ public partial class LibraryViewModel : ObservableObject
     private HashSet<string> _localSourceIds = new(StringComparer.Ordinal);
     private string _sectionBrowsePath = "";
     private HashSet<string> _collapsedSections = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Full mosaic order including tiles under collapsed headers (view-only collapse).</summary>
+    private List<AssetItem> _mosaicOrder = [];
     private const int MosaicChunkSize = 80;
+
+    /// <summary>LibraryPage captures scroll offset before a section collapse toggle.</summary>
+    public Action? SectionToggleStarting { get; set; }
+
+    /// <summary>Fired after mosaic chunks finish so the page can restore scroll/focus.</summary>
+    public Action? MosaicRestoreReady { get; set; }
+
+    /// <summary>Section path to refocus after collapse toggle; cleared by the page.</summary>
+    public string? PendingSectionFocusPath { get; set; }
 
     public LibraryViewModel(
         CatalogService catalog,

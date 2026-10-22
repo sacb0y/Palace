@@ -693,7 +693,7 @@
                                 DoubleTapped="AssetItem_DoubleTapped"
                                 IsDoubleTapEnabled="True"
                                 IsHoldingEnabled="True"
-                                IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
+                                IsTabStop="True"
                                 ManipulationMode="System"
                                 Tag="{x:Bind MosaicTag, Mode=OneWay}">
                                 <ItemContainer.ContextFlyout>
@@ -786,6 +786,7 @@
                                 </MenuFlyout>
                             </ItemContainer.ContextFlyout>
                             <Grid>
+                                <!-- Full section header (34px sticky / unpinable). -->
                                 <Grid
                                     Padding="4,2"
                                     VerticalAlignment="Stretch"
@@ -793,7 +794,7 @@
                                     ColumnSpacing="4"
                                     PointerPressed="FolderGroupHeader_PointerPressed"
                                     Tag="{x:Bind MosaicTag, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFolderHeader), Mode=OneWay}">
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowFullFolderHeader), Mode=OneWay}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
@@ -883,6 +884,67 @@
                                         <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
                                     </Button>
                                 </Grid>
+                                <!-- Mini packed header (22px): 📁 name · count · ↗ -->
+                                <Grid
+                                    Padding="2,0"
+                                    VerticalAlignment="Stretch"
+                                    Background="Transparent"
+                                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                    BorderThickness="2,0,0,0"
+                                    ColumnSpacing="2"
+                                    PointerPressed="FolderGroupHeader_PointerPressed"
+                                    Tag="{x:Bind MosaicTag, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowMiniFolderHeader), Mode=OneWay}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        Padding="0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="{x:Bind FolderGroupTitle, Mode=OneWay}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        IsTabStop="False"
+                                        Tapped="FolderGroupHeader_Tapped"
+                                        ToolTipService.ToolTip="Open folder">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <ic:FluentIcon Icon="Folder" IconSize="Size16" IconVariant="Regular" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind FolderGroupTitle, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind FolderCountText, Mode=OneWay}"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowFolderCount), Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Grid.Column="1"
+                                        Padding="2"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.AutomationId="BtnFolderOpenMini"
+                                        AutomationProperties.Name="Open folder"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        IsTabStop="False"
+                                        ToolTipService.ToolTip="Open folder">
+                                        <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                    </Button>
+                                </Grid>
                                 <Grid
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"
@@ -898,6 +960,7 @@
                                         ManipulationMode="System"
                                         Source="{x:Bind ThumbImage, Mode=OneWay}"
                                         Stretch="UniformToFill"
+                                        VerticalAlignment="Top"
                                         Tag="{x:Bind Id, Mode=OneWay}"
                                         Unloaded="TileImage_Unloaded" />
                                     <TextBlock
