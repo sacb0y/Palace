@@ -215,6 +215,12 @@ public static class GalleryPresent
     /// <summary>DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 — linear scRGB.</summary>
     public const int ScrgbColorSpace = 1;
 
+    /// <summary>
+    /// <c>IDXGISwapChain2::SetMatrixTransform</c> vtable slot (IUnknown=0).
+    /// Includes SetSourceSize/GetSourceSize at 32–33; SetColorSpace1 is 38.
+    /// </summary>
+    public const int DxgiSwapChain2SetMatrixTransformVtbl = 34;
+
     public static string FormatDisplayProbe(
         int colorSpace,
         float maxLuminance,
@@ -517,9 +523,10 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// Windows HDR composition: scRGB 1.0 = <paramref name="sdrWhiteLevelNits"/>
-    /// (often 200–300), not Palace's 80-nit authoring white. Scale content so
-    /// paper white stays correct; missing/invalid white → identity (1).
+    /// Opt-in paper-white factor only (<c>80 / SdrWhiteLevel</c>). The FP16
+    /// G10_P709 swapchain is absolute (1.0 = 80 nits) and decoders already
+    /// emit nits/80 — default HDR present must <b>not</b> apply this. Use only
+    /// behind an explicit sdrWhite/203 setting if one is added later.
     /// </summary>
     public static float HdrCompositionScale(float sdrWhiteLevelNits)
     {
@@ -532,8 +539,8 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// Clip in composition units after <see cref="HdrCompositionScale"/>:
-    /// <c>MaxLuminance / SdrWhiteLevel</c>. Unknown peak → PQ 10 000 / white.
+    /// Opt-in clip in composition units after <see cref="HdrCompositionScale"/>.
+    /// Default HDR present uses <see cref="RasterizeClipScrgb"/> instead.
     /// </summary>
     public static float HdrCompositionClip(float sdrWhiteLevelNits, float displayPeakNits)
     {
@@ -547,9 +554,12 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// HDR still present: passthrough scaled by SdrWhiteLevel, soft-clip above
-    /// display MaxLuminance. SDR stills use <see cref="PresentMapSdrReinhard"/>
-    /// (same curve as mosaic thumbs) — not a linear MaxCLL crush.
+    /// HDR still present: absolute scRGB passthrough (scale 1) + clip at
+    /// peak/80 (<see cref="RasterizeClipScrgb"/>). Negatives pass through for
+    /// OOG. SDR stills use <see cref="PresentMapSdrReinhard"/> in the gallery
+    /// (legacy linear MaxCLL map kept for callers / tests).
+    /// <paramref name="sdrWhiteLevelNits"/> is ignored for the default map —
+    /// see <see cref="HdrCompositionScale"/>.
     /// </summary>
     public static HdrPresentMap PresentMap(
         bool displayIsHdr,
@@ -557,30 +567,33 @@ public static class GalleryPresent
         float displayPeakNits,
         float sdrWhiteLevelNits = 0f)
     {
+        _ = sdrWhiteLevelNits;
         if (displayIsHdr)
         {
-            var scale = HdrCompositionScale(sdrWhiteLevelNits);
-            var clip = HdrCompositionClip(sdrWhiteLevelNits, displayPeakNits);
-            return new HdrPresentMap(scale, clip, ReinhardWhite: 0f, SoftNegatives: true);
+            return new HdrPresentMap(
+                1f,
+                RasterizeClipScrgb(displayPeakNits),
+                ReinhardWhite: 0f,
+                SoftNegatives: true);
         }
 
         _ = displayPeakNits;
         // Legacy linear MaxCLL→80 for callers that have not run ToneMap.Analyze.
         // Gallery present uses PresentMapSdrReinhard so midtones are not crushed.
-        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f, SoftNegatives: true);
+        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f, SoftNegatives: false);
     }
 
     /// <summary>
     /// SDR / HDR-off present: extended Reinhard matching <see cref="ToneMap"/>
-    /// thumbs (log-average exposure + white from Analyze). Soft-clips OOG
-    /// negatives. Clip is composition white (scRGB 1.0).
+    /// thumbs (log-average exposure + white from Analyze). OOG negatives are
+    /// plain-clamped (no SoftNegChannel luminance darkening). Clip is scRGB 1.0.
     /// </summary>
     public static HdrPresentMap PresentMapSdrReinhard(float exposure, float reinhardWhite) =>
         new(
             exposure > 0 && float.IsFinite(exposure) ? exposure : 1f,
             1f,
             ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
-            SoftNegatives: true);
+            SoftNegatives: false);
 
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
@@ -957,11 +970,32 @@ public static class GalleryPresent
         transfer switch
         {
             HdrTransfer.Pq => PqEotf(encoded) * 10000f,
-            HdrTransfer.Hlg => HlgEotf(encoded) * 1000f,
+            // BT.2100 HLG: EOTF → scene linear, then OOTF Y^(γ−1) with γ=1.2
+            // at 1000-nit reference (grey Y = channel for this scalar API).
+            HdrTransfer.Hlg => HlgOotfNits(HlgEotf(encoded)),
             HdrTransfer.Scrgb => encoded * ScrgbNits,
             HdrTransfer.Linear => encoded * SdrReferenceNits,
             _ => SrgbEotf(encoded) * SdrReferenceNits
         };
+
+    /// <summary>BT.2100 HLG OOTF at 1000-nit peak: <c>γ = 1.2</c>.</summary>
+    public const float HlgOotfGamma = 1.2f;
+
+    /// <summary>
+    /// Scene-linear HLG → display nits with OOTF <c>Y^(γ−1)</c> (γ=1.2).
+    /// Scalar / grey path for <see cref="EncodedToNits"/>.
+    /// </summary>
+    public static float HlgOotfNits(float sceneLinear)
+    {
+        var y = Math.Max(sceneLinear, 0f);
+        if (y <= 0f)
+        {
+            return 0f;
+        }
+
+        // Rd = Y * Y^(γ−1) * Lw = Y^γ * 1000, Lw = 1000 nits.
+        return y * MathF.Pow(y, HlgOotfGamma - 1f) * 1000f;
+    }
 
     public static float SrgbEotf(float v)
     {
@@ -1238,11 +1272,11 @@ public readonly record struct GalleryImageInfo(
     string? Gamut = null);
 
 /// <summary>
-/// Present raster map. <see cref="Scale"/> is exposure (SDR Reinhard) or
-/// Windows HDR composition scale (<c>80 / SdrWhiteLevel</c>). When
-/// <see cref="ReinhardWhite"/> &gt; 1, extended Reinhard rolls highlights
-/// (same curve as <see cref="ToneMap"/> thumbs). <see cref="SoftNegatives"/>
-/// soft-clips BT.2020→709 out-of-gamut channels instead of hard clamp to 0.
+/// Present raster map. <see cref="Scale"/> is exposure (SDR Reinhard) or 1
+/// for absolute HDR scRGB. When <see cref="ReinhardWhite"/> &gt; 1, extended
+/// Reinhard rolls highlights (same curve as <see cref="ToneMap"/> thumbs).
+/// <see cref="SoftNegatives"/> true = pass OOG negatives through (HDR);
+/// false = plain clamp to 0 (SDR).
 /// </summary>
 public readonly record struct HdrPresentMap(
     float Scale,

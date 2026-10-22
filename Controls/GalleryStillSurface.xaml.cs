@@ -18,6 +18,10 @@ public sealed partial class GalleryStillSurface : UserControl
     private HdrFrame? _hdrFrame;
     private string? _hdrFramePath;
     private float _hdrMapMaxNits;
+    private string? _sdrTonePath;
+    private float _sdrToneExposure = 1f;
+    private float _sdrToneWhite;
+    private bool _advancedColorHooked;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
     private int _histEpoch;
@@ -99,6 +103,7 @@ public sealed partial class GalleryStillSurface : UserControl
             ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
             ScpHdr.CompositionScaleChanged -= ScpHdr_CompositionScaleChanged;
             UnhookPeak();
+            UnhookAdvancedColor();
             _gallery?.StopGifPlayback();
             CancelInFlight();
             ClearHdrCache();
@@ -116,6 +121,56 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         ApplyScaleLayout();
+        PresentCached(HdrPresentCoalescer.SettleMs);
+    }
+
+    private void HookAdvancedColor()
+    {
+        if (_advancedColorHooked || !OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            var info = Windows.Graphics.Display.DisplayInformation.GetForCurrentView();
+            info.AdvancedColorInfoChanged += Display_AdvancedColorInfoChanged;
+            _advancedColorHooked = true;
+        }
+        catch
+        {
+            // GetForCurrentView can fail off the UI thread / early startup.
+        }
+    }
+
+    private void UnhookAdvancedColor()
+    {
+        if (!_advancedColorHooked)
+        {
+            return;
+        }
+
+        try
+        {
+            var info = Windows.Graphics.Display.DisplayInformation.GetForCurrentView();
+            info.AdvancedColorInfoChanged -= Display_AdvancedColorInfoChanged;
+        }
+        catch
+        {
+            // Ignore teardown races.
+        }
+
+        _advancedColorHooked = false;
+    }
+
+    private void Display_AdvancedColorInfoChanged(Windows.Graphics.Display.DisplayInformation sender, object args)
+    {
+        // HDR toggle / SDR white slider / monitor move — re-probe and re-present.
+        if (_hdrFrame is null)
+        {
+            return;
+        }
+
         PresentCached(HdrPresentCoalescer.SettleMs);
     }
 
@@ -141,6 +196,7 @@ public sealed partial class GalleryStillSurface : UserControl
         if (_gallery is not null)
         {
             HookPeak();
+            HookAdvancedColor();
             _gallery.PropertyChanged += Gallery_PropertyChanged;
             _ = RefreshAsync();
             return;
@@ -671,13 +727,28 @@ public sealed partial class GalleryStillSurface : UserControl
 
         using var cts = new CancellationTokenSource();
         await UiDispatch.RunAsync(() => _presentCts = cts);
+        // Sticky Reinhard per path: first Fit analyzes; 1:1 / resize reuse.
+        float? stickyExposure = null;
+        float? stickyWhite = null;
+        await UiDispatch.RunAsync(() =>
+        {
+            if (!string.IsNullOrEmpty(_hdrFramePath)
+                && string.Equals(_sdrTonePath, _hdrFramePath, StringComparison.OrdinalIgnoreCase)
+                && _sdrToneExposure > 0)
+            {
+                stickyExposure = _sdrToneExposure;
+                stickyWhite = _sdrToneWhite;
+            }
+        });
         HdrPresentOutcome outcome;
         try
         {
             outcome = await presenterRef.TryPresentAsync(
                 frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token,
                 contentProbe: contentProbe,
-                viz: viz, vizPrimaries: vizPrimaries);
+                viz: viz, vizPrimaries: vizPrimaries,
+                sdrExposure: stickyExposure,
+                sdrReinhardWhite: stickyWhite);
         }
         finally
         {
@@ -704,6 +775,15 @@ public sealed partial class GalleryStillSurface : UserControl
 
             if (outcome == HdrPresentOutcome.Presented)
             {
+                if (!presenterRef.DisplayIsHdr
+                    && presenterRef.LastSdrExposure > 0
+                    && !string.IsNullOrEmpty(_hdrFramePath))
+                {
+                    _sdrTonePath = _hdrFramePath;
+                    _sdrToneExposure = presenterRef.LastSdrExposure;
+                    _sdrToneWhite = presenterRef.LastSdrReinhardWhite;
+                }
+
                 ImgStill.Visibility = Visibility.Collapsed;
                 galleryRef.SetHdrPresentResult(
                     true,
@@ -933,6 +1013,9 @@ public sealed partial class GalleryStillSurface : UserControl
         _hdrFrame = null;
         _hdrFramePath = null;
         _hdrMapMaxNits = 0;
+        _sdrTonePath = null;
+        _sdrToneExposure = 1f;
+        _sdrToneWhite = 0;
         _hdrFrameProbe = HdrProbe.None;
     }
 

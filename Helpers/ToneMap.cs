@@ -113,10 +113,9 @@ public static class ToneMap
 
     /// <summary>
     /// Gallery swapchain present map (same curve as <see cref="ScrgbToBgra8"/>
-    /// when <paramref name="reinhardWhite"/> &gt; 1). HDR passthrough uses
-    /// scale = 80/SdrWhiteLevel and clip at MaxLuminance/white with
-    /// <paramref name="reinhardWhite"/> = 0. Soft negatives keep BT.2020→709
-    /// OOG channels through the curve instead of hard-zeroing first.
+    /// when <paramref name="reinhardWhite"/> &gt; 1). HDR passthrough: scale 1,
+    /// clip peak/80, <paramref name="softNegatives"/> passes OOG through.
+    /// SDR: plain-clamp negatives (no SoftNegChannel — that darkened luma).
     /// </summary>
     public static void MapPresentRgb(
         float r,
@@ -135,6 +134,7 @@ public static class ToneMap
         b = FiniteOrZero(b);
         if (!softNegatives)
         {
+            // SDR: plain clamp before tonemap (no SoftNegChannel luma darken).
             r = Math.Max(0f, r);
             g = Math.Max(0f, g);
             b = Math.Max(0f, b);
@@ -166,28 +166,21 @@ public static class ToneMap
             }
         }
 
-        var lo = softNegatives ? SoftNegFloor : 0f;
         var hi = clipScrgb > 0 && float.IsFinite(clipScrgb) ? clipScrgb : 1f;
-        or = Math.Clamp(r, lo, hi);
-        og = Math.Clamp(g, lo, hi);
-        ob = Math.Clamp(b, lo, hi);
         if (softNegatives)
         {
-            // Soft-lift remaining OOG negatives toward 0 (less crush than hard 0).
-            or = SoftNegChannel(or);
-            og = SoftNegChannel(og);
-            ob = SoftNegChannel(ob);
-            or = Math.Clamp(or, 0f, hi);
-            og = Math.Clamp(og, 0f, hi);
-            ob = Math.Clamp(ob, 0f, hi);
+            // HDR FP16: keep BT.2020→709 OOG negatives; only clip the high end.
+            or = Math.Min(r, hi);
+            og = Math.Min(g, hi);
+            ob = Math.Min(b, hi);
+        }
+        else
+        {
+            or = Math.Clamp(r, 0f, hi);
+            og = Math.Clamp(g, 0f, hi);
+            ob = Math.Clamp(b, 0f, hi);
         }
     }
-
-    /// <summary>Floor while soft-negatives are still signed (before SoftNegChannel).</summary>
-    private const float SoftNegFloor = -8f;
-
-    private static float SoftNegChannel(float v) =>
-        v >= 0f ? v : v / (1f - v);
 
     private static float FiniteOrZero(float v) =>
         float.IsFinite(v) ? v : 0f;
