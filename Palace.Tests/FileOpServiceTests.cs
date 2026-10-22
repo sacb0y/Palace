@@ -792,6 +792,52 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.Null(await _ops.PeekUndoAsync(_projectId));
     }
 
+    /// <summary>
+    /// Batch Reject across two parent folders: each Move absorbs the prior batch
+    /// so one Undo restores every file (Doktor B1).
+    /// </summary>
+    [Fact]
+    public async Task Move_absorbPriorBatchId_multi_folder_reject_is_one_undo()
+    {
+        var shots = Dir(_rootA, "shots");
+        var refs = Dir(_rootA, "refs");
+        var a = await AddAssetAsync(_rootA, Path.Combine("shots", "a.png"), "a");
+        var b = await AddAssetAsync(_rootA, Path.Combine("refs", "b.png"), "b");
+
+        var rejectShots = await _ops.CreateFolderAsync(shots, ReviewReject.FolderName, _projectId);
+        Assert.True(rejectShots.Ok, rejectShots.Message);
+        var moveShots = await _ops.MoveAssetsAsync(
+            [a],
+            rejectShots.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectShots.Path);
+        Assert.True(moveShots.Ok, moveShots.Message);
+        Assert.False(string.IsNullOrWhiteSpace(moveShots.BatchId));
+
+        var rejectRefs = await _ops.CreateFolderAsync(refs, ReviewReject.FolderName, _projectId);
+        Assert.True(rejectRefs.Ok, rejectRefs.Message);
+        var moveRefs = await _ops.MoveAssetsAsync(
+            [b],
+            rejectRefs.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectRefs.Path,
+            absorbPriorBatchId: moveShots.BatchId);
+        Assert.True(moveRefs.Ok, moveRefs.Message);
+
+        var peek = await _ops.PeekUndoAsync(_projectId);
+        Assert.NotNull(peek);
+        Assert.Equal(2, peek!.Items.Count(i => i.Step == FileOpStep.MoveFile));
+        Assert.Equal(2, peek.Items.Count(i => i.Step == FileOpStep.CreateDir));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.True(File.Exists(a.Path));
+        Assert.True(File.Exists(b.Path));
+        Assert.False(Directory.Exists(rejectShots.Path!));
+        Assert.False(Directory.Exists(rejectRefs.Path!));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
     [Fact]
     public async Task Move_without_absorb_keeps_create_folder_as_separate_undo()
     {

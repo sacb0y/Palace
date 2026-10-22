@@ -44,12 +44,27 @@ public sealed class SelectModeTests
     }
 
     [Theory]
-    [InlineData(0, "0 selected")]
+    [InlineData(0, "")]
     [InlineData(1, "1 selected")]
     [InlineData(5, "5 selected")]
-    [InlineData(-1, "0 selected")]
-    public void BatchMenuHeader_ShowsCount(int count, string expected) =>
+    [InlineData(-1, "")]
+    public void BatchMenuHeader_ShowsCountOrEmpty(int count, string expected) =>
         Assert.Equal(expected, SelectMode.BatchMenuHeader(count));
+
+    [Fact]
+    public void BatchMenuHeader_IncludesCollapsedClause() =>
+        Assert.Equal(
+            "12 selected · 3 in collapsed sections",
+            SelectMode.BatchMenuHeader(12, 3));
+
+    [Theory]
+    [InlineData(5, 0, false)]
+    [InlineData(20, 0, false)]
+    [InlineData(21, 0, true)]
+    [InlineData(2, 1, true)]
+    [InlineData(0, 0, false)]
+    public void NeedsBatchConfirm_Above20OrHidden(int count, int collapsed, bool expected) =>
+        Assert.Equal(expected, SelectMode.NeedsBatchConfirm(count, collapsed));
 
     [Fact]
     public void EscAndClear_ExitSelectMode()

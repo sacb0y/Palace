@@ -386,7 +386,9 @@ public partial class LibraryViewModel
         _undoToastHideCts?.Cancel();
         _undoToastHideCts = new CancellationTokenSource();
         var token = _undoToastHideCts.Token;
-        var seconds = dismissSeconds < 1 ? 12 : dismissSeconds;
+        // Callers pass an explicit window (e.g. Reject 5 / multi-folder 12). Do not
+        // remap 0/-1 up to 12 — clamp to at least 1 s so Delay stays valid.
+        var seconds = Math.Max(1, dismissSeconds);
         try
         {
             await Task.Delay(TimeSpan.FromSeconds(seconds), token);

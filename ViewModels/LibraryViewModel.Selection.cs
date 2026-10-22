@@ -62,7 +62,11 @@ public partial class LibraryViewModel
             targetIds);
     }
 
-    /// <summary>Esc exits select mode without clearing the selection (matches hold/Ctrl+A entry).</summary>
+    /// <summary>
+    /// Esc exits select mode without clearing the selection (matches hold/Ctrl+A entry).
+    /// Selection count stays on the bar — commands still act on <c>_selection</c>.
+    /// </summary>
+    [RelayCommand]
     public void ExitSelectMode()
     {
         if (!SelectMode.ExitsSelectModeOnEscape(IsSelectMode, IsGalleryOverlayOpen))
@@ -75,6 +79,9 @@ public partial class LibraryViewModel
         // after Esc (selection kept, select mode off).
         RefreshSelectionSummary();
     }
+
+    /// <summary>True selection size (not loaded-chunk <c>Assets.Where(IsSelected)</c>).</summary>
+    public int SelectionCount => _selection.Count(s => !s.IsFolderHeader);
 
     public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
     {
@@ -294,17 +301,19 @@ public partial class LibraryViewModel
         SelectedAsset = null;
     }
 
-    /// <summary>Select every non-header tile in the visible mosaic.</summary>
+    /// <summary>
+    /// Select all mosaic assets including collapsed sections (same as Ctrl+A /
+    /// <see cref="SelectAllMosaicAssets"/>).
+    /// </summary>
     [RelayCommand]
     private void SelectAllVisible()
     {
-        var tiles = Assets.Where(a => !a.IsFolderHeader).ToList();
-        SetSelection(tiles);
+        SelectAllMosaicAssets();
         RequestRestoreMosaicSelection?.Invoke();
     }
 
     /// <summary>
-    /// Clear tiles and exit select mode (batch menu / Esc companion).
+    /// Clear tiles and exit select mode (batch menu companion).
     /// Esc alone keeps the selection — see <see cref="ExitSelectMode"/>.
     /// </summary>
     [RelayCommand]
@@ -319,50 +328,57 @@ public partial class LibraryViewModel
         RequestRestoreMosaicSelection?.Invoke();
     }
 
-    /// <summary>Esc exits select mode without clearing the selection.</summary>
-    [RelayCommand]
-    private void ExitSelectMode()
-    {
-        if (!SelectMode.ExitsSelectModeOnEscape(IsSelectMode, IsGalleryOverlayOpen))
-        {
-            return;
-        }
-
-        IsSelectMode = false;
-    }
-
     /// <summary>
-    /// Batch Keep: leave files on disk (same as Review Keep). Toast only.
+    /// Batch Keep: leave files on disk (same as Review Keep) and clear them
+    /// from the selection so the action is real, not toast-only.
     /// </summary>
     [RelayCommand]
     private void KeepSelected()
     {
-        var count = _selection.Count(s => !s.IsFolderHeader);
-        if (count == 0)
+        var kept = _selection.Where(s => !s.IsFolderHeader).ToList();
+        if (kept.Count == 0)
         {
             Notify("Select assets first.");
             return;
         }
 
-        Notify(count == 1 ? "Kept 1 file." : $"Kept {count} files.");
+        ClearSelection();
+        RequestRestoreMosaicSelection?.Invoke();
+        Notify(kept.Count == 1 ? "Kept 1 file." : $"Kept {kept.Count} files.");
     }
 
     /// <summary>
     /// Batch Reject: move each selected file into a sibling <c>_rejected</c>
-    /// (same destination as Review). Undo toast dismisses after 5 s.
+    /// (same destination as Review). Multi-folder runs share <b>one</b> journal
+    /// batch so Undo restores every folder. Partial failures / already-rejected
+    /// roll into one final toast.
     /// </summary>
     [RelayCommand]
     private Task RejectSelectedAsync() =>
         ErrorReporter.RunAsync("Reject", Notify, async () =>
         {
-            var ids = _selection
-                .Where(s => !s.IsFolderHeader && !string.IsNullOrEmpty(s.Id))
+            var selectedTiles = _selection.Where(s => !s.IsFolderHeader).ToList();
+            var ids = selectedTiles
+                .Where(s => !string.IsNullOrEmpty(s.Id))
                 .Select(s => s.Id)
                 .ToList();
             if (ids.Count == 0)
             {
                 Notify("Select assets first.");
                 return;
+            }
+
+            var collapsed = CountCollapsedAmongTargetIds(ids);
+            if (SelectMode.NeedsBatchConfirm(ids.Count, collapsed))
+            {
+                if (RequestConfirm is null
+                    || !await RequestConfirm(
+                        "Reject",
+                        BatchReject.ConfirmBody(ids.Count, collapsed),
+                        "Reject"))
+                {
+                    return;
+                }
             }
 
             var assets = await _catalog.GetAssetsByIdsAsync(ids);
@@ -372,34 +388,46 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var already = assets.Where(a => ReviewReject.IsAlreadyRejected(a.Path)).ToList();
+            var already = assets.Count(a => ReviewReject.IsAlreadyRejected(a.Path));
             var movers = assets.Where(a => !ReviewReject.IsAlreadyRejected(a.Path)).ToList();
             if (movers.Count == 0)
             {
-                Notify(already.Count == 1
-                    ? "Already in _rejected."
-                    : $"All {already.Count} already in _rejected.");
+                Notify(BatchReject.ToastMessage(0, already, failed: 0));
                 return;
             }
 
             var projectId = AppServices.CurrentProject.Id;
             var groups = movers
                 .GroupBy(a => ReviewReject.DestinationDir(a.Path) ?? "", StringComparer.OrdinalIgnoreCase)
-                .Where(g => !string.IsNullOrEmpty(g.Key))
                 .ToList();
+            var folderCount = groups.Count(g => !string.IsNullOrEmpty(g.Key));
 
+            using var cts = new CancellationTokenSource();
+            var token = cts.Token;
             BeginBusy(movers.Count == 1 ? "Rejecting…" : $"Rejecting {movers.Count}…");
             var moved = 0;
+            var failed = 0;
+            var failNotes = new List<string>();
             string? lastMessage = null;
-            string? lastBatchId = null;
+            string? chainBatchId = null;
             try
             {
                 foreach (var group in groups)
                 {
+                    token.ThrowIfCancellationRequested();
+                    if (string.IsNullOrEmpty(group.Key))
+                    {
+                        failed += group.Count();
+                        failNotes.Add("missing folder path");
+                        continue;
+                    }
+
                     var dest = group.Key;
                     var parent = ReviewReject.ParentDir(group.First().Path);
                     if (parent is null)
                     {
+                        failed += group.Count();
+                        failNotes.Add("missing parent folder");
                         continue;
                     }
 
@@ -414,7 +442,8 @@ public partial class LibraryViewModel
                         {
                             if (!Directory.Exists(dest))
                             {
-                                Notify(created.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                                failed += group.Count();
+                                failNotes.Add(created.Message);
                                 continue;
                             }
                         }
@@ -429,17 +458,29 @@ public partial class LibraryViewModel
                         group.ToList(),
                         dest,
                         projectId,
-                        absorbCreatedFolder: absorb);
+                        cancellationToken: token,
+                        absorbCreatedFolder: absorb,
+                        absorbPriorBatchId: chainBatchId);
                     if (result.Moves.Count > 0)
                     {
                         moved += result.Moves.Count;
                         lastMessage = result.Message;
-                        lastBatchId = result.BatchId;
+                        if (!string.IsNullOrWhiteSpace(result.BatchId))
+                        {
+                            chainBatchId = result.BatchId;
+                        }
+
                         await ApplyMovesToUiAsync(result.Moves, result.Path);
                     }
-                    else if (!result.Ok)
+
+                    var skippedHere = group.Count() - result.Moves.Count;
+                    if (skippedHere > 0)
                     {
-                        Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                        failed += skippedHere;
+                        if (!string.IsNullOrWhiteSpace(result.Message))
+                        {
+                            failNotes.Add(result.Message);
+                        }
                     }
                 }
             }
@@ -456,17 +497,26 @@ public partial class LibraryViewModel
             }
 
             await RefreshUndoStateAsync();
-            if (moved > 0 && lastBatchId is not null)
+            var toast = BatchReject.ToastMessage(moved, already, failed);
+            if (moved > 0 && chainBatchId is not null)
             {
-                // Spec: Reject offers a 5 s undo window.
+                if (failNotes.Count > 0)
+                {
+                    toast = $"{toast.TrimEnd('.')} ({failNotes[0]}).";
+                }
+
                 ShowUndoToastFor(
-                    moved == 1 ? "Rejected 1 file." : $"Rejected {moved} files.",
+                    toast,
                     offerUndo: true,
-                    dismissSeconds: 5);
+                    dismissSeconds: BatchReject.UndoToastSeconds(folderCount));
             }
-            else if (already.Count > 0 && moved == 0)
+            else
             {
-                Notify("Nothing rejected.");
+                Notify(
+                    failNotes.Count > 0 ? $"{toast.TrimEnd('.')} ({failNotes[0]})." : toast,
+                    failed > 0
+                        ? Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning
+                        : Microsoft.UI.Xaml.Controls.InfoBarSeverity.Informational);
             }
         });
 
