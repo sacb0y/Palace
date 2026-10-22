@@ -20,28 +20,46 @@ public partial class LibraryViewModel
         ShowTagSelectedCta = SelectMode.ShowBatchTagCta(IsSelectMode, _selection.Count);
     }
 
+    private void InvalidateDisplayedSelectionCache() => _displayedSelectionCache = null;
+
+    /// <summary>
+    /// Displayed Assets set for selection / collapsed counts. Cached across
+    /// live drag-select updates (<c>loadPreview: false</c>); rebuilt when Assets change.
+    /// </summary>
+    private HashSet<AssetItem> DisplayedForSelection(bool refresh = false)
+    {
+        if (refresh || _displayedSelectionCache is null)
+        {
+            _displayedSelectionCache = new HashSet<AssetItem>(Assets);
+        }
+
+        return _displayedSelectionCache;
+    }
+
     /// <summary>
     /// Selected tiles under collapsed section headers (in <c>_selection</c> /
     /// ordered mosaic but not in display <see cref="Assets"/>).
     /// </summary>
-    internal int CountCollapsedSelected()
+    internal int CountCollapsedSelected() =>
+        CountCollapsedAmongTargetIds(_selection.Select(s => s.Id));
+
+    /// <summary>
+    /// Hidden mosaic tiles among catalog/delete targets (by id — not
+    /// <c>_selection</c>, so confirms stay correct if targets differ).
+    /// </summary>
+    internal int CountCollapsedAmongTargetIds(IEnumerable<string> targetIds)
     {
-        if (_selection.Count == 0 || _mosaicOrder.Count == 0)
+        if (_mosaicOrder.Count == 0)
         {
             return 0;
         }
 
-        var displayed = new HashSet<AssetItem>(Assets);
-        var n = 0;
-        foreach (var asset in _selection)
-        {
-            if (!asset.IsFolderHeader && !displayed.Contains(asset))
-            {
-                n++;
-            }
-        }
-
-        return n;
+        return SelectMode.CountCollapsedAmongTargets(
+            _mosaicOrder,
+            item => item.IsFolderHeader,
+            item => item.Id,
+            DisplayedForSelection(),
+            targetIds);
     }
 
     /// <summary>Esc exits select mode without clearing the selection (matches hold/Ctrl+A entry).</summary>
@@ -53,13 +71,17 @@ public partial class LibraryViewModel
         }
 
         IsSelectMode = false;
+        // OnIsSelectModeChanged refreshes; call again so the bar still shows "N selected"
+        // after Esc (selection kept, select mode off).
+        RefreshSelectionSummary();
     }
 
     public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
     {
         _selection = items.Where(item => !item.IsFolderHeader).ToList();
         var selected = new HashSet<AssetItem>(_selection);
-        var displayed = new HashSet<AssetItem>(Assets);
+        // Live drag reuses the display HashSet; end of drag / normal select rebuilds it.
+        var displayed = DisplayedForSelection(refresh: loadPreview);
         foreach (var asset in Assets)
         {
             asset.IsSelected = selected.Contains(asset);
@@ -100,7 +122,7 @@ public partial class LibraryViewModel
     /// <see cref="Assets"/> list; the range expands through the full ordered
     /// mosaic so collapsed-section tiles between the ends still count.
     /// Live drag passes <paramref name="loadPreview"/> false so hover does not
-    /// re-query the catalog on every move.
+    /// re-query the catalog on every move (and reuses the display HashSet cache).
     /// </summary>
     public void ApplyMosaicRange(int from, int to, bool loadPreview = true)
     {
@@ -144,7 +166,7 @@ public partial class LibraryViewModel
             }
         }
 
-        var displayed = new HashSet<AssetItem>(Assets);
+        var displayed = DisplayedForSelection(refresh: true);
         if (!toggle)
         {
             foreach (var asset in Assets)
@@ -265,6 +287,7 @@ public partial class LibraryViewModel
 
         _selection.Clear();
         _selectionAnchor = null;
+        InvalidateDisplayedSelectionCache();
         HasSelection = false;
         RefreshSelectionSummary();
         CanEditNotes = false;

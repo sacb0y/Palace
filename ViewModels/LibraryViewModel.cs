@@ -28,6 +28,8 @@ public partial class LibraryViewModel : ObservableObject
     private List<AssetItem> _selection = [];
     private List<AssetItem> _previewTargets = [];
     private AssetItem? _selectionAnchor;
+    /// <summary>Cached display set for drag-select / collapsed counts; cleared when Assets change.</summary>
+    private HashSet<AssetItem>? _displayedSelectionCache;
     private bool _suppressFilter;
     private int _filterEpoch;
     private int _previewEpoch;

@@ -56,6 +56,7 @@ public static class SelectMode
     /// Count line beside the toggle / delete-move confirm. Empty when select
     /// mode is off and nothing is selected. When some selected tiles live under
     /// collapsed sections: <c>42 selected · 30 in collapsed sections</c>.
+    /// Esc exits select mode but keeps the count line (selection is not cleared).
     /// </summary>
     public static string Summary(bool selectMode, int selectedCount, int collapsedSelectedCount = 0)
     {
@@ -65,6 +66,47 @@ public static class SelectMode
         }
 
         return selectMode ? "Click or drag tiles to select" : "";
+    }
+
+    /// <summary>
+    /// How many of <paramref name="targetIds"/> are ordered mosaic tiles that are
+    /// not in the current display set (collapsed-section / hidden).
+    /// </summary>
+    public static int CountCollapsedAmongTargets<T>(
+        IReadOnlyList<T> ordered,
+        Func<T, bool> isHeader,
+        Func<T, string?> id,
+        IReadOnlySet<T> displayed,
+        IEnumerable<string> targetIds)
+        where T : class
+    {
+        var ids = targetIds as HashSet<string>
+            ?? new HashSet<string>(
+                targetIds.Where(x => !string.IsNullOrWhiteSpace(x)),
+                StringComparer.Ordinal);
+        if (ids.Count == 0 || ordered.Count == 0)
+        {
+            return 0;
+        }
+
+        var n = 0;
+        foreach (var item in ordered)
+        {
+            if (isHeader(item))
+            {
+                continue;
+            }
+
+            var assetId = id(item);
+            if (assetId is null || !ids.Contains(assetId) || displayed.Contains(item))
+            {
+                continue;
+            }
+
+            n++;
+        }
+
+        return n;
     }
 
     /// <summary>

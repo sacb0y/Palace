@@ -33,6 +33,7 @@ public partial class LibraryViewModel
             }
 
             Assets.Clear();
+            InvalidateDisplayedSelectionCache();
             MosaicReset?.Invoke();
         });
 
@@ -250,15 +251,29 @@ public partial class LibraryViewModel
             ? $"{assetCount} in {SelectedFolder.Name}"
             : $"{assetCount} assets";
         // Keep selection (collapsed tiles stay selected in the ordered list).
+        // PopulateMosaicAsync fires MosaicRestoreReady after chunks; refresh the
+        // selection bar only after that so "· N in collapsed sections" is final.
         await PopulateMosaicAsync(display, epoch, doneStatus, clearSelection: false);
         await UiDispatch.RunAsync(() =>
         {
             // Re-stamp IsSelected on the new display surface.
+            InvalidateDisplayedSelectionCache();
             var selected = new HashSet<AssetItem>(_selection);
+            var displayed = DisplayedForSelection(refresh: true);
             foreach (var asset in Assets)
             {
                 asset.IsSelected = selected.Contains(asset);
             }
+
+            foreach (var asset in _mosaicOrder)
+            {
+                if (!asset.IsFolderHeader && !displayed.Contains(asset))
+                {
+                    asset.IsSelected = selected.Contains(asset);
+                }
+            }
+
+            RefreshSelectionSummary();
         });
     }
 

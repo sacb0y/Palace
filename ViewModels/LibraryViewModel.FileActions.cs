@@ -153,7 +153,9 @@ public partial class LibraryViewModel
             var preview = targets.Count == 1
                 ? targets[0].FileName
                 : $"{targets.Count} files ({string.Join(", ", targets.Take(3).Select(t => t.FileName))}{(targets.Count > 3 ? ", …" : "")})";
-            var collapsed = CountCollapsedSelected();
+            // Count hidden from the confirm targets (catalog ids), not _selection —
+            // SelectedAssetsAsync can resolve a single SelectedAsset / folder without a multi-select list.
+            var collapsed = CountCollapsedAmongTargetIds(targets.Select(t => t.Id));
             var body = collapsed > 0
                 ? $"Send {preview} to the Recycle Bin? This also removes them from the catalog.\n{SelectMode.Summary(true, targets.Count, collapsed)}."
                 : $"Send {preview} to the Recycle Bin? This also removes them from the catalog.";
@@ -263,6 +265,7 @@ public partial class LibraryViewModel
                 MosaicDelete.SyncDisplay(Assets, pruned);
             }
 
+            InvalidateDisplayedSelectionCache();
             var changed = before.Count != Assets.Count || !before.SequenceEqual(Assets);
 
             // Assets is the display subset of _mosaicOrder (shared AssetItem refs).

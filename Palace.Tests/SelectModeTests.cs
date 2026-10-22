@@ -45,11 +45,53 @@ public sealed class SelectModeTests
     }
 
     [Fact]
+    public void Summary_KeepsCountAfterSelectModeExit()
+    {
+        // Esc exits select mode but keeps the selection — bar still shows N selected.
+        Assert.Equal("7 selected", SelectMode.Summary(selectMode: false, selectedCount: 7));
+        Assert.Equal(
+            "7 selected · 2 in collapsed sections",
+            SelectMode.Summary(selectMode: false, selectedCount: 7, collapsedSelectedCount: 2));
+    }
+
+    [Fact]
+    public void CountCollapsedAmongTargets_UsesTargetIdsNotWholeSelection()
+    {
+        var a = new Item("a");
+        var b = new Item("b");
+        var c = new Item("c");
+        var ordered = new List<Item> { a, b, c };
+        var displayed = new HashSet<Item> { a }; // b,c hidden (collapsed)
+        // Confirm targets are only b — not the whole selection {a,b,c}.
+        Assert.Equal(
+            1,
+            SelectMode.CountCollapsedAmongTargets(
+                ordered,
+                _ => false,
+                item => item.Id,
+                displayed,
+                ["b"]));
+        Assert.Equal(
+            2,
+            SelectMode.CountCollapsedAmongTargets(
+                ordered,
+                _ => false,
+                item => item.Id,
+                displayed,
+                ["a", "b", "c"]));
+    }
+
+    [Fact]
     public void ExitsSelectModeOnEscape_WhenSelectOnAndOverlayClosed()
     {
         Assert.True(SelectMode.ExitsSelectModeOnEscape(true, false));
         Assert.False(SelectMode.ExitsSelectModeOnEscape(true, true));
         Assert.False(SelectMode.ExitsSelectModeOnEscape(false, false));
+    }
+
+    private sealed class Item(string id)
+    {
+        public string Id { get; } = id;
     }
 
     [Theory]
