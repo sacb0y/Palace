@@ -11,13 +11,19 @@ namespace Palace.Helpers;
 public static class ThumbCacheVersion
 {
     /// <summary>Bump when thumbnail rendering changes for existing files.</summary>
-    public const int Current = 3;
+    public const int Current = 4;
 
     /// <summary>Generation 2: HDR stills, PSD, JXL, EXR, Radiance, TGA, Clip, ICO.</summary>
     public const int DecodersGeneration = 2;
 
     /// <summary>Generation 3: BMP / TIFF names that hold Substance Painter shelf metadata with a preview.</summary>
     public const int ShelfPreviewGeneration = 3;
+
+    /// <summary>
+    /// Generation 4: HDR JPEG XL intensity → scRGB uses 80-nit white (was ÷203),
+    /// so prior JXL mosaic thumbs look ~2.5× too hot / wrong exposure.
+    /// </summary>
+    public const int JxlIntensityGeneration = 4;
 
     public static string MarkerName => MarkerNameFor(Current);
 
@@ -61,6 +67,9 @@ public static class ThumbCacheVersion
     /// </summary>
     public static bool ShelfPreviewChanged(string path) =>
         PathSafe.Extension(path).ToLowerInvariant() is ".bmp" or ".tif" or ".tiff";
+
+    /// <summary>Formats whose thumbnails changed in generation 4 (HDR JXL 80-nit scale).</summary>
+    public static bool JxlIntensityChanged(string path) => PathSafe.IsJxl(path);
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;

@@ -385,6 +385,9 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (frame is null)
         {
+            // Drop the prior still's float buffer before the next native
+            // decode — fast next/prev must not stack ~1 GB HDR JXL frames.
+            _hdrFrame = null;
             _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
             try
             {
@@ -396,8 +399,9 @@ public sealed partial class GalleryStillSurface : UserControl
                     gallery.DisplayScaling,
                     _hdrLoadCts.Token);
             }
-            catch
+            catch (Exception ex)
             {
+                ErrorReporter.LogOnly("GalleryStillSurface HDR load", ex);
                 frame = null;
             }
         }
@@ -476,8 +480,9 @@ public sealed partial class GalleryStillSurface : UserControl
             stats = await HdrWicDecode.TryMeasureAsync(
                 path, probe, viewportPixelWidth, viewportPixelHeight, cancellation);
         }
-        catch
+        catch (Exception ex)
         {
+            ErrorReporter.LogOnly("GalleryStillSurface HDR measure", ex);
             stats = null;
         }
 

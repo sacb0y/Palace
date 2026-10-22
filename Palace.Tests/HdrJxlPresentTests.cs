@@ -10,27 +10,35 @@ public class HdrJxlPresentTests
     {
         Assert.True(HdrJxlPresent.ShouldPresentViaLibjxl(new HdrProbe(HdrKind.HdrJxl, 9, 16, null)));
         Assert.True(HdrJxlPresent.ShouldPresentViaLibjxl(new HdrProbe(HdrKind.HdrJxl, 9, 18, null)));
+        // Gain-map / wide-gamut / SDR base: libjxl still decodes the base, but
+        // present stays BitmapImage — never the HDR scRGB swapchain path.
         Assert.False(HdrJxlPresent.ShouldPresentViaLibjxl(new HdrProbe(HdrKind.WideGamutJxl, 11, 13, null)));
         Assert.False(HdrJxlPresent.ShouldPresentViaLibjxl(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000)));
         Assert.False(HdrJxlPresent.ShouldPresentViaLibjxl(HdrProbe.None));
     }
 
     [Fact]
-    public void ScrgbScaleFromIntensityTarget_HdrUses80NitWhite()
+    public void ScrgbScaleFromIntensityTarget_RoutesOnPqHlgTransfer()
     {
         // PQ intensity target 10 000 nits → scRGB 1.0 = 80 nits.
-        Assert.Equal(10_000f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f), 3);
-        Assert.Equal(1600f / GalleryPresent.ScrgbNits, HdrJxlPresent.ScrgbScaleFromIntensityTarget(1600f), 3);
-        // SDR (≤255) stays relative 0..1 — no scale.
-        Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f));
-        Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(100f));
-        Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(0f));
+        Assert.Equal(
+            10_000f / GalleryPresent.ScrgbNits,
+            HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f, HdrTransfer.Pq),
+            3);
+        Assert.Equal(
+            1600f / GalleryPresent.ScrgbNits,
+            HdrJxlPresent.ScrgbScaleFromIntensityTarget(1600f, HdrTransfer.Hlg),
+            3);
+        // SDR / sRGB transfer stays relative 0..1 — even if IntensityTarget looks high.
+        Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f, HdrTransfer.Srgb));
+        Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Srgb));
+        Assert.Equal(1f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(100f, HdrTransfer.Linear));
         // Never use BT.2408 paper white (203) as the scRGB divisor.
-        Assert.NotEqual(10_000f / 203f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f), 3);
+        Assert.NotEqual(10_000f / 203f, HdrJxlPresent.ScrgbScaleFromIntensityTarget(10_000f, HdrTransfer.Pq), 3);
     }
 
     [Fact]
-    public void ApplyIntensityScale_MultipliesRgbLeavesAlpha()
+    public void ApplyIntensityScale_Stride4_MultipliesRgbLeavesAlpha()
     {
         Span<float> rgba = stackalloc float[] { 0.5f, 1f, 2f, 0.25f, 0.1f, 0.2f, 0.3f, 1f };
         HdrJxlPresent.ApplyIntensityScale(rgba, 2f);
@@ -100,5 +108,45 @@ public class HdrJxlPresentTests
         var map = GalleryPresent.PresentMap(false, frame.MaxNits, 0);
         Assert.True(map.Scale > 0);
         Assert.True(map.Scale <= 1f);
+    }
+
+    [Fact]
+    public void BuildPresentFrame_PreservesOutOf709Negatives()
+    {
+        // After BT.2020 → BT.709, a channel can go negative — keep for gamut.
+        var rgba = new float[] { 0.1f, -0.05f, 0.2f, 1f };
+        var frame = HdrJxlPresent.BuildPresentFrame(rgba, 1, 1, 0, 0, ImageScaling.Fit);
+        Assert.NotNull(frame);
+        Assert.Equal(-0.05f, frame!.ScrgbRgba[1], 4);
+    }
+
+    [Fact]
+    public void BuildPresentFrame_HonorsCancellationBeforeBoxScale()
+    {
+        var rgba = new float[4 * 4 * 4];
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(() =>
+            HdrJxlPresent.BuildPresentFrame(rgba, 4, 4, 2, 2, ImageScaling.Fit, cts.Token));
+    }
+
+    [Fact]
+    public void PresentMaxPixels_IsAbout64M()
+    {
+        Assert.Equal(64_000_000, HdrJxlPresent.PresentMaxPixels);
+    }
+
+    [Fact]
+    public void ToneMap_EightyNitScale_PullsHotPaperWhiteDown()
+    {
+        // Post-Normalize PQ paper white at 203/80 ≈ 2.54 scRGB — ToneMap must
+        // expose down (not leave thumbs ~2.5× hotter than the old ÷203 path).
+        var paper = GalleryPresent.SdrReferenceNits / GalleryPresent.ScrgbNits;
+        Span<float> rgba = stackalloc float[] { paper, paper, paper, 1f };
+        var (exposure, white) = ToneMap.Analyze(rgba, 1);
+        Assert.True(exposure < 1f, $"expected exposure < 1 for hot paper white, got {exposure}");
+        Assert.True(white >= 1f);
+        var bgra = ToneMap.ScrgbToBgra8(rgba, 1, 1);
+        Assert.InRange(bgra[0], 1, 254); // not clipped black or full white wash
     }
 }

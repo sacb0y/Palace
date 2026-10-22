@@ -22,6 +22,7 @@ public sealed class ThumbnailService
     private string _root;
     private DateTime _generationStartUtc;
     private DateTime _shelfGenerationStartUtc;
+    private DateTime _jxlIntensityGenerationStartUtc;
 
     public ThumbnailService(string thumbsRoot)
     {
@@ -29,6 +30,7 @@ public sealed class ThumbnailService
         Directory.CreateDirectory(_root);
         _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.DecodersGeneration);
         _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
+        _jxlIntensityGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlIntensityGeneration);
     }
 
     /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
@@ -40,6 +42,7 @@ public sealed class ThumbnailService
         Directory.CreateDirectory(_root);
         _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.DecodersGeneration);
         _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
+        _jxlIntensityGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlIntensityGeneration);
     }
 
     /// <summary>
@@ -71,6 +74,11 @@ public sealed class ThumbnailService
         {
             var written = File.GetLastWriteTimeUtc(dest);
             if (ThumbCacheVersion.IsStale(written, _shelfGenerationStartUtc, ThumbCacheVersion.ShelfPreviewChanged(filePath)))
+            {
+                return true;
+            }
+
+            if (ThumbCacheVersion.IsStale(written, _jxlIntensityGenerationStartUtc, ThumbCacheVersion.JxlIntensityChanged(filePath)))
             {
                 return true;
             }
@@ -582,10 +590,18 @@ public sealed class ThumbnailService
             if (PathSafe.IsJxl(filePath))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var jxl = await Task.Run(() => JxlDecode.TryDecodeFile(filePath), cancellationToken).ConfigureAwait(false);
+                // Probe transfer so PQ/HLG uses 80-nit scRGB before ToneMap;
+                // SDR / gain-map base stays relative 0..1 (no ×2.54 hot thumbs).
+                var jxlProbe = HdrFile.ProbePath(filePath);
+                var jxlTransfer = jxlProbe.Kind == HdrKind.HdrJxl ? jxlProbe.Transfer : HdrTransfer.Srgb;
+                var jxl = await Task.Run(
+                    () => JxlDecode.TryDecodeFile(filePath, HdrJxlPresent.PresentMaxPixels, jxlTransfer),
+                    cancellationToken).ConfigureAwait(false);
                 if (jxl is not null)
                 {
-                    var lgJ = await Task.Run(() => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide)).ConfigureAwait(false);
+                    var lgJ = await Task.Run(
+                        () => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide, cancellationToken),
+                        cancellationToken).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(lgJ.Bgra!, lgJ.Width, lgJ.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
                     var (jw, jh) = StillDecode.Fit(lgJ.Width, lgJ.Height, MaxSide);
                     var smallJ = jw == lgJ.Width && jh == lgJ.Height ? lgJ.Bgra! : StillDecode.BoxScaleBgra(lgJ.Bgra!, lgJ.Width, lgJ.Height, jw, jh, cancellationToken);

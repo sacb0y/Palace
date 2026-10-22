@@ -12,12 +12,16 @@ namespace Palace.Services;
 /// Starward.Codec — no Windows JPEG XL extension required. Output is linear
 /// scRGB float RGBA (libjxl's CMS converts PQ/HLG/wide gamut; HDR intensity
 /// is rescaled so 1.0 = 80 nits). Used for mosaic thumbs and HDR present.
+/// Present caps at <see cref="HdrJxlPresent.PresentMaxPixels"/> (~64 MP).
 /// </summary>
 internal static class JxlDecode
 {
     public sealed record Frame(float[] Rgba, int Width, int Height);
 
-    public static Frame? TryDecodeFile(string path, int maxPixels = 120_000_000)
+    public static Frame? TryDecodeFile(
+        string path,
+        int maxPixels = HdrJxlPresent.PresentMaxPixels,
+        HdrTransfer transfer = HdrTransfer.Srgb)
     {
         byte[] bytes;
         try
@@ -29,10 +33,13 @@ internal static class JxlDecode
             return null;
         }
 
-        return TryDecode(bytes, maxPixels);
+        return TryDecode(bytes, maxPixels, transfer);
     }
 
-    public static Frame? TryDecode(byte[] bytes, int maxPixels = 120_000_000)
+    public static Frame? TryDecode(
+        byte[] bytes,
+        int maxPixels = HdrJxlPresent.PresentMaxPixels,
+        HdrTransfer transfer = HdrTransfer.Srgb)
     {
         var dec = (nint)0;
         var input = default(GCHandle);
@@ -112,10 +119,11 @@ internal static class JxlDecode
 
                         break;
                     case JxlDecoderStatus.FullImage:
-                        // First frame is enough for a still / animation poster.
-                        return pixels is null ? null : new Frame(Normalize(pixels, info), (int)info.XSize, (int)info.YSize);
+                        // First frame is enough for a still / animation poster
+                        // (gain-map JXL: base only — SDR when transfer is not PQ/HLG).
+                        return pixels is null ? null : new Frame(Normalize(pixels, info, transfer), (int)info.XSize, (int)info.YSize);
                     case JxlDecoderStatus.Success:
-                        return pixels is null ? null : new Frame(Normalize(pixels, info), (int)info.XSize, (int)info.YSize);
+                        return pixels is null ? null : new Frame(Normalize(pixels, info, transfer), (int)info.XSize, (int)info.YSize);
                     default:
                         return null;
                 }
@@ -139,13 +147,13 @@ internal static class JxlDecode
     /// <summary>
     /// libjxl float output is relative to the image's intensity target
     /// (1.0 = IntensityTarget nits). Rescale so 1.0 = 80 nits SDR white (scRGB)
-    /// for HDR images; SDR images (target ≤ 255 nits) stay 0..1.
+    /// when the probe transfer is PQ/HLG; SDR / gain-map base stays 0..1.
     /// </summary>
-    private static float[] Normalize(float[] rgba, JxlBasicInfo info)
+    private static float[] Normalize(float[] rgba, JxlBasicInfo info, HdrTransfer transfer)
     {
         HdrJxlPresent.ApplyIntensityScale(
             rgba,
-            HdrJxlPresent.ScrgbScaleFromIntensityTarget(info.IntensityTarget));
+            HdrJxlPresent.ScrgbScaleFromIntensityTarget(info.IntensityTarget, transfer));
 
         if (info.AlphaBits == 0)
         {

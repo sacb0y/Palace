@@ -158,20 +158,28 @@ internal static class HdrWicDecode
             try
             {
                 var jxl = await Task.Run(
-                    () => FromJxlStill(path, viewportPixelWidth, viewportPixelHeight, scaling),
+                    () => FromJxlStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
                     cancellation).ConfigureAwait(false);
                 if (jxl is not null)
                 {
+                    LastWicError = null;
                     return jxl;
                 }
+
+                // Do not WIC/`BitmapImage` PQ — that is an SDR preview wrongly
+                // labelled "presenting scRGB". Stamp and stop.
+                LastWicError ??= "jxl null";
+                return null;
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
-            catch
+            catch (Exception ex)
             {
-                // Native libjxl load/throw — fall through to WIC.
+                ErrorReporter.LogOnly("HdrWicDecode JXL present", ex);
+                LastWicError = "jxl ex " + ex.GetType().Name;
+                return null;
             }
         }
 
@@ -214,8 +222,9 @@ internal static class HdrWicDecode
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
+            ErrorReporter.LogOnly("HdrWicDecode WIC present", ex);
             return null;
         }
     }
@@ -267,30 +276,10 @@ internal static class HdrWicDecode
 
         if (HdrJxlPresent.ShouldPresentViaLibjxl(probe) && PathSafe.IsJxl(path))
         {
-            try
-            {
-                var jxl = await Task.Run(
-                    () => FromJxlStill(path, viewportPixelWidth, viewportPixelHeight, ImageScaling.Fit),
-                    cancellation).ConfigureAwait(false);
-                if (jxl is not null)
-                {
-                    return new HdrStats(
-                        jxl.MaxNits,
-                        jxl.AvgNits,
-                        jxl.MinNits,
-                        jxl.MaxScrgb,
-                        jxl.NativeWidth,
-                        jxl.NativeHeight);
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                // Native libjxl load/throw — fall through to WIC.
-            }
+            // Present/load already stamps native CIE Y / MaxCLL via
+            // BuildPresentFrame — never a second full native float decode
+            // (up to ~1 GB at PresentMaxPixels) on every open / next/prev.
+            return null;
         }
 
         if (IsLinearFloatStill(probe, path))
@@ -1100,32 +1089,42 @@ internal static class HdrWicDecode
     /// <summary>
     /// HDR JPEG XL via bundled libjxl (same natives as mosaic thumbs). WIC /
     /// <c>BitmapImage</c> leave PQ as a washed SDR preview — do not fall back
-    /// to those when libjxl produced a frame.
+    /// to those when libjxl fails. Caps at <see cref="HdrJxlPresent.PresentMaxPixels"/>.
     /// </summary>
     private static HdrFrame? FromJxlStill(
         string path,
+        HdrProbe probe,
         int viewportPixelWidth,
         int viewportPixelHeight,
-        ImageScaling scaling)
+        ImageScaling scaling,
+        CancellationToken cancellation)
     {
-        var decoded = JxlDecode.TryDecodeFile(path);
+        cancellation.ThrowIfCancellationRequested();
+        var decoded = JxlDecode.TryDecodeFile(
+            path, HdrJxlPresent.PresentMaxPixels, probe.Transfer);
         if (decoded is null)
         {
+            LastWicError = "jxl null";
             return null;
         }
 
+        cancellation.ThrowIfCancellationRequested();
         var frame = HdrJxlPresent.BuildPresentFrame(
             decoded.Rgba,
             decoded.Width,
             decoded.Height,
             viewportPixelWidth,
             viewportPixelHeight,
-            scaling);
+            scaling,
+            cancellation);
         if (frame is null)
         {
+            LastWicError = "jxl null";
             return null;
         }
 
+        // Fit/Fill keep the viewport buffer only (native float dropped with
+        // decoded). Actual/1:1 keeps native up to PresentMaxPixels (~1 GB).
         return new HdrFrame
         {
             ScrgbRgba = frame.ScrgbRgba,
