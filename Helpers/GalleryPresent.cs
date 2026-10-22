@@ -1077,6 +1077,22 @@ public static class GalleryPresent
         return (float)Math.Pow(Math.Max(vp - c1, 0) / den, 1.0 / m1);
     }
 
+    /// <summary>
+    /// PQ OETF on absolute luminance fraction (nits/10000 → encoded 0..1).
+    /// Inverse of <see cref="PqEotf"/>.
+    /// </summary>
+    public static float PqOetf(float linear01)
+    {
+        const double m1 = 2610.0 / 16384.0;
+        const double m2 = 2523.0 / 32.0;
+        const double c1 = 3424.0 / 4096.0;
+        const double c2 = 2413.0 / 128.0;
+        const double c3 = 2392.0 / 128.0;
+        var y = Math.Clamp(linear01, 0.0, 1.0);
+        var ym = Math.Pow(y, m1);
+        return (float)Math.Pow((c1 + c2 * ym) / (1.0 + c3 * ym), m2);
+    }
+
     public static float HlgEotf(float v)
     {
         const double a = 0.17883277;

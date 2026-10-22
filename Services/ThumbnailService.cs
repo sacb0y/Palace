@@ -24,6 +24,7 @@ public sealed class ThumbnailService
     private DateTime _shelfGenerationStartUtc;
     private DateTime _jxlIntensityGenerationStartUtc;
     private DateTime _jxlWideGamutGenerationStartUtc;
+    private DateTime _jxlActualTransferGenerationStartUtc;
 
     public ThumbnailService(string thumbsRoot)
     {
@@ -33,6 +34,8 @@ public sealed class ThumbnailService
         _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
         _jxlIntensityGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlIntensityGeneration);
         _jxlWideGamutGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlWideGamutGeneration);
+        _jxlActualTransferGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlActualTransferGeneration);
     }
 
     /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
@@ -46,6 +49,8 @@ public sealed class ThumbnailService
         _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
         _jxlIntensityGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlIntensityGeneration);
         _jxlWideGamutGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlWideGamutGeneration);
+        _jxlActualTransferGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlActualTransferGeneration);
     }
 
     /// <summary>
@@ -90,6 +95,14 @@ public sealed class ThumbnailService
                     written,
                     _jxlWideGamutGenerationStartUtc,
                     ThumbCacheVersion.JxlWideGamutChanged(filePath)))
+            {
+                return true;
+            }
+
+            if (ThumbCacheVersion.IsStale(
+                    written,
+                    _jxlActualTransferGenerationStartUtc,
+                    ThumbCacheVersion.JxlActualTransferChanged(filePath)))
             {
                 return true;
             }

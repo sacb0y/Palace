@@ -203,6 +203,20 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                     + $"white={outcomeWhite:0.####} sdrWhite={(sdrWhite > 0 ? sdrWhite : GalleryPresent.ScrgbNits):0.#} "
                     + $"peakScrgb={frame.MaxScrgb:0.####} maxNits={frame.MaxNits:0.#} "
                     + $"shoulder={(map.ReinhardWhite > 1f ? 1 : 0)}");
+                // File log (off by default): PALACE_SDR_TONEMAP_LOG=1 → sdr-tonemap.log
+                var p995 = outcomeExposure > 1e-6f
+                    ? outcomeWhite / outcomeExposure
+                    : outcomeWhite;
+                SdrTonemapLog.TryAppendPresent(
+                    path: frame.SourcePath,
+                    decoder: frame.PresentDecoder,
+                    intensityTarget: frame.IntensityTarget,
+                    scale: frame.IntensityScale,
+                    bufferTransfer: HdrJxlPresent.BufferTransferLabel(frame.BufferTransfer),
+                    p995: p995,
+                    white: outcomeWhite,
+                    exposure: outcomeExposure,
+                    sdrWhiteLevelNits: sdrWhite);
             }
 
             if (_disposed)

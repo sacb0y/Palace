@@ -56,6 +56,7 @@
     <Compile Include="..\Helpers\AvifFile.cs" Link="AvifFile.cs" />
     <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />
     <Compile Include="..\Helpers\HdrJxlPresent.cs" Link="HdrJxlPresent.cs" />
+    <Compile Include="..\Helpers\SdrTonemapLog.cs" Link="SdrTonemapLog.cs" />
     <Compile Include="..\Helpers\PngFile.cs" Link="PngFile.cs" />
     <Compile Include="..\Helpers\IccProfile.cs" Link="IccProfile.cs" />
     <Compile Include="..\Helpers\HdrColor.cs" Link="HdrColor.cs" />

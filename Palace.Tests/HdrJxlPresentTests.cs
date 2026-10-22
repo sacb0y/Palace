@@ -179,6 +179,128 @@ public class HdrJxlPresentTests
         Assert.True(okClip < 0.25f, $"expected low clip under 255 scale, clip={okClip}");
     }
 
+    [Fact]
+    public void IntensityScaleForBuffer_ZeroOnStillPq_LinearGetsItScale()
+    {
+        Assert.Equal(0f, HdrJxlPresent.IntensityScaleForBuffer(10_000f, HdrTransfer.Pq, JxlBufferTransfer.Pq));
+        Assert.Equal(0f, HdrJxlPresent.IntensityScaleForBuffer(255f, HdrTransfer.Pq, JxlBufferTransfer.Hlg));
+        // Unknown + PQ probe → do not IT-scale (may still be PQ codes).
+        Assert.Equal(0f, HdrJxlPresent.IntensityScaleForBuffer(10_000f, HdrTransfer.Pq, JxlBufferTransfer.Unknown));
+        Assert.Equal(
+            255f / GalleryPresent.ScrgbNits,
+            HdrJxlPresent.IntensityScaleForBuffer(255f, HdrTransfer.Pq, JxlBufferTransfer.Linear),
+            3);
+        Assert.Equal(1f, HdrJxlPresent.IntensityScaleForBuffer(255f, HdrTransfer.Srgb, JxlBufferTransfer.Linear));
+    }
+
+    [Fact]
+    public void NormalizeToScrgb_StillPq_NoIntensityScale_NotWhiteout()
+    {
+        // Synthesize still-PQ float codes (CMS left PQ). Mid ~203 nits → PQ≈0.58.
+        // Wrong: ×125 as if linear Relative → whiteout. Right: EOTF→scRGB.
+        const int n = 64;
+        var pq = new float[n * 4];
+        var pqMid = GalleryPresent.PqOetf(203f / 10_000f);
+        var pqHi = GalleryPresent.PqOetf(1000f / 10_000f);
+        for (var i = 0; i < n; i++)
+        {
+            var v = i == 0 ? pqHi : pqMid;
+            pq[i * 4] = pq[i * 4 + 1] = pq[i * 4 + 2] = v;
+            pq[i * 4 + 3] = 1f;
+        }
+
+        var wrong = (float[])pq.Clone();
+        HdrJxlPresent.ApplyIntensityScale(wrong, 10_000f / GalleryPresent.ScrgbNits);
+        var wrongClip = FractionClippedAfterPresent(wrong, n);
+
+        var ok = (float[])pq.Clone();
+        var norm = HdrJxlPresent.NormalizeToScrgb(
+            ok, intensityTarget: 255f, HdrTransfer.Pq, JxlBufferTransfer.Pq, cicpPrimaries: 9);
+        Assert.Equal(0f, norm.ScaleApplied);
+        Assert.Equal(JxlBufferTransfer.Pq, norm.BufferTransfer);
+        var okMean = HdrJxlPresent.ToneMappedMeanLuminance(ok, n);
+        var okClip = FractionClippedAfterPresent(ok, n);
+
+        Assert.True(wrongClip > 0.45f, $"PQ×125 should whiteout, clip={wrongClip}");
+        Assert.InRange(okMean, 0.08f, 0.85f);
+        Assert.True(okClip < 0.35f, $"EOTF path must not whiteout, clip={okClip}");
+    }
+
+    [Fact]
+    public void NormalizeToScrgb_LinearRelative255_ScalesIntensityTargetOver80()
+    {
+        const int n = 16;
+        var rgba = new float[n * 4];
+        for (var i = 0; i < n; i++)
+        {
+            // 1.0 = 255 nits under Relative → paper ~203/255.
+            var v = i == 0 ? 1f : 203f / 255f;
+            rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
+            rgba[i * 4 + 3] = 1f;
+        }
+
+        var norm = HdrJxlPresent.NormalizeToScrgb(
+            rgba, 255f, HdrTransfer.Pq, JxlBufferTransfer.Linear, cicpPrimaries: 9);
+        Assert.Equal(255f / GalleryPresent.ScrgbNits, norm.ScaleApplied, 3);
+        Assert.Equal(JxlBufferTransfer.Linear, norm.BufferTransfer);
+        // Paper ≈ 203/80 after scale (before Reinhard).
+        Assert.InRange(rgba[4], 2.0f, 3.0f);
+    }
+
+    [Fact]
+    public void NormalizeToScrgb_UnknownBuffer_PqProbe_UsesEncodedPath()
+    {
+        var rgba = new float[] { 0.5f, 0.5f, 0.5f, 1f };
+        var before = rgba[0];
+        var norm = HdrJxlPresent.NormalizeToScrgb(
+            rgba, 10_000f, HdrTransfer.Pq, JxlBufferTransfer.Unknown, 9);
+        Assert.Equal(0f, norm.ScaleApplied);
+        Assert.Equal(JxlBufferTransfer.Pq, norm.BufferTransfer);
+        // Encoded path changes PQ 0.5 into scRGB nits/80 (not ×125).
+        Assert.True(Math.Abs(rgba[0] - before * (10_000f / 80f)) > 10f,
+            $"must not be PQ×125, got {rgba[0]}");
+        Assert.True(rgba[0] < 20f, $"must not be PQ×125, got {rgba[0]}");
+    }
+
+    [Fact]
+    public void BufferTransferFromJxlTf_MapsCicpAlignedCodes()
+    {
+        Assert.Equal(JxlBufferTransfer.Pq, HdrJxlPresent.BufferTransferFromJxlTf(16));
+        Assert.Equal(JxlBufferTransfer.Hlg, HdrJxlPresent.BufferTransferFromJxlTf(18));
+        Assert.Equal(JxlBufferTransfer.Linear, HdrJxlPresent.BufferTransferFromJxlTf(8));
+        Assert.Equal(JxlBufferTransfer.Unknown, HdrJxlPresent.BufferTransferFromJxlTf(13));
+    }
+
+    [Fact]
+    public void SdrTonemapLog_OffByDefault_WritesWhenEnabled()
+    {
+        var prior = SdrTonemapLog.EnabledOverride;
+        var priorPath = SdrTonemapLog.PathOverride;
+        var dir = Path.Combine(Path.GetTempPath(), "palace-sdrlog-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            SdrTonemapLog.EnabledOverride = false;
+            SdrTonemapLog.PathOverride = Path.Combine(dir, SdrTonemapLog.FileName);
+            SdrTonemapLog.TryAppendPresent("a.jxl", "libjxl", 255f, 3.18f, "linear", 2f, 2f, 1f, 80f);
+            Assert.False(File.Exists(SdrTonemapLog.PathOverride));
+
+            SdrTonemapLog.EnabledOverride = true;
+            SdrTonemapLog.TryAppendPresent("Kalan.jxl", "libjxl", 255f, 0f, "pq", 2.5f, 2.5f, 1f, 80f);
+            var text = File.ReadAllText(SdrTonemapLog.PathOverride!);
+            Assert.Contains("decoder=libjxl", text, StringComparison.Ordinal);
+            Assert.Contains("intensity_target=255", text, StringComparison.Ordinal);
+            Assert.Contains("buffer=pq", text, StringComparison.Ordinal);
+            Assert.Contains("Kalan.jxl", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            SdrTonemapLog.EnabledOverride = prior;
+            SdrTonemapLog.PathOverride = priorPath;
+            try { Directory.Delete(dir, true); } catch { /* ignore */ }
+        }
+    }
+
     private static float FractionClippedAfterPresent(float[] rgba, int n)
     {
         var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);

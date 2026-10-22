@@ -11,7 +11,7 @@ namespace Palace.Helpers;
 public static class ThumbCacheVersion
 {
     /// <summary>Bump when thumbnail rendering changes for existing files.</summary>
-    public const int Current = 5;
+    public const int Current = 6;
 
     /// <summary>Generation 2: HDR stills, PSD, JXL, EXR, Radiance, TGA, Clip, ICO.</summary>
     public const int DecodersGeneration = 2;
@@ -30,6 +30,12 @@ public static class ThumbCacheVersion
     /// (Relative on plain LinearSRGB had collapsed them to Rec.709).
     /// </summary>
     public const int JxlWideGamutGeneration = 5;
+
+    /// <summary>
+    /// Generation 6: HDR JXL still-PQ buffers use EOTF→scRGB (no intensity_target
+    /// scale on PQ codes) after verifying TARGET_DATA transfer.
+    /// </summary>
+    public const int JxlActualTransferGeneration = 6;
 
     public static string MarkerName => MarkerNameFor(Current);
 
@@ -79,6 +85,9 @@ public static class ThumbCacheVersion
 
     /// <summary>Formats whose thumbnails changed in generation 5 (wide-gamut JXL OOG).</summary>
     public static bool JxlWideGamutChanged(string path) => PathSafe.IsJxl(path);
+
+    /// <summary>Formats whose thumbnails changed in generation 6 (JXL actual-TF normalize).</summary>
+    public static bool JxlActualTransferChanged(string path) => PathSafe.IsJxl(path);
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;

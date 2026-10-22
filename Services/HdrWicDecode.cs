@@ -22,6 +22,17 @@ internal sealed class HdrFrame
     /// <summary>Native-pixel channel of <see cref="MaxScrgb"/> ('R'/'G'/'B'), or '\0' when unknown.</summary>
     public char MaxScrgbChannel { get; init; }
 
+    /// <summary>Present decoder label for <see cref="SdrTonemapLog"/> (libjxl / WIC / fallback).</summary>
+    public string PresentDecoder { get; init; } = "unknown";
+
+    public string? SourcePath { get; init; }
+
+    public float IntensityTarget { get; init; }
+
+    public float IntensityScale { get; init; } = 1f;
+
+    public JxlBufferTransfer BufferTransfer { get; init; } = JxlBufferTransfer.Unknown;
+
     public bool HasStats => MaxNits > 0;
 
     private float _p99MaxRgbNits = -1f;
@@ -1135,6 +1146,8 @@ internal static class HdrWicDecode
         if (decoded is null)
         {
             LastWicError = "jxl null";
+            SdrTonemapLog.TryAppendPresent(
+                path, "fallback", 0f, 1f, "n/a", 0f, 0f, 0f, 0f);
             return null;
         }
 
@@ -1150,6 +1163,10 @@ internal static class HdrWicDecode
         if (frame is null)
         {
             LastWicError = "jxl null";
+            SdrTonemapLog.TryAppendPresent(
+                path, "fallback", decoded.IntensityTarget, decoded.ScaleApplied,
+                HdrJxlPresent.BufferTransferLabel(decoded.BufferTransfer),
+                0f, 0f, 0f, 0f);
             return null;
         }
 
@@ -1166,7 +1183,12 @@ internal static class HdrWicDecode
             AvgNits = frame.AvgNits,
             MinNits = frame.MinNits,
             MaxScrgb = frame.MaxScrgb,
-            MaxScrgbChannel = frame.MaxScrgbChannel
+            MaxScrgbChannel = frame.MaxScrgbChannel,
+            PresentDecoder = "libjxl",
+            SourcePath = path,
+            IntensityTarget = decoded.IntensityTarget,
+            IntensityScale = decoded.ScaleApplied,
+            BufferTransfer = decoded.BufferTransfer
         };
     }
 
