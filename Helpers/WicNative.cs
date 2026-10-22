@@ -170,24 +170,138 @@ public static class WicNative
         public static bool IsBadImage(int hr) =>
             unchecked((uint)hr) == BadImage;
 
+        /// <summary>GUID_ContainerFormatHeif — Store HEIF Image Extension.</summary>
+        public static readonly Guid ContainerFormatHeif =
+            new("e1e62521-6787-47f9-85c0-6ce9c6d9e0e5");
+
         /// <summary>
-        /// Extensions that often lack a Store WIC codec (.jxl / .heic / .heif).
-        /// BADIMAGE on these is treated as an expected present miss; inbox
-        /// formats (JXR, AVIF, PNG, HEIF-with-codec) still LogOnly corrupt
-        /// / truncated payloads.
+        /// Paths that may lack a Store WIC codec (.jxl / .heic / .heif).
+        /// Used only to decide whether to <em>probe</em> for a codec —
+        /// not as a blanket BADIMAGE silence.
         /// </summary>
         public static bool IsStoreCodecOptionalPath(string? path) =>
             PathSafe.IsJxl(path) || PathSafe.IsHeif(path);
 
         /// <summary>
+        /// Test override for <see cref="IsHeifWicDecoderMissing"/> (null =
+        /// live probe / platform default).
+        /// </summary>
+        public static bool? HeifWicDecoderMissingOverride { get; set; }
+
+        private static int _heifDecoderMissing; // 0 unset, 1 missing, -1 present
+
+        /// <summary>
+        /// True when no WIC HEIF decoder is registered (Store HEIF extension
+        /// absent). Cached after the first probe. Non-Windows → missing.
+        /// </summary>
+        public static bool IsHeifWicDecoderMissing()
+        {
+            if (HeifWicDecoderMissingOverride is { } forced)
+            {
+                return forced;
+            }
+
+            if (_heifDecoderMissing != 0)
+            {
+                return _heifDecoderMissing > 0;
+            }
+
+            if (!OperatingSystem.IsWindows())
+            {
+                _heifDecoderMissing = 1;
+                return true;
+            }
+
+            try
+            {
+                _heifDecoderMissing = ProbeHeifWicDecoderMissing() ? 1 : -1;
+            }
+            catch
+            {
+                _heifDecoderMissing = 1;
+            }
+
+            return _heifDecoderMissing > 0;
+        }
+
+        /// <summary>
+        /// <c>IWICImagingFactory.CreateDecoder(HEIF)</c> → COMPONENTNOTFOUND
+        /// when the Store HEIF codec is absent. Call only after
+        /// <see cref="OperatingSystem.IsWindows"/>.
+        /// </summary>
+#pragma warning disable CA1416 // Linked into Palace.Tests on Linux; gated by IsWindows.
+        private static bool ProbeHeifWicDecoderMissing()
+        {
+            // CLSID_WICImagingFactory / Factory2 (same as HdrWicDecode).
+            foreach (var clsid in new[]
+                     {
+                         new Guid("317d06e8-5f24-433d-bdf7-79ce68d8abc2"),
+                         new Guid("cacaf262-9370-4615-a13b-9f5539da4c0a")
+                     })
+            {
+                var type = Type.GetTypeFromCLSID(clsid, throwOnError: false);
+                if (type is null
+                    || Activator.CreateInstance(type) is not IWICImagingFactory factory)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var fmt = ContainerFormatHeif;
+                    var hr = factory.CreateDecoder(ref fmt, IntPtr.Zero, out var decoder);
+                    if (decoder is not null)
+                    {
+                        Marshal.ReleaseComObject(decoder);
+                    }
+
+                    return IsComponentNotFound(hr);
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(factory);
+                }
+            }
+
+            return true;
+        }
+#pragma warning restore CA1416
+
+        /// <summary>
         /// Expected miss when falling through to WIC without a Store codec —
         /// stamp Display, do not LogOnly as an app error.
-        /// <see cref="ComponentNotFound"/> always; <see cref="BadImage"/> only
-        /// for <see cref="IsStoreCodecOptionalPath"/>.
+        /// <see cref="ComponentNotFound"/> always.
+        /// <see cref="BadImage"/> only when the Store codec is actually
+        /// missing: always for .jxl (present uses libjxl); for .heic/.heif
+        /// only when <see cref="IsHeifWicDecoderMissing"/>. Corrupt HEIF
+        /// with the codec installed still LogOnly.
         /// </summary>
-        public static bool IsExpectedPresentMiss(int hr, string? path = null) =>
-            IsComponentNotFound(hr)
-            || (IsBadImage(hr) && IsStoreCodecOptionalPath(path));
+        public static bool IsExpectedPresentMiss(int hr, string? path = null)
+        {
+            if (IsComponentNotFound(hr))
+            {
+                return true;
+            }
+
+            if (!IsBadImage(hr))
+            {
+                return false;
+            }
+
+            // JXL present never uses WIC (libjxl); BADIMAGE here is noise.
+            if (PathSafe.IsJxl(path))
+            {
+                return true;
+            }
+
+            // HEIF: silence BADIMAGE only when the Store codec is absent.
+            if (PathSafe.IsHeif(path))
+            {
+                return IsHeifWicDecoderMissing();
+            }
+
+            return false;
+        }
 
         public static bool IsNoInterface(int hr) =>
             unchecked((uint)hr) == NoInterface;

@@ -44,7 +44,7 @@ public class HdrJxlPresentTests
     {
         Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Pq, 9));
         Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Hlg, null));
-        // P3 / BT.2020 SDR (WideGamutJxl) must not stay on LinearSRGB primaries.
+        // 11 = JXL's own P3; 12 = CICP Display P3; 9 = BT.2020.
         Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, 11));
         Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, 12));
         Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, 9));

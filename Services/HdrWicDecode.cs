@@ -236,10 +236,10 @@ internal static class HdrWicDecode
             LastWicError = WicNative.WicDecoderOpen.Join(
                 WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.CreateAsync, ex),
                 leaf);
-            // Missing Store codec (COMPONENTNOTFOUND) or BADIMAGE on .jxl/.heic
-            // without a codec: expected fallback — stamp Display, skip LogOnly.
-            // Inbox formats (JXR / AVIF / PNG / HEIF-with-codec): still LogOnly
-            // for corrupt or truncated streams.
+            // COMPONENTNOTFOUND always expected. BADIMAGE only when the Store
+            // codec is missing (.jxl → libjxl; .heic/.heif → probe HEIF
+            // decoder). Corrupt HEIF with the codec installed still LogOnly,
+            // same as JXR / AVIF / PNG.
             if (!WicNative.WicDecoderOpen.IsExpectedPresentMiss(ex.HResult, path))
             {
                 ErrorReporter.LogOnly($"HdrWicDecode WIC present ({leaf})", ex);

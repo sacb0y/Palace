@@ -185,17 +185,33 @@ public sealed class WicNativeTests
             WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
         Assert.True(WicNative.WicDecoderOpen.IsBadImage(unchecked((int)0x88982F60)));
         Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(unchecked((int)0x88982F50)));
-        // BADIMAGE only expected for Store-optional .jxl / .heic — not JXR/PNG/AVIF.
         Assert.True(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.jxl"));
         Assert.True(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"D:\x.HEIC"));
         Assert.True(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath("shot.heif"));
         Assert.False(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.jxr"));
         Assert.False(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.png"));
         Assert.False(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.avif"));
+        // JXL: BADIMAGE always expected (present uses libjxl).
         Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
             unchecked((int)0x88982F60), @"C:\missing.jxl"));
-        Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
-            unchecked((int)0x88982F60), @"C:\no-codec.heic"));
+        // HEIF: BADIMAGE only when the Store codec is actually missing.
+        var prior = WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride;
+        try
+        {
+            WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride = true;
+            Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+                unchecked((int)0x88982F60), @"C:\no-codec.heic"));
+            WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride = false;
+            Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+                unchecked((int)0x88982F60), @"C:\corrupt.heic"));
+            Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+                unchecked((int)0x88982F60), @"C:\corrupt.heif"));
+        }
+        finally
+        {
+            WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride = prior;
+        }
+
         Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
             unchecked((int)0x88982F60), @"C:\corrupt.jxr"));
         Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(

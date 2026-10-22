@@ -11,7 +11,7 @@ namespace Palace.Helpers;
 public static class ThumbCacheVersion
 {
     /// <summary>Bump when thumbnail rendering changes for existing files.</summary>
-    public const int Current = 4;
+    public const int Current = 5;
 
     /// <summary>Generation 2: HDR stills, PSD, JXL, EXR, Radiance, TGA, Clip, ICO.</summary>
     public const int DecodersGeneration = 2;
@@ -24,6 +24,12 @@ public static class ThumbCacheVersion
     /// so prior JXL mosaic thumbs look ~2.5× too hot / wrong exposure.
     /// </summary>
     public const int JxlIntensityGeneration = 4;
+
+    /// <summary>
+    /// Generation 5: P3 / BT.2020 JXL thumbs keep OOG via BT.2100 + matrix
+    /// (Relative on plain LinearSRGB had collapsed them to Rec.709).
+    /// </summary>
+    public const int JxlWideGamutGeneration = 5;
 
     public static string MarkerName => MarkerNameFor(Current);
 
@@ -70,6 +76,9 @@ public static class ThumbCacheVersion
 
     /// <summary>Formats whose thumbnails changed in generation 4 (HDR JXL 80-nit scale).</summary>
     public static bool JxlIntensityChanged(string path) => PathSafe.IsJxl(path);
+
+    /// <summary>Formats whose thumbnails changed in generation 5 (wide-gamut JXL OOG).</summary>
+    public static bool JxlWideGamutChanged(string path) => PathSafe.IsJxl(path);
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;

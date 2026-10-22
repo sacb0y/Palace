@@ -48,8 +48,10 @@ public static class HdrJxlPresent
     public const int ScrgbOutputRenderingIntentRelative = 1;
 
     /// <summary>
-    /// PQ/HLG or wide CICP primaries (BT.2020 / P3) need BT.2100 linear out
-    /// then <see cref="Bt2020LinearToScrgb"/> — not default LinearSRGB primaries.
+    /// PQ/HLG or wide primaries need BT.2100 linear out then
+    /// <see cref="Bt2020LinearToScrgb"/> — not default LinearSRGB primaries.
+    /// Primaries: 9 = BT.2020, <b>11 = JXL's own P3</b> (libjxl),
+    /// <b>12 = CICP Display P3</b>.
     /// </summary>
     public static bool UsesBt2020LinearOutput(HdrTransfer transfer, int? cicpPrimaries) =>
         transfer is HdrTransfer.Pq or HdrTransfer.Hlg
