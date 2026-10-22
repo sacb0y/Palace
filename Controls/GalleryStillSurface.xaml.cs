@@ -2431,7 +2431,8 @@ public sealed partial class GalleryStillSurface : UserControl
             if (_pagerProps is not null)
             {
                 _pagerProps.StopAnimation("X");
-                if (_pagerProps.TryGetScalar("X", out var live))
+                if (_pagerProps.TryGetScalar("X", out var live)
+                    == CompositionGetValueStatus.Succeeded)
                 {
                     _pagerX = live;
                 }
@@ -2465,7 +2466,8 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             try
             {
-                if (_pagerProps.TryGetScalar("X", out var live))
+                if (_pagerProps.TryGetScalar("X", out var live)
+                    == CompositionGetValueStatus.Succeeded)
                 {
                     _pagerX = live;
                     return live;
