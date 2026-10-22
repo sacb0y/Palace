@@ -115,7 +115,8 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestRestoreMosaicSelection = () =>
             DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
-        HookOverlayStillGestures();
+        // Still gestures hooked from Loaded (both first-load and Settings return) —
+        // avoid ctor + Loaded double-subscribe on first entry.
         // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
         SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
         MpeOverlay.ContextFlyout = FlyOverlayAsset;
@@ -308,8 +309,8 @@ public sealed partial class LibraryPage : Page
     }
 
     /// <summary>
-    /// Idempotent still-gesture hookups. Call from ctor and every Loaded path so
-    /// NavigationCacheMode reuse after Settings restores swipe / long-press.
+    /// Idempotent still-gesture hookups. Call from every Loaded path (first load
+    /// and NavigationCacheMode reuse after Settings) so swipe / long-press work.
     /// </summary>
     private void HookOverlayStillGestures()
     {
@@ -1964,7 +1965,8 @@ public sealed partial class LibraryPage : Page
             _pagerChipOldTitle!,
             _pagerChipOldPos!,
             oldTitle,
-            oldPos);
+            oldPos,
+            collapseNewOnComplete: true);
     }
 
     private void EnsureOverlayPagerChips()

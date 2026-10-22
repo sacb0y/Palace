@@ -13,6 +13,8 @@ namespace Palace.Controls;
 /// </summary>
 internal static class PagerChipCrossFade
 {
+    private static int _boardGeneration;
+
     public static void Begin(
         DispatcherQueue dispatcher,
         FrameworkElement newChip,
@@ -21,6 +23,7 @@ internal static class PagerChipCrossFade
         TextBlock oldPosition,
         string captureTitle,
         string capturePosition,
+        bool collapseNewOnComplete = false,
         Action? onCompleted = null)
     {
         oldTitle.Text = captureTitle ?? "";
@@ -29,6 +32,9 @@ internal static class PagerChipCrossFade
         oldOverlay.Opacity = 1;
         newChip.Visibility = Visibility.Visible;
         newChip.Opacity = 0;
+
+        // N2: bump so a prior board's Completed cannot collapse the next fade.
+        var generation = ++_boardGeneration;
 
         dispatcher.TryEnqueue(() =>
         {
@@ -55,13 +61,17 @@ internal static class PagerChipCrossFade
 
             board.Completed += (_, _) =>
             {
+                if (generation != _boardGeneration)
+                {
+                    return;
+                }
+
                 oldOverlay.Visibility = Visibility.Collapsed;
                 oldOverlay.Opacity = 0;
-                // Collapse ephemeral chip so real chrome (arrows / details) owns the name.
-                if (newChip is Border newBorder)
+                if (collapseNewOnComplete)
                 {
-                    newBorder.Visibility = Visibility.Collapsed;
-                    newBorder.Opacity = 0;
+                    newChip.Visibility = Visibility.Collapsed;
+                    newChip.Opacity = 0;
                 }
                 else
                 {
