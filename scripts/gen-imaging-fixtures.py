@@ -60,10 +60,14 @@ def main() -> None:
         pq.append(MASTER[i + 3])
     (ROOT / "master.pq.f32").write_bytes(struct.pack(f"<{len(pq)}f", *pq))
 
+    # Pregmata_SteamAVIF: metadata-less .hdr is scRGB-scale (1.0 = 80 nits),
+    # not absolute nits. No EXPOSURE / PRIMARIES lines.
     hdr = bytearray(b"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n")
     hdr.extend(f"-Y {H} +X {W}\n".encode())
     for i in range(0, len(MASTER), 4):
-        hdr.extend(float_to_rgbe(MASTER[i] * 203, MASTER[i + 1] * 203, MASTER[i + 2] * 203))
+        r, g, b = bt2020_to_709(MASTER[i], MASTER[i + 1], MASTER[i + 2])
+        scale = 203.0 / 80.0
+        hdr.extend(float_to_rgbe(r * scale, g * scale, b * scale))
     (ROOT / "master.hdr").write_bytes(hdr)
 
     scene, scrgb = [], []

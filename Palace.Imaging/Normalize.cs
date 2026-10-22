@@ -23,16 +23,17 @@ public static class Normalize
         var eps = ImagingConstants.EncodedMaxEpsilon;
 
         // Mastering / encoded peak for clip detection. Linear EXR/JXR without
-        // metadata peak: use the buffer's own finite max (S1).
+        // metadata peak: do NOT use buffer max (S1) — that falsely flags every
+        // highlight-max frame. Require MetadataPeakNits (or encoded 0..1 max).
         float? clipCeil = options.Transfer switch
         {
             TransferKind.Pq or TransferKind.Hlg or TransferKind.Sdr => 1f,
             TransferKind.Scrgb => options.MetadataPeakNits is > 0f
                 ? options.MetadataPeakNits.Value / ImagingConstants.ScrgbNits
-                : MaxFiniteChannel(rgba, count),
+                : null,
             TransferKind.LinearScene => options.MetadataPeakNits is > 0f
                 ? options.MetadataPeakNits.Value / Math.Max(options.EffectiveWhiteNits, 1e-6f)
-                : MaxFiniteChannel(rgba, count),
+                : null,
             _ => null
         };
 
@@ -88,18 +89,6 @@ public static class Normalize
             out g,
             out b);
         ClampNegLuminance(ref r, ref g, ref b);
-    }
-
-    private static float? MaxFiniteChannel(ReadOnlySpan<float> rgba, int count)
-    {
-        var max = 0f;
-        for (var i = 0; i < count; i++)
-        {
-            var o = i * 4;
-            max = Math.Max(max, Math.Max(ColorMath.Sanitize(rgba[o]), Math.Max(ColorMath.Sanitize(rgba[o + 1]), ColorMath.Sanitize(rgba[o + 2]))));
-        }
-
-        return max > 0f ? max : null;
     }
 
     private static bool IsSourceClipSample(

@@ -27,21 +27,55 @@ public class ImagingFixtureTests
     }
 
     [Fact]
-    public void Exr_ReadsChromaticitiesAttribute_Bt709()
+    public void Exr_PregmataLike_NoWhiteLuminanceOrChromaticities()
     {
+        // Pregmata_SteamAVIF EXR had neither attribute — master.exr matches that.
         var bytes = File.ReadAllBytes(Path.Combine(ImagingFixtureIO.Dir, "master.exr"));
-        Assert.True(ExrHeader.TryReadChromaticities(bytes, out var chrom));
-        Assert.Equal(ColorPrimaries.Bt709, chrom.MatchKnown());
-        Assert.True(ExrHeader.TryReadWhiteLuminance(bytes, out var wl));
-        Assert.InRange(wl, 200f, 210f);
+        Assert.False(ExrHeader.TryReadChromaticities(bytes, out _));
+        Assert.False(ExrHeader.TryReadWhiteLuminance(bytes, out _));
+    }
 
-        // M3: chromaticities feed EffectivePrimaries (not ignored).
+    [Fact]
+    public void ExrHeader_ReadsChromaticities_WhenPresent()
+    {
+        // Synthetic header with BT.709 chromaticities (M3 reader path).
+        var chrom = Chromaticities.Bt709;
+        Span<byte> payload = stackalloc byte[32];
+        WriteF32(payload, 0, chrom.Rx);
+        WriteF32(payload, 4, chrom.Ry);
+        WriteF32(payload, 8, chrom.Gx);
+        WriteF32(payload, 12, chrom.Gy);
+        WriteF32(payload, 16, chrom.Bx);
+        WriteF32(payload, 20, chrom.By);
+        WriteF32(payload, 24, chrom.Wx);
+        WriteF32(payload, 28, chrom.Wy);
+
+        using var ms = new MemoryStream();
+        ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]); // magic + version
+        WriteAttr(ms, "chromaticities", "chromaticities", payload);
+        WriteAttr(ms, "whiteLuminance", "float", BitConverter.GetBytes(80f));
+        ms.WriteByte(0); // end of header
+        var file = ms.ToArray();
+
+        Assert.True(ExrHeader.TryReadChromaticities(file, out var read));
+        Assert.Equal(ColorPrimaries.Bt709, read.MatchKnown());
+        Assert.True(ExrHeader.TryReadWhiteLuminance(file, out var wl));
+        Assert.InRange(wl, 79f, 81f);
+
         var opts = new NormalizeOptions(
             TransferKind.LinearScene,
-            Primaries: ColorPrimaries.Bt2020, // wrong on purpose
+            Primaries: ColorPrimaries.Bt2020,
             WhiteLuminance: wl,
-            Chromaticities: chrom);
+            Chromaticities: read);
         Assert.Equal(ColorPrimaries.Bt709, opts.EffectivePrimaries);
+    }
+
+    [Fact]
+    public void Hdr_PregmataLike_NoExposureOrPrimariesLine()
+    {
+        var text = File.ReadAllText(Path.Combine(ImagingFixtureIO.Dir, "master.hdr"));
+        Assert.DoesNotContain("EXPOSURE", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("PRIMARIES", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -50,5 +84,41 @@ public class ImagingFixtureTests
         var bytes = File.ReadAllBytes(Path.Combine(ImagingFixtureIO.Dir, "master.pq.cicp.png"));
         var ascii = Encoding.ASCII.GetString(bytes);
         Assert.Contains("cICP", ascii, StringComparison.Ordinal);
+    }
+
+    /// <summary>M8: decoded container dumps must match live HDR decode within 1%.</summary>
+    [Fact]
+    public void DecodedFixtures_HdrMatchesLiveRadianceDecode()
+    {
+        var dumped = ImagingFixtureIO.LoadF32("master.hdr.decoded.f32");
+        var (live, w, h) = ImagingFixtureIO.LoadHdr();
+        Assert.Equal(2, w);
+        Assert.Equal(2, h);
+        for (var i = 0; i < dumped.Length; i++)
+        {
+            var tol = Math.Max(1e-4f, Math.Abs(dumped[i]) * 0.01f);
+            Assert.True(Math.Abs(dumped[i] - live[i]) <= tol, $"hdr decode mismatch @ {i}");
+        }
+    }
+
+    [Fact]
+    public void Chromaticities_MatchKnown_IncludesDisplayP3()
+    {
+        Assert.Equal(ColorPrimaries.DisplayP3, Chromaticities.DisplayP3.MatchKnown());
+    }
+
+    private static void WriteF32(Span<byte> dest, int offset, float v) =>
+        BitConverter.TryWriteBytes(dest[offset..], v);
+
+    private static void WriteAttr(Stream s, string name, string type, ReadOnlySpan<byte> value)
+    {
+        var nb = Encoding.ASCII.GetBytes(name);
+        s.Write(nb);
+        s.WriteByte(0);
+        var tb = Encoding.ASCII.GetBytes(type);
+        s.Write(tb);
+        s.WriteByte(0);
+        s.Write(BitConverter.GetBytes(value.Length));
+        s.Write(value);
     }
 }

@@ -75,7 +75,11 @@ public sealed class ToneMapLut
             return;
         }
 
-        var mapped = Sample(maxRgb);
+        // P2: baked samples are EV=0 (lc = Analyze Lc). Non-zero EV must
+        // recompute Lc·2^EV via MapScalar so the shoulder extends.
+        var mapped = Math.Abs(Params.ExposureEv) < 1e-6f
+            ? Sample(maxRgb)
+            : ToneMapper.MapScalar(maxRgb, Params);
         var scale = mapped / maxRgb;
         or = r * scale;
         og = g * scale;
@@ -88,3 +92,4 @@ public sealed class ToneMapLut
         GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
     }
 }
+

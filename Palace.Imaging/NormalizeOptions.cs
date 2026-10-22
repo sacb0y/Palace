@@ -6,7 +6,8 @@ namespace Palace.Imaging;
 /// <b>M3 / EXR chromaticities:</b> pass <see cref="Chromaticities"/> from the
 /// OpenEXR attribute when the decoder has it. If null, LinearScene uses
 /// <see cref="Primaries"/> (default BT.709). Custom xy sets that do not match
-/// BT.709/2020/P3 fall back to <see cref="Primaries"/> — full matrix from
+/// BT.709 / BT.2020 / Display P3 (<see cref="Chromaticities.MatchKnown"/>).
+/// Unknown xy fall back to <see cref="Primaries"/> — full matrix from
 /// arbitrary chromaticities is deferred to P2 with the EXR decoder.
 /// </para>
 /// </remarks>

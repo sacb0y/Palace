@@ -9,16 +9,17 @@ One 2×2 BT.2020 working-space master (1.0 = 203 nits):
 | `master.pq.cicp.png` | Real PNG + cICP (PQ / BT.2020) |
 | `master.jxl` | Real JPEG XL from the PNG master |
 | `master.avif` | Real AVIF (AV1 still) from the PNG master |
-| `master.jxr` | Real JPEG XR (scRGB float encode) |
-| `master.exr` | Real OpenEXR (chromaticities + whiteLuminance=203) |
-| `master.hdr` | Radiance RGBE (absolute nits) |
-| `master.scene709.f32` | BT.709 scene-linear float |
+| `master.jxr` | Real JPEG XR (scRGB float) |
+| `master.jxr.decoded.f32` | Decoded JXR RGBA (golden) |
+| `master.exr` | Real OpenEXR, **no** whiteLuminance/chromaticities (Pregmata-like); scRGB scale |
+| `master.exr.decoded.f32` | Decoded EXR RGBA (golden) |
+| `master.hdr` | Radiance RGBE, scRGB scale, no EXPOSURE/PRIMARIES |
+| `master.hdr.decoded.f32` | Decoded HDR RGBA (golden) |
+| `master.scene709.f32` | BT.709 scene-linear float (use with WhiteLuminance=203) |
 | `master.scrgb.f32` | Windows scRGB float |
 
-Regenerate floats/Radiance: `python3 scripts/gen-imaging-fixtures.py`.
-Containers: encode from `master.pq.cicp.png` via `ffmpeg` (`libjxl` / `libaom-av1`)
-and `imagecodecs.jpegxr_encode` for JXR; EXR is written by the same script when
-tools are present.
+**M4 (Pregmata_SteamAVIF):** metadata-less EXR / `.hdr` **1.0 = 80 nits**
+(`ExrRefWhite = ScrgbNits`). EXR ≡ JXR (ratio 1.0000); .hdr/JXR ≈ 0.9968 (RGBE).
 
-**M4:** `ExrRefWhite` stays provisional at 203 until Isiac measures Pragmata
-EXR / `.hdr` / JXR ratios on the laptop.
+Regenerate floats/Radiance: `python3 scripts/gen-imaging-fixtures.py`.
+Containers / decoded dumps: OpenEXR + `imagecodecs` + `ffmpeg` (see agent notes).

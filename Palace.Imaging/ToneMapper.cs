@@ -2,7 +2,8 @@ namespace Palace.Imaging;
 
 /// <summary>
 /// Pure HDR→display tonemap. ExposureEV scales normalized linear by
-/// <c>2^EV</c> before the curve; Analyze / Lc are untouched.
+/// <c>2^EV</c> before the curve; Analyze / stored Lc are untouched. The curve
+/// uses <c>Lc·2^EV</c> so positive EV rolls off instead of hard-clipping (P2).
 /// </summary>
 public static class ToneMapper
 {
@@ -34,31 +35,34 @@ public static class ToneMapper
         ob = b * scale;
 
         var ld = OutputLimit(in p);
-        // N2: desat uses tone-mapped RGB vs Ld (not pre-map peak vs 0.8·Ld).
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
+        // Safety net only — curve already ends at display white (P1).
         GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
     }
 
-    /// <summary>Map a single maxRGB / luminance scalar (post-exposure).</summary>
+    /// <summary>
+    /// Map a single maxRGB / luminance scalar (post-exposure). Uses
+    /// <c>Lc·ExposureGain</c> as the curve peak so +EV extends the shoulder.
+    /// </summary>
     public static float MapScalar(float x, in ToneMapParams p)
     {
         var stats = p.Stats;
-        var lc = Math.Max(stats.Lc, 1.01f);
+        // P2: roll off the boosted range; Analyze Lc itself stays unchanged.
+        var lcEff = Math.Max(stats.Lc * Math.Max(p.ExposureGain, 1e-6f), 1.01f);
 
         if (p.UseHdrPath)
         {
             var ld = p.Display.Ld;
-            if (stats.Lc <= ld + 1e-6f)
+            if (lcEff <= ld + 1e-6f)
             {
-                // Identity while content fits; still clamp to Lc (N3 hygiene).
-                return Math.Min(x, lc);
+                return Math.Min(x, lcEff);
             }
 
-            return Bt2390Eetf.MapLinear(x, lc, ld);
+            return Bt2390Eetf.MapLinear(x, lcEff, ld);
         }
 
         var displayWhite = Math.Max(p.Display.PeakNormalized, 1e-6f);
-        return SdrToneCurve.Map(x, lc, stats.P50, displayWhite);
+        return SdrToneCurve.Map(x, lcEff, stats.P50, displayWhite);
     }
 
     public static float[] MapFrame(NormalizedFrame frame, in ToneMapParams p)

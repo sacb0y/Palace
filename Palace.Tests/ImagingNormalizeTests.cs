@@ -49,23 +49,76 @@ public class ImagingNormalizeTests
     }
 
     [Fact]
-    public void FixtureHdr_Radiance_AbsoluteNits()
+    public void FixtureHdr_Radiance_MetadataLessUsesExrRefWhite80()
     {
-        var (nitsRgba, w, h) = ImagingFixtureIO.LoadHdr();
+        // Pregmata: metadata-less .hdr is scRGB-scale (1.0 = 80 nits), not absolute nits.
+        var (rgba, w, h) = ImagingFixtureIO.LoadHdr();
         Assert.Equal(2, w);
         Assert.Equal(2, h);
-        // Radiance stores absolute nits; LinearScene with whiteLuminance=1 means x*1/203.
-        // Prefer whiteLuminance = pixel is already nits → use WhiteLuminance=1? 
-        // Formula x*W/203: if x is nits, W=1 → x/203. Yes.
         var frame = Normalize.Run(
-            nitsRgba,
+            rgba,
             w,
             h,
-            new NormalizeOptions(TransferKind.LinearScene, ColorPrimaries.Bt709, WhiteLuminance: 1f));
+            new NormalizeOptions(TransferKind.LinearScene, ColorPrimaries.Bt709));
         var master = ImagingFixtureIO.LoadF32("master.bt2020.f32");
-        // Grey / white pixels — Radiance RGBE quantization is coarse.
+        // Grey / white — RGBE quantization; ExrRefWhite=80 → working ≈ master.
         AssertNear(master[0], frame.Rgba[0], 0.05f);
         AssertNear(master[4], frame.Rgba[4], 0.05f);
+    }
+
+    [Fact]
+    public void ExrRefWhite_MetadataLess_OneMapsToEightyOver203()
+    {
+        // M4: x=1 with default ExrRefWhite → working 80/203.
+        Normalize.Pixel(
+            1f, 1f, 1f,
+            new NormalizeOptions(TransferKind.LinearScene, ColorPrimaries.Bt2020),
+            out var r, out var g, out var b);
+        var expected = ImagingConstants.ScrgbNits / ImagingConstants.RefWhiteNits;
+        AssertNear(expected, r, 0.005f);
+        AssertNear(expected, g, 0.005f);
+        AssertNear(expected, b, 0.005f);
+    }
+
+    /// <summary>
+    /// M4 golden: real decoded EXR / HDR / JXR (Pregmata_SteamAVIF scale,
+    /// 1.0 = 80 nits → working 80/203) normalize within 1% on greys/white.
+    /// </summary>
+    [Fact]
+    public void Golden_ExrHdrJxr_Decoded_NormalizeWithinOnePercent()
+    {
+        var exr = ImagingFixtureIO.LoadF32("master.exr.decoded.f32");
+        var hdr = ImagingFixtureIO.LoadF32("master.hdr.decoded.f32");
+        var jxr = ImagingFixtureIO.LoadF32("master.jxr.decoded.f32");
+
+        var exrFrame = Normalize.Run(exr, 2, 2, new NormalizeOptions(TransferKind.LinearScene, ColorPrimaries.Bt709));
+        var hdrFrame = Normalize.Run(hdr, 2, 2, new NormalizeOptions(TransferKind.LinearScene, ColorPrimaries.Bt709));
+        var jxrFrame = Normalize.Run(jxr, 2, 2, new NormalizeOptions(TransferKind.Scrgb, ColorPrimaries.Bt709));
+
+        foreach (var o in new[] { 0, 4 })
+        {
+            AssertNear(jxrFrame.Rgba[o], exrFrame.Rgba[o], 0.01f);
+            AssertNear(jxrFrame.Rgba[o], hdrFrame.Rgba[o], 0.01f);
+            AssertNear(jxrFrame.Rgba[o + 1], exrFrame.Rgba[o + 1], 0.01f);
+            AssertNear(jxrFrame.Rgba[o + 1], hdrFrame.Rgba[o + 1], 0.01f);
+            AssertNear(jxrFrame.Rgba[o + 2], exrFrame.Rgba[o + 2], 0.01f);
+            AssertNear(jxrFrame.Rgba[o + 2], hdrFrame.Rgba[o + 2], 0.01f);
+        }
+    }
+
+    [Fact]
+    public void M4_ExrAndJxr_NormalizeEqually()
+    {
+        var exr = ImagingFixtureIO.LoadF32("master.exr.decoded.f32");
+        var jxr = ImagingFixtureIO.LoadF32("master.jxr.decoded.f32");
+        var exrFrame = Normalize.Run(exr, 2, 2, new NormalizeOptions(TransferKind.LinearScene, ColorPrimaries.Bt709));
+        var jxrFrame = Normalize.Run(jxr, 2, 2, new NormalizeOptions(TransferKind.Scrgb, ColorPrimaries.Bt709));
+        for (var i = 0; i < 8; i += 4)
+        {
+            AssertNear(jxrFrame.Rgba[i], exrFrame.Rgba[i], 0.01f);
+            AssertNear(jxrFrame.Rgba[i + 1], exrFrame.Rgba[i + 1], 0.01f);
+            AssertNear(jxrFrame.Rgba[i + 2], exrFrame.Rgba[i + 2], 0.01f);
+        }
     }
 
     [Fact]
@@ -120,27 +173,28 @@ public class ImagingNormalizeTests
     [Fact]
     public void SourceClipped_LinearSceneAtMasteringPeak()
     {
+        // Peak metadata in nits; clip ceil = peakNits / EffectiveWhiteNits (= ExrRefWhite).
         var buf = new float[] { 10f, 10f, 10f, 1f, 10f, 10f, 10f, 1f, 10f, 10f, 10f, 1f, 10f, 10f, 10f, 1f };
         var frame = Normalize.Run(
             buf,
             2,
             2,
-            new NormalizeOptions(TransferKind.LinearScene, MetadataPeakNits: 10f * 203f));
+            new NormalizeOptions(TransferKind.LinearScene, MetadataPeakNits: 10f * ImagingConstants.ExrRefWhite));
         Assert.True(frame.SourceClipped);
-        // S1: flag is consumed by Analyze → ImageStats (not dropped after Normalize).
+        // Flag is stored on ImageStats for later use (nothing reads it in P1 yet — S1).
         var stats = Analyze.Run(frame);
         Assert.True(stats.SourceClipped);
         Assert.True(stats.SourceClipRatio > ImagingConstants.SourceClipFraction);
     }
 
     [Fact]
-    public void SourceClipped_LinearSceneWithoutPeak_UsesBufferMax()
+    public void SourceClipped_LinearSceneWithoutPeak_DoesNotUseBufferMax()
     {
-        // S1: no MetadataPeakNits → clip ceil = buffer max; all-channel max trips the flag.
+        // S1: no MetadataPeakNits → do not flag from buffer max.
         var buf = new float[] { 2f, 2f, 2f, 1f, 2f, 2f, 2f, 1f, 2f, 2f, 2f, 1f, 2f, 2f, 2f, 1f };
         var frame = Normalize.Run(buf, 2, 2, new NormalizeOptions(TransferKind.LinearScene));
-        Assert.True(frame.SourceClipped);
-        Assert.True(Analyze.Run(frame).SourceClipped);
+        Assert.False(frame.SourceClipped);
+        Assert.Equal(0f, frame.SourceClipRatio);
     }
 
     [Fact]
