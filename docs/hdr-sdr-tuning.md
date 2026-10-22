@@ -1,17 +1,36 @@
-# HDR→SDR tuning follow-up
+# HDR imaging rewrite (P1)
 
-Stacked after [#133](https://github.com/sacb0y/Palace/pull/133) (`cursor/hdr-jxl-present-5642`). Does **not** change #133’s validated SDR curve until A/B ships. Version TBD after [#132](https://github.com/sacb0y/Palace/pull/132) (provisional next free after 0.3.10, likely 0.3.11). Low priority behind grid-layout work.
+Isiac-approved Doktor plan v2. This file replaces the earlier HDR→SDR tuning
+follow-up note.
 
-Reference only: [docs/hdr-skiv.md](hdr-skiv.md). Do **not** copy SKIV code.
+**Source of truth (store):** Project Context
+`docs/hdr-imaging-rewrite.md` (coordinator store).
 
-## Plan (Doktor / Isiac)
+**PR:** [#137](https://github.com/sacb0y/Palace/pull/137) — pure `Palace.Imaging`
+library + tests. **No UI wiring** (ExposureEV is a library input; Unity-style
+slider comes later after Gooey).
 
-1. **Adopt:** measure content peak (p995) once at decode/load; cache with the image so viewer and thumbs share it. Strip NaN/Inf at decode; keep the present-time guard as a backstop.
-2. **A/B behind a debug toggle (off by default):** tone map on ICtCp **I** instead of CIE Y; SKIV-style γ1.18 + chroma rescale after the curve (tunable; watch skin). Side-by-side screenshots on a fixed set (PQ JXL, HLG, saturated neon/sky/fire, skin, near-black) — Isiac chooses later.
-3. **Skip** mapping peak → 1.5; **keep** SdrWhiteLevel attenuation.
+## Working space
 
-## Out of scope for the first code PR
+BT.2020 linear, **1.0 = 203 nits** (BT.2408 reference white).
 
-- FenrirDesktop HDR verification
-- Changing #133 tip or #136
-- Shipping the ICtCp path as default without A/B screenshots
+## Pipeline (P1)
+
+1. **Normalize** — PQ nits/203; HLG BT.2100 OOTF @ 1000 then /203; JXR scRGB
+   `×80/203`; SDR linearize; EXR/`.hdr` via `whiteLuminance` or `ExrRefWhite`
+   (default 1.0). Strip NaN/Inf; clamp negative luminance; source-clipped flag.
+2. **Analyze** (once, full-res) — p50, p99.995, max, maxRGB;
+   `Lc = clamp(p99.995, lo=max(1.0,2*p50,ref), hi=metadata peak)`.
+3. **ToneMap** — `ExposureEV` (default 0) as `2^EV` before the curve; does
+   **not** re-analyze or move Lc. SDR: libplacebo spline @ `02d7e35e`. HDR:
+   BT.2390 EETF, identity when `Lc <= Ld`. maxRGB + ratio; desaturate
+   `smoothstep(0.8*Ld,Ld,out)`; Mobius gamut soft-clip @ constant Y.
+4. **LUT** — 1D bake; cache key includes file, pipeline version, DisplayTarget,
+   size, **ExposureEV**. Curve samples are EV-agnostic so a live slider can
+   multiply in-shader later.
+
+## Out of scope here
+
+Decoders/registry (P2), thumbs/full flags (P3–P4), HDR passthrough / HLSL
+(P5), deleting legacy (P6), gain maps (P7). No FenrirDesktop. No Bugbot —
+Doktor reviews.

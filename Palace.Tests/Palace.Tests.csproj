@@ -160,6 +160,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Palace.Imaging\Palace.Imaging.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="Microsoft.NET.Test.Sdk">
       <Version>18.10.0</Version>

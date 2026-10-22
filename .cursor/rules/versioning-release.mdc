@@ -28,7 +28,7 @@ Stay on **0.x** until the first public Store release (**1.0.0**).
 |---|---|
 | Fixes, polish, small features, library / viewer work | **PATCH** (e.g. `0.2.2` → `0.2.3`) |
 | Finished milestone only (explicit Sacb0y open) | **MINOR** (Settings restructure landed at **0.3.0**) |
-| Docs / CI / tests only | **No bump** — add label `no-version-bump`, **or** keep the diff on exempt paths (see `scripts/check-version.py`: `.cursor/`, `.github/`, `docs/`, `Palace.Tests/`, `scripts/`, `*.md`, `AGENTS.md`, `README.md`, `ui-tests.ps1`, …) |
+| Docs / CI / tests / pure library only | **No bump** — add label `no-version-bump`, **or** keep the diff on exempt paths (see `scripts/check-version.py`: `.cursor/`, `.github/`, `docs/`, `Palace.Tests/`, `Palace.Imaging/`, `scripts/`, `*.md`, `AGENTS.md`, `README.md`, `ui-tests.ps1`, …) |
 
 Stacked / parallel PRs: rebase onto `main` and **re-bump** in merge order so each tip stays greater than `main`.
 
