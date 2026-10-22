@@ -36,6 +36,8 @@ public partial class LibraryViewModel : ObservableObject
     private bool _applyingPreview;
     private string? _previewAssetId;
     private int _busyDepth;
+    /// <summary>Busy-bar Cancel token for long reject/move loops (field so Cancel can fire).</summary>
+    private CancellationTokenSource? _busyCancelCts;
     private Dictionary<string, bool> _sourceIsCloud = new(StringComparer.Ordinal);
     private HashSet<string> _localSourceIds = new(StringComparer.Ordinal);
     private string _sectionBrowsePath = "";
@@ -219,6 +221,10 @@ public partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>Busy bar shows Cancel when a cancellable op (batch Reject) is running.</summary>
+    [ObservableProperty]
+    public partial bool CanCancelBusy { get; set; }
 
     [ObservableProperty]
     public partial bool IsImagePreview { get; set; }
@@ -558,12 +564,39 @@ public partial class LibraryViewModel : ObservableObject
         IsBusy = true;
     }
 
+    /// <summary>
+    /// Begin busy with a Cancel button on the library progress bar. Callers must
+    /// <see cref="EndBusyCancelable"/> in finally (clears the token).
+    /// </summary>
+    public CancellationToken BeginBusyCancelable(string? status = null)
+    {
+        _busyCancelCts?.Cancel();
+        _busyCancelCts?.Dispose();
+        _busyCancelCts = new CancellationTokenSource();
+        CanCancelBusy = true;
+        BeginBusy(status);
+        return _busyCancelCts.Token;
+    }
+
+    public void EndBusyCancelable()
+    {
+        CanCancelBusy = false;
+        var cts = _busyCancelCts;
+        _busyCancelCts = null;
+        cts?.Dispose();
+        EndBusy();
+    }
+
+    [RelayCommand]
+    private void CancelBusy() => _busyCancelCts?.Cancel();
+
     public void EndBusy()
     {
         if (Interlocked.Decrement(ref _busyDepth) <= 0)
         {
             Interlocked.Exchange(ref _busyDepth, 0);
             IsBusy = false;
+            CanCancelBusy = false;
         }
     }
 

@@ -402,19 +402,25 @@ public partial class LibraryViewModel
                 .ToList();
             var folderCount = groups.Count(g => !string.IsNullOrEmpty(g.Key));
 
-            using var cts = new CancellationTokenSource();
-            var token = cts.Token;
-            BeginBusy(movers.Count == 1 ? "Rejecting…" : $"Rejecting {movers.Count}…");
+            var token = BeginBusyCancelable(
+                movers.Count == 1 ? "Rejecting…" : $"Rejecting {movers.Count}…");
             var moved = 0;
             var failed = 0;
             var failNotes = new List<string>();
             string? lastMessage = null;
             string? chainBatchId = null;
+            var undoBatchIds = new List<string>();
+            var cancelled = false;
             try
             {
                 foreach (var group in groups)
                 {
-                    token.ThrowIfCancellationRequested();
+                    if (token.IsCancellationRequested)
+                    {
+                        cancelled = true;
+                        break;
+                    }
+
                     if (string.IsNullOrEmpty(group.Key))
                     {
                         failed += group.Count();
@@ -454,19 +460,54 @@ public partial class LibraryViewModel
                         }
                     }
 
-                    var result = await _fileOps.MoveAssetsAsync(
-                        group.ToList(),
-                        dest,
-                        projectId,
-                        cancellationToken: token,
-                        absorbCreatedFolder: absorb,
-                        absorbPriorBatchId: chainBatchId);
+                    if (token.IsCancellationRequested)
+                    {
+                        cancelled = true;
+                        break;
+                    }
+
+                    FileOpResult result;
+                    try
+                    {
+                        result = await _fileOps.MoveAssetsAsync(
+                            group.ToList(),
+                            dest,
+                            projectId,
+                            cancellationToken: token,
+                            absorbCreatedFolder: absorb,
+                            absorbPriorBatchId: chainBatchId);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        cancelled = true;
+                        break;
+                    }
+
                     if (result.Moves.Count > 0)
                     {
                         moved += result.Moves.Count;
                         lastMessage = result.Message;
                         if (!string.IsNullOrWhiteSpace(result.BatchId))
                         {
+                            if (chainBatchId is not null
+                                && !result.AbsorbedPriorBatch
+                                && !undoBatchIds.Contains(chainBatchId, StringComparer.Ordinal))
+                            {
+                                undoBatchIds.Add(chainBatchId);
+                            }
+
+                            if (!undoBatchIds.Contains(result.BatchId, StringComparer.Ordinal))
+                            {
+                                undoBatchIds.Add(result.BatchId);
+                            }
+
+                            // When absorbed, prior ids are superseded — keep only the new tip.
+                            if (result.AbsorbedPriorBatch)
+                            {
+                                undoBatchIds.Clear();
+                                undoBatchIds.Add(result.BatchId);
+                            }
+
                             chainBatchId = result.BatchId;
                         }
 
@@ -488,7 +529,7 @@ public partial class LibraryViewModel
             {
                 await UiDispatch.RunAsync(() =>
                 {
-                    EndBusy();
+                    EndBusyCancelable();
                     if (!string.IsNullOrWhiteSpace(lastMessage))
                     {
                         StatusText = lastMessage!;
@@ -497,8 +538,20 @@ public partial class LibraryViewModel
             }
 
             await RefreshUndoStateAsync();
-            var toast = BatchReject.ToastMessage(moved, already, failed);
-            if (moved > 0 && chainBatchId is not null)
+            RememberRejectUndoBatches(undoBatchIds);
+            var toast = BatchReject.ToastMessage(moved, already, failed, folderCount);
+            if (cancelled && moved == 0)
+            {
+                Notify("Reject cancelled.");
+                return;
+            }
+
+            if (cancelled)
+            {
+                toast = $"{toast.TrimEnd('.')} (cancelled).";
+            }
+
+            if (moved > 0 && undoBatchIds.Count > 0)
             {
                 if (failNotes.Count > 0)
                 {

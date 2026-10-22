@@ -1038,17 +1038,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // Esc exits select mode (keeps selection) — same as hold/Ctrl+A entry exit.
-        if (e.Key == VirtualKey.Escape
-            && SelectMode.ExitsSelectModeOnEscape(
-                ViewModel.IsSelectMode,
-                ViewModel.IsGalleryOverlayOpen)
-            && !typing)
-        {
-            ViewModel.ExitSelectMode();
-            e.Handled = true;
-            return;
-        }
+        // Esc → ExitSelectMode is handled once on LibraryRoot_PreviewKeyDown (Organize.cs).
 
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset

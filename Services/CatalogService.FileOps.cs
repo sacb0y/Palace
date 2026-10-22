@@ -160,23 +160,44 @@ public sealed partial class CatalogService
     public Task<FileOpBatch?> GetLastUndoableFileOpAsync(string projectId) =>
         _db.ReadAsync(conn =>
         {
-            FileOpBatch? batch = null;
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.CommandText = """
-                    SELECT Id, ProjectId, Kind, Summary, CreatedAt, IsUndone FROM FileOpBatch
-                    WHERE ProjectId = $project AND IsUndone = 0
-                    ORDER BY CreatedAt DESC, rowid DESC
-                    LIMIT 1
-                    """;
-                cmd.Parameters.AddWithValue("$project", projectId);
-                using var reader = cmd.ExecuteReader();
-                if (!reader.Read())
-                {
-                    return null;
-                }
+            var list = ReadUndoableBatches(conn, projectId, limit: 1);
+            return list.Count == 0 ? null : list[0];
+        });
 
-                batch = new FileOpBatch
+    /// <summary>
+    /// All not-yet-undone file ops for a project, newest first (with steps).
+    /// Used to decide whether a prior Move can be absorbed safely.
+    /// </summary>
+    public Task<IReadOnlyList<FileOpBatch>> GetUndoableFileOpsAsync(string projectId) =>
+        _db.ReadAsync(conn => (IReadOnlyList<FileOpBatch>)ReadUndoableBatches(conn, projectId, limit: 0));
+
+    private static List<FileOpBatch> ReadUndoableBatches(SqliteConnection conn, string projectId, int limit)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = limit > 0
+            ? """
+                SELECT Id, ProjectId, Kind, Summary, CreatedAt, IsUndone FROM FileOpBatch
+                WHERE ProjectId = $project AND IsUndone = 0
+                ORDER BY CreatedAt DESC, rowid DESC
+                LIMIT $limit
+                """
+            : """
+                SELECT Id, ProjectId, Kind, Summary, CreatedAt, IsUndone FROM FileOpBatch
+                WHERE ProjectId = $project AND IsUndone = 0
+                ORDER BY CreatedAt DESC, rowid DESC
+                """;
+        cmd.Parameters.AddWithValue("$project", projectId);
+        if (limit > 0)
+        {
+            cmd.Parameters.AddWithValue("$limit", limit);
+        }
+
+        var list = new List<FileOpBatch>();
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                list.Add(new FileOpBatch
                 {
                     Id = reader.GetString(0),
                     ProjectId = reader.GetString(1),
@@ -184,12 +205,17 @@ public sealed partial class CatalogService
                     Summary = reader.GetString(3),
                     CreatedAt = reader.GetString(4),
                     IsUndone = reader.GetInt32(5) != 0
-                };
+                });
             }
+        }
 
+        foreach (var batch in list)
+        {
             batch.Items = ReadFileOpItems(conn, batch.Id);
-            return batch;
-        });
+        }
+
+        return list;
+    }
 
     public Task MarkFileOpUndoneAsync(string batchId) =>
         _db.WriteAsync(conn =>
