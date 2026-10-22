@@ -567,12 +567,8 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ClearHdrCache();
                 HideHdr();
-                // hdr-fail: prefer mosaic thumb / large-preview over BitmapImage
-                // of the HDR original. For .jxr, WIC unorm BitmapImage is a
-                // washed/dark SDR decode (laptop hdr-fail+bitmap-original).
-                // Thumb may be Palace ToneMap JPEG or shell GetThumbnailAsync
-                // if float WIC failed — Doktor picks the long-term winner; we
-                // only avoid the BitmapImage original here. Log LastWicError.
+                // Prefer mosaic thumb over BitmapImage HDR original (Pregmata
+                // .jxr → hdr-fail+bitmap-original was darker than the thumb).
                 var failImage = ToStillImage(item?.ThumbPath);
                 var failUsedThumb = failImage is not null;
                 failImage ??= ToStillImage(still);

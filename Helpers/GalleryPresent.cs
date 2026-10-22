@@ -637,16 +637,6 @@ public static class GalleryPresent
             ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
             SoftNegatives: false);
 
-    /// <summary>
-    /// When the swapchain present must use Reinhard so full view matches the
-    /// mosaic thumb (ToneMap). True on SDR panels, and on HDR panels when
-    /// libjxl CMS left <see cref="JxlBufferTransfer.Linear"/> (room.jxl —
-    /// clip-only hdr-display blew the full view while the thumb looked fine).
-    /// PQ/HLG on HDR stays clip-only passthrough.
-    /// </summary>
-    public static bool PresentUsesSdrReinhard(bool displayIsHdr, JxlBufferTransfer bufferTransfer) =>
-        !displayIsHdr || bufferTransfer == JxlBufferTransfer.Linear;
-
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
 
