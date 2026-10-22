@@ -92,9 +92,12 @@ public sealed partial class GalleryStillSurface : UserControl
         // ZoomMode Disabled). Learn trackpad pinch is this event — listen even
         // after it is handled so Ctrl+wheel still zooms.
         ScrStill.AddHandler(UIElement.PointerWheelChangedEvent, _wheelHandler, handledEventsToo: true);
+        // DPI / composition scale changes resize physical swapchain buffers.
+        ScpHdr.CompositionScaleChanged += ScpHdr_CompositionScaleChanged;
         Unloaded += (_, _) =>
         {
             ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
+            ScpHdr.CompositionScaleChanged -= ScpHdr_CompositionScaleChanged;
             UnhookPeak();
             _gallery?.StopGifPlayback();
             CancelInFlight();
@@ -103,6 +106,17 @@ public sealed partial class GalleryStillSurface : UserControl
             _presenter?.Dispose();
             _presenter = null;
         };
+    }
+
+    private void ScpHdr_CompositionScaleChanged(SwapChainPanel sender, object args)
+    {
+        if (_hdrFrame is null)
+        {
+            return;
+        }
+
+        ApplyScaleLayout();
+        PresentCached(HdrPresentCoalescer.SettleMs);
     }
 
     public void Bind(GalleryViewModel? gallery)

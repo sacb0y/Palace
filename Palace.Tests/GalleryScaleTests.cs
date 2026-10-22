@@ -251,4 +251,29 @@ public sealed class GalleryScaleTests
         var fill = GalleryScale.FillCoverDipSize(100, 200, 400, 200);
         Assert.True(fill.Width > tall.Width);
     }
+
+    [Theory]
+    // Pregmata_SteamAVIF.exr / HDR AVIF / HDR JXL — same SDR scRGB Fit path.
+    [InlineData("exr", 3840, 2160)]
+    [InlineData("avif", 3840, 2160)]
+    [InlineData("jxl", 4096, 2304)]
+    public void Fit_SdrHdrPresent_ShowsFullFrame_PerFormat(string format, int nativeW, int nativeH)
+    {
+        _ = format;
+        // Laptop viewports + CompositionScale 1× / 1.25× / 1.5× (DIP vs physical).
+        foreach (var scale in new[] { 1.0, 1.25, 1.5 })
+        {
+            Assert.True(
+                GalleryPresent.FitShowsFullFrame(nativeW, nativeH, 1280, 720, scale, scale),
+                $"Fit must show full {nativeW}×{nativeH} at compScale={scale}");
+            Assert.True(
+                GalleryPresent.FitShowsFullFrame(nativeW, nativeH, 1920, 1080, scale, scale));
+        }
+
+        // Physical buffer = DIP × CompositionScale (not DIP alone).
+        var (dipW, dipH) = GalleryScale.FitContainDipSize(nativeW, nativeH, 1280, 720);
+        var (pxW, pxH) = GalleryPresent.SwapchainPhysicalSize(dipW, dipH, 1.5, 1.5);
+        Assert.Equal((int)Math.Round(dipW * 1.5), pxW);
+        Assert.Equal((int)Math.Round(dipH * 1.5), pxH);
+    }
 }
