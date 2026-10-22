@@ -239,6 +239,27 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
+    public void PresentMatchesThumbToneMap_HdrDisplayLinear_UsesToneMapAnalyze()
+    {
+        // room.jxl: hdr-display + buffer=linear must use thumb Analyze stats.
+        Assert.True(GalleryPresent.PresentMatchesThumbToneMap(true, JxlBufferTransfer.Linear));
+        Assert.True(GalleryPresent.PresentMatchesThumbToneMap(false, JxlBufferTransfer.Pq));
+        Assert.False(GalleryPresent.PresentMatchesThumbToneMap(true, JxlBufferTransfer.Pq));
+
+        var rgba = new float[] { 3f, 3f, 3f, 1f, 0.5f, 0.5f, 0.5f, 1f };
+        var (exposure, white) = ToneMap.Analyze(rgba, 2);
+        var map = GalleryPresent.PresentMapThumbMatch(exposure, white);
+        Assert.Equal(exposure, map.Scale);
+        Assert.Equal(white > 1f ? white : 0f, map.ReinhardWhite);
+        // PresentMapSdrReinhard caps exposure at 1 — thumbs do not.
+        if (exposure > 1f)
+        {
+            Assert.True(GalleryPresent.PresentMapSdrReinhard(exposure, white).Scale <= 1f);
+            Assert.Equal(exposure, map.Scale);
+        }
+    }
+
+    [Fact]
     public void ResolveActualBuffer_SetOutputSuccessUnknownTf_IsLinear_ElseKeepsUnknown()
     {
         // room.jxl laptop: SetOutputColorProfile succeeded + TARGET_DATA TF
