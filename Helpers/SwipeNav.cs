@@ -295,6 +295,25 @@ public static class SwipeNav
     };
 
     /// <summary>
+    /// After navigate-at-commit, jump the new still to where the neighbor was
+    /// (releaseX + slot×stride) before settling to 0 — avoids sliding the new
+    /// image in from the wrong side.
+    /// </summary>
+    public static double PostCommitStartX(double releaseX, int slot, double viewerWidth) =>
+        releaseX + slot * PageStride(viewerWidth);
+
+    /// <summary>Browse commit slot: +1 next, −1 previous, else 0.</summary>
+    public static int CommitSlot(TouchGestures.SwipeAction action) => action switch
+    {
+        TouchGestures.SwipeAction.BrowseNext => 1,
+        TouchGestures.SwipeAction.BrowsePrevious => -1,
+        _ => 0
+    };
+
+    /// <summary>Stuck awaiting-content snap-back (ms).</summary>
+    public const int AwaitingContentTimeoutMs = 500;
+
+    /// <summary>
     /// Review card tilt (degrees) from horizontal drag. Caps soft so it never
     /// flips; neighbor is never revealed (<see cref="RevealsNeighbor"/>).
     /// </summary>
@@ -441,10 +460,6 @@ public static class SwipeNav
         !keepZoomBetweenImages
         && action is TouchGestures.SwipeAction.BrowseNext
             or TouchGestures.SwipeAction.BrowsePrevious;
-
-    /// <summary>Obsolete name — use <see cref="ResetsLocalZoomOnCommit"/>.</summary>
-    public static bool ResetsZoomOnCommit(TouchGestures.SwipeAction action) =>
-        ResetsLocalZoomOnCommit(action, keepZoomBetweenImages: false);
 
     /// <summary>
     /// Snap-back overshoot keyframe (px). Cap at <see cref="MaxOvershootPx"/>.

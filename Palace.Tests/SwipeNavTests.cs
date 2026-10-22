@@ -171,6 +171,14 @@ public sealed class SwipeNavTests
         Assert.Equal(216, SwipeNav.SettleTargetX(TouchGestures.SwipeAction.BrowsePrevious, 200), 3);
         Assert.Equal(0, SwipeNav.SettleTargetX(TouchGestures.SwipeAction.SpringBack, 200), 3);
 
+        // N3: after navigate, jump to neighbor slot then settle to 0.
+        Assert.Equal(1, SwipeNav.CommitSlot(TouchGestures.SwipeAction.BrowseNext));
+        Assert.Equal(-1, SwipeNav.CommitSlot(TouchGestures.SwipeAction.BrowsePrevious));
+        Assert.Equal(0, SwipeNav.CommitSlot(TouchGestures.SwipeAction.SpringBack));
+        Assert.Equal(136, SwipeNav.PostCommitStartX(releaseX: -80, slot: 1, viewerWidth: 200), 3);
+        Assert.Equal(-136, SwipeNav.PostCommitStartX(releaseX: 80, slot: -1, viewerWidth: 200), 3);
+        Assert.Equal(500, SwipeNav.AwaitingContentTimeoutMs);
+
         Assert.Equal(4, SwipeNav.SnapOvershootPx(1.0), 3); // capped
         Assert.True(SwipeNav.SnapOvershootPx(0.05) <= SwipeNav.MaxOvershootPx);
         // B3: reset local zoom only when KeepZoomBetweenImages is off.

@@ -121,6 +121,8 @@ public sealed partial class LibraryPage : Page
             onLeavePlaying: () =>
             {
                 // Spec: leave pauses + saves position (Pause keeps PlaybackSession.Position).
+                // Visual video pager is deferred (docs/specs/swipe-nav.md §6) — when that
+                // lands, pause + save here before the still pager takes over.
             });
         _videoBrowseSwipe.Hook();
         PerformanceSettings.Changed += PerformanceSettings_Changed;

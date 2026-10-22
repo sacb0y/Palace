@@ -914,33 +914,33 @@ public partial class GalleryViewModel : ObservableObject
     [RelayCommand]
     private void GoPrevious()
     {
-        if (CurrentIndex > 0)
+        if (FindNavigableIndex(CurrentIndex, -1) is { } i)
         {
-            CurrentIndex--;
+            CurrentIndex = i;
         }
     }
 
     [RelayCommand]
     private void GoNext()
     {
-        if (CurrentIndex < _items.Count - 1)
+        if (FindNavigableIndex(CurrentIndex, 1) is { } i)
         {
-            CurrentIndex++;
+            CurrentIndex = i;
         }
     }
 
     /// <summary>
-    /// Peek ±1 for the visual pager preload (docs/specs/swipe-nav.md).
-    /// Skips folder headers and orphan/deleted rows (same spirit as GoNext).
+    /// Next/previous index that is not a folder header or orphan (shared by
+    /// <see cref="GoNext"/> / <see cref="GoPrevious"/> and <see cref="PeekNeighbor"/>).
     /// </summary>
-    public AssetItem? PeekNeighbor(int delta)
+    public int? FindNavigableIndex(int fromIndex, int delta)
     {
         if (delta is not (-1 or 1) || _items.Count == 0)
         {
             return null;
         }
 
-        for (var i = CurrentIndex + delta; i >= 0 && i < _items.Count; i += delta)
+        for (var i = fromIndex + delta; i >= 0 && i < _items.Count; i += delta)
         {
             var item = _items[i];
             if (item.IsFolderHeader || item.IsOrphan)
@@ -948,16 +948,24 @@ public partial class GalleryViewModel : ObservableObject
                 continue;
             }
 
-            return item;
+            return i;
         }
 
         return null;
     }
 
     /// <summary>
+    /// Peek ±1 for the visual pager preload (docs/specs/swipe-nav.md).
+    /// Skips folder headers and orphan/deleted rows (same as GoNext/GoPrevious).
+    /// </summary>
+    public AssetItem? PeekNeighbor(int delta) =>
+        FindNavigableIndex(CurrentIndex, delta) is { } i ? _items[i] : null;
+
+    /// <summary>
     /// Neighbor surface source: video → mosaic poster; still → cached LargePreview
     /// JPEG (<c>_lg</c>) when present, else mosaic thumb. Never hydrates On-Demand
-    /// originals for preload (memory: one viewport decode per neighbor).
+    /// originals for preload (memory: one viewport decode per neighbor). Path lookup
+    /// only — callers cache Exists checks so the UI thread does not re-stat every frame.
     /// </summary>
     public static string? NeighborSourcePath(AssetItem? item)
     {
@@ -1350,8 +1358,8 @@ public partial class GalleryViewModel : ObservableObject
             IsMissing = !IsVideo && CurrentPath is null && string.IsNullOrEmpty(PreviewImageUri);
             CanDownloadOriginal = apiOnly && !string.IsNullOrEmpty(item.CloudItemId);
             CanOpenInExplorer = onDisk && !apiOnly;
-            CanGoPrevious = CurrentIndex > 0;
-            CanGoNext = CurrentIndex < _items.Count - 1;
+            CanGoPrevious = FindNavigableIndex(CurrentIndex, -1) is not null;
+            CanGoNext = FindNavigableIndex(CurrentIndex, 1) is not null;
             CanScale = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
             HdrPresented = false;
             ClearHistogram();

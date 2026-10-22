@@ -55,6 +55,7 @@ public sealed partial class GalleryWindow : Window
         ViewerMediaElement.SuppressFullWindow(MpeGallery);
         CardViewerDetails.AttachInFlow(GrdGalleryWindow);
         SrfWindowStill.ReviewSwipeCommitted += OnWindowStillSwipe;
+        SrfWindowStill.ChipCrossFadeRequested += OnWindowChipCrossFade;
 
         Gallery.PropertyChanged += (_, e) =>
         {
@@ -76,6 +77,8 @@ public sealed partial class GalleryWindow : Window
         {
             OpenWindows.Remove(this);
             Gallery.StopGifPlayback();
+            SrfWindowStill.ReviewSwipeCommitted -= OnWindowStillSwipe;
+            SrfWindowStill.ChipCrossFadeRequested -= OnWindowChipCrossFade;
             SrfWindowStill.Bind(null);
             MpeGallery.Source = null;
             VolGallery.VolumeChanged -= GalleryVolume_Changed;
@@ -322,6 +325,38 @@ public sealed partial class GalleryWindow : Window
             case TouchGestures.SwipeAction.BrowseNext:
                 Gallery.GoNextCommand.Execute(null);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// B4: brief title/position chip cross-fade at pager commit start
+    /// (docs/specs/swipe-nav.md).
+    /// </summary>
+    private void OnWindowChipCrossFade()
+    {
+        if (!ViewerSettings.TouchGesturesEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var board = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+            var fadeOut = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+            {
+                From = 1,
+                To = 0.35,
+                Duration = TimeSpan.FromMilliseconds(70),
+                AutoReverse = true
+            };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(fadeOut, GalleryTitleBar);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(fadeOut, "Opacity");
+            board.Children.Add(fadeOut);
+            board.Begin();
+        }
+        catch
+        {
+            // TitleBar may not animate (opacity already mid-flight).
         }
     }
 
