@@ -236,9 +236,11 @@ internal static class HdrWicDecode
             LastWicError = WicNative.WicDecoderOpen.Join(
                 WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.CreateAsync, ex),
                 leaf);
-            // Missing codec / BADIMAGE (0x88982F60): expected fallback — stamp
-            // Display with the path, do not LogOnly as an app error.
-            if (!WicNative.WicDecoderOpen.IsExpectedPresentMiss(ex.HResult))
+            // Missing Store codec (COMPONENTNOTFOUND) or BADIMAGE on .jxl/.heic
+            // without a codec: expected fallback — stamp Display, skip LogOnly.
+            // Inbox formats (JXR / AVIF / PNG / HEIF-with-codec): still LogOnly
+            // for corrupt or truncated streams.
+            if (!WicNative.WicDecoderOpen.IsExpectedPresentMiss(ex.HResult, path))
             {
                 ErrorReporter.LogOnly($"HdrWicDecode WIC present ({leaf})", ex);
             }
@@ -1125,7 +1127,11 @@ internal static class HdrWicDecode
     {
         cancellation.ThrowIfCancellationRequested();
         var decoded = JxlDecode.TryDecodeFile(
-            path, HdrJxlPresent.PresentMaxPixels, probe.Transfer, cancellation);
+            path,
+            HdrJxlPresent.PresentMaxPixels,
+            probe.Transfer,
+            probe.CicpPrimaries,
+            cancellation);
         if (decoded is null)
         {
             LastWicError = "jxl null";

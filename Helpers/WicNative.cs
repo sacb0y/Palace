@@ -171,11 +171,23 @@ public static class WicNative
             unchecked((uint)hr) == BadImage;
 
         /// <summary>
+        /// Extensions that often lack a Store WIC codec (.jxl / .heic / .heif).
+        /// BADIMAGE on these is treated as an expected present miss; inbox
+        /// formats (JXR, AVIF, PNG, HEIF-with-codec) still LogOnly corrupt
+        /// / truncated payloads.
+        /// </summary>
+        public static bool IsStoreCodecOptionalPath(string? path) =>
+            PathSafe.IsJxl(path) || PathSafe.IsHeif(path);
+
+        /// <summary>
         /// Expected miss when falling through to WIC without a Store codec —
         /// stamp Display, do not LogOnly as an app error.
+        /// <see cref="ComponentNotFound"/> always; <see cref="BadImage"/> only
+        /// for <see cref="IsStoreCodecOptionalPath"/>.
         /// </summary>
-        public static bool IsExpectedPresentMiss(int hr) =>
-            IsComponentNotFound(hr) || IsBadImage(hr);
+        public static bool IsExpectedPresentMiss(int hr, string? path = null) =>
+            IsComponentNotFound(hr)
+            || (IsBadImage(hr) && IsStoreCodecOptionalPath(path));
 
         public static bool IsNoInterface(int hr) =>
             unchecked((uint)hr) == NoInterface;

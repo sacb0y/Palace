@@ -185,7 +185,23 @@ public sealed class WicNativeTests
             WicNative.WicDecoderOpen.IsComponentNotFound(unchecked((int)0x88982F50)));
         Assert.True(WicNative.WicDecoderOpen.IsBadImage(unchecked((int)0x88982F60)));
         Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(unchecked((int)0x88982F50)));
-        Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(unchecked((int)0x88982F60)));
+        // BADIMAGE only expected for Store-optional .jxl / .heic — not JXR/PNG/AVIF.
+        Assert.True(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.jxl"));
+        Assert.True(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"D:\x.HEIC"));
+        Assert.True(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath("shot.heif"));
+        Assert.False(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.jxr"));
+        Assert.False(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.png"));
+        Assert.False(WicNative.WicDecoderOpen.IsStoreCodecOptionalPath(@"C:\a.avif"));
+        Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+            unchecked((int)0x88982F60), @"C:\missing.jxl"));
+        Assert.True(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+            unchecked((int)0x88982F60), @"C:\no-codec.heic"));
+        Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+            unchecked((int)0x88982F60), @"C:\corrupt.jxr"));
+        Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+            unchecked((int)0x88982F60), @"C:\trunc.png"));
+        Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+            unchecked((int)0x88982F60), null));
         Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(unchecked((int)0x80004002)));
         Assert.True(
             WicNative.WicDecoderOpen.IsNoInterface(unchecked((int)0x80004002)));
