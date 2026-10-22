@@ -132,17 +132,21 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void HookAdvancedColor()
     {
-        if (_advancedColorHooked || !OperatingSystem.IsWindows())
+        if (_advancedColorHooked
+            || _advancedColorHookAttempts >= AdvancedColorHookMaxAttempts
+            || !OperatingSystem.IsWindows())
         {
             return;
         }
 
+        _advancedColorHookAttempts++;
         try
         {
             // WinUI 3 desktop: GetForCurrentView throws. WASDK DisplayInformation
             // is CreateForWindowId — keep the instance so Unloaded can Dispose it.
             // Leave _advancedColorHooked false when AppWindowId is still 0 so
-            // Loaded / RefreshAsync can attach once the island has an id.
+            // Loaded / RefreshAsync can attach once the island has an id — but
+            // cap attempts so Next/Prev cannot retry CreateForWindowId forever.
             var windowId = XamlRoot?.ContentIslandEnvironment?.AppWindowId
                 ?? App.Window?.AppWindow?.Id
                 ?? default;
@@ -168,6 +172,7 @@ public sealed partial class GalleryStillSurface : UserControl
         if (_displayInfo is null)
         {
             _advancedColorHooked = false;
+            _advancedColorHookAttempts = 0;
             return;
         }
 
@@ -183,6 +188,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         _displayInfo = null;
         _advancedColorHooked = false;
+        _advancedColorHookAttempts = 0;
     }
 
     private void Display_AdvancedColorInfoChanged(DisplayInformation sender, object args)
