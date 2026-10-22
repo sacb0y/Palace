@@ -48,8 +48,6 @@ public sealed partial class ViewerDetailsCard : UserControl
     {
         InitializeComponent();
         RequestedTheme = ElementTheme.Dark;
-        // Closed until SyncOpenState — do not steal swipe under Info.
-        IsHitTestVisible = false;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }

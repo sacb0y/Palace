@@ -1320,6 +1320,12 @@ public sealed partial class TagsPage : Page
         SyncVideoBrowseSwipeHitTest();
     }
 
+    private void ViewerToolbar_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        // Gaps between toolbar buttons must not open the asset context menu.
+        e.Handled = true;
+    }
+
     private void SyncViewerOverlayAutoHide()
     {
         if (ViewModel.IsGalleryOverlayOpen)

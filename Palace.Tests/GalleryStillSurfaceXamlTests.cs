@@ -86,6 +86,7 @@ public sealed class GalleryStillSurfaceXamlTests
         foreach (var relative in new[]
                  {
                      Path.Combine("Pages", "LibraryPage.xaml"),
+                     Path.Combine("Pages", "TagsPage.xaml"),
                      Path.Combine("GalleryWindow.xaml"),
                  })
         {
