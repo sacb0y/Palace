@@ -440,15 +440,26 @@ public sealed partial class GalleryStillSurface : UserControl
                 CloudFile.Exists(item.Path) && !CloudFile.IsOnlineOnly(item.Path),
                 gallery.CurrentProbe);
 
-        // Prefer the still path (large-preview via DisplayPathFor for JXL/EXR).
-        // Fall back to mosaic thumb only when that yields nothing — never open
-        // the Store WIC original for .jxl (DisplayPathFor returns null).
-        var sdrImage = ToStillImage(still, animateGif: true);
+        // HDR attempt: mosaic thumb until scRGB present wins — never BitmapImage
+        // the HDR original (JXR unorm is darker; JXL WIC washes PQ).
+        // Non-attempt (JXL wide / await-preview): still first (DisplayPathFor
+        // large-preview or null), then mosaic thumb.
+        BitmapImage? sdrImage;
         var usedThumb = false;
-        if (sdrImage is null && item?.ThumbPath is { } thumbPath)
+        if (attempt)
         {
-            sdrImage = ToStillImage(thumbPath, animateGif: true);
+            sdrImage = ToStillImage(item?.ThumbPath, animateGif: true);
             usedThumb = sdrImage is not null;
+            sdrImage ??= ToStillImage(still, animateGif: true);
+        }
+        else
+        {
+            sdrImage = ToStillImage(still, animateGif: true);
+            if (sdrImage is null && item?.ThumbPath is { } thumbPath)
+            {
+                sdrImage = ToStillImage(thumbPath, animateGif: true);
+                usedThumb = sdrImage is not null;
+            }
         }
 
         ImgStill.Source = sdrImage;
@@ -556,21 +567,26 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ClearHdrCache();
                 HideHdr();
-                // Still path first (large-preview); thumb only if that fails.
-                var failImage = ToStillImage(still);
-                var failUsedThumb = false;
-                if (failImage is null && item?.ThumbPath is { } failThumb)
-                {
-                    failImage = ToStillImage(failThumb);
-                    failUsedThumb = failImage is not null;
-                }
-
+                // Prefer mosaic thumb over BitmapImage HDR original (Pregmata
+                // .jxr → hdr-fail+bitmap-original was darker than the thumb).
+                var failImage = ToStillImage(item?.ThumbPath);
+                var failUsedThumb = failImage is not null;
+                failImage ??= ToStillImage(still);
                 ImgStill.Source = failImage;
                 LogSdrStillSurface(
                     still,
                     failUsedThumb ? item?.ThumbPath : still,
                     failUsedThumb ? "hdr-fail+mosaic-thumb" : "hdr-fail",
                     gallery.CurrentProbe);
+                if (!string.IsNullOrEmpty(HdrWicDecode.LastWicError))
+                {
+                    SdrTonemapLog.TryAppendViewer(
+                        still,
+                        "hdr-fail",
+                        ProbeBufferLabel(gallery.CurrentProbe),
+                        detail: HdrWicDecode.LastWicError);
+                }
+
                 gallery.SetHdrPresentResult(false, false);
                 QueueFileHistogram(gallery, still, hdr: false);
                 return;
