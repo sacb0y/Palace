@@ -567,16 +567,21 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ClearHdrCache();
                 HideHdr();
-                // Prefer mosaic thumb over BitmapImage HDR original (Pregmata
-                // .jxr → hdr-fail+bitmap-original was darker than the thumb).
-                var failImage = ToStillImage(item?.ThumbPath);
-                var failUsedThumb = failImage is not null;
-                failImage ??= ToStillImage(still);
+                // Pipeline preview only (mosaic thumb / large-preview) — never
+                // BitmapImage the HDR original (JXR unorm → hdr-fail+bitmap-original).
+                var failPreview = item?.ThumbPath;
+                if (string.IsNullOrEmpty(failPreview)
+                    && AppServices.Thumbnails is { } failThumbs)
+                {
+                    failPreview = failThumbs.ExistingLargePreviewForPath(still);
+                }
+
+                var failImage = ToStillImage(failPreview);
                 ImgStill.Source = failImage;
                 LogSdrStillSurface(
                     still,
-                    failUsedThumb ? item?.ThumbPath : still,
-                    failUsedThumb ? "hdr-fail+mosaic-thumb" : "hdr-fail",
+                    failPreview,
+                    failImage is not null ? "hdr-fail+pipeline-preview" : "hdr-fail",
                     gallery.CurrentProbe);
                 if (!string.IsNullOrEmpty(HdrWicDecode.LastWicError))
                 {
@@ -819,17 +824,15 @@ public sealed partial class GalleryStillSurface : UserControl
 
         using var cts = new CancellationTokenSource();
         await UiDispatch.RunAsync(() => _presentCts = cts);
-        // Sticky Reinhard per path: first Fit analyzes; 1:1 / resize reuse.
+        // Sticky thumb ToneMap.Analyze stats per path: first Fit; 1:1 / resize reuse.
         float? stickyExposure = null;
         float? stickyWhite = null;
         await UiDispatch.RunAsync(() =>
         {
-            // Reuse first-Fit AnalyzeHdrPresent only when the shoulder was
-            // engaged (white > 1). white ≤ 1 would bypass the c8c2814 curve.
             if (!string.IsNullOrEmpty(_hdrFramePath)
                 && string.Equals(_sdrTonePath, _hdrFramePath, StringComparison.OrdinalIgnoreCase)
                 && _sdrToneExposure > 0
-                && _sdrToneWhite > 1f)
+                && _sdrToneWhite > 0f)
             {
                 stickyExposure = _sdrToneExposure;
                 stickyWhite = _sdrToneWhite;

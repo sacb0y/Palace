@@ -637,6 +637,28 @@ public static class GalleryPresent
             ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
             SoftNegatives: false);
 
+    /// <summary>
+    /// Same stats as mosaic thumbs (<see cref="ToneMap.Analyze"/> + Reinhard):
+    /// exposure may exceed 1 (MidGrey boost). Use for full-view ↔ thumb match
+    /// (room.jxl <c>hdr-display</c>+linear). Does not change the curve shape.
+    /// </summary>
+    public static HdrPresentMap PresentMapThumbMatch(float exposure, float reinhardWhite) =>
+        new(
+            exposure > 0 && float.IsFinite(exposure) ? exposure : 1f,
+            1f,
+            ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
+            SoftNegatives: false);
+
+    /// <summary>
+    /// Full view must share thumb ToneMap when the panel is SDR, or when
+    /// libjxl left <see cref="JxlBufferTransfer.Linear"/> (room.jxl blowout
+    /// on clip-only <c>hdr-display</c>). PQ/HLG on HDR stays passthrough.
+    /// </summary>
+    public static bool PresentMatchesThumbToneMap(
+        bool displayIsHdr,
+        JxlBufferTransfer bufferTransfer) =>
+        !displayIsHdr || bufferTransfer == JxlBufferTransfer.Linear;
+
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
 
