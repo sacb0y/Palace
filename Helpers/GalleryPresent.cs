@@ -281,7 +281,8 @@ public static class GalleryPresent
         return probe.IsPq
             || probe.IsHlg
             || probe.Transfer is HdrTransfer.Pq or HdrTransfer.Hlg
-            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance or HdrKind.HdrExr;
+            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrJxl
+                or HdrKind.HdrRadiance or HdrKind.HdrExr;
     }
 
     /// <summary>

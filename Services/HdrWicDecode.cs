@@ -153,6 +153,28 @@ internal static class HdrWicDecode
             }
         }
 
+        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe) && PathSafe.IsJxl(path))
+        {
+            try
+            {
+                var jxl = await Task.Run(
+                    () => FromJxlStill(path, viewportPixelWidth, viewportPixelHeight, scaling),
+                    cancellation).ConfigureAwait(false);
+                if (jxl is not null)
+                {
+                    return jxl;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Native libjxl load/throw — fall through to WIC.
+            }
+        }
+
         try
         {
             var file = await StorageFile.GetFileFromPathAsync(path).AsTask().ConfigureAwait(false);
@@ -240,6 +262,34 @@ internal static class HdrWicDecode
             catch
             {
                 // Native libavif load/throw — fall through to WIC.
+            }
+        }
+
+        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe) && PathSafe.IsJxl(path))
+        {
+            try
+            {
+                var jxl = await Task.Run(
+                    () => FromJxlStill(path, viewportPixelWidth, viewportPixelHeight, ImageScaling.Fit),
+                    cancellation).ConfigureAwait(false);
+                if (jxl is not null)
+                {
+                    return new HdrStats(
+                        jxl.MaxNits,
+                        jxl.AvgNits,
+                        jxl.MinNits,
+                        jxl.MaxScrgb,
+                        jxl.NativeWidth,
+                        jxl.NativeHeight);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Native libjxl load/throw — fall through to WIC.
             }
         }
 
@@ -1046,6 +1096,50 @@ internal static class HdrWicDecode
     private static bool IsLinearFloatStill(HdrProbe probe, string path) =>
         probe.Kind is HdrKind.HdrRadiance or HdrKind.HdrExr
         || PathSafe.IsRadiance(path);
+
+    /// <summary>
+    /// HDR JPEG XL via bundled libjxl (same natives as mosaic thumbs). WIC /
+    /// <c>BitmapImage</c> leave PQ as a washed SDR preview — do not fall back
+    /// to those when libjxl produced a frame.
+    /// </summary>
+    private static HdrFrame? FromJxlStill(
+        string path,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        ImageScaling scaling)
+    {
+        var decoded = JxlDecode.TryDecodeFile(path);
+        if (decoded is null)
+        {
+            return null;
+        }
+
+        var frame = HdrJxlPresent.BuildPresentFrame(
+            decoded.Rgba,
+            decoded.Width,
+            decoded.Height,
+            viewportPixelWidth,
+            viewportPixelHeight,
+            scaling);
+        if (frame is null)
+        {
+            return null;
+        }
+
+        return new HdrFrame
+        {
+            ScrgbRgba = frame.ScrgbRgba,
+            Width = frame.Width,
+            Height = frame.Height,
+            NativeWidth = decoded.Width,
+            NativeHeight = decoded.Height,
+            MaxNits = frame.MaxNits,
+            AvgNits = frame.AvgNits,
+            MinNits = frame.MinNits,
+            MaxScrgb = frame.MaxScrgb,
+            MaxScrgbChannel = frame.MaxScrgbChannel
+        };
+    }
 
     /// <summary>
     /// HDR PNG (cICP PQ/HLG): inflate IDAT ourselves so WinRT WIC cannot
