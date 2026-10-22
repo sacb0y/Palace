@@ -23,6 +23,8 @@ public sealed partial class GalleryStillSurface : UserControl
     private float _sdrToneExposure = 1f;
     private float _sdrToneWhite;
     private bool _advancedColorHooked;
+    private int _advancedColorHookAttempts;
+    private const int AdvancedColorHookMaxAttempts = 8;
     private DisplayInformation? _displayInfo;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
