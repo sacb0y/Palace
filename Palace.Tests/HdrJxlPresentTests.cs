@@ -239,6 +239,25 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
+    public void PresentUsesSdrReinhard_HdrDisplayLinear_MatchesThumbShoulder()
+    {
+        // room.jxl laptop: hdr-display + buffer=linear must engage Reinhard
+        // (thumb used ToneMap; clip-only full view was 52.7% clipped).
+        Assert.True(GalleryPresent.PresentUsesSdrReinhard(displayIsHdr: true, JxlBufferTransfer.Linear));
+        Assert.True(GalleryPresent.PresentUsesSdrReinhard(displayIsHdr: false, JxlBufferTransfer.Linear));
+        Assert.True(GalleryPresent.PresentUsesSdrReinhard(displayIsHdr: false, JxlBufferTransfer.Pq));
+        Assert.False(GalleryPresent.PresentUsesSdrReinhard(displayIsHdr: true, JxlBufferTransfer.Pq));
+        Assert.False(GalleryPresent.PresentUsesSdrReinhard(displayIsHdr: true, JxlBufferTransfer.Hlg));
+
+        var (exposure, white) = ToneMap.AnalyzeHdrPresent(
+            new float[] { 3f, 3f, 3f, 1f, 1f, 1f, 1f, 1f }, 2, sdrWhiteLevelNits: 80f);
+        var map = GalleryPresent.PresentMapSdrReinhard(exposure, white);
+        Assert.True(map.ReinhardWhite > 1f);
+        var hdrPassthrough = GalleryPresent.PresentMap(displayIsHdr: true, contentMaxNits: 1000f, displayPeakNits: 0f);
+        Assert.Equal(0f, hdrPassthrough.ReinhardWhite);
+    }
+
+    [Fact]
     public void ResolveActualBuffer_SetOutputSuccessUnknownTf_IsLinear_ElseKeepsUnknown()
     {
         // room.jxl laptop: SetOutputColorProfile succeeded + TARGET_DATA TF
