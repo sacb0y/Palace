@@ -94,6 +94,7 @@ internal static class JxlDecode
             };
             float[]? pixels = null;
             var actualBuffer = JxlBufferTransfer.Unknown;
+            int? targetDataPrimaries = null;
             for (var guard = 0; guard < 64; guard++)
             {
                 cancellation.ThrowIfCancellationRequested();
@@ -123,8 +124,9 @@ internal static class JxlDecode
                             linear.Primaries = JxlPrimaries.BT2100;
                         }
 
-                        if (JxlDecoderNativeMethod.JxlDecoderSetOutputColorProfile(dec, in linear, 0, 0)
-                            != JxlDecoderStatus.Success)
+                        var setOk = JxlDecoderNativeMethod.JxlDecoderSetOutputColorProfile(dec, in linear, 0, 0)
+                            == JxlDecoderStatus.Success;
+                        if (!setOk)
                         {
                             JxlDecoderNativeMethod.JxlDecoderSetPreferredColorProfile(dec, in linear);
                         }
@@ -134,13 +136,10 @@ internal static class JxlDecode
                                 dec, JxlColorProfileTarget.Data, ref dataEnc)
                             == JxlDecoderStatus.Success)
                         {
-                            actualBuffer = dataEnc.TransferFunction switch
-                            {
-                                JxlTransferFunction.PQ => JxlBufferTransfer.Pq,
-                                JxlTransferFunction.HLG => JxlBufferTransfer.Hlg,
-                                JxlTransferFunction.Linear => JxlBufferTransfer.Linear,
-                                _ => JxlBufferTransfer.Unknown
-                            };
+                            actualBuffer = HdrJxlPresent.ResolveActualBuffer(
+                                (int)dataEnc.TransferFunction, setOk);
+                            targetDataPrimaries = HdrJxlPresent.CicpPrimariesFromJxlPrimaries(
+                                (int)dataEnc.Primaries);
                         }
 
                         break;
@@ -172,11 +171,11 @@ internal static class JxlDecode
                     case JxlDecoderStatus.FullImage:
                         return pixels is null
                             ? null
-                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer);
+                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries);
                     case JxlDecoderStatus.Success:
                         return pixels is null
                             ? null
-                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer);
+                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries);
                     default:
                         return null;
                 }
@@ -205,15 +204,23 @@ internal static class JxlDecode
         float[] rgba,
         JxlBasicInfo info,
         HdrTransfer probeTransfer,
-        int? cicpPrimaries,
-        JxlBufferTransfer actualBuffer)
+        int? probeCicpPrimaries,
+        JxlBufferTransfer actualBuffer,
+        int? targetDataPrimaries)
     {
+        // Still-encoded EOTF uses TARGET_DATA primaries (not probe ?? 9).
+        // Linear BT.2020→709 keeps the probe (wide-out request matched that).
+        var stillEncoded = actualBuffer is JxlBufferTransfer.Pq or JxlBufferTransfer.Hlg
+            || (actualBuffer == JxlBufferTransfer.Unknown
+                && probeTransfer is HdrTransfer.Pq or HdrTransfer.Hlg);
+        var primaries = stillEncoded ? targetDataPrimaries : probeCicpPrimaries;
+
         var norm = HdrJxlPresent.NormalizeToScrgb(
             rgba,
             info.IntensityTarget,
             probeTransfer,
             actualBuffer,
-            cicpPrimaries);
+            primaries);
 
         if (info.AlphaBits == 0)
         {

@@ -4,6 +4,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Starward.Codec is net10.0-windows; used only for JxlDecode fixture tests. -->
+    <AssetTargetFallback>$(AssetTargetFallback);net10.0-windows7.0</AssetTargetFallback>
+    <NoWarn>$(NoWarn);NU1701;CA1416</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -57,6 +60,7 @@
     <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />
     <Compile Include="..\Helpers\HdrJxlPresent.cs" Link="HdrJxlPresent.cs" />
     <Compile Include="..\Helpers\SdrTonemapLog.cs" Link="SdrTonemapLog.cs" />
+    <Compile Include="..\Services\JxlDecode.cs" Link="JxlDecode.cs" />
     <Compile Include="..\Helpers\PngFile.cs" Link="PngFile.cs" />
     <Compile Include="..\Helpers\IccProfile.cs" Link="IccProfile.cs" />
     <Compile Include="..\Helpers\HdrColor.cs" Link="HdrColor.cs" />
@@ -174,9 +178,12 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- libjxl natives for JxlDecode.TryDecodeFile fixture (Windows runtimes). -->
+    <PackageReference Include="Starward.Codec" Version="0.5.2" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Fixtures\exr\*.exr" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\jxl\*.jxl" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Native\openexr\win-x64\palace_exr.dll" Link="palace_exr.dll" CopyToOutputDirectory="PreserveNewest" Condition="'$(OS)' == 'Windows_NT'" />
   </ItemGroup>
 

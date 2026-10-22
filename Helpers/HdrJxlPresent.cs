@@ -30,9 +30,6 @@ public readonly record struct JxlNormalizeResult(
 /// </summary>
 public static class HdrJxlPresent
 {
-    /// <summary>Last normalize result (present / thumb decode). For diagnostics.</summary>
-    public static JxlNormalizeResult LastNormalize { get; private set; } = new(0f, 1f, JxlBufferTransfer.Unknown);
-
     /// <summary>
     /// Cap native float decode for HDR present (~16 bytes/pixel RGBA).
     /// ~64 MP ≈ 1 GB peak; Fit keeps a viewport buffer after box-scale.
@@ -146,6 +143,36 @@ public static class HdrJxlPresent
             _ => JxlBufferTransfer.Unknown
         };
 
+    /// <summary>
+    /// After <c>SetOutputColorProfile</c>, map TARGET_DATA transfer. When the
+    /// set succeeded and TARGET_DATA reports Unknown, treat the float buffer
+    /// as Linear (CMS accepted Relative linear out). When set failed, leave
+    /// Unknown so a PQ/HLG probe takes the encoded path instead of IT-scale.
+    /// </summary>
+    public static JxlBufferTransfer ResolveActualBuffer(
+        int targetDataTransferFunction,
+        bool setOutputColorProfileSucceeded)
+    {
+        var mapped = BufferTransferFromJxlTf(targetDataTransferFunction);
+        if (mapped == JxlBufferTransfer.Unknown && setOutputColorProfileSucceeded)
+        {
+            return JxlBufferTransfer.Linear;
+        }
+
+        return mapped;
+    }
+
+    /// <summary>
+    /// Map libjxl <c>JxlPrimaries</c> numeric (CICP-aligned: 1 sRGB, 9 BT.2100,
+    /// 11 P3) for EOTF→scRGB. Custom/unknown → null (caller keeps probe).
+    /// </summary>
+    public static int? CicpPrimariesFromJxlPrimaries(int jxlPrimaries) =>
+        jxlPrimaries switch
+        {
+            1 or 9 or 11 => jxlPrimaries,
+            _ => null
+        };
+
     public static string BufferTransferLabel(JxlBufferTransfer t) =>
         t switch
         {
@@ -159,6 +186,8 @@ public static class HdrJxlPresent
     /// Normalize float RGBA from libjxl to scRGB. If CMS left PQ/HLG codes,
     /// EOTF → nits → /80 (no intensity_target multiply). If linear, apply
     /// <c>intensity_target/80</c> for PQ/HLG probes, then BT.2020→709 when needed.
+    /// <paramref name="cicpPrimaries"/> should be TARGET_DATA primaries when
+    /// known (still-encoded path); probe primaries are fine for the linear path.
     /// </summary>
     public static JxlNormalizeResult NormalizeToScrgb(
         Span<float> rgba,
@@ -179,11 +208,9 @@ public static class HdrJxlPresent
                 ? HdrTransfer.Hlg
                 : HdrTransfer.Pq;
             EncodedPqHlgToScrgb(rgba, encodedTf, cicpPrimaries);
-            var result = new JxlNormalizeResult(intensityTarget, 0f, encodedTf == HdrTransfer.Hlg
+            return new JxlNormalizeResult(intensityTarget, 0f, encodedTf == HdrTransfer.Hlg
                 ? JxlBufferTransfer.Hlg
                 : JxlBufferTransfer.Pq);
-            LastNormalize = result;
-            return result;
         }
 
         var scale = IntensityScaleForBuffer(intensityTarget, probeTransfer, JxlBufferTransfer.Linear);
@@ -193,19 +220,19 @@ public static class HdrJxlPresent
             Bt2020LinearToScrgb(rgba);
         }
 
-        var linear = new JxlNormalizeResult(intensityTarget, scale, JxlBufferTransfer.Linear);
-        LastNormalize = linear;
-        return linear;
+        return new JxlNormalizeResult(intensityTarget, scale, JxlBufferTransfer.Linear);
     }
 
     /// <summary>
     /// Still-PQ/HLG float codes → scRGB (1.0 = 80 nits). Never multiply by
     /// intensity_target — that assumes linear relative units.
+    /// Primaries come from TARGET_DATA when the decoder supplies them; missing
+    /// falls back to BT.2020 (9) only for the EOTF matrix path.
     /// </summary>
     public static void EncodedPqHlgToScrgb(
         Span<float> rgba,
         HdrTransfer encodedTransfer,
-        int? cicpPrimaries)
+        int? targetDataPrimaries)
     {
         if (encodedTransfer is not (HdrTransfer.Pq or HdrTransfer.Hlg))
         {
@@ -213,7 +240,8 @@ public static class HdrJxlPresent
         }
 
         var end = rgba.Length - (rgba.Length & 3);
-        var primaries = cicpPrimaries ?? 9;
+        // TARGET_DATA primaries when present; else BT.2020 (typical PQ/HLG JXL).
+        var primaries = targetDataPrimaries ?? 9;
         for (var i = 0; i < end; i += 4)
         {
             GalleryPresent.PngEncodedToScrgb(

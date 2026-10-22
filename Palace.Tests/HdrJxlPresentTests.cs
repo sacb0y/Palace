@@ -272,6 +272,33 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
+    public void ResolveActualBuffer_UnknownBecomesLinearWhenSetOutputSucceeded()
+    {
+        // S2: SetOutputColorProfile ok + Unknown TARGET_DATA → Linear (not PQ EOTF).
+        Assert.Equal(
+            JxlBufferTransfer.Linear,
+            HdrJxlPresent.ResolveActualBuffer(targetDataTransferFunction: 13, setOutputColorProfileSucceeded: true));
+        Assert.Equal(
+            JxlBufferTransfer.Unknown,
+            HdrJxlPresent.ResolveActualBuffer(targetDataTransferFunction: 13, setOutputColorProfileSucceeded: false));
+        Assert.Equal(
+            JxlBufferTransfer.Pq,
+            HdrJxlPresent.ResolveActualBuffer(16, setOutputColorProfileSucceeded: true));
+        Assert.Equal(
+            JxlBufferTransfer.Linear,
+            HdrJxlPresent.ResolveActualBuffer(8, setOutputColorProfileSucceeded: false));
+    }
+
+    [Fact]
+    public void CicpPrimariesFromJxlPrimaries_MapsKnownBuiltins()
+    {
+        Assert.Equal(9, HdrJxlPresent.CicpPrimariesFromJxlPrimaries(9));
+        Assert.Equal(11, HdrJxlPresent.CicpPrimariesFromJxlPrimaries(11));
+        Assert.Equal(1, HdrJxlPresent.CicpPrimariesFromJxlPrimaries(1));
+        Assert.Null(HdrJxlPresent.CicpPrimariesFromJxlPrimaries(2)); // Custom
+    }
+
+    [Fact]
     public void SdrTonemapLog_OffByDefault_WritesWhenEnabled()
     {
         var prior = SdrTonemapLog.EnabledOverride;
