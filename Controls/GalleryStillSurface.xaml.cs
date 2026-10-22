@@ -495,6 +495,11 @@ public sealed partial class GalleryStillSurface : UserControl
                     gallery.DisplayScaling,
                     _hdrLoadCts.Token);
             }
+            catch (OperationCanceledException)
+            {
+                // Quick Next/Prev cancels the in-flight decode — not an error.
+                return;
+            }
             catch (Exception ex)
             {
                 ErrorReporter.LogOnly("GalleryStillSurface HDR load", ex);
@@ -575,6 +580,11 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             stats = await HdrWicDecode.TryMeasureAsync(
                 path, probe, viewportPixelWidth, viewportPixelHeight, cancellation);
+        }
+        catch (OperationCanceledException)
+        {
+            // Viewport/nav cancel — not an error.
+            return;
         }
         catch (Exception ex)
         {

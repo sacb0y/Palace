@@ -176,6 +176,20 @@ public sealed class ErrorReporterTests : IDisposable
     }
 
     [Fact]
+    public void LogOnly_Cancellation_DoesNotLog()
+    {
+        ErrorReporter.LogOnly("HDR load", new OperationCanceledException());
+        ErrorReporter.LogOnly("HDR load", new TaskCanceledException());
+        ErrorReporter.LogOnly(
+            "HDR load",
+            new AggregateException(new TaskCanceledException(), new OperationCanceledException()));
+        Assert.False(File.Exists(Path.Combine(_dir, ErrorLog.FileName)));
+
+        ErrorReporter.LogOnly("HDR load", new IOException("boom"));
+        Assert.Contains("boom", LogText());
+    }
+
+    [Fact]
     public void ReportUnhandled_ThrottlesRepeatsOfTheSameFailure()
     {
         var now = DateTimeOffset.UtcNow;

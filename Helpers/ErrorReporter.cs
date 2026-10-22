@@ -106,7 +106,16 @@ internal static class ErrorReporter
         }
     }
 
-    public static void LogOnly(string source, Exception exception) => TryLog(source, exception);
+    /// <summary>Logs without Notify. Cancellation is not an error — no log.</summary>
+    public static void LogOnly(string source, Exception exception)
+    {
+        if (IsCancellation(exception))
+        {
+            return;
+        }
+
+        TryLog(source, exception);
+    }
 
     public static async Task RunAsync(string context, Action<string>? notify, Func<Task> action)
     {
