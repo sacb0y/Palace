@@ -238,7 +238,8 @@
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(Gallery.InfoMaxCll), Mode=OneWay}">
-                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="MaxCLL" />
+                                    <!-- scRGB channel peak (1.0 = 80 nits), not cLLi metadata nits — matches ImageInfoText "MaxCLL (scRGB)". -->
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="MaxCLL (scRGB)" />
                                     <TextBlock FontWeight="Bold" Style="{StaticResource ViewerDetailsInlineStatStyle}" Text="{x:Bind Gallery.InfoMaxCll, Mode=OneWay}" />
                                 </StackPanel>
                                 <StackPanel

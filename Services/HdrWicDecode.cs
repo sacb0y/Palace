@@ -153,7 +153,7 @@ internal static class HdrWicDecode
             }
         }
 
-        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe) && PathSafe.IsJxl(path))
+        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe))
         {
             try
             {
@@ -181,6 +181,14 @@ internal static class HdrWicDecode
                 LastWicError = "jxl ex " + ex.GetType().Name;
                 return null;
             }
+        }
+
+        // .jxl without a presentable HDR probe: never claim the WIC path
+        // (COMPONENTNOTFOUND is common; libjxl thumbs already covered SDR).
+        if (HdrJxlPresent.SkipWicPresent(probe, path))
+        {
+            LastWicError ??= "jxl no wic";
+            return null;
         }
 
         try
@@ -224,7 +232,14 @@ internal static class HdrWicDecode
         }
         catch (Exception ex)
         {
-            ErrorReporter.LogOnly("HdrWicDecode WIC present", ex);
+            LastWicError = WicNative.WicDecoderOpen.Failed(
+                WicNative.WicDecoderOpen.CreateAsync, ex);
+            // Missing codec is expected for exotic stills — stamp Display, skip spam.
+            if (!WicNative.WicDecoderOpen.IsComponentNotFound(ex.HResult))
+            {
+                ErrorReporter.LogOnly("HdrWicDecode WIC present", ex);
+            }
+
             return null;
         }
     }
@@ -274,11 +289,17 @@ internal static class HdrWicDecode
             }
         }
 
-        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe) && PathSafe.IsJxl(path))
+        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe))
         {
             // Present/load already stamps native CIE Y / MaxCLL via
             // BuildPresentFrame — never a second full native float decode
             // (up to ~1 GB at PresentMaxPixels) on every open / next/prev.
+            return null;
+        }
+
+        // Do not WIC-measure .jxl (no Store codec → COMPONENTNOTFOUND noise).
+        if (HdrJxlPresent.SkipWicPresent(probe, path))
+        {
             return null;
         }
 
