@@ -597,6 +597,10 @@ public partial class LibraryViewModel : ObservableObject
             Interlocked.Exchange(ref _busyDepth, 0);
             IsBusy = false;
             CanCancelBusy = false;
+            // Drop a stale Cancel token so CancelBusy cannot fire after EndBusy.
+            var cts = _busyCancelCts;
+            _busyCancelCts = null;
+            cts?.Dispose();
         }
     }
 
