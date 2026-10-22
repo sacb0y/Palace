@@ -307,7 +307,7 @@ public sealed class ShellBackgroundTests
         Assert.Equal(ShellBackground.DefaultDarkness, ShellBackground.ParseDarkness(null), 2);
         Assert.Equal(ShellBackground.DefaultBlur, ShellBackground.ParseBlur(null), 2);
         Assert.Equal(25, ShellBackground.ParseDarkness(25.0), 2);
-        Assert.Equal(ShellBackground.MigrateBlurFromLegacyPercent(80), ShellBackground.ParseBlur("80"), 2);
+        Assert.Equal(ShellBackground.NormalizeBlur(80), ShellBackground.ParseBlur("80"), 2);
         Assert.Equal(0, ShellBackground.ParseDarkness(-12), 2);
         Assert.Equal(ShellBackground.MaxBlurPx, ShellBackground.ParseBlur(400), 2);
         Assert.Equal(33, ShellBackground.ParseDarkness(33L), 2);
@@ -666,6 +666,17 @@ public sealed class ShellBackgroundTests
         Assert.Equal("0 px", ShellBackground.BlurLabel(-3));
         Assert.Equal("18 px", ShellBackground.BlurLabel(18));
         Assert.Equal("40 px", ShellBackground.BlurLabel(140));
+    }
+
+    [Fact]
+    public void NormalizeBlur_And_ClampDarkness_RoundToWholeUnits()
+    {
+        // NumberBox was showing 21.7779 while the caption said 22 px.
+        Assert.Equal(22, ShellBackground.NormalizeBlur(21.7779));
+        Assert.Equal("22 px", ShellBackground.BlurLabel(21.7779));
+        Assert.Equal(22, ShellBackground.NormalizeBlur(45)); // legacy percent → rounded px
+        Assert.Equal(41, ShellBackground.ClampDarkness(40.6));
+        Assert.Equal("41%", ShellBackground.DarknessLabel(40.6));
     }
 
     private static void Reset()

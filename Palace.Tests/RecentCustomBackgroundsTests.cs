@@ -132,7 +132,7 @@ public sealed class RecentCustomBackgroundsTests
         var json = """[{"id":"x","file":"shell-recent-x.jpg","name":"x","darkness":40,"blur":45,"hash":"aa","added":"2026-10-01T00:00:00Z"}]""";
         var list = RecentCustomBackgrounds.Parse(json);
         Assert.Single(list);
-        Assert.Equal(ShellBackground.MigrateBlurFromLegacyPercent(45), list[0].Blur, 2);
+        Assert.Equal(ShellBackground.NormalizeBlur(45), list[0].Blur, 2);
         Assert.True(list[0].Blur <= ShellBackground.MaxBlurPx);
     }
 
@@ -160,6 +160,26 @@ public sealed class RecentCustomBackgroundsTests
     {
         Assert.Equal("wall", RecentCustomBackgrounds.DisplayLabel("wall.png"));
         Assert.Equal("photo", RecentCustomBackgrounds.DisplayLabel(@"C:\pics\photo.JPEG"));
+    }
+
+    [Fact]
+    public void Tooltip_includes_name_and_added_date()
+    {
+        var added = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var tip = RecentCustomBackgrounds.Tooltip("wall.png", added);
+        Assert.Contains("wall.png", tip, StringComparison.Ordinal);
+        Assert.Contains("Added", tip, StringComparison.Ordinal);
+        Assert.Contains('\n', tip);
+    }
+
+    [Fact]
+    public void ToolTipOrNull_empty_is_null_nonempty_kept()
+    {
+        // Empty ToolTipText used to paint a dark square; null skips the tip.
+        Assert.Null(RecentCustomBackgrounds.ToolTipOrNull(null));
+        Assert.Null(RecentCustomBackgrounds.ToolTipOrNull(""));
+        Assert.Null(RecentCustomBackgrounds.ToolTipOrNull("   "));
+        Assert.Equal("Add a custom background image", RecentCustomBackgrounds.ToolTipOrNull("Add a custom background image"));
     }
 
     [Fact]

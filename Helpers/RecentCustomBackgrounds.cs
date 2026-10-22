@@ -152,7 +152,7 @@ public static class RecentCustomBackgrounds
         }
 
         var d = ShellBackground.ClampDarkness(darkness);
-        var b = ShellBackground.ClampBlur(blur);
+        var b = ShellBackground.NormalizeBlur(blur);
         return Normalize(existing.Select(e =>
             string.Equals(e.Id, id, StringComparison.OrdinalIgnoreCase)
                 ? e with { Darkness = d, Blur = b, LastUsedUtc = DateTimeOffset.UtcNow }
@@ -345,6 +345,13 @@ public static class RecentCustomBackgrounds
         var local = addedUtc.ToLocalTime();
         return $"{name}\nAdded {local:g}";
     }
+
+    /// <summary>
+    /// Null when empty so ToolTipService paints nothing (same contract as
+    /// <c>BindHelpers.ToolTipOrNull</c>; WinUI-free for Palace.Tests).
+    /// </summary>
+    public static string? ToolTipOrNull(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? null : text;
 
     public static string HashFile(string path)
     {

@@ -52,6 +52,10 @@ public sealed partial class SettingsPage : Page
     public SettingsPage()
     {
         InitializeComponent();
+        // Side-by-side Color tint label: Name alone is enough for Narrator, but
+        // LabeledBy ties the visible TextBlock to the switch (x:Bind may miss
+        // AutomationProperties.LabeledBy at compile time on some WASDK builds).
+        AutomationProperties.SetLabeledBy(TglShellTint, TxtShellTintLabel);
         // System theme (or late ActualTheme) must flip packaged light/dark preset thumbs.
         ActualThemeChanged += (_, _) =>
         {

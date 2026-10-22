@@ -20,7 +20,7 @@ namespace Palace.Helpers;
 /// ticks only <c>InsertScalar</c> animatable props (no surface reload).
 /// WinUI only.
 /// </summary>
-public static class ShellBackdrop
+public static partial class ShellBackdrop
 {
     private const string BlurAmountProperty = "Blur.BlurAmount";
     private const string DimOpacityProperty = "Dim.Opacity";
@@ -52,6 +52,13 @@ public static class ShellBackdrop
         public SpriteVisual? Visual;
         public CompositionEffectBrush? Brush;
         public CompositionBrush? SourceBrush;
+        /// <summary>
+        /// Path the current <see cref="SourceBrush"/> was built for. Shared-surface
+        /// path can update while this slot still holds a brush for the previous
+        /// preset — without this, Petal→Aurora early-returns and paints stale/empty.
+        /// </summary>
+        public string? BoundSourcePath;
+        public bool BoundSourceIsLight;
         public bool IsPreview;
     }
 
@@ -322,16 +329,25 @@ public static class ShellBackdrop
         EnsureSharedSurface(imagePath, light);
 
         var wantSurface = !string.IsNullOrWhiteSpace(imagePath) && _sharedSurface is not null;
-        var surfaceReady = wantSurface
-            && slot.SourceBrush is CompositionSurfaceBrush
-            && _sharedSurfacePath == imagePath;
+        // After EnsureSharedSurface succeeds, _sharedSurfacePath already matches imagePath —
+        // checking it again is redundant (BoundSourcePath + theme are the slot contract).
+        System.Diagnostics.Debug.Assert(
+            !wantSurface
+            || string.Equals(_sharedSurfacePath, imagePath, StringComparison.OrdinalIgnoreCase),
+            "EnsureSharedSurface should leave _sharedSurfacePath matching imagePath when loaded.");
 
-        if (slot.Visual is not null
-            && ReferenceEquals(slot.Host, glass)
-            && ReferenceEquals(_compositor, compositor)
-            && slot.Brush is not null
-            && ((!wantSurface && slot.SourceBrush is CompositionBackdropBrush)
-                || surfaceReady))
+        if (IsSlotReady(
+                hasVisual: slot.Visual is not null,
+                hostMatches: ReferenceEquals(slot.Host, glass),
+                compositorMatches: ReferenceEquals(_compositor, compositor),
+                hasEffectBrush: slot.Brush is not null,
+                wantSurface: wantSurface,
+                hasSurfaceSourceBrush: slot.SourceBrush is CompositionSurfaceBrush,
+                hasBackdropSourceBrush: slot.SourceBrush is CompositionBackdropBrush,
+                boundSourcePath: slot.BoundSourcePath,
+                imagePath: imagePath,
+                boundSourceIsLight: slot.BoundSourceIsLight,
+                light: light))
         {
             SyncBlurVisualSize(slot, glass);
             return;
@@ -352,6 +368,8 @@ public static class ShellBackdrop
 
         slot.Brush = _effectFactory!.CreateBrush();
         slot.SourceBrush = CreateSourceBrush(compositor, imagePath);
+        slot.BoundSourcePath = wantSurface ? imagePath : null;
+        slot.BoundSourceIsLight = light;
         slot.Brush.SetSourceParameter("source", slot.SourceBrush);
         TryInsertColor(slot.Brush, light);
 
@@ -762,9 +780,33 @@ public static class ShellBackdrop
 
     private static void ReleaseSlotResources(GlassSlot slot)
     {
+        // Dispose Composition brushes before dropping refs (theme flip rebuilds the
+        // slot graph; Window.SystemBackdrop must NOT be recreated — see
+        // ShellBackground.ShouldRecreateSystemBackdrop / MainWindow.ApplySystemBackdrop).
+        TryDisposeComposition(slot.Brush);
+        TryDisposeComposition(slot.SourceBrush);
         slot.Visual = null;
         slot.Brush = null;
         slot.SourceBrush = null;
+        slot.BoundSourcePath = null;
+        slot.BoundSourceIsLight = false;
+    }
+
+    private static void TryDisposeComposition(CompositionObject? obj)
+    {
+        if (obj is null)
+        {
+            return;
+        }
+
+        try
+        {
+            obj.Dispose();
+        }
+        catch
+        {
+            // ignore — painted layers must never take down the process
+        }
     }
 
     private static void ReleaseSlot(GlassSlot slot)
