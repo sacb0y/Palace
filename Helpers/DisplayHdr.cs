@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Palace.Helpers;
@@ -147,6 +148,11 @@ public static class DisplayHdr
         }
     }
 
+    /// <summary>
+    /// DebugView only. <see cref="ConditionalAttribute"/> so Release drops
+    /// the call (and argument eval) — e.g. per-present SdrTonemap strings.
+    /// </summary>
+    [Conditional("DEBUG")]
     public static void WriteDebug(string text)
     {
         if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(text))
