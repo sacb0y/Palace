@@ -40,10 +40,12 @@
 
     <Grid PreviewKeyDown="LibraryRoot_PreviewKeyDown">
     <Grid
+        x:Name="GrdLibraryColumns"
         Padding="12,8,12,8"
         ColumnSpacing="12"
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
-        RowSpacing="8">
+        RowSpacing="8"
+        SizeChanged="GrdLibraryColumns_SizeChanged">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -51,9 +53,19 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="340" />
+            <!-- Widths applied in code (LibraryColumnLayout): mosaic ≥560, then shrink tree, then Preview. -->
+            <ColumnDefinition
+                x:Name="ColFolderTree"
+                Width="260"
+                MinWidth="160" />
+            <ColumnDefinition
+                x:Name="ColMosaic"
+                Width="*"
+                MinWidth="560" />
+            <ColumnDefinition
+                x:Name="ColPreview"
+                Width="340"
+                MinWidth="0" />
         </Grid.ColumnDefinitions>
 
         <Grid Grid.ColumnSpan="3" RowSpacing="4">
@@ -1177,8 +1189,10 @@
         </Grid>
 
         <ScrollViewer
+            x:Name="ScrPreviewPane"
             Grid.Row="1"
             Grid.Column="2"
+            AutomationProperties.AutomationId="ScrPreviewPane"
             VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Preview" />

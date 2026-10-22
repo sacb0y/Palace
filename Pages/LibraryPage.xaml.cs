@@ -436,6 +436,35 @@ public sealed partial class LibraryPage : Page
 
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
 
+    /// <summary>
+    /// Protect the mosaic column (≥560 DIP). Shrink tree, then Preview, then
+    /// auto-hide Preview — never steal from the grid. Same floor as the queued
+    /// Preview panel toggle.
+    /// </summary>
+    private void GrdLibraryColumns_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Column defs lay out inside Padding — subtract horizontal pad from ActualWidth.
+        var pad = GrdLibraryColumns.Padding;
+        var contentWidth = Math.Max(0, e.NewSize.Width - pad.Left - pad.Right);
+        ApplyLibraryColumnLayout(contentWidth);
+    }
+
+    private void ApplyLibraryColumnLayout(double contentWidth)
+    {
+        var widths = LibraryColumnLayout.Allocate(contentWidth);
+        ColFolderTree.Width = new GridLength(widths.Tree);
+        ColFolderTree.MinWidth = LibraryColumnLayout.TreeMinWidth;
+        ColMosaic.MinWidth = LibraryColumnLayout.MosaicMinWidth;
+        // Star takes the remainder after fixed tree/preview — remainder is ≥560
+        // whenever Allocate kept preview visible (or hid it to free space).
+        ColMosaic.Width = new GridLength(1, GridUnitType.Star);
+        ColPreview.Width = new GridLength(widths.Preview);
+        ColPreview.MinWidth = 0;
+        ScrPreviewPane.Visibility = widths.PreviewHidden
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
     private void TglSelectMode_Changed(object sender, RoutedEventArgs e)
     {
         var on = (sender as ToggleButton)?.IsChecked == true;
