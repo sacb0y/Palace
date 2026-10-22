@@ -1,23 +1,19 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// 1D maxRGB LUT baked from full-image stats. ExposureEV is <b>not</b> baked into
-/// sample values — callers (CPU or future HLSL) multiply by <c>2^EV</c> before
-/// sampling so a live slider can rebake cheaply or skip rebake entirely.
-/// Cache keys still include ExposureEV so per-EV CPU snapshots can be stored.
+/// 1D maxRGB LUT baked in <b>PQ space</b> (M7). ExposureEV is applied at sample
+/// time (<c>2^EV</c>), not baked — live sliders can reuse one LUT (S2).
 /// </summary>
 public sealed class ToneMapLut
 {
     public required float[] Samples { get; init; }
-    public required float InputMax { get; init; }
+    public required float InputMaxLinear { get; init; }
+    public required float InputMinPq { get; init; }
+    public required float InputMaxPq { get; init; }
     public required ToneMapParams Params { get; init; }
 
     public int Size => Samples.Length;
 
-    /// <summary>
-    /// Bake the curve with <see cref="ToneMapParams.ExposureEv"/> forced to 0
-    /// for the scalar map; domain covers <c>Lc</c> (and a little headroom).
-    /// </summary>
     public static ToneMapLut Bake(in ToneMapParams p, int size = 256)
     {
         if (size < 2)
@@ -25,27 +21,31 @@ public sealed class ToneMapLut
             throw new ArgumentOutOfRangeException(nameof(size));
         }
 
-        // Curve itself ignores EV; domain uses Lc. Extra headroom so +EV samples
-        // still interpolate before Mobius soft-clip.
-        var domain = Math.Max(p.Stats.Lc * 4f, 4f);
+        // Domain past Lc so +EV still interpolates (roll-off, not hard clip).
+        var domainLinear = Math.Max(p.Stats.Lc * 16f, 16f);
+        var minPq = ColorMath.NitsToPq(0f);
+        var maxPq = ColorMath.NitsToPq(domainLinear * ImagingConstants.RefWhiteNits);
         var curveParams = p with { ExposureEv = 0f };
         var samples = new float[size];
         for (var i = 0; i < size; i++)
         {
             var t = i / (float)(size - 1);
-            var x = t * domain;
-            samples[i] = ToneMapper.MapScalar(x, in curveParams);
+            var pq = minPq + ((maxPq - minPq) * t);
+            var linear = ColorMath.PqToNits(pq) / ImagingConstants.RefWhiteNits;
+            samples[i] = ToneMapper.MapScalar(linear, in curveParams);
         }
 
         return new ToneMapLut
         {
             Samples = samples,
-            InputMax = domain,
+            InputMaxLinear = domainLinear,
+            InputMinPq = minPq,
+            InputMaxPq = maxPq,
             Params = p,
         };
     }
 
-    /// <summary>Sample LUT for a post-exposure maxRGB value.</summary>
+    /// <summary>Sample LUT for a post-exposure maxRGB value (PQ interpolation).</summary>
     public float Sample(float postExposureMaxRgb)
     {
         if (postExposureMaxRgb <= 0f)
@@ -53,7 +53,8 @@ public sealed class ToneMapLut
             return 0f;
         }
 
-        var t = Math.Clamp(postExposureMaxRgb / InputMax, 0f, 1f);
+        var pq = ColorMath.NitsToPq(postExposureMaxRgb * ImagingConstants.RefWhiteNits);
+        var t = Math.Clamp((pq - InputMinPq) / Math.Max(InputMaxPq - InputMinPq, 1e-8f), 0f, 1f);
         var idx = t * (Size - 1);
         var i0 = (int)MathF.Floor(idx);
         var i1 = Math.Min(Size - 1, i0 + 1);
@@ -61,9 +62,6 @@ public sealed class ToneMapLut
         return (Samples[i0] * (1f - f)) + (Samples[i1] * f);
     }
 
-    /// <summary>
-    /// Apply <c>2^EV</c> then LUT (maxRGB + ratio preserve + gamut).
-    /// </summary>
     public void MapPixel(float r, float g, float b, out float or, out float og, out float ob)
     {
         var gain = Params.ExposureGain;
@@ -87,6 +85,6 @@ public sealed class ToneMapLut
             ? Params.Display.Ld
             : Math.Max(Params.Display.PeakNormalized, 1e-6f);
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
-        GamutMap.MobiusSoftClip(ref or, ref og, ref ob, ld);
+        GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
     }
 }

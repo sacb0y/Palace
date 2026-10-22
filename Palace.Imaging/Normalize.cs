@@ -6,10 +6,6 @@ namespace Palace.Imaging;
 /// </summary>
 public static class Normalize
 {
-    /// <summary>
-    /// Convert interleaved RGBA (encoded per <paramref name="options"/>) in place
-    /// into a new normalized buffer. Alpha is sanitized and clamped to [0,1].
-    /// </summary>
     public static NormalizedFrame Run(
         ReadOnlySpan<float> rgba,
         int width,
@@ -24,8 +20,20 @@ public static class Normalize
 
         var output = new float[count * 4];
         var clipHits = 0;
-        var encodedMax = options.Transfer is TransferKind.Pq or TransferKind.Hlg or TransferKind.Sdr;
         var eps = ImagingConstants.EncodedMaxEpsilon;
+
+        // Mastering / encoded peak for clip detection.
+        float? clipCeil = options.Transfer switch
+        {
+            TransferKind.Pq or TransferKind.Hlg or TransferKind.Sdr => 1f,
+            TransferKind.Scrgb => options.MetadataPeakNits is > 0f
+                ? options.MetadataPeakNits.Value / ImagingConstants.ScrgbNits
+                : null,
+            TransferKind.LinearScene => options.MetadataPeakNits is > 0f
+                ? options.MetadataPeakNits.Value / Math.Max(options.EffectiveWhiteNits, 1e-6f)
+                : null,
+            _ => null
+        };
 
         for (var i = 0; i < count; i++)
         {
@@ -35,10 +43,7 @@ public static class Normalize
             var eb = ColorMath.Sanitize(rgba[o + 2]);
             var ea = Math.Clamp(ColorMath.Sanitize(rgba[o + 3]), 0f, 1f);
 
-            if (encodedMax &&
-                er >= 1f - eps &&
-                eg >= 1f - eps &&
-                eb >= 1f - eps)
+            if (IsSourceClipSample(er, eg, eb, options.Transfer, clipCeil, eps))
             {
                 clipHits++;
             }
@@ -64,7 +69,6 @@ public static class Normalize
         };
     }
 
-    /// <summary>Single-pixel normalize (tests / LUT probes).</summary>
     public static void Pixel(
         float er,
         float eg,
@@ -85,6 +89,28 @@ public static class Normalize
         ClampNegLuminance(ref r, ref g, ref b);
     }
 
+    private static bool IsSourceClipSample(
+        float er,
+        float eg,
+        float eb,
+        TransferKind transfer,
+        float? clipCeil,
+        float eps)
+    {
+        if (transfer is TransferKind.Pq or TransferKind.Hlg or TransferKind.Sdr)
+        {
+            return er >= 1f - eps && eg >= 1f - eps && eb >= 1f - eps;
+        }
+
+        if (clipCeil is not > 0f)
+        {
+            return false;
+        }
+
+        var c = clipCeil.Value;
+        return er >= c * (1f - eps) && eg >= c * (1f - eps) && eb >= c * (1f - eps);
+    }
+
     private static void ToWorking(
         float er,
         float eg,
@@ -94,13 +120,14 @@ public static class Normalize
         out float g,
         out float b)
     {
-        var scale = 1f / ImagingConstants.RefWhiteNits;
+        var inv203 = 1f / ImagingConstants.RefWhiteNits;
         switch (options.Transfer)
         {
             case TransferKind.Pq:
-                r = ColorMath.PqEotf(er) * ColorMath.PqPeakNits * scale;
-                g = ColorMath.PqEotf(eg) * ColorMath.PqPeakNits * scale;
-                b = ColorMath.PqEotf(eb) * ColorMath.PqPeakNits * scale;
+                r = ColorMath.PqEotf(er) * ColorMath.PqPeakNits * inv203;
+                g = ColorMath.PqEotf(eg) * ColorMath.PqPeakNits * inv203;
+                b = ColorMath.PqEotf(eb) * ColorMath.PqPeakNits * inv203;
+                // PQ masters are BT.2020.
                 return;
 
             case TransferKind.Hlg:
@@ -109,38 +136,41 @@ public static class Normalize
                 var sg = ColorMath.HlgEotf(eg);
                 var sb = ColorMath.HlgEotf(eb);
                 ColorMath.HlgOotfRgb(sr, sg, sb, out var nr, out var ng, out var nb);
-                r = nr * scale;
-                g = ng * scale;
-                b = nb * scale;
+                r = nr * inv203;
+                g = ng * inv203;
+                b = nb * inv203;
                 return;
             }
 
             case TransferKind.Scrgb:
-                // Windows scRGB: 1.0 = 80 nits → working 1.0 = 203.
-                r = er * ImagingConstants.ScrgbNits * scale;
-                g = eg * ImagingConstants.ScrgbNits * scale;
-                b = eb * ImagingConstants.ScrgbNits * scale;
+                // Windows scRGB is BT.709 primaries, 1.0 = 80 nits.
+                r = er * ImagingConstants.ScrgbNits * inv203;
+                g = eg * ImagingConstants.ScrgbNits * inv203;
+                b = eb * ImagingConstants.ScrgbNits * inv203;
+                Primaries.ToBt2020(r, g, b, ColorPrimaries.Bt709, out r, out g, out b);
                 return;
 
             case TransferKind.LinearScene:
             {
-                var w = Math.Max(options.EffectiveExrWhite, 1e-6f);
-                r = er / w;
-                g = eg / w;
-                b = eb / w;
+                // x * whiteLuminance / 203 (whiteLuminance in nits).
+                var w = Math.Max(options.EffectiveWhiteNits, 1e-6f);
+                r = er * w * inv203;
+                g = eg * w * inv203;
+                b = eb * w * inv203;
+                Primaries.ToBt2020(r, g, b, options.Primaries, out r, out g, out b);
                 return;
             }
 
             default:
-                // SDR: linearize; encoded 1.0 → working 1.0 (ref white).
+                // SDR sRGB / BT.709.
                 r = ColorMath.SrgbEotf(er);
                 g = ColorMath.SrgbEotf(eg);
                 b = ColorMath.SrgbEotf(eb);
+                Primaries.ToBt2020(r, g, b, ColorPrimaries.Bt709, out r, out g, out b);
                 return;
         }
     }
 
-    /// <summary>Clamp negative CIE Y toward black while keeping hue ratios.</summary>
     private static void ClampNegLuminance(ref float r, ref float g, ref float b)
     {
         var y = ImagingConstants.Bt2020Y(r, g, b);
@@ -149,7 +179,6 @@ public static class Normalize
             return;
         }
 
-        // Scale toward zero so Y becomes 0; if all channels negative, black.
         var peak = Math.Max(Math.Abs(r), Math.Max(Math.Abs(g), Math.Abs(b)));
         if (peak < 1e-12f)
         {
@@ -157,7 +186,6 @@ public static class Normalize
             return;
         }
 
-        // Push negative-Y RGB onto the Y=0 plane by adding a white lift.
         var lift = -y;
         r += lift;
         g += lift;

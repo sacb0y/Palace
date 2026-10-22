@@ -8,26 +8,39 @@ public readonly record struct DisplayTarget(
     float SdrWhiteNits,
     bool IsHdrOutput)
 {
-    /// <summary>Typical SDR panel: 80-nit composition white, peak = white.</summary>
     public static DisplayTarget Sdr80 { get; } = new(80f, 80f, IsHdrOutput: false);
 
-    /// <summary>SDR with BT.2408 paper white as the map target.</summary>
     public static DisplayTarget Sdr203 { get; } = new(203f, 203f, IsHdrOutput: false);
 
-    /// <summary>HDR display at <paramref name="peakNits"/> with 203-nit paper white.</summary>
     public static DisplayTarget Hdr(float peakNits, float sdrWhiteNits = ImagingConstants.RefWhiteNits) =>
         new(peakNits, sdrWhiteNits, IsHdrOutput: true);
 
-    /// <summary>Display peak in working-space units (÷ 203).</summary>
     public float PeakNormalized => PeakNits / ImagingConstants.RefWhiteNits;
 
-    /// <summary>SDR / paper white in working-space units (÷ 203).</summary>
     public float SdrWhiteNormalized => SdrWhiteNits / ImagingConstants.RefWhiteNits;
 
     /// <summary>
-    /// BT.2390 <c>Ld</c> = display peak / SDR white (unitless ratio in nits).
+    /// BT.2390 display limit in working-space units:
+    /// <c>peakNits / RefWhiteNits</c> (absolute working peak), used with Lc.
+    /// Spec Ld ratio <c>peak/SDR white</c> is <see cref="LdRatio"/>.
     /// </summary>
-    public float Ld => PeakNits / Math.Max(SdrWhiteNits, 1e-3f);
+    public float Ld => PeakNormalized;
 
-    public int DisplayHash => HashCode.Combine(PeakNits, SdrWhiteNits, IsHdrOutput);
+    /// <summary>Spec-style Ld = peak / SDR white (nits ratio).</summary>
+    public float LdRatio => PeakNits / Math.Max(SdrWhiteNits, 1e-3f);
+
+    /// <summary>
+    /// Stable content hash for cache keys (S6 — do not use randomized
+    /// per-process hashes; this is deterministic from the floats).
+    /// </summary>
+    public int ContentHash
+    {
+        get
+        {
+            // Quantize to avoid float bit noise across rebuilds.
+            var p = (int)MathF.Round(PeakNits * 100f);
+            var s = (int)MathF.Round(SdrWhiteNits * 100f);
+            return HashCode.Combine(p, s, IsHdrOutput ? 1 : 0);
+        }
+    }
 }

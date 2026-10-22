@@ -1,13 +1,13 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Synthetic master → encoded transfer buffers for cross-format normalize tests.
-/// Real JXL/AVIF/PNG/JXR/EXR file bytes arrive with P2 decoders; P1 checks the
-/// linear working-space contract from encoded float stand-ins.
+/// Synthetic master → encoded transfer buffers for normalize tests.
+/// Checked-in multi-format binaries live under
+/// <c>Palace.Tests/Fixtures/imaging/</c> (Radiance + float dumps of one master).
 /// </summary>
 public static class FixtureMaster
 {
-    /// <summary>Mid-grey ≈ 0.18, ref white 1.0, and a 4× highlight (working space).</summary>
+    /// <summary>Mid-grey ≈ 0.18, ref white 1.0, 4× highlight, warm patch (BT.2020 working).</summary>
     public static float[] WorkingMasterRgba { get; } =
     [
         0.18f, 0.18f, 0.18f, 1f,
@@ -54,36 +54,52 @@ public static class FixtureMaster
                 return;
 
             case TransferKind.Hlg:
-            {
-                // Approximate inverse of OOTF+EOTF for greys; chromatic samples are
-                // best-effort for round-trip tolerance tests.
                 InverseHlgApprox(wr, wg, wb, out er, out eg, out eb);
                 return;
-            }
 
             case TransferKind.Scrgb:
-                er = wr * ImagingConstants.RefWhiteNits / ImagingConstants.ScrgbNits;
-                eg = wg * ImagingConstants.RefWhiteNits / ImagingConstants.ScrgbNits;
-                eb = wb * ImagingConstants.RefWhiteNits / ImagingConstants.ScrgbNits;
+                // Working BT.2020 → BT.709 scRGB for encode stand-in.
+                Bt2020ToBt709(wr, wg, wb, out var r709, out var g709, out var b709);
+                er = r709 * ImagingConstants.RefWhiteNits / ImagingConstants.ScrgbNits;
+                eg = g709 * ImagingConstants.RefWhiteNits / ImagingConstants.ScrgbNits;
+                eb = b709 * ImagingConstants.RefWhiteNits / ImagingConstants.ScrgbNits;
                 return;
 
             case TransferKind.LinearScene:
-                er = wr * exrRefWhite;
-                eg = wg * exrRefWhite;
-                eb = wb * exrRefWhite;
+                // Inverse of x * ExrRefWhite / 203 with Bt709→2020 on normalize:
+                // store BT.709 scene-linear so round-trip lands on working.
+                Bt2020ToBt709(wr, wg, wb, out var sr, out var sg, out var sb);
+                var inv = ImagingConstants.RefWhiteNits / Math.Max(exrRefWhite, 1e-6f);
+                er = sr * inv;
+                eg = sg * inv;
+                eb = sb * inv;
                 return;
 
             default:
-                er = ColorMath.SrgbOetf(Math.Clamp(wr, 0f, 1f));
-                eg = ColorMath.SrgbOetf(Math.Clamp(wg, 0f, 1f));
-                eb = ColorMath.SrgbOetf(Math.Clamp(wb, 0f, 1f));
+                Bt2020ToBt709(wr, wg, wb, out var dr, out var dg, out var db);
+                er = ColorMath.SrgbOetf(Math.Clamp(dr, 0f, 1f));
+                eg = ColorMath.SrgbOetf(Math.Clamp(dg, 0f, 1f));
+                eb = ColorMath.SrgbOetf(Math.Clamp(db, 0f, 1f));
                 return;
         }
     }
 
-    /// <summary>
-    /// Grey-oriented HLG inverse: undo OOTF (Y^γ * 1000) then OETF.
-    /// </summary>
+    public static NormalizeOptions OptionsFor(TransferKind transfer) =>
+        transfer switch
+        {
+            TransferKind.Pq or TransferKind.Hlg => new NormalizeOptions(transfer, ColorPrimaries.Bt2020),
+            TransferKind.LinearScene => new NormalizeOptions(transfer, ColorPrimaries.Bt709),
+            _ => new NormalizeOptions(transfer, ColorPrimaries.Bt709),
+        };
+
+    private static void Bt2020ToBt709(float r, float g, float b, out float or, out float og, out float ob)
+    {
+        // Inverse of Primaries.ToBt2020(Bt709).
+        or = (1.6604910f * r) + (-0.5876411f * g) + (-0.0728499f * b);
+        og = (-0.1245505f * r) + (1.1328999f * g) + (-0.0083494f * b);
+        ob = (-0.0181508f * r) + (-0.1005789f * g) + (1.1187297f * b);
+    }
+
     private static void InverseHlgApprox(
         float wr, float wg, float wb,
         out float er, out float eg, out float eb)
@@ -98,17 +114,10 @@ public static class FixtureMaster
             return;
         }
 
-        // Y_disp = Y_scene^γ * 1000 → Y_scene = (Y_disp/1000)^(1/γ)
         var yScene = MathF.Pow(yDisp / ColorMath.HlgPeakNits, 1f / ColorMath.HlgOotfGamma);
-        var k = yScene / (yDisp / ColorMath.HlgPeakNits); // scene / (nits/1000)
-        // nits = scene * Y_scene^(γ-1) * 1000 → scene = nits / (Y_scene^(γ-1)*1000)
         var denom = MathF.Pow(yScene, ColorMath.HlgOotfGamma - 1f) * ColorMath.HlgPeakNits;
-        var sr = nitsR / denom;
-        var sg = nitsG / denom;
-        var sb = nitsB / denom;
-        _ = k;
-        er = ColorMath.HlgOetf(sr);
-        eg = ColorMath.HlgOetf(sg);
-        eb = ColorMath.HlgOetf(sb);
+        er = ColorMath.HlgOetf(nitsR / denom);
+        eg = ColorMath.HlgOetf(nitsG / denom);
+        eb = ColorMath.HlgOetf(nitsB / denom);
     }
 }

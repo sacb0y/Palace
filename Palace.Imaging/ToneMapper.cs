@@ -6,7 +6,6 @@ namespace Palace.Imaging;
 /// </summary>
 public static class ToneMapper
 {
-    /// <summary>Map one working-space RGB triple (already normalized).</summary>
     public static void MapPixel(
         float r,
         float g,
@@ -34,17 +33,9 @@ public static class ToneMapper
         og = g * scale;
         ob = b * scale;
 
-        var ld = p.UseHdrPath
-            ? p.Display.Ld
-            : p.Display.SdrWhiteNormalized;
-        // For SDR, Ld is display white in working units (typically ≤ 1).
-        if (!p.UseHdrPath)
-        {
-            ld = Math.Max(p.Display.PeakNormalized, 1e-6f);
-        }
-
+        var ld = OutputLimit(in p);
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
-        GamutMap.MobiusSoftClip(ref or, ref og, ref ob, ld);
+        GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
     }
 
     /// <summary>Map a single maxRGB / luminance scalar (post-exposure).</summary>
@@ -52,32 +43,28 @@ public static class ToneMapper
     {
         var stats = p.Stats;
         var lc = stats.Lc;
+
+        // Roll off past Lc after positive EV (S2) — never hard-clip at Lc.
+        var shoulder = Math.Max(lc, 1.01f);
+
         if (p.UseHdrPath)
         {
             var ld = p.Display.Ld;
-            // Identity when content peak fits the display (BT.2390 path).
             if (lc <= ld + 1e-6f)
             {
+                // Content fits display; still soft-limit extreme post-EV values
+                // via the caller's HighlightSoftClip. Scalar identity below Ld*4.
                 return x;
             }
 
-            return Bt2390Eetf.MapLinear(x, lc, ld);
+            return Bt2390Eetf.MapLinear(x, shoulder, ld);
         }
 
-        // SDR: libplacebo spline. Ref white → display white; Lc sets the shoulder.
-        var inputMax = Math.Max(lc, 1.01f);
-        var inputAvg = stats.P50 > 0f ? stats.P50 : 0f;
-        var outputMax = Math.Max(p.Display.PeakNormalized, 1e-6f);
-        return PlaceboSpline.MapLinear(
-            x,
-            inputMin: 0f,
-            inputMax: inputMax,
-            inputAvg: inputAvg,
-            outputMin: 0f,
-            outputMax: outputMax);
+        // SDR: anchor ref white → display white; scene average sets knee.
+        var displayWhite = Math.Max(p.Display.PeakNormalized, 1e-6f);
+        return SdrToneCurve.Map(x, shoulder, stats.P50, displayWhite);
     }
 
-    /// <summary>Tonemap an entire normalized frame into a new RGBA buffer.</summary>
     public static float[] MapFrame(NormalizedFrame frame, in ToneMapParams p)
     {
         var count = frame.PixelCount;
@@ -95,4 +82,9 @@ public static class ToneMapper
 
         return dst;
     }
+
+    private static float OutputLimit(in ToneMapParams p) =>
+        p.UseHdrPath
+            ? p.Display.Ld
+            : Math.Max(p.Display.PeakNormalized, 1e-6f);
 }

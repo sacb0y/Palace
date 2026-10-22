@@ -2,7 +2,7 @@ namespace Palace.Imaging;
 
 /// <summary>
 /// Transfer functions and PQ↔nits rescale used by Normalize / ToneMap.
-/// PQ math matches Rec. ITU-R BT.2100-2 Table 4 (ST 2084).
+/// PQ math matches Rec. ITU-R BT.2100 (ST 2084) coefficients.
 /// </summary>
 public static class ColorMath
 {
@@ -13,9 +13,18 @@ public static class ColorMath
     public static float Sanitize(float v) =>
         float.IsFinite(v) ? v : 0f;
 
+    /// <summary>
+    /// Hermite smoothstep. If edges are reversed, they are swapped so the
+    /// blend still rises with <paramref name="x"/> (never a hard step).
+    /// </summary>
     public static float Smoothstep(float edge0, float edge1, float x)
     {
-        if (edge0 >= edge1)
+        if (edge0 > edge1)
+        {
+            (edge0, edge1) = (edge1, edge0);
+        }
+
+        if (Math.Abs(edge1 - edge0) < 1e-12f)
         {
             return x < edge0 ? 0f : 1f;
         }
@@ -78,7 +87,6 @@ public static class ColorMath
     public static float PqToNits(float pq) =>
         PqEotf(pq) * PqPeakNits;
 
-    /// <summary>BT.2100 HLG inverse OETF (encoded → scene-linear).</summary>
     public static float HlgEotf(float v)
     {
         const double a = 0.17883277;
@@ -93,7 +101,6 @@ public static class ColorMath
         return (float)((Math.Exp((v - c) / a) + b) / 12.0);
     }
 
-    /// <summary>BT.2100 HLG OETF (scene-linear → encoded).</summary>
     public static float HlgOetf(float scene)
     {
         const double a = 0.17883277;
@@ -108,9 +115,6 @@ public static class ColorMath
         return (float)(a * Math.Log((12.0 * scene) - b) + c);
     }
 
-    /// <summary>
-    /// BT.2100 HLG OOTF on RGB (luminance-based γ=1.2, Lw=1000 nits) → display nits.
-    /// </summary>
     public static void HlgOotfRgb(
         float sceneR,
         float sceneG,
@@ -131,9 +135,4 @@ public static class ColorMath
         nitsG = sceneG * k;
         nitsB = sceneB * k;
     }
-
-    /// <summary>libplacebo-style PQ↔nits rescale (absolute PQ 0..1 ↔ nits).</summary>
-    public static float HdrRescalePqToNits(float pq) => PqToNits(pq);
-
-    public static float HdrRescaleNitsToPq(float nits) => NitsToPq(nits);
 }

@@ -1,7 +1,8 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Highlight desaturation + perceptual Mobius soft-clip at constant Y.
+/// Highlight desaturation + Palace rational soft-clip at constant Y
+/// (<see cref="HighlightSoftClip"/>).
 /// </summary>
 public static class GamutMap
 {
@@ -30,10 +31,12 @@ public static class GamutMap
     }
 
     /// <summary>
-    /// Soft-clip RGB into [0, <paramref name="peak"/>] with a Mobius shoulder
-    /// while approximately preserving BT.2020 Y.
+    /// Soft-clip RGB into [0, <paramref name="peak"/>] with a rational shoulder
+    /// (linear below 0.8·peak, then <c>knee + j·t/(t+j)</c>) while restoring
+    /// BT.2020 Y. Not a third-party “Mobius tonemapper” port — Palace highlight
+    /// gamut compression only.
     /// </summary>
-    public static void MobiusSoftClip(ref float r, ref float g, ref float b, float peak)
+    public static void HighlightSoftClip(ref float r, ref float g, ref float b, float peak)
     {
         if (peak <= 0f)
         {
@@ -42,14 +45,13 @@ public static class GamutMap
         }
 
         var y0 = ImagingConstants.Bt2020Y(r, g, b);
-        r = MobiusChannel(r, peak);
-        g = MobiusChannel(g, peak);
-        b = MobiusChannel(b, peak);
+        r = SoftClipChannel(r, peak);
+        g = SoftClipChannel(g, peak);
+        b = SoftClipChannel(b, peak);
 
         var y1 = ImagingConstants.Bt2020Y(r, g, b);
         if (y1 > 1e-8f && Math.Abs(y1 - y0) > 1e-6f && y0 > 0f)
         {
-            // Restore luminance; re-clip if needed.
             var k = y0 / y1;
             r *= k;
             g *= k;
@@ -65,10 +67,8 @@ public static class GamutMap
         }
     }
 
-    /// <summary>
-    /// Möbius roll-off: linear below 0.8·peak, then <c>(ax+b)/(cx+d)</c> to peak.
-    /// </summary>
-    public static float MobiusChannel(float x, float peak)
+    /// <summary>Per-channel rational shoulder; derivative 1 at the knee.</summary>
+    public static float SoftClipChannel(float x, float peak)
     {
         if (x <= 0f)
         {
@@ -81,9 +81,6 @@ public static class GamutMap
             return x;
         }
 
-        // Map [knee, +∞) → [knee, peak) with derivative 1 at knee.
-        // Q(t) = knee + (peak-knee) * t / (t + j) where t = x - knee,
-        // choose j so Q'(0) = 1 → j = peak - knee.
         var t = x - knee;
         var j = peak - knee;
         return knee + ((j * t) / (t + j));

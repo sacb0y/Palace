@@ -6,37 +6,39 @@ namespace Palace.Imaging;
 /// </summary>
 public static class ImagingConstants
 {
-    /// <summary>BT.2408 reference / paper white (nits). Working-space 1.0.</summary>
+    /// <summary>
+    /// Report ITU-R BT.2408 reference / paper white (cd/m²). Working-space 1.0.
+    /// (Confirm § against the current BT.2408 PDF before tightening citations.)
+    /// </summary>
     public const float RefWhiteNits = 203f;
 
     /// <summary>scRGB / DXGI composition white (nits). Used for JXR scRGB scale.</summary>
     public const float ScrgbNits = 80f;
 
     /// <summary>
-    /// Default relative white for OpenEXR / Radiance when
-    /// <c>whiteLuminance</c> is absent. Tune after measuring Pragmata
-    /// EXR / <c>.hdr</c> / JXR ratios so they match.
+    /// Default <c>whiteLuminance</c>-like scale (nits) for OpenEXR / Radiance when
+    /// metadata is absent. Normalize does <c>x * ExrRefWhite / 203</c>, so
+    /// <b>203</b> keeps relative 1.0 → working 1.0.
+    /// <para>
+    /// Pragmata EXR / <c>.hdr</c> / JXR pixel-ratio measurement is pending
+    /// (files not in-repo yet). When measured, replace this constant and record
+    /// the ratios in <c>docs/hdr-sdr-tuning.md</c> / store plan.
+    /// Provisional: relative EXR 1.0 ≡ BT.2408 paper white → 203.
+    /// </para>
     /// </summary>
-    public const float ExrRefWhite = 1.0f;
+    public const float ExrRefWhite = 203f;
 
-    /// <summary>Fraction of pixels at encoded max that flags source-clipped.</summary>
+    /// <summary>Fraction of pixels at encoded/mastering max that flags source-clipped.</summary>
     public const float SourceClipFraction = 0.005f;
 
-    /// <summary>Encoded-max epsilon for source-clip detection (0..1 transfers).</summary>
+    /// <summary>Encoded-max epsilon for 0..1 transfers.</summary>
     public const float EncodedMaxEpsilon = 1e-3f;
 
     /// <summary>
     /// Pipeline version baked into LUT cache keys. Bump when Normalize /
     /// Analyze / ToneMap math changes incompatibly.
     /// </summary>
-    public const int PipelineVersion = 1;
-
-    /// <summary>
-    /// libplacebo commit pinned for the SDR spline
-    /// (<c>st2094_pick_knee</c> + hyperbolic segments). LGPL-2.1+;
-    /// see <c>THIRD_PARTY.md</c>.
-    /// </summary>
-    public const string LibplaceboCommit = "02d7e35e";
+    public const int PipelineVersion = 2;
 
     // BT.2020 non-constant luminance Y (Rec. ITU-R BT.2020-2 Table 4).
     public const float Bt2020Yr = 0.2627f;

@@ -182,6 +182,7 @@
   <ItemGroup>
     <None Include="Fixtures\exr\*.exr" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Fixtures\jxl\*.jxl" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\imaging\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Native\openexr\win-x64\palace_exr.dll" Link="palace_exr.dll" CopyToOutputDirectory="PreserveNewest" Condition="'$(OS)' == 'Windows_NT'" />
   </ItemGroup>
 

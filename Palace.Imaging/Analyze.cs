@@ -1,13 +1,14 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Full-resolution luminance / maxRGB stats. Run once on normalized data.
-/// ExposureEV must not re-run this or move <see cref="ImageStats.Lc"/>.
+/// Full-resolution luminance / maxRGB stats via a luminance histogram
+/// (no full-buffer sort). ExposureEV must not re-run this or move Lc.
 /// </summary>
 public static class Analyze
 {
     public const float PercentileP50 = 0.50f;
     public const float PercentileP99995 = 0.99995f;
+    public const int HistogramBins = 4096;
 
     public static ImageStats Run(NormalizedFrame frame, float refWhite = 1f)
     {
@@ -18,7 +19,6 @@ public static class Analyze
             return new ImageStats(0, 0, 0, 0, Math.Max(1f, refWhite), refWhite, frame.MetadataPeakNits, false, 0);
         }
 
-        var luma = new float[count];
         var max = 0f;
         var maxRgb = 0f;
         for (var i = 0; i < count; i++)
@@ -28,7 +28,6 @@ public static class Analyze
             var g = rgba[o + 1];
             var b = rgba[o + 2];
             var y = Math.Max(0f, ImagingConstants.Bt2020Y(r, g, b));
-            luma[i] = y;
             if (y > max)
             {
                 max = y;
@@ -41,9 +40,18 @@ public static class Analyze
             }
         }
 
-        Array.Sort(luma);
-        var p50 = PercentileSorted(luma, PercentileP50);
-        var p99995 = PercentileSorted(luma, PercentileP99995);
+        var histMax = Math.Max(max, 1e-6f);
+        var hist = new int[HistogramBins];
+        for (var i = 0; i < count; i++)
+        {
+            var o = i * 4;
+            var y = Math.Max(0f, ImagingConstants.Bt2020Y(rgba[o], rgba[o + 1], rgba[o + 2]));
+            var bin = (int)Math.Clamp((y / histMax) * (HistogramBins - 1), 0, HistogramBins - 1);
+            hist[bin]++;
+        }
+
+        var p50 = PercentileFromHistogram(hist, count, histMax, PercentileP50);
+        var p99995 = PercentileFromHistogram(hist, count, histMax, PercentileP99995);
 
         var metaNorm = frame.MetadataPeakNits is > 0f
             ? frame.MetadataPeakNits.Value / ImagingConstants.RefWhiteNits
@@ -51,6 +59,12 @@ public static class Analyze
 
         var lo = Math.Max(1f, Math.Max(2f * p50, refWhite));
         var hi = metaNorm ?? Math.Max(lo, Math.Max(p99995, max));
+        // M6: Math.Clamp throws when lo > hi — coerce range first.
+        if (hi < lo)
+        {
+            hi = lo;
+        }
+
         var lc = Math.Clamp(p99995, lo, hi);
 
         return new ImageStats(
@@ -65,24 +79,25 @@ public static class Analyze
             frame.SourceClipRatio);
     }
 
-    public static float PercentileSorted(ReadOnlySpan<float> sortedAscending, float fraction)
+    public static float PercentileFromHistogram(ReadOnlySpan<int> hist, int total, float histMax, float fraction)
     {
-        var n = sortedAscending.Length;
-        if (n == 0)
+        if (total <= 0)
         {
             return 0f;
         }
 
         fraction = Math.Clamp(fraction, 0f, 1f);
-        if (n == 1)
+        var target = fraction * (total - 1);
+        var accum = 0;
+        for (var i = 0; i < hist.Length; i++)
         {
-            return sortedAscending[0];
+            accum += hist[i];
+            if (accum > target)
+            {
+                return (i / (float)(hist.Length - 1)) * histMax;
+            }
         }
 
-        var idx = fraction * (n - 1);
-        var i0 = (int)MathF.Floor(idx);
-        var i1 = Math.Min(n - 1, i0 + 1);
-        var t = idx - i0;
-        return (sortedAscending[i0] * (1f - t)) + (sortedAscending[i1] * t);
+        return histMax;
     }
 }
