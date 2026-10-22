@@ -1,21 +1,21 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Palace SDR tone curve. Scene average (P50) sets the knee (0.5–0.7× ref white).
-/// When content fits (Lc ≈ 1), working 1.0 anchors to display white. When Lc &gt; 1,
-/// paper white sits slightly below display white so a real shoulder can rise and
-/// reach <b>display white exactly at Lc</b> (P1). Soft-clip after MapPixel is only
-/// a safety net — the curve never relies on headroom above display white.
+/// Palace SDR tone curve (v2). Ref white (working 1.0) maps to
+/// <b>display white for every Lc</b>. Scene average (P50) sets the knee
+/// (0.5–0.7× ref white). The Hermite shoulder covers <b>1..Lc only</b>, rising
+/// from display white to a small headroom at Lc so highlights stay ordered;
+/// soft-clip after MapPixel is only a safety net above that headroom.
 /// </summary>
 public static class SdrToneCurve
 {
     public const float DefaultKneeFraction = 0.6f;
 
     /// <summary>
-    /// When Lc &gt; 1, fraction of display white used for working-space 1.0 so the
-    /// shoulder has room to reach display white at Lc.
+    /// Output at Lc as a multiple of display white (shoulder headroom above
+    /// white — not a paper-white dim). Soft-clip safety uses the same factor.
     /// </summary>
-    public const float PaperWhiteWhenHdr = 0.90f;
+    public const float HighlightHeadroom = 1.12f;
 
     /// <summary>
     /// Map post-exposure working-space maxRGB to display-referred linear
@@ -34,9 +34,9 @@ public static class SdrToneCurve
             ? Math.Clamp(sceneAvg, 0.5f, 0.7f)
             : DefaultKneeFraction;
         var peak = Math.Max(lc, Math.Max(1.01f, kneeIn + 0.05f));
-        // P1: display white exactly at Lc — no headroom above w.
-        var peakOut = w;
-        var whiteOut = peak > 1.01f + 1e-4f ? w * PaperWhiteWhenHdr : w;
+        // v2 / Q1: ref white → display white for every Lc (no paper dim step).
+        var whiteOut = w;
+        var peakOut = w * HighlightHeadroom;
         var kneeOut = kneeIn * whiteOut;
         var midSlope = whiteOut;
         var whiteSlope = 0.35f * whiteOut;
@@ -56,7 +56,7 @@ public static class SdrToneCurve
             return peakOut;
         }
 
-        // Shoulder ref white → Lc: whiteOut → display white. Monotonic slopes.
+        // Shoulder 1..Lc only: display white → headroom (strictly increasing).
         var dx = peak - 1f;
         var secant = (peakOut - whiteOut) / Math.Max(dx, 1e-6f);
         var m0 = Math.Min(whiteSlope, 1.5f * secant);

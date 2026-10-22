@@ -35,9 +35,12 @@ public static class ToneMapper
         ob = b * scale;
 
         var ld = OutputLimit(in p);
+        // N2 / P7: desat vs Ld — with the curve ending near display white,
+        // peak rarely exceeds Ld, so desat currently never engages (P7).
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
-        // Safety net only — curve already ends at display white (P1).
-        GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
+        // Safety net above shoulder headroom (not at Ld — that flattened P1).
+        var clipPeak = p.UseHdrPath ? ld : ld * SdrToneCurve.HighlightHeadroom;
+        GamutMap.HighlightSoftClip(ref or, ref og, ref ob, clipPeak);
     }
 
     /// <summary>

@@ -15,37 +15,56 @@ public class ImagingToneMapTests
     private static ImageStats StatsLc(float lc, float p50 = 0.55f) =>
         new(p50, lc, lc, lc, lc, 1f, null, false, 0);
 
-    [Fact]
-    public void RefWhite_AnchorsToDisplayWhite_WhenContentFits()
+    public static TheoryData<float> AnchorLcValues => new() { 1.01f, 1.5f, 4f, 59.2f };
+
+    /// <summary>Q1 / v2: ref white → display white for every Lc (Sdr203).</summary>
+    [Theory]
+    [MemberData(nameof(AnchorLcValues))]
+    public void RefWhite_AnchorsToDisplayWhite_AllLc(float lc)
     {
-        // Anchor holds when Lc ≈ 1 (no HDR shoulder room needed).
-        var stats = StatsLc(1.01f, p50: 0.5f);
-        var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
+        var p = new ToneMapParams(StatsLc(lc, p50: 0.5f), DisplayTarget.Sdr203, 0f);
         ToneMapper.MapPixel(1f, 1f, 1f, p, out var r, out var g, out var b);
         Assert.InRange(r, 0.98f, 1.02f);
         Assert.InRange(g, 0.98f, 1.02f);
         Assert.InRange(b, 0.98f, 1.02f);
     }
 
-    [Fact]
-    public void MidGrey_Placement_Sdr203()
+    /// <summary>Q1 / v2: mid-grey placement stable across Lc (Sdr203).</summary>
+    [Theory]
+    [MemberData(nameof(AnchorLcValues))]
+    public void MidGrey_Placement_AllLc_Sdr203(float lc)
     {
-        var stats = StatsLc(1.01f, p50: 0.5f);
-        var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
+        var p = new ToneMapParams(StatsLc(lc, p50: 0.5f), DisplayTarget.Sdr203, 0f);
         ToneMapper.MapPixel(0.18f, 0.18f, 0.18f, p, out var r, out _, out _);
         Assert.InRange(r, 0.17f, 0.19f);
     }
 
-    [Fact]
-    public void RefWhite_AnchorsToDisplayWhite_Sdr80_WhenContentFits()
+    /// <summary>Q1 / v2: ref white + mid-grey on Sdr80 for every Lc.</summary>
+    [Theory]
+    [MemberData(nameof(AnchorLcValues))]
+    public void RefWhiteAndMidGrey_Sdr80_AllLc(float lc)
     {
-        var stats = StatsLc(1.01f, p50: 0.5f);
-        var p = new ToneMapParams(stats, DisplayTarget.Sdr80, 0f);
         var w = DisplayTarget.Sdr80.PeakNormalized;
+        var p = new ToneMapParams(StatsLc(lc, p50: 0.5f), DisplayTarget.Sdr80, 0f);
         ToneMapper.MapPixel(1f, 1f, 1f, p, out var r, out _, out _);
         Assert.InRange(r, w * 0.98f, w * 1.02f);
         ToneMapper.MapPixel(0.18f, 0.18f, 0.18f, p, out var m, out _, out _);
         Assert.InRange(m, 0.18f * w * 0.95f, 0.18f * w * 1.05f);
+    }
+
+    /// <summary>Q1: no mid-tone jump across the old PaperWhiteWhenHdr Lc threshold.</summary>
+    [Fact]
+    public void Continuity_AcrossFormerPaperWhiteThreshold()
+    {
+        // Old bug: Lc≤1.0101 → whiteOut=w; Lc>1.0101 → whiteOut=0.9w (10% mid-tone step).
+        var lo = new ToneMapParams(StatsLc(1.0100f, p50: 0.5f), DisplayTarget.Sdr203, 0f);
+        var hi = new ToneMapParams(StatsLc(1.0102f, p50: 0.5f), DisplayTarget.Sdr203, 0f);
+        ToneMapper.MapPixel(0.18f, 0.18f, 0.18f, lo, out var m0, out _, out _);
+        ToneMapper.MapPixel(0.18f, 0.18f, 0.18f, hi, out var m1, out _, out _);
+        ToneMapper.MapPixel(1f, 1f, 1f, lo, out var w0, out _, out _);
+        ToneMapper.MapPixel(1f, 1f, 1f, hi, out var w1, out _, out _);
+        Assert.True(Math.Abs(m0 - m1) < 1e-4f, $"mid-grey jump across 1.0101: {m0} vs {m1}");
+        Assert.True(Math.Abs(w0 - w1) < 1e-4f, $"ref-white jump across 1.0101: {w0} vs {w1}");
     }
 
     [Fact]
@@ -58,14 +77,14 @@ public class ImagingToneMapTests
         Assert.Equal(1.2f, ToneMapper.MapScalar(1.2f, p), 5);
     }
 
-    /// <summary>P1: MapScalar shoulder reaches display white at Lc, strictly increasing.</summary>
+    /// <summary>P1/v2: paper = display white; shoulder 1..Lc strictly rising to headroom.</summary>
     [Fact]
-    public void P1_SdrShoulder_ReachesDisplayWhiteAtLc_StrictlyIncreasing()
+    public void P1_SdrShoulder_RefWhiteIsDisplayWhite_StrictlyIncreasingToLc()
     {
         var stats = StatsLc(8f);
         var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 0f);
         var atWhite = ToneMapper.MapScalar(1f, p);
-        Assert.True(atWhite < 0.98f, $"paper should sit below display white when Lc>1, got {atWhite}");
+        Assert.InRange(atWhite, 0.98f, 1.02f);
         float prev = atWhite;
         for (var i = 1; i <= 32; i++)
         {
@@ -75,10 +94,12 @@ public class ImagingToneMapTests
             prev = y;
         }
 
-        Assert.InRange(ToneMapper.MapScalar(stats.Lc, p), 0.98f, 1.02f);
+        Assert.InRange(
+            ToneMapper.MapScalar(stats.Lc, p),
+            SdrToneCurve.HighlightHeadroom - 0.02f,
+            SdrToneCurve.HighlightHeadroom + 0.02f);
     }
 
-    /// <summary>P1: MapPixel neutrals ≥ ref white must be strictly increasing (not all 1.0).</summary>
     [Fact]
     public void P1_MapPixel_NeutralsAboveWhite_StrictlyIncreasing()
     {
@@ -89,12 +110,11 @@ public class ImagingToneMapTests
         {
             ToneMapper.MapPixel(x, x, x, p, out var r, out _, out _);
             Assert.True(r > prev + 1e-4f, $"P1 MapPixel flat: {x} → {r} ≤ {prev}");
-            Assert.True(r <= 1.01f, $"P1 MapPixel above display white: {r}");
+            Assert.True(r <= SdrToneCurve.HighlightHeadroom + 1e-3f);
             prev = r;
         }
     }
 
-    /// <summary>P1: LUT path also strictly increasing above white.</summary>
     [Fact]
     public void P1_Lut_NeutralsAboveWhite_StrictlyIncreasing()
     {
@@ -106,12 +126,15 @@ public class ImagingToneMapTests
         {
             lut.MapPixel(x, x, x, out var r, out _, out _);
             Assert.True(r > prev + 1e-4f, $"P1 LUT flat: {x} → {r} ≤ {prev}");
-            Assert.True(r <= 1.01f);
+            Assert.True(r <= SdrToneCurve.HighlightHeadroom + 1e-3f);
             prev = r;
         }
     }
 
-    /// <summary>P3: saturated highlights at different levels must not collapse to one colour.</summary>
+    /// <summary>
+    /// P3: saturated highlights at different levels must not collapse.
+    /// Tightened to fail on 7c04018 (Y-restore soft-clip → one washed colour).
+    /// </summary>
     [Fact]
     public void P3_SaturatedHighlights_NotOneWashedColour()
     {
@@ -120,16 +143,21 @@ public class ImagingToneMapTests
         ToneMapper.MapPixel(2f, 0.4f, 0.15f, p, out var r1, out var g1, out var b1);
         ToneMapper.MapPixel(6f, 1.2f, 0.45f, p, out var r2, out var g2, out var b2);
         ToneMapper.MapPixel(8f, 1.6f, 0.6f, p, out var r3, out var g3, out var b3);
-        // Distinct outputs — old path collapsed all ≥Lc to ~(.822,.379,.278).
-        Assert.True(Math.Abs(r1 - r2) > 0.02f || Math.Abs(g1 - g2) > 0.02f,
+
+        // Peak channels must separate — 7c04018 collapsed all three to ~identical.
+        Assert.True(r1 + 0.04f < r2 || g1 + 0.02f < g2,
             $"P3 collapsed 2 vs 6: ({r1},{g1},{b1}) vs ({r2},{g2},{b2})");
-        Assert.True(Math.Abs(r2 - r3) > 0.01f || Math.Abs(g2 - g3) > 0.01f,
+        Assert.True(Math.Abs(r2 - r3) > 0.015f || Math.Abs(g2 - g3) > 0.01f,
             $"P3 collapsed 6 vs 8: ({r2},{g2},{b2}) vs ({r3},{g3},{b3})");
+        // Not the hard-clip washed grey-orange.
+        Assert.False(
+            Math.Abs(r1 - 0.822f) < 0.05f && Math.Abs(g1 - 0.379f) < 0.05f && Math.Abs(b1 - 0.278f) < 0.05f
+            && Math.Abs(r1 - r3) < 0.02f,
+            "P3 matched 7c04018 washed colour");
         Assert.True(r1 > g1 && g1 > b1);
         Assert.True(r3 > g3 && g3 > b3);
     }
 
-    /// <summary>N2: tone-mapped output at/near Ld must keep chroma.</summary>
     [Fact]
     public void N2_SaturatedHighlight_NotGreyedAtDisplayWhite()
     {
@@ -140,7 +168,7 @@ public class ImagingToneMapTests
         Assert.InRange(peak, 0.85f, 1.05f);
         var y = ImagingConstants.Bt2020Y(r, g, b);
         Assert.True(Math.Abs(r - y) > 0.08f, $"N2 highlight greyed: rgb=({r},{g},{b}) Y={y}");
-        Assert.True(r > g && g > b, $"N2 hue collapsed: rgb=({r},{g},{b})");
+        Assert.True(r > g && g > b);
     }
 
     [Fact]
@@ -182,9 +210,10 @@ public class ImagingToneMapTests
         {
             var o = i * 4;
             lut.MapPixel(frame.Rgba[o], frame.Rgba[o + 1], frame.Rgba[o + 2], out var r, out var g, out var b);
-            Assert.InRange(r, direct[o] - 0.01f, direct[o] + 0.01f);
-            Assert.InRange(g, direct[o + 1] - 0.01f, direct[o + 1] + 0.01f);
-            Assert.InRange(b, direct[o + 2] - 0.01f, direct[o + 2] + 0.01f);
+            // 256 PQ samples are coarse on the 1..Lc shoulder (headroom).
+            Assert.InRange(r, direct[o] - 0.04f, direct[o] + 0.04f);
+            Assert.InRange(g, direct[o + 1] - 0.04f, direct[o + 1] + 0.04f);
+            Assert.InRange(b, direct[o + 2] - 0.04f, direct[o + 2] + 0.04f);
         }
     }
 
@@ -217,7 +246,6 @@ public class ImagingToneMapTests
         Assert.Equal(lcBefore, stats.Lc);
     }
 
-    /// <summary>P2: pixel-level +3 EV must soft-roll — fails on hard clip to white.</summary>
     [Fact]
     public void P2_PlusThreeEv_MapPixel_SoftRollNotHardClip()
     {
@@ -227,22 +255,31 @@ public class ImagingToneMapTests
         ToneMapper.MapPixel(0.30f, 0.30f, 0.30f, p, out var b, out _, out _);
         ToneMapper.MapPixel(0.50f, 0.50f, 0.50f, p, out var c, out _, out _);
         Assert.True(a < b && b < c, $"P2 hard-clip: {a}, {b}, {c}");
-        Assert.True(c <= 1.01f);
-        // Hard-clip signature: everything that lands ≥1 after gain becomes identical white.
+        Assert.True(c <= SdrToneCurve.HighlightHeadroom + 1e-3f);
         Assert.True(Math.Abs(a - b) > 1e-3f && Math.Abs(b - c) > 1e-3f);
     }
 
+    /// <summary>
+    /// P2 HDR: +3 EV must keep a strict rise past Analyze Lc.
+    /// Fails on 7c04018 where MapScalar clamped to Analyze Lc (y2==y3).
+    /// </summary>
     [Fact]
     public void P2_PlusThreeEv_HdrPath_RollsOffNotHardClamp()
     {
         var stats = StatsLc(5f, p50: 0.4f);
-        var display = DisplayTarget.Hdr(1000f); // Ld ≈ 4.93 < Lc·8
+        var display = DisplayTarget.Hdr(1000f);
         var p = new ToneMapParams(stats, display, 3f);
+        // Post-gain samples: 4 (&lt; Lc·8 domain interior), 8, 16 — 7c04018 clamped at Lc=5.
         var y1 = ToneMapper.MapScalar(0.5f * 8f, p);
         var y2 = ToneMapper.MapScalar(1.0f * 8f, p);
         var y3 = ToneMapper.MapScalar(2.0f * 8f, p);
-        Assert.True(y1 < y2 && y2 <= y3 + 1e-4f, $"P2 HDR flat/clip: {y1}, {y2}, {y3}");
+        Assert.True(y1 + 0.02f < y2, $"P2 HDR no rise 4→8: {y1} → {y2}");
+        Assert.True(y2 + 0.005f < y3 || Math.Abs(y3 - display.Ld) < 1e-3f && y2 + 0.002f < y3,
+            $"P2 HDR hard-clamp at Analyze Lc: {y1}, {y2}, {y3} (Ld={display.Ld})");
         Assert.True(y3 <= display.Ld + 1e-3f);
+        // Explicit 7c04018 failure mode: identical outputs once past Analyze Lc.
+        Assert.True(Math.Abs(y2 - y3) > 1e-4f || y2 < display.Ld - 0.05f,
+            $"P2 HDR flat past Lc: y2={y2} y3={y3}");
     }
 
     [Fact]
@@ -294,7 +331,6 @@ public class ImagingToneMapTests
 
         var a = ToneMapper.MapFrame(frame, new ToneMapParams(stats, DisplayTarget.Sdr203, 0f));
         var b = ToneMapper.MapFrame(frame2, new ToneMapParams(stats2, DisplayTarget.Sdr203, 0f));
-        // Must differ in mapped pixels — not merely in Lc (M8 tautology fix).
         Assert.True(Math.Abs(a[4] - b[4]) > 1e-4f || Math.Abs(a[0] - b[0]) > 1e-4f,
             $"mapped pixels identical (Lc {stats.Lc} vs {stats2.Lc})");
     }
@@ -318,10 +354,6 @@ public class ImagingToneMapTests
         Assert.True(maxDe < 1.5, $"thumb LUT vs full direct dE {maxDe}");
     }
 
-    /// <summary>
-    /// Placement dE vs identity reference for content that fits (Lc≈1).
-    /// Not a self-comparison tautology.
-    /// </summary>
     [Fact]
     public void PlacementDeltaE_FitsContent_MidGreyAndWhiteNearIdentity()
     {
