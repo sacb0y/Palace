@@ -168,18 +168,24 @@
                     <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">
+                            <!-- Visibility toggled with tight in UpdateLibraryToolbarOverflow. -->
                             <MenuFlyoutItem
                                 x:Name="MnuToolbarOrganize"
                                 AutomationProperties.AutomationId="MnuToolbarOrganize"
                                 Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
                                 IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
-                                Text="Organize" />
+                                Text="Organize"
+                                Visibility="Collapsed" />
                             <MenuFlyoutItem
                                 x:Name="MnuToolbarReview"
                                 AutomationProperties.AutomationId="MnuToolbarReview"
                                 Command="{x:Bind ViewModel.StartReviewCommand}"
-                                Text="Review" />
-                            <MenuFlyoutSeparator />
+                                Text="Review"
+                                ToolTipService.ToolTip="Review selection or this folder (swipe left reject, right keep, up skip)"
+                                Visibility="Collapsed" />
+                            <MenuFlyoutSeparator
+                                x:Name="SepToolbarTight"
+                                Visibility="Collapsed" />
                             <MenuFlyoutItem
                                 x:Name="MnuToolbarNewFolder"
                                 AutomationProperties.AutomationId="MnuToolbarNewFolder"

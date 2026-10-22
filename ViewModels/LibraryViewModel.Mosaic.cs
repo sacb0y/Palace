@@ -138,9 +138,9 @@ public partial class LibraryViewModel
         {
             ErrorReporter.LogOnly("Save collapsed sections", ex);
             // Once per app session — repeat Notify would replace a pending Undo toast.
-            if (!CollapseSaveNotifyShown)
+            if (!s_collapseSaveNotifyShown)
             {
-                CollapseSaveNotifyShown = true;
+                s_collapseSaveNotifyShown = true;
                 Notify(
                     "Collapse state won't persist this time.",
                     Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);

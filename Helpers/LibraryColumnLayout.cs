@@ -43,7 +43,10 @@ public static class LibraryColumnLayout
     /// </summary>
     public const double LibraryToolbarTightBelowDip = 800;
 
-    /// <summary>Horizontal page padding on <c>GrdLibraryColumns</c> (12+12).</summary>
+    /// <summary>
+    /// Horizontal page padding on <c>GrdLibraryColumns</c>.
+    /// Keep in sync with LibraryPage.xaml <c>Padding="12,8,12,8"</c> (Left+Right).
+    /// </summary>
     public const double PagePaddingHorizontalDip = 24;
 
     /// <summary>

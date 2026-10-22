@@ -44,7 +44,7 @@ public partial class LibraryViewModel : ObservableObject
     private List<AssetItem> _mosaicOrder = [];
     private const int MosaicChunkSize = 80;
     /// <summary>Collapse prefs save failure Notify once per app session (log every time).</summary>
-    private static bool CollapseSaveNotifyShown;
+    private static bool s_collapseSaveNotifyShown;
 
     /// <summary>
     /// LibraryPage captures scroll offset and returns a guard generation so a

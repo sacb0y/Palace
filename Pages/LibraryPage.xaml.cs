@@ -532,6 +532,11 @@ public sealed partial class LibraryPage : Page
         // park them in … so Add folder / Scan stay fully on-screen.
         BtnOrganize.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
         BtnReview.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
+        // Menu twins only when face is hidden (800–920 would otherwise duplicate).
+        var tightMenu = tight ? Visibility.Visible : Visibility.Collapsed;
+        MnuToolbarOrganize.Visibility = tightMenu;
+        MnuToolbarReview.Visibility = tightMenu;
+        SepToolbarTight.Visibility = tightMenu;
         BtnLibraryToolbarMore.Visibility = compact || tight
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -566,6 +571,7 @@ public sealed partial class LibraryPage : Page
         if (sortOverflow && chrome)
         {
             BtnMosaicSort.Visibility = Visibility.Collapsed;
+            BtnMosaicSort.MinWidth = 0;
             MnuMosaicSortOverflow.Visibility = Visibility.Visible;
         }
         else
