@@ -97,6 +97,7 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnOrganize"
                     AutomationProperties.AutomationId="BtnOrganize"
                     AutomationProperties.Name="Organize"
                     Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
@@ -167,6 +168,18 @@
                     <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarOrganize"
+                                AutomationProperties.AutomationId="MnuToolbarOrganize"
+                                Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
+                                IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                                Text="Organize" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarReview"
+                                AutomationProperties.AutomationId="MnuToolbarReview"
+                                Command="{x:Bind ViewModel.StartReviewCommand}"
+                                Text="Review" />
+                            <MenuFlyoutSeparator />
                             <MenuFlyoutItem
                                 x:Name="MnuToolbarNewFolder"
                                 AutomationProperties.AutomationId="MnuToolbarNewFolder"

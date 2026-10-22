@@ -15,6 +15,29 @@ public static class MosaicLayoutWidth
     /// <summary>First-layout fallback when no prior good width exists.</summary>
     public const double Fallback = 640;
 
+    /// <summary>
+    /// Inset from the mosaic column edge so justified tiles / search do not sit
+    /// under the overlay vertical scrollbar or flush on the window chrome.
+    /// Laptop @ 770 DIP / 150% (1155 px) clipped when packing used the full column.
+    /// </summary>
+    public const double ViewportGutterDip = 16;
+
+    /// <summary>Packing width from a measured column / ItemsView width.</summary>
+    public static double ApplyViewportGutter(double columnWidth)
+    {
+        if (!double.IsFinite(columnWidth) || columnWidth <= 0)
+        {
+            return 0;
+        }
+
+        if (columnWidth < MinUsable)
+        {
+            return columnWidth;
+        }
+
+        return Math.Max(MinUsable, columnWidth - ViewportGutterDip);
+    }
+
     public static double Resolve(double available, double lastGood, double hostWidth = double.NaN)
     {
         var availOk = double.IsFinite(available) && available >= MinUsable;

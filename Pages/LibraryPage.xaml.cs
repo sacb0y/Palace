@@ -481,7 +481,8 @@ public sealed partial class LibraryPage : Page
             : Visibility.Visible;
         // Stamp allocate width immediately so packing does not use a wide ItemsView
         // extent / prior measure before the column's ActualWidth catches up.
-        MosaicLayout.SetHostWidth(widths.Mosaic);
+        // Gutter keeps the last tile / search off the overlay scrollbar and window edge.
+        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic));
         UpdateMosaicToolbarOverflow(widths.Mosaic);
     }
 
@@ -493,7 +494,7 @@ public sealed partial class LibraryPage : Page
     private void GrdAssets_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         var visible = VisibleMosaicColumnWidth(e.NewSize.Width);
-        MosaicLayout.SetHostWidth(visible);
+        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(visible));
         UpdateMosaicToolbarOverflow(visible);
     }
 
@@ -523,10 +524,17 @@ public sealed partial class LibraryPage : Page
     {
         // Full face row still clips near the window floor; overflow a bit above min.
         var compact = contentWidth < LibraryColumnLayout.LibraryToolbarOverflowBelowDip;
+        var tight = contentWidth < LibraryColumnLayout.LibraryToolbarTightBelowDip;
         BtnNewFolder.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         BtnUndo.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         BtnAddToRoom.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
-        BtnLibraryToolbarMore.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        // At ~770 DIP client (1155 px @ 150%), Organize/Review + More were cut —
+        // park them in … so Add folder / Scan stay fully on-screen.
+        BtnOrganize.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
+        BtnReview.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
+        BtnLibraryToolbarMore.Visibility = compact || tight
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     /// <summary>Toolbar overflow using the visible mosaic column (not raw ItemsView width).</summary>

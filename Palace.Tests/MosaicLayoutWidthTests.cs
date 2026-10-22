@@ -39,6 +39,17 @@ public sealed class MosaicLayoutWidthTests
     }
 
     [Fact]
+    public void ApplyViewportGutter_InsetsScrollbarAndEdge()
+    {
+        Assert.Equal(
+            560 - MosaicLayoutWidth.ViewportGutterDip,
+            MosaicLayoutWidth.ApplyViewportGutter(560),
+            0.01);
+        Assert.Equal(0, MosaicLayoutWidth.ApplyViewportGutter(0));
+        Assert.Equal(32, MosaicLayoutWidth.ApplyViewportGutter(32)); // below MinUsable: unchanged
+    }
+
+    [Fact]
     public void Resolve_PreventsSliverWidthsUsedInPacking()
     {
         // Laptop resize sometimes measures with a few DIPs; packing + justify at

@@ -38,6 +38,15 @@ public static class LibraryColumnLayout
     public const double LibraryToolbarOverflowBelowDip = 920;
 
     /// <summary>
+    /// Below this content width (DIP), also park Organize / Review in More —
+    /// at min window (~746 content after pad) the … control was cut at 1155 px.
+    /// </summary>
+    public const double LibraryToolbarTightBelowDip = 800;
+
+    /// <summary>Horizontal page padding on <c>GrdLibraryColumns</c> (12+12).</summary>
+    public const double PagePaddingHorizontalDip = 24;
+
+    /// <summary>
     /// Below this mosaic column width (DIP), hide the Flatten face toggle
     /// (More menu keeps it). ~752 mosaic at 1400px still clipped Flatten.
     /// </summary>
