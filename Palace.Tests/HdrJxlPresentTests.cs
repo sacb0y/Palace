@@ -194,15 +194,13 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void ToneMappedRoomLike_BrightWindow_ClipUnderTenPercent()
+    public void StillPq_NotWashedAsLinearIT_BrightWindowClipUnderTenPercent()
     {
-        // SKIV room.jxl on SDR: window near-white/hazy only; dresser, bed,
-        // laundry basket, posters stay mid-tone. Laptop bug: 52.7% clipped,
-        // median 253 (WIC / wrong PQ×IT path). After EOTF→scRGB + Reinhard,
-        // clipped share must stay under ~10%.
+        // Synthetic still-PQ: ~4% bright window, rest mid. Wrong path (treat as
+        // linear Relative × large IT) washes out; EOTF→scRGB keeps mid-tones
+        // with clipped share under ~10%.
         const int n = 256;
         var pq = new float[n * 4];
-        // ~4% window (~1000 nits), ~12% haze (~300 nits), rest mid (~40–80 nits).
         var pqWindow = GalleryPresent.PqOetf(1000f / 10_000f);
         var pqHaze = GalleryPresent.PqOetf(300f / 10_000f);
         var pqWall = GalleryPresent.PqOetf(80f / 10_000f);
@@ -214,8 +212,6 @@ public class HdrJxlPresentTests
             pq[i * 4 + 3] = 1f;
         }
 
-        // Wrong: treat still-PQ as linear Relative with a large IT (WIC-like /
-        // pre-6ac9f2d wash → laptop room.jxl ~53% clipped, median 253).
         var wrong = (float[])pq.Clone();
         HdrJxlPresent.NormalizeToScrgb(
             wrong, 10_000f, HdrTransfer.Pq, JxlBufferTransfer.Linear, cicpPrimaries: 9);
@@ -228,10 +224,9 @@ public class HdrJxlPresentTests
         var okMean = HdrJxlPresent.ToneMappedMeanLuminance(ok, n);
         var okClip = FractionClippedAfterPresent(ok, n);
 
-        Assert.True(wrongClip > 0.40f, $"PQ-as-linear×IT should wash room, clip={wrongClip}");
-        // SKIV target: mid-tones middle of range; only window near white.
+        Assert.True(wrongClip > 0.40f, $"PQ-as-linear×IT should wash, clip={wrongClip}");
         Assert.InRange(okMean, 0.12f, 0.55f);
-        Assert.True(okClip < 0.10f, $"room-like clip must stay under 10%, clip={okClip}");
+        Assert.True(okClip < 0.10f, $"bright-window clip must stay under 10%, clip={okClip}");
     }
 
     [Fact]

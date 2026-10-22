@@ -6,7 +6,7 @@
     <IsPackable>false</IsPackable>
     <!-- Starward.Codec is net10.0-windows; used only for JxlDecode fixture tests. -->
     <AssetTargetFallback>$(AssetTargetFallback);net10.0-windows7.0</AssetTargetFallback>
-    <NoWarn>$(NoWarn);NU1701;CA1416</NoWarn>
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

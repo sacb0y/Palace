@@ -440,15 +440,23 @@ public sealed partial class GalleryStillSurface : UserControl
                 CloudFile.Exists(item.Path) && !CloudFile.IsOnlineOnly(item.Path),
                 gallery.CurrentProbe);
 
-        // Do not BitmapImage the original HDR file — that is a second full
-        // WIC decode. Show the mosaic thumb until scRGB present wins.
-        // JXL without an HDR attempt (WideGamut / probe miss) still must not
-        // open the original via Store WIC — prefer thumb / large-preview JPEG.
-        var sdrStill = attempt
-            ? item?.ThumbPath
-            : PathSafe.IsJxl(still) ? (item?.ThumbPath ?? still) : still;
-        ImgStill.Source = ToStillImage(sdrStill, animateGif: true);
-        LogSdrStillSurface(still, sdrStill, attempt ? "mosaic-thumb" : null, gallery.CurrentProbe);
+        // Prefer the still path (large-preview via DisplayPathFor for JXL/EXR).
+        // Fall back to mosaic thumb only when that yields nothing — never open
+        // the Store WIC original for .jxl (DisplayPathFor returns null).
+        var sdrImage = ToStillImage(still, animateGif: true);
+        var usedThumb = false;
+        if (sdrImage is null && item?.ThumbPath is { } thumbPath)
+        {
+            sdrImage = ToStillImage(thumbPath, animateGif: true);
+            usedThumb = sdrImage is not null;
+        }
+
+        ImgStill.Source = sdrImage;
+        LogSdrStillSurface(
+            still,
+            usedThumb ? item?.ThumbPath : still,
+            usedThumb ? "mosaic-thumb" : (attempt ? "hdr-attempt-still" : null),
+            gallery.CurrentProbe);
 
         if (!pathMatches)
         {
@@ -548,13 +556,21 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ClearHdrCache();
                 HideHdr();
-                // JXL: keep mosaic/large-preview JPEG — never WIC the PQ original
-                // (room.jxl stayed ~53% clipped on that path while Kalan fixed).
-                var failStill = PathSafe.IsJxl(still)
-                    ? (item?.ThumbPath ?? still)
-                    : still;
-                ImgStill.Source = ToStillImage(failStill);
-                LogSdrStillSurface(still, failStill, "hdr-fail", gallery.CurrentProbe);
+                // Still path first (large-preview); thumb only if that fails.
+                var failImage = ToStillImage(still);
+                var failUsedThumb = false;
+                if (failImage is null && item?.ThumbPath is { } failThumb)
+                {
+                    failImage = ToStillImage(failThumb);
+                    failUsedThumb = failImage is not null;
+                }
+
+                ImgStill.Source = failImage;
+                LogSdrStillSurface(
+                    still,
+                    failUsedThumb ? item?.ThumbPath : still,
+                    failUsedThumb ? "hdr-fail+mosaic-thumb" : "hdr-fail",
+                    gallery.CurrentProbe);
                 gallery.SetHdrPresentResult(false, false);
                 QueueFileHistogram(gallery, still, hdr: false);
                 return;

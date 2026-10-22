@@ -229,6 +229,7 @@ public class SubstanceShelfFileTests
             var v4 = new DateTime(2026, 10, 22, 8, 0, 0, DateTimeKind.Utc);
             var v5 = new DateTime(2026, 10, 22, 17, 0, 0, DateTimeKind.Utc);
             var v6 = new DateTime(2026, 10, 22, 19, 0, 0, DateTimeKind.Utc);
+            var v7 = new DateTime(2026, 10, 22, 20, 0, 0, DateTimeKind.Utc);
             Assert.Equal(v2, ThumbCacheVersion.EnsureMarker(dir, ThumbCacheVersion.DecodersGeneration, () => v2));
             // Upgrading adds the v3 marker without moving v2, so v2 formats don't regenerate again.
             Assert.Equal(v3, ThumbCacheVersion.EnsureMarker(dir, ThumbCacheVersion.ShelfPreviewGeneration, () => v3));
@@ -239,12 +240,15 @@ public class SubstanceShelfFileTests
             Assert.Equal(v4, ThumbCacheVersion.EnsureMarker(dir, ThumbCacheVersion.JxlIntensityGeneration, () => v5));
             Assert.Equal(v6, ThumbCacheVersion.EnsureMarker(dir, ThumbCacheVersion.JxlActualTransferGeneration, () => v6));
             Assert.Equal(v5, ThumbCacheVersion.EnsureMarker(dir, ThumbCacheVersion.JxlWideGamutGeneration, () => v6));
+            Assert.Equal(v7, ThumbCacheVersion.EnsureMarker(dir, ThumbCacheVersion.JxlNoShellWicGeneration, () => v7));
+            Assert.Equal(v6, ThumbCacheVersion.EnsureMarker(dir, ThumbCacheVersion.JxlActualTransferGeneration, () => v7));
             Assert.True(File.Exists(Path.Combine(dir, ".thumbs-v2")));
             Assert.True(File.Exists(Path.Combine(dir, ".thumbs-v3")));
             Assert.True(File.Exists(Path.Combine(dir, ".thumbs-v4")));
             Assert.True(File.Exists(Path.Combine(dir, ".thumbs-v5")));
             Assert.True(File.Exists(Path.Combine(dir, ".thumbs-v6")));
-            Assert.Equal(6, ThumbCacheVersion.Current);
+            Assert.True(File.Exists(Path.Combine(dir, ".thumbs-v7")));
+            Assert.Equal(7, ThumbCacheVersion.Current);
         }
         finally
         {
@@ -283,5 +287,15 @@ public class SubstanceShelfFileTests
         var gen = new DateTime(2026, 10, 22, 19, 0, 0, DateTimeKind.Utc);
         Assert.Equal(stale, ThumbCacheVersion.IsStale(gen.AddDays(-1), gen, ThumbCacheVersion.JxlActualTransferChanged(path)));
         Assert.False(ThumbCacheVersion.IsStale(gen.AddMinutes(1), gen, ThumbCacheVersion.JxlActualTransferChanged(path)));
+    }
+
+    [Theory]
+    [InlineData(@"D:\a.jxl", true)]
+    [InlineData(@"D:\a.png", false)]
+    public void CacheGeneration7_NoShellWicJxlGoesStale(string path, bool stale)
+    {
+        var gen = new DateTime(2026, 10, 22, 20, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(stale, ThumbCacheVersion.IsStale(gen.AddDays(-1), gen, ThumbCacheVersion.JxlNoShellWicChanged(path)));
+        Assert.False(ThumbCacheVersion.IsStale(gen.AddMinutes(1), gen, ThumbCacheVersion.JxlNoShellWicChanged(path)));
     }
 }
