@@ -113,7 +113,6 @@ public partial class LibraryViewModel
             return;
         }
 
-        SectionToggleStarting?.Invoke();
         var collapsed = FolderSectionPrefs.ToggleCollapsed(_collapsedSections, path);
         _collapsedSections = collapsed;
         header.IsFolderCollapsed = FolderSectionPrefs.IsCollapsed(collapsed, path);
@@ -128,6 +127,9 @@ public partial class LibraryViewModel
 
         PendingSectionFocusPath = path;
         SaveCollapsedSections(_sectionBrowsePath, collapsed);
+        // Arm the page guard only once Republish is about to run — a throw above
+        // must not leave _sectionToggleGuardDepth > 0 with no Ended callback.
+        SectionToggleStarting?.Invoke();
         // Fire-and-forget: Republish always ends the page section-toggle guard
         // (try/finally) even when Populate throws or the epoch is superseded.
         _ = RepublishSectionDisplayAsync();

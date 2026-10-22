@@ -161,6 +161,9 @@ public sealed partial class LibraryPage : Page
                 ViewModel.SectionToggleEpochArmed = OnSectionToggleEpochArmed;
                 ViewModel.MosaicRestoreReady = OnMosaicRestoreReady;
                 ViewModel.SectionToggleEnded = OnSectionToggleEnded;
+                // Cached page: Unloaded nulls SectionToggleEnded mid-rebuild, so
+                // depth may still be >0 — clear guard and re-stamp highlights.
+                ResetSectionToggleGuardOnLoaded();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
@@ -172,6 +175,7 @@ public sealed partial class LibraryPage : Page
             }
 
             _shellReady = true;
+            ResetSectionToggleGuardOnLoaded();
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
@@ -2476,13 +2480,30 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // N1: clicks during the rebuild were swallowed by the guard; re-apply
+        // Empty-order / ApplyFilter path never runs MosaicRestoreReady for this
+        // toggle — clear stale scroll/focus armed by SectionToggleStarting.
+        _restoreScrollPending = false;
+        ViewModel.PendingSectionFocusPath = null;
+        // Clicks during the rebuild were swallowed by the guard; re-apply
         // VM IsSelected onto ItemsView when the last in-flight toggle ends.
         RestoreMosaicSelectionHighlights();
         if (epoch == _sectionToggleRestoreEpoch)
         {
             _sectionToggleRestoreEpoch = 0;
         }
+    }
+
+    /// <summary>
+    /// NavigationCacheMode keeps this page across Unloaded. Leaving during a
+    /// section republish nulls <see cref="LibraryViewModel.SectionToggleEnded"/>,
+    /// so depth never decrements — reset on every Loaded and re-stamp highlights.
+    /// </summary>
+    private void ResetSectionToggleGuardOnLoaded()
+    {
+        _sectionToggleGuardDepth = 0;
+        _restoreScrollPending = false;
+        _sectionToggleRestoreEpoch = 0;
+        RestoreMosaicSelectionHighlights();
     }
 
     private double ClampMosaicVerticalOffset(double offset)
