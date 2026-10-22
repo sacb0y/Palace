@@ -2393,11 +2393,51 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // Prefer the realized element at the mosaic index — no full visual-tree walk.
-        if (GrdAssets.TryGetElement(index) is UIElement element)
+        // ItemsView has no TryGetElement in WASDK 2.3 — Select + realized ItemContainer by Tag.
+        GrdAssets.Select(index);
+        var tag = ViewModel.Assets[index].MosaicTag;
+        if (string.IsNullOrEmpty(tag))
         {
-            element.Focus(FocusState.Programmatic);
+            return;
         }
+
+        FindRealizedItemContainerByTag(GrdAssets, tag)?.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// Breadth-first over realized <see cref="ItemContainer"/>s only (capped) —
+    /// not a full visual-tree walk of every tile descendant.
+    /// </summary>
+    private static FrameworkElement? FindRealizedItemContainerByTag(DependencyObject root, string tag)
+    {
+        var queue = new Queue<DependencyObject>();
+        queue.Enqueue(root);
+        var visited = 0;
+        const int maxNodes = 500;
+        while (queue.Count > 0 && visited < maxNodes)
+        {
+            var node = queue.Dequeue();
+            visited++;
+            if (node is ItemContainer container)
+            {
+                if (container.Tag is string text
+                    && string.Equals(text, tag, StringComparison.Ordinal))
+                {
+                    return container;
+                }
+
+                // Tag lives on the ItemContainer; skip its deep content tree.
+                continue;
+            }
+
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (var i = 0; i < count; i++)
+            {
+                queue.Enqueue(VisualTreeHelper.GetChild(node, i));
+            }
+        }
+
+        return null;
     }
 
     private void HideStickyFolderHeader()
