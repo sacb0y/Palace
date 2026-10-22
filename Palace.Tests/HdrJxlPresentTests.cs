@@ -18,6 +18,28 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
+    public void SkipWicPresent_HdrJxlOrJxlExtension()
+    {
+        var hdr = new HdrProbe(HdrKind.HdrJxl, 9, 16, null);
+        Assert.True(HdrJxlPresent.SkipWicPresent(hdr, @"C:\a.jxl"));
+        // Presentable HDR JXL still skips WIC even without a .jxl path.
+        Assert.True(HdrJxlPresent.SkipWicPresent(hdr, @"C:\captures\still"));
+        Assert.True(HdrJxlPresent.SkipWicPresent(new HdrProbe(HdrKind.WideGamutJxl, 11, 13, null), @"D:\p3.jxl"));
+        Assert.True(HdrJxlPresent.SkipWicPresent(HdrProbe.None, "x.JXL"));
+        Assert.False(HdrJxlPresent.SkipWicPresent(new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000), @"C:\a.avif"));
+        Assert.False(HdrJxlPresent.SkipWicPresent(HdrProbe.None, @"C:\a.png"));
+    }
+
+    [Fact]
+    public void ScrgbOutputRenderingIntent_IsAbsoluteNotPerceptual()
+    {
+        // libjxl LinearSRGB defaults to Perceptual (0); Absolute (3) keeps
+        // BT.2020 out-of-gamut as negative scRGB for Gamut coverage.
+        Assert.Equal(3, HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute);
+        Assert.NotEqual(0, HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute);
+    }
+
+    [Fact]
     public void ScrgbScaleFromIntensityTarget_RoutesOnPqHlgTransfer()
     {
         // PQ intensity target 10 000 nits → scRGB 1.0 = 80 nits.

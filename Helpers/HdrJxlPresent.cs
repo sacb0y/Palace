@@ -30,6 +30,24 @@ public static class HdrJxlPresent
         probe.Kind == HdrKind.HdrJxl && probe.CanPresentHdr;
 
     /// <summary>
+    /// Never open JPEG XL through inbox WIC present/measure. Packaged hosts
+    /// often lack the Store JXL codec (<c>WINCODEC_ERR_COMPONENTNOTFOUND</c>
+    /// <c>0x88982F50</c>); HDR JXL belongs on libjxl, and other JXL must not
+    /// log a false "WIC present" failure after a successful libjxl path.
+    /// </summary>
+    public static bool SkipWicPresent(HdrProbe probe, string? path) =>
+        ShouldPresentViaLibjxl(probe) || PathSafe.IsJxl(path);
+
+    /// <summary>
+    /// libjxl <c>LinearSRGB</c> defaults to Perceptual intent, which maps
+    /// BT.2020 into Rec.709 and makes Gamut read "Rec.709 100%" even when the
+    /// probe is BT.2020. Absolute keeps out-of-gamut as negative scRGB so
+    /// <see cref="CieGamut"/> can classify Rec.2020 / P3 coverage.
+    /// Matches <c>JxlRenderingIntent.Absolute</c> (ISO 15076-1).
+    /// </summary>
+    public const int ScrgbOutputRenderingIntentAbsolute = 3;
+
+    /// <summary>
     /// libjxl LinearSRGB float has 1.0 = <paramref name="intensityTarget"/> nits
     /// for PQ/HLG. Scale so 1.0 = 80 nits (scRGB). Route on the probe transfer
     /// (not an IntensityTarget &gt; 255 heuristic) so SDR / gain-map base stays 0..1.

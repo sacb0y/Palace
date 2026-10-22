@@ -95,7 +95,11 @@ internal static class JxlDecode
                         break;
                     case JxlDecoderStatus.ColorEncoding:
                         // Linear sRGB primaries, values above 1.0 kept (scRGB).
+                        // Absolute intent (not the LinearSRGB Perceptual default):
+                        // BT.2020 → 709 must keep negatives so Gamut can report
+                        // Rec.2020 coverage instead of a false Rec.709 100%.
                         var linear = JxlColorEncoding.LinearSRGB;
+                        linear.RenderingIntent = (JxlRenderingIntent)HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute;
                         if (JxlDecoderNativeMethod.JxlDecoderSetOutputColorProfile(dec, in linear, 0, 0)
                             != JxlDecoderStatus.Success)
                         {
