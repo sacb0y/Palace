@@ -160,7 +160,7 @@ public partial class LibraryViewModel
     /// <summary>Select every non-header asset in the full ordered mosaic (includes collapsed sections).</summary>
     public void SelectAllMosaicAssets()
     {
-        var source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+        IEnumerable<AssetItem> source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
         SetSelection(source.Where(a => !a.IsFolderHeader));
     }
 

@@ -445,7 +445,9 @@ public partial class LibraryViewModel
         // No selection → full ordered mosaic (collapsed sections still count).
         IEnumerable<AssetItem> source = _selection.Count > 0
             ? _selection
-            : _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+            : _mosaicOrder.Count > 0
+                ? (IEnumerable<AssetItem>)_mosaicOrder
+                : Assets;
         return source
             .Where(a => !a.IsFolderHeader && !ReviewReject.IsAlreadyRejected(a.Path))
             .ToList();
