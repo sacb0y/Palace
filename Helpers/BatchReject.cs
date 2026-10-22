@@ -1,3 +1,5 @@
+using Palace.Models;
+
 namespace Palace.Helpers;
 
 /// <summary>
@@ -16,10 +18,32 @@ public static class BatchReject
         destinationFolderCount > 1 ? MultiFolderUndoSeconds : SingleFolderUndoSeconds;
 
     /// <summary>
-    /// Final toast after a batch Reject. Always surfaces already-rejected and
-    /// failed counts — never silently drops them.
+    /// Journal / status summary: <c>Reject N files across K folders</c> when
+    /// more than one destination; otherwise <c>Reject N files</c>.
     /// </summary>
-    public static string ToastMessage(int moved, int alreadyRejected, int failed)
+    public static string JournalSummary(int fileCount, int folderCount)
+    {
+        if (fileCount <= 0)
+        {
+            return "Reject 0 files";
+        }
+
+        var files = fileCount == 1 ? "1 file" : $"{fileCount} files";
+        return folderCount > 1
+            ? $"Reject {files} across {folderCount} folders"
+            : $"Reject {files}";
+    }
+
+    /// <summary>
+    /// Final toast after a batch Reject. Always surfaces already-rejected and
+    /// failed counts — never silently drops them. Clean multi-folder success
+    /// uses <see cref="JournalSummary"/> wording.
+    /// </summary>
+    public static string ToastMessage(
+        int moved,
+        int alreadyRejected,
+        int failed,
+        int folderCount = 1)
     {
         var attempted = moved + alreadyRejected + failed;
         if (moved == 0 && alreadyRejected == 0 && failed == 0)
@@ -36,13 +60,13 @@ public static class BatchReject
 
         if (failed == 0 && alreadyRejected == 0)
         {
-            return moved == 1 ? "Rejected 1 file." : $"Rejected {moved} files.";
+            return JournalSummary(moved, folderCount).Replace("Reject ", "Rejected ", StringComparison.Ordinal) + ".";
         }
 
         var parts = new List<string>
         {
             attempted == moved
-                ? (moved == 1 ? "Rejected 1 file" : $"Rejected {moved} files")
+                ? JournalSummary(moved, folderCount).Replace("Reject ", "Rejected ", StringComparison.Ordinal)
                 : $"Rejected {moved} of {attempted}"
         };
         if (alreadyRejected > 0)
@@ -70,5 +94,68 @@ public static class BatchReject
         return collapsedSelectedCount > 0
             ? $"Reject {selectedCount} file(s) into _rejected?\n{summary}."
             : $"Reject {selectedCount} file(s) into _rejected?";
+    }
+
+    /// <summary>
+    /// True when every undoable batch newer than the prior Move is only a
+    /// <see cref="FileOpKind.CreateFolder"/> for <paramref name="destinationDir"/>.
+    /// Otherwise the prior must stay on the stack (multi-ID undo).
+    /// </summary>
+    public static bool NewerBatchesAllowAbsorbPrior(
+        IEnumerable<FileOpBatch> newerUndoableNewestFirst,
+        string destinationDir)
+    {
+        if (string.IsNullOrWhiteSpace(destinationDir))
+        {
+            return false;
+        }
+
+        foreach (var batch in newerUndoableNewestFirst)
+        {
+            if (batch.Kind != FileOpKind.CreateFolder || batch.Items.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (var item in batch.Items)
+            {
+                if (item.Step != FileOpStep.CreateDir
+                    || !FolderNames.SamePath(item.NewPath, destinationDir))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Batches strictly newer than <paramref name="priorBatchId"/> from a
+    /// newest-first undoable list. Empty when the prior is missing (unsafe).
+    /// </summary>
+    public static IReadOnlyList<FileOpBatch> NewerThanPrior(
+        IReadOnlyList<FileOpBatch> undoableNewestFirst,
+        string priorBatchId)
+    {
+        if (string.IsNullOrWhiteSpace(priorBatchId) || undoableNewestFirst.Count == 0)
+        {
+            return [];
+        }
+
+        var newer = new List<FileOpBatch>();
+        var found = false;
+        foreach (var batch in undoableNewestFirst)
+        {
+            if (string.Equals(batch.Id, priorBatchId, StringComparison.Ordinal))
+            {
+                found = true;
+                break;
+            }
+
+            newer.Add(batch);
+        }
+
+        return found ? newer : [];
     }
 }

@@ -22,6 +22,11 @@ public partial class LibraryViewModel
     private int _undoToastEpoch;
     private CancellationTokenSource? _undoToastHideCts;
     private int _undoToastPaused;
+    /// <summary>
+    /// When batch Reject could not fold into one journal batch, Undo reverses
+    /// these ids newest-first as one action.
+    /// </summary>
+    private List<string>? _pendingMultiUndoBatchIds;
 
     /// <summary>Page shows the Move dialog; returns the chosen folder (and optional create-folder absorb path) or null.</summary>
     public Func<Task<MoveDestinationChoice?>>? RequestPickMoveDestination { get; set; }
@@ -98,28 +103,37 @@ public partial class LibraryViewModel
             try
             {
                 ShowUndoToast = false;
-                var peek = await _fileOps.PeekUndoAsync(projectId);
-                result = await _fileOps.UndoLastAsync(projectId);
-                if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
+                var multi = _pendingMultiUndoBatchIds;
+                _pendingMultiUndoBatchIds = null;
+                if (multi is { Count: > 1 })
                 {
-                    await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
+                    result = await UndoRejectBatchesAsync(projectId, multi);
                 }
-                else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
+                else
                 {
-                    await ReloadTagCatalogAsync();
-                    await LoadPreviewAsync(SelectedAsset);
-                    if (AppServices.Tags is not null)
+                    var peek = await _fileOps.PeekUndoAsync(projectId);
+                    result = await _fileOps.UndoLastAsync(projectId);
+                    if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
                     {
-                        await AppServices.Tags.RefreshAsync();
-                        if (result.Ok && peek.Kind == FileOpKind.TagDelete)
+                        await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
+                    }
+                    else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
+                    {
+                        await ReloadTagCatalogAsync();
+                        await LoadPreviewAsync(SelectedAsset);
+                        if (AppServices.Tags is not null)
                         {
-                            AppServices.Tags.StatusText = result.Message;
+                            await AppServices.Tags.RefreshAsync();
+                            if (result.Ok && peek.Kind == FileOpKind.TagDelete)
+                            {
+                                AppServices.Tags.StatusText = result.Message;
+                            }
                         }
                     }
-                }
-                else if (result.BatchId is not null)
-                {
-                    await RefreshQuietAsync();
+                    else if (result.BatchId is not null)
+                    {
+                        await RefreshQuietAsync();
+                    }
                 }
 
                 await RefreshUndoStateAsync();
@@ -144,6 +158,57 @@ public partial class LibraryViewModel
                 await RefreshUndoStateAsync();
             }
         });
+
+    /// <summary>
+    /// Undo several Reject Move batches newest-first as one user action (when
+    /// absorbPriorBatchId was unsafe and left multiple journal entries).
+    /// </summary>
+    private async Task<FileOpResult> UndoRejectBatchesAsync(string projectId, IReadOnlyList<string> batchIds)
+    {
+        var undoable = await _catalog.GetUndoableFileOpsAsync(projectId);
+        var order = undoable
+            .Where(b => batchIds.Any(id => string.Equals(id, b.Id, StringComparison.Ordinal)))
+            .Select(b => b.Id)
+            .ToList();
+        if (order.Count == 0)
+        {
+            return FileOpResult.Fail("Nothing to undo.");
+        }
+
+        var allMoves = new List<FileOpMove>();
+        string? lastMessage = null;
+        var ok = true;
+        foreach (var id in order)
+        {
+            var step = await _fileOps.UndoBatchAsync(projectId, id);
+            if (step.Moves.Count > 0)
+            {
+                allMoves.AddRange(step.Moves);
+            }
+
+            lastMessage = step.Message;
+            ok &= step.Ok;
+            if (!step.Ok && step.Moves.Count == 0)
+            {
+                break;
+            }
+        }
+
+        if (allMoves.Count > 0)
+        {
+            await ApplyMovesToUiAsync(allMoves, destinationDir: null);
+        }
+
+        return new FileOpResult
+        {
+            Ok = ok,
+            Message = lastMessage ?? (ok ? "Undid reject." : "Couldn't undo reject."),
+            Moves = allMoves
+        };
+    }
+
+    internal void RememberRejectUndoBatches(IReadOnlyList<string> batchIds) =>
+        _pendingMultiUndoBatchIds = batchIds.Count > 1 ? batchIds.ToList() : null;
 
     /// <summary>Move dialog "New folder": create <paramref name="name"/> under <paramref name="parentDir"/>.</summary>
     public async Task<FileOpResult> CreateFolderAsync(string parentDir, string name)

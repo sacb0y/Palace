@@ -16,6 +16,11 @@ public sealed class FileOpResult
     public string? Path { get; init; }
     public IReadOnlyList<FileOpMove> Moves { get; init; } = [];
     public IReadOnlyList<string> Skipped { get; init; } = [];
+    /// <summary>
+    /// True when <c>absorbPriorBatchId</c> was folded into this Move. False when
+    /// the prior was left on the undo stack (caller should multi-ID undo).
+    /// </summary>
+    public bool AbsorbedPriorBatch { get; init; }
 
     public static FileOpResult Fail(string message) => new() { Ok = false, Message = message };
 }
@@ -595,8 +600,10 @@ public sealed partial class FileOpService
         // Parents before children so Undo (reverse seq) deletes children first — same as Organize.
         var journal = new List<FileOpItem>();
         var absorbIds = new HashSet<string>(StringComparer.Ordinal);
+        var absorbedPrior = false;
         // Prior batch may sit under a just-created _rejected folder on the undo
-        // stack — look up by id (still undoable), not only "newest".
+        // stack. Only fold it in when every newer undoable batch is CreateFolder
+        // for this destination; otherwise leave it for multi-ID undo.
         if (!string.IsNullOrWhiteSpace(absorbPriorBatchId))
         {
             var prior = await _catalog.GetFileOpBatchAsync(absorbPriorBatchId).ConfigureAwait(false);
@@ -604,10 +611,19 @@ public sealed partial class FileOpService
                 && !prior.IsUndone
                 && string.Equals(prior.ProjectId, projectId, StringComparison.Ordinal))
             {
-                absorbIds.Add(prior.Id);
-                journal.AddRange(prior.Items
-                    .OrderBy(i => i.Seq)
-                    .Select(CloneJournalItem));
+                var undoable = await _catalog.GetUndoableFileOpsAsync(projectId).ConfigureAwait(false);
+                var newer = BatchReject.NewerThanPrior(undoable, prior.Id);
+                // NewerThanPrior is empty when prior is missing from the stack → unsafe.
+                var priorOnStack = undoable.Any(b => string.Equals(b.Id, prior.Id, StringComparison.Ordinal));
+                if (priorOnStack
+                    && BatchReject.NewerBatchesAllowAbsorbPrior(newer, destinationDir))
+                {
+                    absorbIds.Add(prior.Id);
+                    journal.AddRange(prior.Items
+                        .OrderBy(i => i.Seq)
+                        .Select(CloneJournalItem));
+                    absorbedPrior = true;
+                }
             }
         }
 
@@ -629,9 +645,15 @@ public sealed partial class FileOpService
 
         journal.AddRange(items);
         var fileMoveCount = journal.Count(i => i.Step == FileOpStep.MoveFile);
-        var summary = fileMoveCount == moves.Count
+        var folderCount = journal
+            .Where(i => i.Step == FileOpStep.MoveFile && !string.IsNullOrWhiteSpace(i.NewPath))
+            .Select(i => Path.GetDirectoryName(i.NewPath) ?? "")
+            .Where(d => d.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var summary = fileMoveCount == moves.Count && folderCount <= 1
             ? MoveSummary(moves.Count, destinationDir)
-            : $"Move {fileMoveCount} files (batch)";
+            : BatchReject.JournalSummary(fileMoveCount, Math.Max(folderCount, 1));
         var batchId = await LogAsync(projectId, FileOpKind.Move, summary, journal).ConfigureAwait(false);
         if (batchId is null)
         {
@@ -660,7 +682,8 @@ public sealed partial class FileOpService
             Summary = summary,
             Path = destinationDir,
             Moves = moves,
-            Skipped = skipped
+            Skipped = skipped,
+            AbsorbedPriorBatch = absorbedPrior
         };
     }
 

@@ -207,15 +207,32 @@
                     </DropDownButton.Flyout>
                 </DropDownButton>
             </StackPanel>
-            <ProgressBar
-                x:Name="PrgLibrary"
+            <Grid
                 Grid.Row="1"
-                Height="4"
-                AutomationProperties.AutomationId="PrgLibrary"
-                AutomationProperties.Name="Library loading"
-                IsIndeterminate="True"
-                ShowPaused="False"
-                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsBusy), Mode=OneWay}" />
+                ColumnSpacing="8"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsBusy), Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ProgressBar
+                    x:Name="PrgLibrary"
+                    Height="4"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="PrgLibrary"
+                    AutomationProperties.Name="Library loading"
+                    IsIndeterminate="True"
+                    ShowPaused="False" />
+                <Button
+                    Grid.Column="1"
+                    Padding="8,2"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnBusyCancel"
+                    AutomationProperties.Name="Cancel"
+                    Command="{x:Bind ViewModel.CancelBusyCommand}"
+                    Content="Cancel"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.CanCancelBusy), Mode=OneWay}" />
+            </Grid>
         </Grid>
 
         <Grid Grid.Row="1" RowSpacing="8">
