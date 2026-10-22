@@ -479,16 +479,40 @@ public sealed partial class LibraryPage : Page
         ScrPreviewPane.Visibility = widths.PreviewHidden
             ? Visibility.Collapsed
             : Visibility.Visible;
+        // Stamp allocate width immediately so packing does not use a wide ItemsView
+        // extent / prior measure before the column's ActualWidth catches up.
+        MosaicLayout.SetHostWidth(widths.Mosaic);
+        UpdateMosaicToolbarOverflow(widths.Mosaic);
     }
 
     /// <summary>
-    /// Keep mosaic packing on the ItemsView's real width (not a stale last-good
-    /// from an infinite/tiny measure pass).
+    /// Keep mosaic packing on the <b>visible column</b> width. ItemsView ActualWidth
+    /// can track a prior layout extent (wider than the viewport) and must not win
+    /// over <see cref="ColMosaic"/> ActualWidth.
     /// </summary>
     private void GrdAssets_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        MosaicLayout.SetHostWidth(e.NewSize.Width);
-        UpdateMosaicToolbarOverflow(e.NewSize.Width);
+        var visible = VisibleMosaicColumnWidth(e.NewSize.Width);
+        MosaicLayout.SetHostWidth(visible);
+        UpdateMosaicToolbarOverflow(visible);
+    }
+
+    /// <summary>True visible mosaic column DIP — never the hidden Preview span.</summary>
+    private double VisibleMosaicColumnWidth(double itemsViewWidth)
+    {
+        var column = ColMosaic.ActualWidth;
+        if (column >= MosaicLayoutWidth.MinUsable)
+        {
+            // Cap ItemsView (may report overflow extent) to the column viewport.
+            if (double.IsFinite(itemsViewWidth) && itemsViewWidth >= MosaicLayoutWidth.MinUsable)
+            {
+                return Math.Min(column, itemsViewWidth);
+            }
+
+            return column;
+        }
+
+        return itemsViewWidth;
     }
 
     /// <summary>
@@ -506,17 +530,41 @@ public sealed partial class LibraryPage : Page
     }
 
     /// <summary>
-    /// Mosaic column toolbar: under a tight grid width, drop Flatten into More and
-    /// shrink the sort button so Select + Sort are not clipped mid-element.
+    /// Mosaic column toolbar: Flatten / Sort overflow so they are not clipped at
+    /// 1400 / 1250 / 1155 laptop widths (face controls hide; More keeps them).
     /// </summary>
     private void UpdateMosaicToolbarOverflow(double mosaicWidth)
     {
-        var compact = mosaicWidth > 0 && mosaicWidth < LibraryColumnLayout.MosaicMinWidth;
+        if (mosaicWidth <= 0)
+        {
+            return;
+        }
+
+        var chrome = ViewModel.ShowFolderSectionsChrome;
+        var flattenOverflow = mosaicWidth < LibraryColumnLayout.MosaicToolbarFlattenBelowDip;
+        var sortCompact = mosaicWidth < LibraryColumnLayout.MosaicToolbarSortCompactBelowDip;
+        var sortOverflow = mosaicWidth < LibraryColumnLayout.MosaicToolbarSortOverflowBelowDip;
+
         // More menu always has Flatten; hide the face toggle when the column is tight.
-        TglFlattenSubfolders.Visibility = compact
+        TglFlattenSubfolders.Visibility = !chrome || flattenOverflow
             ? Visibility.Collapsed
-            : BindHelpers.BoolToVisibility(ViewModel.ShowFolderSectionsChrome);
-        BtnMosaicSort.MinWidth = compact ? 0 : 200;
+            : Visibility.Visible;
+
+        // Overflow Sort into More only when folder-section chrome (and More) is on.
+        if (sortOverflow && chrome)
+        {
+            BtnMosaicSort.Visibility = Visibility.Collapsed;
+            TxtMosaicSortLabel.Visibility = Visibility.Collapsed;
+            BtnMosaicSort.MinWidth = 0;
+            MnuMosaicSortOverflow.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            BtnMosaicSort.Visibility = Visibility.Visible;
+            TxtMosaicSortLabel.Visibility = sortCompact ? Visibility.Collapsed : Visibility.Visible;
+            BtnMosaicSort.MinWidth = sortCompact ? 32 : 200;
+            MnuMosaicSortOverflow.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void TglSelectMode_Changed(object sender, RoutedEventArgs e)

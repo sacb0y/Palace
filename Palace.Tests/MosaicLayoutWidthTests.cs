@@ -25,15 +25,17 @@ public sealed class MosaicLayoutWidthTests
     }
 
     [Fact]
-    public void Resolve_PrefersHostWidthOverStaleLastGood()
+    public void Resolve_NeverPacksWiderThanHostViewport()
     {
-        // Tiny/infinite measure must not pack for a previous wide last-good when
-        // the ItemsView ActualWidth (host) is already known — that clipped tiles.
+        // Measure available can be a prior wide extent; host is the visible column.
         Assert.Equal(483, MosaicLayoutWidth.Resolve(2, lastGood: 1100, hostWidth: 483));
         Assert.Equal(
             578,
             MosaicLayoutWidth.Resolve(double.PositiveInfinity, lastGood: 1400, hostWidth: 578));
-        Assert.Equal(728, MosaicLayoutWidth.Resolve(728, lastGood: 1400, hostWidth: 483));
+        // Available 728 with host 483 → pack to visible 483 (was returning 728 and clipping).
+        Assert.Equal(483, MosaicLayoutWidth.Resolve(728, lastGood: 1400, hostWidth: 483));
+        Assert.Equal(752, MosaicLayoutWidth.Resolve(900, lastGood: 1400, hostWidth: 752));
+        Assert.Equal(602, MosaicLayoutWidth.Resolve(602, lastGood: 800, hostWidth: 900));
     }
 
     [Fact]

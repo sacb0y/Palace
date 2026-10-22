@@ -59,8 +59,8 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     public double LastLaidOutWidth { get; private set; }
 
     /// <summary>
-    /// ItemsView ActualWidth from the page. Used when measure available width is
-    /// infinite/tiny so packing uses the real mosaic column, not a stale last-good.
+    /// Visible mosaic column width from the page (column ActualWidth / allocate).
+    /// Ceiling for packing — measure available must not exceed this or tiles clip.
     /// </summary>
     public double HostWidth { get; private set; }
 

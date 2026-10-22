@@ -3,9 +3,9 @@ namespace Palace.Helpers;
 /// <summary>
 /// Resolve mosaic arrange width. WinUI VirtualizingLayout sometimes measures with a
 /// tiny or non-finite available width during resize; using that produces 1px
-/// slivers and skips packing. Prefer the host's <paramref name="hostWidth"/>
-/// (ItemsView ActualWidth) over a stale last-good so column count tracks the
-/// real mosaic column. Off WinUI for Palace.Tests.
+/// slivers and skips packing. The visible mosaic column (<paramref name="hostWidth"/>)
+/// is the ceiling — never pack wider than the viewport or the last tile column
+/// clips at the window edge. Off WinUI for Palace.Tests.
 /// </summary>
 public static class MosaicLayoutWidth
 {
@@ -17,16 +17,24 @@ public static class MosaicLayoutWidth
 
     public static double Resolve(double available, double lastGood, double hostWidth = double.NaN)
     {
-        if (double.IsFinite(available) && available >= MinUsable)
+        var availOk = double.IsFinite(available) && available >= MinUsable;
+        var hostOk = double.IsFinite(hostWidth) && hostWidth >= MinUsable;
+
+        // Visible mosaic column is the ceiling. Measure available can be the prior
+        // extent or a wide probe; packing to that clips tiles at the window edge.
+        if (availOk && hostOk)
         {
-            return available;
+            return Math.Min(available, hostWidth);
         }
 
-        // Actual mosaic host beats a stale last-good (narrow resize otherwise
-        // packs for the previous wide width and clips the last tile column).
-        if (double.IsFinite(hostWidth) && hostWidth >= MinUsable)
+        if (hostOk)
         {
             return hostWidth;
+        }
+
+        if (availOk)
+        {
+            return available;
         }
 
         if (double.IsFinite(lastGood) && lastGood >= MinUsable)

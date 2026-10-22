@@ -38,6 +38,23 @@ public static class LibraryColumnLayout
     public const double LibraryToolbarOverflowBelowDip = 920;
 
     /// <summary>
+    /// Below this mosaic column width (DIP), hide the Flatten face toggle
+    /// (More menu keeps it). ~752 mosaic at 1400px still clipped Flatten.
+    /// </summary>
+    public const double MosaicToolbarFlattenBelowDip = 820;
+
+    /// <summary>
+    /// Below this mosaic column width (DIP), drop Sort MinWidth so the label
+    /// can shrink (1250/1155 still clipped Sort at 200).
+    /// </summary>
+    public const double MosaicToolbarSortCompactBelowDip = 680;
+
+    /// <summary>
+    /// Below this mosaic column width (DIP), move Sort into the More menu.
+    /// </summary>
+    public const double MosaicToolbarSortOverflowBelowDip = 560;
+
+    /// <summary>
     /// Two column gaps — Grid <c>ColumnSpacing</c> still applies when Preview
     /// width is 0 (column stays in the grid for the queued toggle).
     /// </summary>

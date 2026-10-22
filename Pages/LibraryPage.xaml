@@ -565,7 +565,10 @@
                     ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="ArrowSort" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}" />
+                        <TextBlock
+                            x:Name="TxtMosaicSortLabel"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}" />
                     </StackPanel>
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">
@@ -665,6 +668,68 @@
                                 AutomationProperties.AutomationId="MnuFlattenSubfolders"
                                 IsChecked="{x:Bind ViewModel.FlattenSubfolders, Mode=TwoWay}"
                                 Text="Flatten subfolders" />
+                            <!-- Shown when BtnMosaicSort is overflowed (narrow mosaic). -->
+                            <MenuFlyoutSubItem
+                                x:Name="MnuMosaicSortOverflow"
+                                AutomationProperties.AutomationId="MnuMosaicSortOverflow"
+                                Text="Sort"
+                                Visibility="Collapsed">
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="DateTaken"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateTaken'), Mode=OneWay}"
+                                    Text="Date taken" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="DateModified"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateModified'), Mode=OneWay}"
+                                    Text="Date modified" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="DateAdded"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateAdded'), Mode=OneWay}"
+                                    Text="Date added" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Name"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Name'), Mode=OneWay}"
+                                    Text="Name" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Size"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Size'), Mode=OneWay}"
+                                    Text="Size" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Type"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Type'), Mode=OneWay}"
+                                    Text="Type" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Rating"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Rating'), Mode=OneWay}"
+                                    Text="Rating" />
+                                <MenuFlyoutSeparator />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                    CommandParameter="true"
+                                    GroupName="MosaicSortDirOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort), Mode=OneWay}"
+                                    Text="{x:Bind ViewModel.SortDescendingLabel, Mode=OneWay}" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                    CommandParameter="false"
+                                    GroupName="MosaicSortDirOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicAscending(ViewModel.MosaicSort), Mode=OneWay}"
+                                    Text="{x:Bind ViewModel.SortAscendingLabel, Mode=OneWay}" />
+                            </MenuFlyoutSubItem>
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
