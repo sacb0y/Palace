@@ -39,11 +39,11 @@ BT.2020 linear, **1.0 = 203 nits**.
 
 ## ExrRefWhite / Pregmata_SteamAVIF (M4)
 
-**`ExrRefWhite = 80`** (`ScrgbNits`) — provisional pending a broader title corpus.
-Metadata-less EXR / `.hdr` **1.0 = 80 nits** → working **80/203**. Measured on
-Pregmata_SteamAVIF (3840×2160): EXR ≡ JXR (luminance ratio median 1.0000);
-.hdr/JXR 0.9968 (RGBE); no EXR whiteLuminance/chromaticities; no .hdr
-EXPOSURE/PRIMARIES; peak maxRGB ≈ 10.05 scRGB (~804 nits).
+**`ExrRefWhite = 80`** (`ScrgbNits`). Metadata-less EXR / `.hdr` **1.0 = 80 nits**
+→ working **80/203**. Measured on Pregmata_SteamAVIF (3840×2160): EXR ≡ JXR
+(luminance ratio median 1.0000); .hdr/JXR 0.9968 (RGBE); no EXR
+whiteLuminance/chromaticities; no .hdr EXPOSURE/PRIMARIES; peak maxRGB ≈ 10.05
+scRGB (~804 nits).
 
 ## Fixtures
 
