@@ -115,9 +115,7 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestRestoreMosaicSelection = () =>
             DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
-        SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
-        SrfOverlayStill.ChipCrossFadeRequested += OnOverlayChipCrossFade;
-        SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
+        HookOverlayStillGestures();
         // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
         SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
         MpeOverlay.ContextFlyout = FlyOverlayAsset;
@@ -208,6 +206,10 @@ public sealed partial class LibraryPage : Page
             // or the overlay still on that return.
             if (_shellReady)
             {
+                // NavigationCacheMode=Required: Unloaded dropped handlers — re-hook.
+                HookOverlayStillGestures();
+                PerformanceSettings.Changed -= PerformanceSettings_Changed;
+                PerformanceSettings.Changed += PerformanceSettings_Changed;
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
                 ViewModel.SectionToggleStarting = OnSectionToggleStarting;
@@ -232,11 +234,15 @@ public sealed partial class LibraryPage : Page
             }
 
             _shellReady = true;
+<<<<<<< HEAD
             ResetSectionToggleGuardOnLoaded();
             HookLibraryLayoutTracking();
             HookShellNavPaneTracking();
             RefreshLibraryLayout();
             RefreshMosaicToolbarOverflow();
+=======
+            HookOverlayStillGestures();
+>>>>>>> fda23ea (fix: re-hook still gestures after Settings; settle X estimate; chip hide)
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
@@ -271,8 +277,13 @@ public sealed partial class LibraryPage : Page
         Unloaded += (_, _) =>
         {
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
+<<<<<<< HEAD
             UnhookLibraryLayoutTracking();
             UnhookShellNavPaneTracking();
+=======
+            // Still gesture handlers: -= in HookOverlayStillGestures on next Loaded
+            // (NavigationCacheMode=Required reuses this page after Settings).
+>>>>>>> fda23ea (fix: re-hook still gestures after Settings; settle X estimate; chip hide)
             SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayReviewSwipe;
             SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
             SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
@@ -294,6 +305,20 @@ public sealed partial class LibraryPage : Page
             }
         };
         SizeChanged += (_, _) => RefreshLibraryLayout();
+    }
+
+    /// <summary>
+    /// Idempotent still-gesture hookups. Call from ctor and every Loaded path so
+    /// NavigationCacheMode reuse after Settings restores swipe / long-press.
+    /// </summary>
+    private void HookOverlayStillGestures()
+    {
+        SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayReviewSwipe;
+        SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
+        SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
+        SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
+        SrfOverlayStill.ChipCrossFadeRequested += OnOverlayChipCrossFade;
+        SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
     }
 
     private void PerformanceSettings_Changed(object? sender, EventArgs e)
@@ -1929,9 +1954,7 @@ public sealed partial class LibraryPage : Page
         }
 
         EnsureOverlayPagerChips();
-        _pagerChipNewTitle!.Text = gallery.Title;
-        _pagerChipNewPos!.Text = gallery.PositionLabel;
-        // Capture old into overlay; after navigate enqueue updates new chip text.
+        // Capture old before navigate; StillRevision updates new-chip text.
         var oldTitle = gallery.Title;
         var oldPos = gallery.PositionLabel;
         PagerChipCrossFade.Begin(
@@ -1942,14 +1965,6 @@ public sealed partial class LibraryPage : Page
             _pagerChipOldPos!,
             oldTitle,
             oldPos);
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (ViewModel.OverlayGallery is { } g)
-            {
-                _pagerChipNewTitle!.Text = g.Title;
-                _pagerChipNewPos!.Text = g.PositionLabel;
-            }
-        });
     }
 
     private void EnsureOverlayPagerChips()
@@ -1959,11 +1974,11 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        _pagerChipOld = PagerChipCrossFade.CreateOldOverlay(out _pagerChipOldTitle!, out _pagerChipOldPos!);
-        _pagerChipNew = PagerChipCrossFade.CreateOldOverlay(out _pagerChipNewTitle!, out _pagerChipNewPos!);
-        _pagerChipNew.Visibility = Visibility.Visible;
-        _pagerChipNew.Opacity = 1;
-        // Host under the still so chrome stays above; Canvas.ZIndex via Panel.ZIndex.
+        _pagerChipOld = PagerChipCrossFade.CreateChip(out _pagerChipOldTitle!, out _pagerChipOldPos!);
+        _pagerChipNew = PagerChipCrossFade.CreateChip(out _pagerChipNewTitle!, out _pagerChipNewPos!);
+        // Ephemeral — shown only during cross-fade, then collapsed.
+        _pagerChipNew.Visibility = Visibility.Collapsed;
+        _pagerChipNew.Opacity = 0;
         Canvas.SetZIndex(_pagerChipOld, 3);
         Canvas.SetZIndex(_pagerChipNew, 3);
         if (GrdGalleryOverlay.Children is { } children)
@@ -1971,6 +1986,17 @@ public sealed partial class LibraryPage : Page
             children.Add(_pagerChipNew);
             children.Add(_pagerChipOld);
         }
+    }
+
+    private void SyncOverlayPagerChipText()
+    {
+        if (_pagerChipNewTitle is null || ViewModel.OverlayGallery is not { } g)
+        {
+            return;
+        }
+
+        _pagerChipNewTitle.Text = g.Title;
+        _pagerChipNewPos!.Text = g.PositionLabel;
     }
 
     private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)
@@ -3378,6 +3404,13 @@ public sealed partial class LibraryPage : Page
             or nameof(GalleryViewModel.IsImage))
         {
             UpdateOverlayMedia();
+        }
+
+        if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
+            or nameof(GalleryViewModel.Title)
+            or nameof(GalleryViewModel.PositionLabel))
+        {
+            SyncOverlayPagerChipText();
         }
 
         if (e.PropertyName is nameof(GalleryViewModel.LoopVideo))

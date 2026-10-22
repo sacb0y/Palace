@@ -2449,14 +2449,10 @@ public sealed partial class GalleryStillSurface : UserControl
             if (_pagerProps is not null)
             {
                 _pagerProps.StopAnimation("X");
-                if (_pagerProps.TryGetScalar("X", out var live)
-                    == CompositionGetValueStatus.Succeeded)
+                // Should-fix: after StopAnimation, TryGetScalar often still returns the
+                // settle *start* (Succeeded but stale). Always estimate while settling.
+                if (wasSettling && _settleDurationMs > 0)
                 {
-                    _pagerX = live;
-                }
-                else if (wasSettling && _settleDurationMs > 0)
-                {
-                    // TryGetScalar can lag a frame — estimate from ease curve.
                     var elapsed = Environment.TickCount64 - _settleStartedAtMs;
                     _pagerX = SwipeNav.EstimateSettleX(
                         _settleFromX,
@@ -2464,6 +2460,11 @@ public sealed partial class GalleryStillSurface : UserControl
                         elapsed,
                         _settleDurationMs);
                     _pagerProps.InsertScalar("X", (float)_pagerX);
+                }
+                else if (_pagerProps.TryGetScalar("X", out var live)
+                    == CompositionGetValueStatus.Succeeded)
+                {
+                    _pagerX = live;
                 }
             }
         }

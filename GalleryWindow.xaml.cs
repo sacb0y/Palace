@@ -363,7 +363,7 @@ public sealed partial class GalleryWindow : Window
             return;
         }
 
-        _chipFadeOld = PagerChipCrossFade.CreateOldOverlay(out _chipFadeOldTitle!, out _chipFadeOldPos!);
+        _chipFadeOld = PagerChipCrossFade.CreateChip(out _chipFadeOldTitle!, out _chipFadeOldPos!);
         // Float over the gallery content under the title bar.
         if (GrdGalleryWindow.Children is { } children)
         {

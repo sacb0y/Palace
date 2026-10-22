@@ -993,54 +993,53 @@ public partial class GalleryViewModel : ObservableObject
             }
         }
 
-        string? resolved = null;
+        // Only cache durable LargePreview hits — never null or mosaic-thumb fallbacks
+        // (those change when a preview is written / asset deleted / renamed).
         if (item.Kind == AssetKind.Video)
         {
-            resolved = string.IsNullOrWhiteSpace(item.ThumbPath) ? null : item.ThumbPath;
+            return string.IsNullOrWhiteSpace(item.ThumbPath) ? null : item.ThumbPath;
         }
-        else
+
+        string? large = null;
+        try
         {
-            // Prefer cached large preview over mosaic thumb (docs/specs/swipe-nav.md).
-            try
+            if (AppServices.Thumbnails is { } thumbs
+                && !string.IsNullOrWhiteSpace(item.Path)
+                && thumbs.ExistingLargePreviewForPath(item.Path) is { } lg)
             {
-                if (AppServices.Thumbnails is { } thumbs
-                    && !string.IsNullOrWhiteSpace(item.Path)
-                    && thumbs.ExistingLargePreviewForPath(item.Path) is { } lg)
-                {
-                    resolved = lg;
-                }
-                else if (!string.IsNullOrWhiteSpace(item.ContentHash)
-                    && AppServices.Thumbnails is { } t2
-                    && t2.ExistingPathForHash(item.ContentHash, ThumbnailService.LargePreviewSuffix) is { } byHash)
-                {
-                    resolved = byHash;
-                }
+                large = lg;
             }
-            catch
+            else if (!string.IsNullOrWhiteSpace(item.ContentHash)
+                && AppServices.Thumbnails is { } t2
+                && t2.ExistingPathForHash(item.ContentHash, ThumbnailService.LargePreviewSuffix) is { } byHash)
             {
-                // AppServices may be unset in unit tests — fall through to thumb.
-            }
-
-            if (resolved is null && !string.IsNullOrWhiteSpace(item.ThumbPath))
-            {
-                resolved = item.ThumbPath;
+                large = byHash;
             }
         }
-
-        if (!string.IsNullOrWhiteSpace(cacheKey))
+        catch
         {
-            lock (NeighborPathCacheGate)
-            {
-                if (NeighborPathCache.Count >= NeighborPathCacheCap)
-                {
-                    NeighborPathCache.Clear();
-                }
-
-                NeighborPathCache[cacheKey] = resolved;
-            }
+            // AppServices may be unset in unit tests — fall through to thumb.
         }
 
-        return resolved;
+        if (large is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(cacheKey))
+            {
+                lock (NeighborPathCacheGate)
+                {
+                    if (NeighborPathCache.Count >= NeighborPathCacheCap)
+                    {
+                        NeighborPathCache.Clear();
+                    }
+
+                    NeighborPathCache[cacheKey] = large;
+                }
+            }
+
+            return large;
+        }
+
+        return string.IsNullOrWhiteSpace(item.ThumbPath) ? null : item.ThumbPath;
     }
 
     /// <summary>Jump to an asset in this gallery snapshot (Review mode advance / undo).</summary>

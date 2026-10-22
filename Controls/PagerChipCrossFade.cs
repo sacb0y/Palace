@@ -20,12 +20,14 @@ internal static class PagerChipCrossFade
         TextBlock oldTitle,
         TextBlock oldPosition,
         string captureTitle,
-        string capturePosition)
+        string capturePosition,
+        Action? onCompleted = null)
     {
         oldTitle.Text = captureTitle ?? "";
         oldPosition.Text = capturePosition ?? "";
         oldOverlay.Visibility = Visibility.Visible;
         oldOverlay.Opacity = 1;
+        newChip.Visibility = Visibility.Visible;
         newChip.Opacity = 0;
 
         dispatcher.TryEnqueue(() =>
@@ -55,13 +57,24 @@ internal static class PagerChipCrossFade
             {
                 oldOverlay.Visibility = Visibility.Collapsed;
                 oldOverlay.Opacity = 0;
-                newChip.Opacity = 1;
+                // Collapse ephemeral chip so real chrome (arrows / details) owns the name.
+                if (newChip is Border newBorder)
+                {
+                    newBorder.Visibility = Visibility.Collapsed;
+                    newBorder.Opacity = 0;
+                }
+                else
+                {
+                    newChip.Opacity = 1;
+                }
+
+                onCompleted?.Invoke();
             };
             board.Begin();
         });
     }
 
-    public static Border CreateOldOverlay(out TextBlock title, out TextBlock position)
+    public static Border CreateChip(out TextBlock title, out TextBlock position)
     {
         title = new TextBlock
         {
