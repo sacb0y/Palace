@@ -41,6 +41,13 @@ public static class BindHelpers
     public static string OrDash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "—" : value;
 
+    /// <summary>
+    /// ToolTipService paints a dark empty square for "" — return null so there is no tip.
+    /// Non-empty Recent / +Custom tips stay bound.
+    /// </summary>
+    public static object? ToolTipOrNull(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? null : text;
+
     public static Visibility StringToVisibility(string? value) =>
         string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
 

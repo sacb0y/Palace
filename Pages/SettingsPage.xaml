@@ -29,8 +29,8 @@
         -->
         <DataTemplate x:Key="ShellPresetTile" x:DataType="models:ShellPresetItem">
             <!--
-              No ToolTip on tiles: empty ToolTipText painted a dark empty square on
-              hover; the caption under each thumb is enough (Isiac 0.3.3).
+              ToolTipOrNull: empty ToolTipText → null (no dark empty square on
+              packaged presets). Recent / +Custom keep name+date / Add tips.
             -->
             <StackPanel
                 Width="104"
@@ -38,7 +38,8 @@
                 AutomationProperties.AutomationId="{x:Bind AutomationId}"
                 AutomationProperties.HelpText="{x:Bind AutomationHelpText}"
                 AutomationProperties.Name="{x:Bind AutomationName}"
-                Spacing="4">
+                Spacing="4"
+                ToolTipService.ToolTip="{x:Bind helpers:BindHelpers.ToolTipOrNull(ToolTipText), Mode=OneWay}">
                 <StackPanel.ContextFlyout>
                     <MenuFlyout>
                         <MenuFlyoutItem
@@ -618,6 +619,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock
+                                        x:Name="TxtShellTintLabel"
                                         VerticalAlignment="Center"
                                         Style="{StaticResource BodyTextBlockStyle}"
                                         Text="Color tint" />
@@ -626,6 +628,7 @@
                                         Grid.Column="1"
                                         VerticalAlignment="Center"
                                         AutomationProperties.AutomationId="TglShellTint"
+                                        AutomationProperties.LabeledBy="{x:Bind TxtShellTintLabel}"
                                         AutomationProperties.Name="Color tint"
                                         IsOn="{x:Bind ViewModel.TintEnabled, Mode=TwoWay}"
                                         OffContent="Off"

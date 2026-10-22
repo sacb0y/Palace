@@ -714,7 +714,10 @@ public static class ShellBackground
     public static double ClampBlur(double value) =>
         Math.Clamp(value, MinAmount, MaxBlurPx);
 
-    /// <summary>Deprecated: clamps as darkness (0–90). Prefer <see cref="ClampDarkness"/> / <see cref="ClampBlur"/>.</summary>
+    /// <summary>
+    /// Deprecated: clamps as darkness (0–90, rounded to whole %). Prefer
+    /// <see cref="ClampDarkness"/> / <see cref="ClampBlur"/> / <see cref="NormalizeBlur"/>.
+    /// </summary>
     public static double ClampAmount(double value) => ClampDarkness(value);
 
     /// <summary>

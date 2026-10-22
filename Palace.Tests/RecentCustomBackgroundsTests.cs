@@ -163,6 +163,26 @@ public sealed class RecentCustomBackgroundsTests
     }
 
     [Fact]
+    public void Tooltip_includes_name_and_added_date()
+    {
+        var added = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        var tip = RecentCustomBackgrounds.Tooltip("wall.png", added);
+        Assert.Contains("wall.png", tip, StringComparison.Ordinal);
+        Assert.Contains("Added", tip, StringComparison.Ordinal);
+        Assert.Contains('\n', tip);
+    }
+
+    [Fact]
+    public void ToolTipOrNull_empty_is_null_nonempty_kept()
+    {
+        // Empty ToolTipText used to paint a dark square; null skips the tip.
+        Assert.Null(RecentCustomBackgrounds.ToolTipOrNull(null));
+        Assert.Null(RecentCustomBackgrounds.ToolTipOrNull(""));
+        Assert.Null(RecentCustomBackgrounds.ToolTipOrNull("   "));
+        Assert.Equal("Add a custom background image", RecentCustomBackgrounds.ToolTipOrNull("Add a custom background image"));
+    }
+
+    [Fact]
     public void ShouldKeepStoredFile_only_when_listed()
     {
         var listed = E("a", "shell-recent-a.jpg");

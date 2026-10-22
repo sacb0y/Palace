@@ -20,7 +20,7 @@ namespace Palace.Helpers;
 /// ticks only <c>InsertScalar</c> animatable props (no surface reload).
 /// WinUI only.
 /// </summary>
-public static class ShellBackdrop
+public static partial class ShellBackdrop
 {
     private const string BlurAmountProperty = "Blur.BlurAmount";
     private const string DimOpacityProperty = "Dim.Opacity";
@@ -329,22 +329,25 @@ public static class ShellBackdrop
         EnsureSharedSurface(imagePath, light);
 
         var wantSurface = !string.IsNullOrWhiteSpace(imagePath) && _sharedSurface is not null;
-        // Slot must have been built for this exact path + theme. Matching only
-        // _sharedSurfacePath is wrong: EnsureSharedSurface updates that first,
-        // then a stale CompositionSurfaceBrush still looks "ready" and we skip
-        // rebuild — non-default → non-default preset clicks appear to do nothing.
-        var surfaceReady = wantSurface
-            && slot.SourceBrush is CompositionSurfaceBrush
-            && string.Equals(_sharedSurfacePath, imagePath, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(slot.BoundSourcePath, imagePath, StringComparison.OrdinalIgnoreCase)
-            && slot.BoundSourceIsLight == light;
-        var backdropReady = !wantSurface && slot.SourceBrush is CompositionBackdropBrush;
+        // After EnsureSharedSurface succeeds, _sharedSurfacePath already matches imagePath —
+        // checking it again is redundant (BoundSourcePath + theme are the slot contract).
+        System.Diagnostics.Debug.Assert(
+            !wantSurface
+            || string.Equals(_sharedSurfacePath, imagePath, StringComparison.OrdinalIgnoreCase),
+            "EnsureSharedSurface should leave _sharedSurfacePath matching imagePath when loaded.");
 
-        if (slot.Visual is not null
-            && ReferenceEquals(slot.Host, glass)
-            && ReferenceEquals(_compositor, compositor)
-            && slot.Brush is not null
-            && (backdropReady || surfaceReady))
+        if (IsSlotReady(
+                hasVisual: slot.Visual is not null,
+                hostMatches: ReferenceEquals(slot.Host, glass),
+                compositorMatches: ReferenceEquals(_compositor, compositor),
+                hasEffectBrush: slot.Brush is not null,
+                wantSurface: wantSurface,
+                hasSurfaceSourceBrush: slot.SourceBrush is CompositionSurfaceBrush,
+                hasBackdropSourceBrush: slot.SourceBrush is CompositionBackdropBrush,
+                boundSourcePath: slot.BoundSourcePath,
+                imagePath: imagePath,
+                boundSourceIsLight: slot.BoundSourceIsLight,
+                light: light))
         {
             SyncBlurVisualSize(slot, glass);
             return;
@@ -777,11 +780,33 @@ public static class ShellBackdrop
 
     private static void ReleaseSlotResources(GlassSlot slot)
     {
+        // Dispose Composition brushes before dropping refs (theme flip rebuilds the
+        // slot graph; Window.SystemBackdrop must NOT be recreated — see
+        // ShellBackground.ShouldRecreateSystemBackdrop / MainWindow.ApplySystemBackdrop).
+        TryDisposeComposition(slot.Brush);
+        TryDisposeComposition(slot.SourceBrush);
         slot.Visual = null;
         slot.Brush = null;
         slot.SourceBrush = null;
         slot.BoundSourcePath = null;
         slot.BoundSourceIsLight = false;
+    }
+
+    private static void TryDisposeComposition(CompositionObject? obj)
+    {
+        if (obj is null)
+        {
+            return;
+        }
+
+        try
+        {
+            obj.Dispose();
+        }
+        catch
+        {
+            // ignore — painted layers must never take down the process
+        }
     }
 
     private static void ReleaseSlot(GlassSlot slot)

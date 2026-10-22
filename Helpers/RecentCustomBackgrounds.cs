@@ -346,6 +346,13 @@ public static class RecentCustomBackgrounds
         return $"{name}\nAdded {local:g}";
     }
 
+    /// <summary>
+    /// Null when empty so ToolTipService paints nothing (same contract as
+    /// <c>BindHelpers.ToolTipOrNull</c>; WinUI-free for Palace.Tests).
+    /// </summary>
+    public static string? ToolTipOrNull(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? null : text;
+
     public static string HashFile(string path)
     {
         using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);

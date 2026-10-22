@@ -74,6 +74,7 @@
     <Compile Include="..\Helpers\ShortcutCheatsheet.cs" Link="ShortcutCheatsheet.cs" />
     <Compile Include="..\Helpers\RangeSelect.cs" Link="RangeSelect.cs" />
     <Compile Include="..\Helpers\ShellBackground.cs" Link="ShellBackground.cs" />
+    <Compile Include="..\Helpers\ShellBackdrop.Ready.cs" Link="ShellBackdrop.Ready.cs" />
     <Compile Include="..\Helpers\ShellBackgroundPersist.cs" Link="ShellBackgroundPersist.cs" />
     <Compile Include="..\Helpers\StableIdentityList.cs" Link="StableIdentityList.cs" />
     <Compile Include="..\Helpers\RecentCustomBackgrounds.cs" Link="RecentCustomBackgrounds.cs" />
