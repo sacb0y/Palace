@@ -105,8 +105,12 @@ public sealed class BatchRejectTests
     public void InterruptedMessage_ReportsMovedSoFar()
     {
         Assert.Equal("Interrupted.", BatchReject.InterruptedMessage(0));
-        Assert.Equal("Interrupted, 1 rejected so far.", BatchReject.InterruptedMessage(1));
-        Assert.Equal("Interrupted, 3 rejected so far.", BatchReject.InterruptedMessage(3));
+        Assert.Equal(
+            "Interrupted, 1 rejected so far. Use Undo history to restore.",
+            BatchReject.InterruptedMessage(1));
+        Assert.Equal(
+            "Interrupted, 3 rejected so far. Use Undo history to restore.",
+            BatchReject.InterruptedMessage(3));
     }
 
     [Fact]
@@ -163,20 +167,11 @@ public sealed class BatchRejectTests
     }
 
     [Fact]
-    public void PendingMultiUndoStillTip_RequiresTipMatch()
-    {
-        Assert.False(BatchReject.PendingMultiUndoStillTip(null, "tip"));
-        Assert.False(BatchReject.PendingMultiUndoStillTip(["only"], "only"));
-        Assert.True(BatchReject.PendingMultiUndoStillTip(["a", "b"], "b"));
-        Assert.False(BatchReject.PendingMultiUndoStillTip(["a", "b"], "x"));
-        Assert.False(BatchReject.PendingMultiUndoStillTip(["a", "b"], null));
-    }
-
-    [Fact]
-    public void CountDestinationFolders_UsesReviewRejectDestAndSamePath()
+    public void CountDestinationFolders_UsesNewPathParentsAndSamePath()
     {
         var shotsReject = Path.Combine("Library", "shots", "_rejected");
         var refsReject = Path.Combine("Library", "refs", "_rejected");
+        var other = Path.Combine("Library", "Other");
         var items = new[]
         {
             new FileOpItem
@@ -190,7 +185,9 @@ public sealed class BatchRejectTests
                 Step = FileOpStep.MoveFile,
                 OldPath = Path.Combine("Library", "shots", "b.png"),
                 // Trailing separator on parent must not double-count.
-                NewPath = Path.Combine(shotsReject + Path.DirectorySeparatorChar, "b.png")
+                NewPath = shotsReject.TrimEnd(Path.DirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar
+                    + "b.png"
             },
             new FileOpItem
             {
@@ -202,8 +199,30 @@ public sealed class BatchRejectTests
                 Step = FileOpStep.MoveFile,
                 OldPath = Path.Combine("Library", "refs", "c.png"),
                 NewPath = Path.Combine(refsReject, "c.png")
+            },
+            // Multi-source into one dest: OldPath would suggest two reject
+            // folders, but NewPath parents are the same — count 1.
+            new FileOpItem
+            {
+                Step = FileOpStep.MoveFile,
+                OldPath = Path.Combine("Library", "shots", "d.png"),
+                NewPath = Path.Combine(other, "d.png")
+            },
+            new FileOpItem
+            {
+                Step = FileOpStep.MoveFile,
+                OldPath = Path.Combine("Library", "refs", "e.png"),
+                NewPath = Path.Combine(other, "e.png")
             }
         };
-        Assert.Equal(2, BatchReject.CountDestinationFolders(items));
+        // shots/_rejected, refs/_rejected, Other → 3
+        Assert.Equal(3, BatchReject.CountDestinationFolders(items));
+        Assert.Equal(
+            1,
+            BatchReject.CountDestinationFolders(
+            [
+                items[4],
+                items[5]
+            ]));
     }
 }

@@ -349,11 +349,9 @@ public partial class LibraryViewModel
 
     /// <summary>
     /// Batch Reject: move each selected file into a sibling <c>_rejected</c>
-    /// (same destination as Review). Multi-folder runs fold into <b>one</b>
+    /// via <see cref="BatchRejectFlow"/>. Multi-folder runs fold into one
     /// journal batch when absorb is safe; otherwise stop with
-    /// <see cref="BatchReject.InterruptedMessage"/> so completed folders stay
-    /// separately undoable. Partial failures / already-rejected roll into one
-    /// final toast.
+    /// <see cref="BatchReject.InterruptedMessage"/> (no Undo on that toast).
     /// </summary>
     [RelayCommand]
     private Task RejectSelectedAsync() =>
@@ -399,177 +397,93 @@ public partial class LibraryViewModel
             }
 
             var projectId = AppServices.CurrentProject.Id;
-            var groups = movers
+            var folderGroups = movers
                 .GroupBy(a => ReviewReject.DestinationDir(a.Path) ?? "", StringComparer.OrdinalIgnoreCase)
+                .Select(g => new BatchRejectFlow.FolderGroup(
+                    DestinationDir: g.Key,
+                    ParentDir: ReviewReject.ParentDir(g.First().Path) ?? "",
+                    Assets: g.ToList()))
                 .ToList();
-            var folderCount = groups.Count(g => !string.IsNullOrEmpty(g.Key));
+            var folderCount = folderGroups.Count(g => !string.IsNullOrEmpty(g.DestinationDir));
 
             var token = BeginBusyCancelable(
                 movers.Count == 1 ? "Rejecting…" : $"Rejecting {movers.Count}…");
-            var moved = 0;
-            var failed = 0;
-            var failNotes = new List<string>();
-            string? lastMessage = null;
-            string? chainBatchId = null;
-            var undoBatchIds = new List<string>();
-            var cancelled = false;
-            var interrupted = false;
+            BatchRejectFlow.RunResult run = new(0, 0, [], [], false, false, null);
             try
             {
-                foreach (var group in groups)
-                {
-                    if (token.IsCancellationRequested)
+                run = await BatchRejectFlow.RunAsync(
+                    folderGroups,
+                    async (parent, name) =>
                     {
-                        cancelled = true;
-                        break;
-                    }
-
-                    if (string.IsNullOrEmpty(group.Key))
-                    {
-                        failed += group.Count();
-                        failNotes.Add("missing folder path");
-                        continue;
-                    }
-
-                    var dest = group.Key;
-                    var parent = ReviewReject.ParentDir(group.First().Path);
-                    if (parent is null)
-                    {
-                        failed += group.Count();
-                        failNotes.Add("missing parent folder");
-                        continue;
-                    }
-
-                    // Absorb must be safe before CreateFolder / Move. When an
-                    // intervening journal entry sits on the tip, stop — completed
-                    // folders stay separately undoable (no multi-ID half-undo).
-                    if (chainBatchId is not null)
-                    {
-                        var undoable = await _catalog.GetUndoableFileOpsAsync(projectId);
-                        if (!BatchReject.CanAbsorbPrior(undoable, chainBatchId, dest))
+                        var created = await _fileOps.CreateFolderAsync(parent, name, projectId);
+                        if (created.Ok && !string.IsNullOrWhiteSpace(created.Path))
                         {
-                            interrupted = true;
-                            lastMessage = BatchReject.InterruptedMessage(moved);
-                            break;
-                        }
-                    }
-
-                    string? absorb = null;
-                    if (!Directory.Exists(dest))
-                    {
-                        var created = await _fileOps.CreateFolderAsync(
-                            parent,
-                            ReviewReject.FolderName,
-                            projectId);
-                        if (!created.Ok || string.IsNullOrWhiteSpace(created.Path))
-                        {
-                            if (!Directory.Exists(dest))
-                            {
-                                failed += group.Count();
-                                failNotes.Add(created.Message);
-                                continue;
-                            }
-                        }
-                        else
-                        {
-                            absorb = created.Path;
                             await RebuildFolderTreeAsync();
                         }
-                    }
 
-                    if (token.IsCancellationRequested)
+                        return new BatchRejectFlow.CreateFolderResult(
+                            created.Ok,
+                            created.Path,
+                            created.Message);
+                    },
+                    async (assets, dest, absorb, prior, ct) =>
                     {
-                        cancelled = true;
-                        break;
-                    }
-
-                    FileOpResult result;
-                    try
-                    {
-                        result = await _fileOps.MoveAssetsAsync(
-                            group.ToList(),
+                        var result = await _fileOps.MoveAssetsAsync(
+                            assets,
                             dest,
                             projectId,
-                            cancellationToken: token,
+                            cancellationToken: ct,
                             absorbCreatedFolder: absorb,
-                            absorbPriorBatchId: chainBatchId);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        cancelled = true;
-                        break;
-                    }
-
-                    if (result.Moves.Count > 0)
-                    {
-                        moved += result.Moves.Count;
-                        lastMessage = result.Message;
-                        if (!string.IsNullOrWhiteSpace(result.BatchId))
+                            absorbPriorBatchId: prior);
+                        if (result.Moves.Count > 0)
                         {
-                            BatchReject.TrackUndoBatchId(
-                                undoBatchIds,
-                                chainBatchId,
-                                result.BatchId,
-                                result.AbsorbedPriorBatch);
-                            chainBatchId = result.BatchId;
+                            await ApplyMovesToUiAsync(result.Moves, result.Path);
                         }
 
-                        await ApplyMovesToUiAsync(result.Moves, result.Path);
-                    }
-
-                    var skippedHere = group.Count() - result.Moves.Count;
-                    if (skippedHere > 0)
-                    {
-                        failed += skippedHere;
-                        if (!string.IsNullOrWhiteSpace(result.Message))
-                        {
-                            failNotes.Add(result.Message);
-                        }
-                    }
-                }
+                        return new BatchRejectFlow.MoveResult(
+                            result.Moves.Count,
+                            result.BatchId,
+                            result.AbsorbedPriorBatch,
+                            result.Message);
+                    },
+                    () => _catalog.GetUndoableFileOpsAsync(projectId),
+                    token);
             }
             finally
             {
                 await UiDispatch.RunAsync(() =>
                 {
                     EndBusyCancelable();
-                    if (!string.IsNullOrWhiteSpace(lastMessage))
+                    if (!string.IsNullOrWhiteSpace(run.LastMessage))
                     {
-                        StatusText = lastMessage!;
+                        StatusText = run.LastMessage!;
                     }
                 });
             }
 
             await RefreshUndoStateAsync();
-            // Completed folders stay separately undoable — never stash multi-ID
-            // pending (absorb folds into one batch when safe; interrupt stops early).
-            RememberRejectUndoBatches(undoBatchIds);
-            if (interrupted)
+            var moved = run.Moved;
+            var failed = run.Failed;
+            var failNotes = run.FailNotes;
+            var undoBatchIds = run.UndoBatchIds;
+            if (run.Interrupted)
             {
-                var stop = BatchReject.InterruptedMessage(moved);
-                if (moved > 0 && undoBatchIds.Count > 0)
-                {
-                    ShowUndoToastFor(
-                        stop,
-                        offerUndo: true,
-                        dismissSeconds: BatchReject.UndoToastSeconds(undoBatchIds.Count));
-                }
-                else
-                {
-                    Notify(stop, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
-                }
-
+                // Tip may be an intervening op — do not offer Undo on this toast.
+                ShowUndoToastFor(
+                    BatchReject.InterruptedMessage(moved),
+                    offerUndo: false,
+                    dismissSeconds: BatchReject.UndoToastSeconds(Math.Max(folderCount, 1)));
                 return;
             }
 
             var toast = BatchReject.ToastMessage(moved, already, failed, folderCount);
-            if (cancelled && moved == 0)
+            if (run.Cancelled && moved == 0)
             {
                 Notify("Reject cancelled.");
                 return;
             }
 
-            if (cancelled)
+            if (run.Cancelled)
             {
                 toast = $"{toast.TrimEnd('.')} (cancelled).";
             }

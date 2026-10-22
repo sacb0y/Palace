@@ -18,7 +18,7 @@ public sealed class FileOpResult
     public IReadOnlyList<string> Skipped { get; init; } = [];
     /// <summary>
     /// True when <c>absorbPriorBatchId</c> was folded into this Move. False when
-    /// the prior was left on the undo stack (caller should multi-ID undo).
+    /// the prior was left on the undo stack (caller stops the batch Reject).
     /// </summary>
     public bool AbsorbedPriorBatch { get; init; }
 
@@ -642,10 +642,15 @@ public sealed partial class FileOpService
 
         journal.AddRange(items);
         var fileMoveCount = journal.Count(i => i.Step == FileOpStep.MoveFile);
+        // NewPath parents only — OldPath-based reject dests would mislabel a
+        // normal multi-source Move as "Reject across K folders".
         var folderCount = BatchReject.CountDestinationFolders(journal);
-        var summary = fileMoveCount == moves.Count && folderCount <= 1
-            ? MoveSummary(moves.Count, destinationDir)
-            : BatchReject.JournalSummary(fileMoveCount, Math.Max(folderCount, 1));
+        // Reject journal wording only when prior Reject batches were absorbed.
+        var summary = absorbedPrior
+            ? BatchReject.JournalSummary(fileMoveCount, Math.Max(folderCount, 1))
+            : fileMoveCount == moves.Count
+                ? MoveSummary(moves.Count, destinationDir)
+                : $"Move {fileMoveCount} files (batch)";
         var batchId = await LogAsync(projectId, FileOpKind.Move, summary, journal).ConfigureAwait(false);
         if (batchId is null)
         {

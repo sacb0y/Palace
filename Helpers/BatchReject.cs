@@ -36,12 +36,14 @@ public static class BatchReject
 
     /// <summary>
     /// When absorbPrior is unsafe, stop the batch: completed folders stay
-    /// separately undoable — never promise a multi-ID half-undo.
+    /// separately undoable — never promise a multi-ID half-undo. Points the
+    /// user at Undo history (toast has no Undo action — tip may be the
+    /// intervening op).
     /// </summary>
     public static string InterruptedMessage(int movedSoFar) =>
         movedSoFar <= 0
             ? "Interrupted."
-            : $"Interrupted, {movedSoFar} rejected so far.";
+            : $"Interrupted, {movedSoFar} rejected so far. Use Undo history to restore.";
 
     /// <summary>
     /// Final toast after a batch Reject. Always surfaces already-rejected and
@@ -221,23 +223,22 @@ public static class BatchReject
     }
 
     /// <summary>
-    /// Distinct reject destination folders among MoveFile journal rows, using
-    /// <see cref="FolderNames.SamePath"/> trailing-separator normalization
-    /// (matches <see cref="ReviewReject.DestinationDir"/>).
+    /// Distinct <see cref="FileOpItem.NewPath"/> parent folders among MoveFile
+    /// rows, using <see cref="FolderNames.SamePath"/> trailing-separator
+    /// normalization. Used for journal folder counts (not OldPath reject dests —
+    /// a normal multi-source Move must not look like batch Reject).
     /// </summary>
     public static int CountDestinationFolders(IEnumerable<FileOpItem> journalItems)
     {
         var dirs = new List<string>();
         foreach (var item in journalItems)
         {
-            if (item.Step != FileOpStep.MoveFile)
+            if (item.Step != FileOpStep.MoveFile || string.IsNullOrWhiteSpace(item.NewPath))
             {
                 continue;
             }
 
-            // Prefer reject dest from the pre-move path; fall back to NewPath parent.
-            var dest = ReviewReject.DestinationDir(item.OldPath)
-                ?? Path.GetDirectoryName(item.NewPath);
+            var dest = Path.GetDirectoryName(item.NewPath);
             if (string.IsNullOrWhiteSpace(dest))
             {
                 continue;
@@ -252,23 +253,5 @@ public static class BatchReject
         }
 
         return dirs.Count;
-    }
-
-    /// <summary>
-    /// True when pending multi-undo tip still matches the newest undoable batch
-    /// (stale pending after an intervening journal entry must not run).
-    /// </summary>
-    public static bool PendingMultiUndoStillTip(
-        IReadOnlyList<string>? pendingBatchIdsNewestLast,
-        string? newestUndoableBatchId)
-    {
-        if (pendingBatchIdsNewestLast is not { Count: > 1 }
-            || string.IsNullOrWhiteSpace(newestUndoableBatchId))
-        {
-            return false;
-        }
-
-        var tip = pendingBatchIdsNewestLast[^1];
-        return string.Equals(tip, newestUndoableBatchId, StringComparison.Ordinal);
     }
 }

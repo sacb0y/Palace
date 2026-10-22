@@ -22,11 +22,6 @@ public partial class LibraryViewModel
     private int _undoToastEpoch;
     private CancellationTokenSource? _undoToastHideCts;
     private int _undoToastPaused;
-    /// <summary>
-    /// When batch Reject could not fold into one journal batch, Undo reverses
-    /// these ids newest-first as one action.
-    /// </summary>
-    private List<string>? _pendingMultiUndoBatchIds;
 
     /// <summary>Page shows the Move dialog; returns the chosen folder (and optional create-folder absorb path) or null.</summary>
     public Func<Task<MoveDestinationChoice?>>? RequestPickMoveDestination { get; set; }
@@ -103,40 +98,28 @@ public partial class LibraryViewModel
             try
             {
                 ShowUndoToast = false;
-                var multi = _pendingMultiUndoBatchIds;
-                _pendingMultiUndoBatchIds = null;
-                var tip = await _fileOps.PeekUndoAsync(projectId);
-                // Only multi-undo when the pending tip is still the newest
-                // undoable batch — a later move/delete/tag must not hijack Ctrl+Z.
-                if (BatchReject.PendingMultiUndoStillTip(multi, tip?.Id))
+                var peek = await _fileOps.PeekUndoAsync(projectId);
+                result = await _fileOps.UndoLastAsync(projectId);
+                if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
                 {
-                    result = await UndoRejectBatchesAsync(projectId, multi!);
+                    await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
                 }
-                else
+                else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
                 {
-                    var peek = tip;
-                    result = await _fileOps.UndoLastAsync(projectId);
-                    if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
+                    await ReloadTagCatalogAsync();
+                    await LoadPreviewAsync(SelectedAsset);
+                    if (AppServices.Tags is not null)
                     {
-                        await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
-                    }
-                    else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
-                    {
-                        await ReloadTagCatalogAsync();
-                        await LoadPreviewAsync(SelectedAsset);
-                        if (AppServices.Tags is not null)
+                        await AppServices.Tags.RefreshAsync();
+                        if (result.Ok && peek.Kind == FileOpKind.TagDelete)
                         {
-                            await AppServices.Tags.RefreshAsync();
-                            if (result.Ok && peek.Kind == FileOpKind.TagDelete)
-                            {
-                                AppServices.Tags.StatusText = result.Message;
-                            }
+                            AppServices.Tags.StatusText = result.Message;
                         }
                     }
-                    else if (result.BatchId is not null)
-                    {
-                        await RefreshQuietAsync();
-                    }
+                }
+                else if (result.BatchId is not null)
+                {
+                    await RefreshQuietAsync();
                 }
 
                 await RefreshUndoStateAsync();
@@ -161,71 +144,6 @@ public partial class LibraryViewModel
                 await RefreshUndoStateAsync();
             }
         });
-
-    /// <summary>
-    /// Legacy multi-ID Reject undo (pre option-a interrupt). Only reached when
-    /// <see cref="BatchReject.PendingMultiUndoStillTip"/> is true.
-    /// </summary>
-    private async Task<FileOpResult> UndoRejectBatchesAsync(string projectId, IReadOnlyList<string> batchIds)
-    {
-        var undoable = await _catalog.GetUndoableFileOpsAsync(projectId);
-        var order = undoable
-            .Where(b => batchIds.Any(id => string.Equals(id, b.Id, StringComparison.Ordinal)))
-            .Select(b => b.Id)
-            .ToList();
-        if (order.Count == 0)
-        {
-            return FileOpResult.Fail("Nothing to undo.");
-        }
-
-        // Tip already verified by caller; stop if a newer entry appears mid-loop
-        // (never half-undo past an interleaved op).
-        var allMoves = new List<FileOpMove>();
-        string? lastMessage = null;
-        var ok = true;
-        foreach (var id in order)
-        {
-            var newest = await _fileOps.PeekUndoAsync(projectId);
-            if (newest is null || !string.Equals(newest.Id, id, StringComparison.Ordinal))
-            {
-                ok = false;
-                lastMessage = BatchReject.InterruptedMessage(allMoves.Count);
-                break;
-            }
-
-            var step = await _fileOps.UndoBatchAsync(projectId, id);
-            if (step.Moves.Count > 0)
-            {
-                allMoves.AddRange(step.Moves);
-            }
-
-            lastMessage = step.Message;
-            ok &= step.Ok;
-            if (!step.Ok && step.Moves.Count == 0)
-            {
-                break;
-            }
-        }
-
-        if (allMoves.Count > 0)
-        {
-            await ApplyMovesToUiAsync(allMoves, destinationDir: null);
-        }
-
-        return new FileOpResult
-        {
-            Ok = ok,
-            Message = lastMessage ?? (ok ? "Undid reject." : "Couldn't undo reject."),
-            Moves = allMoves
-        };
-    }
-
-    /// <summary>
-    /// Batch Reject no longer stashes multi-ID pending (option a: interrupt when
-    /// absorb is unsafe). Clears any leftover pending from older builds.
-    /// </summary>
-    internal void RememberRejectUndoBatches(IReadOnlyList<string> _) =>
-        _pendingMultiUndoBatchIds = null;
 
     /// <summary>Move dialog "New folder": create <paramref name="name"/> under <paramref name="parentDir"/>.</summary>
     public async Task<FileOpResult> CreateFolderAsync(string parentDir, string name)
@@ -417,12 +335,6 @@ public partial class LibraryViewModel
     public async Task RefreshUndoStateAsync()
     {
         var batch = await _fileOps.PeekUndoAsync(AppServices.CurrentProject.Id);
-        // Any new journal tip that is not the multi-undo tip invalidates pending.
-        if (!BatchReject.PendingMultiUndoStillTip(_pendingMultiUndoBatchIds, batch?.Id))
-        {
-            _pendingMultiUndoBatchIds = null;
-        }
-
         await UiDispatch.RunAsync(() =>
         {
             CanUndoFileOp = batch is not null;

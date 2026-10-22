@@ -912,7 +912,7 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         var undoable = await _catalog.GetUndoableFileOpsAsync(_projectId);
         Assert.False(BatchReject.CanAbsorbPrior(undoable, moveA.BatchId!, rejectRefs));
         Assert.Equal(
-            "Interrupted, 1 rejected so far.",
+            "Interrupted, 1 rejected so far. Use Undo history to restore.",
             BatchReject.InterruptedMessage(movedSoFar: 1));
 
         // Caller must not Move B. Tip undo reverses only the intervening Move;
@@ -931,7 +931,7 @@ public sealed class FileOpServiceTests : IAsyncLifetime
 
     /// <summary>
     /// Absorb folds prior into the new tip; TrackUndoBatchId keeps only the tip
-    /// (cancel-between-folders: one Undo restores exactly what moved).
+    /// (cancel-between-folders after absorb: one Undo restores exactly what moved).
     /// </summary>
     [Fact]
     public async Task TrackUndoBatchId_after_absorb_one_undo_restores_moved()
@@ -979,6 +979,25 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.True(File.Exists(a.Path));
         Assert.True(File.Exists(b.Path));
         Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    /// <summary>
+    /// Normal multi-source Move into one folder must keep MoveSummary — not
+    /// "Reject N files across K folders" (Doktor S2).
+    /// </summary>
+    [Fact]
+    public async Task Move_multi_source_into_one_folder_keeps_move_summary()
+    {
+        var shots = Dir(_rootA, "shots");
+        var refs = Dir(_rootA, "refs");
+        var a = await AddAssetAsync(_rootA, Path.Combine("shots", "a.png"), "a");
+        var b = await AddAssetAsync(_rootA, Path.Combine("refs", "b.png"), "b");
+        var dest = Dir(_rootA, "Other");
+
+        var moved = await _ops.MoveAssetsAsync([a, b], dest, _projectId);
+        Assert.True(moved.Ok, moved.Message);
+        Assert.Equal(FileOpService.MoveSummary(2, dest), moved.Summary);
+        Assert.DoesNotContain("Reject", moved.Summary, StringComparison.Ordinal);
     }
 
     [Fact]
