@@ -16,8 +16,43 @@ public partial class LibraryViewModel
 {
     private void RefreshSelectionSummary()
     {
-        SelectionSummary = SelectMode.Summary(IsSelectMode, _selection.Count);
+        SelectionSummary = SelectMode.Summary(IsSelectMode, _selection.Count, CountCollapsedSelected());
         ShowTagSelectedCta = SelectMode.ShowBatchTagCta(IsSelectMode, _selection.Count);
+    }
+
+    /// <summary>
+    /// Selected tiles under collapsed section headers (in <c>_selection</c> /
+    /// ordered mosaic but not in display <see cref="Assets"/>).
+    /// </summary>
+    internal int CountCollapsedSelected()
+    {
+        if (_selection.Count == 0 || _mosaicOrder.Count == 0)
+        {
+            return 0;
+        }
+
+        var displayed = new HashSet<AssetItem>(Assets);
+        var n = 0;
+        foreach (var asset in _selection)
+        {
+            if (!asset.IsFolderHeader && !displayed.Contains(asset))
+            {
+                n++;
+            }
+        }
+
+        return n;
+    }
+
+    /// <summary>Esc exits select mode without clearing the selection (matches hold/Ctrl+A entry).</summary>
+    public void ExitSelectMode()
+    {
+        if (!SelectMode.ExitsSelectModeOnEscape(IsSelectMode, IsGalleryOverlayOpen))
+        {
+            return;
+        }
+
+        IsSelectMode = false;
     }
 
     public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)

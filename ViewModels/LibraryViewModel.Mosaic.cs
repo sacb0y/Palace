@@ -159,17 +159,17 @@ public partial class LibraryViewModel
 
     /// <summary>
     /// Select every non-header asset in the full ordered mosaic (includes collapsed
-    /// sections). Library grid Ctrl+A; turns Select mode on when needed.
+    /// sections). Library grid Ctrl+A; turns Select mode on when needed (same as
+    /// hold-to-select: select first, then enter mode so exit/Esc keeps selection).
     /// </summary>
     public void SelectAllMosaicAssets()
     {
+        IReadOnlyList<AssetItem> source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+        SetSelection(MosaicDelete.OrderedNonHeaderTargets(source, a => a.IsFolderHeader));
         if (!IsSelectMode)
         {
             IsSelectMode = true;
         }
-
-        IEnumerable<AssetItem> source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
-        SetSelection(source.Where(a => !a.IsFolderHeader));
     }
 
     private static string? ResolveHeaderPath(AssetItem header)
@@ -282,19 +282,11 @@ public partial class LibraryViewModel
     private static (bool Flatten, HashSet<string> Collapsed) ReadSectionPrefs(string folderPath)
     {
         var settings = ApplicationData.Current.LocalSettings.Values;
-        // One-shot prune of pre-hash path keys (flagged in LocalSettings).
-        if (!FolderSectionPrefs.ParseBool(
-                settings.TryGetValue(FolderSectionPrefs.LegacyPrunedFlagKey, out var prunedFlag)
-                    ? prunedFlag
-                    : null))
-        {
-            foreach (var key in settings.Keys.OfType<string>().Where(FolderSectionPrefs.IsLegacySettingsKey).ToList())
-            {
-                settings.Remove(key);
-            }
-
-            settings[FolderSectionPrefs.LegacyPrunedFlagKey] = true;
-        }
+        FolderSectionPrefs.EnsureLegacyKeysPruned(
+            settings.Keys.OfType<string>(),
+            key => settings.TryGetValue(key, out var value) ? value : null,
+            key => settings.Remove(key),
+            (key, value) => settings[key] = value);
 
         var flatten = FolderSectionPrefs.ParseBool(
             settings.TryGetValue(FolderSectionPrefs.FlattenKey(folderPath), out var f) ? f : null);

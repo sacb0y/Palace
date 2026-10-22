@@ -110,6 +110,15 @@ public sealed class MosaicDeleteTests
         var c1 = new CountTile { Id = "c1", Name = "c1" };
         var ordered = new List<CountTile> { a, a1, b, b1, b2, c, c1 };
 
+        // Production display before delete includes collapsed B (no tiles under it).
+        var display = FolderSectionPrefs.FilterCollapsedDisplay(
+            ordered, t => t.Header, t => t.Collapsed);
+        Assert.Equal(["A", "a1", "B", "C", "c1"], display.Select(t => t.Name).ToArray());
+
+        // Bug if we PruneItems(display): collapsed B has no following tiles → stripped.
+        var wronglyStripped = MosaicDelete.PruneItems(display, t => t.Header, t => t.Id, ["b1"]);
+        Assert.DoesNotContain(wronglyStripped, t => t.Name == "B");
+
         var pruned = MosaicDelete.PruneItems(ordered, t => t.Header, t => t.Id, ["b1"]);
         MosaicDelete.RecomputeFolderItemCounts(pruned, t => t.Header, (t, n) => t.Count = n);
 
@@ -118,8 +127,11 @@ public sealed class MosaicDeleteTests
         Assert.Equal(1, b.Count); // was 2
         Assert.Contains(pruned, t => t.Id == "b2");
 
-        var display = FolderSectionPrefs.FilterCollapsedDisplay(
+        // Production fix: rebuild desired display from pruned order, SyncDisplay into Assets.
+        var desired = FolderSectionPrefs.FilterCollapsedDisplay(
             pruned, t => t.Header, t => t.Collapsed);
+        MosaicDelete.SyncDisplay(display, desired);
+        Assert.Contains(display, t => ReferenceEquals(t, b)); // B survives
         Assert.DoesNotContain(display, t => t.Id == "b2"); // still collapsed
         Assert.Equal(["A", "a1", "B", "C", "c1"], display.Select(t => t.Name).ToArray());
 

@@ -1010,6 +1010,18 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        // Esc exits select mode (keeps selection) — same as hold/Ctrl+A entry exit.
+        if (e.Key == VirtualKey.Escape
+            && SelectMode.ExitsSelectModeOnEscape(
+                ViewModel.IsSelectMode,
+                ViewModel.IsGalleryOverlayOpen)
+            && !typing)
+        {
+            ViewModel.ExitSelectMode();
+            e.Handled = true;
+            return;
+        }
+
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset
             ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);

@@ -89,6 +89,57 @@ public static class MosaicDelete
         Func<T, bool> isFolderHeader) =>
         ordered.Where(item => !isFolderHeader(item)).ToList();
 
+    /// <summary>
+    /// Diff <paramref name="display"/> toward <paramref name="desired"/> with
+    /// <c>RemoveAt</c> / insert so collapsed headers kept by
+    /// <see cref="FolderSectionPrefs.FilterCollapsedDisplay{T}"/> stay put.
+    /// Do not <see cref="PruneItems{T}"/> the display list alone — collapsed
+    /// headers have no following tiles and <see cref="StripEmptyHeaders{T}"/>
+    /// would drop them.
+    /// </summary>
+    public static void SyncDisplay<T>(IList<T> display, IReadOnlyList<T> desired)
+        where T : class
+    {
+        var want = new HashSet<T>(desired);
+        for (var i = display.Count - 1; i >= 0; i--)
+        {
+            if (!want.Contains(display[i]))
+            {
+                display.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            if (i < display.Count && ReferenceEquals(display[i], desired[i]))
+            {
+                continue;
+            }
+
+            var existing = -1;
+            for (var j = i; j < display.Count; j++)
+            {
+                if (ReferenceEquals(display[j], desired[i]))
+                {
+                    existing = j;
+                    break;
+                }
+            }
+
+            if (existing >= 0)
+            {
+                display.RemoveAt(existing);
+            }
+
+            display.Insert(i, desired[i]);
+        }
+
+        while (display.Count > desired.Count)
+        {
+            display.RemoveAt(display.Count - 1);
+        }
+    }
+
     /// <summary>Filter a catalog asset list by removed ids (ordinal).</summary>
     public static List<T> ExceptIds<T>(IEnumerable<T> assets, Func<T, string> id, IReadOnlyCollection<string> removedIds)
     {

@@ -209,6 +209,31 @@ public static class FolderSectionPrefs
         return removed;
     }
 
+    /// <summary>
+    /// Same one-shot prune for LocalSettings <c>IPropertySet</c> (not an
+    /// <see cref="IDictionary{TKey,TValue}"/>).
+    /// </summary>
+    public static int EnsureLegacyKeysPruned(
+        IEnumerable<string> keys,
+        Func<string, object?> tryGet,
+        Action<string> removeKey,
+        Action<string, object> setFlag)
+    {
+        if (ParseBool(tryGet(LegacyPrunedFlagKey)))
+        {
+            return 0;
+        }
+
+        var remove = keys.Where(IsLegacySettingsKey).ToList();
+        foreach (var key in remove)
+        {
+            removeKey(key);
+        }
+
+        setFlag(LegacyPrunedFlagKey, true);
+        return remove.Count;
+    }
+
     public static bool TrySave(Action save)
     {
         try

@@ -153,10 +153,11 @@ public partial class LibraryViewModel
             var preview = targets.Count == 1
                 ? targets[0].FileName
                 : $"{targets.Count} files ({string.Join(", ", targets.Take(3).Select(t => t.FileName))}{(targets.Count > 3 ? ", …" : "")})";
-            if (!await RequestConfirm(
-                    "Delete",
-                    $"Send {preview} to the Recycle Bin? This also removes them from the catalog.",
-                    "Delete"))
+            var collapsed = CountCollapsedSelected();
+            var body = collapsed > 0
+                ? $"Send {preview} to the Recycle Bin? This also removes them from the catalog.\n{SelectMode.Summary(true, targets.Count, collapsed)}."
+                : $"Send {preview} to the Recycle Bin? This also removes them from the catalog.";
+            if (!await RequestConfirm("Delete", body, "Delete"))
             {
                 return;
             }
@@ -231,6 +232,7 @@ public partial class LibraryViewModel
 
         await UiDispatch.RunAsync(() =>
         {
+            var before = Assets.ToList();
             if (_mosaicOrder.Count > 0)
             {
                 _mosaicOrder = MosaicDelete.PruneItems(
@@ -242,27 +244,26 @@ public partial class LibraryViewModel
                     _mosaicOrder,
                     item => item.IsFolderHeader,
                     (item, count) => item.FolderItemCount = count);
+
+                // Rebuild display from the pruned order. Never PruneItems(Assets) alone —
+                // collapsed headers have no following tiles and StripEmptyHeaders drops them.
+                var desired = FolderSectionPrefs.FilterCollapsedDisplay(
+                    _mosaicOrder,
+                    item => item.IsFolderHeader,
+                    item => item.IsFolderCollapsed);
+                MosaicDelete.SyncDisplay(Assets, desired);
             }
-
-            var pruned = MosaicDelete.PruneItems(
-                Assets,
-                item => item.IsFolderHeader,
-                item => item.Id,
-                remove);
-
-            var changed = pruned.Count != Assets.Count;
-            if (changed)
+            else
             {
-                // Prefer RemoveAt so ItemsView keeps realized tiles that stay.
-                var keep = new HashSet<AssetItem>(pruned);
-                for (var i = Assets.Count - 1; i >= 0; i--)
-                {
-                    if (!keep.Contains(Assets[i]))
-                    {
-                        Assets.RemoveAt(i);
-                    }
-                }
+                var pruned = MosaicDelete.PruneItems(
+                    Assets,
+                    item => item.IsFolderHeader,
+                    item => item.Id,
+                    remove);
+                MosaicDelete.SyncDisplay(Assets, pruned);
             }
+
+            var changed = before.Count != Assets.Count || !before.SequenceEqual(Assets);
 
             // Assets is the display subset of _mosaicOrder (shared AssetItem refs).
             Debug.Assert(

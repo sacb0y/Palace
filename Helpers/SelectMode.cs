@@ -36,12 +36,32 @@ public static class SelectMode
     public static bool ViewerHoldOpensContext(bool overlayOpen, bool reviewMode) =>
         TouchGestures.ViewerHoldOpensContext(overlayOpen, reviewMode);
 
-    /// <summary>Count line beside the toggle. Empty when select mode is off and nothing is selected.</summary>
-    public static string Summary(bool selectMode, int selectedCount)
+    /// <summary>
+    /// Esc exits select mode while the overlay is closed (selection kept —
+    /// Clear is the path that drops tiles).
+    /// </summary>
+    public static bool ExitsSelectModeOnEscape(bool selectMode, bool overlayOpen) =>
+        selectMode && !overlayOpen;
+
+    /// <summary>
+    /// Trailing clause when some selected tiles live under collapsed sections:
+    /// <c> · 30 in collapsed sections</c>.
+    /// </summary>
+    public static string CollapsedClause(int collapsedSelectedCount) =>
+        collapsedSelectedCount > 0
+            ? $" · {collapsedSelectedCount} in collapsed sections"
+            : "";
+
+    /// <summary>
+    /// Count line beside the toggle / delete-move confirm. Empty when select
+    /// mode is off and nothing is selected. When some selected tiles live under
+    /// collapsed sections: <c>42 selected · 30 in collapsed sections</c>.
+    /// </summary>
+    public static string Summary(bool selectMode, int selectedCount, int collapsedSelectedCount = 0)
     {
         if (selectedCount > 0)
         {
-            return $"{selectedCount} selected";
+            return $"{selectedCount} selected{CollapsedClause(collapsedSelectedCount)}";
         }
 
         return selectMode ? "Click or drag tiles to select" : "";

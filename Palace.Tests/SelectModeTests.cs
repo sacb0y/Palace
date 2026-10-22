@@ -34,6 +34,24 @@ public sealed class SelectModeTests
     public void Summary_ShowsCountOrHint(bool mode, int count, string expected) =>
         Assert.Equal(expected, SelectMode.Summary(mode, count));
 
+    [Fact]
+    public void Summary_IncludesCollapsedSectionCount()
+    {
+        Assert.Equal(
+            "42 selected · 30 in collapsed sections",
+            SelectMode.Summary(true, 42, 30));
+        Assert.Equal(" · 30 in collapsed sections", SelectMode.CollapsedClause(30));
+        Assert.Equal("", SelectMode.CollapsedClause(0));
+    }
+
+    [Fact]
+    public void ExitsSelectModeOnEscape_WhenSelectOnAndOverlayClosed()
+    {
+        Assert.True(SelectMode.ExitsSelectModeOnEscape(true, false));
+        Assert.False(SelectMode.ExitsSelectModeOnEscape(true, true));
+        Assert.False(SelectMode.ExitsSelectModeOnEscape(false, false));
+    }
+
     [Theory]
     [InlineData(false, 0, false)]
     [InlineData(false, 3, false)]
