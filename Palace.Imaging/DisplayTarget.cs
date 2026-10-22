@@ -2,6 +2,10 @@ namespace Palace.Imaging;
 
 /// <summary>
 /// Display peak / SDR white for tonemap. Pure value — UI providers land in P5.
+/// <para>
+/// <b>P5 owns</b> probing/wiring Ld on the HDR present path; this type only
+/// carries the numbers the library needs.
+/// </para>
 /// </summary>
 public readonly record struct DisplayTarget(
     float PeakNits,
@@ -19,28 +23,30 @@ public readonly record struct DisplayTarget(
 
     public float SdrWhiteNormalized => SdrWhiteNits / ImagingConstants.RefWhiteNits;
 
-    /// <summary>
-    /// BT.2390 display limit in working-space units:
-    /// <c>peakNits / RefWhiteNits</c> (absolute working peak), used with Lc.
-    /// Spec Ld ratio <c>peak/SDR white</c> is <see cref="LdRatio"/>.
-    /// </summary>
+    /// <summary>Working-space display peak (peakNits / 203). P5 supplies the nits.</summary>
     public float Ld => PeakNormalized;
 
     /// <summary>Spec-style Ld = peak / SDR white (nits ratio).</summary>
     public float LdRatio => PeakNits / Math.Max(SdrWhiteNits, 1e-3f);
 
     /// <summary>
-    /// Stable content hash for cache keys (S6 — do not use randomized
-    /// per-process hashes; this is deterministic from the floats).
+    /// Process-stable content hash (N4). Do <b>not</b> use
+    /// <see cref="HashCode.Combine"/> — its seed is randomized per process.
     /// </summary>
     public int ContentHash
     {
         get
         {
-            // Quantize to avoid float bit noise across rebuilds.
-            var p = (int)MathF.Round(PeakNits * 100f);
-            var s = (int)MathF.Round(SdrWhiteNits * 100f);
-            return HashCode.Combine(p, s, IsHdrOutput ? 1 : 0);
+            unchecked
+            {
+                var p = (int)MathF.Round(PeakNits * 100f);
+                var s = (int)MathF.Round(SdrWhiteNits * 100f);
+                var h = 17;
+                h = (h * 31) + p;
+                h = (h * 31) + s;
+                h = (h * 31) + (IsHdrOutput ? 1 : 0);
+                return h;
+            }
         }
     }
 }

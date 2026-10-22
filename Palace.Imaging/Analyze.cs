@@ -1,8 +1,9 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Full-resolution luminance / maxRGB stats via a luminance histogram
-/// (no full-buffer sort). ExposureEV must not re-run this or move Lc.
+/// Full-resolution luminance / maxRGB stats via a <b>PQ-spaced</b> histogram
+/// (S5 — not a linear-light or full-buffer sort). ExposureEV must not re-run
+/// this or move Lc.
 /// </summary>
 public static class Analyze
 {
@@ -40,18 +41,21 @@ public static class Analyze
             }
         }
 
-        var histMax = Math.Max(max, 1e-6f);
+        // PQ histogram over [0, max] in nits — denser in shadows than linear bins.
+        var maxNits = Math.Max(max, 1e-6f) * ImagingConstants.RefWhiteNits;
+        var maxPq = ColorMath.NitsToPq(maxNits);
         var hist = new int[HistogramBins];
         for (var i = 0; i < count; i++)
         {
             var o = i * 4;
             var y = Math.Max(0f, ImagingConstants.Bt2020Y(rgba[o], rgba[o + 1], rgba[o + 2]));
-            var bin = (int)Math.Clamp((y / histMax) * (HistogramBins - 1), 0, HistogramBins - 1);
+            var pq = ColorMath.NitsToPq(y * ImagingConstants.RefWhiteNits);
+            var bin = (int)Math.Clamp((pq / Math.Max(maxPq, 1e-8f)) * (HistogramBins - 1), 0, HistogramBins - 1);
             hist[bin]++;
         }
 
-        var p50 = PercentileFromHistogram(hist, count, histMax, PercentileP50);
-        var p99995 = PercentileFromHistogram(hist, count, histMax, PercentileP99995);
+        var p50 = PercentileFromPqHistogram(hist, count, maxPq, PercentileP50);
+        var p99995 = PercentileFromPqHistogram(hist, count, maxPq, PercentileP99995);
 
         var metaNorm = frame.MetadataPeakNits is > 0f
             ? frame.MetadataPeakNits.Value / ImagingConstants.RefWhiteNits
@@ -59,7 +63,6 @@ public static class Analyze
 
         var lo = Math.Max(1f, Math.Max(2f * p50, refWhite));
         var hi = metaNorm ?? Math.Max(lo, Math.Max(p99995, max));
-        // M6: Math.Clamp throws when lo > hi — coerce range first.
         if (hi < lo)
         {
             hi = lo;
@@ -79,7 +82,7 @@ public static class Analyze
             frame.SourceClipRatio);
     }
 
-    public static float PercentileFromHistogram(ReadOnlySpan<int> hist, int total, float histMax, float fraction)
+    public static float PercentileFromPqHistogram(ReadOnlySpan<int> hist, int total, float maxPq, float fraction)
     {
         if (total <= 0)
         {
@@ -94,10 +97,11 @@ public static class Analyze
             accum += hist[i];
             if (accum > target)
             {
-                return (i / (float)(hist.Length - 1)) * histMax;
+                var pq = (i / (float)(hist.Length - 1)) * maxPq;
+                return ColorMath.PqToNits(pq) / ImagingConstants.RefWhiteNits;
             }
         }
 
-        return histMax;
+        return ColorMath.PqToNits(maxPq) / ImagingConstants.RefWhiteNits;
     }
 }

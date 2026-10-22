@@ -127,6 +127,20 @@ public class ImagingNormalizeTests
             2,
             new NormalizeOptions(TransferKind.LinearScene, MetadataPeakNits: 10f * 203f));
         Assert.True(frame.SourceClipped);
+        // S1: flag is consumed by Analyze → ImageStats (not dropped after Normalize).
+        var stats = Analyze.Run(frame);
+        Assert.True(stats.SourceClipped);
+        Assert.True(stats.SourceClipRatio > ImagingConstants.SourceClipFraction);
+    }
+
+    [Fact]
+    public void SourceClipped_LinearSceneWithoutPeak_UsesBufferMax()
+    {
+        // S1: no MetadataPeakNits → clip ceil = buffer max; all-channel max trips the flag.
+        var buf = new float[] { 2f, 2f, 2f, 1f, 2f, 2f, 2f, 1f, 2f, 2f, 2f, 1f, 2f, 2f, 2f, 1f };
+        var frame = Normalize.Run(buf, 2, 2, new NormalizeOptions(TransferKind.LinearScene));
+        Assert.True(frame.SourceClipped);
+        Assert.True(Analyze.Run(frame).SourceClipped);
     }
 
     [Fact]

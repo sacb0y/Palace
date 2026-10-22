@@ -34,6 +34,7 @@ public static class ToneMapper
         ob = b * scale;
 
         var ld = OutputLimit(in p);
+        // N2: desat uses tone-mapped RGB vs Ld (not pre-map peak vs 0.8·Ld).
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
         GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);
     }
@@ -42,27 +43,22 @@ public static class ToneMapper
     public static float MapScalar(float x, in ToneMapParams p)
     {
         var stats = p.Stats;
-        var lc = stats.Lc;
-
-        // Roll off past Lc after positive EV (S2) — never hard-clip at Lc.
-        var shoulder = Math.Max(lc, 1.01f);
+        var lc = Math.Max(stats.Lc, 1.01f);
 
         if (p.UseHdrPath)
         {
             var ld = p.Display.Ld;
-            if (lc <= ld + 1e-6f)
+            if (stats.Lc <= ld + 1e-6f)
             {
-                // Content fits display; still soft-limit extreme post-EV values
-                // via the caller's HighlightSoftClip. Scalar identity below Ld*4.
-                return x;
+                // Identity while content fits; still clamp to Lc (N3 hygiene).
+                return Math.Min(x, lc);
             }
 
-            return Bt2390Eetf.MapLinear(x, shoulder, ld);
+            return Bt2390Eetf.MapLinear(x, lc, ld);
         }
 
-        // SDR: anchor ref white → display white; scene average sets knee.
         var displayWhite = Math.Max(p.Display.PeakNormalized, 1e-6f);
-        return SdrToneCurve.Map(x, shoulder, stats.P50, displayWhite);
+        return SdrToneCurve.Map(x, lc, stats.P50, displayWhite);
     }
 
     public static float[] MapFrame(NormalizedFrame frame, in ToneMapParams p)

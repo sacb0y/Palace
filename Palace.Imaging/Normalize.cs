@@ -22,16 +22,17 @@ public static class Normalize
         var clipHits = 0;
         var eps = ImagingConstants.EncodedMaxEpsilon;
 
-        // Mastering / encoded peak for clip detection.
+        // Mastering / encoded peak for clip detection. Linear EXR/JXR without
+        // metadata peak: use the buffer's own finite max (S1).
         float? clipCeil = options.Transfer switch
         {
             TransferKind.Pq or TransferKind.Hlg or TransferKind.Sdr => 1f,
             TransferKind.Scrgb => options.MetadataPeakNits is > 0f
                 ? options.MetadataPeakNits.Value / ImagingConstants.ScrgbNits
-                : null,
+                : MaxFiniteChannel(rgba, count),
             TransferKind.LinearScene => options.MetadataPeakNits is > 0f
                 ? options.MetadataPeakNits.Value / Math.Max(options.EffectiveWhiteNits, 1e-6f)
-                : null,
+                : MaxFiniteChannel(rgba, count),
             _ => null
         };
 
@@ -89,6 +90,18 @@ public static class Normalize
         ClampNegLuminance(ref r, ref g, ref b);
     }
 
+    private static float? MaxFiniteChannel(ReadOnlySpan<float> rgba, int count)
+    {
+        var max = 0f;
+        for (var i = 0; i < count; i++)
+        {
+            var o = i * 4;
+            max = Math.Max(max, Math.Max(ColorMath.Sanitize(rgba[o]), Math.Max(ColorMath.Sanitize(rgba[o + 1]), ColorMath.Sanitize(rgba[o + 2]))));
+        }
+
+        return max > 0f ? max : null;
+    }
+
     private static bool IsSourceClipSample(
         float er,
         float eg,
@@ -108,6 +121,7 @@ public static class Normalize
         }
 
         var c = clipCeil.Value;
+        // Near the buffer/mastering max on all channels.
         return er >= c * (1f - eps) && eg >= c * (1f - eps) && eb >= c * (1f - eps);
     }
 
@@ -157,7 +171,7 @@ public static class Normalize
                 r = er * w * inv203;
                 g = eg * w * inv203;
                 b = eb * w * inv203;
-                Primaries.ToBt2020(r, g, b, options.Primaries, out r, out g, out b);
+                Primaries.ToBt2020(r, g, b, options.EffectivePrimaries, out r, out g, out b);
                 return;
             }
 

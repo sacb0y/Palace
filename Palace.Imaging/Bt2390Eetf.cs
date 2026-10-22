@@ -1,33 +1,32 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Report ITU-R BT.2390 §5.4.1 EETF (electrical-electrical transfer function)
-/// implemented from the published formulas — not from third-party source.
+/// Report ITU-R BT.2390-8 §5.4.1 EETF from the published formulas
+/// (not third-party source). Verified against BT.2390-8 (2020) PDF:
+/// KS = 1.5·maxLum − 0.5; Hermite P[B] for E₁ ≥ KS; E₃ = E₂ + b·(1−E₂)⁴.
+/// BT.2408 paper white 203 cd/m² cited from Report ITU-R BT.2408.
 /// <para>
-/// <c>KS = 1.5·maxLum − 0.5</c>; Hermite shoulder for E₁ ≥ KS; black lift
-/// <c>E₃ = E₂ + b·(1−E₂)⁴</c> with <c>b = minLum</c>. Confirm section numbering
-/// against the current BT.2390 PDF before tightening citations.
+/// P5 owns wiring the HDR-path display Ld into the app present stack; this
+/// library takes <paramref name="ld"/> as a pure input.
 /// </para>
-/// Units: operates in absolute PQ; callers pass working-space linear
-/// (1.0 = 203 nits) which is converted to PQ nits at the edges.
 /// </summary>
 public static class Bt2390Eetf
 {
     /// <summary>
-    /// Map working-space linear. Identity when content peak <paramref name="lc"/>
-    /// ≤ display <paramref name="ld"/> (both in working-space units where
-    /// <c>Ld = peakNits / sdrWhiteNits</c> scaled consistently — see
-    /// <see cref="DisplayTarget.Ld"/>).
+    /// Map working-space linear. Input is clamped to <paramref name="lc"/> so
+    /// values above the content peak cannot blow the E₁ normalization (N3).
+    /// Identity when <paramref name="lc"/> ≤ <paramref name="ld"/>.
     /// </summary>
     public static float MapLinear(float linear, float lc, float ld, float outputMin = 0f)
     {
         if (lc <= ld + 1e-6f)
         {
-            return linear;
+            return Math.Min(linear, lc);
         }
 
-        // Mastering peak LW = lc · 203 nits; target Lmax = ld · 203 nits.
-        // LB = Lmin = 0 for the common case (outputMin = 0).
+        // N3: never feed the EETF with x > Lc (e1 would exceed 1 and explode).
+        linear = Math.Clamp(linear, 0f, lc);
+
         var lb = Math.Max(outputMin, 0f) * ImagingConstants.RefWhiteNits;
         var lw = Math.Max(lc, 1e-6f) * ImagingConstants.RefWhiteNits;
         var lMax = Math.Max(ld, 1e-6f) * ImagingConstants.RefWhiteNits;
@@ -37,24 +36,25 @@ public static class Bt2390Eetf
         var pqLw = ColorMath.NitsToPq(lw);
         var span = Math.Max(pqLw - pqLb, 1e-8f);
 
-        var ePrime = ColorMath.NitsToPq(Math.Max(linear, 0f) * ImagingConstants.RefWhiteNits);
-        var e1 = (ePrime - pqLb) / span;
+        var ePrime = ColorMath.NitsToPq(linear * ImagingConstants.RefWhiteNits);
+        var e1 = Math.Clamp((ePrime - pqLb) / span, 0f, 1f);
 
-        var minLum = (ColorMath.NitsToPq(lMin) - pqLb) / span;
-        var maxLum = (ColorMath.NitsToPq(lMax) - pqLb) / span;
+        var minLum = Math.Clamp((ColorMath.NitsToPq(lMin) - pqLb) / span, 0f, 1f);
+        var maxLum = Math.Clamp((ColorMath.NitsToPq(lMax) - pqLb) / span, 0f, 1f);
 
-        // BT.2390 §5.4.1: KS = 1.5·maxLum − 0.5; b = minLum.
+        // BT.2390-8 §5.4.1.
         var ks = (1.5f * maxLum) - 0.5f;
         var b = minLum;
 
         float e2;
-        if (e1 < ks || ks >= 1f)
+        if (ks >= 1f - 1e-6f || e1 < ks)
         {
             e2 = e1;
         }
         else
         {
             var t = (e1 - ks) / (1f - ks);
+            t = Math.Clamp(t, 0f, 1f);
             var t2 = t * t;
             var t3 = t2 * t;
             e2 = ((2f * t3) - (3f * t2) + 1f) * ks
@@ -62,13 +62,13 @@ public static class Bt2390Eetf
                 + (((-2f * t3) + (3f * t2)) * maxLum);
         }
 
-        var e3 = e2;
-        if (e2 >= 0f && e2 <= 1f)
-        {
-            e3 = e2 + (b * MathF.Pow(1f - e2, 4f));
-        }
+        e2 = Math.Clamp(e2, 0f, 1f);
+        var e3 = e2 + (b * MathF.Pow(1f - e2, 4f));
+        e3 = Math.Clamp(e3, 0f, 1f);
 
         var outPq = (e3 * span) + pqLb;
-        return ColorMath.PqToNits(Math.Clamp(outPq, 0f, 1f)) / ImagingConstants.RefWhiteNits;
+        var outLinear = ColorMath.PqToNits(Math.Clamp(outPq, 0f, 1f)) / ImagingConstants.RefWhiteNits;
+        // Bound to display peak in working units.
+        return Math.Min(outLinear, ld);
     }
 }

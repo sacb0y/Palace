@@ -7,8 +7,9 @@ namespace Palace.Imaging;
 public static class GamutMap
 {
     /// <summary>
-    /// Desaturate toward luminance when channel peak approaches
-    /// <paramref name="ld"/>: <c>smoothstep(0.8*Ld, Ld, out)</c>.
+    /// Desaturate toward luminance when <b>tone-mapped</b> peak exceeds
+    /// display Ld (N2). At exactly Ld there is no desat — only the overshoot
+    /// toward soft-clip is greyed. Uses <c>smoothstep(Ld, 1.25·Ld, peak)</c>.
     /// </summary>
     public static void DesaturateHighlights(ref float r, ref float g, ref float b, float ld)
     {
@@ -18,7 +19,7 @@ public static class GamutMap
         }
 
         var peak = Math.Max(r, Math.Max(g, b));
-        var t = ColorMath.Smoothstep(0.8f * ld, ld, peak);
+        var t = ColorMath.Smoothstep(ld, 1.25f * ld, peak);
         if (t <= 0f)
         {
             return;
@@ -33,8 +34,7 @@ public static class GamutMap
     /// <summary>
     /// Soft-clip RGB into [0, <paramref name="peak"/>] with a rational shoulder
     /// (linear below 0.8·peak, then <c>knee + j·t/(t+j)</c>) while restoring
-    /// BT.2020 Y. Not a third-party “Mobius tonemapper” port — Palace highlight
-    /// gamut compression only.
+    /// BT.2020 Y.
     /// </summary>
     public static void HighlightSoftClip(ref float r, ref float g, ref float b, float peak)
     {
@@ -67,7 +67,6 @@ public static class GamutMap
         }
     }
 
-    /// <summary>Per-channel rational shoulder; derivative 1 at the knee.</summary>
     public static float SoftClipChannel(float x, float peak)
     {
         if (x <= 0f)

@@ -38,7 +38,7 @@ public static class ImagingConstants
     /// Pipeline version baked into LUT cache keys. Bump when Normalize /
     /// Analyze / ToneMap math changes incompatibly.
     /// </summary>
-    public const int PipelineVersion = 2;
+    public const int PipelineVersion = 3;
 
     // BT.2020 non-constant luminance Y (Rec. ITU-R BT.2020-2 Table 4).
     public const float Bt2020Yr = 0.2627f;
