@@ -628,7 +628,6 @@
                                         Grid.Column="1"
                                         VerticalAlignment="Center"
                                         AutomationProperties.AutomationId="TglShellTint"
-                                        AutomationProperties.LabeledBy="{x:Bind TxtShellTintLabel}"
                                         AutomationProperties.Name="Color tint"
                                         IsOn="{x:Bind ViewModel.TintEnabled, Mode=TwoWay}"
                                         OffContent="Off"
