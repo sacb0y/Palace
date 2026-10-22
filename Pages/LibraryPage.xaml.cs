@@ -50,6 +50,8 @@ public sealed partial class LibraryPage : Page
     private bool _suppressMosaicSelection;
     /// <summary>Last <see cref="LibraryColumnLayout.Allocate"/> mosaic width — HostWidth ceiling.</summary>
     private double _allocatedMosaicWidth;
+    private bool _libraryLayoutHooked;
+    private XamlRoot? _libraryLayoutXamlRoot;
     /// <summary>
     /// Section collapse republish depth + generation. Separate from
     /// <see cref="_suppressMosaicSelection"/> so TglSelectMode / range / header
@@ -172,6 +174,8 @@ public sealed partial class LibraryPage : Page
                 // Cached page: Unloaded nulls SectionToggleEnded mid-rebuild, so
                 // depth may still be >0 — clear guard and re-stamp highlights.
                 ResetSectionToggleGuardOnLoaded();
+                HookLibraryLayoutTracking();
+                RefreshLibraryLayout();
                 RefreshMosaicToolbarOverflow();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
@@ -185,6 +189,8 @@ public sealed partial class LibraryPage : Page
 
             _shellReady = true;
             ResetSectionToggleGuardOnLoaded();
+            HookLibraryLayoutTracking();
+            RefreshLibraryLayout();
             RefreshMosaicToolbarOverflow();
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
@@ -220,6 +226,7 @@ public sealed partial class LibraryPage : Page
         Unloaded += (_, _) =>
         {
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
+            UnhookLibraryLayoutTracking();
             UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
@@ -237,6 +244,7 @@ public sealed partial class LibraryPage : Page
                 _hookedOverlay = null;
             }
         };
+        SizeChanged += (_, _) => RefreshLibraryLayout();
     }
 
     private void PerformanceSettings_Changed(object? sender, EventArgs e)
@@ -455,29 +463,94 @@ public sealed partial class LibraryPage : Page
     /// auto-hide Preview — never steal from the grid. Same floor as the queued
     /// Preview panel toggle.
     /// </summary>
-    private void GrdLibraryColumns_SizeChanged(object sender, SizeChangedEventArgs e)
+    private void GrdLibraryColumns_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RefreshLibraryLayout();
+
+    /// <summary>
+    /// Drive column / HostWidth / toolbar from the <b>page</b> (nav content) width —
+    /// not <c>GrdLibraryColumns.ActualWidth</c>. After Preview shows, mosaic MinWidth
+    /// + Preview used to floor the grid DesiredSize so its ActualWidth (and SizeChanged)
+    /// stopped tracking the window in both directions.
+    /// </summary>
+    private void RefreshLibraryLayout()
     {
-        // Column defs lay out inside Padding — subtract horizontal pad from ActualWidth.
-        var pad = GrdLibraryColumns.Padding;
-        var contentWidth = Math.Max(0, e.NewSize.Width - pad.Left - pad.Right);
+        var contentWidth = ResolveLibraryContentWidth();
+        if (contentWidth < 1)
+        {
+            return;
+        }
+
         ApplyLibraryColumnLayout(contentWidth);
         UpdateLibraryToolbarOverflow(contentWidth);
     }
+
+    private double ResolveLibraryContentWidth()
+    {
+        // Page ActualWidth is the NavView content slot — tracks the window even when
+        // the columns grid DesiredSize is floored by Preview + mosaic MinWidth.
+        var host = ActualWidth;
+        if (host < MosaicLayoutWidth.MinUsable)
+        {
+            var root = XamlRoot?.Size.Width ?? 0;
+            if (root >= MosaicLayoutWidth.MinUsable)
+            {
+                return LibraryColumnLayout.ContentWidthFromClientDip(root);
+            }
+
+            host = GrdLibraryColumns.ActualWidth;
+        }
+
+        return LibraryColumnLayout.ContentWidthFromHostDip(host);
+    }
+
+    private void HookLibraryLayoutTracking()
+    {
+        if (XamlRoot is null)
+        {
+            return;
+        }
+
+        if (_libraryLayoutXamlRoot is not null && !ReferenceEquals(_libraryLayoutXamlRoot, XamlRoot))
+        {
+            _libraryLayoutXamlRoot.Changed -= LibraryLayoutXamlRoot_Changed;
+            _libraryLayoutHooked = false;
+        }
+
+        if (_libraryLayoutHooked && ReferenceEquals(_libraryLayoutXamlRoot, XamlRoot))
+        {
+            return;
+        }
+
+        XamlRoot.Changed += LibraryLayoutXamlRoot_Changed;
+        _libraryLayoutXamlRoot = XamlRoot;
+        _libraryLayoutHooked = true;
+    }
+
+    private void UnhookLibraryLayoutTracking()
+    {
+        if (_libraryLayoutXamlRoot is not null)
+        {
+            _libraryLayoutXamlRoot.Changed -= LibraryLayoutXamlRoot_Changed;
+            _libraryLayoutXamlRoot = null;
+        }
+
+        _libraryLayoutHooked = false;
+    }
+
+    private void LibraryLayoutXamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args) =>
+        RefreshLibraryLayout();
 
     private void ApplyLibraryColumnLayout(double contentWidth)
     {
         var widths = LibraryColumnLayout.Allocate(contentWidth);
         _allocatedMosaicWidth = widths.Mosaic;
+        // Fixed widths from Allocate — no Star, no mosaic MinWidth floor.
+        // MinWidth=560 + Preview fixed previously pinned DesiredSize so the grid
+        // ActualWidth stopped following the window after Preview first appeared.
         ColFolderTree.Width = new GridLength(widths.Tree);
-        // Cap MinWidth to allocated — demanding TreeMin when allocate shrank further
-        // would overflow the grid past the nav content viewport.
-        ColFolderTree.MinWidth = Math.Min(LibraryColumnLayout.TreeMinWidth, widths.Tree);
-        // Never demand MinWidth > allocated mosaic (clips right edge + header
-        // below ~744 DIP content before the window min size clamps).
-        ColMosaic.MinWidth = LibraryColumnLayout.MosaicColumnMinWidth(widths.Mosaic);
-        // Star takes the remainder after fixed tree/preview — remainder is ≥560
-        // whenever Allocate kept preview visible (or hid it to free space).
-        ColMosaic.Width = new GridLength(1, GridUnitType.Star);
+        ColFolderTree.MinWidth = 0;
+        ColMosaic.Width = new GridLength(widths.Mosaic);
+        ColMosaic.MinWidth = 0;
         ColPreview.Width = new GridLength(widths.Preview);
         ColPreview.MinWidth = 0;
         // Preview auto-hide at narrow widths is by design (Preview toggle rule).

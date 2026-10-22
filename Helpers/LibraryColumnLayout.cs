@@ -70,7 +70,8 @@ public static class LibraryColumnLayout
 
     /// <summary>
     /// Library columns content width from a window client DIP size (nav pane open).
-    /// Matches <c>GrdLibraryColumns</c> ActualWidth minus horizontal padding.
+    /// Matches page/nav content slot ≈ client − <see cref="ShellNavPaneWidthDip"/>,
+    /// then minus horizontal page padding.
     /// </summary>
     public static double ContentWidthFromClientDip(double windowClientDip)
     {
@@ -79,8 +80,24 @@ public static class LibraryColumnLayout
             return 0;
         }
 
-        var grid = Math.Max(0, windowClientDip - ShellNavPaneWidthDip);
-        return Math.Max(0, grid - PagePaddingHorizontalDip);
+        var host = Math.Max(0, windowClientDip - ShellNavPaneWidthDip);
+        return ContentWidthFromHostDip(host);
+    }
+
+    /// <summary>
+    /// Library columns content width from the page / nav content host ActualWidth
+    /// (already excludes the shell pane). Prefer this over the columns grid's own
+    /// ActualWidth — once Preview is shown, mosaic MinWidth + Preview can floor the
+    /// grid DesiredSize so its ActualWidth stops tracking the window.
+    /// </summary>
+    public static double ContentWidthFromHostDip(double hostDip)
+    {
+        if (!double.IsFinite(hostDip) || hostDip <= 0)
+        {
+            return 0;
+        }
+
+        return Math.Max(0, hostDip - PagePaddingHorizontalDip);
     }
 
     /// <summary>
@@ -98,6 +115,11 @@ public static class LibraryColumnLayout
             + ColumnSpacing
             + pack;
     }
+
+    /// <summary>
+    /// True when <see cref="Allocate"/> keeps Preview visible for this content width.
+    /// </summary>
+    public static bool ShowsPreview(double contentWidth) => !Allocate(contentWidth).PreviewHidden;
 
     /// <summary>
     /// Below this mosaic column width (DIP), hide the Flatten face toggle

@@ -160,4 +160,70 @@ public sealed class LibraryLayoutViewportTests
             LibraryColumnLayout.LibraryToolbarTightBelowDip
             < LibraryColumnLayout.LibraryToolbarOverflowBelowDip);
     }
+
+    /// <summary>
+    /// Isiac hand repro: start narrow → widen until Preview shows → shrink below
+    /// Preview threshold → widen again. Tiles / pack / Preview visibility must
+    /// track every step (layout must not freeze after Preview first appears).
+    /// </summary>
+    [Fact]
+    public void Allocate_NarrowWidenPreviewNarrowWiden_TracksEachStep()
+    {
+        // Client DIPs: min window; wide enough for Preview (content ≥ tree-min+560+preview-min+gaps).
+        const double narrowClient = 770;
+        const double wideClient = 1400; // 1400 DIP client → content well above Preview show
+
+        var narrowContent = LibraryColumnLayout.ContentWidthFromClientDip(narrowClient);
+        var wideContent = LibraryColumnLayout.ContentWidthFromClientDip(wideClient);
+        Assert.True(wideContent > narrowContent);
+        Assert.False(LibraryColumnLayout.ShowsPreview(narrowContent));
+        Assert.True(LibraryColumnLayout.ShowsPreview(wideContent));
+
+        var n1 = LibraryColumnLayout.Allocate(narrowContent);
+        Assert.True(n1.PreviewHidden);
+        var packN1 = MosaicLayoutWidth.ApplyViewportGutter(n1.Mosaic);
+        Assert.True(
+            LibraryColumnLayout.MosaicPackRightEdgeClientDip(narrowClient)
+            <= narrowClient - LibraryColumnLayout.PagePaddingEdgeDip + 0.01);
+
+        var w1 = LibraryColumnLayout.Allocate(wideContent);
+        Assert.False(w1.PreviewHidden);
+        Assert.True(w1.Mosaic >= LibraryColumnLayout.MosaicMinWidth - 0.01);
+        Assert.True(w1.Preview >= LibraryColumnLayout.PreviewMinWidth - 0.01);
+        var packW1 = MosaicLayoutWidth.ApplyViewportGutter(w1.Mosaic);
+        Assert.True(packW1 < packN1 || w1.Mosaic != n1.Mosaic); // layout changed when Preview appeared
+        Assert.True(
+            LibraryColumnLayout.MosaicPackRightEdgeClientDip(wideClient)
+            <= wideClient - LibraryColumnLayout.PagePaddingEdgeDip + 0.01);
+
+        // Shrink below Preview threshold — Preview must hide again and pack retarget.
+        var n2 = LibraryColumnLayout.Allocate(narrowContent);
+        Assert.True(n2.PreviewHidden);
+        Assert.Equal(0, n2.Preview);
+        Assert.Equal(n1.Mosaic, n2.Mosaic, 0.01);
+        Assert.Equal(
+            MosaicLayoutWidth.ApplyViewportGutter(n2.Mosaic),
+            packN1,
+            0.01);
+
+        // Widen again — tracking continues (Preview returns, mosaic ≥560).
+        var w2 = LibraryColumnLayout.Allocate(wideContent);
+        Assert.False(w2.PreviewHidden);
+        Assert.Equal(w1.Mosaic, w2.Mosaic, 0.01);
+        Assert.Equal(w1.Preview, w2.Preview, 0.01);
+
+        // Toolbar face at wide client; tight at narrow min.
+        Assert.False(LibraryColumnLayout.IsLibraryToolbarTight(wideClient));
+        Assert.True(LibraryColumnLayout.IsLibraryToolbarTight(narrowClient));
+        Assert.False(LibraryColumnLayout.IsLibraryToolbarTight(867));
+        Assert.False(LibraryColumnLayout.IsLibraryToolbarTight(933));
+    }
+
+    [Fact]
+    public void ContentWidthFromHostDip_ExcludesOnlyPagePadding()
+    {
+        // Page/nav slot already excludes the shell pane.
+        Assert.Equal(700, LibraryColumnLayout.ContentWidthFromHostDip(724), 0.01);
+        Assert.Equal(0, LibraryColumnLayout.ContentWidthFromHostDip(10));
+    }
 }

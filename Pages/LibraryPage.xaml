@@ -53,15 +53,15 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <!-- Widths applied in code (LibraryColumnLayout): mosaic ≥560, then shrink tree, then Preview.
-                 ColMosaic.MinWidth is set in ApplyLibraryColumnLayout to Min(560, allocated). -->
+            <!-- Fixed widths from LibraryColumnLayout.Allocate (no Star / no mosaic MinWidth
+                 floor — that pinned DesiredSize after Preview show and froze resize). -->
             <ColumnDefinition
                 x:Name="ColFolderTree"
                 Width="260"
-                MinWidth="160" />
+                MinWidth="0" />
             <ColumnDefinition
                 x:Name="ColMosaic"
-                Width="*"
+                Width="560"
                 MinWidth="0" />
             <ColumnDefinition
                 x:Name="ColPreview"
