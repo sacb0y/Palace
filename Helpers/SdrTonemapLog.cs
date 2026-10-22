@@ -79,6 +79,31 @@ public static class SdrTonemapLog
         }
     }
 
+    /// <summary>
+    /// Viewer / thumb surface that is not the HDR swapchain SDR Reinhard path.
+    /// Same line shape as <see cref="TryAppendPresent"/> so laptop greps match.
+    /// <paramref name="decoder"/> values: mosaic-thumb, large-preview,
+    /// wic-original, hdr-attempt, hdr-fail, libjxl-thumb, libjxl-thumb-fail,
+    /// libjxl-decode, hdr-display.
+    /// </summary>
+    public static void TryAppendViewer(
+        string? path,
+        string decoder,
+        string bufferTransfer = "n/a",
+        float intensityTarget = 0f,
+        float scale = 1f,
+        float p995 = 0f) =>
+        TryAppendPresent(
+            path,
+            decoder,
+            intensityTarget,
+            scale,
+            bufferTransfer,
+            p995,
+            white: 0f,
+            exposure: 0f,
+            sdrWhiteLevelNits: 0f);
+
     public static void Append(string line)
     {
         lock (Gate)

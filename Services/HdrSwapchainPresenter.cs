@@ -165,7 +165,19 @@ internal sealed class HdrSwapchainPresenter : IDisposable
 
             float outcomeExposure = 0f;
             float outcomeWhite = 0f;
-            if (!displayHdr)
+            if (displayHdr)
+            {
+                // Laptop retest wrote no sdr-tonemap.log when every still took
+                // this branch — still emit decoder/buffer for path triage.
+                SdrTonemapLog.TryAppendViewer(
+                    frame.SourcePath,
+                    "hdr-display",
+                    HdrJxlPresent.BufferTransferLabel(frame.BufferTransfer),
+                    frame.IntensityTarget,
+                    frame.IntensityScale,
+                    p995: frame.MaxScrgb);
+            }
+            else
             {
                 // SdrWhiteLevel from CCD / AdvancedColorInfo (fallback 80).
                 var sdrWhite = _sdrWhiteLevelNits;

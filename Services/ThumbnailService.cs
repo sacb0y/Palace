@@ -59,8 +59,16 @@ public sealed class ThumbnailService
     /// <c>BitmapImage</c> would be blank or need a Store codec. Returns the
     /// path to display, or null while that preview doesn't exist yet.
     /// </summary>
-    public string? DisplayPathFor(string? path)
+    public string? DisplayPathFor(string? path) => DisplayPathFor(path, out _);
+
+    /// <summary>
+    /// Same as <see cref="DisplayPathFor(string?)"/> plus a decoder label for
+    /// <see cref="SdrTonemapLog"/> (large-preview / jxl-await-preview /
+    /// await-preview / bitmap-original).
+    /// </summary>
+    public string? DisplayPathFor(string? path, out string decoder)
     {
+        decoder = "bitmap-original";
         if (string.IsNullOrEmpty(path) || GalleryMedia.IsRemoteUri(path))
         {
             return path;
@@ -69,11 +77,20 @@ public sealed class ThumbnailService
         var lg = ExistingLargePreviewForPath(path);
         if (lg is not null)
         {
+            decoder = "large-preview";
             return lg;
         }
 
-        // JXL without a decoded preview falls back to the WIC codec, if any.
-        return StillDecode.HandlesPath(path) ? null : path;
+        // JXL / EXR / …: never BitmapImage the original — Store WIC leaves
+        // PQ/HLG washed or ~50% clipped white (room.jxl laptop).
+        if (GalleryPresent.RequiresCachedStillPreview(path))
+        {
+            decoder = PathSafe.IsJxl(path) ? "jxl-await-preview" : "await-preview";
+            return null;
+        }
+
+        decoder = "bitmap-original";
+        return path;
     }
 
     private bool IsStaleGeneration(string dest, string filePath)
@@ -537,6 +554,9 @@ public sealed class ThumbnailService
         kind == Models.AssetKind.Image
         && ExistingLargePreviewForPath(filePath) is null
         && (StillDecode.HandlesPath(filePath)
+            // HDR/wide JXL must not fall through to WIC BitmapImage of the
+            // original — backfill the libjxl large preview like EXR/TGA.
+            || PathSafe.IsJxl(filePath)
             // Shelf metadata under a .bmp/.tif name: full view needs the per-path preview
             // even when an identical file's hash-keyed mosaic thumb is already cached.
             || (!CloudFile.IsOnlineOnly(filePath) && SubstanceShelfFile.IsShelfMetadataFile(filePath)));
@@ -631,6 +651,12 @@ public sealed class ThumbnailService
                     cancellationToken).ConfigureAwait(false);
                 if (jxl is not null)
                 {
+                    SdrTonemapLog.TryAppendViewer(
+                        filePath,
+                        "libjxl-thumb",
+                        HdrJxlPresent.BufferTransferLabel(jxl.BufferTransfer),
+                        jxl.IntensityTarget,
+                        jxl.ScaleApplied);
                     var lgJ = await Task.Run(
                         () => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide, cancellationToken),
                         cancellationToken).ConfigureAwait(false);
@@ -640,6 +666,13 @@ public sealed class ThumbnailService
                     await EncodeBgraJpegAsync(smallJ, jw, jh, dest).ConfigureAwait(false);
                     return Finish(dest, jw, jh);
                 }
+
+                SdrTonemapLog.TryAppendViewer(
+                    filePath,
+                    "libjxl-thumb-fail",
+                    jxlProbe.Kind == HdrKind.HdrJxl
+                        ? (jxlProbe.IsHlg ? "hlg" : jxlProbe.IsPq ? "pq" : "hdr")
+                        : jxlProbe.Kind == HdrKind.WideGamutJxl ? "wide" : "sdr");
             }
 
             var probe = HdrFile.ProbePath(filePath);
