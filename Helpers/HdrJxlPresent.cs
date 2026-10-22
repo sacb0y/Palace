@@ -39,17 +39,21 @@ public static class HdrJxlPresent
         ShouldPresentViaLibjxl(probe) || PathSafe.IsJxl(path);
 
     /// <summary>
-    /// Media-relative intent for PQ/HLG → linear. Absolute LinearSRGB blew out
-    /// SDR present (Kalan almost white): Absolute changes the 1.0 = IntensityTarget
-    /// contract while we still × IntensityTarget/80. Relative keeps intensity;
-    /// BT.2020 primaries + <see cref="Bt2020LinearToScrgb"/> keep OOG negatives
-    /// for Gamut (Absolute's job without the blowout).
-    /// Matches <c>JxlRenderingIntent.Relative</c> (ISO 15076-1).
+    /// Media-relative intent for linear float out (ISO 15076-1 Relative).
+    /// Pair with BT.2020 / BT.2100 primaries + <see cref="Bt2020LinearToScrgb"/>
+    /// so OOG stays negative for Gamut — plain LinearSRGB Relative would map
+    /// wide-gamut SDR (P3) into Rec.709 and read "Rec.709 100%".
+    /// (Old SDR washout was the present MidGrey boost up to 4×, not intent.)
     /// </summary>
     public const int ScrgbOutputRenderingIntentRelative = 1;
 
-    /// <summary>Legacy name — Absolute blew out SDR present; Relative is correct.</summary>
-    public const int ScrgbOutputRenderingIntentAbsolute = ScrgbOutputRenderingIntentRelative;
+    /// <summary>
+    /// PQ/HLG or wide CICP primaries (BT.2020 / P3) need BT.2100 linear out
+    /// then <see cref="Bt2020LinearToScrgb"/> — not default LinearSRGB primaries.
+    /// </summary>
+    public static bool UsesBt2020LinearOutput(HdrTransfer transfer, int? cicpPrimaries) =>
+        transfer is HdrTransfer.Pq or HdrTransfer.Hlg
+        || cicpPrimaries is 9 or 11 or 12;
 
     /// <summary>
     /// libjxl linear float has 1.0 = <paramref name="intensityTarget"/> nits

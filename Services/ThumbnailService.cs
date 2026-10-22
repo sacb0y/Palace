@@ -594,8 +594,16 @@ public sealed class ThumbnailService
                 // SDR / gain-map base stays relative 0..1 (no ×2.54 hot thumbs).
                 var jxlProbe = HdrFile.ProbePath(filePath);
                 var jxlTransfer = jxlProbe.Kind == HdrKind.HdrJxl ? jxlProbe.Transfer : HdrTransfer.Srgb;
+                // Wide-gamut SDR (P3) needs BT.2020 linear out + matrix so
+                // thumbs / any later Gamut pass keep OOG — not Rec.709 100%.
+                var jxlPrimaries = jxlProbe.CicpPrimaries;
                 var jxl = await Task.Run(
-                    () => JxlDecode.TryDecodeFile(filePath, HdrJxlPresent.ThumbMaxPixels, jxlTransfer, cancellationToken),
+                    () => JxlDecode.TryDecodeFile(
+                        filePath,
+                        HdrJxlPresent.ThumbMaxPixels,
+                        jxlTransfer,
+                        jxlPrimaries,
+                        cancellationToken),
                     cancellationToken).ConfigureAwait(false);
                 if (jxl is not null)
                 {

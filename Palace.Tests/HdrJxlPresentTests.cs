@@ -33,10 +33,44 @@ public class HdrJxlPresentTests
     [Fact]
     public void ScrgbOutputRenderingIntent_IsRelativeNotPerceptual()
     {
-        // Absolute LinearSRGB blew out SDR present; Relative + BT.2020→709.
+        // Relative + BT.2020 primaries keep OOG; plain LinearSRGB Relative
+        // would collapse P3. (Old washout was MidGrey boost up to 4×.)
         Assert.Equal(1, HdrJxlPresent.ScrgbOutputRenderingIntentRelative);
-        Assert.Equal(HdrJxlPresent.ScrgbOutputRenderingIntentRelative, HdrJxlPresent.ScrgbOutputRenderingIntentAbsolute);
         Assert.NotEqual(0, HdrJxlPresent.ScrgbOutputRenderingIntentRelative);
+    }
+
+    [Fact]
+    public void UsesBt2020LinearOutput_PqHlgAndWideGamutSdr()
+    {
+        Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Pq, 9));
+        Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Hlg, null));
+        // P3 / BT.2020 SDR (WideGamutJxl) must not stay on LinearSRGB primaries.
+        Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, 11));
+        Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, 12));
+        Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, 9));
+        Assert.False(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, 1));
+        Assert.False(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Srgb, null));
+        Assert.False(HdrJxlPresent.UsesBt2020LinearOutput(HdrTransfer.Linear, 1));
+
+        // Header-shaped probes matching StillFormatTests PQ + P3 SDR samples.
+        var pq = new HdrProbe(HdrKind.HdrJxl, 9, 16, null);
+        Assert.Equal(HdrTransfer.Pq, pq.Transfer);
+        Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(pq.Transfer, pq.CicpPrimaries));
+        var p3Sdr = new HdrProbe(HdrKind.WideGamutJxl, 11, 13, null);
+        Assert.Equal(HdrTransfer.Srgb, p3Sdr.Transfer);
+        Assert.True(HdrJxlPresent.UsesBt2020LinearOutput(p3Sdr.Transfer, p3Sdr.CicpPrimaries));
+    }
+
+    [Fact]
+    public void WideGamutSdrJxl_Bt2020Route_KeepsOogNotRec709Only()
+    {
+        // Pure BT.2020 red after matrix → negatives → Gamut outside Rec.709.
+        // LinearSRGB Relative collapse would be Rec.709 red with no OOG.
+        var rgba = new float[] { 1f, 0f, 0f, 1f };
+        HdrJxlPresent.Bt2020LinearToScrgb(rgba);
+        Assert.True(rgba[1] < 0f || rgba[2] < 0f);
+        var gamut = CieGamut.ClassifyScrgb(rgba[0], rgba[1], rgba[2], yNits: 80f);
+        Assert.NotEqual(GamutKind.Rec709, gamut);
     }
 
     [Fact]

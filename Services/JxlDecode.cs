@@ -23,6 +23,7 @@ internal static class JxlDecode
         string path,
         int maxPixels = HdrJxlPresent.PresentMaxPixels,
         HdrTransfer transfer = HdrTransfer.Srgb,
+        int? cicpPrimaries = null,
         CancellationToken cancellation = default)
     {
         byte[] bytes;
@@ -36,13 +37,14 @@ internal static class JxlDecode
             return null;
         }
 
-        return TryDecode(bytes, maxPixels, transfer, cancellation);
+        return TryDecode(bytes, maxPixels, transfer, cicpPrimaries, cancellation);
     }
 
     public static Frame? TryDecode(
         byte[] bytes,
         int maxPixels = HdrJxlPresent.PresentMaxPixels,
         HdrTransfer transfer = HdrTransfer.Srgb,
+        int? cicpPrimaries = null,
         CancellationToken cancellation = default)
     {
         var dec = (nint)0;
@@ -100,13 +102,15 @@ internal static class JxlDecode
                         break;
                     case JxlDecoderStatus.ColorEncoding:
                         cancellation.ThrowIfCancellationRequested();
-                        // PQ/HLG: linear BT.2020 + Relative intent (1.0 =
-                        // IntensityTarget). Absolute LinearSRGB blew out SDR
-                        // present. Convert to scRGB after intensity scale.
-                        // SDR / gain-map: LinearSRGB Relative, scale 1.
+                        // Relative linear float. PQ/HLG and wide-gamut SDR
+                        // (P3 / BT.2020) use BT.2100 primaries so OOG stays
+                        // negative after Bt2020→709 — LinearSRGB Relative alone
+                        // would collapse P3 to Rec.709 100%. Rec.709 SDR /
+                        // gain-map base stays LinearSRGB, scale 1.
                         var linear = JxlColorEncoding.LinearSRGB;
                         linear.RenderingIntent = (JxlRenderingIntent)HdrJxlPresent.ScrgbOutputRenderingIntentRelative;
-                        if (transfer is HdrTransfer.Pq or HdrTransfer.Hlg)
+                        var wideOut = HdrJxlPresent.UsesBt2020LinearOutput(transfer, cicpPrimaries);
+                        if (wideOut)
                         {
                             linear.Primaries = JxlPrimaries.BT2100;
                         }
@@ -148,9 +152,13 @@ internal static class JxlDecode
                     case JxlDecoderStatus.FullImage:
                         // First frame is enough for a still / animation poster
                         // (gain-map JXL: base only — SDR when transfer is not PQ/HLG).
-                        return pixels is null ? null : new Frame(Normalize(pixels, info, transfer), (int)info.XSize, (int)info.YSize);
+                        return pixels is null
+                            ? null
+                            : new Frame(Normalize(pixels, info, transfer, cicpPrimaries), (int)info.XSize, (int)info.YSize);
                     case JxlDecoderStatus.Success:
-                        return pixels is null ? null : new Frame(Normalize(pixels, info, transfer), (int)info.XSize, (int)info.YSize);
+                        return pixels is null
+                            ? null
+                            : new Frame(Normalize(pixels, info, transfer, cicpPrimaries), (int)info.XSize, (int)info.YSize);
                     default:
                         return null;
                 }
@@ -178,16 +186,20 @@ internal static class JxlDecode
     /// <summary>
     /// libjxl float output is relative to the image's intensity target
     /// (1.0 = IntensityTarget nits). Rescale so 1.0 = 80 nits SDR white (scRGB)
-    /// when the probe transfer is PQ/HLG; then BT.2020 → scRGB. SDR / gain-map
-    /// base stays 0..1 LinearSRGB.
+    /// when the probe transfer is PQ/HLG; then BT.2020 → scRGB for PQ/HLG and
+    /// wide-gamut SDR. Rec.709 SDR / gain-map base stays 0..1 LinearSRGB.
     /// </summary>
-    private static float[] Normalize(float[] rgba, JxlBasicInfo info, HdrTransfer transfer)
+    private static float[] Normalize(
+        float[] rgba,
+        JxlBasicInfo info,
+        HdrTransfer transfer,
+        int? cicpPrimaries)
     {
         HdrJxlPresent.ApplyIntensityScale(
             rgba,
             HdrJxlPresent.ScrgbScaleFromIntensityTarget(info.IntensityTarget, transfer));
 
-        if (transfer is HdrTransfer.Pq or HdrTransfer.Hlg)
+        if (HdrJxlPresent.UsesBt2020LinearOutput(transfer, cicpPrimaries))
         {
             HdrJxlPresent.Bt2020LinearToScrgb(rgba);
         }
