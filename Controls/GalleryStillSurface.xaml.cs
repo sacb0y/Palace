@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.Helpers;
+using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
 using Windows.Foundation;
