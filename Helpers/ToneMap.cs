@@ -163,6 +163,8 @@ public static class ToneMap
     /// when <paramref name="reinhardWhite"/> &gt; 1). HDR passthrough: scale 1,
     /// clip peak/80, <paramref name="softNegatives"/> passes OOG through.
     /// SDR: plain-clamp negatives (no SoftNegChannel — that darkened luma).
+    /// <paramref name="outputScale"/> (M1) lifts the finished curve into HDR
+    /// composition white (<c>SdrWhite/80</c>) — leave exposure/white alone.
     /// </summary>
     public static void MapPresentRgb(
         float r,
@@ -174,7 +176,8 @@ public static class ToneMap
         bool softNegatives,
         out float or,
         out float og,
-        out float ob)
+        out float ob,
+        float outputScale = 1f)
     {
         r = FiniteOrZero(r);
         g = FiniteOrZero(g);
@@ -203,7 +206,7 @@ public static class ToneMap
                 b *= k;
             }
 
-            // Hue-preserving peak fold into composition white (scRGB 1.0).
+            // Hue-preserving peak fold into thumb composition white (scRGB 1.0).
             var peak = Math.Max(r, Math.Max(g, b));
             if (peak > 1f)
             {
@@ -211,6 +214,14 @@ public static class ToneMap
                 g /= peak;
                 b /= peak;
             }
+        }
+
+        // M1: thumb curve → ×SdrWhite/80; fold/clip target is ClipScrgb (= k).
+        if (outputScale > 0f && float.IsFinite(outputScale) && outputScale != 1f)
+        {
+            r *= outputScale;
+            g *= outputScale;
+            b *= outputScale;
         }
 
         var hi = clipScrgb > 0 && float.IsFinite(clipScrgb) ? clipScrgb : 1f;

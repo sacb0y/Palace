@@ -174,7 +174,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             var matchThumb = GalleryPresent.PresentMatchesThumbToneMap(
                 displayHdr, frame.BufferTransfer);
             // S5: HDR↔SDR switch must not reuse sticky Analyze from the other mode.
-            if (_stickyDisplayHdr is { } priorHdr && priorHdr != displayHdr)
+            if (GalleryPresent.StickyThumbToneInvalidated(_stickyDisplayHdr, displayHdr))
             {
                 resolvedExposure = null;
                 resolvedWhite = null;

@@ -530,15 +530,18 @@ public sealed partial class GalleryStillSurface : UserControl
             }
 
             _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
+            string? loadError = null;
             try
             {
-                frame = await HdrWicDecode.TryLoadAsync(
+                var loaded = await HdrWicDecode.TryLoadAsync(
                     still,
                     gallery.CurrentProbe,
                     viewPxW,
                     viewPxH,
                     gallery.DisplayScaling,
                     _hdrLoadCts.Token);
+                frame = loaded.Frame;
+                loadError = loaded.Error;
             }
             catch (OperationCanceledException)
             {
@@ -549,7 +552,17 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ErrorReporter.LogOnly("GalleryStillSurface HDR load", ex);
                 frame = null;
+                loadError = ex.GetType().Name;
             }
+
+            if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
+            {
+                return;
+            }
+
+            await FinishHdrLoadAsync(
+                gallery, still, item, frame, loadError, viewPxW, viewPxH, epoch);
+            return;
         }
 
         if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
@@ -557,6 +570,20 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
+        await FinishHdrLoadAsync(
+            gallery, still, item, frame, loadError: null, viewPxW, viewPxH, epoch);
+    }
+
+    private async Task FinishHdrLoadAsync(
+        GalleryViewModel gallery,
+        string still,
+        AssetItem? item,
+        HdrFrame? frame,
+        string? loadError,
+        int viewPxW,
+        int viewPxH,
+        int epoch)
+    {
         await UiDispatch.RunAsync(() =>
         {
             if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
@@ -579,12 +606,12 @@ public sealed partial class GalleryStillSurface : UserControl
 
                 var failImage = ToStillImage(failPreview);
                 ImgStill.Source = failImage;
-                // One hdr-fail line (S4): decoder + WIC HRESULT — not a second surface log.
+                // One hdr-fail line (S4): error returned with the decode result.
                 SdrTonemapLog.TryAppendViewer(
                     still,
                     failImage is not null ? "hdr-fail+pipeline-preview" : "hdr-fail",
                     ProbeBufferLabel(gallery.CurrentProbe),
-                    detail: HdrWicDecode.LastWicError);
+                    detail: loadError);
 
                 gallery.SetHdrPresentResult(false, false);
                 QueueFileHistogram(gallery, still, hdr: false);
@@ -828,8 +855,9 @@ public sealed partial class GalleryStillSurface : UserControl
                 && string.Equals(_sdrTonePath, _hdrFramePath, StringComparison.OrdinalIgnoreCase)
                 && _sdrToneExposure > 0
                 && _sdrToneWhite > 0f
-                && _sdrToneDisplayHdr is { } toneHdr
-                && toneHdr == presenterRef.DisplayIsHdr)
+                && !GalleryPresent.StickyThumbToneInvalidated(
+                    _sdrToneDisplayHdr, presenterRef.DisplayIsHdr)
+                && _sdrToneDisplayHdr is not null)
             {
                 stickyExposure = _sdrToneExposure;
                 stickyWhite = _sdrToneWhite;
@@ -1015,8 +1043,9 @@ public sealed partial class GalleryStillSurface : UserControl
             HdrAnalysisResult bins;
             try
             {
-                var frame = await HdrWicDecode.TryLoadAsync(
+                var loaded = await HdrWicDecode.TryLoadAsync(
                     path, probe, viewPxW, viewPxH, scaling, token).ConfigureAwait(false);
+                var frame = loaded.Frame;
                 bins = frame is null
                     ? HdrAnalysisResult.Empty
                     : HdrAnalysis.Analyze(
