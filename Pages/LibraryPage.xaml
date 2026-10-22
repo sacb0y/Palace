@@ -94,6 +94,17 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnReview"
+                    AutomationProperties.AutomationId="BtnReview"
+                    AutomationProperties.Name="Review"
+                    Command="{x:Bind ViewModel.StartReviewCommand}"
+                    ToolTipService.ToolTip="Review selection or this folder (swipe left reject, right keep, up skip)">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="CheckmarkCircle" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Review" />
+                    </StackPanel>
+                </Button>
+                <Button
                     x:Name="BtnNewFolder"
                     AutomationProperties.AcceleratorKey="Control+Shift+N"
                     AutomationProperties.AutomationId="BtnNewFolder"
@@ -1681,7 +1692,8 @@
                             Command="{x:Bind ViewModel.OverlayGallery.GoPreviousCommand, Mode=OneWay, FallbackValue={x:Null}}"
                             IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoPrevious, Mode=OneWay, FallbackValue=False}"
                             Style="{StaticResource ViewerOverlayButtonStyle}"
-                            ToolTipService.ToolTip="Previous (Left)">
+                            ToolTipService.ToolTip="Previous (Left)"
+                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsReviewMode), Mode=OneWay}">
                             <ic:FluentIcon Icon="ChevronLeft" IconSize="Size16" IconVariant="Regular" />
                         </Button>
                         <Button
@@ -1694,7 +1706,8 @@
                             Command="{x:Bind ViewModel.OverlayGallery.GoNextCommand, Mode=OneWay, FallbackValue={x:Null}}"
                             IsEnabled="{x:Bind ViewModel.OverlayGallery.CanGoNext, Mode=OneWay, FallbackValue=False}"
                             Style="{StaticResource ViewerOverlayButtonStyle}"
-                            ToolTipService.ToolTip="Next (Right)">
+                            ToolTipService.ToolTip="Next (Right)"
+                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsReviewMode), Mode=OneWay}">
                             <ic:FluentIcon Icon="ChevronRight" IconSize="Size16" IconVariant="Regular" />
                         </Button>
                         <StackPanel
@@ -1791,9 +1804,120 @@
                     </Grid>
                 </Grid>
 
+                <StackPanel
+                    Grid.Row="1"
+                    HorizontalAlignment="Stretch"
+                    Spacing="0">
+                <Border
+                    x:Name="BrdReviewChrome"
+                    MaxWidth="720"
+                    MinWidth="280"
+                    Margin="16,8,16,12"
+                    Padding="12,10"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="BrdReviewChrome"
+                    Background="#E01C1C1C"
+                    BorderBrush="#1AFFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewChrome), Mode=OneWay}">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            x:Name="TxtReviewProgress"
+                            HorizontalAlignment="Center"
+                            AutomationProperties.AutomationId="TxtReviewProgress"
+                            AutomationProperties.LiveSetting="Polite"
+                            AutomationProperties.Name="Review progress"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.ReviewProgressText, Mode=OneWay}" />
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="8">
+                            <StackPanel
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewDecideButtons), Mode=OneWay}">
+                                <Button
+                                    x:Name="BtnReviewReject"
+                                    Padding="10,6"
+                                    AutomationProperties.AutomationId="BtnReviewReject"
+                                    AutomationProperties.Name="Reject — move to _rejected (X)"
+                                    Command="{x:Bind ViewModel.ReviewRejectCommand}"
+                                    IsEnabled="{x:Bind ViewModel.CanReviewDecide, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Reject (X) — move to _rejected">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="X" />
+                                    </Button.KeyboardAccelerators>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Reject" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="BtnReviewSkip"
+                                    Padding="10,6"
+                                    AutomationProperties.AutomationId="BtnReviewSkip"
+                                    AutomationProperties.Name="Skip — leave undecided (S)"
+                                    Command="{x:Bind ViewModel.ReviewSkipCommand}"
+                                    IsEnabled="{x:Bind ViewModel.CanReviewDecide, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Skip (S) — leave undecided">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="S" />
+                                    </Button.KeyboardAccelerators>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <ic:FluentIcon Icon="ArrowUp" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Skip" />
+                                    </StackPanel>
+                                </Button>
+                                <Button
+                                    x:Name="BtnReviewKeep"
+                                    Padding="10,6"
+                                    AutomationProperties.AutomationId="BtnReviewKeep"
+                                    AutomationProperties.Name="Keep (K)"
+                                    Command="{x:Bind ViewModel.ReviewKeepCommand}"
+                                    IsEnabled="{x:Bind ViewModel.CanReviewDecide, Mode=OneWay}"
+                                    ToolTipService.ToolTip="Keep (K)">
+                                    <Button.KeyboardAccelerators>
+                                        <KeyboardAccelerator Key="K" />
+                                    </Button.KeyboardAccelerators>
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <ic:FluentIcon Icon="Checkmark" IconSize="Size16" IconVariant="Regular" />
+                                        <TextBlock VerticalAlignment="Center" Text="Keep" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                            <Button
+                                x:Name="BtnReviewUndo"
+                                Padding="10,6"
+                                AutomationProperties.AutomationId="BtnReviewUndo"
+                                AutomationProperties.Name="Undo last review decision (Ctrl+Z)"
+                                Command="{x:Bind ViewModel.ReviewUndoCommand}"
+                                IsEnabled="{x:Bind ViewModel.CanReviewUndo, Mode=OneWay}"
+                                ToolTipService.ToolTip="Undo (Ctrl+Z)"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewUndoButton), Mode=OneWay}">
+                                <Button.KeyboardAccelerators>
+                                    <KeyboardAccelerator Key="Z" Modifiers="Control" />
+                                </Button.KeyboardAccelerators>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="ArrowUndo" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock VerticalAlignment="Center" Text="Undo" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <Button
+                            x:Name="BtnReviewSkipped"
+                            HorizontalAlignment="Center"
+                            AutomationProperties.AutomationId="BtnReviewSkipped"
+                            AutomationProperties.Name="{x:Bind ViewModel.ReviewSkippedLabel, Mode=OneWay}"
+                            Command="{x:Bind ViewModel.ReviewSkippedCommand}"
+                            Content="{x:Bind ViewModel.ReviewSkippedLabel, Mode=OneWay}"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewSkipped), Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
                 <Border
                     x:Name="BrdGifScrub"
-                    Grid.Row="1"
                     MaxWidth="640"
                     MinWidth="280"
                     Margin="16,8,16,0"
@@ -1890,6 +2014,7 @@
                             Text="{x:Bind ViewModel.OverlayGallery.GifFrameLabel, Mode=OneWay, FallbackValue=''}" />
                     </Grid>
                 </Border>
+                </StackPanel>
 
             </Grid>
         </Grid>

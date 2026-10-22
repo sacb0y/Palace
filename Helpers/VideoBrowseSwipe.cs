@@ -3,7 +3,9 @@ namespace Palace.Helpers;
 /// <summary>
 /// Paused/stopped video browse-swipe session. Touch only — callers attach via
 /// <c>AddHandler(..., handledEventsToo: true)</c> on <c>MediaPlayerElement</c>
-/// so mouse/pen still reach transport, seek, and ContextFlyout. Off WinUI.
+/// so mouse/pen still reach transport, seek, and ContextFlyout. In Review mode
+/// completes via <see cref="TouchGestures.ClassifyReviewSwipe"/> (L=reject,
+/// R=keep, up=skip). Off WinUI.
 /// </summary>
 public sealed class VideoBrowseSwipe
 {
@@ -88,7 +90,8 @@ public sealed class VideoBrowseSwipe
     }
 
     /// <summary>
-    /// Completes the swipe. <paramref name="navigated"/> when browse prev/next commits.
+    /// Completes the swipe. Browse: prev/next. Review: reject/keep/skip via
+    /// <see cref="TouchGestures.ClassifyReviewSwipe"/>.
     /// </summary>
     public bool TryComplete(
         uint pointerId,
@@ -96,11 +99,13 @@ public sealed class VideoBrowseSwipe
         double y,
         long timestampMs,
         double viewportWidth,
+        double viewportHeight,
+        bool reviewMode,
         out TouchGestures.SwipeAction action,
-        out bool navigated)
+        out bool committed)
     {
         action = TouchGestures.SwipeAction.None;
-        navigated = false;
+        committed = false;
         if (!_tracking || pointerId != _pointerId)
         {
             return false;
@@ -111,14 +116,25 @@ public sealed class VideoBrowseSwipe
         var dy = y - _startY;
         var elapsedMs = Math.Max(1L, timestampMs - _startMs);
         var vx = dx / elapsedMs;
+        var vy = dy / elapsedMs;
         Reset();
         if (!armed)
         {
             return true;
         }
 
+        if (reviewMode)
+        {
+            action = TouchGestures.ClassifyReviewSwipe(
+                dx, dy, viewportWidth, viewportHeight, vx, vy);
+            committed = action is TouchGestures.SwipeAction.Reject
+                or TouchGestures.SwipeAction.Keep
+                or TouchGestures.SwipeAction.Skip;
+            return true;
+        }
+
         action = TouchGestures.ClassifyBrowseSwipe(dx, dy, viewportWidth, vx);
-        navigated = action is TouchGestures.SwipeAction.BrowsePrevious
+        committed = action is TouchGestures.SwipeAction.BrowsePrevious
             or TouchGestures.SwipeAction.BrowseNext;
         return true;
     }

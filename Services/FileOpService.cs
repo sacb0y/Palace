@@ -240,6 +240,14 @@ public sealed partial class FileOpService
     public Task<FileOpResult> UndoLastAsync(string projectId) =>
         GatedAsync(projectId, () => UndoLastCoreAsync(projectId));
 
+    /// <summary>
+    /// Reverse a specific undoable batch <b>only when it is still the newest</b>
+    /// for the project. Used by Review Reject undo so an unrelated Move/Delete
+    /// after the reject cannot be undone by Review Ctrl+Z.
+    /// </summary>
+    public Task<FileOpResult> UndoBatchAsync(string projectId, string batchId) =>
+        GatedAsync(projectId, () => UndoBatchCoreAsync(projectId, batchId));
+
     public Task<FileOpBatch?> PeekUndoAsync(string projectId) =>
         _catalog.GetLastUndoableFileOpAsync(projectId);
 
@@ -890,6 +898,48 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("Nothing to undo.");
         }
 
+        return await UndoKnownBatchAsync(batch, projectId).ConfigureAwait(false);
+    }
+
+    private async Task<FileOpResult> UndoBatchCoreAsync(string projectId, string batchId)
+    {
+        if (string.IsNullOrWhiteSpace(batchId))
+        {
+            return FileOpResult.Fail("Nothing to undo.");
+        }
+
+        var newest = await _catalog.GetLastUndoableFileOpAsync(projectId).ConfigureAwait(false);
+        if (newest is not null && string.Equals(newest.Id, batchId, StringComparison.Ordinal))
+        {
+            return await UndoKnownBatchAsync(newest, projectId).ConfigureAwait(false);
+        }
+
+        // Toolbar Undo / Ctrl+Z may already have reversed this reject move.
+        // Treat already-undone as success with no further moves so Review session
+        // can still roll back.
+        var known = await _catalog.GetFileOpBatchAsync(batchId).ConfigureAwait(false);
+        if (known is not null && known.IsUndone)
+        {
+            return new FileOpResult
+            {
+                Ok = true,
+                Message = "Already undone.",
+                BatchId = batchId,
+                Moves = []
+            };
+        }
+
+        if (newest is null)
+        {
+            return FileOpResult.Fail("Nothing to undo.");
+        }
+
+        return FileOpResult.Fail(
+            "Can't undo this reject — another file operation happened after it.");
+    }
+
+    private async Task<FileOpResult> UndoKnownBatchAsync(FileOpBatch batch, string projectId)
+    {
         // All projects' sources so Undo uses the same ResolveWritableRoot gates as forward ops
         // (refuse another project's nested root / junctions).
         var allSources = await _catalog.GetSourceFoldersAsync().ConfigureAwait(false);

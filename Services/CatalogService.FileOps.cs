@@ -200,6 +200,45 @@ public sealed partial class CatalogService
             cmd.ExecuteNonQuery();
         });
 
+    /// <summary>
+    /// Look up a journal batch by id (including already-undone). Used by Review
+    /// Reject undo when toolbar Ctrl+Z already reversed the move.
+    /// </summary>
+    public Task<FileOpBatch?> GetFileOpBatchAsync(string batchId) =>
+        _db.ReadAsync(conn =>
+        {
+            if (string.IsNullOrWhiteSpace(batchId))
+            {
+                return null;
+            }
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, ProjectId, Kind, Summary, CreatedAt, IsUndone FROM FileOpBatch
+                WHERE Id = $id
+                LIMIT 1
+                """;
+            cmd.Parameters.AddWithValue("$id", batchId);
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read())
+            {
+                return null;
+            }
+
+            var batch = new FileOpBatch
+            {
+                Id = reader.GetString(0),
+                ProjectId = reader.GetString(1),
+                Kind = Enum.TryParse<FileOpKind>(reader.GetString(2), out var kind) ? kind : FileOpKind.Move,
+                Summary = reader.GetString(3),
+                CreatedAt = reader.GetString(4),
+                IsUndone = reader.GetInt32(5) != 0
+            };
+            reader.Close();
+            batch.Items = ReadFileOpItems(conn, batch.Id);
+            return batch;
+        });
+
     private static List<FileOpItem> ReadFileOpItems(SqliteConnection conn, string batchId)
     {
         using var cmd = conn.CreateCommand();

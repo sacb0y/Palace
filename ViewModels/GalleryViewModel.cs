@@ -929,6 +929,59 @@ public partial class GalleryViewModel : ObservableObject
         }
     }
 
+    /// <summary>Jump to an asset in this gallery snapshot (Review mode advance / undo).</summary>
+    public bool TryShowAsset(string assetId)
+    {
+        for (var i = 0; i < _items.Count; i++)
+        {
+            if (!string.Equals(_items[i].Id, assetId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (CurrentIndex == i)
+            {
+                _ = LoadCurrentAsync();
+            }
+            else
+            {
+                CurrentIndex = i;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Rewrite paths after a Review Reject move without rebuilding the queue.</summary>
+    public void ApplyPathMoves(IReadOnlyList<FileOpMove> moves)
+    {
+        if (moves.Count == 0)
+        {
+            return;
+        }
+
+        var byId = moves.ToDictionary(m => m.AssetId, StringComparer.Ordinal);
+        foreach (var item in _items)
+        {
+            if (!byId.TryGetValue(item.Id, out var move))
+            {
+                continue;
+            }
+
+            item.Path = move.NewPath;
+            item.FileName = Path.GetFileName(move.NewPath);
+            item.SourceFolderId = move.NewSourceId;
+            item.IsOrphan = false;
+        }
+
+        if (Current is not null && byId.ContainsKey(Current.Id))
+        {
+            _ = LoadCurrentAsync();
+        }
+    }
+
     [RelayCommand]
     private Task DownloadOriginalAsync() =>
         ErrorReporter.RunAsync("Download original", null, async () =>
