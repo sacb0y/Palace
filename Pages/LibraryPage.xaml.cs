@@ -128,7 +128,7 @@ public sealed partial class LibraryPage : Page
             {
                 InvalidateMosaicLayout();
                 UpdateStickyFolderHeader();
-                UpdateMosaicToolbarOverflow(GrdAssets.ActualWidth);
+                RefreshMosaicToolbarOverflow();
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.OverlayGallery) or nameof(LibraryViewModel.IsGalleryOverlayOpen))
@@ -170,7 +170,7 @@ public sealed partial class LibraryPage : Page
                 // Cached page: Unloaded nulls SectionToggleEnded mid-rebuild, so
                 // depth may still be >0 — clear guard and re-stamp highlights.
                 ResetSectionToggleGuardOnLoaded();
-                UpdateMosaicToolbarOverflow(GrdAssets.ActualWidth);
+                RefreshMosaicToolbarOverflow();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
@@ -183,7 +183,7 @@ public sealed partial class LibraryPage : Page
 
             _shellReady = true;
             ResetSectionToggleGuardOnLoaded();
-            UpdateMosaicToolbarOverflow(GrdAssets.ActualWidth);
+            RefreshMosaicToolbarOverflow();
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
@@ -529,6 +529,10 @@ public sealed partial class LibraryPage : Page
         BtnLibraryToolbarMore.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>Toolbar overflow using the visible mosaic column (not raw ItemsView width).</summary>
+    private void RefreshMosaicToolbarOverflow() =>
+        UpdateMosaicToolbarOverflow(VisibleMosaicColumnWidth(GrdAssets.ActualWidth));
+
     /// <summary>
     /// Mosaic column toolbar: Flatten / Sort overflow so they are not clipped at
     /// 1400 / 1250 / 1155 laptop widths (face controls hide; More keeps them).
@@ -554,8 +558,6 @@ public sealed partial class LibraryPage : Page
         if (sortOverflow && chrome)
         {
             BtnMosaicSort.Visibility = Visibility.Collapsed;
-            TxtMosaicSortLabel.Visibility = Visibility.Collapsed;
-            BtnMosaicSort.MinWidth = 0;
             MnuMosaicSortOverflow.Visibility = Visibility.Visible;
         }
         else

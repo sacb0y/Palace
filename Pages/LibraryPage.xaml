@@ -570,6 +570,7 @@
                             VerticalAlignment="Center"
                             Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}" />
                     </StackPanel>
+                    <!-- Sort items mirrored in MnuMosaicSortOverflow (x:Bind can't share one flyout). -->
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">
                             <RadioMenuFlyoutItem
@@ -668,7 +669,7 @@
                                 AutomationProperties.AutomationId="MnuFlattenSubfolders"
                                 IsChecked="{x:Bind ViewModel.FlattenSubfolders, Mode=TwoWay}"
                                 Text="Flatten subfolders" />
-                            <!-- Shown when BtnMosaicSort is overflowed (narrow mosaic). -->
+                            <!-- Mirror of BtnMosaicSort flyout — keep fields/dirs in sync when editing either. -->
                             <MenuFlyoutSubItem
                                 x:Name="MnuMosaicSortOverflow"
                                 AutomationProperties.AutomationId="MnuMosaicSortOverflow"
