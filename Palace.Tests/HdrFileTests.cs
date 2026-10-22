@@ -136,6 +136,8 @@ public sealed class HdrFileTests
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrJxr, 1, null, null)));
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrJxl, 9, 16, null)));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, true, false, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, true, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Gif, false, false, false, true, hdr));
@@ -175,6 +177,15 @@ public sealed class HdrFileTests
         Assert.Equal(
             "HDR JPEG XR · tonemap SDR 80 nits",
             GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), true, false));
+        Assert.Equal(
+            "HDR JPEG XL — SDR preview",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxl, 9, 16, null), false, true));
+        Assert.Equal(
+            "HDR JPEG XL · presenting scRGB",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxl, 9, 16, null), true, true));
+        Assert.Equal(
+            "HDR JPEG XL · tonemap SDR 80 nits",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxl, 9, 16, null), true, false));
         Assert.Null(GalleryPresent.StatusLine(HdrProbe.None, false, false));
     }
 
@@ -293,9 +304,11 @@ public sealed class HdrFileTests
         var pq = new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000);
         var hlg = new HdrProbe(HdrKind.HdrHeif, 9, 18, null);
         var jxr = new HdrProbe(HdrKind.HdrJxr, 1, null, null);
+        var jxl = new HdrProbe(HdrKind.HdrJxl, 9, 16, null);
         Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(pq));
         Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(hlg));
         Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(jxr));
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(jxl));
         Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(HdrProbe.None));
         Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(new HdrProbe(HdrKind.UltraHdrJpeg, 1, 13, null)));
         // FenrirDesktop: no Output6 + CCD HDR on, or PQ content with default probe miss.

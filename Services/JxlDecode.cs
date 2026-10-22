@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Palace.Helpers;
 using Starward.Codec.JpegXL;
 using Starward.Codec.JpegXL.CMS;
 using Starward.Codec.JpegXL.CodeStream;
@@ -9,8 +10,8 @@ namespace Palace.Services;
 /// <summary>
 /// Built-in JPEG XL decode via the libjxl (BSD-3) natives that ship with
 /// Starward.Codec — no Windows JPEG XL extension required. Output is linear
-/// sRGB/scRGB float RGBA (libjxl's CMS converts PQ/HLG/wide gamut), so the
-/// same tone mapper handles SDR and HDR JXL.
+/// scRGB float RGBA (libjxl's CMS converts PQ/HLG/wide gamut; HDR intensity
+/// is rescaled so 1.0 = 80 nits). Used for mosaic thumbs and HDR present.
 /// </summary>
 internal static class JxlDecode
 {
@@ -142,18 +143,9 @@ internal static class JxlDecode
     /// </summary>
     private static float[] Normalize(float[] rgba, JxlBasicInfo info)
     {
-        var target = info.IntensityTarget;
-        if (target > 255f)
-        {
-            var k = target / 203f; // 203 nits = SDR reference white (BT.2408)
-            for (var i = 0; i < rgba.Length; i++)
-            {
-                if ((i & 3) != 3)
-                {
-                    rgba[i] *= k;
-                }
-            }
-        }
+        HdrJxlPresent.ApplyIntensityScale(
+            rgba,
+            HdrJxlPresent.ScrgbScaleFromIntensityTarget(info.IntensityTarget));
 
         if (info.AlphaBits == 0)
         {
