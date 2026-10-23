@@ -1,0 +1,1 @@
+Native HDR display (AVIF/JXR/EXR…), tone-mapped on SDR screens.

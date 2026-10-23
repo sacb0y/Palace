@@ -1,0 +1,10 @@
+Gooey README follow-up set — FENRIR-STUDIO — store only (no PR push)
+Tip used for capture app: main af88283 / 0.3.9 packaged Debug (PalaceReadme-FU2)
+Banned: Pragmata; room.jxl / bedroom. HDR: sample.exr.
+
+01-hero.gif (+ 01-hero-first.png, 01-hero.mp4) — Review GIF
+02-library.png — Library mosaic + folders
+03-review-idle.png — Review Reject/Skip/Keep + chip
+03-review-b.png — Review mid-queue Keep/Skip
+04-viewer.png — Full viewer controls
+05-hdr.png — sample.exr HDR viewer
