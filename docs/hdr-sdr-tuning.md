@@ -75,9 +75,17 @@ Thumbs/full flags (P3–P4), HLSL / CPU–GPU agreement (P5), deleting legacy
   probe) says otherwise. Missing profile → BT.709 / sRGB.
 - **TreatAsYuv:** WIC identity-matrix packed RGB that the legacy convert remaps
   (GBR) skips Working — do not build a wrong-channel NormalizedFrame.
-- **Geometry / orientation (A4, tracked):** AVIF Working may still be
-  un-oriented while `ScrgbRgba` is EXIF-oriented; document before P3 consumes
-  Working. Radiance Working is at present (possibly box-scaled) size.
+- **Geometry / orientation (A4 / R1):** When `buildWorking` is true and the
+  decode is already at present size, Working is built from that present-sized
+  buffer — so future Working-based Analyze would see downscaled data. Not a
+  regression vs pre-P2. Paths:
+  - **Radiance:** `RadianceFile.TryDecode(stream, dw, dh)` streams at present
+    size; Working runs on that buffer.
+  - **WIC fallback:** `ToScrgb` at `decodeW×decodeH` (viewport), then Working
+    from that packed frame when not further scaled away.
+  - **AVIF:** libavif may scale before `ToScrgb`; Working is un-oriented while
+    `ScrgbRgba` is EXIF-oriented (`Width`/`Height` can disagree after rotate).
+  Full native+oriented Working contract is deferred to before P3 consumes it.
 - **SDR linear JXL white (A3, deferred):** libjxl default
   `intensity_target` 255 → Working white ≈ 1.256 vs legacy relative 0.394 /
   sRGB path 1.0 — decide convention before P3.

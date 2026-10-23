@@ -131,9 +131,9 @@ internal static class HdrWicDecode
         new(frame, frame is null ? LastWicError : null);
 
     /// <param name="buildWorking">
-    /// Required (no default): when false (thumbnails / histogram / Fit discard),
-    /// skip <see cref="HdrFrame.Working"/>. Pass true for gallery present that
-    /// may keep Working. A default of true hid missed callers (P2 follow-up nit).
+    /// Required (N-a: no default-true overload). When false (thumbnails /
+    /// histogram / Fit discard), skip <see cref="HdrFrame.Working"/>. Pass true
+    /// for gallery present that may keep Working.
     /// </param>
     public static async Task<HdrDecodeResult> TryLoadAsync(
         string path,
@@ -1278,12 +1278,26 @@ internal static class HdrWicDecode
         bool buildWorking)
     {
         cancellation.ThrowIfCancellationRequested();
+        // R3: skip Working when PresentDecodeSize will box-scale — Finish used
+        // to build ≤256 MB then FromJxlStill dropped it after the fact.
+        var wantWorking = buildWorking;
+        if (buildWorking && ImageDimensions.TryRead(path) is { } native)
+        {
+            wantWorking = GalleryPresent.ShouldBuildWorkingAtPresentSize(
+                buildWorking,
+                native.Width,
+                native.Height,
+                viewportPixelWidth,
+                viewportPixelHeight,
+                scaling);
+        }
+
         var decoded = JxlDecode.TryDecodeFile(
             path,
             HdrJxlPresent.PresentMaxPixels,
             probe.Transfer,
             probe.CicpPrimaries,
-            buildWorking,
+            wantWorking,
             cancellation);
         if (decoded is null)
         {
@@ -1515,9 +1529,6 @@ internal static class HdrWicDecode
                     return null;
                 }
 
-                // B1: restore TryDecodeScrgb sanitize before present stats / GPU.
-                ExrFile.SanitizeNonFinite(scene.Rgba);
-
                 nativeW = scene.Width;
                 nativeH = scene.Height;
                 var (dw, dh) = GalleryPresent.PresentDecodeSize(
@@ -1525,29 +1536,18 @@ internal static class HdrWicDecode
                 // S2: decide scale first — Fit/thumb must not build then discard Working.
                 var willScale = dw > 0 && dh > 0 && (dw < nativeW || dh < nativeH);
 
-                // B2: Working is optional — never fail the legacy present.
-                if (buildWorking && !willScale)
-                {
-                    try
-                    {
-                        workingOpts = ImagingStillNormalize.OptionsForExr(bytes);
-                        working = ImagingStillNormalize.TryRun(
-                            scene.Rgba, scene.Width, scene.Height, workingOpts.Value);
-                        if (working is null)
-                        {
-                            workingOpts = null;
-                        }
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        working = null;
-                        workingOpts = null;
-                    }
-                }
-
-                // S1: convert in place after Working read (avoids ~1 GB clone at 64 MP).
-                ExrFile.ConvertToRec709(scene.Rgba, ExrFile.TryReadChromaticities(bytes));
-                frame = RadianceFile.FrameFromScrgb(scene.Rgba, scene.Width, scene.Height);
+                // R4: sanitize → Working → in-place convert → stats (testable helper).
+                // OptionsForExr is lazy inside Run's try/catch.
+                var built = ExrPresentWorking.Run(
+                    scene.Rgba,
+                    scene.Width,
+                    scene.Height,
+                    ExrFile.TryReadChromaticities(bytes),
+                    bytes,
+                    buildWorking && !willScale);
+                working = built.Working;
+                workingOpts = built.WorkingOptions;
+                frame = built.Stats;
 
                 if (willScale)
                 {
