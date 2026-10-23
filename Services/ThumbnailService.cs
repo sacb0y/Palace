@@ -22,6 +22,10 @@ public sealed class ThumbnailService
     private string _root;
     private DateTime _generationStartUtc;
     private DateTime _shelfGenerationStartUtc;
+    private DateTime _jxlIntensityGenerationStartUtc;
+    private DateTime _jxlWideGamutGenerationStartUtc;
+    private DateTime _jxlActualTransferGenerationStartUtc;
+    private DateTime _jxlNoShellWicGenerationStartUtc;
 
     public ThumbnailService(string thumbsRoot)
     {
@@ -29,6 +33,12 @@ public sealed class ThumbnailService
         Directory.CreateDirectory(_root);
         _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.DecodersGeneration);
         _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
+        _jxlIntensityGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlIntensityGeneration);
+        _jxlWideGamutGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlWideGamutGeneration);
+        _jxlActualTransferGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlActualTransferGeneration);
+        _jxlNoShellWicGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlNoShellWicGeneration);
     }
 
     /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
@@ -40,6 +50,12 @@ public sealed class ThumbnailService
         Directory.CreateDirectory(_root);
         _generationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.DecodersGeneration);
         _shelfGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.ShelfPreviewGeneration);
+        _jxlIntensityGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlIntensityGeneration);
+        _jxlWideGamutGenerationStartUtc = ThumbCacheVersion.EnsureMarker(_root, ThumbCacheVersion.JxlWideGamutGeneration);
+        _jxlActualTransferGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlActualTransferGeneration);
+        _jxlNoShellWicGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.JxlNoShellWicGeneration);
     }
 
     /// <summary>
@@ -48,8 +64,16 @@ public sealed class ThumbnailService
     /// <c>BitmapImage</c> would be blank or need a Store codec. Returns the
     /// path to display, or null while that preview doesn't exist yet.
     /// </summary>
-    public string? DisplayPathFor(string? path)
+    public string? DisplayPathFor(string? path) => DisplayPathFor(path, out _);
+
+    /// <summary>
+    /// Same as <see cref="DisplayPathFor(string?)"/> plus a decoder label for
+    /// <see cref="SdrTonemapLog"/> (large-preview / jxl-await-preview /
+    /// await-preview / bitmap-original).
+    /// </summary>
+    public string? DisplayPathFor(string? path, out string decoder)
     {
+        decoder = "bitmap-original";
         if (string.IsNullOrEmpty(path) || GalleryMedia.IsRemoteUri(path))
         {
             return path;
@@ -58,11 +82,20 @@ public sealed class ThumbnailService
         var lg = ExistingLargePreviewForPath(path);
         if (lg is not null)
         {
+            decoder = "large-preview";
             return lg;
         }
 
-        // JXL without a decoded preview falls back to the WIC codec, if any.
-        return StillDecode.HandlesPath(path) ? null : path;
+        // JXL / EXR / …: never BitmapImage the original — Store WIC leaves
+        // PQ/HLG washed or ~50% clipped white (room.jxl laptop).
+        if (GalleryPresent.RequiresCachedStillPreview(path))
+        {
+            decoder = PathSafe.IsJxl(path) ? "jxl-await-preview" : "await-preview";
+            return null;
+        }
+
+        decoder = "bitmap-original";
+        return path;
     }
 
     private bool IsStaleGeneration(string dest, string filePath)
@@ -71,6 +104,35 @@ public sealed class ThumbnailService
         {
             var written = File.GetLastWriteTimeUtc(dest);
             if (ThumbCacheVersion.IsStale(written, _shelfGenerationStartUtc, ThumbCacheVersion.ShelfPreviewChanged(filePath)))
+            {
+                return true;
+            }
+
+            if (ThumbCacheVersion.IsStale(written, _jxlIntensityGenerationStartUtc, ThumbCacheVersion.JxlIntensityChanged(filePath)))
+            {
+                return true;
+            }
+
+            if (ThumbCacheVersion.IsStale(
+                    written,
+                    _jxlWideGamutGenerationStartUtc,
+                    ThumbCacheVersion.JxlWideGamutChanged(filePath)))
+            {
+                return true;
+            }
+
+            if (ThumbCacheVersion.IsStale(
+                    written,
+                    _jxlActualTransferGenerationStartUtc,
+                    ThumbCacheVersion.JxlActualTransferChanged(filePath)))
+            {
+                return true;
+            }
+
+            if (ThumbCacheVersion.IsStale(
+                    written,
+                    _jxlNoShellWicGenerationStartUtc,
+                    ThumbCacheVersion.JxlNoShellWicChanged(filePath)))
             {
                 return true;
             }
@@ -201,6 +263,14 @@ public sealed class ThumbnailService
             if (custom is not null)
             {
                 return custom;
+            }
+
+            // JXL: libjxl failed — do not shell/WIC the original, and do not
+            // keep a pre-gen7 washed ThumbPath (that became the SDR full view).
+            if (PathSafe.IsJxl(filePath))
+            {
+                SdrTonemapLog.TryAppendViewer(filePath, "shell-thumb-skip", "jxl");
+                return null;
             }
         }
 
@@ -477,6 +547,13 @@ public sealed class ThumbnailService
 
         try
         {
+            // Gen bumps (e.g. v7 no-shell-WIC JXL) must hide washed _lg too —
+            // DisplayPathFor would otherwise keep serving them as the full view.
+            if (filePath is not null && IsStaleGeneration(path, filePath))
+            {
+                return null;
+            }
+
             // Stale once the source changes; regenerated under the same name.
             return !File.Exists(filePath) || File.GetLastWriteTimeUtc(path) >= File.GetLastWriteTimeUtc(filePath!)
                 ? path
@@ -505,6 +582,9 @@ public sealed class ThumbnailService
         kind == Models.AssetKind.Image
         && ExistingLargePreviewForPath(filePath) is null
         && (StillDecode.HandlesPath(filePath)
+            // HDR/wide JXL must not fall through to WIC BitmapImage of the
+            // original — backfill the libjxl large preview like EXR/TGA.
+            || PathSafe.IsJxl(filePath)
             // Shelf metadata under a .bmp/.tif name: full view needs the per-path preview
             // even when an identical file's hash-keyed mosaic thumb is already cached.
             || (!CloudFile.IsOnlineOnly(filePath) && SubstanceShelfFile.IsShelfMetadataFile(filePath)));
@@ -582,26 +662,62 @@ public sealed class ThumbnailService
             if (PathSafe.IsJxl(filePath))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var jxl = await Task.Run(() => JxlDecode.TryDecodeFile(filePath), cancellationToken).ConfigureAwait(false);
+                // Probe transfer so PQ/HLG uses 80-nit scRGB before ToneMap;
+                // SDR / gain-map base stays relative 0..1 (no ×2.54 hot thumbs).
+                var jxlProbe = HdrFile.ProbePath(filePath);
+                var jxlTransfer = jxlProbe.Kind == HdrKind.HdrJxl ? jxlProbe.Transfer : HdrTransfer.Srgb;
+                // Wide-gamut SDR (P3) needs BT.2020 linear out + matrix so
+                // thumbs / any later Gamut pass keep OOG — not Rec.709 100%.
+                var jxlPrimaries = jxlProbe.CicpPrimaries;
+                var jxl = await Task.Run(
+                    () => JxlDecode.TryDecodeFile(
+                        filePath,
+                        HdrJxlPresent.ThumbMaxPixels,
+                        jxlTransfer,
+                        jxlPrimaries,
+                        cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
                 if (jxl is not null)
                 {
-                    var lgJ = await Task.Run(() => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide)).ConfigureAwait(false);
+                    SdrTonemapLog.TryAppendViewer(
+                        filePath,
+                        "libjxl-thumb",
+                        HdrJxlPresent.BufferTransferLabel(jxl.BufferTransfer),
+                        jxl.IntensityTarget,
+                        jxl.ScaleApplied);
+                    var lgJ = await Task.Run(
+                        () => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide, cancellationToken),
+                        cancellationToken).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(lgJ.Bgra!, lgJ.Width, lgJ.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
                     var (jw, jh) = StillDecode.Fit(lgJ.Width, lgJ.Height, MaxSide);
                     var smallJ = jw == lgJ.Width && jh == lgJ.Height ? lgJ.Bgra! : StillDecode.BoxScaleBgra(lgJ.Bgra!, lgJ.Width, lgJ.Height, jw, jh, cancellationToken);
                     await EncodeBgraJpegAsync(smallJ, jw, jh, dest).ConfigureAwait(false);
                     return Finish(dest, jw, jh);
                 }
+
+                SdrTonemapLog.TryAppendViewer(
+                    filePath,
+                    "libjxl-thumb-fail",
+                    jxlProbe.Kind == HdrKind.HdrJxl
+                        ? (jxlProbe.IsHlg ? "hlg" : jxlProbe.IsPq ? "pq" : "hdr")
+                        : jxlProbe.Kind == HdrKind.WideGamutJxl ? "wide" : "sdr");
+                // M1: never fall through to HdrWicDecode / shell for .jxl —
+                // Store WIC thumbs are washed PQ and become the full SDR view.
+                return null;
             }
 
             var probe = HdrFile.ProbePath(filePath);
             if (probe.IsHdr && probe.Kind != HdrKind.UltraHdrJpeg)
             {
-                var frame = await HdrWicDecode.TryLoadAsync(filePath, probe, MaxSide, MaxSide, ImageScaling.Fit, cancellationToken)
+                var loaded = await HdrWicDecode.TryLoadAsync(filePath, probe, MaxSide, MaxSide, ImageScaling.Fit, cancellationToken)
                     .ConfigureAwait(false);
+                var frame = loaded.Frame;
                 if (frame is not null && frame.Width > 0 && frame.Height > 0)
                 {
-                    var r = await Task.Run(() => StillDecode.FromScrgb(frame.ScrgbRgba, frame.Width, frame.Height, MaxSide)).ConfigureAwait(false);
+                    var r = await Task.Run(
+                        () => StillDecode.FromScrgb(
+                            frame.ScrgbRgba, frame.Width, frame.Height, MaxSide, cancellationToken),
+                        cancellationToken).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(r.Bgra!, r.Width, r.Height, dest).ConfigureAwait(false);
                     return Finish(dest, r.Width, r.Height);
                 }
@@ -613,7 +729,12 @@ public sealed class ThumbnailService
         }
         catch
         {
-            // Fall back to WinRT / shell thumbnail.
+            // Fall back to WinRT / shell thumbnail (not for .jxl — see above).
+            if (PathSafe.IsJxl(filePath))
+            {
+                SdrTonemapLog.TryAppendViewer(filePath, "shell-thumb-skip", "jxl-ex");
+                return null;
+            }
         }
 
         return null;

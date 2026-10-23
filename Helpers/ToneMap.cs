@@ -66,8 +66,61 @@ public static class ToneMap
     /// <summary>
     /// Exposure scale and white point (in scaled units). Content whose
     /// luminance stays within SDR range gets (1, 1): no tone mapping.
+    /// Thumbs / SDR previews use this. Gallery HDR→SDR present uses
+    /// <see cref="AnalyzeHdrPresent"/> so relative EXR / soft PQ cannot
+    /// skip the curve when p995 ≤ 1.
     /// </summary>
     public static (float Exposure, float White) Analyze(ReadOnlySpan<float> rgba, int count, CancellationToken cancellationToken = default)
+    {
+        var (logAvg, p995, ok) = SampleLuminance(rgba, count, cancellationToken);
+        if (!ok)
+        {
+            return (1f, 1f);
+        }
+
+        if (p995 <= 1.0f)
+        {
+            return (1f, 1f);
+        }
+
+        var exposure = Math.Clamp(MiddleGrey / Math.Max(logAvg, 1e-4f), 0.05f, 4f);
+        var white = Math.Max(1f, p995 * exposure);
+        return (exposure, white);
+    }
+
+    /// <summary>
+    /// Gallery HDR→SDR present (Isiac): exposure defaults to <b>1.0</b> so
+    /// scene-referred 1.0 (and PQ paper after absolute decode) maps toward
+    /// SDR white — never the thumb auto-boost
+    /// <c>clamp(0.18/logAvg, 0.05, 4)</c>. At most attenuate via
+    /// <see cref="GalleryPresent.PresentSdrExposure"/> (cap ≤ 1) using
+    /// <c>AdvancedColorInfo.SdrWhiteLevelInNits</c> / CCD, else 80.
+    /// Always applies extended Reinhard with <c>w</c> from content p995
+    /// (no <c>p995 ≤ 1</c> skip — that left soft EXR/JXL Fit unmapped).
+    /// </summary>
+    public static (float Exposure, float White) AnalyzeHdrPresent(
+        ReadOnlySpan<float> rgba,
+        int count,
+        float sdrWhiteLevelNits = 0f,
+        CancellationToken cancellationToken = default)
+    {
+        var exposure = GalleryPresent.PresentSdrExposure(sdrWhiteLevelNits);
+        var (logAvg, p995, ok) = SampleLuminance(rgba, count, cancellationToken);
+        _ = logAvg;
+        if (!ok)
+        {
+            return (exposure, 1.01f);
+        }
+
+        // Always engage Reinhard (white > 1); w = content peak after exposure.
+        var white = Math.Max(1.01f, Math.Max(p995, 1e-4f) * exposure);
+        return (exposure, white);
+    }
+
+    private static (float LogAvg, float P995, bool Ok) SampleLuminance(
+        ReadOnlySpan<float> rgba,
+        int count,
+        CancellationToken cancellationToken)
     {
         var step = Math.Max(1, count / 65536);
         var samples = new List<float>(Math.Min(count, 65536) + 1);
@@ -78,6 +131,7 @@ public static class ToneMap
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
+
             var l = Luminance(Sanitize(rgba[i * 4]), Sanitize(rgba[i * 4 + 1]), Sanitize(rgba[i * 4 + 2]));
             samples.Add(l);
             logSum += Math.Log(1e-4 + l);
@@ -85,20 +139,13 @@ public static class ToneMap
 
         if (samples.Count == 0)
         {
-            return (1f, 1f);
+            return (0f, 0f, false);
         }
 
         samples.Sort();
         var p995 = samples[Math.Min(samples.Count - 1, (int)(samples.Count * 0.995))];
-        if (p995 <= 1.0f)
-        {
-            return (1f, 1f);
-        }
-
         var logAvg = (float)Math.Exp(logSum / samples.Count);
-        var exposure = Math.Clamp(MiddleGrey / Math.Max(logAvg, 1e-4f), 0.05f, 4f);
-        var white = Math.Max(1f, p995 * exposure);
-        return (exposure, white);
+        return (logAvg, p995, true);
     }
 
     public static float Luminance(float r, float g, float b) =>
@@ -110,6 +157,91 @@ public static class ToneMap
         var s = v <= 0.0031308f ? 12.92f * v : 1.055f * MathF.Pow(v, 1f / 2.4f) - 0.055f;
         return (byte)MathF.Round(Math.Clamp(s, 0f, 1f) * 255f);
     }
+
+    /// <summary>
+    /// Gallery swapchain present map (same curve as <see cref="ScrgbToBgra8"/>
+    /// when <paramref name="reinhardWhite"/> &gt; 1). HDR passthrough: scale 1,
+    /// clip peak/80, <paramref name="softNegatives"/> passes OOG through.
+    /// SDR: plain-clamp negatives (no SoftNegChannel — that darkened luma).
+    /// <paramref name="outputScale"/> (M1) lifts the finished curve into HDR
+    /// composition white (<c>SdrWhite/80</c>) — leave exposure/white alone.
+    /// </summary>
+    public static void MapPresentRgb(
+        float r,
+        float g,
+        float b,
+        float scale,
+        float clipScrgb,
+        float reinhardWhite,
+        bool softNegatives,
+        out float or,
+        out float og,
+        out float ob,
+        float outputScale = 1f)
+    {
+        r = FiniteOrZero(r);
+        g = FiniteOrZero(g);
+        b = FiniteOrZero(b);
+        if (!softNegatives)
+        {
+            // SDR: plain clamp before tonemap (no SoftNegChannel luma darken).
+            r = Math.Max(0f, r);
+            g = Math.Max(0f, g);
+            b = Math.Max(0f, b);
+        }
+
+        r *= scale;
+        g *= scale;
+        b *= scale;
+
+        if (reinhardWhite > 1f)
+        {
+            var l = Luminance(r, g, b);
+            if (l > 0f)
+            {
+                var ld = l * (1f + l / (reinhardWhite * reinhardWhite)) / (1f + l);
+                var k = ld / l;
+                r *= k;
+                g *= k;
+                b *= k;
+            }
+
+            // Hue-preserving peak fold into thumb composition white (scRGB 1.0).
+            var peak = Math.Max(r, Math.Max(g, b));
+            if (peak > 1f)
+            {
+                r /= peak;
+                g /= peak;
+                b /= peak;
+            }
+        }
+
+        // M1: thumb curve → ×SdrWhite/80; fold/clip target is ClipScrgb (= k).
+        if (outputScale > 0f && float.IsFinite(outputScale) && outputScale != 1f)
+        {
+            r *= outputScale;
+            g *= outputScale;
+            b *= outputScale;
+        }
+
+        var hi = clipScrgb > 0 && float.IsFinite(clipScrgb) ? clipScrgb : 1f;
+        if (softNegatives)
+        {
+            // HDR FP16: keep BT.2020→709 OOG negatives; only clip the high end.
+            or = Math.Min(r, hi);
+            og = Math.Min(g, hi);
+            ob = Math.Min(b, hi);
+        }
+        else
+        {
+            or = Math.Clamp(r, 0f, hi);
+            og = Math.Clamp(g, 0f, hi);
+            ob = Math.Clamp(b, 0f, hi);
+        }
+    }
+
+    private static float FiniteOrZero(float v) =>
+        float.IsFinite(v) ? v : 0f;
 
     private static float Sanitize(float v) =>
         float.IsFinite(v) && v > 0f ? v : 0f;

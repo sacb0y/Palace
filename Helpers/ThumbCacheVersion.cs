@@ -11,13 +11,37 @@ namespace Palace.Helpers;
 public static class ThumbCacheVersion
 {
     /// <summary>Bump when thumbnail rendering changes for existing files.</summary>
-    public const int Current = 3;
+    public const int Current = 7;
 
     /// <summary>Generation 2: HDR stills, PSD, JXL, EXR, Radiance, TGA, Clip, ICO.</summary>
     public const int DecodersGeneration = 2;
 
     /// <summary>Generation 3: BMP / TIFF names that hold Substance Painter shelf metadata with a preview.</summary>
     public const int ShelfPreviewGeneration = 3;
+
+    /// <summary>
+    /// Generation 4: HDR JPEG XL intensity → scRGB uses 80-nit white (was ÷203),
+    /// so prior JXL mosaic thumbs look ~2.5× too hot / wrong exposure.
+    /// </summary>
+    public const int JxlIntensityGeneration = 4;
+
+    /// <summary>
+    /// Generation 5: P3 / BT.2020 JXL thumbs keep OOG via BT.2100 + matrix
+    /// (Relative on plain LinearSRGB had collapsed them to Rec.709).
+    /// </summary>
+    public const int JxlWideGamutGeneration = 5;
+
+    /// <summary>
+    /// Generation 6: HDR JXL still-PQ buffers use EOTF→scRGB (no intensity_target
+    /// scale on PQ codes) after verifying TARGET_DATA transfer.
+    /// </summary>
+    public const int JxlActualTransferGeneration = 6;
+
+    /// <summary>
+    /// Generation 7: JXL never falls through to Store WIC / shell thumbs when
+    /// libjxl fails (those washed PQ became the SDR full view via ThumbPath).
+    /// </summary>
+    public const int JxlNoShellWicGeneration = 7;
 
     public static string MarkerName => MarkerNameFor(Current);
 
@@ -61,6 +85,18 @@ public static class ThumbCacheVersion
     /// </summary>
     public static bool ShelfPreviewChanged(string path) =>
         PathSafe.Extension(path).ToLowerInvariant() is ".bmp" or ".tif" or ".tiff";
+
+    /// <summary>Formats whose thumbnails changed in generation 4 (HDR JXL 80-nit scale).</summary>
+    public static bool JxlIntensityChanged(string path) => PathSafe.IsJxl(path);
+
+    /// <summary>Formats whose thumbnails changed in generation 5 (wide-gamut JXL OOG).</summary>
+    public static bool JxlWideGamutChanged(string path) => PathSafe.IsJxl(path);
+
+    /// <summary>Formats whose thumbnails changed in generation 6 (JXL actual-TF normalize).</summary>
+    public static bool JxlActualTransferChanged(string path) => PathSafe.IsJxl(path);
+
+    /// <summary>Formats whose thumbnails changed in generation 7 (no JXL shell/WIC thumb).</summary>
+    public static bool JxlNoShellWicChanged(string path) => PathSafe.IsJxl(path);
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;

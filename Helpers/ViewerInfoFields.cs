@@ -173,6 +173,11 @@ public static class ViewerInfoFields
         return GalleryPresent.FormatNits(nits.Value);
     }
 
+    /// <summary>
+    /// MaxCLL value for the Details row labelled "MaxCLL (scRGB)".
+    /// Units are scRGB channel peak (1.0 = 80 nits), not nits — e.g.
+    /// <c>109.772 (R)</c> ≈ 8782 nits on the R channel.
+    /// </summary>
     public static string ScrgbLabel(float? maxScrgb, char? channel)
     {
         if (maxScrgb is null or <= 0)

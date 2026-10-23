@@ -22,6 +22,18 @@ internal sealed class HdrFrame
     /// <summary>Native-pixel channel of <see cref="MaxScrgb"/> ('R'/'G'/'B'), or '\0' when unknown.</summary>
     public char MaxScrgbChannel { get; init; }
 
+    /// <summary>Present decoder label for <see cref="SdrTonemapLog"/> (libjxl / WIC / fallback).</summary>
+    public string PresentDecoder { get; set; } = "unknown";
+
+    /// <summary>Source path for <see cref="SdrTonemapLog"/> <c>file=</c> (EXR / HDR / AVIF / JXL / JXR).</summary>
+    public string? SourcePath { get; set; }
+
+    public float IntensityTarget { get; init; }
+
+    public float IntensityScale { get; init; } = 1f;
+
+    public JxlBufferTransfer BufferTransfer { get; init; } = JxlBufferTransfer.Unknown;
+
     public bool HasStats => MaxNits > 0;
 
     private float _p99MaxRgbNits = -1f;
@@ -55,6 +67,12 @@ internal readonly record struct HdrStats(
     int Height);
 
 /// <summary>
+/// Frame plus WIC/lib error from one <see cref="HdrWicDecode.TryLoadAsync"/>
+/// call (S4). Do not read a shared static after await — return the stamp.
+/// </summary>
+internal readonly record struct HdrDecodeResult(HdrFrame? Frame, string? Error);
+
+/// <summary>
 /// Local HDR still → linear scRGB. HDR AVIF prefers libavif (identity
 /// GBR). HDR JPEG XR runs native WIC COM float/half CopyPixels first
 /// (filename / handle / memory / <c>wmp</c> CoCreate /
@@ -67,15 +85,47 @@ internal readonly record struct HdrStats(
 /// </summary>
 internal static class HdrWicDecode
 {
-    public static string? LastWicError { get; private set; }
+    /// <summary>
+    /// Mutable box in <see cref="AsyncLocal{T}"/> so async callees mutate the
+    /// same stamp the caller returns (replacing the string slot does not flow
+    /// back across await).
+    /// </summary>
+    private sealed class WicErrorBox
+    {
+        public string? Value;
+    }
 
-    public static Task<HdrFrame?> TryLoadAsync(
+    private static readonly AsyncLocal<WicErrorBox?> WicErrorSlot = new();
+
+    private static string? LastWicError
+    {
+        get => WicErrorSlot.Value?.Value;
+        set
+        {
+            var box = WicErrorSlot.Value;
+            if (box is null)
+            {
+                box = new WicErrorBox();
+                WicErrorSlot.Value = box;
+            }
+
+            box.Value = value;
+        }
+    }
+
+    private static void BeginErrorStamp() =>
+        WicErrorSlot.Value = new WicErrorBox();
+
+    private static HdrDecodeResult Done(HdrFrame? frame) =>
+        new(frame, frame is null ? LastWicError : null);
+
+    public static Task<HdrDecodeResult> TryLoadAsync(
         string path,
         HdrProbe probe,
         CancellationToken cancellation) =>
         TryLoadAsync(path, probe, 0, 0, ImageScaling.Fit, cancellation);
 
-    public static async Task<HdrFrame?> TryLoadAsync(
+    public static async Task<HdrDecodeResult> TryLoadAsync(
         string path,
         HdrProbe probe,
         int viewportPixelWidth,
@@ -83,16 +133,37 @@ internal static class HdrWicDecode
         ImageScaling scaling,
         CancellationToken cancellation)
     {
+        BeginErrorStamp();
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
         {
-            return null;
+            return Done(null);
+        }
+
+        HdrFrame? Tag(HdrFrame? frame, string decoder)
+        {
+            if (frame is null)
+            {
+                return null;
+            }
+
+            frame.SourcePath ??= path;
+            if (string.IsNullOrEmpty(frame.PresentDecoder)
+                || frame.PresentDecoder == "unknown")
+            {
+                frame.PresentDecoder = decoder;
+            }
+
+            return frame;
         }
 
         if (IsLinearFloatStill(probe, path))
         {
-            return await Task.Run(
-                () => FromLinearFloatStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
-                cancellation).ConfigureAwait(false);
+            var kind = probe.Kind == HdrKind.HdrExr || PathSafe.IsExr(path) ? "exr" : "hdr";
+            return Done(Tag(
+                await Task.Run(
+                    () => FromLinearFloatStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
+                    cancellation).ConfigureAwait(false),
+                kind));
         }
 
         if (PngFile.ShouldDecodeManaged(probe))
@@ -104,7 +175,7 @@ internal static class HdrWicDecode
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
-                    return png;
+                    return Done(Tag(png, "png"));
                 }
             }
             catch (OperationCanceledException)
@@ -119,15 +190,18 @@ internal static class HdrWicDecode
 
         if (probe.Kind == HdrKind.HdrJxr)
         {
-            return await TryLoadJxrAsync(
-                path,
-                probe,
-                viewportPixelWidth,
-                viewportPixelHeight,
-                scaling,
-                wantRgba: true,
-                measure: false,
-                cancellation).ConfigureAwait(false);
+            // HRESULT on LastWicError box; returned with Done — surface logs once.
+            return Done(Tag(
+                await TryLoadJxrAsync(
+                    path,
+                    probe,
+                    viewportPixelWidth,
+                    viewportPixelHeight,
+                    scaling,
+                    wantRgba: true,
+                    measure: false,
+                    cancellation).ConfigureAwait(false),
+                "jxr"));
         }
 
         if (probe.Kind == HdrKind.HdrAvif && PathSafe.IsAvif(path))
@@ -140,7 +214,7 @@ internal static class HdrWicDecode
                     cancellation).ConfigureAwait(false);
                 if (avif is not null)
                 {
-                    return avif;
+                    return Done(Tag(avif, "avif"));
                 }
             }
             catch (OperationCanceledException)
@@ -151,6 +225,44 @@ internal static class HdrWicDecode
             {
                 // Native libavif load/throw — fall through to WIC.
             }
+        }
+
+        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe))
+        {
+            try
+            {
+                var jxl = await Task.Run(
+                    () => FromJxlStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                    cancellation).ConfigureAwait(false);
+                if (jxl is not null)
+                {
+                    LastWicError = null;
+                    return Done(Tag(jxl, "libjxl"));
+                }
+
+                // Do not WIC/`BitmapImage` PQ — that is an SDR preview wrongly
+                // labelled "presenting scRGB". Stamp and stop.
+                LastWicError ??= "jxl null";
+                return Done(null);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ErrorReporter.LogOnly("HdrWicDecode JXL present", ex);
+                LastWicError = "jxl ex " + ex.GetType().Name;
+                return Done(null);
+            }
+        }
+
+        // .jxl without a presentable HDR probe: never claim the WIC path
+        // (COMPONENTNOTFOUND is common; libjxl thumbs already covered SDR).
+        if (HdrJxlPresent.SkipWicPresent(probe, path))
+        {
+            LastWicError ??= "jxl no wic";
+            return Done(null);
         }
 
         try
@@ -164,7 +276,7 @@ internal static class HdrWicDecode
             var nativeH = (int)decoder.OrientedPixelHeight;
             if (nativeW <= 0 || nativeH <= 0 || nativeW > 16384 || nativeH > 16384)
             {
-                return null;
+                return Done(null);
             }
 
             var (decodeW, decodeH) = GalleryPresent.PresentDecodeSize(
@@ -179,24 +291,55 @@ internal static class HdrWicDecode
                 decoder, decodeW, decodeH, HdrColor.NeedsYuvConvert(probe.Kind), cancellation).ConfigureAwait(false);
             if (pixels is null)
             {
-                return null;
+                return Done(null);
             }
 
             cancellation.ThrowIfCancellationRequested();
             var packed = pixels.Value;
-            return await Task.Run(
-                () => ToScrgb(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe),
-                cancellation).ConfigureAwait(false);
+            return Done(Tag(
+                await Task.Run(
+                    () => ToScrgb(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe),
+                    cancellation).ConfigureAwait(false),
+                "wic"));
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            return null;
+            var leaf = Path.GetFileName(path);
+            LastWicError = WicNative.WicDecoderOpen.Join(
+                WicNative.WicDecoderOpen.Failed(WicNative.WicDecoderOpen.CreateAsync, ex),
+                leaf);
+            // COMPONENTNOTFOUND always expected. BADIMAGE only when the Store
+            // codec is missing (.jxl → libjxl; .heic/.heif → probe HEIF
+            // decoder). Corrupt HEIF with the codec installed still LogOnly,
+            // same as JXR / AVIF / PNG.
+            if (!WicNative.WicDecoderOpen.IsExpectedPresentMiss(ex.HResult, path))
+            {
+                ErrorReporter.LogOnly($"HdrWicDecode WIC present ({leaf})", ex);
+            }
+
+            // Caller (GalleryStillSurface) logs hdr-fail once with Done.Error.
+            return Done(null);
         }
     }
+
+    private static string ProbeBufferLabel(HdrProbe probe) =>
+        probe.Kind switch
+        {
+            HdrKind.HdrJxl when probe.IsHlg => "hlg",
+            HdrKind.HdrJxl when probe.IsPq => "pq",
+            HdrKind.HdrJxr => "jxr",
+            HdrKind.HdrAvif when probe.IsPq => "pq",
+            HdrKind.HdrAvif => "avif",
+            HdrKind.HdrExr => "exr",
+            HdrKind.HdrRadiance => "hdr",
+            _ when probe.IsPq => "pq",
+            _ when probe.IsHlg => "hlg",
+            _ => "n/a"
+        };
 
     public static Task<HdrStats?> TryMeasureAsync(
         string path,
@@ -241,6 +384,20 @@ internal static class HdrWicDecode
             {
                 // Native libavif load/throw — fall through to WIC.
             }
+        }
+
+        if (HdrJxlPresent.ShouldPresentViaLibjxl(probe))
+        {
+            // Present/load already stamps native CIE Y / MaxCLL via
+            // BuildPresentFrame — never a second full native float decode
+            // (up to ~1 GB at PresentMaxPixels) on every open / next/prev.
+            return null;
+        }
+
+        // Do not WIC-measure .jxl (no Store codec → COMPONENTNOTFOUND noise).
+        if (HdrJxlPresent.SkipWicPresent(probe, path))
+        {
+            return null;
         }
 
         if (IsLinearFloatStill(probe, path))
@@ -1046,6 +1203,85 @@ internal static class HdrWicDecode
     private static bool IsLinearFloatStill(HdrProbe probe, string path) =>
         probe.Kind is HdrKind.HdrRadiance or HdrKind.HdrExr
         || PathSafe.IsRadiance(path);
+
+    /// <summary>
+    /// HDR JPEG XL via bundled libjxl (same natives as mosaic thumbs). WIC /
+    /// <c>BitmapImage</c> leave PQ as a washed SDR preview — do not fall back
+    /// to those when libjxl fails. Caps at <see cref="HdrJxlPresent.PresentMaxPixels"/>.
+    /// </summary>
+    private static HdrFrame? FromJxlStill(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        ImageScaling scaling,
+        CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        var decoded = JxlDecode.TryDecodeFile(
+            path,
+            HdrJxlPresent.PresentMaxPixels,
+            probe.Transfer,
+            probe.CicpPrimaries,
+            cancellation);
+        if (decoded is null)
+        {
+            LastWicError = "jxl null";
+            SdrTonemapLog.TryAppendViewer(path, "libjxl-fail", "n/a");
+            return null;
+        }
+
+        // Log as soon as libjxl normalize finishes — Presenter SDR tonemap may
+        // never run (hdr-display, present cancel, or ImgStill fallback).
+        SdrTonemapLog.TryAppendViewer(
+            path,
+            "libjxl-decode",
+            HdrJxlPresent.BufferTransferLabel(decoded.BufferTransfer),
+            decoded.IntensityTarget,
+            decoded.ScaleApplied);
+
+        cancellation.ThrowIfCancellationRequested();
+        var frame = HdrJxlPresent.BuildPresentFrame(
+            decoded.Rgba,
+            decoded.Width,
+            decoded.Height,
+            viewportPixelWidth,
+            viewportPixelHeight,
+            scaling,
+            cancellation);
+        if (frame is null)
+        {
+            LastWicError = "jxl null";
+            SdrTonemapLog.TryAppendViewer(
+                path,
+                "libjxl-frame-fail",
+                HdrJxlPresent.BufferTransferLabel(decoded.BufferTransfer),
+                decoded.IntensityTarget,
+                decoded.ScaleApplied);
+            return null;
+        }
+
+        // Fit/Fill keep the viewport buffer only (native float dropped with
+        // decoded). Actual/1:1 keeps native up to PresentMaxPixels (~1 GB).
+        return new HdrFrame
+        {
+            ScrgbRgba = frame.ScrgbRgba,
+            Width = frame.Width,
+            Height = frame.Height,
+            NativeWidth = decoded.Width,
+            NativeHeight = decoded.Height,
+            MaxNits = frame.MaxNits,
+            AvgNits = frame.AvgNits,
+            MinNits = frame.MinNits,
+            MaxScrgb = frame.MaxScrgb,
+            MaxScrgbChannel = frame.MaxScrgbChannel,
+            PresentDecoder = "libjxl",
+            SourcePath = path,
+            IntensityTarget = decoded.IntensityTarget,
+            IntensityScale = decoded.ScaleApplied,
+            BufferTransfer = decoded.BufferTransfer
+        };
+    }
 
     /// <summary>
     /// HDR PNG (cICP PQ/HLG): inflate IDAT ourselves so WinRT WIC cannot

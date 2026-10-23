@@ -89,4 +89,16 @@ public sealed class ViewerInfoFieldsTests
         Assert.True(longLine.Length <= 20);
         Assert.EndsWith("…", longLine);
     }
+
+    [Fact]
+    public void ScrgbLabel_IsChannelPeakNotNits()
+    {
+        // Details row is labelled "MaxCLL (scRGB)"; value is scRGB (1.0 = 80 nits).
+        Assert.Equal("109.772 (R)", ViewerInfoFields.ScrgbLabel(109.772f, 'R'));
+        Assert.Equal("12.5 (B)", ViewerInfoFields.ScrgbLabel(12.5f, 'B'));
+        Assert.Equal("32.156", ViewerInfoFields.ScrgbLabel(32.156f, null));
+        Assert.Equal("", ViewerInfoFields.ScrgbLabel(0f, 'R'));
+        // 109.772 scRGB × 80 ≈ 8782 nits — must not be formatted as nits here.
+        Assert.DoesNotContain("nits", ViewerInfoFields.ScrgbLabel(109.772f, 'R'));
+    }
 }

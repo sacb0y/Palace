@@ -1,26 +1,45 @@
 using System.Runtime.InteropServices;
+using Palace.Helpers;
 using Starward.Codec.JpegXL;
 using Starward.Codec.JpegXL.CMS;
 using Starward.Codec.JpegXL.CodeStream;
 using Starward.Codec.JpegXL.Decode;
+
+#pragma warning disable CA1416 // Linked into Palace.Tests on Linux; natives are Windows-only.
 
 namespace Palace.Services;
 
 /// <summary>
 /// Built-in JPEG XL decode via the libjxl (BSD-3) natives that ship with
 /// Starward.Codec — no Windows JPEG XL extension required. Output is linear
-/// sRGB/scRGB float RGBA (libjxl's CMS converts PQ/HLG/wide gamut), so the
-/// same tone mapper handles SDR and HDR JXL.
+/// scRGB float RGBA. Verifies actual transfer after CMS
+/// (<c>GetColorAsEncodedProfile(TARGET_DATA)</c>): still-PQ/HLG is EOTF→nits→scRGB
+/// (never intensity_target scale on PQ codes); linear Relative uses
+/// intensity_target/80. Used for mosaic thumbs and HDR present.
+/// Present callers pass <see cref="HdrJxlPresent.PresentMaxPixels"/> (~64 MP);
+/// thumbs use <see cref="HdrJxlPresent.ThumbMaxPixels"/> (120 MP).
 /// </summary>
 internal static class JxlDecode
 {
-    public sealed record Frame(float[] Rgba, int Width, int Height);
+    public sealed record Frame(
+        float[] Rgba,
+        int Width,
+        int Height,
+        float IntensityTarget = 0f,
+        float ScaleApplied = 1f,
+        JxlBufferTransfer BufferTransfer = JxlBufferTransfer.Unknown);
 
-    public static Frame? TryDecodeFile(string path, int maxPixels = 120_000_000)
+    public static Frame? TryDecodeFile(
+        string path,
+        int maxPixels = HdrJxlPresent.PresentMaxPixels,
+        HdrTransfer transfer = HdrTransfer.Srgb,
+        int? cicpPrimaries = null,
+        CancellationToken cancellation = default)
     {
         byte[] bytes;
         try
         {
+            cancellation.ThrowIfCancellationRequested();
             bytes = File.ReadAllBytes(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -28,16 +47,22 @@ internal static class JxlDecode
             return null;
         }
 
-        return TryDecode(bytes, maxPixels);
+        return TryDecode(bytes, maxPixels, transfer, cicpPrimaries, cancellation);
     }
 
-    public static Frame? TryDecode(byte[] bytes, int maxPixels = 120_000_000)
+    public static Frame? TryDecode(
+        byte[] bytes,
+        int maxPixels = HdrJxlPresent.PresentMaxPixels,
+        HdrTransfer transfer = HdrTransfer.Srgb,
+        int? cicpPrimaries = null,
+        CancellationToken cancellation = default)
     {
         var dec = (nint)0;
         var input = default(GCHandle);
         var output = default(GCHandle);
         try
         {
+            cancellation.ThrowIfCancellationRequested();
             if ((uint)JxlDecoderLite.CheckSignature(bytes) <= 1u)
             {
                 return null;
@@ -70,8 +95,11 @@ internal static class JxlDecode
                 Align = 0
             };
             float[]? pixels = null;
+            var actualBuffer = JxlBufferTransfer.Unknown;
+            int? targetDataPrimaries = null;
             for (var guard = 0; guard < 64; guard++)
             {
+                cancellation.ThrowIfCancellationRequested();
                 var status = JxlDecoderNativeMethod.JxlDecoderProcessInput(dec);
                 switch (status)
                 {
@@ -85,23 +113,55 @@ internal static class JxlDecode
 
                         break;
                     case JxlDecoderStatus.ColorEncoding:
-                        // Linear sRGB primaries, values above 1.0 kept (scRGB).
+                        cancellation.ThrowIfCancellationRequested();
+                        // Prefer Relative linear float. PQ/HLG and wide-gamut SDR
+                        // use BT.2100 primaries so OOG stays negative after
+                        // Bt2020→709. Then verify TARGET_DATA — if CMS left PQ,
+                        // NormalizeToScrgb EOTFs instead of IT-scaling codes.
                         var linear = JxlColorEncoding.LinearSRGB;
-                        if (JxlDecoderNativeMethod.JxlDecoderSetOutputColorProfile(dec, in linear, 0, 0)
-                            != JxlDecoderStatus.Success)
+                        linear.RenderingIntent = (JxlRenderingIntent)HdrJxlPresent.ScrgbOutputRenderingIntentRelative;
+                        var wideOut = HdrJxlPresent.UsesBt2020LinearOutput(transfer, cicpPrimaries);
+                        if (wideOut)
+                        {
+                            linear.Primaries = JxlPrimaries.BT2100;
+                        }
+
+                        var setOk = JxlDecoderNativeMethod.JxlDecoderSetOutputColorProfile(dec, in linear, 0, 0)
+                            == JxlDecoderStatus.Success;
+                        if (!setOk)
                         {
                             JxlDecoderNativeMethod.JxlDecoderSetPreferredColorProfile(dec, in linear);
                         }
 
+                        var dataEnc = new JxlColorEncoding();
+                        if (JxlDecoderNativeMethod.JxlDecoderGetColorAsEncodedProfile(
+                                dec, JxlColorProfileTarget.Data, ref dataEnc)
+                            == JxlDecoderStatus.Success)
+                        {
+                            actualBuffer = HdrJxlPresent.ResolveActualBuffer(
+                                (int)dataEnc.TransferFunction, setOk);
+                            targetDataPrimaries = HdrJxlPresent.CicpPrimariesFromJxlPrimaries(
+                                (int)dataEnc.Primaries);
+                        }
+
                         break;
                     case JxlDecoderStatus.NeedImageOutBuffer:
+                        cancellation.ThrowIfCancellationRequested();
                         nuint size = 0;
                         if (JxlDecoderNativeMethod.JxlDecoderImageOutBufferSize(dec, in format, ref size) != JxlDecoderStatus.Success)
                         {
                             return null;
                         }
 
-                        pixels = new float[(int)(size / sizeof(float))];
+                        var floatCount = (long)(size / sizeof(float));
+                        var expected = (long)info.XSize * info.YSize * 4;
+                        if (info.XSize == 0 || floatCount <= 0 || floatCount > expected * 2
+                            || floatCount > (long)maxPixels * 4)
+                        {
+                            return null;
+                        }
+
+                        pixels = new float[(int)floatCount];
                         output = GCHandle.Alloc(pixels, GCHandleType.Pinned);
                         if (JxlDecoderNativeMethod.JxlDecoderSetImageOutBuffer(dec, in format, output.AddrOfPinnedObject(), size)
                             != JxlDecoderStatus.Success)
@@ -111,16 +171,23 @@ internal static class JxlDecode
 
                         break;
                     case JxlDecoderStatus.FullImage:
-                        // First frame is enough for a still / animation poster.
-                        return pixels is null ? null : new Frame(Normalize(pixels, info), (int)info.XSize, (int)info.YSize);
+                        return pixels is null
+                            ? null
+                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries);
                     case JxlDecoderStatus.Success:
-                        return pixels is null ? null : new Frame(Normalize(pixels, info), (int)info.XSize, (int)info.YSize);
+                        return pixels is null
+                            ? null
+                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries);
                     default:
                         return null;
                 }
             }
 
             return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException
                                        or JxlDecodeException or OutOfMemoryException)
@@ -135,25 +202,27 @@ internal static class JxlDecode
         }
     }
 
-    /// <summary>
-    /// libjxl float output is relative to the image's intensity target
-    /// (1.0 = IntensityTarget nits). Rescale so 1.0 = 80 nits SDR white (scRGB)
-    /// for HDR images; SDR images (target ≤ 255 nits) stay 0..1.
-    /// </summary>
-    private static float[] Normalize(float[] rgba, JxlBasicInfo info)
+    private static Frame Finish(
+        float[] rgba,
+        JxlBasicInfo info,
+        HdrTransfer probeTransfer,
+        int? probeCicpPrimaries,
+        JxlBufferTransfer actualBuffer,
+        int? targetDataPrimaries)
     {
-        var target = info.IntensityTarget;
-        if (target > 255f)
-        {
-            var k = target / 203f; // 203 nits = SDR reference white (BT.2408)
-            for (var i = 0; i < rgba.Length; i++)
-            {
-                if ((i & 3) != 3)
-                {
-                    rgba[i] *= k;
-                }
-            }
-        }
+        // Still-encoded EOTF uses TARGET_DATA primaries (not probe ?? 9).
+        // Linear BT.2020→709 keeps the probe (wide-out request matched that).
+        var stillEncoded = actualBuffer is JxlBufferTransfer.Pq or JxlBufferTransfer.Hlg
+            || (actualBuffer == JxlBufferTransfer.Unknown
+                && probeTransfer is HdrTransfer.Pq or HdrTransfer.Hlg);
+        var primaries = stillEncoded ? targetDataPrimaries : probeCicpPrimaries;
+
+        var norm = HdrJxlPresent.NormalizeToScrgb(
+            rgba,
+            info.IntensityTarget,
+            probeTransfer,
+            actualBuffer,
+            primaries);
 
         if (info.AlphaBits == 0)
         {
@@ -163,6 +232,12 @@ internal static class JxlDecode
             }
         }
 
-        return rgba;
+        return new Frame(
+            rgba,
+            (int)info.XSize,
+            (int)info.YSize,
+            norm.IntensityTarget,
+            norm.ScaleApplied,
+            norm.BufferTransfer);
     }
 }

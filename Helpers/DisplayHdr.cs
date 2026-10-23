@@ -83,8 +83,41 @@ public static class DisplayHdr
             Marshal.SizeOf<AdvancedColorInfo2>(),
             Marshal.SizeOf<SourceName>());
 
+    public static int NativeSdrWhiteLayoutSize() => Marshal.SizeOf<SdrWhiteLevel>();
+
     public static DisplayHdrQuery LastQuery { get; private set; } =
         new("CCD not queried", null, 0, 0, null, null);
+
+    /// <summary>
+    /// Last CCD <c>DISPLAYCONFIG_GET_SDR_WHITE_LEVEL</c> in nits (0 = unknown).
+    /// Windows HDR composition: scRGB 1.0 = this white, not 80.
+    /// </summary>
+    public static float LastSdrWhiteLevelNits { get; private set; }
+
+    public const int NativeSdrWhiteBytes = 24;
+    private const int DeviceInfoGetSdrWhiteLevel = 11;
+
+    /// <summary>
+    /// SDR white level for the named GDI output (or any path when
+    /// <paramref name="gdiDeviceName"/> is null). Millinits → nits.
+    /// </summary>
+    public static float TrySdrWhiteLevelNits(string? gdiDeviceName)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return LastSdrWhiteLevelNits;
+        }
+
+        try
+        {
+            _ = TryWindowsHdrEnabled(gdiDeviceName);
+            return LastSdrWhiteLevelNits;
+        }
+        catch
+        {
+            return LastSdrWhiteLevelNits;
+        }
+    }
 
     /// <summary>
     /// One-line CCD + DXGI probe for Overlay Info / DebugView.
@@ -234,11 +267,13 @@ public static class DisplayHdr
         uint firstInfo2 = 0;
         int firstInfo2Hr = -1;
         int firstMode = -1;
+        float sdrWhite = 0;
         var want = string.IsNullOrWhiteSpace(gdiDeviceName) ? null : gdiDeviceName.Trim();
         for (var i = 0; i < (int)pathCount; i++)
         {
             var path = paths[i];
             var detail = ReadPathHdr(path.targetInfo.adapterId, path.targetInfo.id);
+            var pathWhite = ReadSdrWhiteLevelNits(path.targetInfo.adapterId, path.targetInfo.id);
             if (firstAce is null)
             {
                 firstAce = detail.AdvancedColorEnabled;
@@ -247,6 +282,10 @@ public static class DisplayHdr
                 firstInfo2 = detail.Info2Value;
                 firstInfo2Hr = detail.Info2Hr;
                 firstMode = detail.ColorMode;
+                if (pathWhite > 0)
+                {
+                    sdrWhite = pathWhite;
+                }
             }
 
             if (detail.Hdr == true)
@@ -290,7 +329,13 @@ public static class DisplayHdr
             firstInfo2Hr = detail.Info2Hr;
             firstMode = detail.ColorMode;
             firstSource = srcName;
+            if (pathWhite > 0)
+            {
+                sdrWhite = pathWhite;
+            }
         }
+
+        LastSdrWhiteLevelNits = sdrWhite;
 
         if (want is null)
         {
@@ -313,6 +358,50 @@ public static class DisplayHdr
             firstAce,
             want ?? firstSource);
         return hdr is not null && (want is null || matches == 1 || hdr == true);
+    }
+
+    private static float ReadSdrWhiteLevelNits(Luid adapterId, uint targetId)
+    {
+        var req = new SdrWhiteLevel
+        {
+            header = new DeviceInfoHeader
+            {
+                type = DeviceInfoGetSdrWhiteLevel,
+                size = NativeSdrWhiteBytes,
+                adapterId = adapterId,
+                id = targetId
+            }
+        };
+        if (DisplayConfigGetDeviceInfo(ref req) != 0 || req.SDRWhiteLevel == 0)
+        {
+            return 0;
+        }
+
+        // Multiplier: 1000 = 80 nits (Windows SDR white). Reject out-of-range.
+        var nits = req.SDRWhiteLevel / 1000f * GalleryPresent.ScrgbNits;
+        if (nits < GalleryPresent.ScrgbNits || nits > 600f || !float.IsFinite(nits))
+        {
+            return 0;
+        }
+
+        return nits;
+    }
+
+    /// <summary>Convert a raw CCD SDRWhiteLevel multiplier to nits (test helper).</summary>
+    public static float SdrWhiteLevelMultiplierToNits(uint sdrWhiteLevel)
+    {
+        if (sdrWhiteLevel == 0)
+        {
+            return 0;
+        }
+
+        var nits = sdrWhiteLevel / 1000f * GalleryPresent.ScrgbNits;
+        if (nits < GalleryPresent.ScrgbNits || nits > 600f || !float.IsFinite(nits))
+        {
+            return 0;
+        }
+
+        return nits;
     }
 
     private static PathHdr ReadPathHdr(Luid adapterId, uint targetId)
@@ -534,6 +623,9 @@ public static class DisplayHdr
     [DllImport("user32.dll", EntryPoint = "DisplayConfigGetDeviceInfo")]
     private static extern int DisplayConfigGetDeviceInfo(ref AdvancedColorInfo2 request);
 
+    [DllImport("user32.dll", EntryPoint = "DisplayConfigGetDeviceInfo")]
+    private static extern int DisplayConfigGetDeviceInfo(ref SdrWhiteLevel request);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct Luid
     {
@@ -575,6 +667,13 @@ public static class DisplayHdr
         public uint colorEncoding;
         public uint bitsPerColorChannel;
         public int activeColorMode;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
+    private struct SdrWhiteLevel
+    {
+        public DeviceInfoHeader header;
+        public uint SDRWhiteLevel;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 4)]

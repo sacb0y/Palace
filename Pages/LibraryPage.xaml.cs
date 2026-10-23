@@ -2795,15 +2795,22 @@ public sealed partial class LibraryPage : Page
             });
             }).ConfigureAwait(false);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            outcome = new ThumbDecodeOutcome(cts.IsCancellationRequested, 0);
+            // StillDecode / ThumbnailService rethrow OCE — never cache cancel as a skip.
+            var cancelled = cts.IsCancellationRequested || ErrorReporter.IsCancellation(ex);
+            outcome = new ThumbDecodeOutcome(cancelled, 0);
             await UiDispatch.RunAsync(() =>
             {
-                if (OwnsThumbJob(item.Id, cts))
+                if (!OwnsThumbJob(item.Id, cts))
+                {
+                    return;
+                }
+
+                item.ThumbLoadStarted = false;
+                if (!cancelled)
                 {
                     _thumbSkipped.Add(item.Id);
-                    item.ThumbLoadStarted = false;
                 }
             });
         }

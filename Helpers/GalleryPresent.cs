@@ -26,6 +26,14 @@ public static class GalleryPresent
         && onDisk
         && probe.CanPresentHdr;
 
+    /// <summary>
+    /// Stills that must never open via <c>BitmapImage</c> of the original
+    /// (WIC Store codec / blank). Show Palace's cached large preview or mosaic
+    /// thumb instead — includes JPEG XL so PQ/HLG is not washed or ~50% clipped.
+    /// </summary>
+    public static bool RequiresCachedStillPreview(string? path) =>
+        StillDecode.HandlesPath(path) || PathSafe.IsJxl(path);
+
     public static string DetailsLine(
         string? fileName,
         int? width,
@@ -183,9 +191,12 @@ public static class GalleryPresent
     /// Windows HDR vs SDR for present. <paramref name="windowsHdrEnabled"/>
     /// true is DisplayConfig HDR (<c>AdvancedColorEnabled</c> / INFO_2).
     /// DXGI ColorSpace often stays G22 with dummy 270 while that toggle is
-    /// on — that is HDR, not SDR tonemap. Peak &gt;220 (including dummy
-    /// 270) is HDR even when CCD parse fails. 203 paper white and 80–220
-    /// stay SDR. Unknown dummy peak does not clip to 203.
+    /// on — that is HDR, not SDR tonemap. Explicit Windows HDR <b>off</b>:
+    /// dummy 270 alone is SDR (Reinhard shoulder) — otherwise SDR laptops
+    /// skip the shoulder and HDR JXL looks washed. When CCD is unknown
+    /// (<c>null</c>), peak &gt;220 including dummy 270 stays HDR so Fenrir-
+    /// class panels are not false-tonemapped. 203 paper white and 80–220
+    /// stay SDR.
     /// </summary>
     public static bool IsHdrOutput(
         int dxgiColorSpace,
@@ -206,6 +217,12 @@ public static class GalleryPresent
         }
 
         var raw = Math.Max(maxLuminance, maxFullFrameLuminance);
+        // Explicit ACE=0: DXGI dummy 270 is an SDR EDID lie — apply Reinhard.
+        if (windowsHdrEnabled == false && IsDummySdrLuminance(raw))
+        {
+            return false;
+        }
+
         return IsHdrDisplay(raw);
     }
 
@@ -214,6 +231,14 @@ public static class GalleryPresent
 
     /// <summary>DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709 — linear scRGB.</summary>
     public const int ScrgbColorSpace = 1;
+
+    /// <summary>
+    /// <c>IDXGISwapChain2::SetMatrixTransform</c> vtable slot (IUnknown=0).
+    /// Layout: …31 GetMaximumFrameLatency, 32–33 Set/GetSourceSize,
+    /// 34 SetMatrixTransform, 35 GetMatrixTransform; SwapChain3
+    /// SetColorSpace1 is 38.
+    /// </summary>
+    public const int DxgiSwapChain2SetMatrixTransformVtbl = 34;
 
     public static string FormatDisplayProbe(
         int colorSpace,
@@ -224,11 +249,24 @@ public static class GalleryPresent
         bool displayHdr,
         string? ccd = null,
         int? swapChainFormat = null,
-        int? swapChainColorSpace = null)
+        int? swapChainColorSpace = null,
+        float sdrWhiteLevelNits = 0f,
+        float compositionScaleX = 0f,
+        float compositionScaleY = 0f)
     {
         var win = windowsHdrEnabled is null ? "?" : windowsHdrEnabled.Value ? "1" : "0";
         var line =
             $"DXGI cs={colorSpace} max={maxLuminance:0} ff={maxFullFrameLuminance:0} bits={bitsPerColor} winHdr={win} displayHdr={(displayHdr ? 1 : 0)}";
+        if (sdrWhiteLevelNits > 0 && float.IsFinite(sdrWhiteLevelNits))
+        {
+            line += $" sdrWhite={sdrWhiteLevelNits:0.#}";
+        }
+
+        if (compositionScaleX > 0 && compositionScaleY > 0)
+        {
+            line += $" compScale={compositionScaleX:0.###}x{compositionScaleY:0.###}";
+        }
+
         if (swapChainFormat.HasValue || swapChainColorSpace.HasValue)
         {
             var f = swapChainFormat ?? ScrgbSwapChainFormat;
@@ -242,6 +280,67 @@ public static class GalleryPresent
         }
 
         return line;
+    }
+
+    /// <summary>
+    /// DXGI swapchain buffer size in <b>physical</b> pixels for a
+    /// <c>SwapChainPanel</c>. Panel Width/Height are DIPs; Windows
+    /// composition also applies <paramref name="compositionScaleX"/> /
+    /// <paramref name="compositionScaleY"/>. Buffer = round(DIP × scale)
+    /// and pair with <c>IDXGISwapChain2::SetMatrixTransform(1/scale)</c>
+    /// so the panel does not double-scale (classic zoomed/cropped HDR Fit).
+    /// Prefer <c>CompositionScaleX/Y</c> over <c>XamlRoot.RasterizationScale</c>
+    /// alone — they can differ under DPI or RenderTransform.
+    /// </summary>
+    public static (int Width, int Height) SwapchainPhysicalSize(
+        double dipWidth,
+        double dipHeight,
+        double compositionScaleX,
+        double compositionScaleY)
+    {
+        var sx = compositionScaleX > 0 && double.IsFinite(compositionScaleX)
+            ? compositionScaleX
+            : 1.0;
+        var sy = compositionScaleY > 0 && double.IsFinite(compositionScaleY)
+            ? compositionScaleY
+            : 1.0;
+        var w = Math.Max(1, (int)Math.Round(Math.Max(dipWidth, 0) * sx));
+        var h = Math.Max(1, (int)Math.Round(Math.Max(dipHeight, 0) * sy));
+        return (w, h);
+    }
+
+    /// <summary>
+    /// True when Fit rasterization into a Fit-sized swapchain buffer maps the
+    /// full source frame (no zoom crop). Used for SDR present of HDR stills
+    /// (EXR / AVIF / JXL share this path).
+    /// </summary>
+    public static bool FitShowsFullFrame(
+        int imageW,
+        int imageH,
+        double viewportDipW,
+        double viewportDipH,
+        double compositionScaleX = 1.0,
+        double compositionScaleY = 1.0)
+    {
+        if (imageW <= 0 || imageH <= 0 || viewportDipW <= 1 || viewportDipH <= 1)
+        {
+            return false;
+        }
+
+        var (dipW, dipH) = GalleryScale.FitContainDipSize(
+            imageW, imageH, viewportDipW, viewportDipH);
+        if (double.IsNaN(dipW) || double.IsNaN(dipH) || dipW <= 1 || dipH <= 1)
+        {
+            return false;
+        }
+
+        var (bw, bh) = SwapchainPhysicalSize(dipW, dipH, compositionScaleX, compositionScaleY);
+        var (dx, dy, dw, dh) = DestRect(ImageScaling.Fit, imageW, imageH, bw, bh);
+        // Same-aspect Fit panel → dest fills the buffer (full UV coverage).
+        return Math.Abs(dx) < 1.5f
+            && Math.Abs(dy) < 1.5f
+            && Math.Abs(dw - bw) < 1.5f
+            && Math.Abs(dh - bh) < 1.5f;
     }
 
     /// <summary>
@@ -281,7 +380,8 @@ public static class GalleryPresent
         return probe.IsPq
             || probe.IsHlg
             || probe.Transfer is HdrTransfer.Pq or HdrTransfer.Hlg
-            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrRadiance or HdrKind.HdrExr;
+            || probe.Kind is HdrKind.HdrJxr or HdrKind.HdrJxl
+                or HdrKind.HdrRadiance or HdrKind.HdrExr;
     }
 
     /// <summary>
@@ -441,16 +541,151 @@ public static class GalleryPresent
         return HdrAnalysis.Percentile(values, n, HdrAnalysis.P99Fraction) * ScrgbNits;
     }
 
-    public static HdrPresentMap PresentMap(bool displayIsHdr, float contentMaxNits, float displayPeakNits)
+    /// <summary>
+    /// Effective SDR white in nits for HDR→SDR present.
+    /// <c>AdvancedColorInfo.SdrWhiteLevelInNits</c> / CCD when &gt; 0; else
+    /// <see cref="ScrgbNits"/> (80).
+    /// </summary>
+    public static float EffectiveSdrWhiteNits(float sdrWhiteLevelNits) =>
+        sdrWhiteLevelNits > 0 && float.IsFinite(sdrWhiteLevelNits)
+            ? sdrWhiteLevelNits
+            : ScrgbNits;
+
+    /// <summary>
+    /// HDR→SDR exposure: <b>1.0</b> by default (scene-referred 1.0 → SDR
+    /// white). Absolute scRGB is nits/80 while Windows composition 1.0 =
+    /// <see cref="EffectiveSdrWhiteNits"/> — attenuate by 80/SdrWhite only
+    /// (never boost above 1).
+    /// </summary>
+    public static float PresentSdrExposure(float sdrWhiteLevelNits)
     {
+        var white = EffectiveSdrWhiteNits(sdrWhiteLevelNits);
+        return Math.Min(1f, ScrgbNits / white);
+    }
+
+    /// <summary>
+    /// Opt-in paper-white factor only (<c>80 / SdrWhiteLevel</c>). The FP16
+    /// G10_P709 swapchain is absolute (1.0 = 80 nits) and decoders already
+    /// emit nits/80 — default <b>HDR</b> present must <b>not</b> apply this.
+    /// SDR Reinhard present uses <see cref="PresentSdrExposure"/> instead.
+    /// </summary>
+    public static float HdrCompositionScale(float sdrWhiteLevelNits)
+    {
+        if (sdrWhiteLevelNits <= 0 || !float.IsFinite(sdrWhiteLevelNits))
+        {
+            return 1f;
+        }
+
+        return ScrgbNits / sdrWhiteLevelNits;
+    }
+
+    /// <summary>
+    /// Opt-in clip in composition units after <see cref="HdrCompositionScale"/>.
+    /// Default HDR present uses <see cref="RasterizeClipScrgb"/> instead.
+    /// </summary>
+    public static float HdrCompositionClip(float sdrWhiteLevelNits, float displayPeakNits)
+    {
+        var white = sdrWhiteLevelNits > 0 && float.IsFinite(sdrWhiteLevelNits)
+            ? sdrWhiteLevelNits
+            : ScrgbNits;
+        var peak = displayPeakNits > 0 && float.IsFinite(displayPeakNits)
+            ? displayPeakNits
+            : 10_000f;
+        return Math.Max(1f, peak / white);
+    }
+
+    /// <summary>
+    /// HDR still present: absolute scRGB passthrough (scale 1) + clip at
+    /// peak/80 (<see cref="RasterizeClipScrgb"/>). Negatives pass through for
+    /// OOG. SDR stills use <see cref="PresentMapSdrReinhard"/> in the gallery
+    /// (legacy linear MaxCLL map kept for callers / tests).
+    /// <paramref name="sdrWhiteLevelNits"/> is ignored for the default map —
+    /// see <see cref="HdrCompositionScale"/>.
+    /// </summary>
+    public static HdrPresentMap PresentMap(
+        bool displayIsHdr,
+        float contentMaxNits,
+        float displayPeakNits,
+        float sdrWhiteLevelNits = 0f)
+    {
+        _ = sdrWhiteLevelNits;
         if (displayIsHdr)
         {
-            return new HdrPresentMap(1f, RasterizeClipScrgb(displayPeakNits));
+            return new HdrPresentMap(
+                1f,
+                RasterizeClipScrgb(displayPeakNits),
+                ReinhardWhite: 0f,
+                SoftNegatives: true);
         }
 
         _ = displayPeakNits;
-        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f);
+        // Legacy linear MaxCLL→80 for callers that have not run ToneMap.Analyze.
+        // Gallery present uses PresentMapSdrReinhard so midtones are not crushed.
+        return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f, SoftNegatives: false);
     }
+
+    /// <summary>
+    /// SDR / HDR-off present: extended Reinhard from
+    /// <see cref="ToneMap.AnalyzeHdrPresent"/> (exposure ≤ 1 from SdrWhiteLevel,
+    /// white from content peak; always shoulder). OOG negatives are
+    /// plain-clamped (no SoftNegChannel luminance darkening). Clip is scRGB 1.0.
+    /// </summary>
+    public static HdrPresentMap PresentMapSdrReinhard(float exposure, float reinhardWhite) =>
+        new(
+            exposure > 0 && float.IsFinite(exposure) ? Math.Min(exposure, 1f) : 1f,
+            1f,
+            ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
+            SoftNegatives: false);
+
+    /// <summary>
+    /// Same stats as mosaic thumbs (<see cref="ToneMap.Analyze"/> + Reinhard):
+    /// exposure may exceed 1 (MidGrey boost). Use for full-view ↔ thumb match
+    /// (room.jxl <c>hdr-display</c>+linear). Curve inputs match the thumb;
+    /// on an HDR panel <see cref="HdrPresentMap.OutputScale"/> /
+    /// <see cref="HdrPresentMap.ClipScrgb"/> are <c>SdrWhiteLevel/80</c> so
+    /// <see cref="ToneMap.MapPresentRgb"/> lifts the curve <em>output</em>
+    /// into composition white (absolute scRGB 1.0 = 80 nits).
+    /// </summary>
+    public static HdrPresentMap PresentMapThumbMatch(
+        float exposure,
+        float reinhardWhite,
+        bool displayIsHdr = false,
+        float sdrWhiteLevelNits = 0f)
+    {
+        var scale = exposure > 0 && float.IsFinite(exposure) ? exposure : 1f;
+        var white = reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f;
+        // M1: leave exposure/white alone (Reinhard is not linear). OutputScale
+        // and ClipScrgb = k → multiply curve output by k and fold/clip to k.
+        var k = 1f;
+        if (displayIsHdr)
+        {
+            var paper = EffectiveSdrWhiteNits(sdrWhiteLevelNits) / ScrgbNits;
+            if (paper > 0 && float.IsFinite(paper))
+            {
+                k = paper;
+            }
+        }
+
+        return new(scale, k, ReinhardWhite: white, SoftNegatives: false, OutputScale: k);
+    }
+
+    /// <summary>
+    /// Full view must share thumb ToneMap when the panel is SDR, or when
+    /// libjxl left <see cref="JxlBufferTransfer.Linear"/> (room.jxl blowout
+    /// on clip-only <c>hdr-display</c>). PQ/HLG on HDR stays passthrough.
+    /// </summary>
+    public static bool PresentMatchesThumbToneMap(
+        bool displayIsHdr,
+        JxlBufferTransfer bufferTransfer) =>
+        !displayIsHdr || bufferTransfer == JxlBufferTransfer.Linear;
+
+    /// <summary>
+    /// S5: sticky thumb Analyze stats must not reuse across a DisplayIsHdr flip.
+    /// </summary>
+    public static bool StickyThumbToneInvalidated(
+        bool? stickyDisplayHdr,
+        bool displayIsHdr) =>
+        stickyDisplayHdr is { } prior && prior != displayIsHdr;
 
     public static string PeakNitsLabel(float nits) =>
         $"{ClampPeakNits(nits):0} nits";
@@ -827,11 +1062,58 @@ public static class GalleryPresent
         transfer switch
         {
             HdrTransfer.Pq => PqEotf(encoded) * 10000f,
+            // HLG: EOTF only here. OOTF is luminance-based — use
+            // <see cref="HlgOotfRgb"/> / <see cref="HlgOotfNits"/> (grey).
             HdrTransfer.Hlg => HlgEotf(encoded) * 1000f,
             HdrTransfer.Scrgb => encoded * ScrgbNits,
             HdrTransfer.Linear => encoded * SdrReferenceNits,
             _ => SrgbEotf(encoded) * SdrReferenceNits
         };
+
+    /// <summary>BT.2100 HLG OOTF at 1000-nit peak: <c>γ = 1.2</c>.</summary>
+    public const float HlgOotfGamma = 1.2f;
+
+    /// <summary>
+    /// Grey / scalar HLG OOTF: scene-linear → display nits with
+    /// <c>Y^(γ−1)</c> (γ=1.2, Lw=1000). Prefer <see cref="HlgOotfRgb"/> for RGB.
+    /// </summary>
+    public static float HlgOotfNits(float sceneLinear)
+    {
+        var y = Math.Max(sceneLinear, 0f);
+        if (y <= 0f)
+        {
+            return 0f;
+        }
+
+        // Rd = Y * Y^(γ−1) * Lw = Y^γ * 1000, Lw = 1000 nits.
+        return y * MathF.Pow(y, HlgOotfGamma - 1f) * 1000f;
+    }
+
+    /// <summary>
+    /// BT.2100 HLG OOTF on luminance (not per channel): scene-linear RGB →
+    /// display nits. <paramref name="bt2020"/> selects BT.2020 vs BT.709 Y.
+    /// </summary>
+    public static void HlgOotfRgb(
+        float sceneR,
+        float sceneG,
+        float sceneB,
+        bool bt2020,
+        out float nitsR,
+        out float nitsG,
+        out float nitsB)
+    {
+        var y = Math.Max(LuminanceY(sceneR, sceneG, sceneB, bt2020), 0f);
+        if (y <= 0f)
+        {
+            nitsR = nitsG = nitsB = 0f;
+            return;
+        }
+
+        var k = MathF.Pow(y, HlgOotfGamma - 1f) * 1000f;
+        nitsR = sceneR * k;
+        nitsG = sceneG * k;
+        nitsB = sceneB * k;
+    }
 
     public static float SrgbEotf(float v)
     {
@@ -860,6 +1142,22 @@ public static class GalleryPresent
         }
 
         return (float)Math.Pow(Math.Max(vp - c1, 0) / den, 1.0 / m1);
+    }
+
+    /// <summary>
+    /// PQ OETF on absolute luminance fraction (nits/10000 → encoded 0..1).
+    /// Inverse of <see cref="PqEotf"/>.
+    /// </summary>
+    public static float PqOetf(float linear01)
+    {
+        const double m1 = 2610.0 / 16384.0;
+        const double m2 = 2523.0 / 32.0;
+        const double c1 = 3424.0 / 4096.0;
+        const double c2 = 2413.0 / 128.0;
+        const double c3 = 2392.0 / 128.0;
+        var y = Math.Clamp(linear01, 0.0, 1.0);
+        var ym = Math.Pow(y, m1);
+        return (float)Math.Pow((c1 + c2 * ym) / (1.0 + c3 * ym), m2);
     }
 
     public static float HlgEotf(float v)
@@ -944,8 +1242,9 @@ public static class GalleryPresent
     /// display 709; Info Y is source primaries before 2020→709. Invert that
     /// matrix whenever <see cref="HdrColor.UsesBt2100ToScrgbMatrix"/> (BT.2020,
     /// Display P3 12, unspecified / missing <c>colr</c>) — do not run BT.2020
-    /// <see cref="LuminanceY"/> on the display-referred channels. 2020 weights
-    /// stay only when CICP primaries are 9, matching Info.
+    /// <see cref="LuminanceY"/> on the display-referred channels. After invert,
+    /// use <see cref="HdrColor.UsesBt2020Luma"/> so Display P3 matches Info
+    /// (same 9||12 rule as HLG OOTF / <see cref="HdrColor.SourcePrimaryNitsY"/>).
     /// </summary>
     public static float LumaNitsFromPresentedScrgb(float sr, float sg, float sb, int? cicpPrimaries)
     {
@@ -955,7 +1254,7 @@ public static class GalleryPresent
         if (HdrColor.UsesBt2100ToScrgbMatrix(cicpPrimaries))
         {
             Bt709ToBt2020(r, g, b, out r, out g, out b);
-            return LuminanceY(r, g, b, cicpPrimaries == 9);
+            return LuminanceY(r, g, b, HdrColor.UsesBt2020Luma(cicpPrimaries));
         }
 
         return LuminanceY(r, g, b, false);
@@ -979,10 +1278,22 @@ public static class GalleryPresent
         out float sb,
         out float nitsY)
     {
-        var nitsR = EncodedToNits(r, transfer);
-        var nitsG = EncodedToNits(g, transfer);
-        var nitsB = EncodedToNits(b, transfer);
+        float nitsR;
+        float nitsG;
+        float nitsB;
         var bt2020 = cicpPrimaries == 9;
+        if (transfer == HdrTransfer.Hlg)
+        {
+            // EOTF → scene, then luminance OOTF (not per-channel EncodedToNits).
+            HlgOotfRgb(HlgEotf(r), HlgEotf(g), HlgEotf(b), bt2020 || cicpPrimaries == 12, out nitsR, out nitsG, out nitsB);
+        }
+        else
+        {
+            nitsR = EncodedToNits(r, transfer);
+            nitsG = EncodedToNits(g, transfer);
+            nitsB = EncodedToNits(b, transfer);
+        }
+
         if (cicpPrimaries == 12)
         {
             // Display P3 (D65): WIC hands over the raw P3 channels, so convert here.
@@ -1107,4 +1418,17 @@ public readonly record struct GalleryImageInfo(
     double? AboveSdrWhitePercent = null,
     string? Gamut = null);
 
-public readonly record struct HdrPresentMap(float Scale, float ClipScrgb);
+/// <summary>
+/// Present raster map. <see cref="Scale"/> is exposure (SDR Reinhard) or 1
+/// for absolute HDR scRGB. When <see cref="ReinhardWhite"/> &gt; 1, extended
+/// Reinhard rolls highlights (same curve as <see cref="ToneMap"/> thumbs).
+/// <see cref="SoftNegatives"/> true = pass OOG negatives through (HDR);
+/// false = plain clamp to 0 (SDR). <see cref="OutputScale"/> lifts the
+/// finished curve (M1 HDR thumb-match ×SdrWhite/80); leave Scale/White alone.
+/// </summary>
+public readonly record struct HdrPresentMap(
+    float Scale,
+    float ClipScrgb,
+    float ReinhardWhite = 0f,
+    bool SoftNegatives = false,
+    float OutputScale = 1f);

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices.WindowsRuntime;
+using Microsoft.Graphics.Display;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -6,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.Helpers;
+using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
 
@@ -18,6 +20,14 @@ public sealed partial class GalleryStillSurface : UserControl
     private HdrFrame? _hdrFrame;
     private string? _hdrFramePath;
     private float _hdrMapMaxNits;
+    private string? _sdrTonePath;
+    private float _sdrToneExposure = 1f;
+    private float _sdrToneWhite;
+    private bool? _sdrToneDisplayHdr;
+    private bool _advancedColorHooked;
+    private int _advancedColorHookAttempts;
+    private const int AdvancedColorHookMaxAttempts = 8;
+    private DisplayInformation? _displayInfo;
     private HdrProbe _hdrFrameProbe = HdrProbe.None;
     private int _epoch;
     private int _histEpoch;
@@ -92,10 +102,16 @@ public sealed partial class GalleryStillSurface : UserControl
         // ZoomMode Disabled). Learn trackpad pinch is this event — listen even
         // after it is handled so Ctrl+wheel still zooms.
         ScrStill.AddHandler(UIElement.PointerWheelChangedEvent, _wheelHandler, handledEventsToo: true);
+        // DPI / composition scale changes resize physical swapchain buffers.
+        ScpHdr.CompositionScaleChanged += ScpHdr_CompositionScaleChanged;
+        // AppWindowId can be 0 before the island is ready — retry on Loaded.
+        Loaded += (_, _) => HookAdvancedColor();
         Unloaded += (_, _) =>
         {
             ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
+            ScpHdr.CompositionScaleChanged -= ScpHdr_CompositionScaleChanged;
             UnhookPeak();
+            UnhookAdvancedColor();
             _gallery?.StopGifPlayback();
             CancelInFlight();
             ClearHdrCache();
@@ -103,6 +119,92 @@ public sealed partial class GalleryStillSurface : UserControl
             _presenter?.Dispose();
             _presenter = null;
         };
+    }
+
+    private void ScpHdr_CompositionScaleChanged(SwapChainPanel sender, object args)
+    {
+        if (_hdrFrame is null)
+        {
+            return;
+        }
+
+        ApplyScaleLayout();
+        PresentCached(HdrPresentCoalescer.SettleMs);
+    }
+
+    private void HookAdvancedColor()
+    {
+        if (_advancedColorHooked
+            || _advancedColorHookAttempts >= AdvancedColorHookMaxAttempts
+            || !OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        _advancedColorHookAttempts++;
+        try
+        {
+            // WinUI 3 desktop: GetForCurrentView throws. WASDK DisplayInformation
+            // is CreateForWindowId — keep the instance so Unloaded can Dispose it.
+            // Leave _advancedColorHooked false when AppWindowId is still 0 so
+            // Loaded / RefreshAsync can attach once the island has an id — but
+            // cap attempts so Next/Prev cannot retry CreateForWindowId forever.
+            var windowId = XamlRoot?.ContentIslandEnvironment?.AppWindowId
+                ?? App.Window?.AppWindow?.Id
+                ?? default;
+            if (windowId.Value == 0)
+            {
+                return;
+            }
+
+            _displayInfo = DisplayInformation.CreateForWindowId(windowId);
+            _displayInfo.AdvancedColorInfoChanged += Display_AdvancedColorInfoChanged;
+            _advancedColorHooked = true;
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("GalleryStillSurface AdvancedColor hook", ex);
+            _displayInfo = null;
+            _advancedColorHooked = false;
+        }
+    }
+
+    private void UnhookAdvancedColor()
+    {
+        if (_displayInfo is null)
+        {
+            _advancedColorHooked = false;
+            _advancedColorHookAttempts = 0;
+            return;
+        }
+
+        try
+        {
+            _displayInfo.AdvancedColorInfoChanged -= Display_AdvancedColorInfoChanged;
+            _displayInfo.Dispose();
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("GalleryStillSurface AdvancedColor unhook", ex);
+        }
+
+        _displayInfo = null;
+        _advancedColorHooked = false;
+        _advancedColorHookAttempts = 0;
+    }
+
+    private void Display_AdvancedColorInfoChanged(DisplayInformation sender, object args)
+    {
+        // HDR toggle / SDR white slider / monitor move — re-probe on UI thread.
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_hdrFrame is null)
+            {
+                return;
+            }
+
+            PresentCached(HdrPresentCoalescer.SettleMs);
+        });
     }
 
     public void Bind(GalleryViewModel? gallery)
@@ -127,6 +229,7 @@ public sealed partial class GalleryStillSurface : UserControl
         if (_gallery is not null)
         {
             HookPeak();
+            HookAdvancedColor();
             _gallery.PropertyChanged += Gallery_PropertyChanged;
             _ = RefreshAsync();
             return;
@@ -290,6 +393,8 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         var gallery = _gallery;
         ApplyScaleLayout();
+        // Bind may have run before AppWindowId was ready — retry the ACE hook.
+        HookAdvancedColor();
         if (gallery is { IsImage: true, CanScrubGif: true })
         {
             _hdrLoadCts?.Cancel();
@@ -337,9 +442,34 @@ public sealed partial class GalleryStillSurface : UserControl
                 CloudFile.Exists(item.Path) && !CloudFile.IsOnlineOnly(item.Path),
                 gallery.CurrentProbe);
 
-        // Do not BitmapImage the original HDR file — that is a second full
-        // WIC decode. Show the mosaic thumb until scRGB present wins.
-        ImgStill.Source = ToStillImage(attempt ? item?.ThumbPath : still, animateGif: true);
+        // HDR attempt: mosaic thumb until scRGB present wins — never BitmapImage
+        // the HDR original (JXR unorm is darker; JXL WIC washes PQ).
+        // Non-attempt (JXL wide / await-preview): still first (DisplayPathFor
+        // large-preview or null), then mosaic thumb.
+        BitmapImage? sdrImage;
+        var usedThumb = false;
+        if (attempt)
+        {
+            sdrImage = ToStillImage(item?.ThumbPath, animateGif: true);
+            usedThumb = sdrImage is not null;
+            sdrImage ??= ToStillImage(still, animateGif: true);
+        }
+        else
+        {
+            sdrImage = ToStillImage(still, animateGif: true);
+            if (sdrImage is null && item?.ThumbPath is { } thumbPath)
+            {
+                sdrImage = ToStillImage(thumbPath, animateGif: true);
+                usedThumb = sdrImage is not null;
+            }
+        }
+
+        ImgStill.Source = sdrImage;
+        LogSdrStillSurface(
+            still,
+            usedThumb ? item?.ThumbPath : still,
+            usedThumb ? "mosaic-thumb" : (attempt ? "hdr-attempt-still" : null),
+            gallery.CurrentProbe);
 
         if (!pathMatches)
         {
@@ -368,6 +498,11 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
+        SdrTonemapLog.TryAppendViewer(
+            still,
+            "hdr-attempt",
+            ProbeBufferLabel(gallery.CurrentProbe));
+
         var raster = XamlRoot?.RasterizationScale ?? 1.0;
         var (dipW, dipH) = HdrPanelDips();
         var viewPxW = (int)Math.Round(Math.Max(dipW, 0) * raster);
@@ -385,21 +520,50 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (frame is null)
         {
+            // Drop a *different* still's float buffer before the next native
+            // decode (fast next/prev must not stack ~1 GB HDR JXL frames).
+            // Same-path Fit→1:1 / better-size re-decode keeps the cached frame
+            // so cancel/fail does not blank the image still on screen.
+            if (_hdrFrame is not null
+                && !string.Equals(_hdrFramePath, still, StringComparison.OrdinalIgnoreCase))
+            {
+                _hdrFrame = null;
+            }
+
             _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
+            string? loadError = null;
             try
             {
-                frame = await HdrWicDecode.TryLoadAsync(
+                var loaded = await HdrWicDecode.TryLoadAsync(
                     still,
                     gallery.CurrentProbe,
                     viewPxW,
                     viewPxH,
                     gallery.DisplayScaling,
                     _hdrLoadCts.Token);
+                frame = loaded.Frame;
+                loadError = loaded.Error;
             }
-            catch
+            catch (OperationCanceledException)
             {
-                frame = null;
+                // Quick Next/Prev cancels the in-flight decode — not an error.
+                return;
             }
+            catch (Exception ex)
+            {
+                ErrorReporter.LogOnly("GalleryStillSurface HDR load", ex);
+                frame = null;
+                loadError = ex.GetType().Name;
+            }
+
+            if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
+            {
+                return;
+            }
+
+            await FinishHdrLoadAsync(
+                gallery, still, item, frame, loadError, viewPxW, viewPxH, epoch);
+            return;
         }
 
         if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
@@ -407,6 +571,20 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
+        await FinishHdrLoadAsync(
+            gallery, still, item, frame, loadError: null, viewPxW, viewPxH, epoch);
+    }
+
+    private async Task FinishHdrLoadAsync(
+        GalleryViewModel gallery,
+        string still,
+        AssetItem? item,
+        HdrFrame? frame,
+        string? loadError,
+        int viewPxW,
+        int viewPxH,
+        int epoch)
+    {
         await UiDispatch.RunAsync(() =>
         {
             if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
@@ -418,7 +596,24 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 ClearHdrCache();
                 HideHdr();
-                ImgStill.Source = ToStillImage(still);
+                // Pipeline preview only (mosaic thumb / large-preview) — never
+                // BitmapImage the HDR original (JXR unorm → hdr-fail+bitmap-original).
+                var failPreview = item?.ThumbPath;
+                if (string.IsNullOrEmpty(failPreview)
+                    && AppServices.Thumbnails is { } failThumbs)
+                {
+                    failPreview = failThumbs.ExistingLargePreviewForPath(still);
+                }
+
+                var failImage = ToStillImage(failPreview);
+                ImgStill.Source = failImage;
+                // One hdr-fail line (S4): error returned with the decode result.
+                SdrTonemapLog.TryAppendViewer(
+                    still,
+                    failImage is not null ? "hdr-fail+pipeline-preview" : "hdr-fail",
+                    ProbeBufferLabel(gallery.CurrentProbe),
+                    detail: loadError);
+
                 gallery.SetHdrPresentResult(false, false);
                 QueueFileHistogram(gallery, still, hdr: false);
                 return;
@@ -476,8 +671,14 @@ public sealed partial class GalleryStillSurface : UserControl
             stats = await HdrWicDecode.TryMeasureAsync(
                 path, probe, viewportPixelWidth, viewportPixelHeight, cancellation);
         }
-        catch
+        catch (OperationCanceledException)
         {
+            // Viewport/nav cancel — not an error.
+            return;
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("GalleryStillSurface HDR measure", ex);
             stats = null;
         }
 
@@ -645,13 +846,33 @@ public sealed partial class GalleryStillSurface : UserControl
 
         using var cts = new CancellationTokenSource();
         await UiDispatch.RunAsync(() => _presentCts = cts);
+        // Sticky thumb ToneMap.Analyze stats per path: first Fit; 1:1 / resize reuse.
+        // S5: presenter also drops sticky when DisplayIsHdr flips vs last present.
+        float? stickyExposure = null;
+        float? stickyWhite = null;
+        await UiDispatch.RunAsync(() =>
+        {
+            if (!string.IsNullOrEmpty(_hdrFramePath)
+                && string.Equals(_sdrTonePath, _hdrFramePath, StringComparison.OrdinalIgnoreCase)
+                && _sdrToneExposure > 0
+                && _sdrToneWhite > 0f
+                && !GalleryPresent.StickyThumbToneInvalidated(
+                    _sdrToneDisplayHdr, presenterRef.DisplayIsHdr)
+                && _sdrToneDisplayHdr is not null)
+            {
+                stickyExposure = _sdrToneExposure;
+                stickyWhite = _sdrToneWhite;
+            }
+        });
         HdrPresentOutcome outcome;
         try
         {
             outcome = await presenterRef.TryPresentAsync(
                 frameRef, scaling, (float)scale, dipW, dipH, peakOverride, mapMaxNits, StillCurrent, cts.Token,
                 contentProbe: contentProbe,
-                viz: viz, vizPrimaries: vizPrimaries);
+                viz: viz, vizPrimaries: vizPrimaries,
+                sdrExposure: stickyExposure,
+                sdrReinhardWhite: stickyWhite);
         }
         finally
         {
@@ -678,6 +899,16 @@ public sealed partial class GalleryStillSurface : UserControl
 
             if (outcome == HdrPresentOutcome.Presented)
             {
+                // Cache thumb-match stats for SDR and hdr-display+linear (LastSdr*>0).
+                if (presenterRef.LastSdrExposure > 0
+                    && !string.IsNullOrEmpty(_hdrFramePath))
+                {
+                    _sdrTonePath = _hdrFramePath;
+                    _sdrToneExposure = presenterRef.LastSdrExposure;
+                    _sdrToneWhite = presenterRef.LastSdrReinhardWhite;
+                    _sdrToneDisplayHdr = presenterRef.DisplayIsHdr;
+                }
+
                 ImgStill.Visibility = Visibility.Collapsed;
                 galleryRef.SetHdrPresentResult(
                     true,
@@ -813,8 +1044,9 @@ public sealed partial class GalleryStillSurface : UserControl
             HdrAnalysisResult bins;
             try
             {
-                var frame = await HdrWicDecode.TryLoadAsync(
+                var loaded = await HdrWicDecode.TryLoadAsync(
                     path, probe, viewPxW, viewPxH, scaling, token).ConfigureAwait(false);
+                var frame = loaded.Frame;
                 bins = frame is null
                     ? HdrAnalysisResult.Empty
                     : HdrAnalysis.Analyze(
@@ -907,6 +1139,10 @@ public sealed partial class GalleryStillSurface : UserControl
         _hdrFrame = null;
         _hdrFramePath = null;
         _hdrMapMaxNits = 0;
+        _sdrTonePath = null;
+        _sdrToneExposure = 1f;
+        _sdrToneWhite = 0;
+        _sdrToneDisplayHdr = null;
         _hdrFrameProbe = HdrProbe.None;
     }
 
@@ -1757,7 +1993,9 @@ public sealed partial class GalleryStillSurface : UserControl
 
             // EXR / Radiance / TGA / Clip / PSD / JXL / non-image: show Palace's
             // decoded large preview; BitmapImage would be blank or need a codec.
-            var shown = AppServices.Thumbnails is { } thumbs ? thumbs.DisplayPathFor(path) : path;
+            var shown = AppServices.Thumbnails is { } thumbs
+                ? thumbs.DisplayPathFor(path, out _)
+                : path;
             if (!string.Equals(shown, path, StringComparison.OrdinalIgnoreCase))
             {
                 return shown is null ? null : new BitmapImage { UriSource = new Uri(shown, UriKind.Absolute) };
@@ -1774,6 +2012,59 @@ public sealed partial class GalleryStillSurface : UserControl
             return null;
         }
     }
+
+    private static void LogSdrStillSurface(
+        string? sourcePath,
+        string? requestedDisplay,
+        string? forcedDecoder,
+        HdrProbe probe)
+    {
+        if (!SdrTonemapLog.IsEnabled)
+        {
+            return;
+        }
+
+        string decoder;
+        if (forcedDecoder is not null
+            && (forcedDecoder is "mosaic-thumb" or "hdr-fail")
+            && requestedDisplay is not null
+            && PathSafe.IsJxl(sourcePath)
+            && string.Equals(requestedDisplay, sourcePath, StringComparison.OrdinalIgnoreCase))
+        {
+            // Thumb missing — DisplayPathFor will refuse WIC original.
+            decoder = forcedDecoder + "+await-preview";
+        }
+        else if (forcedDecoder is "mosaic-thumb")
+        {
+            decoder = "mosaic-thumb";
+        }
+        else if (AppServices.Thumbnails is { } thumbs)
+        {
+            _ = thumbs.DisplayPathFor(requestedDisplay ?? sourcePath, out decoder);
+            if (forcedDecoder is "hdr-fail")
+            {
+                decoder = "hdr-fail+" + decoder;
+            }
+        }
+        else
+        {
+            decoder = forcedDecoder ?? "bitmap-original";
+        }
+
+        SdrTonemapLog.TryAppendViewer(sourcePath, decoder, ProbeBufferLabel(probe));
+    }
+
+    private static string ProbeBufferLabel(HdrProbe probe) =>
+        probe.Kind switch
+        {
+            HdrKind.HdrJxl when probe.IsHlg => "hlg",
+            HdrKind.HdrJxl when probe.IsPq => "pq",
+            HdrKind.HdrJxl => "hdr-jxl",
+            HdrKind.WideGamutJxl => "wide-jxl",
+            _ when probe.IsPq => "pq",
+            _ when probe.IsHlg => "hlg",
+            _ => "n/a"
+        };
 
     private async Task ShowGifScrubAsync(GalleryViewModel gallery)
     {

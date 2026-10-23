@@ -30,6 +30,7 @@ EXEMPT_PATH_PREFIXES = (
     ".github/",
     "docs/",
     "Palace.Tests/",
+    "Palace.Imaging/",
     "scripts/",
 )
 

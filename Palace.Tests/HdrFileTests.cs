@@ -136,6 +136,8 @@ public sealed class HdrFileTests
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrJxr, 1, null, null)));
         Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
             AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000)));
+        Assert.True(GalleryPresent.ShouldAttemptHdrPresent(
+            AssetKind.Image, false, false, false, true, new HdrProbe(HdrKind.HdrJxl, 9, 16, null)));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, true, false, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Image, false, false, true, true, hdr));
         Assert.False(GalleryPresent.ShouldAttemptHdrPresent(AssetKind.Gif, false, false, false, true, hdr));
@@ -175,6 +177,15 @@ public sealed class HdrFileTests
         Assert.Equal(
             "HDR JPEG XR · tonemap SDR 80 nits",
             GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxr, 1, null, null), true, false));
+        Assert.Equal(
+            "HDR JPEG XL — SDR preview",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxl, 9, 16, null), false, true));
+        Assert.Equal(
+            "HDR JPEG XL · presenting scRGB",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxl, 9, 16, null), true, true));
+        Assert.Equal(
+            "HDR JPEG XL · tonemap SDR 80 nits",
+            GalleryPresent.StatusLine(new HdrProbe(HdrKind.HdrJxl, 9, 16, null), true, false));
         Assert.Null(GalleryPresent.StatusLine(HdrProbe.None, false, false));
     }
 
@@ -228,12 +239,13 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.IsHdrOutput(0, 1499, 1000, 10));
         Assert.True(GalleryPresent.IsHdrOutput(12, 400, 400, 10));
         Assert.True(GalleryPresent.IsHdrOutput(1, 80, 80, 8));
-        // Dummy 270 G22 is HDR (Windows HDR-on lie). 203 / 80–220 stay SDR.
+        // Dummy 270 G22: HDR when CCD unknown / Windows HDR on; SDR when ACE=0
+        // so Reinhard shoulder runs on SDR laptops (room.jxl laptop path).
         Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8));
         Assert.False(GalleryPresent.IsHdrOutput(0, 203, 203, 8));
         Assert.False(GalleryPresent.IsHdrOutput(0, 120, 80, 8));
         Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: true));
-        Assert.True(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: false));
+        Assert.False(GalleryPresent.IsHdrOutput(0, 270, 270, 8, windowsHdrEnabled: false));
         Assert.False(GalleryPresent.IsHdrOutput(0, 0, 0, 8));
         Assert.Equal(0f, GalleryPresent.ProbedDisplayLuminance(270, 270));
         var mainDesktop = GalleryPresent.PresentMap(
@@ -266,6 +278,7 @@ public sealed class HdrFileTests
         Assert.Equal(DisplayHdr.NativeInfoBytes, sizes.Info);
         Assert.Equal(DisplayHdr.NativeInfo2Bytes, sizes.Info2);
         Assert.Equal(DisplayHdr.NativeSourceNameBytes, sizes.SourceName);
+        Assert.Equal(DisplayHdr.NativeSdrWhiteBytes, DisplayHdr.NativeSdrWhiteLayoutSize());
         Assert.True(GalleryPresent.IsDummySdrLuminance(270));
         Assert.False(GalleryPresent.IsDummySdrLuminance(400));
         // 8-bit G22 with a real HDR peak (not dummy 270) is still HDR.
@@ -293,9 +306,11 @@ public sealed class HdrFileTests
         var pq = new HdrProbe(HdrKind.HdrAvif, 9, 16, 1000);
         var hlg = new HdrProbe(HdrKind.HdrHeif, 9, 18, null);
         var jxr = new HdrProbe(HdrKind.HdrJxr, 1, null, null);
+        var jxl = new HdrProbe(HdrKind.HdrJxl, 9, 16, null);
         Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(pq));
         Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(hlg));
         Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(jxr));
+        Assert.True(GalleryPresent.UnknownDisplayPresentsHdr(jxl));
         Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(HdrProbe.None));
         Assert.False(GalleryPresent.UnknownDisplayPresentsHdr(new HdrProbe(HdrKind.UltraHdrJpeg, 1, 13, null)));
         // FenrirDesktop: no Output6 + CCD HDR on, or PQ content with default probe miss.
@@ -336,6 +351,21 @@ public sealed class HdrFileTests
         var hdrPeak = GalleryPresent.PresentMap(true, 1000, 1499);
         Assert.Equal(1f, hdrPeak.Scale);
         Assert.Equal(1499f / 80f, hdrPeak.ClipScrgb, 3);
+        // Absolute scRGB: scale 1, clip peak/80 — ignore SdrWhiteLevel by default.
+        var hdrWhiteIgnored = GalleryPresent.PresentMap(true, 1000, 1000, sdrWhiteLevelNits: 203f);
+        Assert.Equal(1f, hdrWhiteIgnored.Scale);
+        Assert.Equal(1000f / 80f, hdrWhiteIgnored.ClipScrgb, 3);
+        // Opt-in helper only (not wired into PresentMap).
+        Assert.Equal(80f / 250f, GalleryPresent.HdrCompositionScale(250f), 3);
+        Assert.Equal(1f, GalleryPresent.HdrCompositionScale(0f));
+        var sdrReinhard = GalleryPresent.PresentMapSdrReinhard(0.5f, 4f);
+        Assert.Equal(0.5f, sdrReinhard.Scale);
+        Assert.Equal(4f, sdrReinhard.ReinhardWhite);
+        Assert.False(sdrReinhard.SoftNegatives);
+        Assert.Equal(34, GalleryPresent.DxgiSwapChain2SetMatrixTransformVtbl);
+        Assert.Equal(200f, DisplayHdr.SdrWhiteLevelMultiplierToNits(2500), 3); // 2.5×80
+        Assert.Equal(0f, DisplayHdr.SdrWhiteLevelMultiplierToNits(500)); // below 80 nits
+        Assert.Equal(0f, DisplayHdr.SdrWhiteLevelMultiplierToNits(10_000)); // above 600
 
         Assert.Equal(1f, HdrColor.MapCllToDisplayScrgb(12.5f, 1000, 80), 3);
         Assert.True(HdrColor.MapCllToDisplayScrgb(

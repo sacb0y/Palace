@@ -82,6 +82,25 @@ public sealed class HdrColorTests
     }
 
     [Fact]
+    public void UsesBt2020Luma_IncludesDisplayP3()
+    {
+        Assert.True(HdrColor.UsesBt2020Luma(9));
+        Assert.True(HdrColor.UsesBt2020Luma(12));
+        Assert.False(HdrColor.UsesBt2020Luma(1));
+        Assert.False(HdrColor.UsesBt2020Luma(null));
+
+        // OOTF and final LuminanceY must share the same P3 rule (Doktor N1).
+        var sceneR = GalleryPresent.HlgEotf(0.75f);
+        GalleryPresent.HlgOotfRgb(sceneR, 0f, 0f, bt2020: true, out var nitsR, out var nitsG, out var nitsB);
+        var expected = GalleryPresent.LuminanceY(nitsR, nitsG, nitsB, bt2020: true);
+        Assert.Equal(expected, HdrColor.SourcePrimaryNitsY(0.75f, 0f, 0f, HdrTransfer.Hlg, 12), 3);
+        Assert.Equal(
+            HdrColor.SourcePrimaryNitsY(1f, 0f, 0f, HdrTransfer.Pq, 9),
+            HdrColor.SourcePrimaryNitsY(1f, 0f, 0f, HdrTransfer.Pq, 12),
+            3);
+    }
+
+    [Fact]
     public void SourcePrimaryY_IsBefore2020To709()
     {
         var sourceY = HdrColor.SourcePrimaryNitsY(1f, 0f, 0f, HdrTransfer.Pq, 9);
