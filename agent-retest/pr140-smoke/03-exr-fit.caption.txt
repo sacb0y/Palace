@@ -1,0 +1,1 @@
+﻿#140 tip 0185140 Fit: EXR file=sample.exr gallery=True fitBtn=True alive=True

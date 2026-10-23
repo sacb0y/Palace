@@ -1,0 +1,1 @@
+﻿#140 tip 0185140 Fit: HDR file=lapa_1k.hdr gallery=True fitBtn=True alive=True
