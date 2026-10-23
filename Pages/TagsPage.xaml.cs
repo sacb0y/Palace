@@ -76,20 +76,11 @@ public sealed partial class TagsPage : Page
             GrdTagAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdTagAssets_RangeHolding), true);
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
+            SrfOverlayStill.ReviewSwipeCommitted += OnOverlayStillSwipe;
             _videoBrowseSwipe = new VideoBrowseSwipeBinder(
                 MpeOverlay,
                 VideoBrowseSwipeAllowedNow,
-                action =>
-                {
-                    if (action == TouchGestures.SwipeAction.BrowsePrevious)
-                    {
-                        ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
-                    }
-                    else if (action == TouchGestures.SwipeAction.BrowseNext)
-                    {
-                        ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
-                    }
-                });
+                OnOverlayStillSwipe);
             _videoBrowseSwipe.Hook();
             RefreshRealizedTiles();
             HookOverlayGallery();
@@ -1287,14 +1278,25 @@ public sealed partial class TagsPage : Page
 
     private VideoBrowseSwipeBinder? _videoBrowseSwipe;
 
+    private void OnOverlayStillSwipe(TouchGestures.SwipeAction action)
+    {
+        // Tags overlay has no Review mode — browse prev/next only.
+        switch (action)
+        {
+            case TouchGestures.SwipeAction.BrowsePrevious:
+                ViewModel.OverlayGallery?.GoPreviousCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.BrowseNext:
+                ViewModel.OverlayGallery?.GoNextCommand.Execute(null);
+                break;
+        }
+    }
+
     private bool VideoBrowseSwipeAllowedNow()
     {
-        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
-            == Windows.Media.Playback.MediaPlaybackState.Playing;
-        return TouchGestures.AllowsVideoBrowseSwipe(
-            ViewModel.OverlayGallery?.IsVideo == true,
-            playing,
-            ViewerSettings.TouchGesturesEnabled);
+        // Playing OK — binder routes scrub-bar vs page (docs/specs/swipe-nav.md).
+        return ViewModel.OverlayGallery?.IsVideo == true
+            && ViewerSettings.TouchGesturesEnabled;
     }
 
     private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();
@@ -1316,6 +1318,12 @@ public sealed partial class TagsPage : Page
         player.Play();
         BtnGalleryPlay.Visibility = Visibility.Collapsed;
         SyncVideoBrowseSwipeHitTest();
+    }
+
+    private void ViewerToolbar_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        // Gaps between toolbar buttons must not open the asset context menu.
+        e.Handled = true;
     }
 
     private void SyncViewerOverlayAutoHide()

@@ -4,8 +4,10 @@ using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Palace.Controls;
 using Windows.UI.Core;
 using Palace.Helpers;
 using Palace.ViewModels;
@@ -26,6 +28,10 @@ public sealed partial class GalleryWindow : Window
     private static extern uint GetDpiForWindow(IntPtr hWnd);
 
     public GalleryViewModel Gallery { get; }
+
+    private Border? _chipFadeOld;
+    private TextBlock? _chipFadeOldTitle;
+    private TextBlock? _chipFadeOldPos;
 
     public GalleryWindow(GalleryViewModel gallery)
     {
@@ -54,6 +60,8 @@ public sealed partial class GalleryWindow : Window
         AppWindow.Resize(new SizeInt32(desiredW, desiredH));
         ViewerMediaElement.SuppressFullWindow(MpeGallery);
         CardViewerDetails.AttachInFlow(GrdGalleryWindow);
+        SrfWindowStill.ReviewSwipeCommitted += OnWindowStillSwipe;
+        SrfWindowStill.ChipCrossFadeRequested += OnWindowChipCrossFade;
 
         Gallery.PropertyChanged += (_, e) =>
         {
@@ -75,6 +83,8 @@ public sealed partial class GalleryWindow : Window
         {
             OpenWindows.Remove(this);
             Gallery.StopGifPlayback();
+            SrfWindowStill.ReviewSwipeCommitted -= OnWindowStillSwipe;
+            SrfWindowStill.ChipCrossFadeRequested -= OnWindowChipCrossFade;
             SrfWindowStill.Bind(null);
             MpeGallery.Source = null;
             VolGallery.VolumeChanged -= GalleryVolume_Changed;
@@ -100,6 +110,12 @@ public sealed partial class GalleryWindow : Window
     }
 
     private void BtnGalleryWindowClose_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void ViewerToolbar_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        // Gaps between toolbar buttons must not open the asset context menu.
+        e.Handled = true;
+    }
 
     private ViewerFocusZone _viewerFocusZone = ViewerFocusZone.Image;
 
@@ -311,22 +327,63 @@ public sealed partial class GalleryWindow : Window
 
     private VideoBrowseSwipeBinder? _videoBrowseSwipe;
 
+    private void OnWindowStillSwipe(TouchGestures.SwipeAction action)
+    {
+        switch (action)
+        {
+            case TouchGestures.SwipeAction.BrowsePrevious:
+                Gallery.GoPreviousCommand.Execute(null);
+                break;
+            case TouchGestures.SwipeAction.BrowseNext:
+                Gallery.GoNextCommand.Execute(null);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// B4: true old→new title/position cross-fade at pager commit start
+    /// (docs/specs/swipe-nav.md). Snapshot runs before navigation.
+    /// </summary>
+    private void OnWindowChipCrossFade()
+    {
+        if (!ViewerSettings.TouchGesturesEnabled)
+        {
+            return;
+        }
+
+        EnsureChipFadeOverlay();
+        PagerChipCrossFade.Begin(
+            DispatcherQueue,
+            GalleryTitleBar,
+            _chipFadeOld!,
+            _chipFadeOldTitle!,
+            _chipFadeOldPos!,
+            Gallery.Title,
+            Gallery.PositionLabel);
+    }
+
+    private void EnsureChipFadeOverlay()
+    {
+        if (_chipFadeOld is not null)
+        {
+            return;
+        }
+
+        _chipFadeOld = PagerChipCrossFade.CreateChip(out _chipFadeOldTitle!, out _chipFadeOldPos!);
+        // Float over the gallery content under the title bar.
+        if (GrdGalleryWindow.Children is { } children)
+        {
+            Grid.SetRow(_chipFadeOld, 1);
+            children.Add(_chipFadeOld);
+        }
+    }
+
     private void HookVideoBrowseSwipe()
     {
         _videoBrowseSwipe ??= new VideoBrowseSwipeBinder(
             MpeGallery,
             VideoBrowseSwipeAllowedNow,
-            action =>
-            {
-                if (action == TouchGestures.SwipeAction.BrowsePrevious)
-                {
-                    Gallery.GoPreviousCommand.Execute(null);
-                }
-                else if (action == TouchGestures.SwipeAction.BrowseNext)
-                {
-                    Gallery.GoNextCommand.Execute(null);
-                }
-            });
+            OnWindowStillSwipe);
         _videoBrowseSwipe.Hook();
 
         var session = MpeGallery.MediaPlayer?.PlaybackSession;
@@ -344,10 +401,8 @@ public sealed partial class GalleryWindow : Window
 
     private bool VideoBrowseSwipeAllowedNow()
     {
-        var playing = MpeGallery.MediaPlayer?.PlaybackSession?.PlaybackState
-            == MediaPlaybackState.Playing;
-        return TouchGestures.AllowsVideoBrowseSwipe(
-            Gallery.IsVideo, playing, ViewerSettings.TouchGesturesEnabled);
+        // Playing OK — binder routes scrub-bar vs page (docs/specs/swipe-nav.md).
+        return Gallery.IsVideo && ViewerSettings.TouchGesturesEnabled;
     }
 
     private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();

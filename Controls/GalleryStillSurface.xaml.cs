@@ -1,15 +1,21 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.Graphics.Display;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
+using Windows.Foundation;
+using Windows.UI;
+using Windows.UI.ViewManagement;
 
 namespace Palace.Controls;
 
@@ -51,18 +57,67 @@ public sealed partial class GalleryStillSurface : UserControl
     private double _reviewSwipeDy;
     private double _reviewSwipeVx;
     private double _reviewSwipeVy;
+    private bool _pagerHandoff;
+    private double _pagerPanBeforeHandoff;
+    /// <summary>Accumulated outward travel while pinned at a zoom edge (pre-handoff).</summary>
+    private double _edgeOutwardAccum;
+    private bool _pagerSettling;
+    private Storyboard? _pagerStoryboard;
+    private Action? _pagerOnDone;
+    private readonly SwipeZoomRestore _zoomRestore = new();
+    private bool _pendingAdvanceSlide;
+    private int _pendingAdvanceSlot; // -1 previous / +1 next
+    private bool _pagerAwaitingContent;
+    private int _awaitingEpoch;
+    private int _pagerSettleGeneration;
+    private double _pagerX;
+    private double _settleFromX;
+    private double _settleTargetX;
+    private int _settleDurationMs;
+    private long _settleStartedAtMs;
+    private string? _neighborPrevPath;
+    private string? _neighborNextPath;
+    private SwipeZoomRestore.Snapshot? _pendingZoomRestore;
+    private UISettings? _uiSettings;
+    private bool? _cachedAnimationsEnabled;
+    private CompositionPropertySet? _pagerProps;
+    private bool _pagerExpressionsReady;
+    private SolidColorBrush? _rejectTintBrush;
+    private SolidColorBrush? _keepTintBrush;
+
+    private bool _isReviewMode;
 
     /// <summary>
     /// When false (normal viewer), swipe is browse prev/next only.
     /// When true (Review mode, #129), left=reject, right=keep, up=skip.
+    /// Review never reveals the neighbor during drag (docs/specs/swipe-nav.md).
     /// </summary>
-    public bool IsReviewMode { get; set; }
+    public bool IsReviewMode
+    {
+        get => _isReviewMode;
+        set
+        {
+            if (_isReviewMode == value)
+            {
+                return;
+            }
+
+            _isReviewMode = value;
+            RefreshNeighbors();
+        }
+    }
 
     /// <summary>
     /// Fired when a touch swipe commits. Browse: previous/next.
     /// Review (IsReviewMode): reject/keep/skip.
     /// </summary>
     public event Action<TouchGestures.SwipeAction>? ReviewSwipeCommitted;
+
+    /// <summary>
+    /// Fired at browse/Review commit start so hosts can cross-fade the
+    /// name/position chip (docs/specs/swipe-nav.md B4).
+    /// </summary>
+    public event Action? ChipCrossFadeRequested;
 
     /// <summary>
     /// Touch long-press on the still (500ms / &lt;slop). Holding on the overlay
@@ -112,6 +167,7 @@ public sealed partial class GalleryStillSurface : UserControl
             ScpHdr.CompositionScaleChanged -= ScpHdr_CompositionScaleChanged;
             UnhookPeak();
             UnhookAdvancedColor();
+            UnhookUiSettings();
             _gallery?.StopGifPlayback();
             CancelInFlight();
             ClearHdrCache();
@@ -119,6 +175,7 @@ public sealed partial class GalleryStillSurface : UserControl
             _presenter?.Dispose();
             _presenter = null;
         };
+        Loaded += (_, _) => EnsurePagerExpressions();
     }
 
     private void ScpHdr_CompositionScaleChanged(SwapChainPanel sender, object args)
@@ -224,6 +281,8 @@ public sealed partial class GalleryStillSurface : UserControl
         CancelInFlight();
         ClearHdrCache();
         ClearGifCache();
+        ResetPagerVisuals();
+        ClearNeighbors();
         ResetView();
         _gallery = gallery;
         if (_gallery is not null)
@@ -232,6 +291,7 @@ public sealed partial class GalleryStillSurface : UserControl
             HookAdvancedColor();
             _gallery.PropertyChanged += Gallery_PropertyChanged;
             _ = RefreshAsync();
+            RefreshNeighbors();
             return;
         }
 
@@ -239,6 +299,7 @@ public sealed partial class GalleryStillSurface : UserControl
         HideHdr();
         ClearGifCache();
         ImgStill.Source = null;
+        _zoomRestore.Clear();
     }
 
     private void HookPeak()
@@ -354,7 +415,49 @@ public sealed partial class GalleryStillSurface : UserControl
                 ResetPinchTracking();
             }
 
+            if (e.PropertyName == nameof(GalleryViewModel.StillRevision))
+            {
+                // B6 / N2: external navigate (arrows/buttons) stops settle without onDone.
+                if (_pagerSettling && !_pagerAwaitingContent)
+                {
+                    StopPagerAnimations(invokeOnDone: false);
+                    ResetPagerVisuals();
+                    _pendingAdvanceSlide = false;
+                }
+
+                QueueZoomRestoreForCurrent();
+                if (_pagerAwaitingContent)
+                {
+                    if (_pendingAdvanceSlide)
+                    {
+                        // Review: auto-advance slide-in from ±stride (not neighbor jump).
+                        ClearAwaitingContent();
+                        HideNeighborSurfaces();
+                        RefreshNeighbors();
+                        PlayAdvanceSlideIn(_pendingAdvanceSlot);
+                        _pendingAdvanceSlide = false;
+                    }
+                    else
+                    {
+                        // N3 browse: jump new still to where the neighbor was, settle to 0.
+                        FinishAwaitingContentSettle();
+                    }
+                }
+                else
+                {
+                    HideNeighborSurfaces();
+                    RefreshNeighbors();
+                }
+            }
+
             _ = RefreshAsync();
+        }
+
+        if (e.PropertyName is nameof(GalleryViewModel.CanGoPrevious)
+            or nameof(GalleryViewModel.CanGoNext)
+            or nameof(GalleryViewModel.CurrentIndex))
+        {
+            RefreshNeighbors();
         }
     }
 
@@ -368,6 +471,14 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         ApplyScaleLayout();
+        // Nit: keep Composition stride in sync with viewport width.
+        if (_pagerProps is not null)
+        {
+            _pagerProps.InsertScalar(
+                "Stride",
+                (float)SwipeNav.PageStride(Math.Max(1, ScrStill.ActualWidth)));
+        }
+
         if (_gallery is { IsImage: true } gallery && _hdrFrame is not null)
         {
             var raster = XamlRoot?.RasterizationScale ?? 1.0;
@@ -1164,19 +1275,6 @@ public sealed partial class GalleryStillSurface : UserControl
         ScrStill.VerticalScrollBarVisibility = bars;
         ImgStill.Stretch = BindHelpers.ImageStretch(scaling);
 
-        // When content ≤ viewport: Center (letterbox margins are outside the
-        // panel — not part of pinch/pan). When zoomed/scrolling: Left/Top so
-        // scroll offsets match ZoomAroundPoint / ClampPan.
-        var align = scrolls ? HorizontalAlignment.Left : HorizontalAlignment.Center;
-        var valign = scrolls ? VerticalAlignment.Top : VerticalAlignment.Center;
-        GrdStillContent.HorizontalAlignment = align;
-        GrdStillContent.VerticalAlignment = valign;
-        // Image / swapchain fill the content panel (panel IS the image rect).
-        ImgStill.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ImgStill.VerticalAlignment = VerticalAlignment.Stretch;
-        ScpHdr.HorizontalAlignment = HorizontalAlignment.Stretch;
-        ScpHdr.VerticalAlignment = VerticalAlignment.Stretch;
-
         double width;
         double height;
         var viewW = ScrStill.ActualWidth;
@@ -1193,9 +1291,8 @@ public sealed partial class GalleryStillSurface : UserControl
         }
         else
         {
-            // Fit: letterboxed image content rect — NOT the full viewport.
-            // Sizing ScpHdr to the viewport made HDR's opaque black backdrop
-            // part of pinch/pan bounds (drift to bottom-right).
+            // Fit image rect — ScpHdr stays this size (viewport-sized ScpHdr
+            // made HDR's opaque black backdrop part of pinch/pan bounds).
             (width, height) = GalleryScale.FitContainDipSize(iw, ih, viewW, viewH);
             if (width <= 1 || height <= 1)
             {
@@ -1208,12 +1305,45 @@ public sealed partial class GalleryStillSurface : UserControl
         // Cap layout DIPs so DXGI ResizeBuffers cannot fail at extreme zoom.
         (width, height) = TouchGestures.CapStillPanelSize(width, height);
 
-        GrdStillContent.Width = width;
-        GrdStillContent.Height = height;
-        ImgStill.Width = width;
-        ImgStill.Height = height;
-        ScpHdr.Width = width;
-        ScpHdr.Height = height;
+        // Fit at 1×: panel = viewport (swipe on image AND letterbox); image
+        // letterboxed inside. Zoomed / Actual / Fill: panel = image content.
+        if (GalleryScale.FitSwipeUsesViewportPanel(scrolls)
+            && viewW > 1
+            && viewH > 1
+            && !double.IsNaN(width)
+            && !double.IsNaN(height))
+        {
+            GrdStillContent.HorizontalAlignment = HorizontalAlignment.Left;
+            GrdStillContent.VerticalAlignment = VerticalAlignment.Top;
+            GrdStillContent.Width = viewW;
+            GrdStillContent.Height = viewH;
+            ImgStill.HorizontalAlignment = HorizontalAlignment.Center;
+            ImgStill.VerticalAlignment = VerticalAlignment.Center;
+            ScpHdr.HorizontalAlignment = HorizontalAlignment.Center;
+            ScpHdr.VerticalAlignment = VerticalAlignment.Center;
+            ImgStill.Width = width;
+            ImgStill.Height = height;
+            ScpHdr.Width = width;
+            ScpHdr.Height = height;
+        }
+        else
+        {
+            var align = scrolls ? HorizontalAlignment.Left : HorizontalAlignment.Center;
+            var valign = scrolls ? VerticalAlignment.Top : VerticalAlignment.Center;
+            GrdStillContent.HorizontalAlignment = align;
+            GrdStillContent.VerticalAlignment = valign;
+            ImgStill.HorizontalAlignment = HorizontalAlignment.Stretch;
+            ImgStill.VerticalAlignment = VerticalAlignment.Stretch;
+            ScpHdr.HorizontalAlignment = HorizontalAlignment.Stretch;
+            ScpHdr.VerticalAlignment = VerticalAlignment.Stretch;
+            GrdStillContent.Width = width;
+            GrdStillContent.Height = height;
+            ImgStill.Width = width;
+            ImgStill.Height = height;
+            ScpHdr.Width = width;
+            ScpHdr.Height = height;
+        }
+
         SyncScrollOffset(scaling, width, height, viewW, viewH);
     }
 
@@ -1387,6 +1517,7 @@ public sealed partial class GalleryStillSurface : UserControl
     /// <c>e.Position</c> is content-local. Pinch midpoint math needs
     /// <see cref="ScrStill"/> viewport coordinates — content-space origins
     /// throw the still off-screen (HDR black bg looks like a black image).
+    /// Fit at 1× sizes the content panel to the viewport, so this is usually identity.
     /// </summary>
     private Windows.Foundation.Point ToViewport(Windows.Foundation.Point contentLocal)
     {
@@ -1431,6 +1562,9 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             ApplyScaleLayout();
         }
+
+        // S6: apply zoom restore after layout knows pixel size.
+        ApplyPendingZoomRestore();
 
         // A file the scan flagged undecodable shows no resolution until the gallery
         // itself decodes the original (not a thumb / large-preview substitute).
@@ -1669,6 +1803,11 @@ public sealed partial class GalleryStillSurface : UserControl
             {
                 _afterPinchAwaitingLift = true;
                 CancelTouchHold();
+                // B1: pinch mid-swipe cancels the pager — snap back, no stale classify.
+                if (_reviewSwipeActive || _pagerHandoff || _pagerSettling || _pagerAwaitingContent)
+                {
+                    CancelPagerForPinch();
+                }
             }
 
             var mid = ToViewport(e.Position);
@@ -1679,7 +1818,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (!GalleryScale.Scrolls(scaling, _pinchZoom))
         {
-            // Not zoomed: track Review swipe (touch only; after pinch wait for lift).
+            // Not zoomed: visual pager / Review classify (touch only).
             if (isTouch
                 && hasPan
                 && ViewerSettings.TouchGesturesEnabled
@@ -1689,12 +1828,26 @@ public sealed partial class GalleryStillSurface : UserControl
                     afterPinchAwaitingLift: _afterPinchAwaitingLift))
             {
                 CancelTouchHold();
+                // Should-fix: while awaiting new still, ignore drag (avoids stride-off).
+                if (_pagerAwaitingContent)
+                {
+                    e.Handled = true;
+                    return;
+                }
+
+                // B6: interrupt settle and continue from current offset.
+                if (_pagerSettling)
+                {
+                    InterruptPagerSettleForDrag();
+                }
+
                 _reviewSwipeActive = true;
                 _reviewSwipeDx += deltaX;
                 _reviewSwipeDy += deltaY;
                 // ManipulationVelocities.Linear is already DIPs per millisecond.
                 _reviewSwipeVx = e.Velocities.Linear.X;
                 _reviewSwipeVy = e.Velocities.Linear.Y;
+                ApplyPagerDragVisual(_reviewSwipeDx, _reviewSwipeDy);
                 e.Handled = true;
             }
 
@@ -1706,12 +1859,28 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
-        // Touch pan: per-axis clamp so a taller/wider zoom cannot pass one
-        // edge while free on the other (up-but-not-down). Use laid-out
-        // extent so SDR tall images reach top and bottom symmetrically.
+        // Touch pan with Photos-style edge handoff into the pager (browse only).
         if (isTouch)
         {
             CancelTouchHold();
+            if (_pagerAwaitingContent)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (_pagerSettling)
+            {
+                InterruptPagerSettleForDrag();
+            }
+
+            if (ViewerSettings.TouchGesturesEnabled
+                && TryPagerHandoffFromZoom(deltaX, deltaY, e))
+            {
+                e.Handled = true;
+                return;
+            }
+
             var (horizontal, vertical) = GalleryScale.DragPanContent(
                 ScrStill.HorizontalOffset,
                 ScrStill.VerticalOffset,
@@ -1748,29 +1917,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (_reviewSwipeActive)
         {
-            // Browse (default): prev/next only. Review mode: keep/reject/skip.
-            var action = TouchGestures.ClassifySwipe(
-                IsReviewMode,
-                _reviewSwipeDx,
-                _reviewSwipeDy,
-                ScrStill.ActualWidth,
-                ScrStill.ActualHeight,
-                _reviewSwipeVx,
-                _reviewSwipeVy);
-            _reviewSwipeActive = false;
-            _reviewSwipeDx = 0;
-            _reviewSwipeDy = 0;
-            _reviewSwipeVx = 0;
-            _reviewSwipeVy = 0;
-            if (action is TouchGestures.SwipeAction.Reject
-                or TouchGestures.SwipeAction.Keep
-                or TouchGestures.SwipeAction.Skip
-                or TouchGestures.SwipeAction.BrowsePrevious
-                or TouchGestures.SwipeAction.BrowseNext)
-            {
-                ReviewSwipeCommitted?.Invoke(action);
-            }
-
+            CompletePagerGesture();
             _afterPinchAwaitingLift = false;
             return;
         }
@@ -2231,5 +2378,903 @@ public sealed partial class GalleryStillSurface : UserControl
         {
             return null;
         }
+    }
+
+    // --- Visual pager (docs/specs/swipe-nav.md) ---
+
+    private bool SystemAnimationsEnabled()
+    {
+        if (_cachedAnimationsEnabled is { } cached)
+        {
+            return cached;
+        }
+
+        try
+        {
+            HookUiSettings();
+            _cachedAnimationsEnabled = _uiSettings!.AnimationsEnabled;
+            return _cachedAnimationsEnabled.Value;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private void HookUiSettings()
+    {
+        if (_uiSettings is not null)
+        {
+            return;
+        }
+
+        _uiSettings = new UISettings();
+        _uiSettings.AnimationsEnabledChanged += UiSettings_AnimationsEnabledChanged;
+        _cachedAnimationsEnabled = _uiSettings.AnimationsEnabled;
+    }
+
+    private void UnhookUiSettings()
+    {
+        if (_uiSettings is null)
+        {
+            return;
+        }
+
+        _uiSettings.AnimationsEnabledChanged -= UiSettings_AnimationsEnabledChanged;
+        _uiSettings = null;
+        _cachedAnimationsEnabled = null;
+    }
+
+    private void UiSettings_AnimationsEnabledChanged(UISettings sender, object args) =>
+        _cachedAnimationsEnabled = sender.AnimationsEnabled;
+
+    private void CancelPagerForPinch()
+    {
+        // B1: clear swipe state and snap back — CompletePagerGesture must not
+        // classify the stale dx/dy after lift.
+        _reviewSwipeActive = false;
+        _reviewSwipeDx = 0;
+        _reviewSwipeDy = 0;
+        _reviewSwipeVx = 0;
+        _reviewSwipeVy = 0;
+        _pagerHandoff = false;
+        _pagerPanBeforeHandoff = 0;
+        _edgeOutwardAccum = 0;
+        ClearAwaitingContent();
+        _pendingAdvanceSlide = false;
+        StopPagerAnimations(invokeOnDone: false);
+        var duration = SwipeNav.SettleDurationMs(SystemAnimationsEnabled(), committing: false);
+        AnimatePagerSettle(0, duration, overshoot: 0, onDone: ResetPagerVisuals);
+    }
+
+    private void InterruptPagerSettleForDrag()
+    {
+        // Blocker: StopAnimation first, then read _pagerX (TryGetScalar after stop,
+        // or bezier estimate if the scalar lags a frame).
+        StopPagerAnimations(invokeOnDone: false);
+        _pagerSettling = false;
+        ClearAwaitingContent();
+        var x = _pagerX;
+        _reviewSwipeDx = x;
+        _reviewSwipeDy = 0;
+        _pagerHandoff = false;
+        _pagerPanBeforeHandoff = 0;
+        _edgeOutwardAccum = 0;
+    }
+
+    private void StopPagerAnimations(bool invokeOnDone)
+    {
+        // N2: bump generation so stale batch.Completed returns early.
+        _pagerSettleGeneration++;
+        var done = _pagerOnDone;
+        _pagerOnDone = null;
+        var wasSettling = _pagerSettling;
+        try
+        {
+            if (_pagerProps is not null)
+            {
+                _pagerProps.StopAnimation("X");
+                // Should-fix: after StopAnimation, TryGetScalar often still returns the
+                // settle *start* (Succeeded but stale). Always estimate while settling.
+                if (wasSettling && _settleDurationMs > 0)
+                {
+                    var elapsed = Environment.TickCount64 - _settleStartedAtMs;
+                    _pagerX = SwipeNav.EstimateSettleX(
+                        _settleFromX,
+                        _settleTargetX,
+                        elapsed,
+                        _settleDurationMs);
+                    _pagerProps.InsertScalar("X", (float)_pagerX);
+                }
+                else if (_pagerProps.TryGetScalar("X", out var live)
+                    == CompositionGetValueStatus.Succeeded)
+                {
+                    _pagerX = live;
+                }
+            }
+        }
+        catch
+        {
+            // Property set may already be stopped / torn down.
+        }
+
+        try
+        {
+            _pagerStoryboard?.Stop();
+        }
+        catch
+        {
+            // Storyboard may already be stopped.
+        }
+
+        _pagerStoryboard = null;
+        _pagerSettling = false;
+        _settleDurationMs = 0;
+        if (invokeOnDone)
+        {
+            done?.Invoke();
+        }
+    }
+
+    private double ReadPagerX()
+    {
+        if (_pagerProps is not null)
+        {
+            try
+            {
+                if (_pagerProps.TryGetScalar("X", out var live)
+                    == CompositionGetValueStatus.Succeeded)
+                {
+                    _pagerX = live;
+                    return live;
+                }
+            }
+            catch
+            {
+                // Fall through to cached / XAML.
+            }
+        }
+
+        return _pagerExpressionsReady ? _pagerX : XfCurrent.X;
+    }
+
+    private void ClearAwaitingContent()
+    {
+        _pagerAwaitingContent = false;
+        _awaitingEpoch++;
+    }
+
+    private void BeginAwaitingContent(bool reviewMode)
+    {
+        _pagerAwaitingContent = true;
+        var epoch = ++_awaitingEpoch;
+        var timeout = reviewMode
+            ? SwipeNav.AwaitingContentTimeoutReviewMs
+            : SwipeNav.AwaitingContentTimeoutMs;
+        _ = SnapBackIfAwaitingStuckAsync(epoch, timeout);
+    }
+
+    private async System.Threading.Tasks.Task SnapBackIfAwaitingStuckAsync(int epoch, int timeoutMs)
+    {
+        await System.Threading.Tasks.Task.Delay(timeoutMs);
+
+        await UiDispatch.RunAsync(() =>
+        {
+            if (epoch != _awaitingEpoch || !_pagerAwaitingContent)
+            {
+                return;
+            }
+
+            // Stuck awaiting — snap back.
+            ClearAwaitingContent();
+            _pendingAdvanceSlide = false;
+            StopPagerAnimations(invokeOnDone: false);
+            ResetPagerVisuals();
+            _pagerHandoff = false;
+            _pagerPanBeforeHandoff = 0;
+        });
+    }
+
+    private void FinishAwaitingContentSettle()
+    {
+        ClearAwaitingContent();
+        var width = Math.Max(1, ScrStill.ActualWidth);
+        var releaseX = ReadPagerX();
+        var slot = _pendingAdvanceSlot;
+        // N3: hide neighbors before refresh so n+2 does not flash.
+        HideNeighborSurfaces();
+        if (slot != 0)
+        {
+            var startX = SwipeNav.PostCommitStartX(releaseX, slot, width);
+            SetPagerCompositionX(startX, width, 0, 0);
+        }
+
+        RefreshNeighbors();
+        var duration = SwipeNav.SettleDurationMs(SystemAnimationsEnabled(), committing: true);
+        AnimatePagerSettle(0, duration, overshoot: 0, onDone: () =>
+        {
+            ResetPagerVisuals();
+            _pagerHandoff = false;
+            _pagerPanBeforeHandoff = 0;
+            _pendingAdvanceSlot = 0;
+        });
+    }
+
+    private void HideNeighborSurfaces()
+    {
+        ImgNeighborPrev.Opacity = 0;
+        ImgNeighborNext.Opacity = 0;
+    }
+
+    private bool TryPagerHandoffFromZoom(
+        double deltaX,
+        double deltaY,
+        ManipulationDeltaRoutedEventArgs e)
+    {
+        // B2: Review never does zoom-edge handoff — pan only while zoomed.
+        if (IsReviewMode)
+        {
+            return false;
+        }
+
+        // Already paging from a prior handoff in this gesture.
+        if (_pagerHandoff || _reviewSwipeActive)
+        {
+            _reviewSwipeActive = true;
+            _reviewSwipeDx += deltaX;
+            _reviewSwipeDy += deltaY;
+            _reviewSwipeVx = e.Velocities.Linear.X;
+            _reviewSwipeVy = e.Velocities.Linear.Y;
+            ApplyPagerDragVisual(
+                SwipeNav.CommitTravel(_reviewSwipeDx, _pagerPanBeforeHandoff),
+                _reviewSwipeDy);
+            return true;
+        }
+
+        var maxH = TouchGestures.MaxScrollOffset(PanContentWidth(), PanViewportWidth());
+        // Fill portrait often only overflows vertically — no H pan room means
+        // both edges are already pinned; page immediately (spec: pan to edge,
+        // then page).
+        var noHorizontalPan = TouchGestures.NoHorizontalPanRoom(maxH);
+        var atLeft = ScrStill.HorizontalOffset <= 0.5;
+        var atRight = noHorizontalPan || ScrStill.HorizontalOffset >= maxH - 0.5;
+        var outwardLeft = atLeft && deltaX > 0;
+        var outwardRight = atRight && deltaX < 0;
+        if (!outwardLeft && !outwardRight)
+        {
+            _edgeOutwardAccum = 0;
+            return false;
+        }
+
+        // Accumulate outward travel across frames (not a single Delta).
+        _edgeOutwardAccum += Math.Abs(deltaX);
+        // Outward-at-edge already gated above — no dummy pinned flag.
+        if (!TouchGestures.AllowsSwipeHandoff(
+                zoomed: true,
+                accumulatedOutwardPx: _edgeOutwardAccum,
+                noHorizontalPanRoom: noHorizontalPan))
+        {
+            // Still inside the 24 px handoff slop — pan clamps at the edge.
+            var (horizontal, vertical) = GalleryScale.DragPanContent(
+                ScrStill.HorizontalOffset,
+                ScrStill.VerticalOffset,
+                deltaX,
+                deltaY,
+                PanContentWidth(),
+                PanContentHeight(),
+                PanViewportWidth(),
+                PanViewportHeight());
+            ScrStill.ChangeView(horizontal, vertical, null, true);
+            return true;
+        }
+
+        _edgeOutwardAccum = 0;
+        _pagerHandoff = true;
+        _reviewSwipeActive = true;
+        _pagerPanBeforeHandoff = _reviewSwipeDx;
+        _reviewSwipeDx += deltaX;
+        _reviewSwipeDy += deltaY;
+        _reviewSwipeVx = e.Velocities.Linear.X;
+        _reviewSwipeVy = e.Velocities.Linear.Y;
+        ApplyPagerDragVisual(
+            SwipeNav.CommitTravel(_reviewSwipeDx, _pagerPanBeforeHandoff),
+            _reviewSwipeDy);
+        return true;
+    }
+
+    private void EnsurePagerExpressions()
+    {
+        if (_pagerExpressionsReady || XamlRoot is null)
+        {
+            return;
+        }
+
+        try
+        {
+            ElementCompositionPreview.SetIsTranslationEnabled(ScrStill, true);
+            ElementCompositionPreview.SetIsTranslationEnabled(ImgNeighborPrev, true);
+            ElementCompositionPreview.SetIsTranslationEnabled(ImgNeighborNext, true);
+            ElementCompositionPreview.SetIsTranslationEnabled(BrdEdgeGlowLeft, true);
+            ElementCompositionPreview.SetIsTranslationEnabled(BrdEdgeGlowRight, true);
+
+            var current = ElementCompositionPreview.GetElementVisual(ScrStill);
+            var prev = ElementCompositionPreview.GetElementVisual(ImgNeighborPrev);
+            var next = ElementCompositionPreview.GetElementVisual(ImgNeighborNext);
+            var leftGlow = ElementCompositionPreview.GetElementVisual(BrdEdgeGlowLeft);
+            var rightGlow = ElementCompositionPreview.GetElementVisual(BrdEdgeGlowRight);
+            var c = current.Compositor;
+            _pagerProps = c.CreatePropertySet();
+            _pagerProps.InsertScalar("X", 0f);
+            _pagerProps.InsertScalar(
+                "Stride",
+                (float)SwipeNav.PageStride(Math.Max(1, ScrStill.ActualWidth)));
+            _pagerProps.InsertScalar("LeftGlow", 0f);
+            _pagerProps.InsertScalar("RightGlow", 0f);
+
+            var curExpr = c.CreateExpressionAnimation("props.X");
+            curExpr.SetReferenceParameter("props", _pagerProps);
+            current.StartAnimation("Translation.X", curExpr);
+
+            var prevExpr = c.CreateExpressionAnimation("props.X - props.Stride");
+            prevExpr.SetReferenceParameter("props", _pagerProps);
+            prev.StartAnimation("Translation.X", prevExpr);
+
+            var nextExpr = c.CreateExpressionAnimation("props.X + props.Stride");
+            nextExpr.SetReferenceParameter("props", _pagerProps);
+            next.StartAnimation("Translation.X", nextExpr);
+
+            var leftExpr = c.CreateExpressionAnimation("props.LeftGlow");
+            leftExpr.SetReferenceParameter("props", _pagerProps);
+            leftGlow.StartAnimation("Opacity", leftExpr);
+
+            var rightExpr = c.CreateExpressionAnimation("props.RightGlow");
+            rightExpr.SetReferenceParameter("props", _pagerProps);
+            rightGlow.StartAnimation("Opacity", rightExpr);
+
+            _pagerExpressionsReady = true;
+            // N1: Composition drives Translation — keep XAML X at 0.
+            XfCurrent.X = 0;
+            XfNeighborPrev.X = 0;
+            XfNeighborNext.X = 0;
+            _pagerX = 0;
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("GalleryStillSurface EnsurePagerExpressions", ex);
+            _pagerExpressionsReady = false;
+            _pagerProps = null;
+        }
+    }
+
+    private void SetPagerCompositionX(double visualX, double width, double leftGlow, double rightGlow)
+    {
+        EnsurePagerExpressions();
+        _pagerX = visualX;
+        if (_pagerProps is null)
+        {
+            XfCurrent.X = visualX;
+            XfNeighborPrev.X = SwipeNav.NeighborTranslation(visualX, -1, width);
+            XfNeighborNext.X = SwipeNav.NeighborTranslation(visualX, 1, width);
+            BrdEdgeGlowLeft.Opacity = leftGlow;
+            BrdEdgeGlowRight.Opacity = rightGlow;
+            return;
+        }
+
+        _pagerProps.InsertScalar("X", (float)visualX);
+        _pagerProps.InsertScalar("Stride", (float)SwipeNav.PageStride(width));
+        _pagerProps.InsertScalar("LeftGlow", (float)leftGlow);
+        _pagerProps.InsertScalar("RightGlow", (float)rightGlow);
+        // N1: never mirror into XfCurrent when Composition owns Translation.X.
+        XfCurrent.X = 0;
+    }
+
+    private void ApplyPagerDragVisual(double dragPx, double dragPy)
+    {
+        var width = Math.Max(1, ScrStill.ActualWidth);
+        XfReviewTilt.CenterX = width / 2;
+        XfReviewTilt.CenterY = Math.Max(1, ScrStill.ActualHeight) / 2;
+
+        if (IsReviewMode)
+        {
+            // Review: current tracks finger with tilt + tint; never reveal neighbor.
+            SetPagerCompositionX(dragPx, width, 0, 0);
+            XfCurrent.Y = TouchGestures.IsVerticalAxis(dragPx, dragPy) ? dragPy : 0;
+            XfReviewTilt.Angle = SwipeNav.ReviewTiltDegrees(dragPx, width);
+            BrdReviewTint.Opacity = SwipeNav.ReviewTintOpacity(dragPx, width);
+            BrdReviewTint.Background = SwipeNav.ReviewTintIsReject(dragPx)
+                ? (_rejectTintBrush ??= new SolidColorBrush(Color.FromArgb(255, 220, 60, 60)))
+                : (_keepTintBrush ??= new SolidColorBrush(Color.FromArgb(255, 60, 180, 90)));
+            ImgNeighborPrev.Opacity = 0;
+            ImgNeighborNext.Opacity = 0;
+            TxtEdgeHint.Opacity = 0;
+            TxtEdgeHint.Text = "";
+            return;
+        }
+
+        var canPrev = _gallery?.CanGoPrevious == true;
+        var canNext = _gallery?.CanGoNext == true;
+        var visualX = SwipeNav.BrowseVisualOffset(dragPx, width, canPrev, canNext);
+        XfCurrent.Y = 0;
+        XfReviewTilt.Angle = 0;
+        BrdReviewTint.Opacity = 0;
+
+        var hint = SwipeNav.EdgeHintFor(dragPx, canPrev, canNext);
+        var glow = hint == SwipeNav.EdgeHint.None
+            ? 0
+            : SwipeNav.EdgeGlowOpacity(visualX, width);
+        var leftGlow = hint == SwipeNav.EdgeHint.StartOfFolder ? glow : 0;
+        var rightGlow = hint == SwipeNav.EdgeHint.EndOfFolder ? glow : 0;
+        SetPagerCompositionX(visualX, width, leftGlow, rightGlow);
+
+        if (SwipeNav.RevealsNeighbor(reviewMode: false))
+        {
+            var slot = SwipeNav.NeighborSlot(visualX, reviewMode: false);
+            ImgNeighborPrev.Opacity = slot < 0 && canPrev ? 1 : 0;
+            ImgNeighborNext.Opacity = slot > 0 && canNext ? 1 : 0;
+        }
+
+        TxtEdgeHint.Text = SwipeNav.EdgeHintText(hint) ?? "";
+        TxtEdgeHint.Opacity = hint == SwipeNav.EdgeHint.None ? 0 : Math.Min(1, glow + 0.35);
+    }
+
+    private void CompletePagerGesture()
+    {
+        // B1: pinch already cleared state — nothing to classify.
+        if (!_reviewSwipeActive && !_pagerHandoff)
+        {
+            return;
+        }
+
+        var width = Math.Max(1, ScrStill.ActualWidth);
+        var height = Math.Max(1, ScrStill.ActualHeight);
+        var travel = _pagerHandoff
+            ? SwipeNav.CommitTravel(_reviewSwipeDx, _pagerPanBeforeHandoff)
+            : _reviewSwipeDx;
+        var dx = _reviewSwipeDx;
+        var dy = _reviewSwipeDy;
+        var vx = _reviewSwipeVx;
+        var vy = _reviewSwipeVy;
+        _reviewSwipeActive = false;
+        _reviewSwipeDx = 0;
+        _reviewSwipeDy = 0;
+        _reviewSwipeVx = 0;
+        _reviewSwipeVy = 0;
+        _edgeOutwardAccum = 0;
+
+        TouchGestures.SwipeAction action;
+        if (IsReviewMode)
+        {
+            action = TouchGestures.ClassifyReviewSwipe(dx, dy, width, height, vx, vy);
+        }
+        else
+        {
+            action = SwipeNav.ClassifyBrowseCommit(
+                travel,
+                vx,
+                width,
+                canGoPrevious: _gallery?.CanGoPrevious == true,
+                canGoNext: _gallery?.CanGoNext == true,
+                travelPy: dy);
+        }
+
+        var committing = action is TouchGestures.SwipeAction.Reject
+            or TouchGestures.SwipeAction.Keep
+            or TouchGestures.SwipeAction.Skip
+            or TouchGestures.SwipeAction.BrowsePrevious
+            or TouchGestures.SwipeAction.BrowseNext;
+
+        // B3: save snapshot for back-restore; reset local zoom only when KeepZoom off.
+        // Never write GalleryViewModel.Scaling from the pager.
+        if (committing
+            && action is TouchGestures.SwipeAction.BrowsePrevious
+                or TouchGestures.SwipeAction.BrowseNext)
+        {
+            SaveZoomSnapshotForLeave();
+        }
+
+        var animations = SystemAnimationsEnabled();
+        var duration = SwipeNav.SettleDurationMs(animations, committing);
+        if (IsReviewMode)
+        {
+            if (committing)
+            {
+                var canAdvance = action is TouchGestures.SwipeAction.Reject
+                    or TouchGestures.SwipeAction.Keep
+                    or TouchGestures.SwipeAction.Skip;
+                // S7: only pending advance when a next item can arrive.
+                _pendingAdvanceSlide = canAdvance;
+                _pendingAdvanceSlot = canAdvance ? 1 : 0;
+                // B4: navigate + chip cross-fade at start.
+                if (canAdvance)
+                {
+                    BeginAwaitingContent(reviewMode: true);
+                    ChipCrossFadeRequested?.Invoke();
+                }
+
+                ReviewSwipeCommitted?.Invoke(action);
+                if (!canAdvance)
+                {
+                    _pendingAdvanceSlide = false;
+                    AnimatePagerSettle(0, duration, overshoot: 0, onDone: () =>
+                    {
+                        ResetPagerVisuals();
+                        _pagerHandoff = false;
+                        _pagerPanBeforeHandoff = 0;
+                    });
+                }
+            }
+            else
+            {
+                _pendingAdvanceSlide = false;
+                AnimatePagerSettle(0, duration, overshoot: SwipeNav.SnapOvershootPx(vx), onDone: () =>
+                {
+                    ResetPagerVisuals();
+                    _pagerHandoff = false;
+                    _pagerPanBeforeHandoff = 0;
+                });
+            }
+
+            return;
+        }
+
+        if (!committing)
+        {
+            AnimatePagerSettle(
+                0,
+                duration,
+                overshoot: SwipeNav.SnapOvershootPx(vx),
+                onDone: () =>
+                {
+                    ResetPagerVisuals();
+                    _pagerHandoff = false;
+                    _pagerPanBeforeHandoff = 0;
+                });
+            return;
+        }
+
+        // B4: navigate + chip cross-fade at animation start; N3 settle after new still.
+        if (SwipeNav.ResetsLocalZoomOnCommit(action, ViewerSettings.KeepZoomBetweenImages))
+        {
+            ResetView();
+        }
+
+        _pendingAdvanceSlot = SwipeNav.CommitSlot(action);
+        BeginAwaitingContent(reviewMode: false);
+        ChipCrossFadeRequested?.Invoke();
+        ReviewSwipeCommitted?.Invoke(action);
+    }
+
+    private void AnimatePagerSettle(
+        double targetX,
+        int durationMs,
+        double overshoot,
+        Action? onDone)
+    {
+        StopPagerAnimations(invokeOnDone: false);
+        _pagerOnDone = onDone;
+        var width = Math.Max(1, ScrStill.ActualWidth);
+        var from = ReadPagerX();
+        if (durationMs <= 0 || !SystemAnimationsEnabled())
+        {
+            SetPagerCompositionX(targetX, width, 0, 0);
+            if (Math.Abs(targetX) < 0.0001)
+            {
+                ResetPagerVisuals();
+            }
+
+            var done = _pagerOnDone;
+            _pagerOnDone = null;
+            done?.Invoke();
+            return;
+        }
+
+        _pagerSettling = true;
+        _settleFromX = from;
+        _settleTargetX = targetX;
+        _settleDurationMs = durationMs;
+        _settleStartedAtMs = Environment.TickCount64;
+        var generation = _pagerSettleGeneration;
+        EnsurePagerExpressions();
+        if (_pagerProps is not null)
+        {
+            try
+            {
+                var c = ElementCompositionPreview.GetElementVisual(ScrStill).Compositor;
+                var anim = c.CreateScalarKeyFrameAnimation();
+                anim.Duration = TimeSpan.FromMilliseconds(durationMs);
+                anim.InsertKeyFrame(0, (float)from);
+                if (overshoot > 0 && Math.Abs(targetX) < 0.0001)
+                {
+                    var peak = from + Math.Sign(from == 0 ? 1 : from) * -overshoot;
+                    anim.InsertKeyFrame(0.55f, (float)peak);
+                }
+
+                var ease = c.CreateCubicBezierEasingFunction(
+                    new System.Numerics.Vector2((float)SwipeNav.EaseX1, (float)SwipeNav.EaseY1),
+                    new System.Numerics.Vector2((float)SwipeNav.EaseX2, (float)SwipeNav.EaseY2));
+                anim.InsertKeyFrame(1, (float)targetX, ease);
+                var batch = c.CreateScopedBatch(CompositionBatchTypes.Animation);
+                batch.Completed += (_, _) =>
+                {
+                    // N2: ignore stale completions after StopAnimation / interrupt.
+                    if (generation != _pagerSettleGeneration)
+                    {
+                        return;
+                    }
+
+                    _pagerSettling = false;
+                    _settleDurationMs = 0;
+                    SetPagerCompositionX(targetX, width, 0, 0);
+                    var done = _pagerOnDone;
+                    _pagerOnDone = null;
+                    done?.Invoke();
+                };
+                _pagerProps.StartAnimation("X", anim);
+                batch.End();
+                return;
+            }
+            catch (Exception ex)
+            {
+                ErrorReporter.LogOnly("GalleryStillSurface AnimatePagerSettle composition", ex);
+                // Nit: zero Composition X before Storyboard fallback (avoids 2× travel).
+                try
+                {
+                    _pagerProps.InsertScalar("X", 0f);
+                    _pagerX = 0;
+                }
+                catch
+                {
+                    // Props may be torn down.
+                }
+            }
+        }
+
+        var board = new Storyboard();
+        var peakXaml = overshoot > 0 && Math.Abs(targetX) < 0.0001
+            ? from + Math.Sign(from == 0 ? 1 : from) * -overshoot
+            : targetX;
+
+        void AddX(DependencyObject target, double fromValue, double to, TimeSpan start, TimeSpan length)
+        {
+            var frames = new DoubleAnimationUsingKeyFrames();
+            frames.KeyFrames.Add(new DiscreteDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(start),
+                Value = fromValue
+            });
+            frames.KeyFrames.Add(new SplineDoubleKeyFrame
+            {
+                KeyTime = KeyTime.FromTimeSpan(start + length),
+                Value = to,
+                KeySpline = new KeySpline
+                {
+                    ControlPoint1 = new Point(SwipeNav.EaseX1, SwipeNav.EaseY1),
+                    ControlPoint2 = new Point(SwipeNav.EaseX2, SwipeNav.EaseY2)
+                }
+            });
+            Storyboard.SetTarget(frames, target);
+            Storyboard.SetTargetProperty(frames, "X");
+            board.Children.Add(frames);
+        }
+
+        var half = TimeSpan.FromMilliseconds(durationMs * 0.55);
+        var full = TimeSpan.FromMilliseconds(durationMs);
+        if (overshoot > 0 && Math.Abs(targetX) < 0.0001)
+        {
+            AddX(XfCurrent, from, peakXaml, TimeSpan.Zero, half);
+            AddX(XfCurrent, peakXaml, 0, half, full - half);
+        }
+        else
+        {
+            AddX(XfCurrent, from, targetX, TimeSpan.Zero, full);
+            AddX(
+                XfNeighborPrev,
+                SwipeNav.NeighborTranslation(from, -1, width),
+                SwipeNav.NeighborTranslation(targetX, -1, width),
+                TimeSpan.Zero,
+                full);
+            AddX(
+                XfNeighborNext,
+                SwipeNav.NeighborTranslation(from, 1, width),
+                SwipeNav.NeighborTranslation(targetX, 1, width),
+                TimeSpan.Zero,
+                full);
+        }
+
+        board.Completed += (_, _) =>
+        {
+            if (generation != _pagerSettleGeneration)
+            {
+                return;
+            }
+
+            _pagerSettling = false;
+            _pagerStoryboard = null;
+            SetPagerCompositionX(targetX, width, 0, 0);
+            var done = _pagerOnDone;
+            _pagerOnDone = null;
+            done?.Invoke();
+        };
+        _pagerStoryboard = board;
+        board.Begin();
+    }
+
+    private void PlayAdvanceSlideIn(int slot)
+    {
+        if (slot == 0 || !SystemAnimationsEnabled())
+        {
+            ResetPagerVisuals();
+            return;
+        }
+
+        var width = Math.Max(1, ScrStill.ActualWidth);
+        var start = slot > 0
+            ? SwipeNav.PageStride(width)
+            : -SwipeNav.PageStride(width);
+        SetPagerCompositionX(start, width, 0, 0);
+        AnimatePagerSettle(0, SwipeNav.CommitMs, overshoot: 0, onDone: ResetPagerVisuals);
+    }
+
+    private void ResetPagerVisuals()
+    {
+        StopPagerAnimations(invokeOnDone: false);
+        var width = Math.Max(1, ScrStill.ActualWidth);
+        SetPagerCompositionX(0, width, 0, 0);
+        XfCurrent.Y = 0;
+        XfReviewTilt.Angle = 0;
+        BrdReviewTint.Opacity = 0;
+        ImgNeighborPrev.Opacity = 0;
+        ImgNeighborNext.Opacity = 0;
+        ClearEdgeChrome();
+    }
+
+    private void ClearEdgeChrome()
+    {
+        if (_pagerProps is not null)
+        {
+            _pagerProps.InsertScalar("LeftGlow", 0f);
+            _pagerProps.InsertScalar("RightGlow", 0f);
+        }
+
+        BrdEdgeGlowLeft.Opacity = 0;
+        BrdEdgeGlowRight.Opacity = 0;
+        TxtEdgeHint.Opacity = 0;
+        TxtEdgeHint.Text = "";
+    }
+
+    private void ClearNeighbors()
+    {
+        ImgNeighborPrev.Source = null;
+        ImgNeighborNext.Source = null;
+        ImgNeighborPrev.Opacity = 0;
+        ImgNeighborNext.Opacity = 0;
+        _neighborPrevPath = null;
+        _neighborNextPath = null;
+    }
+
+    private void RefreshNeighbors()
+    {
+        if (_gallery is null || IsReviewMode)
+        {
+            ClearNeighbors();
+            return;
+        }
+
+        LoadNeighbor(ImgNeighborPrev, -1, ref _neighborPrevPath);
+        LoadNeighbor(ImgNeighborNext, +1, ref _neighborNextPath);
+        var width = Math.Max(1, ScrStill.ActualWidth);
+        if (!_pagerExpressionsReady)
+        {
+            XfNeighborPrev.X = -SwipeNav.PageStride(width);
+            XfNeighborNext.X = SwipeNav.PageStride(width);
+        }
+        else if (_pagerProps is not null)
+        {
+            _pagerProps.InsertScalar("Stride", (float)SwipeNav.PageStride(width));
+        }
+    }
+
+    private void LoadNeighbor(Image target, int delta, ref string? cachedPath)
+    {
+        var item = _gallery?.PeekNeighbor(delta);
+        var path = GalleryViewModel.NeighborSourcePath(item);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            target.Source = null;
+            cachedPath = null;
+            return;
+        }
+
+        // Skip UI-thread Exists when the same path is already loaded (should-fix 4).
+        if (cachedPath == path && target.Source is not null)
+        {
+            return;
+        }
+
+        // Screen-size decode from LargePreview JPEG (docs/specs/swipe-nav.md).
+        var decode = (int)Math.Round(
+            Math.Max(ScrStill.ActualWidth, 320) * (XamlRoot?.RasterizationScale ?? 1.0));
+        try
+        {
+            if (GalleryMedia.IsRemoteUri(path))
+            {
+                target.Source = new BitmapImage
+                {
+                    DecodePixelWidth = decode,
+                    AutoPlay = false,
+                    UriSource = new Uri(path, UriKind.Absolute)
+                };
+                cachedPath = path;
+                return;
+            }
+
+            if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
+            {
+                target.Source = null;
+                cachedPath = null;
+                return;
+            }
+
+            // S3: neighbor GIFs must not autoplay.
+            target.Source = new BitmapImage
+            {
+                DecodePixelWidth = decode,
+                AutoPlay = false,
+                UriSource = new Uri(path, UriKind.Absolute)
+            };
+            cachedPath = path;
+        }
+        catch
+        {
+            target.Source = null;
+            cachedPath = null;
+        }
+    }
+
+    private void SaveZoomSnapshotForLeave()
+    {
+        var path = _gallery?.CurrentPath ?? _gallery?.Current?.Path;
+        var snap = new SwipeZoomRestore.Snapshot(
+            _gallery?.Scaling ?? ImageScaling.Fit,
+            _pinchZoom,
+            ScrStill.HorizontalOffset,
+            ScrStill.VerticalOffset);
+        if (SwipeZoomRestore.IsWorthSaving(snap))
+        {
+            _zoomRestore.Save(path, snap);
+        }
+    }
+
+    private void QueueZoomRestoreForCurrent()
+    {
+        var path = _gallery?.CurrentPath ?? _gallery?.Current?.Path;
+        if (!_zoomRestore.TryRestore(path, out var snap))
+        {
+            _pendingZoomRestore = null;
+            return;
+        }
+
+        // S6: apply after ImageOpened / ApplyScaleLayout — never write Scaling here
+        // when KeepZoom already sticky-applied it; restore pinch/pan offsets.
+        _pendingZoomRestore = snap;
+        if (_gallery is not null
+            && !ViewerSettings.KeepZoomBetweenImages
+            && snap.Scaling != _gallery.Scaling)
+        {
+            _gallery.Scaling = snap.Scaling;
+        }
+    }
+
+    private void ApplyPendingZoomRestore()
+    {
+        if (_pendingZoomRestore is not { } snap)
+        {
+            return;
+        }
+
+        _pendingZoomRestore = null;
+        _pinchZoom = snap.PinchZoom;
+        ApplyScaleLayout();
+        ScrStill.ChangeView(snap.OffsetX, snap.OffsetY, null, true);
     }
 }

@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Palace.Helpers;
 using Xunit;
 
 namespace Palace.Tests;
@@ -24,6 +25,17 @@ public sealed class ViewerDetailsCardXamlTests
         e.Attributes().FirstOrDefault(a => a.Name.LocalName == localName)?.Value;
 
     [Fact]
+    public void Root_StartsHitTestInvisible_UntilOpen()
+    {
+        var path = Path.Combine(RepoRoot(), "Controls", "ViewerDetailsCard.xaml");
+        Assert.True(File.Exists(path), path);
+        var doc = XDocument.Load(path);
+        var root = doc.Root;
+        Assert.NotNull(root);
+        Assert.Equal("False", Attr(root!, "IsHitTestVisible"), StringComparer.Ordinal);
+    }
+
+    [Fact]
     public void GrdCardHost_IsHitTestVisible_True()
     {
         var path = Path.Combine(RepoRoot(), "Controls", "ViewerDetailsCard.xaml");
@@ -36,6 +48,13 @@ public sealed class ViewerDetailsCardXamlTests
         Assert.True(
             hit is null or "True",
             "GrdCardHost must stay hit-testable (got IsHitTestVisible=" + (hit ?? "<unset>") + ")");
+    }
+
+    [Fact]
+    public void ClosedCard_DoesNotStealSwipeUnderInfo()
+    {
+        Assert.False(ViewerDetailsLayout.CardHitTestVisible(isOpen: false));
+        Assert.True(ViewerDetailsLayout.CardHitTestVisible(isOpen: true));
     }
 
     [Fact]

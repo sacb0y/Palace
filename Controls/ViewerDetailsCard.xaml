@@ -11,8 +11,10 @@
     Width="270"
     HorizontalAlignment="Left"
     VerticalAlignment="Top"
-    RequestedTheme="Dark"
-    IsTabStop="False">
+    IsHitTestVisible="False"
+    IsTabStop="False"
+    RequestedTheme="Dark">
+    <!-- Closed default: False until SyncOpenState so pre-Loaded dock does not steal swipe under Info. -->
     <UserControl.Resources>
         <Style x:Key="ViewerDetailsExpanderStyle" TargetType="Expander">
             <Setter Property="HorizontalAlignment" Value="Stretch" />

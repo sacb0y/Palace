@@ -145,6 +145,12 @@ public static class ViewerDetailsLayout
 
     public static bool UsesBottomSheet(double windowWidth) => false;
 
+    /// <summary>
+    /// Closed Details dock must not steal swipe/taps under Info; open card
+    /// stays hit-testable for its controls.
+    /// </summary>
+    public static bool CardHitTestVisible(bool isOpen) => isOpen;
+
     public static double EffectivePanelWidth(double availableWidth, bool bottomSheet = false)
     {
         _ = bottomSheet;

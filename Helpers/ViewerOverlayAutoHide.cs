@@ -18,6 +18,7 @@ public sealed class ViewerOverlayAutoHide
     private readonly FrameworkElement _chrome;
     private readonly FrameworkElement[] _focusElements;
     private readonly DispatcherQueueTimer _idleTimer;
+    private readonly PointerEventHandler _rootPointerPressed;
     private bool _visible = true;
     private bool _hooked;
     private bool _chromePointerOver;
@@ -31,6 +32,7 @@ public sealed class ViewerOverlayAutoHide
         _root = root;
         _chrome = chrome;
         _focusElements = focusElements;
+        _rootPointerPressed = Root_PointerPressed;
         _idleTimer = root.DispatcherQueue.CreateTimer();
         _idleTimer.IsRepeating = false;
         _idleTimer.Interval = TimeSpan.FromMilliseconds(ViewerOverlayChrome.IdleHideMs);
@@ -45,6 +47,9 @@ public sealed class ViewerOverlayAutoHide
         }
 
         _root.PointerMoved += Root_PointerMoved;
+        // Tap with no move must still wake faded chrome — including presses
+        // already Handled (mouse pan on still, buttons, media transport).
+        _root.AddHandler(UIElement.PointerPressedEvent, _rootPointerPressed, handledEventsToo: true);
         _root.PreviewKeyDown += Root_PreviewKeyDown;
         _chrome.PointerEntered += Chrome_PointerEntered;
         _chrome.PointerExited += Chrome_PointerExited;
@@ -60,6 +65,7 @@ public sealed class ViewerOverlayAutoHide
         }
 
         _root.PointerMoved -= Root_PointerMoved;
+        _root.RemoveHandler(UIElement.PointerPressedEvent, _rootPointerPressed);
         _root.PreviewKeyDown -= Root_PreviewKeyDown;
         _chrome.PointerEntered -= Chrome_PointerEntered;
         _chrome.PointerExited -= Chrome_PointerExited;
@@ -90,6 +96,8 @@ public sealed class ViewerOverlayAutoHide
     }
 
     private void Root_PointerMoved(object sender, PointerRoutedEventArgs e) => Show(resetIdle: true);
+
+    private void Root_PointerPressed(object sender, PointerRoutedEventArgs e) => Show(resetIdle: true);
 
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e) => Show(resetIdle: true);
 

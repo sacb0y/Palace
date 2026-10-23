@@ -148,6 +148,16 @@ public static class GalleryScale
         || pinchZoom > MinPinchZoom + 0.0001;
 
     /// <summary>
+    /// Fit at 1×: the manipulation panel fills the viewport so letterbox and
+    /// near-chrome swipes hit the same surface as the image. Image / HDR stay
+    /// the letterboxed rect inside (ScpHdr must not be viewport-sized).
+    /// Zoomed / Actual / Fill keep the panel equal to the image content.
+    /// Panel size is the viewport (<c>ScrStill.ActualWidth/Height</c>) — no
+    /// separate helper.
+    /// </summary>
+    public static bool FitSwipeUsesViewportPanel(bool scrolls) => !scrolls;
+
+    /// <summary>
     /// Layout size so one image pixel is one device pixel. At 150% DPI a
     /// 200×100 image is ~133×67 DIPs, not 200×100 DIPs (which stretches).
     /// </summary>

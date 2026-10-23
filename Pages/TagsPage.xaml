@@ -973,13 +973,21 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
+                        <!-- Transparent host swallows taps/holds in toolbar bounds (parity
+                             with Library / GalleryWindow). Plate is visual-only. -->
+                        <Grid
+                            x:Name="GrdViewerToolbar"
+                            Background="Transparent"
+                            Holding="ViewerToolbar_Holding"
+                            IsHoldingEnabled="True">
                         <Border
                             Padding="6,4"
                             Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
-                            CornerRadius="{StaticResource OverlayCornerRadius}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            CornerRadius="{StaticResource OverlayCornerRadius}"
+                            IsHitTestVisible="False" />
+                        <StackPanel Padding="6,4" Orientation="Horizontal" Spacing="8">
                             <ToggleButton
                                 x:Name="BtnGalleryImageInfo"
                                 Padding="8,4"
@@ -1096,7 +1104,7 @@
                                 </StackPanel>
                             </Border>
                         </StackPanel>
-                        </Border>
+                        </Grid>
                         <controls:ViewerDetailsCard
                             x:Name="CardViewerDetails"
                             Grid.Row="1"

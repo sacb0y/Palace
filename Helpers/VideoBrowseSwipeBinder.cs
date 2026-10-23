@@ -3,34 +3,51 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
+using Windows.Media.Playback;
 
 namespace Palace.Helpers;
 
 /// <summary>
-/// WinUI hookup for paused-video browse swipe on <see cref="MediaPlayerElement"/>.
-/// Touch only via <see cref="VideoBrowseSwipe"/>; mouse/pen reach transport and
-/// ContextFlyout. Not linked into Palace.Tests.
+/// WinUI hookup for video browse swipe / playing scrub on
+/// <see cref="MediaPlayerElement"/>. Touch only via <see cref="VideoBrowseSwipe"/>.
+/// Visual pager for video is deferred (docs/specs/swipe-nav.md); paging stays on
+/// this #128 path. Scrub: ProgressSlider when chrome is up, else 28 DIP strip;
+/// claim only after slop. Not linked into Palace.Tests.
 /// </summary>
 public sealed class VideoBrowseSwipeBinder
 {
+    private const long ScrubThrottleMs = 33; // ~30 Hz
+
     private readonly MediaPlayerElement _mpe;
-    private readonly Func<bool> _swipeAllowed;
+    private readonly Func<bool> _videoGesturesAllowed;
     private readonly Func<bool> _isReviewMode;
     private readonly Action<TouchGestures.SwipeAction> _onNavigate;
+    private readonly Action? _onLeavePlaying;
     private readonly VideoBrowseSwipe _swipe = new();
     private bool _hooked;
     private bool _captured;
+    private SwipeNav.DragKind _kind = SwipeNav.DragKind.None;
+    private bool _scrubCandidate;
+    private bool _scrubbing;
+    private double _scrubStartX;
+    private double _scrubStartY;
+    private TimeSpan _scrubStartPosition;
+    private long _lastScrubSeekMs;
+    private FrameworkElement? _progressSlider;
 
     public VideoBrowseSwipeBinder(
         MediaPlayerElement mpe,
         Func<bool> swipeAllowed,
         Action<TouchGestures.SwipeAction> onNavigate,
-        Func<bool>? isReviewMode = null)
+        Func<bool>? isReviewMode = null,
+        Action? onLeavePlaying = null)
     {
         _mpe = mpe;
-        _swipeAllowed = swipeAllowed;
+        _videoGesturesAllowed = swipeAllowed;
         _onNavigate = onNavigate;
         _isReviewMode = isReviewMode ?? (() => false);
+        _onLeavePlaying = onLeavePlaying;
     }
 
     public void Hook()
@@ -40,8 +57,6 @@ public sealed class VideoBrowseSwipeBinder
             return;
         }
 
-        // handledEventsToo: MPE swallows touch; no overlay catcher so mouse/pen
-        // still hit-test the element (transport + ContextFlyout).
         _mpe.AddHandler(
             UIElement.PointerPressedEvent,
             new PointerEventHandler(OnPointerPressed),
@@ -65,20 +80,14 @@ public sealed class VideoBrowseSwipeBinder
         _hooked = true;
     }
 
-    /// <summary>Cancel an in-flight swipe when playback starts / swipe disallowed.</summary>
     public void SyncAllowed()
     {
-        if (!_swipeAllowed())
+        if (!_videoGesturesAllowed())
         {
-            _swipe.Cancel();
-            _captured = false;
+            CancelAll();
         }
     }
 
-    /// <summary>
-    /// MediaTransportControls stays Visibility=Visible; Show/Hide fades the
-    /// template's ControlPanelGrid. Fall back to the control Opacity.
-    /// </summary>
     public static bool IsTransportChromeVisible(MediaTransportControls? transport)
     {
         if (transport is null)
@@ -99,18 +108,40 @@ public sealed class VideoBrowseSwipeBinder
         var device = e.Pointer.PointerDeviceType;
         var point = e.GetCurrentPoint(_mpe);
         var yFromBottom = _mpe.ActualHeight - point.Position.Y;
+        var chrome = IsTransportChromeVisible(_mpe.TransportControls);
+        var overSlider = chrome && IsOverProgressSlider(point.Position);
+        var playing = IsPlaying();
+        _kind = SwipeNav.ClassifyVideoDrag(
+            isVideo: true,
+            isPlaying: playing,
+            touchGesturesEnabled: _videoGesturesAllowed(),
+            yFromBottom: yFromBottom,
+            transportChromeVisible: chrome,
+            overProgressSlider: overSlider);
+
+        _scrubCandidate = false;
+        _scrubbing = false;
+
+        if (_kind == SwipeNav.DragKind.VideoScrub && device == PointerDeviceType.Touch)
+        {
+            // B5: arm scrub, but claim only after slop — leave transport hittable.
+            _scrubCandidate = true;
+            _scrubStartX = point.Position.X;
+            _scrubStartY = point.Position.Y;
+            _scrubStartPosition = _mpe.MediaPlayer?.PlaybackSession?.Position ?? TimeSpan.Zero;
+            return;
+        }
+
         _swipe.TryBegin(
             isTouch: device == PointerDeviceType.Touch,
             pointerId: e.Pointer.PointerId,
             x: point.Position.X,
             y: point.Position.Y,
             timestampMs: Environment.TickCount64,
-            swipeAllowed: _swipeAllowed(),
-            transportChromeVisible: IsTransportChromeVisible(_mpe.TransportControls),
+            swipeAllowed: _kind == SwipeNav.DragKind.BrowsePage,
+            transportChromeVisible: chrome,
             yFromBottom: yFromBottom);
 
-        // Stock MPE shows transport on mouse/pen click. Our AddHandler can steal
-        // that path — restore Show for mouse/pen without arming touch swipe.
         if (device is PointerDeviceType.Mouse or PointerDeviceType.Pen)
         {
             _mpe.TransportControls?.Show();
@@ -120,6 +151,27 @@ public sealed class VideoBrowseSwipeBinder
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
         var point = e.GetCurrentPoint(_mpe);
+        if (_scrubCandidate || _scrubbing)
+        {
+            var dx = point.Position.X - _scrubStartX;
+            var dy = point.Position.Y - _scrubStartY;
+            if (!_scrubbing)
+            {
+                if (!TouchGestures.ExceedsSlop(dx, dy))
+                {
+                    return;
+                }
+
+                _scrubbing = true;
+                _scrubCandidate = false;
+                _captured = _mpe.CapturePointer(e.Pointer);
+            }
+
+            ApplyScrubThrottled(point.Position.X);
+            e.Handled = true;
+            return;
+        }
+
         if (!_swipe.TryMove(e.Pointer.PointerId, point.Position.X, point.Position.Y, out var crossedSlop))
         {
             return;
@@ -139,8 +191,24 @@ public sealed class VideoBrowseSwipeBinder
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         var device = e.Pointer.PointerDeviceType;
+        if (_scrubbing || _scrubCandidate)
+        {
+            if (_scrubbing)
+            {
+                ApplyScrubThrottled(e.GetCurrentPoint(_mpe).Position.X, force: true);
+                e.Handled = true;
+            }
+
+            EndCapture(e.Pointer);
+            _scrubbing = false;
+            _scrubCandidate = false;
+            _kind = SwipeNav.DragKind.None;
+            return;
+        }
+
         var point = e.GetCurrentPoint(_mpe);
         var hadCapture = _captured;
+        var wasPlaying = IsPlaying();
         var completed = _swipe.TryComplete(
             e.Pointer.PointerId,
             point.Position.X,
@@ -152,15 +220,22 @@ public sealed class VideoBrowseSwipeBinder
             out var action,
             out var committed);
         EndCapture(e.Pointer);
-        if (completed && hadCapture && committed && _swipeAllowed())
+        _kind = SwipeNav.DragKind.None;
+        if (completed && hadCapture && committed && _videoGesturesAllowed())
         {
+            if (SwipeNav.ShouldPauseVideoOnLeave(isVideo: true, wasPlaying: wasPlaying)
+                && action is TouchGestures.SwipeAction.BrowsePrevious
+                    or TouchGestures.SwipeAction.BrowseNext)
+            {
+                _mpe.MediaPlayer?.Pause();
+                _onLeavePlaying?.Invoke();
+            }
+
             _onNavigate(action);
             e.Handled = true;
             return;
         }
 
-        // Touch tap (no swipe capture): same as stock — show transport.
-        // Mouse/pen already Show()'d on press; touch browse swipe must not.
         if (device == PointerDeviceType.Touch && !hadCapture)
         {
             _mpe.TransportControls?.Show();
@@ -169,12 +244,31 @@ public sealed class VideoBrowseSwipeBinder
 
     private void OnPointerCanceled(object sender, PointerRoutedEventArgs e)
     {
+        if (_scrubbing || _scrubCandidate)
+        {
+            EndCapture(e.Pointer);
+            _scrubbing = false;
+            _scrubCandidate = false;
+            _kind = SwipeNav.DragKind.None;
+            return;
+        }
+
         _swipe.Cancel(e.Pointer.PointerId);
         EndCapture(e.Pointer);
+        _kind = SwipeNav.DragKind.None;
     }
 
     private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e)
     {
+        if (_scrubbing || _scrubCandidate)
+        {
+            _scrubbing = false;
+            _scrubCandidate = false;
+            _captured = false;
+            _kind = SwipeNav.DragKind.None;
+            return;
+        }
+
         if (e.Pointer.PointerId != _swipe.PointerId)
         {
             return;
@@ -182,6 +276,87 @@ public sealed class VideoBrowseSwipeBinder
 
         _swipe.Cancel(e.Pointer.PointerId);
         _captured = false;
+        _kind = SwipeNav.DragKind.None;
+    }
+
+    private void ApplyScrubThrottled(double x, bool force = false)
+    {
+        var now = Environment.TickCount64;
+        if (!force && now - _lastScrubSeekMs < ScrubThrottleMs)
+        {
+            return;
+        }
+
+        _lastScrubSeekMs = now;
+        ApplyScrub(x);
+    }
+
+    private void ApplyScrub(double x)
+    {
+        if (_mpe.MediaPlayer?.PlaybackSession is not { } session)
+        {
+            return;
+        }
+
+        var duration = session.NaturalDuration;
+        if (duration <= TimeSpan.Zero || _mpe.ActualWidth <= 1)
+        {
+            return;
+        }
+
+        var dx = x - _scrubStartX;
+        var delta = TimeSpan.FromMilliseconds(duration.TotalMilliseconds * (dx / _mpe.ActualWidth));
+        var next = _scrubStartPosition + delta;
+        if (next < TimeSpan.Zero)
+        {
+            next = TimeSpan.Zero;
+        }
+        else if (next > duration)
+        {
+            next = duration;
+        }
+
+        session.Position = next;
+    }
+
+    private bool IsOverProgressSlider(Point position)
+    {
+        _progressSlider ??= FindDescendantByName(_mpe.TransportControls, "ProgressSlider") as FrameworkElement
+            ?? FindDescendantByName(_mpe, "ProgressSlider") as FrameworkElement;
+        if (_progressSlider is null
+            || _progressSlider.Visibility != Visibility.Visible
+            || _progressSlider.ActualWidth <= 0
+            || _progressSlider.ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        try
+        {
+            var transform = _progressSlider.TransformToVisual(_mpe);
+            var topLeft = transform.TransformPoint(new Point(0, 0));
+            var rect = new Rect(topLeft.X, topLeft.Y, _progressSlider.ActualWidth, _progressSlider.ActualHeight);
+            // Small vertical pad so the thin slider is hittable.
+            rect.Y -= 8;
+            rect.Height += 16;
+            return rect.Contains(position);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool IsPlaying() =>
+        _mpe.MediaPlayer?.PlaybackSession?.PlaybackState == MediaPlaybackState.Playing;
+
+    private void CancelAll()
+    {
+        _swipe.Cancel();
+        _scrubbing = false;
+        _scrubCandidate = false;
+        _captured = false;
+        _kind = SwipeNav.DragKind.None;
     }
 
     private void EndCapture(Pointer? pointer)
@@ -203,8 +378,13 @@ public sealed class VideoBrowseSwipeBinder
         }
     }
 
-    private static FrameworkElement? FindDescendantByName(DependencyObject root, string name)
+    private static FrameworkElement? FindDescendantByName(DependencyObject? root, string name)
     {
+        if (root is null)
+        {
+            return null;
+        }
+
         var count = VisualTreeHelper.GetChildrenCount(root);
         for (var i = 0; i < count; i++)
         {

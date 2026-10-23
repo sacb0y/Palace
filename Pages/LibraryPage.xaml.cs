@@ -10,6 +10,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.UI.Core;
+using Palace.Controls;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -71,6 +72,12 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     private string? _sectionToggleFocusPath;
     private VirtualKey _mosaicArrow;
+    private Border? _pagerChipOld;
+    private TextBlock? _pagerChipOldTitle;
+    private TextBlock? _pagerChipOldPos;
+    private Border? _pagerChipNew;
+    private TextBlock? _pagerChipNewTitle;
+    private TextBlock? _pagerChipNewPos;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
     /// <summary>ItemContainer pre-armed for mouse DnD (hover); null when touch-safe.</summary>
@@ -108,8 +115,8 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestRestoreMosaicSelection = () =>
             DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
-        SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
-        SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
+        // Still gestures hooked from Loaded (both first-load and Settings return) —
+        // avoid ctor + Loaded double-subscribe on first entry.
         // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
         SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
         MpeOverlay.ContextFlyout = FlyOverlayAsset;
@@ -117,7 +124,13 @@ public sealed partial class LibraryPage : Page
             MpeOverlay,
             VideoBrowseSwipeAllowedNow,
             OnOverlayReviewSwipe,
-            isReviewMode: () => ViewModel.IsReviewMode);
+            isReviewMode: () => ViewModel.IsReviewMode,
+            onLeavePlaying: () =>
+            {
+                // Spec: leave pauses + saves position (Pause keeps PlaybackSession.Position).
+                // Visual video pager is deferred (docs/specs/swipe-nav.md §6) — when that
+                // lands, pause + save here before the still pager takes over.
+            });
         _videoBrowseSwipe.Hook();
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
@@ -194,6 +207,10 @@ public sealed partial class LibraryPage : Page
             // or the overlay still on that return.
             if (_shellReady)
             {
+                // NavigationCacheMode=Required: Unloaded dropped handlers — re-hook.
+                HookOverlayStillGestures();
+                PerformanceSettings.Changed -= PerformanceSettings_Changed;
+                PerformanceSettings.Changed += PerformanceSettings_Changed;
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
                 ViewModel.SectionToggleStarting = OnSectionToggleStarting;
@@ -223,6 +240,7 @@ public sealed partial class LibraryPage : Page
             HookShellNavPaneTracking();
             RefreshLibraryLayout();
             RefreshMosaicToolbarOverflow();
+            HookOverlayStillGestures();
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
@@ -259,6 +277,11 @@ public sealed partial class LibraryPage : Page
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
             UnhookLibraryLayoutTracking();
             UnhookShellNavPaneTracking();
+            // Still gesture handlers: -= in HookOverlayStillGestures on next Loaded
+            // (NavigationCacheMode=Required reuses this page after Settings).
+            SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayReviewSwipe;
+            SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
+            SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
             UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
@@ -277,6 +300,20 @@ public sealed partial class LibraryPage : Page
             }
         };
         SizeChanged += (_, _) => RefreshLibraryLayout();
+    }
+
+    /// <summary>
+    /// Idempotent still-gesture hookups. Call from every Loaded path (first load
+    /// and NavigationCacheMode reuse after Settings) so swipe / long-press work.
+    /// </summary>
+    private void HookOverlayStillGestures()
+    {
+        SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayReviewSwipe;
+        SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
+        SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
+        SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
+        SrfOverlayStill.ChipCrossFadeRequested += OnOverlayChipCrossFade;
+        SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
     }
 
     private void PerformanceSettings_Changed(object? sender, EventArgs e)
@@ -1900,6 +1937,64 @@ public sealed partial class LibraryPage : Page
         _overlayHoldFlyoutShown = false;
     }
 
+    /// <summary>
+    /// B4: true old→new name/position chip cross-fade at pager commit start.
+    /// </summary>
+    private void OnOverlayChipCrossFade()
+    {
+        var gallery = ViewModel.OverlayGallery;
+        if (gallery is null || !ViewerSettings.TouchGesturesEnabled)
+        {
+            return;
+        }
+
+        EnsureOverlayPagerChips();
+        // Capture old before navigate; StillRevision updates new-chip text.
+        var oldTitle = gallery.Title;
+        var oldPos = gallery.PositionLabel;
+        PagerChipCrossFade.Begin(
+            DispatcherQueue,
+            _pagerChipNew!,
+            _pagerChipOld!,
+            _pagerChipOldTitle!,
+            _pagerChipOldPos!,
+            oldTitle,
+            oldPos,
+            collapseNewOnComplete: true);
+    }
+
+    private void EnsureOverlayPagerChips()
+    {
+        if (_pagerChipOld is not null)
+        {
+            return;
+        }
+
+        _pagerChipOld = PagerChipCrossFade.CreateChip(out _pagerChipOldTitle!, out _pagerChipOldPos!);
+        _pagerChipNew = PagerChipCrossFade.CreateChip(out _pagerChipNewTitle!, out _pagerChipNewPos!);
+        // Ephemeral — shown only during cross-fade, then collapsed.
+        _pagerChipNew.Visibility = Visibility.Collapsed;
+        _pagerChipNew.Opacity = 0;
+        Canvas.SetZIndex(_pagerChipOld, 3);
+        Canvas.SetZIndex(_pagerChipNew, 3);
+        if (GrdGalleryOverlay.Children is { } children)
+        {
+            children.Add(_pagerChipNew);
+            children.Add(_pagerChipOld);
+        }
+    }
+
+    private void SyncOverlayPagerChipText()
+    {
+        if (_pagerChipNewTitle is null || ViewModel.OverlayGallery is not { } g)
+        {
+            return;
+        }
+
+        _pagerChipNewTitle.Text = g.Title;
+        _pagerChipNewPos!.Text = g.PositionLabel;
+    }
+
     private void OnOverlayReviewSwipe(TouchGestures.SwipeAction action)
     {
         // Browse swipes (IsReviewMode=false) are prev/next only — #128.
@@ -1982,12 +2077,10 @@ public sealed partial class LibraryPage : Page
 
     private bool VideoBrowseSwipeAllowedNow()
     {
-        var playing = MpeOverlay.MediaPlayer?.PlaybackSession?.PlaybackState
-            == Windows.Media.Playback.MediaPlaybackState.Playing;
-        return TouchGestures.AllowsVideoBrowseSwipe(
-            ViewModel.OverlayGallery?.IsVideo == true,
-            playing,
-            ViewerSettings.TouchGesturesEnabled);
+        // Playing OK — binder routes scrub-bar vs page (docs/specs/swipe-nav.md).
+        // AllowsVideoBrowseSwipe stays paused-only for #128 callers/tests.
+        return ViewModel.OverlayGallery?.IsVideo == true
+            && ViewerSettings.TouchGesturesEnabled;
     }
 
     private void SyncVideoBrowseSwipeHitTest() => _videoBrowseSwipe?.SyncAllowed();
@@ -1996,6 +2089,12 @@ public sealed partial class LibraryPage : Page
         Windows.Media.Playback.MediaPlaybackSession sender,
         object args) =>
         DispatcherQueue.TryEnqueue(SyncVideoBrowseSwipeHitTest);
+
+    private void ViewerToolbar_Holding(object sender, HoldingRoutedEventArgs e)
+    {
+        // Gaps between toolbar buttons must not open the asset context menu.
+        e.Handled = true;
+    }
 
     private void GalleryOverlay_Holding(object sender, HoldingRoutedEventArgs e)
     {
@@ -3307,6 +3406,13 @@ public sealed partial class LibraryPage : Page
             or nameof(GalleryViewModel.IsImage))
         {
             UpdateOverlayMedia();
+        }
+
+        if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
+            or nameof(GalleryViewModel.Title)
+            or nameof(GalleryViewModel.PositionLabel))
+        {
+            SyncOverlayPagerChipText();
         }
 
         if (e.PropertyName is nameof(GalleryViewModel.LoopVideo))
