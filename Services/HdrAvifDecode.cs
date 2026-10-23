@@ -21,7 +21,7 @@ internal static unsafe class HdrAvifDecode
         int viewportPixelHeight,
         ImageScaling scaling,
         CancellationToken cancellation,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         if (!CanDecode(path, probe))
         {
@@ -95,7 +95,8 @@ internal static unsafe class HdrAvifDecode
                 viewportPixelHeight,
                 ImageScaling.Fit,
                 wantRgba: false,
-                cancellation) is { } packed
+                cancellation,
+                buildWorking: false) is { } packed
                 ? new HdrStats(
                     packed.MaxNits,
                     packed.AvgNits,
@@ -141,7 +142,7 @@ internal static unsafe class HdrAvifDecode
         ImageScaling scaling,
         bool wantRgba,
         CancellationToken cancellation,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         byte[] bytes;
         try
@@ -349,7 +350,7 @@ internal static unsafe class HdrAvifDecode
         HdrProbe probe,
         bool wantRgba,
         CancellationToken cancellation,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         var count = width * height;
         if (count <= 0 || rowBytes < width * 8)
