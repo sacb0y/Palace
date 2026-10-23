@@ -85,21 +85,19 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             dipH = _panel.Height;
         }
 
-        // Prefer SwapChainPanel CompositionScale (what DXGI composition uses)
-        // over XamlRoot.RasterizationScale — a mismatch sized the buffer in
-        // physical pixels without SetMatrixTransform and cropped Fit on DPI-
-        // scaled SDR laptops (all HDR formats on the scRGB present path).
-        var scaleX = _panel.CompositionScaleX;
-        var scaleY = _panel.CompositionScaleY;
-        if (scaleX <= 0 || !float.IsFinite(scaleX))
-        {
-            scaleX = rasterScale > 0 ? rasterScale : 1f;
-        }
-
-        if (scaleY <= 0 || !float.IsFinite(scaleY))
-        {
-            scaleY = rasterScale > 0 ? rasterScale : 1f;
-        }
+        // Prefer CompositionScale when the panel is laid out (what DXGI uses).
+        // Collapsed / never-shown SwapChainPanel often reports 1.0 even at
+        // 125%/150% DPI — GalleryStillSurface may arm Opacity=0 first, but
+        // same-frame Actual can still be 0, so fall back to XamlRoot
+        // RasterizationScale via ResolveHdrPanelScale.
+        var panelReliable = GalleryPresent.HdrPanelCompositionScaleReliable(
+            _panel.Visibility == Microsoft.UI.Xaml.Visibility.Visible,
+            _panel.ActualWidth,
+            _panel.ActualHeight);
+        var scaleX = GalleryPresent.ResolveHdrPanelScale(
+            _panel.CompositionScaleX, rasterScale, panelReliable);
+        var scaleY = GalleryPresent.ResolveHdrPanelScale(
+            _panel.CompositionScaleY, rasterScale, panelReliable);
 
         if (dipW < 2 || dipH < 2)
         {

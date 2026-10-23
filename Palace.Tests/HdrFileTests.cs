@@ -561,6 +561,16 @@ public sealed class HdrFileTests
         Assert.False(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\A.HDR"));
         Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\b.hdr"));
         Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", null));
+
+        // Collapsed / never-shown SwapChainPanel: CompositionScale 1.0 is not
+        // trustworthy — use RasterizationScale (125%/150% DPI Fit).
+        Assert.False(GalleryPresent.HdrPanelCompositionScaleReliable(false, 800, 600));
+        Assert.False(GalleryPresent.HdrPanelCompositionScaleReliable(true, 0, 0));
+        Assert.True(GalleryPresent.HdrPanelCompositionScaleReliable(true, 800, 600));
+        Assert.Equal(1.5f, GalleryPresent.ResolveHdrPanelScale(1f, 1.5f, panelCompositionScaleReliable: false), 3);
+        Assert.Equal(1.25f, GalleryPresent.ResolveHdrPanelScale(1.25f, 1.5f, panelCompositionScaleReliable: true), 3);
+        Assert.Equal(1f, GalleryPresent.ResolveHdrPanelScale(1f, 1f, panelCompositionScaleReliable: true), 3);
+        Assert.Equal(1f, GalleryPresent.ResolveHdrPanelScale(0f, 0f, panelCompositionScaleReliable: false), 3);
     }
 
     [Fact]

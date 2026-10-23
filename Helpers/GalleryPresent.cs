@@ -289,8 +289,10 @@ public static class GalleryPresent
     /// <paramref name="compositionScaleY"/>. Buffer = round(DIP × scale)
     /// and pair with <c>IDXGISwapChain2::SetMatrixTransform(1/scale)</c>
     /// so the panel does not double-scale (classic zoomed/cropped HDR Fit).
-    /// Prefer <c>CompositionScaleX/Y</c> over <c>XamlRoot.RasterizationScale</c>
-    /// alone — they can differ under DPI or RenderTransform.
+    /// Prefer a reliable <c>CompositionScaleX/Y</c> over
+    /// <c>XamlRoot.RasterizationScale</c> alone — they can differ under DPI or
+    /// RenderTransform. When the panel has never been shown, use
+    /// <see cref="ResolveHdrPanelScale"/> (Collapsed panels often report 1.0).
     /// </summary>
     public static (int Width, int Height) SwapchainPhysicalSize(
         double dipWidth,
@@ -308,6 +310,49 @@ public static class GalleryPresent
         var h = Math.Max(1, (int)Math.Round(Math.Max(dipHeight, 0) * sy));
         return (w, h);
     }
+
+    /// <summary>
+    /// DXGI buffer scale for <c>SwapChainPanel</c>. Prefer CompositionScale when
+    /// the panel has a real laid-out size (Visible + Actual ≥ 2). A Collapsed or
+    /// never-shown panel often reports CompositionScale 1.0 even at 125%/150%
+    /// DPI — use <paramref name="rasterizationScale"/>
+    /// (<c>XamlRoot.RasterizationScale</c>) then.
+    /// </summary>
+    public static float ResolveHdrPanelScale(
+        float compositionScale,
+        float rasterizationScale,
+        bool panelCompositionScaleReliable)
+    {
+        if (panelCompositionScaleReliable
+            && compositionScale > 0
+            && float.IsFinite(compositionScale))
+        {
+            return compositionScale;
+        }
+
+        if (rasterizationScale > 0 && float.IsFinite(rasterizationScale))
+        {
+            return rasterizationScale;
+        }
+
+        if (compositionScale > 0 && float.IsFinite(compositionScale))
+        {
+            return compositionScale;
+        }
+
+        return 1f;
+    }
+
+    /// <summary>
+    /// True when <c>SwapChainPanel.CompositionScaleX/Y</c> is trustworthy for
+    /// buffer sizing (Visible with a real Actual size). Collapsed / opacity-arm
+    /// before layout must fall back to RasterizationScale.
+    /// </summary>
+    public static bool HdrPanelCompositionScaleReliable(
+        bool panelVisible,
+        double actualWidth,
+        double actualHeight) =>
+        panelVisible && actualWidth >= 2 && actualHeight >= 2;
 
     /// <summary>
     /// True when Fit rasterization into a Fit-sized swapchain buffer maps the

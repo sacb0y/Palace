@@ -448,10 +448,12 @@ public sealed partial class GalleryStillSurface : UserControl
                     }
                     else
                     {
-                        // Browse: promote the neighbor that was sliding in onto
-                        // current before jump/settle — avoids flash-back of the
-                        // previous still / HDR frame (docs/specs/swipe-nav.md).
-                        PromoteNeighborOntoCurrent(_pendingAdvanceSlot);
+                        // Browse: jump/settle from the neighbor slot. Do not
+                        // copy neighbor BitmapImage onto ImgStill —
+                        // RefreshAsync (below) assigns a new Source and would
+                        // overwrite it (SDR flash-back promote was a no-op).
+                        // Stale HDR is already cleared above; ScpHdr stays
+                        // hidden until Present (docs/specs/swipe-nav.md).
                         FinishAwaitingContentSettle();
                     }
                 }
@@ -939,10 +941,13 @@ public sealed partial class GalleryStillSurface : UserControl
             _presenter ??= new HdrSwapchainPresenter(ScpHdr);
             presenter = _presenter;
             ApplyScaleLayout();
-            // Keep ScpHdr collapsed until Present succeeds — showing it early
-            // flashes the previous still's swapchain after navigate (flicker /
-            // wrong-aspect letterbox). Size comes from assigned Width/Height
-            // via HdrPanelDips (Collapsed ActualWidth is 0).
+            // Arm ScpHdr at Opacity 0 before Present so CompositionScale can
+            // settle to real DPI (Collapsed panels often report 1.0). Do not
+            // raise Opacity until Present succeeds — that would flash the
+            // previous still's swapchain (flicker / wrong-aspect letterbox).
+            // Size still comes from assigned Width/Height via HdrPanelDips when
+            // Actual is 0. Presenter also falls back to RasterizationScale.
+            ArmHdrPanelForPresent();
             ImgStill.Visibility = Visibility.Visible;
             (dipW, dipH) = HdrPanelDips();
             scale = XamlRoot?.RasterizationScale ?? 1.0;
@@ -1039,6 +1044,7 @@ public sealed partial class GalleryStillSurface : UserControl
                 }
 
                 // Reveal swapchain only after this frame uploaded — never the prior still.
+                ScpHdr.Opacity = 1;
                 ScpHdr.Visibility = Visibility.Visible;
                 ImgStill.Visibility = Visibility.Collapsed;
                 galleryRef.SetHdrPresentResult(
@@ -1268,8 +1274,24 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void HideHdr()
     {
+        ScpHdr.Opacity = 1;
         ScpHdr.Visibility = Visibility.Collapsed;
         ImgStill.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Show <see cref="ScpHdr"/> at Opacity 0 so CompositionScale tracks DPI
+    /// before the first Present, without flashing the prior swapchain frame.
+    /// </summary>
+    private void ArmHdrPanelForPresent()
+    {
+        if (ScpHdr.Visibility == Visibility.Visible && ScpHdr.Opacity > 0)
+        {
+            return;
+        }
+
+        ScpHdr.Opacity = 0;
+        ScpHdr.Visibility = Visibility.Visible;
     }
 
     private void ClearHdrCache()
@@ -1299,32 +1321,6 @@ public sealed partial class GalleryStillSurface : UserControl
         ClearHdrCache();
         HideHdr();
         _gallery?.SetHdrPresentResult(false, false);
-        ApplyScaleLayout();
-    }
-
-    /// <summary>
-    /// Browse commit: copy the neighbor BitmapImage that was already sliding in
-    /// onto ImgStill before jump/settle — prevents flash-back to the old still.
-    /// </summary>
-    private void PromoteNeighborOntoCurrent(int commitSlot)
-    {
-        if (!SwipeNav.PromotesNeighborOnCommit(IsReviewMode) || commitSlot == 0)
-        {
-            HideNeighborSurfaces();
-            return;
-        }
-
-        var delta = SwipeNav.PromoteNeighborDelta(commitSlot);
-        Image? neighbor = delta > 0 ? ImgNeighborNext : delta < 0 ? ImgNeighborPrev : null;
-        if (neighbor?.Source is { } source)
-        {
-            ImgStill.Source = source;
-            // Neighbor LargePreview / poster is a pipeline placeholder for layout.
-            _sdrIsPipelinePreview = true;
-            ImgStill.Visibility = Visibility.Visible;
-        }
-
-        HideNeighborSurfaces();
         ApplyScaleLayout();
     }
 

@@ -310,19 +310,6 @@ public static class SwipeNav
         _ => 0
     };
 
-    /// <summary>
-    /// Browse commit: promote the neighbor that was sliding in onto the current
-    /// surface before jump/settle — Review never reveals a neighbor during drag.
-    /// </summary>
-    public static bool PromotesNeighborOnCommit(bool reviewMode) => !reviewMode;
-
-    /// <summary>
-    /// Neighbor delta to promote after StillRevision for a pending browse slot.
-    /// Slot +1 (next) → promote from the next neighbor image (−wait: the image
-    /// that was on the commit side). Slot is CommitSlot at release.
-    /// </summary>
-    public static int PromoteNeighborDelta(int commitSlot) => commitSlot;
-
     /// <summary>Stuck awaiting-content snap-back (ms) — browse.</summary>
     public const int AwaitingContentTimeoutMs = 500;
 
