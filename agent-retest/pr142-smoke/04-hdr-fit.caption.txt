@@ -1,0 +1,1 @@
+﻿Fit HDR lapa_1k.hdr (Radiance)

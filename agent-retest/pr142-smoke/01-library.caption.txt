@@ -1,0 +1,1 @@
+﻿Library tiles=4 (SFW jxl/exr/hdr/png)

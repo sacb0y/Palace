@@ -1,0 +1,5 @@
+01-library.png — Library mosaic with SFW tiles (jxl/exr/hdr/png)
+02-jxl-fit.png — Fit + Info: room.jxl (HDR JPEG XL)
+03-exr-fit.png — Fit + Info: sample.exr (OpenEXR)
+04-hdr-fit.png — Fit + Info: lapa_1k.hdr (Radiance HDR)
+05-end-alive.png — App still alive after smoke

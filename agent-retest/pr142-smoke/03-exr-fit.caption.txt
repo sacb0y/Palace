@@ -1,0 +1,1 @@
+﻿Fit EXR sample.exr (OpenEXR)

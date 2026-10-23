@@ -1,0 +1,9 @@
+tip=8378136f687994798e0d5849da7ff96d304cc0cc
+branch=cursor/imaging-p2-r1r3r4-d39b
+identity=PalaceSmoke-A142
+version=0.3.9.0 packaged Debug
+host=FENRIR-STUDIO
+sfw=C:\Users\iadag\AppData\Local\Temp\palace-pr142-smoke\sfw
+result=PASS
+opened=JXL(room.jxl),EXR(sample.exr),HDR(lapa_1k.hdr) in Fit
+aliveEnd=True
