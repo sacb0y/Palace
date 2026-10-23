@@ -37,6 +37,12 @@ public static class Normalize
             _ => null
         };
 
+        // B3: custom chromaticity matrix once per frame (not per pixel).
+        Span<float> customM = stackalloc float[9];
+        var useCustom = options.UsesCustomChromaticities
+            && options.Chromaticities is { } chrom
+            && Primaries.TryFillBt2020Matrix(chrom, customM);
+
         for (var i = 0; i < count; i++)
         {
             var o = i * 4;
@@ -50,7 +56,10 @@ public static class Normalize
                 clipHits++;
             }
 
-            ToWorking(er, eg, eb, options, out var r, out var g, out var b);
+            ToWorking(
+                er, eg, eb, options,
+                useCustom ? customM : ReadOnlySpan<float>.Empty,
+                out var r, out var g, out var b);
             ClampNegLuminance(ref r, ref g, ref b);
 
             output[o] = r;
@@ -80,11 +89,16 @@ public static class Normalize
         out float g,
         out float b)
     {
+        Span<float> customM = stackalloc float[9];
+        var useCustom = options.UsesCustomChromaticities
+            && options.Chromaticities is { } chrom
+            && Primaries.TryFillBt2020Matrix(chrom, customM);
         ToWorking(
             ColorMath.Sanitize(er),
             ColorMath.Sanitize(eg),
             ColorMath.Sanitize(eb),
             options,
+            useCustom ? customM : ReadOnlySpan<float>.Empty,
             out r,
             out g,
             out b);
@@ -119,6 +133,7 @@ public static class Normalize
         float eg,
         float eb,
         NormalizeOptions options,
+        ReadOnlySpan<float> customMatrix,
         out float r,
         out float g,
         out float b)
@@ -130,7 +145,8 @@ public static class Normalize
                 r = ColorMath.PqEotf(er) * ColorMath.PqPeakNits * inv203;
                 g = ColorMath.PqEotf(eg) * ColorMath.PqPeakNits * inv203;
                 b = ColorMath.PqEotf(eb) * ColorMath.PqPeakNits * inv203;
-                // PQ masters are BT.2020.
+                // A2: honor options.Primaries after EOTF (Bt2020 = no-op).
+                ApplyPrimariesAfterEotf(ref r, ref g, ref b, options.EffectivePrimaries);
                 return;
 
             case TransferKind.Hlg:
@@ -142,6 +158,7 @@ public static class Normalize
                 r = nr * inv203;
                 g = ng * inv203;
                 b = nb * inv203;
+                ApplyPrimariesAfterEotf(ref r, ref g, ref b, options.EffectivePrimaries);
                 return;
             }
 
@@ -160,10 +177,9 @@ public static class Normalize
                 r = er * w * inv203;
                 g = eg * w * inv203;
                 b = eb * w * inv203;
-                if (options.UsesCustomChromaticities
-                    && options.Chromaticities is { } chrom
-                    && Primaries.TryToBt2020(r, g, b, chrom, out r, out g, out b))
+                if (customMatrix.Length >= 9)
                 {
+                    Primaries.ApplyMatrix(r, g, b, customMatrix, out r, out g, out b);
                     return;
                 }
 
@@ -172,13 +188,31 @@ public static class Normalize
             }
 
             default:
-                // SDR sRGB / BT.709.
+                // SDR sRGB OETF; A2: convert from options.Primaries (not hard-coded 709).
                 r = ColorMath.SrgbEotf(er);
                 g = ColorMath.SrgbEotf(eg);
                 b = ColorMath.SrgbEotf(eb);
-                Primaries.ToBt2020(r, g, b, ColorPrimaries.Bt709, out r, out g, out b);
+                Primaries.ToBt2020(r, g, b, options.EffectivePrimaries, out r, out g, out b);
                 return;
         }
+    }
+
+    /// <summary>
+    /// After EOTF, convert linear light from <paramref name="source"/> into
+    /// BT.2020 when the option primaries are not already BT.2020.
+    /// </summary>
+    private static void ApplyPrimariesAfterEotf(
+        ref float r,
+        ref float g,
+        ref float b,
+        ColorPrimaries source)
+    {
+        if (source == ColorPrimaries.Bt2020)
+        {
+            return;
+        }
+
+        Primaries.ToBt2020(r, g, b, source, out r, out g, out b);
     }
 
     private static void ClampNegLuminance(ref float r, ref float g, ref float b)

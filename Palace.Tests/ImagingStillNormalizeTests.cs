@@ -54,6 +54,49 @@ public class ImagingStillNormalizeTests
         Assert.Equal(ColorPrimaries.Bt2020, opts.Primaries);
     }
 
+    /// <summary>A1: BT.2020 linear out must not be tagged DisplayP3 / Bt709.</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(2)]
+    [InlineData(11)]
+    [InlineData(12)]
+    public void A1_OptionsForJxl_Linear_UsesBt2020WhenWideOut(int? cicp)
+    {
+        var opts = ImagingStillNormalize.OptionsForJxl(
+            JxlBufferTransfer.Linear, HdrTransfer.Pq, cicp, 1000f);
+        Assert.Equal(ColorPrimaries.Bt2020, opts.Primaries);
+
+        // Identity on a BT.2020 linear pixel (IT=1000 → ×1000/203).
+        var buf = new float[] { 0.5f, 0.2f, 0.1f, 1f };
+        var frame = ImagingStillNormalize.Run(buf, 1, 1, opts);
+        AssertNear(0.5f * 1000f / 203f, frame.Rgba[0], 1e-4f);
+        AssertNear(0.2f * 1000f / 203f, frame.Rgba[1], 1e-4f);
+        AssertNear(0.1f * 1000f / 203f, frame.Rgba[2], 1e-4f);
+    }
+
+    /// <summary>A2: Pq + DisplayP3 must differ from Pq + Bt2020 on a non-grey pixel.</summary>
+    [Fact]
+    public void A2_Pq_DisplayP3_DiffersFromBt2020()
+    {
+        var buf = new float[] { 0.5f, 0.2f, 0.1f, 1f };
+        var p3 = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Pq, ColorPrimaries.DisplayP3));
+        var bt = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Pq, ColorPrimaries.Bt2020));
+        Assert.True(
+            Math.Abs(p3.Rgba[0] - bt.Rgba[0]) > 1e-3f
+            || Math.Abs(p3.Rgba[1] - bt.Rgba[1]) > 1e-3f
+            || Math.Abs(p3.Rgba[2] - bt.Rgba[2]) > 1e-3f,
+            "P3 and BT.2020 PQ paths must diverge on a chromatic sample");
+    }
+
+    [Fact]
+    public void A2_Sdr_DisplayP3_DiffersFromBt709()
+    {
+        var buf = new float[] { 0.8f, 0.2f, 0.1f, 1f };
+        var p3 = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Sdr, ColorPrimaries.DisplayP3));
+        var bt = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Sdr, ColorPrimaries.Bt709));
+        Assert.True(Math.Abs(p3.Rgba[0] - bt.Rgba[0]) > 1e-4f);
+    }
+
     [Fact]
     public void Fixture_PqDump_ViaGlue_WithinOnePercentOfMaster()
     {
@@ -104,9 +147,23 @@ public class ImagingStillNormalizeTests
     }
 
     [Fact]
+    public void OptionsForExr_WhiteLuminance203_MapsOneToOne()
+    {
+        using var ms = new MemoryStream();
+        ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]);
+        WriteAttr(ms, "whiteLuminance", "float", BitConverter.GetBytes(203f));
+        ms.WriteByte(0);
+        var opts = ImagingStillNormalize.OptionsForExr(ms.ToArray());
+        Assert.Equal(203f, opts.WhiteLuminance);
+        Normalize.Pixel(1f, 1f, 1f, opts, out var r, out var g, out var b);
+        AssertNear(1f, r, 1e-4f);
+        AssertNear(1f, g, 1e-4f);
+        AssertNear(1f, b, 1e-4f);
+    }
+
+    [Fact]
     public void OptionsForExr_ReadsWhiteLuminanceAndChromaticities()
     {
-        // Synthetic header: Display P3 + whiteLuminance 100.
         var chrom = Chromaticities.DisplayP3;
         using var ms = new MemoryStream();
         ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]);
@@ -119,17 +176,16 @@ public class ImagingStillNormalizeTests
         Assert.False(opts.UsesCustomChromaticities);
     }
 
+    /// <summary>B3 / A6: ACEScg-like custom chrom — coloured pixel vs reference.</summary>
     [Fact]
-    public void CustomChromaticities_LinearScene_UsesMatrix()
+    public void CustomChromaticities_AceScgLike_ColouredPixel()
     {
-        // Slightly off BT.709 → custom path (not MatchKnown).
+        // ACEScg xy (AP1) D60 white — MatchKnown null.
         var chrom = new Chromaticities(
-            0.64f, 0.33f,
-            0.30f, 0.60f,
-            0.15f, 0.06f,
-            0.3127f, 0.3290f);
-        // Nudge red x so MatchKnown fails.
-        chrom = chrom with { Rx = 0.65f };
+            0.713f, 0.293f,
+            0.165f, 0.830f,
+            0.128f, 0.044f,
+            0.32168f, 0.33767f);
         Assert.Null(chrom.MatchKnown());
 
         var opts = new NormalizeOptions(
@@ -139,10 +195,50 @@ public class ImagingStillNormalizeTests
             Chromaticities: chrom);
         Assert.True(opts.UsesCustomChromaticities);
 
-        Normalize.Pixel(1f, 1f, 1f, opts, out var r, out var g, out var b);
-        // White should stay near 80/203 after convert.
-        var expected = ImagingConstants.ScrgbNits / ImagingConstants.RefWhiteNits;
-        AssertNear(expected, ImagingConstants.Bt2020Y(r, g, b), 0.05f);
+        Normalize.Pixel(0.5f, 0.2f, 0.1f, opts, out var r, out var g, out var b);
+        // Reference from Doktor probe (ACEScg → BT.2020 @ 80/203 scale).
+        AssertNear(0.20032f, r, 0.002f);
+        AssertNear(0.07865f, g, 0.002f);
+        AssertNear(0.03762f, b, 0.002f);
+    }
+
+    [Fact]
+    public void B2_TryRun_OverBudget_ReturnsNull()
+    {
+        var opts = ImagingStillNormalize.OptionsForRadiance();
+        // Claim a huge frame without allocating — budget check is on w×h.
+        Assert.Null(ImagingStillNormalize.TryRun([], ImagingStillNormalize.MaxWorkingPixels + 1, 1, opts));
+        Assert.False(ImagingStillNormalize.FitsWorkingBudget(4096, 4096)); // 16.7 MP
+        Assert.True(ImagingStillNormalize.FitsWorkingBudget(4000, 4000)); // 16 MP
+    }
+
+    /// <summary>B1: NaN/Inf in EXR-like float buffer → finite present stats.</summary>
+    [Fact]
+    public void B1_ExrSanitizeNonFinite_PresentStatsFinite()
+    {
+        var rgba = new float[]
+        {
+            1f, 1f, 1f, 1f,
+            float.NaN, 0.5f, 0.5f, 1f,
+            0.5f, float.PositiveInfinity, 0.5f, 1f,
+            0.25f, 0.25f, 0.25f, float.NaN,
+        };
+        ExrFile.SanitizeNonFinite(rgba);
+        foreach (var v in rgba)
+        {
+            Assert.True(float.IsFinite(v), $"non-finite after sanitize: {v}");
+        }
+
+        Assert.Equal(0f, rgba[4]); // NaN R → 0
+        Assert.Equal(0f, rgba[9]); // +Inf G → 0
+        Assert.Equal(1f, rgba[15]); // NaN A → 1
+
+        var frame = RadianceFile.FrameFromScrgb(rgba, 2, 2);
+        Assert.True(float.IsFinite(frame.MaxScrgb));
+        Assert.True(float.IsFinite(frame.MaxNits));
+        Assert.True(float.IsFinite(frame.AvgNits));
+        Assert.True(float.IsFinite(frame.MinNits));
+        Assert.False(float.IsNaN(frame.MaxScrgb));
     }
 
     private static void AssertNear(float expected, float actual, float tol) =>

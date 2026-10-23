@@ -39,6 +39,7 @@ internal static class JxlDecode
         int maxPixels = HdrJxlPresent.PresentMaxPixels,
         HdrTransfer transfer = HdrTransfer.Srgb,
         int? cicpPrimaries = null,
+        bool buildWorking = false,
         CancellationToken cancellation = default)
     {
         byte[] bytes;
@@ -52,7 +53,7 @@ internal static class JxlDecode
             return null;
         }
 
-        return TryDecode(bytes, maxPixels, transfer, cicpPrimaries, cancellation);
+        return TryDecode(bytes, maxPixels, transfer, cicpPrimaries, buildWorking, cancellation);
     }
 
     public static Frame? TryDecode(
@@ -60,6 +61,7 @@ internal static class JxlDecode
         int maxPixels = HdrJxlPresent.PresentMaxPixels,
         HdrTransfer transfer = HdrTransfer.Srgb,
         int? cicpPrimaries = null,
+        bool buildWorking = false,
         CancellationToken cancellation = default)
     {
         var dec = (nint)0;
@@ -178,11 +180,15 @@ internal static class JxlDecode
                     case JxlDecoderStatus.FullImage:
                         return pixels is null
                             ? null
-                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries);
+                            : Finish(
+                                pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries,
+                                buildWorking);
                     case JxlDecoderStatus.Success:
                         return pixels is null
                             ? null
-                            : Finish(pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries);
+                            : Finish(
+                                pixels, info, transfer, cicpPrimaries, actualBuffer, targetDataPrimaries,
+                                buildWorking);
                     default:
                         return null;
                 }
@@ -213,7 +219,8 @@ internal static class JxlDecode
         HdrTransfer probeTransfer,
         int? probeCicpPrimaries,
         JxlBufferTransfer actualBuffer,
-        int? targetDataPrimaries)
+        int? targetDataPrimaries,
+        bool buildWorking)
     {
         // Still-encoded EOTF uses TARGET_DATA primaries (not probe ?? 9).
         // Linear BT.2020→709 keeps the probe (wide-out request matched that).
@@ -222,14 +229,24 @@ internal static class JxlDecode
                 && probeTransfer is HdrTransfer.Pq or HdrTransfer.Hlg);
         var primaries = stillEncoded ? targetDataPrimaries : probeCicpPrimaries;
 
-        var workingOpts = ImagingStillNormalize.OptionsForJxl(
-            actualBuffer,
-            probeTransfer,
-            primaries,
-            info.IntensityTarget);
-        // Imaging wants the buffer before legacy NormalizeToScrgb mutates it.
-        var working = ImagingStillNormalize.RunCopy(
-            rgba, (int)info.XSize, (int)info.YSize, workingOpts);
+        // B2: Normalize.Run reads rgba into a new output (no RunCopy clone);
+        // failures / over-budget → Working=null; then legacy mutates rgba in place.
+        NormalizedFrame? working = null;
+        NormalizeOptions? workingOpts = null;
+        if (buildWorking)
+        {
+            workingOpts = ImagingStillNormalize.OptionsForJxl(
+                actualBuffer,
+                probeTransfer,
+                primaries,
+                info.IntensityTarget);
+            working = ImagingStillNormalize.TryRun(
+                rgba, (int)info.XSize, (int)info.YSize, workingOpts.Value);
+            if (working is null)
+            {
+                workingOpts = null;
+            }
+        }
 
         var norm = HdrJxlPresent.NormalizeToScrgb(
             rgba,

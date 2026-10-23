@@ -44,9 +44,81 @@ public static class Primaries
     }
 
     /// <summary>
-    /// P2: linear RGB in arbitrary OpenEXR chromaticities → BT.2020 / D65
-    /// (Bradford white adapt). Degenerate / non-finite xy → identity (caller
-    /// should fall back to <see cref="ToBt2020(float,float,float,ColorPrimaries,out float,out float,out float)"/>).
+    /// Apply a row-major 3×3 (from <see cref="TryFillBt2020Matrix"/>).
+    /// </summary>
+    public static void ApplyMatrix(
+        float r,
+        float g,
+        float b,
+        ReadOnlySpan<float> m,
+        out float or,
+        out float og,
+        out float ob)
+    {
+        or = (m[0] * r) + (m[1] * g) + (m[2] * b);
+        og = (m[3] * r) + (m[4] * g) + (m[5] * b);
+        ob = (m[6] * r) + (m[7] * g) + (m[8] * b);
+    }
+
+    /// <summary>
+    /// P2: fill a 9-float row-major RGB(source) → RGB(BT.2020) matrix once
+    /// per frame (Normalize hoists this out of the pixel loop). Known sets
+    /// use the enum matrices via <see cref="ToBt2020"/> instead.
+    /// </summary>
+    public static bool TryFillBt2020Matrix(Chromaticities chrom, Span<float> m9)
+    {
+        if (m9.Length < 9)
+        {
+            return false;
+        }
+
+        if (chrom.MatchKnown() is { } known)
+        {
+            // Encode enum convert as a matrix for a uniform Apply path.
+            ToBt2020(1f, 0f, 0f, known, out var r0, out var g0, out var b0);
+            ToBt2020(0f, 1f, 0f, known, out var r1, out var g1, out var b1);
+            ToBt2020(0f, 0f, 1f, known, out var r2, out var g2, out var b2);
+            m9[0] = r0; m9[1] = r1; m9[2] = r2;
+            m9[3] = g0; m9[4] = g1; m9[5] = g2;
+            m9[6] = b0; m9[7] = b1; m9[8] = b2;
+            return true;
+        }
+
+        Span<float> srcXy = stackalloc float[8];
+        srcXy[0] = chrom.Rx; srcXy[1] = chrom.Ry;
+        srcXy[2] = chrom.Gx; srcXy[3] = chrom.Gy;
+        srcXy[4] = chrom.Bx; srcXy[5] = chrom.By;
+        srcXy[6] = chrom.Wx; srcXy[7] = chrom.Wy;
+        Span<double> src = stackalloc double[9];
+        Span<double> dst = stackalloc double[9];
+        if (!TryRgbToXyz(srcXy, src) || !TryRgbToXyz(Bt2020Xy, dst))
+        {
+            return false;
+        }
+
+        Span<double> xyzTo2020 = stackalloc double[9];
+        if (!TryInvert(dst, xyzTo2020))
+        {
+            return false;
+        }
+
+        Span<double> adapt = stackalloc double[9];
+        Bradford(chrom.Wx, chrom.Wy, Bt2020Xy[6], Bt2020Xy[7], adapt);
+        Span<double> tmp = stackalloc double[9];
+        Mul(adapt, src, tmp);
+        Span<double> m = stackalloc double[9];
+        Mul(xyzTo2020, tmp, m);
+        for (var i = 0; i < 9; i++)
+        {
+            m9[i] = (float)m[i];
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Convenience: build matrix then apply (tests / single-pixel). Prefer
+    /// <see cref="TryFillBt2020Matrix"/> once per <see cref="Normalize.Run"/>.
     /// </summary>
     public static bool TryToBt2020(
         float r,
@@ -57,128 +129,104 @@ public static class Primaries
         out float og,
         out float ob)
     {
-        or = r;
-        og = g;
-        ob = b;
-        if (chrom.MatchKnown() is { } known)
+        Span<float> m = stackalloc float[9];
+        if (!TryFillBt2020Matrix(chrom, m))
         {
-            ToBt2020(r, g, b, known, out or, out og, out ob);
-            return true;
-        }
-
-        var m = RgbToBt2020Matrix(chrom);
-        if (m is null)
-        {
+            or = r;
+            og = g;
+            ob = b;
             return false;
         }
 
-        or = (float)((m[0] * r) + (m[1] * g) + (m[2] * b));
-        og = (float)((m[3] * r) + (m[4] * g) + (m[5] * b));
-        ob = (float)((m[6] * r) + (m[7] * g) + (m[8] * b));
+        ApplyMatrix(r, g, b, m, out or, out og, out ob);
         return true;
     }
 
-    /// <summary>Row-major 3×3 RGB(source) → RGB(BT.2020), or null if degenerate.</summary>
-    public static double[]? RgbToBt2020Matrix(Chromaticities chrom)
+    private static bool TryRgbToXyz(ReadOnlySpan<float> c, Span<double> m9)
     {
-        Span<float> srcXy =
-        [
-            chrom.Rx, chrom.Ry, chrom.Gx, chrom.Gy, chrom.Bx, chrom.By, chrom.Wx, chrom.Wy
-        ];
-        var src = RgbToXyz(srcXy);
-        var dst = RgbToXyz(Bt2020Xy);
-        if (src is null || dst is null || Invert(dst) is not { } xyzTo2020)
+        if (c.Length < 8 || m9.Length < 9)
         {
-            return null;
-        }
-
-        var adapt = Bradford(chrom.Wx, chrom.Wy, Bt2020Xy[6], Bt2020Xy[7]);
-        return Mul(xyzTo2020, Mul(adapt, src));
-    }
-
-    private static double[]? RgbToXyz(ReadOnlySpan<float> c)
-    {
-        if (c.Length < 8)
-        {
-            return null;
+            return false;
         }
 
         for (var i = 0; i < 8; i++)
         {
             if (!float.IsFinite(c[i]))
             {
-                return null;
+                return false;
             }
         }
 
         if (c[1] == 0f || c[3] == 0f || c[5] == 0f || c[7] <= 0f || c[6] <= 0f)
         {
-            return null;
+            return false;
         }
 
         double xr = c[0] / c[1], yr = 1, zr = (1 - c[0] - c[1]) / c[1];
         double xg = c[2] / c[3], yg = 1, zg = (1 - c[2] - c[3]) / c[3];
         double xb = c[4] / c[5], yb = 1, zb = (1 - c[4] - c[5]) / c[5];
         double Xw = c[6] / c[7], Yw = 1, Zw = (1 - c[6] - c[7]) / c[7];
-        var prim = new[] { xr, xg, xb, yr, yg, yb, zr, zg, zb };
-        if (Invert(prim) is not { } inv)
+        Span<double> prim = stackalloc double[9];
+        prim[0] = xr; prim[1] = xg; prim[2] = xb;
+        prim[3] = yr; prim[4] = yg; prim[5] = yb;
+        prim[6] = zr; prim[7] = zg; prim[8] = zb;
+        Span<double> inv = stackalloc double[9];
+        if (!TryInvert(prim, inv))
         {
-            return null;
+            return false;
         }
 
-        var s = MulVec(inv, Xw, Yw, Zw);
-        return
-        [
-            s[0] * xr, s[1] * xg, s[2] * xb,
-            s[0] * yr, s[1] * yg, s[2] * yb,
-            s[0] * zr, s[1] * zg, s[2] * zb
-        ];
+        var s0 = (inv[0] * Xw) + (inv[1] * Yw) + (inv[2] * Zw);
+        var s1 = (inv[3] * Xw) + (inv[4] * Yw) + (inv[5] * Zw);
+        var s2 = (inv[6] * Xw) + (inv[7] * Yw) + (inv[8] * Zw);
+        m9[0] = s0 * xr; m9[1] = s1 * xg; m9[2] = s2 * xb;
+        m9[3] = s0 * yr; m9[4] = s1 * yg; m9[5] = s2 * yb;
+        m9[6] = s0 * zr; m9[7] = s1 * zg; m9[8] = s2 * zb;
+        return true;
     }
 
-    private static double[] Bradford(float srcWx, float srcWy, float dstWx, float dstWy)
+    private static void Bradford(float srcWx, float srcWy, float dstWx, float dstWy, Span<double> out9)
     {
         // Hunt-Pointer-Estevez / Bradford cone response (public CIE data).
-        double[] b =
-        [
-            0.8951, 0.2664, -0.1614,
-            -0.7502, 1.7135, 0.0367,
-            0.0389, -0.0685, 1.0296
-        ];
-        var src = Cone(b, srcWx / srcWy, 1, (1 - srcWx - srcWy) / srcWy);
-        var dst = Cone(b, dstWx / dstWy, 1, (1 - dstWx - dstWy) / dstWy);
-        var scale = new[]
-        {
-            dst[0] / src[0], 0, 0,
-            0, dst[1] / src[1], 0,
-            0, 0, dst[2] / src[2]
-        };
-        return Mul(Invert(b)!, Mul(scale, b));
+        Span<double> b = stackalloc double[9];
+        b[0] = 0.8951; b[1] = 0.2664; b[2] = -0.1614;
+        b[3] = -0.7502; b[4] = 1.7135; b[5] = 0.0367;
+        b[6] = 0.0389; b[7] = -0.0685; b[8] = 1.0296;
+        var sx = srcWx / srcWy;
+        var sz = (1 - srcWx - srcWy) / srcWy;
+        var dx = dstWx / dstWy;
+        var dz = (1 - dstWx - dstWy) / dstWy;
+        var src0 = (b[0] * sx) + (b[1] * 1) + (b[2] * sz);
+        var src1 = (b[3] * sx) + (b[4] * 1) + (b[5] * sz);
+        var src2 = (b[6] * sx) + (b[7] * 1) + (b[8] * sz);
+        var dst0 = (b[0] * dx) + (b[1] * 1) + (b[2] * dz);
+        var dst1 = (b[3] * dx) + (b[4] * 1) + (b[5] * dz);
+        var dst2 = (b[6] * dx) + (b[7] * 1) + (b[8] * dz);
+        Span<double> scale = stackalloc double[9];
+        scale[0] = dst0 / src0; scale[1] = 0; scale[2] = 0;
+        scale[3] = 0; scale[4] = dst1 / src1; scale[5] = 0;
+        scale[6] = 0; scale[7] = 0; scale[8] = dst2 / src2;
+        Span<double> invB = stackalloc double[9];
+        TryInvert(b, invB);
+        Span<double> tmp = stackalloc double[9];
+        Mul(scale, b, tmp);
+        Mul(invB, tmp, out9);
     }
 
-    private static double[] Cone(double[] m, double x, double y, double z) =>
-        MulVec(m, x, y, z);
+    private static void Mul(ReadOnlySpan<double> a, ReadOnlySpan<double> b, Span<double> o)
+    {
+        o[0] = (a[0] * b[0]) + (a[1] * b[3]) + (a[2] * b[6]);
+        o[1] = (a[0] * b[1]) + (a[1] * b[4]) + (a[2] * b[7]);
+        o[2] = (a[0] * b[2]) + (a[1] * b[5]) + (a[2] * b[8]);
+        o[3] = (a[3] * b[0]) + (a[4] * b[3]) + (a[5] * b[6]);
+        o[4] = (a[3] * b[1]) + (a[4] * b[4]) + (a[5] * b[7]);
+        o[5] = (a[3] * b[2]) + (a[4] * b[5]) + (a[5] * b[8]);
+        o[6] = (a[6] * b[0]) + (a[7] * b[3]) + (a[8] * b[6]);
+        o[7] = (a[6] * b[1]) + (a[7] * b[4]) + (a[8] * b[7]);
+        o[8] = (a[6] * b[2]) + (a[7] * b[5]) + (a[8] * b[8]);
+    }
 
-    private static double[] Mul(double[] a, double[] b) =>
-    [
-        (a[0] * b[0]) + (a[1] * b[3]) + (a[2] * b[6]),
-        (a[0] * b[1]) + (a[1] * b[4]) + (a[2] * b[7]),
-        (a[0] * b[2]) + (a[1] * b[5]) + (a[2] * b[8]),
-        (a[3] * b[0]) + (a[4] * b[3]) + (a[5] * b[6]),
-        (a[3] * b[1]) + (a[4] * b[4]) + (a[5] * b[7]),
-        (a[3] * b[2]) + (a[4] * b[5]) + (a[5] * b[8]),
-        (a[6] * b[0]) + (a[7] * b[3]) + (a[8] * b[6]),
-        (a[6] * b[1]) + (a[7] * b[4]) + (a[8] * b[7]),
-        (a[6] * b[2]) + (a[7] * b[5]) + (a[8] * b[8])
-    ];
-
-    private static double[] MulVec(double[] m, double x, double y, double z) =>
-    [
-        (m[0] * x) + (m[1] * y) + (m[2] * z),
-        (m[3] * x) + (m[4] * y) + (m[5] * z),
-        (m[6] * x) + (m[7] * y) + (m[8] * z)
-    ];
-
-    private static double[]? Invert(double[] m)
+    private static bool TryInvert(ReadOnlySpan<double> m, Span<double> o)
     {
         var det =
             (m[0] * ((m[4] * m[8]) - (m[5] * m[7])))
@@ -186,21 +234,19 @@ public static class Primaries
             + (m[2] * ((m[3] * m[7]) - (m[4] * m[6])));
         if (Math.Abs(det) < 1e-12)
         {
-            return null;
+            return false;
         }
 
         var invDet = 1.0 / det;
-        return
-        [
-            ((m[4] * m[8]) - (m[5] * m[7])) * invDet,
-            ((m[2] * m[7]) - (m[1] * m[8])) * invDet,
-            ((m[1] * m[5]) - (m[2] * m[4])) * invDet,
-            ((m[5] * m[6]) - (m[3] * m[8])) * invDet,
-            ((m[0] * m[8]) - (m[2] * m[6])) * invDet,
-            ((m[2] * m[3]) - (m[0] * m[5])) * invDet,
-            ((m[3] * m[7]) - (m[4] * m[6])) * invDet,
-            ((m[1] * m[6]) - (m[0] * m[7])) * invDet,
-            ((m[0] * m[4]) - (m[1] * m[3])) * invDet
-        ];
+        o[0] = ((m[4] * m[8]) - (m[5] * m[7])) * invDet;
+        o[1] = ((m[2] * m[7]) - (m[1] * m[8])) * invDet;
+        o[2] = ((m[1] * m[5]) - (m[2] * m[4])) * invDet;
+        o[3] = ((m[5] * m[6]) - (m[3] * m[8])) * invDet;
+        o[4] = ((m[0] * m[8]) - (m[2] * m[6])) * invDet;
+        o[5] = ((m[2] * m[3]) - (m[0] * m[5])) * invDet;
+        o[6] = ((m[3] * m[7]) - (m[4] * m[6])) * invDet;
+        o[7] = ((m[1] * m[6]) - (m[0] * m[7])) * invDet;
+        o[8] = ((m[0] * m[4]) - (m[1] * m[3])) * invDet;
+        return true;
     }
 }

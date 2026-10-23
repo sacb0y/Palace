@@ -11,6 +11,15 @@ namespace Palace.Helpers;
 /// </summary>
 public static class ImagingStillNormalize
 {
+    /// <summary>
+    /// Cap for eager Working builds (~256 MB float RGBA). Larger frames skip
+    /// Working (legacy present intact; P3 may rebuild lazily).
+    /// </summary>
+    public const int MaxWorkingPixels = 16_000_000;
+
+    public static bool FitsWorkingBudget(int width, int height) =>
+        width > 0 && height > 0 && (long)width * height <= MaxWorkingPixels;
+
     /// <summary>CICP primaries → Imaging enum (11 = JXL P3, 12 = Display P3).</summary>
     public static ColorPrimaries PrimariesFromCicp(int? cicp) =>
         cicp switch
@@ -127,20 +136,22 @@ public static class ImagingStillNormalize
         float intensityTarget)
     {
         var transfer = TransferFromJxlBuffer(actualBuffer, probeTransfer);
-        var primaries = PrimariesFromCicp(cicpPrimaries);
         if (transfer is TransferKind.Pq or TransferKind.Hlg)
         {
             // PQ/HLG masters are BT.2020 when primaries are unspecified.
-            if (cicpPrimaries is null or 2)
-            {
-                primaries = ColorPrimaries.Bt2020;
-            }
-
+            var primaries = cicpPrimaries is null or 2
+                ? ColorPrimaries.Bt2020
+                : PrimariesFromCicp(cicpPrimaries);
             return new NormalizeOptions(transfer, primaries);
         }
 
         if (transfer == TransferKind.LinearScene)
         {
+            // A1: libjxl BT.2100/2020 linear out → always Bt2020, not CICP 11/12/null→709.
+            var primaries = HdrJxlPresent.UsesBt2020LinearOutput(probeTransfer, cicpPrimaries)
+                ? ColorPrimaries.Bt2020
+                : PrimariesFromCicp(cicpPrimaries);
+
             // libjxl Relative linear: 1.0 = intensity_target nits (PQ/HLG probe).
             float? white = null;
             if (probeTransfer is HdrTransfer.Pq or HdrTransfer.Hlg)
@@ -160,7 +171,7 @@ public static class ImagingStillNormalize
                 WhiteLuminance: white);
         }
 
-        return new NormalizeOptions(transfer, primaries);
+        return new NormalizeOptions(transfer, PrimariesFromCicp(cicpPrimaries));
     }
 
     public static NormalizeOptions OptionsForEncoded(
@@ -183,16 +194,27 @@ public static class ImagingStillNormalize
         Normalize.Run(rgba, width, height, options);
 
     /// <summary>
-    /// Clone <paramref name="rgba"/> then normalize — use when the buffer will
-    /// still be mutated for the legacy scRGB present path (JXL).
+    /// B2: budget + try/catch (incl. OOM). Returns null without throwing so
+    /// legacy present stays intact.
     /// </summary>
-    public static NormalizedFrame RunCopy(
+    public static NormalizedFrame? TryRun(
         ReadOnlySpan<float> rgba,
         int width,
         int height,
         NormalizeOptions options)
     {
-        var copy = rgba.ToArray();
-        return Normalize.Run(copy, width, height, options);
+        if (!FitsWorkingBudget(width, height))
+        {
+            return null;
+        }
+
+        try
+        {
+            return Normalize.Run(rgba, width, height, options);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
     }
 }

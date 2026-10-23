@@ -353,8 +353,22 @@ internal static unsafe class HdrAvifDecode
         }
 
         var rgba = wantRgba ? new float[count * 4] : null;
-        // Encoded 0..1 for Imaging Normalize (PQ/HLG/SDR) — separate from scRGB present.
-        var encoded = wantRgba ? new float[count * 4] : null;
+        // B2: only allocate encoded for Working when present wants RGBA + budget.
+        var buildWorking = wantRgba && ImagingStillNormalize.FitsWorkingBudget(width, height);
+        float[]? encoded = null;
+        if (buildWorking)
+        {
+            try
+            {
+                encoded = new float[count * 4];
+            }
+            catch (OutOfMemoryException)
+            {
+                encoded = null;
+                buildWorking = false;
+            }
+        }
+
         var maxY = 0f;
         var minY = float.MaxValue;
         var sumY = 0.0;
@@ -397,10 +411,13 @@ internal static unsafe class HdrAvifDecode
                     rgba[i + 1] = sg;
                     rgba[i + 2] = sb;
                     rgba[i + 3] = a;
-                    encoded![i] = er;
-                    encoded[i + 1] = eg;
-                    encoded[i + 2] = eb;
-                    encoded[i + 3] = a;
+                    if (encoded is not null)
+                    {
+                        encoded[i] = er;
+                        encoded[i + 1] = eg;
+                        encoded[i + 2] = eb;
+                        encoded[i + 3] = a;
+                    }
                 }
             }
         }
@@ -419,9 +436,21 @@ internal static unsafe class HdrAvifDecode
         NormalizeOptions? workingOpts = null;
         if (encoded is not null)
         {
-            workingOpts = ImagingStillNormalize.OptionsForEncoded(
-                probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
-            working = ImagingStillNormalize.Run(encoded, width, height, workingOpts.Value);
+            try
+            {
+                workingOpts = ImagingStillNormalize.OptionsForEncoded(
+                    probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
+                working = ImagingStillNormalize.TryRun(encoded, width, height, workingOpts.Value);
+                if (working is null)
+                {
+                    workingOpts = null;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                working = null;
+                workingOpts = null;
+            }
         }
 
         return (rgba, maxY, (float)(sumY / count), minY, maxScrgb,
