@@ -7,8 +7,10 @@
 **Display scale:** AppliedDPI=144 (**150%**)  
 **SFW:** `C:\Users\iadag\AppData\Local\Temp\palace-retest-139-140\sfw-pr139`  
 **Media:** `C:\cursor\stores\self\media\pr139-dpi`
-**Media branch:** `cursor/agent-retest-media-tmp` @ `831e175f68d7b887cacb84e7f3bb5d9edaaa4ba7` → `agent-retest/pr139-dpi/`  
-**Raw base:** https://raw.githubusercontent.com/sacb0y/Palace/831e175f68d7b887cacb84e7f3bb5d9edaaa4ba7/agent-retest/pr139-dpi
+**Media branch:** `cursor/agent-retest-media-tmp` @ `329515e415344bf72070f6da127d2067f48c9bcd` → `agent-retest/pr139-dpi/`  
+**Raw base:** https://raw.githubusercontent.com/sacb0y/Palace/329515e415344bf72070f6da127d2067f48c9bcd/agent-retest/pr139-dpi
+
+
 
 ## Verdict: **PASS** (OK — no crop / wrong size)
 
