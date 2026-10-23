@@ -6,8 +6,10 @@
 **Identity:** `PalaceSmokeTest-A140` 0.3.8.0 Debug  
 **SFW:** `C:\Users\iadag\AppData\Local\Temp\palace-retest-139-140\sfw-pr140`  
 **Media:** `C:\cursor\stores\self\media\pr140-smoke` (+ mirror `C:\Users\iadag\cursor\agent-retest-media-tmp\pr140-smoke`)
-**Media branch:** `cursor/agent-retest-media-tmp` @ `28fb97dfeac8ce5bf748db2203eaa276413e2a35` → `agent-retest/pr140-smoke/`  
-**Raw base:** https://raw.githubusercontent.com/sacb0y/Palace/28fb97dfeac8ce5bf748db2203eaa276413e2a35/agent-retest/pr140-smoke
+**Media branch:** `cursor/agent-retest-media-tmp` @ `9ed6c94b2e4e750067867976c9b1100444c063ee` → `agent-retest/pr140-smoke/`  
+**Raw base:** https://raw.githubusercontent.com/sacb0y/Palace/9ed6c94b2e4e750067867976c9b1100444c063ee/agent-retest/pr140-smoke
+
+
 
 
 
