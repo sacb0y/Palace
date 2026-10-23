@@ -1,0 +1,1 @@
+﻿#136 tip 5854578 swipe NEXT (drag left) after Fit: posBefore= posAfter=

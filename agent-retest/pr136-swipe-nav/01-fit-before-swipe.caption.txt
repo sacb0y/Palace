@@ -1,0 +1,1 @@
+﻿#136 tip 5854578 Fit before swipe: FitInvoked=True gallery open (do not claim swipe fail without Fit)
