@@ -62,7 +62,11 @@ public partial class LibraryViewModel
             targetIds);
     }
 
-    /// <summary>Esc exits select mode without clearing the selection (matches hold/Ctrl+A entry).</summary>
+    /// <summary>
+    /// Esc exits select mode without clearing the selection (matches hold/Ctrl+A entry).
+    /// Selection count stays on the bar — commands still act on <c>_selection</c>.
+    /// </summary>
+    [RelayCommand]
     public void ExitSelectMode()
     {
         if (!SelectMode.ExitsSelectModeOnEscape(IsSelectMode, IsGalleryOverlayOpen))
@@ -75,6 +79,9 @@ public partial class LibraryViewModel
         // after Esc (selection kept, select mode off).
         RefreshSelectionSummary();
     }
+
+    /// <summary>True selection size (not loaded-chunk <c>Assets.Where(IsSelected)</c>).</summary>
+    public int SelectionCount => _selection.Count(s => !s.IsFolderHeader);
 
     public void SetSelection(IEnumerable<AssetItem> items, bool loadPreview = true)
     {
@@ -348,6 +355,214 @@ public partial class LibraryViewModel
         CanEditNotes = false;
         SelectedAsset = null;
     }
+
+    /// <summary>
+    /// Select all mosaic assets including collapsed sections (same as Ctrl+A /
+    /// <see cref="SelectAllMosaicAssets"/>).
+    /// </summary>
+    [RelayCommand]
+    private void SelectAllVisible()
+    {
+        SelectAllMosaicAssets();
+        RequestRestoreMosaicSelection?.Invoke();
+    }
+
+    /// <summary>
+    /// Clear tiles and exit select mode (batch menu companion).
+    /// Esc alone keeps the selection — see <see cref="ExitSelectMode"/>.
+    /// </summary>
+    [RelayCommand]
+    private void ClearSelectionAndExit()
+    {
+        ClearSelection();
+        if (SelectMode.ExitsSelectModeOnClear(IsSelectMode))
+        {
+            IsSelectMode = false;
+        }
+
+        RequestRestoreMosaicSelection?.Invoke();
+    }
+
+    /// <summary>
+    /// Batch Keep: leave files on disk (same as Review Keep) and clear them
+    /// from the selection so the action is real, not toast-only.
+    /// </summary>
+    [RelayCommand]
+    private void KeepSelected()
+    {
+        var kept = _selection.Where(s => !s.IsFolderHeader).ToList();
+        if (kept.Count == 0)
+        {
+            Notify("Select assets first.");
+            return;
+        }
+
+        ClearSelection();
+        RequestRestoreMosaicSelection?.Invoke();
+        Notify(kept.Count == 1 ? "Kept 1 file." : $"Kept {kept.Count} files.");
+    }
+
+    /// <summary>
+    /// Batch Reject: move each selected file into a sibling <c>_rejected</c>
+    /// via <see cref="BatchRejectFlow"/>. Multi-folder runs fold into one
+    /// journal batch when absorb is safe; otherwise stop with
+    /// <see cref="BatchReject.InterruptedMessage"/> (Warning Notify, not Undo toast).
+    /// </summary>
+    [RelayCommand]
+    private Task RejectSelectedAsync() =>
+        ErrorReporter.RunAsync("Reject", Notify, async () =>
+        {
+            var selectedTiles = _selection.Where(s => !s.IsFolderHeader).ToList();
+            var ids = selectedTiles
+                .Where(s => !string.IsNullOrEmpty(s.Id))
+                .Select(s => s.Id)
+                .ToList();
+            if (ids.Count == 0)
+            {
+                Notify("Select assets first.");
+                return;
+            }
+
+            var collapsed = CountCollapsedAmongTargetIds(ids);
+            if (SelectMode.NeedsBatchConfirm(ids.Count, collapsed))
+            {
+                if (RequestConfirm is null
+                    || !await RequestConfirm(
+                        "Reject",
+                        BatchReject.ConfirmBody(ids.Count, collapsed),
+                        "Reject"))
+                {
+                    return;
+                }
+            }
+
+            var assets = await _catalog.GetAssetsByIdsAsync(ids);
+            if (assets.Count == 0)
+            {
+                Notify("Select assets first.");
+                return;
+            }
+
+            var already = assets.Count(a => ReviewReject.IsAlreadyRejected(a.Path));
+            var movers = assets.Where(a => !ReviewReject.IsAlreadyRejected(a.Path)).ToList();
+            if (movers.Count == 0)
+            {
+                Notify(BatchReject.ToastMessage(0, already, failed: 0));
+                return;
+            }
+
+            var projectId = AppServices.CurrentProject.Id;
+            var folderGroups = movers
+                .GroupBy(a => ReviewReject.DestinationDir(a.Path) ?? "", StringComparer.OrdinalIgnoreCase)
+                .Select(g => new BatchRejectFlow.FolderGroup(
+                    DestinationDir: g.Key,
+                    ParentDir: ReviewReject.ParentDir(g.First().Path) ?? "",
+                    Assets: g.ToList()))
+                .ToList();
+            var folderCount = folderGroups.Count(g => !string.IsNullOrEmpty(g.DestinationDir));
+
+            var token = BeginBusyCancelable(
+                movers.Count == 1 ? "Rejecting…" : $"Rejecting {movers.Count}…");
+            BatchRejectFlow.RunResult run = new(0, 0, [], [], false, false, null);
+            try
+            {
+                run = await BatchRejectFlow.RunAsync(
+                    folderGroups,
+                    async (parent, name) =>
+                    {
+                        var created = await _fileOps.CreateFolderAsync(parent, name, projectId);
+                        if (created.Ok && !string.IsNullOrWhiteSpace(created.Path))
+                        {
+                            await RebuildFolderTreeAsync();
+                        }
+
+                        return new BatchRejectFlow.CreateFolderResult(
+                            created.Ok,
+                            created.Path,
+                            created.Message);
+                    },
+                    async (assets, dest, absorb, prior, ct) =>
+                    {
+                        var result = await _fileOps.MoveAssetsAsync(
+                            assets,
+                            dest,
+                            projectId,
+                            cancellationToken: ct,
+                            absorbCreatedFolder: absorb,
+                            absorbPriorBatchId: prior);
+                        if (result.Moves.Count > 0)
+                        {
+                            await ApplyMovesToUiAsync(result.Moves, result.Path);
+                        }
+
+                        return new BatchRejectFlow.MoveResult(
+                            result.Moves.Count,
+                            result.BatchId,
+                            result.AbsorbedPriorBatch,
+                            result.Message);
+                    },
+                    () => _catalog.GetUndoableFileOpsAsync(projectId),
+                    token);
+            }
+            finally
+            {
+                await UiDispatch.RunAsync(() =>
+                {
+                    EndBusyCancelable();
+                    if (!string.IsNullOrWhiteSpace(run.LastMessage))
+                    {
+                        StatusText = run.LastMessage!;
+                    }
+                });
+            }
+
+            await RefreshUndoStateAsync();
+            var moved = run.Moved;
+            var failed = run.Failed;
+            var failNotes = run.FailNotes;
+            var undoBatchIds = run.UndoBatchIds;
+            if (run.Interrupted)
+            {
+                // Tip may be an intervening op — plain warning, not the Undo toast.
+                Notify(
+                    BatchReject.InterruptedMessage(moved),
+                    Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+                return;
+            }
+
+            var toast = BatchReject.ToastMessage(moved, already, failed, folderCount);
+            if (run.Cancelled && moved == 0)
+            {
+                Notify("Reject cancelled.");
+                return;
+            }
+
+            if (run.Cancelled)
+            {
+                toast = $"{toast.TrimEnd('.')} (cancelled).";
+            }
+
+            if (moved > 0 && undoBatchIds.Count > 0)
+            {
+                if (failNotes.Count > 0)
+                {
+                    toast = $"{toast.TrimEnd('.')} ({failNotes[0]}).";
+                }
+
+                ShowUndoToastFor(
+                    toast,
+                    offerUndo: true,
+                    dismissSeconds: BatchReject.UndoToastSeconds(folderCount));
+            }
+            else
+            {
+                Notify(
+                    failNotes.Count > 0 ? $"{toast.TrimEnd('.')} ({failNotes[0]})." : toast,
+                    failed > 0
+                        ? Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning
+                        : Microsoft.UI.Xaml.Controls.InfoBarSeverity.Informational);
+            }
+        });
 
     private IReadOnlyList<AssetItem> TagTargets()
     {

@@ -342,7 +342,7 @@ public partial class LibraryViewModel
         });
     }
 
-    private void ShowUndoToastFor(string message, bool offerUndo = true)
+    private void ShowUndoToastFor(string message, bool offerUndo = true, int dismissSeconds = 12)
     {
         var epoch = Interlocked.Increment(ref _undoToastEpoch);
         _undoToastHideCts?.Cancel();
@@ -354,7 +354,7 @@ public partial class LibraryViewModel
             ShowUndoToastAction = offerUndo && CanUndoFileOp;
             ShowUndoToast = true;
         });
-        _ = HideUndoToastLaterAsync(epoch);
+        _ = HideUndoToastLaterAsync(epoch, dismissSeconds);
     }
 
     /// <summary>Pause auto-dismiss while the toast is hovered or focused (WCAG 2.2.1).</summary>
@@ -381,14 +381,17 @@ public partial class LibraryViewModel
     /// <summary>Shared InfUndo toast for file ops and tag assign/remove/delete.</summary>
     public void OfferUndoToast(string message) => ShowUndoToastFor(message);
 
-    private async Task HideUndoToastLaterAsync(int epoch)
+    private async Task HideUndoToastLaterAsync(int epoch, int dismissSeconds = 12)
     {
         _undoToastHideCts?.Cancel();
         _undoToastHideCts = new CancellationTokenSource();
         var token = _undoToastHideCts.Token;
+        // Callers pass an explicit window (e.g. Reject 5 / multi-folder 12). Do not
+        // remap 0/-1 up to 12 — clamp to at least 1 s so Delay stays valid.
+        var seconds = Math.Max(1, dismissSeconds);
         try
         {
-            await Task.Delay(TimeSpan.FromSeconds(12), token);
+            await Task.Delay(TimeSpan.FromSeconds(seconds), token);
         }
         catch (OperationCanceledException)
         {

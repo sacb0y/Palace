@@ -105,6 +105,8 @@ public sealed partial class LibraryPage : Page
             });
         ViewModel.RequestOpenAssignPanel = () =>
             DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
+        ViewModel.RequestRestoreMosaicSelection = () =>
+            DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
         SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
         SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
@@ -154,6 +156,28 @@ public sealed partial class LibraryPage : Page
             if (e.PropertyName is nameof(LibraryViewModel.IsReviewMode))
             {
                 SrfOverlayStill.IsReviewMode = ViewModel.IsReviewMode;
+            }
+
+            if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode))
+            {
+                // Esc / Clear exit select mode via the VM — keep ItemsView SelectionMode in sync
+                // even if the toggle's Checked/Unchecked did not fire.
+                var on = ViewModel.IsSelectMode;
+                _suppressMosaicSelection = true;
+                try
+                {
+                    GrdAssets.SelectionMode = SelectMode.ClickTogglesTile(on)
+                        ? ItemsViewSelectionMode.Multiple
+                        : ItemsViewSelectionMode.Single;
+                    if (on)
+                    {
+                        RestoreMosaicSelectionHighlights();
+                    }
+                }
+                finally
+                {
+                    _suppressMosaicSelection = false;
+                }
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.IsTagBrowse) or nameof(LibraryViewModel.TagFilterMode))
@@ -284,6 +308,14 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand GetAddSelectionToRoomCommand() => AppServices.Library.AddSelectionToRoomCommand;
 
     public static IRelayCommand GetFocusAssignTagCommand() => AppServices.Library.FocusAssignTagCommand;
+
+    public static IRelayCommand GetKeepSelectedCommand() => AppServices.Library.KeepSelectedCommand;
+
+    public static IRelayCommand GetRejectSelectedCommand() => AppServices.Library.RejectSelectedCommand;
+
+    public static IRelayCommand GetSelectAllVisibleCommand() => AppServices.Library.SelectAllVisibleCommand;
+
+    public static IRelayCommand GetClearSelectionAndExitCommand() => AppServices.Library.ClearSelectionAndExitCommand;
 
     public static IRelayCommand<TagChipItem> GetRemoveFilterTagCommand() => AppServices.Library.RemoveFilterTagCommand;
 
@@ -1137,7 +1169,8 @@ public sealed partial class LibraryPage : Page
             ViewModel.SelectAsset(holdItem, toggle: false);
             ViewModel.IsSelectMode = true;
             RestoreMosaicSelectionHighlights();
-            // Touch long-press = select; context menu is "…" / right-click only.
+            // Enter-select hold: suppress system ContextRequested so the menu
+            // does not open on the same press that entered select mode.
             if (_lastPressWasTouch)
             {
                 _suppressTouchContextFlyout = true;
@@ -1147,6 +1180,9 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
+        // Select mode: long-press opens the batch ContextFlyout (ContextRequested).
+        // Do not activate range on Holding alone — touch range still starts via
+        // PointerMoved after hold+slop (RangeSelect.ActivatesDrag).
         if (_rangeSelect is null)
         {
             return;
@@ -1158,20 +1194,12 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (e.HoldingState != HoldingState.Started)
+        if (e.HoldingState == HoldingState.Started)
         {
+            // Allow ContextRequested for this touch hold (batch menu).
+            _suppressTouchContextFlyout = false;
             return;
         }
-
-        var elapsed = (int)(Environment.TickCount64 - _rangePressMs);
-        if (!_rangeSelect.TryActivateHold(elapsed))
-        {
-            return;
-        }
-
-        CaptureRangePointer(_rangePointer);
-        ApplyRangeIndexes(_rangeSelect.Highlight(MosaicHeaderFlags(), _rangeSelect.AnchorIndex), liveDrag: true);
-        e.Handled = true;
     }
 
     private void GrdAssets_RangeReleased(object sender, PointerRoutedEventArgs e)
@@ -1481,17 +1509,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // Esc exits select mode (keeps selection) — same as hold/Ctrl+A entry exit.
-        if (e.Key == VirtualKey.Escape
-            && SelectMode.ExitsSelectModeOnEscape(
-                ViewModel.IsSelectMode,
-                ViewModel.IsGalleryOverlayOpen)
-            && !typing)
-        {
-            ViewModel.ExitSelectMode();
-            e.Handled = true;
-            return;
-        }
+        // Esc → ExitSelectMode is handled once on LibraryRoot_PreviewKeyDown (Organize.cs).
 
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset
@@ -1644,16 +1662,19 @@ public sealed partial class LibraryPage : Page
             _suppressTouchContextFlyout = false;
         }
 
-        // Touch long-press opens select mode, not the context menu.
-        if (TouchGestures.SuppressesContextForTouch(_lastPressWasTouch, hasPointer)
-            || _suppressTouchContextFlyout
-            || TouchGestures.OpensContextFromTouchHold())
+        // Outside select mode, touch long-press enters select — not the menu.
+        // In select mode, touch long-press opens the batch ContextFlyout.
+        var allowTouch = TouchGestures.OpensContextFromTouchHold(ViewModel.IsSelectMode);
+        if ((TouchGestures.SuppressesContextForTouch(_lastPressWasTouch, hasPointer)
+                || _suppressTouchContextFlyout)
+            && !allowTouch)
         {
             _suppressTouchContextFlyout = false;
             e.Handled = true;
             return;
         }
 
+        _suppressTouchContextFlyout = false;
         var item = FindAssetItem(sender) ?? FindAssetItem(e.OriginalSource);
         if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
@@ -1671,14 +1692,17 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (_suppressTouchContextFlyout
-            || TouchGestures.SuppressesContextForTouch(_lastPressWasTouch, hasPointerPosition: true))
+        var allowTouch = TouchGestures.OpensContextFromTouchHold(ViewModel.IsSelectMode);
+        if ((_suppressTouchContextFlyout
+                || TouchGestures.SuppressesContextForTouch(_lastPressWasTouch, hasPointerPosition: true))
+            && !allowTouch)
         {
             _suppressTouchContextFlyout = false;
             flyout.Hide();
             return;
         }
 
+        _suppressTouchContextFlyout = false;
         var item = flyout.Target is FrameworkElement target ? FindAssetItem(target) : null;
         if (item is null || !TouchGestures.OpensContextFromRightClick(item.IsFolderHeader))
         {
@@ -1687,7 +1711,105 @@ public sealed partial class LibraryPage : Page
         }
 
         EnsureSelectedForContext(item);
+        ConfigureAssetMenu(flyout);
         PopulateMoveRecents(flyout);
+    }
+
+    /// <summary>
+    /// Single-tile menu vs select-mode batch menu (header + Keep/Reject/…/Clear).
+    /// Batch shows Add to room disabled (Rooms backend still queued). Menu role uses
+    /// <c>Tag</c> (not AutomationId) for batch chrome. Count comes from <c>_selection</c>.
+    /// </summary>
+    private void ConfigureAssetMenu(MenuFlyout flyout)
+    {
+        var batch = ViewModel.IsSelectMode;
+        var count = ViewModel.SelectionCount;
+        var collapsed = ViewModel.CountCollapsedSelected();
+        var showHeader = batch && count > 0;
+        foreach (var entry in flyout.Items)
+        {
+            var id = entry is FrameworkElement fe
+                ? fe.Tag as string ?? AutomationProperties.GetAutomationId(fe)
+                : "";
+            switch (id)
+            {
+                case "MnuBatchHeader":
+                    if (entry is MenuFlyoutItem header)
+                    {
+                        header.Text = SelectMode.BatchMenuHeader(count, collapsed);
+                        AutomationProperties.SetName(
+                            header,
+                            string.IsNullOrEmpty(header.Text) ? "Selection count" : header.Text);
+                    }
+
+                    entry.Visibility = showHeader ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "MnuBatchHeaderSep":
+                    entry.Visibility = showHeader ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "MnuKeep":
+                case "MnuSelectAll":
+                case "MnuClearSelection":
+                case "MnuBatchTailSep":
+                    entry.Visibility = batch ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                case "MnuReject":
+                    entry.Visibility = batch ? Visibility.Visible : Visibility.Collapsed;
+                    if (entry is MenuFlyoutItem reject)
+                    {
+                        ApplyCriticalMenuForeground(reject, batch);
+                    }
+
+                    break;
+                case "MnuOpen":
+                case "MnuOpenInNewWindow":
+                case "MnuShowInExplorer":
+                case "MnuCopyPath":
+                    entry.Visibility = batch ? Visibility.Collapsed : Visibility.Visible;
+                    break;
+                case "MnuAddToRoom":
+                    // Visible in both menus; disabled in batch until Rooms backend is ready.
+                    entry.Visibility = Visibility.Visible;
+                    if (entry is MenuFlyoutItem addRoom)
+                    {
+                        addRoom.IsEnabled = !batch;
+                    }
+
+                    break;
+                case "MnuAddTag":
+                    if (entry is MenuFlyoutItem addTag)
+                    {
+                        addTag.Text = batch ? "Add tags…" : "Add tag…";
+                    }
+
+                    break;
+                case "MnuDelete":
+                    if (entry is MenuFlyoutItem delete)
+                    {
+                        // Delete confirm already defaults Cancel (AskConfirmAsync → Close).
+                        ApplyCriticalMenuForeground(delete, batch);
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    private static void ApplyCriticalMenuForeground(MenuFlyoutItem item, bool critical)
+    {
+        item.ClearValue(Control.ForegroundProperty);
+        if (!critical)
+        {
+            return;
+        }
+
+        if (Application.Current.Resources.TryGetValue(
+                "SystemFillColorCriticalBrush",
+                out var brush)
+            && brush is Brush criticalBrush)
+        {
+            item.Foreground = criticalBrush;
+        }
     }
 
     private void AssetMore_Click(object sender, RoutedEventArgs e)
@@ -2158,13 +2280,27 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (GrdAssets.SelectedItems.OfType<AssetItem>().Any(a => a.Id == item.Id))
+        var already = item.IsSelected
+            || GrdAssets.SelectedItems.OfType<AssetItem>().Any(a => a.Id == item.Id);
+        if (already)
         {
             return;
         }
 
         var index = ViewModel.Assets.IndexOf(item);
         if (index < 0)
+        {
+            return;
+        }
+
+        // Select mode: add the pressed tile — never replace the selection.
+        if (SelectMode.AddsPressedToSelection(ViewModel.IsSelectMode, alreadySelected: false))
+        {
+            AddToMosaicSelection(item, index);
+            return;
+        }
+
+        if (!SelectMode.ReplacesSelectionForContext(ViewModel.IsSelectMode))
         {
             return;
         }
@@ -2178,6 +2314,47 @@ public sealed partial class LibraryPage : Page
         }
 
         GrdAssets.Select(index);
+    }
+
+    /// <summary>
+    /// Add <paramref name="item"/> to the mosaic multi-selection without clearing others.
+    /// </summary>
+    private void AddToMosaicSelection(AssetItem item, int index)
+    {
+        var selected = new List<AssetItem>();
+        for (var i = 0; i < ViewModel.Assets.Count; i++)
+        {
+            var asset = ViewModel.Assets[i];
+            if (asset.IsFolderHeader)
+            {
+                continue;
+            }
+
+            if (asset.IsSelected || GrdAssets.IsSelected(i) || asset.Id == item.Id)
+            {
+                selected.Add(asset);
+            }
+        }
+
+        if (selected.All(a => a.Id != item.Id))
+        {
+            selected.Add(item);
+        }
+
+        _suppressMosaicSelection = true;
+        try
+        {
+            if (!GrdAssets.IsSelected(index))
+            {
+                GrdAssets.Select(index);
+            }
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+
+        ViewModel.SetSelection(selected, loadPreview: false);
     }
 
     private void OnMosaicReset()

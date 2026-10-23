@@ -16,6 +16,11 @@ public sealed class FileOpResult
     public string? Path { get; init; }
     public IReadOnlyList<FileOpMove> Moves { get; init; } = [];
     public IReadOnlyList<string> Skipped { get; init; } = [];
+    /// <summary>
+    /// True when <c>absorbPriorBatchId</c> was folded into this Move. False when
+    /// the prior was left on the undo stack (caller stops the batch Reject).
+    /// </summary>
+    public bool AbsorbedPriorBatch { get; init; }
 
     public static FileOpResult Fail(string message) => new() { Ok = false, Message = message };
 }
@@ -207,14 +212,26 @@ public sealed partial class FileOpService
     /// a <see cref="FileOpKind.CreateFolder"/> for that path (Move dialog "New folder" then Move here),
     /// the create steps are folded into this Move batch so one Undo returns the files and removes the
     /// empty folder.
+    /// When <paramref name="absorbPriorBatchId"/> is set and that batch is still the newest undoable
+    /// for the project, its steps are folded into this Move too (batch Reject across folders → one Undo).
     /// </summary>
     public Task<FileOpResult> MoveAssetsAsync(
         IReadOnlyList<Asset> assets,
         string destinationDir,
         string projectId,
         CancellationToken cancellationToken = default,
-        string? absorbCreatedFolder = null) =>
-        GatedAsync(projectId, () => MoveAssetsCoreAsync(assets, destinationDir, projectId, cancellationToken, absorbCreatedFolder), cancellationToken);
+        string? absorbCreatedFolder = null,
+        string? absorbPriorBatchId = null) =>
+        GatedAsync(
+            projectId,
+            () => MoveAssetsCoreAsync(
+                assets,
+                destinationDir,
+                projectId,
+                cancellationToken,
+                absorbCreatedFolder,
+                absorbPriorBatchId),
+            cancellationToken);
 
     /// <summary>Create <paramref name="name"/> under <paramref name="parentDir"/> (inside a watched source).</summary>
     public Task<FileOpResult> CreateFolderAsync(string parentDir, string name, string projectId) =>
@@ -442,7 +459,8 @@ public sealed partial class FileOpService
         string destinationDir,
         string projectId,
         CancellationToken cancellationToken = default,
-        string? absorbCreatedFolder = null)
+        string? absorbCreatedFolder = null,
+        string? absorbPriorBatchId = null)
     {
         if (assets.Count == 0)
         {
@@ -581,40 +599,68 @@ public sealed partial class FileOpService
 
         // Parents before children so Undo (reverse seq) deletes children first — same as Organize.
         var journal = new List<FileOpItem>();
-        string? absorbBatchId = null;
+        var absorbIds = new HashSet<string>(StringComparer.Ordinal);
+        var absorbedPrior = false;
+        // Prior batch may sit under a just-created _rejected folder on the undo
+        // stack. Only fold it in when every newer undoable batch is CreateFolder
+        // for this destination; otherwise leave prior alone (caller stops the
+        // batch Reject — never multi-ID half-undo).
+        if (!string.IsNullOrWhiteSpace(absorbPriorBatchId))
+        {
+            var prior = await _catalog.GetFileOpBatchAsync(absorbPriorBatchId).ConfigureAwait(false);
+            if (prior is not null
+                && !prior.IsUndone
+                && string.Equals(prior.ProjectId, projectId, StringComparison.Ordinal))
+            {
+                var undoable = await _catalog.GetUndoableFileOpsAsync(projectId).ConfigureAwait(false);
+                if (BatchReject.CanAbsorbPrior(undoable, prior.Id, destinationDir))
+                {
+                    absorbIds.Add(prior.Id);
+                    journal.AddRange(prior.Items
+                        .OrderBy(i => i.Seq)
+                        .Select(CloneJournalItem));
+                    absorbedPrior = true;
+                }
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(absorbCreatedFolder)
             && FolderNames.SamePath(absorbCreatedFolder, destinationDir))
         {
             var peek = await _catalog.GetLastUndoableFileOpAsync(projectId).ConfigureAwait(false);
             if (peek?.Kind == FileOpKind.CreateFolder
                 && peek.Items.Any(i => i.Step == FileOpStep.CreateDir
-                    && FolderNames.SamePath(i.NewPath, destinationDir)))
+                    && FolderNames.SamePath(i.NewPath, destinationDir))
+                && absorbIds.Add(peek.Id))
             {
-                absorbBatchId = peek.Id;
                 journal.AddRange(peek.Items
                     .Where(i => i.Step == FileOpStep.CreateDir)
                     .OrderBy(i => i.NewPath.Length)
-                    .Select(i => new FileOpItem
-                    {
-                        Step = FileOpStep.CreateDir,
-                        OldPath = i.OldPath,
-                        NewPath = i.NewPath
-                    }));
+                    .Select(CloneJournalItem));
             }
         }
 
         journal.AddRange(items);
-        var summary = MoveSummary(moves.Count, destinationDir);
+        var fileMoveCount = journal.Count(i => i.Step == FileOpStep.MoveFile);
+        // NewPath parents only — OldPath-based reject dests would mislabel a
+        // normal multi-source Move as "Reject across K folders".
+        var folderCount = BatchReject.CountDestinationFolders(journal);
+        // Reject journal wording only when prior Reject batches were absorbed.
+        var summary = absorbedPrior
+            ? BatchReject.JournalSummary(fileMoveCount, Math.Max(folderCount, 1))
+            : fileMoveCount == moves.Count
+                ? MoveSummary(moves.Count, destinationDir)
+                : $"Move {fileMoveCount} files (batch)";
         var batchId = await LogAsync(projectId, FileOpKind.Move, summary, journal).ConfigureAwait(false);
         if (batchId is null)
         {
             return JournalFailed();
         }
 
-        if (absorbBatchId is not null)
+        foreach (var id in absorbIds)
         {
-            // Create-folder batch is superseded by this Move (CreateDir steps copied above).
-            await _catalog.MarkFileOpUndoneAsync(absorbBatchId).ConfigureAwait(false);
+            // Absorbed batches are superseded (steps copied above).
+            await _catalog.MarkFileOpUndoneAsync(id).ConfigureAwait(false);
         }
 
         var dest = Quote(DisplayName(destinationDir));
@@ -633,7 +679,8 @@ public sealed partial class FileOpService
             Summary = summary,
             Path = destinationDir,
             Moves = moves,
-            Skipped = skipped
+            Skipped = skipped,
+            AbsorbedPriorBatch = absorbedPrior
         };
     }
 
@@ -1368,6 +1415,16 @@ public sealed partial class FileOpService
     public const string JournalFailedMessage = "Couldn't record this for Undo, so it was reverted";
     public const string JournalFailedPartialMessage =
         "Couldn't record this for Undo; revert was incomplete — rescan if anything looks wrong";
+
+    private static FileOpItem CloneJournalItem(FileOpItem i) => new()
+    {
+        Step = i.Step,
+        AssetId = i.AssetId,
+        OldPath = i.OldPath,
+        NewPath = i.NewPath,
+        OldSourceId = i.OldSourceId,
+        NewSourceId = i.NewSourceId
+    };
 
     /// <summary>
     /// Journal a completed operation. When the journal write fails, the change is reverted with the

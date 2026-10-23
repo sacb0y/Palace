@@ -24,6 +24,58 @@ public sealed class SelectModeTests
         Assert.False(SelectMode.ViewerHoldOpensContext(true, reviewMode: true));
     }
 
+    [Fact]
+    public void OpensBatchContextFromHold_OnlyInSelectMode()
+    {
+        Assert.False(SelectMode.OpensBatchContextFromHold(false, false, false));
+        Assert.True(SelectMode.OpensBatchContextFromHold(true, false, false));
+        Assert.False(SelectMode.OpensBatchContextFromHold(true, true, false));
+        Assert.False(SelectMode.OpensBatchContextFromHold(true, false, true));
+    }
+
+    [Fact]
+    public void AddsPressedToSelection_NeverReplacesInSelectMode()
+    {
+        Assert.True(SelectMode.AddsPressedToSelection(true, alreadySelected: false));
+        Assert.False(SelectMode.AddsPressedToSelection(true, alreadySelected: true));
+        Assert.False(SelectMode.AddsPressedToSelection(false, alreadySelected: false));
+        Assert.True(SelectMode.ReplacesSelectionForContext(false));
+        Assert.False(SelectMode.ReplacesSelectionForContext(true));
+    }
+
+    [Theory]
+    [InlineData(0, "")]
+    [InlineData(1, "1 selected")]
+    [InlineData(5, "5 selected")]
+    [InlineData(-1, "")]
+    public void BatchMenuHeader_ShowsCountOrEmpty(int count, string expected) =>
+        Assert.Equal(expected, SelectMode.BatchMenuHeader(count));
+
+    [Fact]
+    public void BatchMenuHeader_IncludesCollapsedClause() =>
+        Assert.Equal(
+            "12 selected · 3 in collapsed sections",
+            SelectMode.BatchMenuHeader(12, 3));
+
+    [Theory]
+    [InlineData(5, 0, false)]
+    [InlineData(20, 0, false)]
+    [InlineData(21, 0, true)]
+    [InlineData(2, 1, true)]
+    [InlineData(0, 0, false)]
+    public void NeedsBatchConfirm_Above20OrHidden(int count, int collapsed, bool expected) =>
+        Assert.Equal(expected, SelectMode.NeedsBatchConfirm(count, collapsed));
+
+    [Fact]
+    public void EscAndClear_ExitSelectMode()
+    {
+        Assert.True(SelectMode.ExitsSelectModeOnEscape(true, overlayOpen: false));
+        Assert.False(SelectMode.ExitsSelectModeOnEscape(true, overlayOpen: true));
+        Assert.False(SelectMode.ExitsSelectModeOnEscape(false, overlayOpen: false));
+        Assert.True(SelectMode.ExitsSelectModeOnClear(true));
+        Assert.False(SelectMode.ExitsSelectModeOnClear(false));
+    }
+
     [Theory]
     [InlineData(false, 0, "")]
     [InlineData(true, 0, "Click or drag tiles to select")]

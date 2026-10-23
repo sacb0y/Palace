@@ -80,6 +80,28 @@ public sealed class RangeSelectTests
         Assert.Equal([0, 1, 2], session.Highlight(headers, 2));
     }
 
+    /// <summary>
+    /// Hold-then-move across a pinned section header and tiles that would sit
+    /// under a collapsed section in the ordered mosaic — headers are skipped;
+    /// contiguous indexes still cover the hidden span.
+    /// </summary>
+    [Fact]
+    public void Session_Touch_HoldThenMove_SkipsPinnedHeadersAcrossCollapsedSpan()
+    {
+        // ordered: header | a | b | header(pinned) | c(hidden) | d(hidden) | e
+        bool[] headers = [true, false, false, true, false, false, false];
+        var session = new RangeSelectSession(RangeSelectPointer.Touch, 1);
+        Assert.False(session.TryActivate(100, 12, 0));
+        Assert.True(session.TryActivateHold(RangeSelect.TouchHoldMs));
+        Assert.True(session.IsActive);
+        // After hold, move updates Highlight (TryActivate is a no-op once active).
+        var span = session.Highlight(headers, 6);
+        Assert.Equal([1, 2, 4, 5, 6], span);
+        Assert.DoesNotContain(0, span);
+        Assert.DoesNotContain(3, span);
+        Assert.Equal(6, session.EndIndex);
+    }
+
     [Fact]
     public void ToWindowPoint_AddsHostOrigin()
     {

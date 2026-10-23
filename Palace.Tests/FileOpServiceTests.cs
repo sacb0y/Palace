@@ -792,6 +792,214 @@ public sealed class FileOpServiceTests : IAsyncLifetime
         Assert.Null(await _ops.PeekUndoAsync(_projectId));
     }
 
+    /// <summary>
+    /// Batch Reject across two parent folders: each Move absorbs the prior batch
+    /// so one Undo restores every file (Doktor B1).
+    /// </summary>
+    [Fact]
+    public async Task Move_absorbPriorBatchId_multi_folder_reject_is_one_undo()
+    {
+        var shots = Dir(_rootA, "shots");
+        var refs = Dir(_rootA, "refs");
+        var a = await AddAssetAsync(_rootA, Path.Combine("shots", "a.png"), "a");
+        var b = await AddAssetAsync(_rootA, Path.Combine("refs", "b.png"), "b");
+
+        var rejectShots = await _ops.CreateFolderAsync(shots, ReviewReject.FolderName, _projectId);
+        Assert.True(rejectShots.Ok, rejectShots.Message);
+        var moveShots = await _ops.MoveAssetsAsync(
+            [a],
+            rejectShots.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectShots.Path);
+        Assert.True(moveShots.Ok, moveShots.Message);
+        Assert.False(string.IsNullOrWhiteSpace(moveShots.BatchId));
+
+        var rejectRefs = await _ops.CreateFolderAsync(refs, ReviewReject.FolderName, _projectId);
+        Assert.True(rejectRefs.Ok, rejectRefs.Message);
+        var moveRefs = await _ops.MoveAssetsAsync(
+            [b],
+            rejectRefs.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectRefs.Path,
+            absorbPriorBatchId: moveShots.BatchId);
+        Assert.True(moveRefs.Ok, moveRefs.Message);
+        Assert.True(moveRefs.AbsorbedPriorBatch);
+
+        var peek = await _ops.PeekUndoAsync(_projectId);
+        Assert.NotNull(peek);
+        Assert.Equal(2, peek!.Items.Count(i => i.Step == FileOpStep.MoveFile));
+        Assert.Equal(2, peek.Items.Count(i => i.Step == FileOpStep.CreateDir));
+        Assert.Equal(BatchReject.JournalSummary(2, 2), peek.Summary);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.True(File.Exists(a.Path));
+        Assert.True(File.Exists(b.Path));
+        Assert.False(Directory.Exists(rejectShots.Path!));
+        Assert.False(Directory.Exists(rejectRefs.Path!));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    /// <summary>
+    /// Intervening Move between prior Reject and this Move → do not absorb
+    /// (Doktor M2 option a: caller stops the batch; each completed part stays
+    /// separately undoable — never multi-ID half-undo).
+    /// </summary>
+    [Fact]
+    public async Task Move_absorbPriorBatchId_skipped_when_newer_not_dest_create()
+    {
+        var shots = Dir(_rootA, "shots");
+        var a = await AddAssetAsync(_rootA, Path.Combine("shots", "a.png"), "a");
+        var extra = await AddAssetAsync(_rootA, "extra.png", "x");
+
+        var rejectShots = await _ops.CreateFolderAsync(shots, ReviewReject.FolderName, _projectId);
+        Assert.True(rejectShots.Ok, rejectShots.Message);
+        var moveShots = await _ops.MoveAssetsAsync(
+            [a],
+            rejectShots.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectShots.Path);
+        Assert.True(moveShots.Ok, moveShots.Message);
+
+        var other = Dir(_rootA, "Other");
+        var intervening = await _ops.MoveAssetsAsync([extra], other, _projectId);
+        Assert.True(intervening.Ok, intervening.Message);
+
+        var b = await AddAssetAsync(_rootA, Path.Combine("shots", "b.png"), "b");
+        var moveB = await _ops.MoveAssetsAsync(
+            [b],
+            rejectShots.Path!,
+            _projectId,
+            absorbPriorBatchId: moveShots.BatchId);
+        Assert.True(moveB.Ok, moveB.Message);
+        Assert.False(moveB.AbsorbedPriorBatch);
+
+        // Prior reject Move still on the stack under the intervening Move + this Move.
+        var undoable = await _catalog.GetUndoableFileOpsAsync(_projectId);
+        Assert.Contains(undoable, x => string.Equals(x.Id, moveShots.BatchId, StringComparison.Ordinal));
+        Assert.Contains(undoable, x => string.Equals(x.Id, moveB.BatchId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Batch Reject stop path: after folder A is rejected, an interleaved Move
+    /// makes absorb unsafe — CanAbsorbPrior is false so the caller interrupts
+    /// without moving B; Ctrl+Z undoes only the tip (intervening), then A.
+    /// </summary>
+    [Fact]
+    public async Task BatchReject_interrupt_when_intervening_op_blocks_absorb()
+    {
+        var shots = Dir(_rootA, "shots");
+        var refs = Dir(_rootA, "refs");
+        var a = await AddAssetAsync(_rootA, Path.Combine("shots", "a.png"), "a");
+        var b = await AddAssetAsync(_rootA, Path.Combine("refs", "b.png"), "b");
+        var extra = await AddAssetAsync(_rootA, "extra.png", "x");
+
+        var rejectShots = await _ops.CreateFolderAsync(shots, ReviewReject.FolderName, _projectId);
+        Assert.True(rejectShots.Ok, rejectShots.Message);
+        var moveA = await _ops.MoveAssetsAsync(
+            [a],
+            rejectShots.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectShots.Path);
+        Assert.True(moveA.Ok, moveA.Message);
+        Assert.False(string.IsNullOrWhiteSpace(moveA.BatchId));
+
+        var other = Dir(_rootA, "Other");
+        var intervening = await _ops.MoveAssetsAsync([extra], other, _projectId);
+        Assert.True(intervening.Ok, intervening.Message);
+
+        var rejectRefs = Path.Combine(refs, ReviewReject.FolderName);
+        var undoable = await _catalog.GetUndoableFileOpsAsync(_projectId);
+        Assert.False(BatchReject.CanAbsorbPrior(undoable, moveA.BatchId!, rejectRefs));
+        Assert.Equal(
+            "Interrupted, 1 rejected so far. Another change happened after this reject; Ctrl+Z undoes newest first.",
+            BatchReject.InterruptedMessage(movedSoFar: 1));
+
+        // Caller must not Move B. Tip undo reverses only the intervening Move;
+        // then A is still separately undoable.
+        var undoX = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoX.Ok, undoX.Message);
+        Assert.True(File.Exists(extra.Path));
+        Assert.False(File.Exists(a.Path)); // still in _rejected
+        Assert.True(File.Exists(b.Path)); // never moved
+
+        var undoA = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoA.Ok, undoA.Message);
+        Assert.True(File.Exists(a.Path));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    /// <summary>
+    /// Absorb folds prior into the new tip; TrackUndoBatchId keeps only the tip
+    /// (cancel-between-folders after absorb: one Undo restores exactly what moved).
+    /// </summary>
+    [Fact]
+    public async Task TrackUndoBatchId_after_absorb_one_undo_restores_moved()
+    {
+        var shots = Dir(_rootA, "shots");
+        var refs = Dir(_rootA, "refs");
+        var a = await AddAssetAsync(_rootA, Path.Combine("shots", "a.png"), "a");
+        var b = await AddAssetAsync(_rootA, Path.Combine("refs", "b.png"), "b");
+
+        var rejectShots = await _ops.CreateFolderAsync(shots, ReviewReject.FolderName, _projectId);
+        var moveA = await _ops.MoveAssetsAsync(
+            [a],
+            rejectShots.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectShots.Path);
+        Assert.True(moveA.Ok, moveA.Message);
+
+        var undoBatchIds = new List<string>();
+        BatchReject.TrackUndoBatchId(
+            undoBatchIds,
+            chainBatchId: null,
+            newBatchId: moveA.BatchId!,
+            absorbedPriorBatch: false);
+
+        var rejectRefs = await _ops.CreateFolderAsync(refs, ReviewReject.FolderName, _projectId);
+        var moveB = await _ops.MoveAssetsAsync(
+            [b],
+            rejectRefs.Path!,
+            _projectId,
+            absorbCreatedFolder: rejectRefs.Path,
+            absorbPriorBatchId: moveA.BatchId);
+        Assert.True(moveB.AbsorbedPriorBatch);
+        Assert.False(string.IsNullOrWhiteSpace(moveB.BatchId));
+        BatchReject.TrackUndoBatchId(
+            undoBatchIds,
+            chainBatchId: moveA.BatchId,
+            newBatchId: moveB.BatchId!,
+            absorbedPriorBatch: true);
+
+        // Cancel before a third folder: only the absorbed tip remains.
+        Assert.Equal([moveB.BatchId!], undoBatchIds);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.True(File.Exists(a.Path));
+        Assert.True(File.Exists(b.Path));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    /// <summary>
+    /// Normal multi-source Move into one folder must keep MoveSummary — not
+    /// "Reject N files across K folders" (Doktor S2).
+    /// </summary>
+    [Fact]
+    public async Task Move_multi_source_into_one_folder_keeps_move_summary()
+    {
+        var shots = Dir(_rootA, "shots");
+        var refs = Dir(_rootA, "refs");
+        var a = await AddAssetAsync(_rootA, Path.Combine("shots", "a.png"), "a");
+        var b = await AddAssetAsync(_rootA, Path.Combine("refs", "b.png"), "b");
+        var dest = Dir(_rootA, "Other");
+
+        var moved = await _ops.MoveAssetsAsync([a, b], dest, _projectId);
+        Assert.True(moved.Ok, moved.Message);
+        Assert.Equal(FileOpService.MoveSummary(2, dest), moved.Summary);
+        Assert.DoesNotContain("Reject", moved.Summary, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Move_without_absorb_keeps_create_folder_as_separate_undo()
     {
