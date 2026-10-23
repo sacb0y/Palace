@@ -50,6 +50,22 @@ public static class ExrFile
         TryReadHeader(data, out var h, out _) && h.Compression <= 3;
 
     /// <summary>
+    /// Non-finite RGB → 0, alpha → 1. Same contract as the pre-P2
+    /// <see cref="TryDecodeScrgb"/> loop — present stats / GPU upload must
+    /// stay finite (EXR NaN/Inf from renderers is common).
+    /// </summary>
+    public static void SanitizeNonFinite(Span<float> rgba)
+    {
+        for (var i = 0; i < rgba.Length; i++)
+        {
+            if (!float.IsFinite(rgba[i]))
+            {
+                rgba[i] = (i & 3) == 3 ? 1f : 0f;
+            }
+        }
+    }
+
+    /// <summary>
     /// Decode to linear scRGB for HDR presentation: non-finite samples become
     /// 0 (negatives are kept, as scRGB allows), plus Info stats.
     /// </summary>
@@ -61,16 +77,8 @@ public static class ExrFile
             return null;
         }
 
-        var rgba = frame.Rgba;
-        for (var i = 0; i < rgba.Length; i++)
-        {
-            if (!float.IsFinite(rgba[i]))
-            {
-                rgba[i] = (i & 3) == 3 ? 1f : 0f;
-            }
-        }
-
-        return RadianceFile.FrameFromScrgb(rgba, frame.Width, frame.Height);
+        SanitizeNonFinite(frame.Rgba);
+        return RadianceFile.FrameFromScrgb(frame.Rgba, frame.Width, frame.Height);
     }
 
     public static string? CompressionName(int c) => c switch
@@ -97,12 +105,21 @@ public static class ExrFile
         public int LinesPerChunk => Compression == 3 ? 16 : 1;
     }
 
-    public static Frame? TryDecode(ReadOnlySpan<byte> data, CancellationToken cancellationToken = default)
+    /// <param name="convertToRec709">
+    /// When true (default), chromaticities → BT.709 scRGB for the legacy present
+    /// path. When false, leave scene-linear source primaries so P2
+    /// <c>ImagingStillNormalize</c> can run with EXR header whiteLuminance /
+    /// chromaticities.
+    /// </param>
+    public static Frame? TryDecode(
+        ReadOnlySpan<byte> data,
+        CancellationToken cancellationToken = default,
+        bool convertToRec709 = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var frame = (HasUnknownCompression(data) ? null : ExrNative.TryDecode(data)) ?? TryDecodeInHouse(data, cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        if (frame is not null)
+        if (frame is not null && convertToRec709)
         {
             ConvertToRec709(frame.Rgba, TryReadChromaticities(data), cancellationToken);
         }

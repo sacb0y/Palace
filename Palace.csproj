@@ -50,6 +50,10 @@
     <PropertyGroup> above to opt out.
   -->
   <ItemGroup>
+    <ProjectReference Include="Palace.Imaging\Palace.Imaging.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="MetadataExtractor" Version="2.9.3" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />

@@ -1,0 +1,274 @@
+using Palace.Helpers;
+using Palace.Imaging;
+using Xunit;
+
+namespace Palace.Tests;
+
+/// <summary>P2: decoder glue maps metadata → Normalize and matches fixture masters.</summary>
+public class ImagingStillNormalizeTests
+{
+    [Fact]
+    public void OptionsFromProbe_Jxr_IsScrgb()
+    {
+        var opts = ImagingStillNormalize.OptionsFromProbe(
+            new HdrProbe(HdrKind.HdrJxr, null, null, 800));
+        Assert.Equal(TransferKind.Scrgb, opts.Transfer);
+        Assert.Equal(ColorPrimaries.Bt709, opts.Primaries);
+        Assert.Equal(800, opts.MetadataPeakNits);
+    }
+
+    [Fact]
+    public void OptionsFromProbe_PqPng_IsPqBt2020()
+    {
+        var opts = ImagingStillNormalize.OptionsFromProbe(
+            new HdrProbe(HdrKind.HdrPng, 9, 16, 1000));
+        Assert.Equal(TransferKind.Pq, opts.Transfer);
+        Assert.Equal(ColorPrimaries.Bt2020, opts.Primaries);
+    }
+
+    [Fact]
+    public void PrimariesFromCicp_JxlP3_IsDisplayP3()
+    {
+        Assert.Equal(ColorPrimaries.DisplayP3, ImagingStillNormalize.PrimariesFromCicp(11));
+        Assert.Equal(ColorPrimaries.DisplayP3, ImagingStillNormalize.PrimariesFromCicp(12));
+        Assert.Equal(ColorPrimaries.Bt2020, ImagingStillNormalize.PrimariesFromCicp(9));
+        Assert.Equal(ColorPrimaries.Bt709, ImagingStillNormalize.PrimariesFromCicp(1));
+    }
+
+    [Fact]
+    public void OptionsForJxl_StillPq_UsesPq()
+    {
+        var opts = ImagingStillNormalize.OptionsForJxl(
+            JxlBufferTransfer.Pq, HdrTransfer.Pq, 9, 10_000f);
+        Assert.Equal(TransferKind.Pq, opts.Transfer);
+        Assert.Equal(ColorPrimaries.Bt2020, opts.Primaries);
+    }
+
+    [Fact]
+    public void OptionsForJxl_LinearRelative_UsesIntensityTargetWhite()
+    {
+        var opts = ImagingStillNormalize.OptionsForJxl(
+            JxlBufferTransfer.Linear, HdrTransfer.Pq, 9, 1000f);
+        Assert.Equal(TransferKind.LinearScene, opts.Transfer);
+        Assert.Equal(1000f, opts.WhiteLuminance);
+        Assert.Equal(ColorPrimaries.Bt2020, opts.Primaries);
+    }
+
+    /// <summary>A1: BT.2020 linear out must not be tagged DisplayP3 / Bt709.</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(2)]
+    [InlineData(11)]
+    [InlineData(12)]
+    public void A1_OptionsForJxl_Linear_UsesBt2020WhenWideOut(int? cicp)
+    {
+        var opts = ImagingStillNormalize.OptionsForJxl(
+            JxlBufferTransfer.Linear, HdrTransfer.Pq, cicp, 1000f);
+        Assert.Equal(ColorPrimaries.Bt2020, opts.Primaries);
+
+        // Identity on a BT.2020 linear pixel (IT=1000 → ×1000/203).
+        var buf = new float[] { 0.5f, 0.2f, 0.1f, 1f };
+        var frame = ImagingStillNormalize.Run(buf, 1, 1, opts);
+        AssertNear(0.5f * 1000f / 203f, frame.Rgba[0], 1e-4f);
+        AssertNear(0.2f * 1000f / 203f, frame.Rgba[1], 1e-4f);
+        AssertNear(0.1f * 1000f / 203f, frame.Rgba[2], 1e-4f);
+    }
+
+    /// <summary>A2: Pq + DisplayP3 must differ from Pq + Bt2020 on a non-grey pixel.</summary>
+    [Fact]
+    public void A2_Pq_DisplayP3_DiffersFromBt2020()
+    {
+        var buf = new float[] { 0.5f, 0.2f, 0.1f, 1f };
+        var p3 = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Pq, ColorPrimaries.DisplayP3));
+        var bt = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Pq, ColorPrimaries.Bt2020));
+        Assert.True(
+            Math.Abs(p3.Rgba[0] - bt.Rgba[0]) > 1e-3f
+            || Math.Abs(p3.Rgba[1] - bt.Rgba[1]) > 1e-3f
+            || Math.Abs(p3.Rgba[2] - bt.Rgba[2]) > 1e-3f,
+            "P3 and BT.2020 PQ paths must diverge on a chromatic sample");
+    }
+
+    [Fact]
+    public void A2_Sdr_DisplayP3_DiffersFromBt709()
+    {
+        var buf = new float[] { 0.8f, 0.2f, 0.1f, 1f };
+        var p3 = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Sdr, ColorPrimaries.DisplayP3));
+        var bt = Normalize.Run(buf, 1, 1, new NormalizeOptions(TransferKind.Sdr, ColorPrimaries.Bt709));
+        Assert.True(Math.Abs(p3.Rgba[0] - bt.Rgba[0]) > 1e-4f);
+    }
+
+    [Fact]
+    public void Fixture_PqDump_ViaGlue_WithinOnePercentOfMaster()
+    {
+        var master = ImagingFixtureIO.LoadF32("master.bt2020.f32");
+        var pq = ImagingFixtureIO.LoadF32("master.pq.f32");
+        var opts = ImagingStillNormalize.OptionsForEncoded(HdrTransfer.Pq, 9);
+        var frame = ImagingStillNormalize.Run(pq, 2, 2, opts);
+        for (var i = 0; i < master.Length; i += 4)
+        {
+            AssertNear(master[i], frame.Rgba[i], 0.01f);
+            AssertNear(master[i + 1], frame.Rgba[i + 1], 0.01f);
+            AssertNear(master[i + 2], frame.Rgba[i + 2], 0.01f);
+        }
+    }
+
+    [Fact]
+    public void Fixture_HdrRadiance_ViaGlue_UsesExrRefWhite80()
+    {
+        var (rgba, w, h) = ImagingFixtureIO.LoadHdr();
+        var opts = ImagingStillNormalize.OptionsForRadiance();
+        var frame = ImagingStillNormalize.Run(rgba, w, h, opts);
+        var master = ImagingFixtureIO.LoadF32("master.bt2020.f32");
+        AssertNear(master[0], frame.Rgba[0], 0.05f);
+        AssertNear(master[4], frame.Rgba[4], 0.05f);
+    }
+
+    [Fact]
+    public void Fixture_ExrDecoded_ViaOptionsForExr_MatchesJxrScrgb()
+    {
+        var exrBytes = File.ReadAllBytes(Path.Combine(ImagingFixtureIO.Dir, "master.exr"));
+        var exr = ImagingFixtureIO.LoadF32("master.exr.decoded.f32");
+        var jxr = ImagingFixtureIO.LoadF32("master.jxr.decoded.f32");
+
+        var exrOpts = ImagingStillNormalize.OptionsForExr(exrBytes);
+        Assert.Equal(TransferKind.LinearScene, exrOpts.Transfer);
+        Assert.Null(exrOpts.WhiteLuminance); // Pregmata-like: no whiteLuminance attr
+
+        var exrFrame = ImagingStillNormalize.Run(exr, 2, 2, exrOpts);
+        var jxrFrame = ImagingStillNormalize.Run(
+            jxr, 2, 2, ImagingStillNormalize.OptionsForJxr());
+
+        foreach (var o in new[] { 0, 4 })
+        {
+            AssertNear(jxrFrame.Rgba[o], exrFrame.Rgba[o], 0.01f);
+            AssertNear(jxrFrame.Rgba[o + 1], exrFrame.Rgba[o + 1], 0.01f);
+            AssertNear(jxrFrame.Rgba[o + 2], exrFrame.Rgba[o + 2], 0.01f);
+        }
+    }
+
+    [Fact]
+    public void OptionsForExr_WhiteLuminance203_MapsOneToOne()
+    {
+        using var ms = new MemoryStream();
+        ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]);
+        WriteAttr(ms, "whiteLuminance", "float", BitConverter.GetBytes(203f));
+        ms.WriteByte(0);
+        var opts = ImagingStillNormalize.OptionsForExr(ms.ToArray());
+        Assert.Equal(203f, opts.WhiteLuminance);
+        Normalize.Pixel(1f, 1f, 1f, opts, out var r, out var g, out var b);
+        AssertNear(1f, r, 1e-4f);
+        AssertNear(1f, g, 1e-4f);
+        AssertNear(1f, b, 1e-4f);
+    }
+
+    [Fact]
+    public void OptionsForExr_ReadsWhiteLuminanceAndChromaticities()
+    {
+        var chrom = Chromaticities.DisplayP3;
+        using var ms = new MemoryStream();
+        ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]);
+        WriteAttr(ms, "chromaticities", "chromaticities", EncodeChrom(chrom));
+        WriteAttr(ms, "whiteLuminance", "float", BitConverter.GetBytes(100f));
+        ms.WriteByte(0);
+        var opts = ImagingStillNormalize.OptionsForExr(ms.ToArray());
+        Assert.Equal(100f, opts.WhiteLuminance);
+        Assert.Equal(ColorPrimaries.DisplayP3, opts.EffectivePrimaries);
+        Assert.False(opts.UsesCustomChromaticities);
+    }
+
+    /// <summary>B3 / A6: ACEScg-like custom chrom — coloured pixel vs reference.</summary>
+    [Fact]
+    public void CustomChromaticities_AceScgLike_ColouredPixel()
+    {
+        // ACEScg xy (AP1) D60 white — MatchKnown null.
+        var chrom = new Chromaticities(
+            0.713f, 0.293f,
+            0.165f, 0.830f,
+            0.128f, 0.044f,
+            0.32168f, 0.33767f);
+        Assert.Null(chrom.MatchKnown());
+
+        var opts = new NormalizeOptions(
+            TransferKind.LinearScene,
+            ColorPrimaries.Bt709,
+            WhiteLuminance: 80f,
+            Chromaticities: chrom);
+        Assert.True(opts.UsesCustomChromaticities);
+
+        Normalize.Pixel(0.5f, 0.2f, 0.1f, opts, out var r, out var g, out var b);
+        // Reference from Doktor probe (ACEScg → BT.2020 @ 80/203 scale).
+        AssertNear(0.20032f, r, 0.002f);
+        AssertNear(0.07865f, g, 0.002f);
+        AssertNear(0.03762f, b, 0.002f);
+    }
+
+    [Fact]
+    public void B2_TryRun_OverBudget_ReturnsNull()
+    {
+        var opts = ImagingStillNormalize.OptionsForRadiance();
+        // Claim a huge frame without allocating — budget check is on w×h.
+        Assert.Null(ImagingStillNormalize.TryRun([], ImagingStillNormalize.MaxWorkingPixels + 1, 1, opts));
+        Assert.False(ImagingStillNormalize.FitsWorkingBudget(4096, 4096)); // 16.7 MP
+        Assert.True(ImagingStillNormalize.FitsWorkingBudget(4000, 4000)); // 16 MP
+    }
+
+    /// <summary>B1: NaN/Inf in EXR-like float buffer → finite present stats.</summary>
+    [Fact]
+    public void B1_ExrSanitizeNonFinite_PresentStatsFinite()
+    {
+        var rgba = new float[]
+        {
+            1f, 1f, 1f, 1f,
+            float.NaN, 0.5f, 0.5f, 1f,
+            0.5f, float.PositiveInfinity, 0.5f, 1f,
+            0.25f, 0.25f, 0.25f, float.NaN,
+        };
+        ExrFile.SanitizeNonFinite(rgba);
+        foreach (var v in rgba)
+        {
+            Assert.True(float.IsFinite(v), $"non-finite after sanitize: {v}");
+        }
+
+        Assert.Equal(0f, rgba[4]); // NaN R → 0
+        Assert.Equal(0f, rgba[9]); // +Inf G → 0
+        Assert.Equal(1f, rgba[15]); // NaN A → 1
+
+        var frame = RadianceFile.FrameFromScrgb(rgba, 2, 2);
+        Assert.True(float.IsFinite(frame.MaxScrgb));
+        Assert.True(float.IsFinite(frame.MaxNits));
+        Assert.True(float.IsFinite(frame.AvgNits));
+        Assert.True(float.IsFinite(frame.MinNits));
+        Assert.False(float.IsNaN(frame.MaxScrgb));
+    }
+
+    private static void AssertNear(float expected, float actual, float tol) =>
+        Assert.True(
+            Math.Abs(expected - actual) <= tol,
+            $"expected {expected}, got {actual}, tol {tol}");
+
+    private static byte[] EncodeChrom(Chromaticities c)
+    {
+        var buf = new byte[32];
+        BitConverter.TryWriteBytes(buf.AsSpan(0), c.Rx);
+        BitConverter.TryWriteBytes(buf.AsSpan(4), c.Ry);
+        BitConverter.TryWriteBytes(buf.AsSpan(8), c.Gx);
+        BitConverter.TryWriteBytes(buf.AsSpan(12), c.Gy);
+        BitConverter.TryWriteBytes(buf.AsSpan(16), c.Bx);
+        BitConverter.TryWriteBytes(buf.AsSpan(20), c.By);
+        BitConverter.TryWriteBytes(buf.AsSpan(24), c.Wx);
+        BitConverter.TryWriteBytes(buf.AsSpan(28), c.Wy);
+        return buf;
+    }
+
+    private static void WriteAttr(Stream s, string name, string type, ReadOnlySpan<byte> value)
+    {
+        var nb = System.Text.Encoding.ASCII.GetBytes(name);
+        s.Write(nb);
+        s.WriteByte(0);
+        var tb = System.Text.Encoding.ASCII.GetBytes(type);
+        s.Write(tb);
+        s.WriteByte(0);
+        s.Write(BitConverter.GetBytes(value.Length));
+        s.Write(value);
+    }
+}

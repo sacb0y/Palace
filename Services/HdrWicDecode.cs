@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Palace.Helpers;
+using Palace.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 using Windows.Storage.Streams;
@@ -33,6 +34,16 @@ internal sealed class HdrFrame
     public float IntensityScale { get; init; } = 1f;
 
     public JxlBufferTransfer BufferTransfer { get; init; } = JxlBufferTransfer.Unknown;
+
+    /// <summary>
+    /// P2: BT.2020 linear working frame (1.0 = 203 nits) from
+    /// <see cref="ImagingStillNormalize"/>. Present still uses
+    /// <see cref="ScrgbRgba"/> until P3–P5.
+    /// </summary>
+    public NormalizedFrame? Working { get; init; }
+
+    /// <summary>Normalize options used for <see cref="Working"/> (transfer / primaries / peak).</summary>
+    public NormalizeOptions? WorkingOptions { get; init; }
 
     public bool HasStats => MaxNits > 0;
 
@@ -123,15 +134,36 @@ internal static class HdrWicDecode
         string path,
         HdrProbe probe,
         CancellationToken cancellation) =>
-        TryLoadAsync(path, probe, 0, 0, ImageScaling.Fit, cancellation);
+        TryLoadAsync(path, probe, 0, 0, ImageScaling.Fit, cancellation, buildWorking: true);
 
+    public static Task<HdrDecodeResult> TryLoadAsync(
+        string path,
+        HdrProbe probe,
+        int viewportPixelWidth,
+        int viewportPixelHeight,
+        ImageScaling scaling,
+        CancellationToken cancellation) =>
+        TryLoadAsync(
+            path,
+            probe,
+            viewportPixelWidth,
+            viewportPixelHeight,
+            scaling,
+            cancellation,
+            buildWorking: true);
+
+    /// <param name="buildWorking">
+    /// When false (thumbnails / Fit discard paths), skip <see cref="HdrFrame.Working"/>.
+    /// Default true for gallery Actual/1:1 present.
+    /// </param>
     public static async Task<HdrDecodeResult> TryLoadAsync(
         string path,
         HdrProbe probe,
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking)
     {
         BeginErrorStamp();
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
@@ -161,7 +193,8 @@ internal static class HdrWicDecode
             var kind = probe.Kind == HdrKind.HdrExr || PathSafe.IsExr(path) ? "exr" : "hdr";
             return Done(Tag(
                 await Task.Run(
-                    () => FromLinearFloatStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
+                    () => FromLinearFloatStill(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, buildWorking),
                     cancellation).ConfigureAwait(false),
                 kind));
         }
@@ -171,7 +204,8 @@ internal static class HdrWicDecode
             try
             {
                 var png = await Task.Run(
-                    () => FromManagedPng(path, probe, viewportPixelWidth, viewportPixelHeight, scaling),
+                    () => FromManagedPng(
+                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, buildWorking),
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
@@ -200,7 +234,8 @@ internal static class HdrWicDecode
                     scaling,
                     wantRgba: true,
                     measure: false,
-                    cancellation).ConfigureAwait(false),
+                    cancellation,
+                    buildWorking).ConfigureAwait(false),
                 "jxr"));
         }
 
@@ -210,7 +245,13 @@ internal static class HdrWicDecode
             {
                 var avif = await Task.Run(
                     () => HdrAvifDecode.TryLoad(
-                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                        path,
+                        probe,
+                        viewportPixelWidth,
+                        viewportPixelHeight,
+                        scaling,
+                        cancellation,
+                        buildWorking),
                     cancellation).ConfigureAwait(false);
                 if (avif is not null)
                 {
@@ -232,7 +273,14 @@ internal static class HdrWicDecode
             try
             {
                 var jxl = await Task.Run(
-                    () => FromJxlStill(path, probe, viewportPixelWidth, viewportPixelHeight, scaling, cancellation),
+                    () => FromJxlStill(
+                        path,
+                        probe,
+                        viewportPixelWidth,
+                        viewportPixelHeight,
+                        scaling,
+                        cancellation,
+                        buildWorking),
                     cancellation).ConfigureAwait(false);
                 if (jxl is not null)
                 {
@@ -298,7 +346,15 @@ internal static class HdrWicDecode
             var packed = pixels.Value;
             return Done(Tag(
                 await Task.Run(
-                    () => ToScrgb(packed.Data, packed.Format, decodeW, decodeH, nativeW, nativeH, probe),
+                    () => ToScrgb(
+                        packed.Data,
+                        packed.Format,
+                        decodeW,
+                        decodeH,
+                        nativeW,
+                        nativeH,
+                        probe,
+                        buildWorking),
                     cancellation).ConfigureAwait(false),
                 "wic"));
         }
@@ -407,7 +463,8 @@ internal static class HdrWicDecode
                 {
                     // Stats only: a tiny Fit decode keeps native stats without
                     // holding a native float frame (Radiance streams).
-                    var frame = FromLinearFloatStill(path, probe, 2, 2, ImageScaling.Fit);
+                    var frame = FromLinearFloatStill(
+                        path, probe, 2, 2, ImageScaling.Fit, buildWorking: false);
                     return frame is null
                         ? (HdrStats?)null
                         : new HdrStats(
@@ -426,7 +483,13 @@ internal static class HdrWicDecode
             try
             {
                 var png = await Task.Run(
-                    () => FromManagedPng(path, probe, viewportPixelWidth, viewportPixelHeight, ImageScaling.Fit),
+                    () => FromManagedPng(
+                        path,
+                        probe,
+                        viewportPixelWidth,
+                        viewportPixelHeight,
+                        ImageScaling.Fit,
+                        buildWorking: false),
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
@@ -594,7 +657,8 @@ internal static class HdrWicDecode
         ImageScaling scaling,
         bool wantRgba,
         bool measure,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         LastWicError = null;
         var bytes = await TryReadLocalBytesAsync(path, cancellation).ConfigureAwait(false);
@@ -627,7 +691,8 @@ internal static class HdrWicDecode
                 scaling,
                 wantRgba,
                 measure,
-                cancellation).ConfigureAwait(false);
+                cancellation,
+                buildWorking).ConfigureAwait(false);
             if (winrt is not null)
             {
                 LastWicError = null;
@@ -671,7 +736,8 @@ internal static class HdrWicDecode
         ImageScaling scaling,
         bool wantRgba,
         bool measure,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking)
     {
         try
         {
@@ -683,7 +749,8 @@ internal static class HdrWicDecode
                 scaling,
                 wantRgba,
                 measure,
-                cancellation).ConfigureAwait(false);
+                cancellation,
+                buildWorking).ConfigureAwait(false);
         }
         catch (Exception ex) when (WicNative.WicDecoderOpen.IsWrongThread(ex.HResult))
         {
@@ -698,7 +765,8 @@ internal static class HdrWicDecode
                         scaling,
                         wantRgba,
                         measure,
-                        cancellation)).ConfigureAwait(false);
+                        cancellation,
+                        buildWorking)).ConfigureAwait(false);
             }
             catch (Exception retry) when (WicNative.WicDecoderOpen.IsWrongThread(retry.HResult))
             {
@@ -718,7 +786,8 @@ internal static class HdrWicDecode
         ImageScaling scaling,
         bool wantRgba,
         bool measure,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking)
     {
         LastWicError = null;
         var file = await StorageFile.GetFileFromPathAsync(path).AsTask(cancellation);
@@ -825,7 +894,8 @@ internal static class HdrWicDecode
                         scaling,
                         wantRgba,
                         measure,
-                        cancellation),
+                        cancellation,
+                        buildWorking),
                     cancellation);
             }
         }
@@ -1063,7 +1133,8 @@ internal static class HdrWicDecode
         ImageScaling scaling,
         bool wantRgba,
         bool measure,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         var converted = Convert(data, format, width, height, probe, wantRgba, cancellation);
         if (converted is null)
@@ -1078,10 +1149,16 @@ internal static class HdrWicDecode
                 nativeWidth, nativeHeight, viewportPixelWidth, viewportPixelHeight)
             : GalleryPresent.PresentDecodeSize(
                 nativeWidth, nativeHeight, viewportPixelWidth, viewportPixelHeight, scaling);
-        if (wantRgba && rgba is not null && decodeW > 0 && decodeH > 0
-            && (decodeW != width || decodeH != height))
+        // S2: decide scale first — don't build native Working then discard on Fit/thumb.
+        var willScale = wantRgba && rgba is not null && decodeW > 0 && decodeH > 0
+            && (decodeW != width || decodeH != height);
+        var (working, workingOpts) = wantRgba && !measure && buildWorking && !willScale
+            ? TryBuildWorking(data, format, width, height, probe, buildWorking: true)
+            : (null, null);
+
+        if (willScale)
         {
-            rgba = HdrPixels.BoxScaleScrgb(rgba, width, height, decodeW, decodeH);
+            rgba = HdrPixels.BoxScaleScrgb(rgba!, width, height, decodeW, decodeH);
             width = decodeW;
             height = decodeH;
         }
@@ -1098,7 +1175,9 @@ internal static class HdrWicDecode
             AvgNits = converted.Value.AvgNits,
             MinNits = converted.Value.MinNits,
             MaxScrgb = converted.Value.MaxScrgb,
-            MaxScrgbChannel = converted.Value.MaxScrgbChannel
+            MaxScrgbChannel = converted.Value.MaxScrgbChannel,
+            Working = working,
+            WorkingOptions = workingOpts
         };
     }
 
@@ -1215,7 +1294,8 @@ internal static class HdrWicDecode
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         cancellation.ThrowIfCancellationRequested();
         var decoded = JxlDecode.TryDecodeFile(
@@ -1223,6 +1303,7 @@ internal static class HdrWicDecode
             HdrJxlPresent.PresentMaxPixels,
             probe.Transfer,
             probe.CicpPrimaries,
+            buildWorking,
             cancellation);
         if (decoded is null)
         {
@@ -1263,6 +1344,16 @@ internal static class HdrWicDecode
 
         // Fit/Fill keep the viewport buffer only (native float dropped with
         // decoded). Actual/1:1 keeps native up to PresentMaxPixels (~1 GB).
+        // B2: drop native-size Working when present was box-scaled (lazy at P3).
+        var working = decoded.Working;
+        var workingOpts = decoded.WorkingOptions;
+        if (working is not null
+            && (frame.Width != decoded.Width || frame.Height != decoded.Height))
+        {
+            working = null;
+            workingOpts = null;
+        }
+
         return new HdrFrame
         {
             ScrgbRgba = frame.ScrgbRgba,
@@ -1279,7 +1370,9 @@ internal static class HdrWicDecode
             SourcePath = path,
             IntensityTarget = decoded.IntensityTarget,
             IntensityScale = decoded.ScaleApplied,
-            BufferTransfer = decoded.BufferTransfer
+            BufferTransfer = decoded.BufferTransfer,
+            Working = working,
+            WorkingOptions = workingOpts
         };
     }
 
@@ -1292,7 +1385,8 @@ internal static class HdrWicDecode
         HdrProbe probe,
         int viewportPixelWidth,
         int viewportPixelHeight,
-        ImageScaling scaling)
+        ImageScaling scaling,
+        bool buildWorking = true)
     {
         var encoded = PngFile.TryDecodeEncodedRgba(path);
         if (encoded is null)
@@ -1310,6 +1404,8 @@ internal static class HdrWicDecode
             decodeH = nativeH;
         }
 
+        // S2: skip Working when Fit/thumb will box-scale the present frame.
+        var willScale = decodeW < nativeW || decodeH < nativeH;
         var frame = ToScrgb(
             encoded.Value.Data,
             encoded.Value.Format,
@@ -1317,13 +1413,14 @@ internal static class HdrWicDecode
             nativeH,
             nativeW,
             nativeH,
-            probe);
+            probe,
+            buildWorking && !willScale);
         if (frame is null)
         {
             return null;
         }
 
-        if (decodeW < nativeW || decodeH < nativeH)
+        if (willScale)
         {
             return new HdrFrame
             {
@@ -1344,35 +1441,135 @@ internal static class HdrWicDecode
     }
 
     /// <summary>
+    /// P2: packed encoded / linear floats → <see cref="NormalizedFrame"/>.
+    /// YUV / identity-GBR packed paths are skipped (legacy Convert remaps those;
+    /// Working would see unmapped channels). Failures never throw.
+    /// </summary>
+    private static (NormalizedFrame? Working, NormalizeOptions? Options) TryBuildWorking(
+        byte[] data,
+        HdrPackedFormat format,
+        int width,
+        int height,
+        HdrProbe probe,
+        bool buildWorking)
+    {
+        if (!buildWorking || !ImagingStillNormalize.FitsWorkingBudget(width, height))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            var count = width * height;
+            if (count <= 0 || !HdrPixels.HasPackedData(data, format, width, height))
+            {
+                return (null, null);
+            }
+
+            var identity = HdrColor.IsIdentityMatrix(probe.CicpMatrix);
+            if (HdrPixels.IsYuv(format)
+                || HdrPixels.TreatAsYuv(format, HdrColor.NeedsYuvConvert(probe.Kind), identity))
+            {
+                return (null, null);
+            }
+
+            var encoded = new float[count * 4];
+            for (var i = 0; i < count; i++)
+            {
+                HdrPixels.Read(data, i, format, out var r, out var g, out var b, out var a);
+                var o = i * 4;
+                encoded[o] = r;
+                encoded[o + 1] = g;
+                encoded[o + 2] = b;
+                encoded[o + 3] = a;
+            }
+
+            // Float/half JXR and 1010102XR are already linear scRGB.
+            var linearScrgb = format is HdrPackedFormat.RgbaFloat or HdrPackedFormat.RgbFloat
+                or HdrPackedFormat.RgbFloatPadded or HdrPackedFormat.RgbaHalf
+                or HdrPackedFormat.RgbHalf or HdrPackedFormat.RgbHalfPadded
+                or HdrPackedFormat.Rgba1010102Xr
+                || probe.Transfer == HdrTransfer.Scrgb;
+            var opts = linearScrgb
+                ? ImagingStillNormalize.OptionsForJxr(probe.MaxCllNits)
+                : ImagingStillNormalize.OptionsForEncoded(
+                    probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
+
+            var working = ImagingStillNormalize.TryRun(encoded, width, height, opts);
+            return working is null ? (null, null) : (working, opts);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return (null, null);
+        }
+    }
+
+    /// <summary>
     /// Decode at the present size (as the WIC paths do): Radiance box-filters
     /// while streaming scanlines, so huge panoramas never hold the native
     /// float frame; EXR decodes native then box-scales. Stats stay native.
+    /// P2 also fills <see cref="HdrFrame.Working"/> from scene-linear floats.
     /// </summary>
     private static HdrFrame? FromLinearFloatStill(
         string path,
         HdrProbe probe,
         int viewportPixelWidth,
         int viewportPixelHeight,
-        ImageScaling scaling)
+        ImageScaling scaling,
+        bool buildWorking = true)
     {
         try
         {
             RadianceFrame? frame;
             int nativeW;
             int nativeH;
+            NormalizedFrame? working = null;
+            NormalizeOptions? workingOpts = null;
             if (probe.Kind == HdrKind.HdrExr || PathSafe.IsExr(path))
             {
-                frame = ExrFile.TryDecodeScrgb(File.ReadAllBytes(path));
-                if (frame is null)
+                var bytes = File.ReadAllBytes(path);
+                // Scene-linear for Imaging; present still needs Rec.709 scRGB.
+                var scene = ExrFile.TryDecode(bytes, convertToRec709: false);
+                if (scene is null)
                 {
                     return null;
                 }
 
-                nativeW = frame.Width;
-                nativeH = frame.Height;
+                // B1: restore TryDecodeScrgb sanitize before present stats / GPU.
+                ExrFile.SanitizeNonFinite(scene.Rgba);
+
+                nativeW = scene.Width;
+                nativeH = scene.Height;
                 var (dw, dh) = GalleryPresent.PresentDecodeSize(
                     nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
-                if (dw > 0 && dh > 0 && (dw < nativeW || dh < nativeH))
+                // S2: decide scale first — Fit/thumb must not build then discard Working.
+                var willScale = dw > 0 && dh > 0 && (dw < nativeW || dh < nativeH);
+
+                // B2: Working is optional — never fail the legacy present.
+                if (buildWorking && !willScale)
+                {
+                    try
+                    {
+                        workingOpts = ImagingStillNormalize.OptionsForExr(bytes);
+                        working = ImagingStillNormalize.TryRun(
+                            scene.Rgba, scene.Width, scene.Height, workingOpts.Value);
+                        if (working is null)
+                        {
+                            workingOpts = null;
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        working = null;
+                        workingOpts = null;
+                    }
+                }
+
+                // S1: convert in place after Working read (avoids ~1 GB clone at 64 MP).
+                ExrFile.ConvertToRec709(scene.Rgba, ExrFile.TryReadChromaticities(bytes));
+                frame = RadianceFile.FrameFromScrgb(scene.Rgba, scene.Width, scene.Height);
+
+                if (willScale)
                 {
                     frame = new RadianceFrame
                     {
@@ -1401,6 +1598,25 @@ internal static class HdrWicDecode
                     nativeW, nativeH, viewportPixelWidth, viewportPixelHeight, scaling);
                 stream.Position = 0;
                 frame = RadianceFile.TryDecode(stream, dw, dh);
+                // Radiance already decodes at present size — skip Working for thumbs.
+                if (buildWorking && frame is not null)
+                {
+                    try
+                    {
+                        workingOpts = ImagingStillNormalize.OptionsForRadiance();
+                        working = ImagingStillNormalize.TryRun(
+                            frame.ScrgbRgba, frame.Width, frame.Height, workingOpts.Value);
+                        if (working is null)
+                        {
+                            workingOpts = null;
+                        }
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        working = null;
+                        workingOpts = null;
+                    }
+                }
             }
 
             if (frame is null)
@@ -1419,7 +1635,9 @@ internal static class HdrWicDecode
                 AvgNits = frame.AvgNits,
                 MinNits = frame.MinNits,
                 MaxScrgb = frame.MaxScrgb,
-                MaxScrgbChannel = frame.MaxScrgbChannel
+                MaxScrgbChannel = frame.MaxScrgbChannel,
+                Working = working,
+                WorkingOptions = workingOpts
             };
         }
         catch
@@ -1590,7 +1808,8 @@ internal static class HdrWicDecode
         int height,
         int nativeWidth,
         int nativeHeight,
-        HdrProbe probe)
+        HdrProbe probe,
+        bool buildWorking = true)
     {
         var converted = Convert(data, format, width, height, probe, wantRgba: true, default);
         if (converted is null)
@@ -1598,6 +1817,8 @@ internal static class HdrWicDecode
             return null;
         }
 
+        var (working, workingOpts) = TryBuildWorking(
+            data, format, width, height, probe, buildWorking);
         return new HdrFrame
         {
             ScrgbRgba = converted.Value.Rgba!,
@@ -1609,7 +1830,9 @@ internal static class HdrWicDecode
             AvgNits = converted.Value.AvgNits,
             MinNits = converted.Value.MinNits,
             MaxScrgb = converted.Value.MaxScrgb,
-            MaxScrgbChannel = converted.Value.MaxScrgbChannel
+            MaxScrgbChannel = converted.Value.MaxScrgbChannel,
+            Working = working,
+            WorkingOptions = workingOpts
         };
     }
 

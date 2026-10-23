@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using Palace.Helpers;
+using Palace.Imaging;
 using Starward.Codec.AVIF;
 
 namespace Palace.Services;
@@ -19,7 +20,8 @@ internal static unsafe class HdrAvifDecode
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         if (!CanDecode(path, probe))
         {
@@ -35,7 +37,8 @@ internal static unsafe class HdrAvifDecode
                 viewportPixelHeight,
                 scaling,
                 wantRgba: true,
-                cancellation) is { } packed
+                cancellation,
+                buildWorking) is { } packed
                 ? new HdrFrame
                 {
                     ScrgbRgba = packed.Rgba!,
@@ -47,7 +50,9 @@ internal static unsafe class HdrAvifDecode
                     AvgNits = packed.AvgNits,
                     MinNits = packed.MinNits,
                     MaxScrgb = packed.MaxScrgb,
-                    MaxScrgbChannel = packed.MaxScrgbChannel
+                    MaxScrgbChannel = packed.MaxScrgbChannel,
+                    Working = packed.Working,
+                    WorkingOptions = packed.WorkingOptions
                 }
                 : null;
         }
@@ -126,14 +131,17 @@ internal static unsafe class HdrAvifDecode
         float AvgNits,
         float MinNits,
         float MaxScrgb,
-        char MaxScrgbChannel)? Decode(
+        char MaxScrgbChannel,
+        NormalizedFrame? Working,
+        NormalizeOptions? WorkingOptions)? Decode(
         string path,
         HdrProbe probe,
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
         bool wantRgba,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         byte[] bytes;
         try
@@ -244,7 +252,8 @@ internal static unsafe class HdrAvifDecode
                         storedH,
                         probe,
                         wantRgba,
-                        cancellation);
+                        cancellation,
+                        buildWorking);
                     if (packed is null)
                     {
                         return null;
@@ -253,10 +262,14 @@ internal static unsafe class HdrAvifDecode
                     var rgba = packed.Value.Rgba;
                     var width = storedW;
                     var height = storedH;
+                    var working = packed.Value.Working;
+                    var workingOpts = packed.Value.WorkingOptions;
                     if (wantRgba && rgba is not null && orientation is >= 2 and <= 8)
                     {
                         (rgba, width, height) = HdrPixels.OrientScrgbRgba(
                             rgba, storedW, storedH, orientation);
+                        // Working stays source-oriented; present Scrgb is EXIF-oriented.
+                        // P3 may re-orient Working; P2 keeps decode-space metadata.
                     }
                     else
                     {
@@ -273,7 +286,9 @@ internal static unsafe class HdrAvifDecode
                         packed.Value.AvgNits,
                         packed.Value.MinNits,
                         packed.Value.MaxScrgb,
-                        packed.Value.MaxScrgbChannel);
+                        packed.Value.MaxScrgbChannel,
+                        working,
+                        workingOpts);
                 }
                 finally
                 {
@@ -324,14 +339,17 @@ internal static unsafe class HdrAvifDecode
         float AvgNits,
         float MinNits,
         float MaxScrgb,
-        char MaxScrgbChannel)? ToScrgb(
+        char MaxScrgbChannel,
+        NormalizedFrame? Working,
+        NormalizeOptions? WorkingOptions)? ToScrgb(
         IntPtr pixels,
         int rowBytes,
         int width,
         int height,
         HdrProbe probe,
         bool wantRgba,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         var count = width * height;
         if (count <= 0 || rowBytes < width * 8)
@@ -340,6 +358,23 @@ internal static unsafe class HdrAvifDecode
         }
 
         var rgba = wantRgba ? new float[count * 4] : null;
+        // B2/S2: only allocate encoded for Working when caller wants it + budget.
+        var wantWorking = wantRgba && buildWorking
+            && ImagingStillNormalize.FitsWorkingBudget(width, height);
+        float[]? encoded = null;
+        if (wantWorking)
+        {
+            try
+            {
+                encoded = new float[count * 4];
+            }
+            catch (OutOfMemoryException)
+            {
+                encoded = null;
+                wantWorking = false;
+            }
+        }
+
         var maxY = 0f;
         var minY = float.MaxValue;
         var sumY = 0.0;
@@ -382,6 +417,13 @@ internal static unsafe class HdrAvifDecode
                     rgba[i + 1] = sg;
                     rgba[i + 2] = sb;
                     rgba[i + 3] = a;
+                    if (encoded is not null)
+                    {
+                        encoded[i] = er;
+                        encoded[i + 1] = eg;
+                        encoded[i + 2] = eb;
+                        encoded[i + 3] = a;
+                    }
                 }
             }
         }
@@ -396,7 +438,30 @@ internal static unsafe class HdrAvifDecode
             minY = 0;
         }
 
+        NormalizedFrame? working = null;
+        NormalizeOptions? workingOpts = null;
+        if (encoded is not null)
+        {
+            try
+            {
+                workingOpts = ImagingStillNormalize.OptionsForEncoded(
+                    probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
+                working = ImagingStillNormalize.TryRun(encoded, width, height, workingOpts.Value);
+                if (working is null)
+                {
+                    workingOpts = null;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                working = null;
+                workingOpts = null;
+            }
+        }
+
         return (rgba, maxY, (float)(sumY / count), minY, maxScrgb,
-            maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(maxR, maxG, maxB));
+            maxScrgb <= 0 ? '\0' : GalleryPresent.PeakChannel(maxR, maxG, maxB),
+            working,
+            workingOpts);
     }
 }
