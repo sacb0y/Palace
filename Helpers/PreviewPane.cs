@@ -2,7 +2,8 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Pure Preview pane state for Library columns. #134 drives auto-hide from available
-/// width (hysteresis); 0.3.9 adds toggle / pin / overlay UI on the same reducer.
+/// width (hysteresis). Toggle / pin / overlay UI on the same reducer is a later
+/// slice (not 0.3.9 — that version is swipe flicker / stale HDR).
 /// Off WinUI for Palace.Tests.
 /// </summary>
 public enum PaneMode
@@ -15,8 +16,8 @@ public enum PaneMode
 /// <summary>User + auto-hide intent for the Library Preview pane.</summary>
 /// <param name="UserShow">User wants the pane; auto-hide must never overwrite this.</param>
 /// <param name="AutoHidden">True when available width cannot keep mosaic ≥560 with Preview.</param>
-/// <param name="OverlayOpen">0.3.9 floating overlay; cleared when auto-hide crosses.</param>
-/// <param name="Pinned">0.3.9 pin; cleared when auto-hide crosses.</param>
+/// <param name="OverlayOpen">Future floating overlay; cleared when auto-hide crosses.</param>
+/// <param name="Pinned">Future pin; cleared when auto-hide crosses.</param>
 /// <param name="UserWidth">Persisted dock width (280–560); default 340.</param>
 public readonly record struct PreviewPaneState(
     bool UserShow,

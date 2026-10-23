@@ -51,7 +51,7 @@ public sealed partial class LibraryPage : Page
     private bool _suppressMosaicSelection;
     /// <summary>Last allocated mosaic width — HostWidth ceiling.</summary>
     private double _allocatedMosaicWidth;
-    /// <summary>Preview reducer (#134 UserShow fixed true; 0.3.9 adds toggle UI).</summary>
+    /// <summary>Preview reducer (#134 UserShow fixed true; toggle/pin UI is later).</summary>
     private PreviewPaneState _previewPane = PreviewPane.Initial;
     private PaneMode _previewPaneMode = PaneMode.Hidden;
     private NavigationView? _shellNav;

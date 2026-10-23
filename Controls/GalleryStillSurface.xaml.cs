@@ -77,6 +77,11 @@ public sealed partial class GalleryStillSurface : UserControl
     private long _settleStartedAtMs;
     private string? _neighborPrevPath;
     private string? _neighborNextPath;
+    /// <summary>
+    /// ImgStill is showing a mosaic thumb / LargePreview placeholder — do not
+    /// use its PixelWidth/Height for Fit layout (letterboxes the real still).
+    /// </summary>
+    private bool _sdrIsPipelinePreview;
     private SwipeZoomRestore.Snapshot? _pendingZoomRestore;
     private UISettings? _uiSettings;
     private bool? _cachedAnimationsEnabled;
@@ -426,6 +431,10 @@ public sealed partial class GalleryStillSurface : UserControl
                 }
 
                 QueueZoomRestoreForCurrent();
+                // Guard: drop stale HDR pixels as soon as the still path changes —
+                // do not leave the previous FP16 frame on ScpHdr while the next
+                // decode runs (Isiac letterbox / wrong-aspect hand-check).
+                ClearStaleHdrOnNavigate();
                 if (_pagerAwaitingContent)
                 {
                     if (_pendingAdvanceSlide)
@@ -439,7 +448,12 @@ public sealed partial class GalleryStillSurface : UserControl
                     }
                     else
                     {
-                        // N3 browse: jump new still to where the neighbor was, settle to 0.
+                        // Browse: jump/settle from the neighbor slot. Do not
+                        // copy neighbor BitmapImage onto ImgStill —
+                        // RefreshAsync (below) assigns a new Source and would
+                        // overwrite it (SDR flash-back promote was a no-op).
+                        // Stale HDR is already cleared above; ScpHdr stays
+                        // hidden until Present (docs/specs/swipe-nav.md).
                         FinishAwaitingContentSettle();
                     }
                 }
@@ -576,11 +590,15 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         ImgStill.Source = sdrImage;
+        // Mosaic thumb under an HDR attempt is a placeholder — catalog/header
+        // owns Fit geometry until the float frame presents.
+        _sdrIsPipelinePreview = usedThumb;
         LogSdrStillSurface(
             still,
             usedThumb ? item?.ThumbPath : still,
             usedThumb ? "mosaic-thumb" : (attempt ? "hdr-attempt-still" : null),
             gallery.CurrentProbe);
+        ApplyScaleLayout();
 
         if (!pathMatches)
         {
@@ -609,6 +627,15 @@ public sealed partial class GalleryStillSurface : UserControl
             return;
         }
 
+        // Stale-frame guard: never keep the previous swapchain visible while
+        // this path's FP16 decode runs (swipe letterbox / wrong aspect).
+        if (GalleryPresent.ShouldClearHdrSurfaceOnNavigate(_hdrFramePath, still))
+        {
+            ClearHdrCache();
+            HideHdr();
+            gallery.SetHdrPresentResult(false, false);
+        }
+
         SdrTonemapLog.TryAppendViewer(
             still,
             "hdr-attempt",
@@ -631,16 +658,6 @@ public sealed partial class GalleryStillSurface : UserControl
 
         if (frame is null)
         {
-            // Drop a *different* still's float buffer before the next native
-            // decode (fast next/prev must not stack ~1 GB HDR JXL frames).
-            // Same-path Fit→1:1 / better-size re-decode keeps the cached frame
-            // so cancel/fail does not blank the image still on screen.
-            if (_hdrFrame is not null
-                && !string.Equals(_hdrFramePath, still, StringComparison.OrdinalIgnoreCase))
-            {
-                _hdrFrame = null;
-            }
-
             _hdrLoadCts = GalleryPresent.LiveTokenSource(_hdrLoadCts);
             string? loadError = null;
             try
@@ -745,6 +762,7 @@ public sealed partial class GalleryStillSurface : UserControl
             _hdrFrame = frame;
             _hdrFramePath = still;
             _hdrFrameProbe = gallery.CurrentProbe;
+            _sdrIsPipelinePreview = false;
             ApplyScaleLayout();
             QueueHistogram(gallery, frame, gallery.CurrentProbe, hdr: true);
             RequestPresent(HdrPresentCoalescer.ImmediateMs);
@@ -923,9 +941,13 @@ public sealed partial class GalleryStillSurface : UserControl
             _presenter ??= new HdrSwapchainPresenter(ScpHdr);
             presenter = _presenter;
             ApplyScaleLayout();
-            // Collapsed panels report ActualWidth 0. Show the swapchain under the
-            // SDR image so layout/composition can run, then hide the image on success.
-            ScpHdr.Visibility = Visibility.Visible;
+            // Arm ScpHdr at Opacity 0 before Present so CompositionScale can
+            // settle to real DPI (Collapsed panels often report 1.0). Do not
+            // raise Opacity until Present succeeds — that would flash the
+            // previous still's swapchain (flicker / wrong-aspect letterbox).
+            // Size still comes from assigned Width/Height via HdrPanelDips when
+            // Actual is 0. Presenter also falls back to RasterizationScale.
+            ArmHdrPanelForPresent();
             ImgStill.Visibility = Visibility.Visible;
             (dipW, dipH) = HdrPanelDips();
             scale = XamlRoot?.RasterizationScale ?? 1.0;
@@ -1021,6 +1043,9 @@ public sealed partial class GalleryStillSurface : UserControl
                     _sdrToneDisplayHdr = presenterRef.DisplayIsHdr;
                 }
 
+                // Reveal swapchain only after this frame uploaded — never the prior still.
+                ScpHdr.Opacity = 1;
+                ScpHdr.Visibility = Visibility.Visible;
                 ImgStill.Visibility = Visibility.Collapsed;
                 galleryRef.SetHdrPresentResult(
                     true,
@@ -1249,8 +1274,24 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private void HideHdr()
     {
+        ScpHdr.Opacity = 1;
         ScpHdr.Visibility = Visibility.Collapsed;
         ImgStill.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Show <see cref="ScpHdr"/> at Opacity 0 so CompositionScale tracks DPI
+    /// before the first Present, without flashing the prior swapchain frame.
+    /// </summary>
+    private void ArmHdrPanelForPresent()
+    {
+        if (ScpHdr.Visibility == Visibility.Visible && ScpHdr.Opacity > 0)
+        {
+            return;
+        }
+
+        ScpHdr.Opacity = 0;
+        ScpHdr.Visibility = Visibility.Visible;
     }
 
     private void ClearHdrCache()
@@ -1263,6 +1304,24 @@ public sealed partial class GalleryStillSurface : UserControl
         _sdrToneWhite = 0;
         _sdrToneDisplayHdr = null;
         _hdrFrameProbe = HdrProbe.None;
+    }
+
+    /// <summary>
+    /// On StillRevision: clear a previous path's HDR present immediately so
+    /// settle / RefreshAsync never show a stale FP16 frame at the wrong size.
+    /// </summary>
+    private void ClearStaleHdrOnNavigate()
+    {
+        var next = _gallery?.PreviewImageUri ?? _gallery?.CurrentPath;
+        if (!GalleryPresent.ShouldClearHdrSurfaceOnNavigate(_hdrFramePath, next))
+        {
+            return;
+        }
+
+        ClearHdrCache();
+        HideHdr();
+        _gallery?.SetHdrPresentResult(false, false);
+        ApplyScaleLayout();
     }
 
     private void ApplyScaleLayout()
@@ -1491,26 +1550,37 @@ public sealed partial class GalleryStillSurface : UserControl
 
     private (int Width, int Height) StillPixelSize()
     {
-        // Oriented WIC / BitmapImage size. Catalog Width/Height are unoriented
-        // headers — 90°/270° EXIF would get the wrong 1:1 aspect.
-        if (_hdrFrame is { NativeWidth: > 0, NativeHeight: > 0 } frame)
-        {
-            return (frame.NativeWidth, frame.NativeHeight);
-        }
-
+        int? bmpW = null;
+        int? bmpH = null;
         if (ImgStill.Source is BitmapImage bmp && bmp.PixelWidth > 0 && bmp.PixelHeight > 0)
         {
-            return (bmp.PixelWidth, bmp.PixelHeight);
+            bmpW = bmp.PixelWidth;
+            bmpH = bmp.PixelHeight;
         }
-
-        if (ImgStill.Source is WriteableBitmap writeable
+        else if (ImgStill.Source is WriteableBitmap writeable
             && writeable.PixelWidth > 0
             && writeable.PixelHeight > 0)
         {
-            return (writeable.PixelWidth, writeable.PixelHeight);
+            bmpW = writeable.PixelWidth;
+            bmpH = writeable.PixelHeight;
         }
 
-        return (0, 0);
+        var item = _gallery?.Current;
+        var fromVm = _gallery?.LayoutPixelSize;
+        // fromVm is already FilePixelSize(native/header/catalog). Feed it as the
+        // header slot so pipeline-preview thumbs cannot beat known file geometry.
+        return GalleryPresent.LayoutPixelSize(
+                _hdrFrame is { NativeWidth: > 0 } ? _hdrFrame.NativeWidth : null,
+                _hdrFrame is { NativeHeight: > 0 } ? _hdrFrame.NativeHeight : null,
+                bmpW,
+                bmpH,
+                _sdrIsPipelinePreview,
+                fromVm?.Width,
+                fromVm?.Height,
+                item?.Width,
+                item?.Height,
+                item?.Undecodable == true)
+            ?? (0, 0);
     }
 
     /// <summary>

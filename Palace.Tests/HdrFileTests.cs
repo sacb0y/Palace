@@ -524,6 +524,56 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void LayoutPixelSize_SkipsPipelinePreviewWhenHeaderKnown()
+    {
+        // Mosaic thumb 512² must not letterbox a 16384×8192 HDR during swipe load.
+        Assert.Equal(
+            (16384, 8192),
+            GalleryPresent.LayoutPixelSize(
+                hdrNativeWidth: null,
+                hdrNativeHeight: null,
+                stillBitmapWidth: 512,
+                stillBitmapHeight: 512,
+                stillIsPipelinePreview: true,
+                headerWidth: 16384,
+                headerHeight: 8192,
+                catalogWidth: 512,
+                catalogHeight: 512));
+        // Full still bitmap wins when it is not a pipeline placeholder.
+        Assert.Equal(
+            (1920, 1080),
+            GalleryPresent.LayoutPixelSize(
+                null, null, 1920, 1080, stillIsPipelinePreview: false,
+                headerWidth: 16384, headerHeight: 8192, catalogWidth: 512, catalogHeight: 512));
+        // HDR native wins over everything.
+        Assert.Equal(
+            (3840, 2160),
+            GalleryPresent.LayoutPixelSize(
+                3840, 2160, 512, 512, stillIsPipelinePreview: true,
+                headerWidth: 16384, headerHeight: 8192, catalogWidth: 512, catalogHeight: 512));
+    }
+
+    [Fact]
+    public void ShouldClearHdrSurfaceOnNavigate_WhenPathChanges()
+    {
+        Assert.False(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(null, @"D:\a.hdr"));
+        Assert.False(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\a.hdr"));
+        Assert.False(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\A.HDR"));
+        Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\b.hdr"));
+        Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", null));
+
+        // Collapsed / never-shown SwapChainPanel: CompositionScale 1.0 is not
+        // trustworthy — use RasterizationScale (125%/150% DPI Fit).
+        Assert.False(GalleryPresent.HdrPanelCompositionScaleReliable(false, 800, 600));
+        Assert.False(GalleryPresent.HdrPanelCompositionScaleReliable(true, 0, 0));
+        Assert.True(GalleryPresent.HdrPanelCompositionScaleReliable(true, 800, 600));
+        Assert.Equal(1.5f, GalleryPresent.ResolveHdrPanelScale(1f, 1.5f, panelCompositionScaleReliable: false), 3);
+        Assert.Equal(1.25f, GalleryPresent.ResolveHdrPanelScale(1.25f, 1.5f, panelCompositionScaleReliable: true), 3);
+        Assert.Equal(1f, GalleryPresent.ResolveHdrPanelScale(1f, 1f, panelCompositionScaleReliable: true), 3);
+        Assert.Equal(1f, GalleryPresent.ResolveHdrPanelScale(0f, 0f, panelCompositionScaleReliable: false), 3);
+    }
+
+    [Fact]
     public void LuminanceY_IsCieYNotMaxRgb()
     {
         var maxRgb = 32.156f * GalleryPresent.ScrgbNits;
