@@ -347,8 +347,8 @@ public static class RecentCustomBackgrounds
     }
 
     /// <summary>
-    /// Null when empty so ToolTipService paints nothing (same contract as
-    /// <c>BindHelpers.ToolTipOrNull</c>; WinUI-free for Palace.Tests).
+    /// Null when empty so ToolTipService paints nothing. WinUI-free single
+    /// source of truth (BindHelpers forwards here for x:Bind).
     /// </summary>
     public static string? ToolTipOrNull(string? text) =>
         string.IsNullOrWhiteSpace(text) ? null : text;

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace Palace.Helpers;
 
@@ -188,11 +189,33 @@ public static class WicNative
         /// </summary>
         public static bool? HeifWicDecoderMissingOverride { get; set; }
 
+        /// <summary>
+        /// Test hook replacing the live COM probe. Throw to exercise leave-unset.
+        /// </summary>
+        internal static Func<bool>? HeifWicDecoderProbeHook { get; set; }
+
         private static int _heifDecoderMissing; // 0 unset, 1 missing, -1 present
+        private static int _heifProbeFailures;
+        private const int MaxHeifProbeFailures = 3;
+        private const string HeifProbeLogKey = "heif-wic-decoder-probe";
+        private static readonly ErrorThrottle HeifProbeLogThrottle =
+            new(TimeSpan.FromSeconds(30));
+
+        /// <summary>Clears probe cache, failure count, and log throttle (tests).</summary>
+        internal static void ResetHeifWicDecoderMissingCache()
+        {
+            _heifDecoderMissing = 0;
+            Volatile.Write(ref _heifProbeFailures, 0);
+            HeifProbeLogThrottle.Reset();
+        }
 
         /// <summary>
         /// True when no WIC HEIF decoder is registered (Store HEIF extension
         /// absent). Cached after the first probe. Non-Windows → missing.
+        /// A probe throw leaves the cache unset (returns false) so corrupt HEIF
+        /// is not silenced; logs are throttled; after
+        /// <see cref="MaxHeifProbeFailures"/> failures the session stops probing
+        /// but still returns false.
         /// </summary>
         public static bool IsHeifWicDecoderMissing()
         {
@@ -206,7 +229,14 @@ public static class WicNative
                 return _heifDecoderMissing > 0;
             }
 
-            if (!OperatingSystem.IsWindows())
+            // Stop probing for the session after N failures; still not-missing.
+            if (Volatile.Read(ref _heifProbeFailures) >= MaxHeifProbeFailures)
+            {
+                return false;
+            }
+
+            // Hook lets Linux tests throw without Windows COM; live path needs OS.
+            if (HeifWicDecoderProbeHook is null && !OperatingSystem.IsWindows())
             {
                 _heifDecoderMissing = 1;
                 return true;
@@ -214,15 +244,27 @@ public static class WicNative
 
             try
             {
-                _heifDecoderMissing = ProbeHeifWicDecoderMissing() ? 1 : -1;
+                _heifDecoderMissing = RunHeifWicDecoderProbe() ? 1 : -1;
             }
-            catch
+            catch (Exception ex)
             {
-                _heifDecoderMissing = 1;
+                // Leave unset — do not cache "missing" (that silenced corrupt HEIF).
+                Interlocked.Increment(ref _heifProbeFailures);
+                if (HeifProbeLogThrottle.ShouldReport(HeifProbeLogKey))
+                {
+                    ErrorReporter.LogOnly("HEIF WIC decoder probe", ex);
+                }
+
+                return false;
             }
 
             return _heifDecoderMissing > 0;
         }
+
+        private static bool RunHeifWicDecoderProbe() =>
+            HeifWicDecoderProbeHook is { } hook
+                ? hook()
+                : ProbeHeifWicDecoderMissing();
 
         /// <summary>
         /// <c>IWICImagingFactory.CreateDecoder(HEIF)</c> → COMPONENTNOTFOUND

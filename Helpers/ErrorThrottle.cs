@@ -41,4 +41,13 @@ internal sealed class ErrorThrottle
             return true;
         }
     }
+
+    /// <summary>Clears remembered keys (tests / session reset).</summary>
+    public void Reset()
+    {
+        lock (_gate)
+        {
+            _last.Clear();
+        }
+    }
 }

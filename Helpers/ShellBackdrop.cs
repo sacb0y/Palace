@@ -780,9 +780,10 @@ public static partial class ShellBackdrop
 
     private static void ReleaseSlotResources(GlassSlot slot)
     {
-        // Dispose Composition brushes before dropping refs (theme flip rebuilds the
-        // slot graph; Window.SystemBackdrop must NOT be recreated — see
-        // ShellBackground.ShouldRecreateSystemBackdrop / MainWindow.ApplySystemBackdrop).
+        // Dispose Composition visual + brushes before dropping refs (theme flip
+        // rebuilds the slot graph; Window.SystemBackdrop must NOT be recreated —
+        // see ShellBackground.ShouldRecreateSystemBackdrop / MainWindow.ApplySystemBackdrop).
+        TryDisposeComposition(slot.Visual);
         TryDisposeComposition(slot.Brush);
         TryDisposeComposition(slot.SourceBrush);
         slot.Visual = null;

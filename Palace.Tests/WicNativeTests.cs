@@ -253,6 +253,71 @@ public sealed class WicNativeTests
             WicNative.DeclaredMethods(typeof(WicNative.IClassFactory)));
     }
 
+    [Fact]
+    public void IsHeifWicDecoderMissing_probeThrow_leavesUnset_andProbesAgain()
+    {
+        var priorOverride = WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride;
+        var priorHook = WicNative.WicDecoderOpen.HeifWicDecoderProbeHook;
+        var calls = 0;
+        try
+        {
+            WicNative.WicDecoderOpen.ResetHeifWicDecoderMissingCache();
+            WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride = null;
+            WicNative.WicDecoderOpen.HeifWicDecoderProbeHook = () =>
+            {
+                calls++;
+                throw new InvalidOperationException("test forced HEIF probe throw");
+            };
+
+            Assert.False(WicNative.WicDecoderOpen.IsHeifWicDecoderMissing());
+            Assert.Equal(1, calls);
+            // Leave-unset: second BADIMAGE path probes COM again.
+            Assert.False(WicNative.WicDecoderOpen.IsHeifWicDecoderMissing());
+            Assert.Equal(2, calls);
+            // Corrupt HEIF must not be silenced while probe is unsettled.
+            Assert.False(WicNative.WicDecoderOpen.IsExpectedPresentMiss(
+                unchecked((int)0x88982F60), @"C:\corrupt.heic"));
+        }
+        finally
+        {
+            WicNative.WicDecoderOpen.HeifWicDecoderProbeHook = priorHook;
+            WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride = priorOverride;
+            WicNative.WicDecoderOpen.ResetHeifWicDecoderMissingCache();
+        }
+    }
+
+    [Fact]
+    public void IsHeifWicDecoderMissing_probeThrow_stopsAfterThreeFailures()
+    {
+        var priorOverride = WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride;
+        var priorHook = WicNative.WicDecoderOpen.HeifWicDecoderProbeHook;
+        var calls = 0;
+        try
+        {
+            WicNative.WicDecoderOpen.ResetHeifWicDecoderMissingCache();
+            WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride = null;
+            WicNative.WicDecoderOpen.HeifWicDecoderProbeHook = () =>
+            {
+                calls++;
+                throw new InvalidOperationException("test forced HEIF probe throw");
+            };
+
+            // Cap is 3: fourth call returns false without probing again.
+            for (var i = 0; i < 4; i++)
+            {
+                Assert.False(WicNative.WicDecoderOpen.IsHeifWicDecoderMissing());
+            }
+
+            Assert.Equal(3, calls);
+        }
+        finally
+        {
+            WicNative.WicDecoderOpen.HeifWicDecoderProbeHook = priorHook;
+            WicNative.WicDecoderOpen.HeifWicDecoderMissingOverride = priorOverride;
+            WicNative.WicDecoderOpen.ResetHeifWicDecoderMissingCache();
+        }
+    }
+
     private static void AssertFlattened(Type type, string extra)
     {
         var methods = WicNative.DeclaredMethods(type);
