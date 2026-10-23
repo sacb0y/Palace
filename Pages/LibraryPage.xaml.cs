@@ -235,15 +235,12 @@ public sealed partial class LibraryPage : Page
             }
 
             _shellReady = true;
-<<<<<<< HEAD
             ResetSectionToggleGuardOnLoaded();
             HookLibraryLayoutTracking();
             HookShellNavPaneTracking();
             RefreshLibraryLayout();
             RefreshMosaicToolbarOverflow();
-=======
             HookOverlayStillGestures();
->>>>>>> fda23ea (fix: re-hook still gestures after Settings; settle X estimate; chip hide)
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
@@ -278,13 +275,10 @@ public sealed partial class LibraryPage : Page
         Unloaded += (_, _) =>
         {
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
-<<<<<<< HEAD
             UnhookLibraryLayoutTracking();
             UnhookShellNavPaneTracking();
-=======
             // Still gesture handlers: -= in HookOverlayStillGestures on next Loaded
             // (NavigationCacheMode=Required reuses this page after Settings).
->>>>>>> fda23ea (fix: re-hook still gestures after Settings; settle X estimate; chip hide)
             SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayReviewSwipe;
             SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
             SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
