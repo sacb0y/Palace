@@ -10,9 +10,11 @@ namespace Palace.Imaging;
 public static class ExrHeader
 {
     /// <summary>
-    /// Read <c>chromaticities</c> (8× float) from an OpenEXR file header.
-    /// Returns false when the attribute is absent (documented LinearScene
+    /// Read <c>chromaticities</c> (8× float) from an OpenEXR file header
+    /// (first matching part in multi-part files). Returns false when absent
+    /// or out of the AP0-friendly finite range (documented LinearScene
     /// default: BT.709 via <see cref="NormalizeOptions.Primaries"/>).
+    /// Shared with the legacy present path via <c>ExrFile.TryReadChromaticities</c>.
     /// </summary>
     public static bool TryReadChromaticities(ReadOnlySpan<byte> file, out Chromaticities chrom)
     {
@@ -22,7 +24,7 @@ public static class ExrHeader
             return false;
         }
 
-        chrom = new Chromaticities(
+        var c = new Chromaticities(
             BinaryPrimitives.ReadSingleLittleEndian(payload),
             BinaryPrimitives.ReadSingleLittleEndian(payload[4..]),
             BinaryPrimitives.ReadSingleLittleEndian(payload[8..]),
@@ -31,8 +33,30 @@ public static class ExrHeader
             BinaryPrimitives.ReadSingleLittleEndian(payload[20..]),
             BinaryPrimitives.ReadSingleLittleEndian(payload[24..]),
             BinaryPrimitives.ReadSingleLittleEndian(payload[28..]));
+        // ACES2065-1 (AP0) puts green at x=0 and blue at y≈−0.077 — allow [-1,1];
+        // reject non-finite / degenerate white or zero primary y (matrix divides by y).
+        if (!IsValidChromaticities(c))
+        {
+            return false;
+        }
+
+        chrom = c;
         return true;
     }
+
+    /// <summary>
+    /// Same acceptance window as the legacy EXR present parser (AP0-friendly).
+    /// </summary>
+    public static bool IsValidChromaticities(Chromaticities c) =>
+        IsFiniteInRange(c.Rx) && IsFiniteInRange(c.Ry)
+        && IsFiniteInRange(c.Gx) && IsFiniteInRange(c.Gy)
+        && IsFiniteInRange(c.Bx) && IsFiniteInRange(c.By)
+        && IsFiniteInRange(c.Wx) && IsFiniteInRange(c.Wy)
+        && c.Ry != 0f && c.Gy != 0f && c.By != 0f
+        && c.Wx > 0f && c.Wy > 0f;
+
+    private static bool IsFiniteInRange(float v) =>
+        float.IsFinite(v) && v is >= -1f and <= 1f;
 
     public static bool TryReadWhiteLuminance(ReadOnlySpan<byte> file, out float nits)
     {
@@ -60,8 +84,10 @@ public static class ExrHeader
             return false;
         }
 
+        var multipart = (BinaryPrimitives.ReadInt32LittleEndian(file.Slice(4, 4)) & 0x1000) != 0;
         var i = 8;
-        while (i < file.Length)
+        var parts = 0;
+        while (i < file.Length && parts < 1024)
         {
             if (!TryReadCString(file, ref i, out var attrName))
             {
@@ -70,7 +96,15 @@ public static class ExrHeader
 
             if (attrName.Length == 0)
             {
-                return false; // end of header
+                // End of this part header. Multi-part: another header may follow
+                // unless the next byte is the empty terminator.
+                parts++;
+                if (!multipart || i >= file.Length || file[i] == 0)
+                {
+                    return false;
+                }
+
+                continue;
             }
 
             if (!TryReadCString(file, ref i, out var attrType) || i + 4 > file.Length)
@@ -80,7 +114,8 @@ public static class ExrHeader
 
             var size = BinaryPrimitives.ReadInt32LittleEndian(file[i..]);
             i += 4;
-            if (size < 0 || i + size > file.Length)
+            // N1: `i + size` overflows for size near int.MaxValue — compare remaining.
+            if (size < 0 || size > file.Length - i)
             {
                 return false;
             }

@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using Palace.Imaging;
 
 namespace Palace.Helpers;
 
@@ -267,31 +268,23 @@ public static class ExrFile
 
     /// <summary>
     /// The first <c>chromaticities</c> attribute (red, green, blue, white xy) in the part headers,
-    /// or null when absent or malformed. Walks attributes without the in-house reader's layout limits.
+    /// or null when absent or malformed. Delegates to <see cref="ExrHeader.TryReadChromaticities"/>
+    /// so Working and legacy present share one parser (N2).
     /// </summary>
     public static float[]? TryReadChromaticities(ReadOnlySpan<byte> data)
     {
-        foreach (var (name, type, value) in HeaderAttributes(data).SelectMany(h => h))
+        if (!ExrHeader.TryReadChromaticities(data, out var chrom))
         {
-            if (name == "chromaticities" && type == "chromaticities" && value.Length >= 32)
-            {
-                var c = new float[8];
-                for (var i = 0; i < 8; i++)
-                {
-                    c[i] = BinaryPrimitives.ReadSingleLittleEndian(value.AsSpan(i * 4, 4));
-                }
-
-                // ACES2065-1 (AP0) puts green at x = 0 and blue at y = -0.077, so allow
-                // [-1, 1]; only the white point and the primaries' y must be non-zero
-                // (ToRec709Matrix divides by y and rejects degenerate primaries).
-                return c.All(v => float.IsFinite(v) && v is >= -1f and <= 1f)
-                    && c[1] != 0f && c[3] != 0f && c[5] != 0f && c[6] > 0f && c[7] > 0f
-                    ? c
-                    : null;
-            }
+            return null;
         }
 
-        return null;
+        return
+        [
+            chrom.Rx, chrom.Ry,
+            chrom.Gx, chrom.Gy,
+            chrom.Bx, chrom.By,
+            chrom.Wx, chrom.Wy,
+        ];
     }
 
     /// <summary>

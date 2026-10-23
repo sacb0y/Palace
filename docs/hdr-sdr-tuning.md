@@ -62,5 +62,22 @@ for regenerate commands.
 Thumbs/full flags (P3–P4), HLSL / CPU–GPU agreement (P5), deleting legacy
 (P6), gain maps / desat tuning (P7). No FenrirDesktop.
 
-**P2 (decoders):** draft [#138](https://github.com/sacb0y/Palace/pull/138) —
+**P2 (decoders):** [#138](https://github.com/sacb0y/Palace/pull/138) —
 `ImagingStillNormalize` + `HdrFrame.Working` beside scRGB present.
+
+## P2 Working contract (accuracy / docs)
+
+- **EXR alpha:** OpenEXR stores associated (premultiplied) alpha. Working keeps
+  the decoded float alpha **as-is** — no un-premultiply. Present legacy path
+  matches.
+- **PNG gAMA / ICC:** ignored for Working. Encoded PNG/JPEG paths assume sRGB /
+  BT.709 unless **cICP** (or a recognised wide-gamut ICC via the existing
+  probe) says otherwise. Missing profile → BT.709 / sRGB.
+- **TreatAsYuv:** WIC identity-matrix packed RGB that the legacy convert remaps
+  (GBR) skips Working — do not build a wrong-channel NormalizedFrame.
+- **Geometry / orientation (A4, tracked):** AVIF Working may still be
+  un-oriented while `ScrgbRgba` is EXIF-oriented; document before P3 consumes
+  Working. Radiance Working is at present (possibly box-scaled) size.
+- **SDR linear JXL white (A3, deferred):** libjxl default
+  `intensity_target` 255 → Working white ≈ 1.256 vs legacy relative 0.394 /
+  sRGB path 1.0 — decide convention before P3.

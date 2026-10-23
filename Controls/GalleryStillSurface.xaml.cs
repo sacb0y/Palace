@@ -651,7 +651,8 @@ public sealed partial class GalleryStillSurface : UserControl
                     viewPxW,
                     viewPxH,
                     gallery.DisplayScaling,
-                    _hdrLoadCts.Token);
+                    _hdrLoadCts.Token,
+                    buildWorking: true);
                 frame = loaded.Frame;
                 loadError = loaded.Error;
             }

@@ -212,6 +212,86 @@ public class ImagingStillNormalizeTests
         Assert.True(ImagingStillNormalize.FitsWorkingBudget(4000, 4000)); // 16 MP
     }
 
+    /// <summary>N1: huge attribute size must not throw (overflow-safe bound).</summary>
+    [Fact]
+    public void N1_ExrHeader_HugeAttributeSize_ReturnsFalse()
+    {
+        using var ms = new MemoryStream();
+        ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]);
+        var name = System.Text.Encoding.ASCII.GetBytes("chromaticities");
+        ms.Write(name);
+        ms.WriteByte(0);
+        var type = System.Text.Encoding.ASCII.GetBytes("chromaticities");
+        ms.Write(type);
+        ms.WriteByte(0);
+        ms.Write(BitConverter.GetBytes(int.MaxValue)); // size near MaxValue
+        ms.Write(new byte[8]); // truncated payload
+        // Must not throw ArgumentOutOfRangeException from Span.Slice.
+        Assert.False(ExrHeader.TryReadChromaticities(ms.ToArray(), out _));
+        Assert.False(ExrHeader.TryReadWhiteLuminance(ms.ToArray(), out _));
+    }
+
+    /// <summary>N2: ExrFile and ExrHeader share one chromaticities parser.</summary>
+    [Fact]
+    public void N2_ExrFileAndExrHeader_AgreeOnChromaticities()
+    {
+        var chrom = Chromaticities.DisplayP3;
+        using var ms = new MemoryStream();
+        ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]);
+        WriteAttr(ms, "chromaticities", "chromaticities", EncodeChrom(chrom));
+        ms.WriteByte(0);
+        var file = ms.ToArray();
+
+        Assert.True(ExrHeader.TryReadChromaticities(file, out var header));
+        var legacy = ExrFile.TryReadChromaticities(file);
+        Assert.NotNull(legacy);
+        Assert.Equal(header.Rx, legacy![0]);
+        Assert.Equal(header.Ry, legacy[1]);
+        Assert.Equal(header.Gx, legacy[2]);
+        Assert.Equal(header.Gy, legacy[3]);
+        Assert.Equal(header.Bx, legacy[4]);
+        Assert.Equal(header.By, legacy[5]);
+        Assert.Equal(header.Wx, legacy[6]);
+        Assert.Equal(header.Wy, legacy[7]);
+    }
+
+    /// <summary>N2: out-of-range / non-finite chromaticities rejected by both.</summary>
+    [Fact]
+    public void N2_ExrHeader_RejectsDegenerateChromaticities()
+    {
+        var bad = new Chromaticities(0.64f, 0f, 0.3f, 0.6f, 0.15f, 0.06f, 0.3127f, 0.329f);
+        Assert.False(ExrHeader.IsValidChromaticities(bad));
+
+        using var ms = new MemoryStream();
+        ms.Write([0x76, 0x2f, 0x31, 0x01, 0x02, 0x00, 0x00, 0x00]);
+        WriteAttr(ms, "chromaticities", "chromaticities", EncodeChrom(bad));
+        ms.WriteByte(0);
+        var file = ms.ToArray();
+        Assert.False(ExrHeader.TryReadChromaticities(file, out _));
+        Assert.Null(ExrFile.TryReadChromaticities(file));
+    }
+
+    /// <summary>N3: zeroed ExrRefWhite (object-initializer footgun) → constant 80.</summary>
+    [Fact]
+    public void N3_NormalizeOptions_ZeroExrRefWhite_UsesConstant()
+    {
+        var opts = new NormalizeOptions(TransferKind.LinearScene, ExrRefWhite: 0f);
+        Assert.Equal(ImagingConstants.ExrRefWhite, opts.EffectiveWhiteNits);
+        Normalize.Pixel(1f, 1f, 1f, opts, out var r, out var g, out var b);
+        AssertNear(ImagingConstants.ExrRefWhite / 203f, r, 1e-4f);
+        AssertNear(ImagingConstants.ExrRefWhite / 203f, g, 1e-4f);
+        AssertNear(ImagingConstants.ExrRefWhite / 203f, b, 1e-4f);
+    }
+
+    /// <summary>S3 / A6: TryRun swallows short-buffer / bad input — null, no throw.</summary>
+    [Fact]
+    public void S3_TryRun_ShortBuffer_ReturnsNull()
+    {
+        var opts = ImagingStillNormalize.OptionsForRadiance();
+        // 2×2 claimed but only one pixel of floats → Normalize throws → null.
+        Assert.Null(ImagingStillNormalize.TryRun([1f, 1f, 1f, 1f], 2, 2, opts));
+    }
+
     /// <summary>B1: NaN/Inf in EXR-like float buffer → finite present stats.</summary>
     [Fact]
     public void B1_ExrSanitizeNonFinite_PresentStatsFinite()

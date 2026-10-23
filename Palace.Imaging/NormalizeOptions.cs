@@ -21,8 +21,15 @@ public readonly record struct NormalizeOptions(
     float ExrRefWhite = ImagingConstants.ExrRefWhite,
     Chromaticities? Chromaticities = null)
 {
+    /// <summary>
+    /// Prefer the positional primary ctor (or named args). A zeroed /
+    /// object-initializer struct leaves <see cref="ExrRefWhite"/> at 0 —
+    /// treat that as <see cref="ImagingConstants.ExrRefWhite"/> (N3).
+    /// </summary>
     public float EffectiveWhiteNits =>
-        WhiteLuminance is > 0f ? WhiteLuminance.Value : ExrRefWhite;
+        WhiteLuminance is > 0f
+            ? WhiteLuminance.Value
+            : ExrRefWhite > 0f ? ExrRefWhite : ImagingConstants.ExrRefWhite;
 
     /// <summary>Resolved primaries: chromaticities match wins when present.</summary>
     public ColorPrimaries EffectivePrimaries =>

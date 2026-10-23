@@ -130,31 +130,10 @@ internal static class HdrWicDecode
     private static HdrDecodeResult Done(HdrFrame? frame) =>
         new(frame, frame is null ? LastWicError : null);
 
-    public static Task<HdrDecodeResult> TryLoadAsync(
-        string path,
-        HdrProbe probe,
-        CancellationToken cancellation) =>
-        TryLoadAsync(path, probe, 0, 0, ImageScaling.Fit, cancellation, buildWorking: true);
-
-    public static Task<HdrDecodeResult> TryLoadAsync(
-        string path,
-        HdrProbe probe,
-        int viewportPixelWidth,
-        int viewportPixelHeight,
-        ImageScaling scaling,
-        CancellationToken cancellation) =>
-        TryLoadAsync(
-            path,
-            probe,
-            viewportPixelWidth,
-            viewportPixelHeight,
-            scaling,
-            cancellation,
-            buildWorking: true);
-
     /// <param name="buildWorking">
-    /// When false (thumbnails / Fit discard paths), skip <see cref="HdrFrame.Working"/>.
-    /// Default true for gallery Actual/1:1 present.
+    /// Required (no default): when false (thumbnails / histogram / Fit discard),
+    /// skip <see cref="HdrFrame.Working"/>. Pass true for gallery present that
+    /// may keep Working. A default of true hid missed callers (P2 follow-up nit).
     /// </param>
     public static async Task<HdrDecodeResult> TryLoadAsync(
         string path,
@@ -522,7 +501,8 @@ internal static class HdrWicDecode
                 ImageScaling.Fit,
                 wantRgba: false,
                 measure: true,
-                cancellation).ConfigureAwait(false);
+                cancellation,
+                buildWorking: false).ConfigureAwait(false);
             return frame is null
                 ? null
                 : new HdrStats(
@@ -658,7 +638,7 @@ internal static class HdrWicDecode
         bool wantRgba,
         bool measure,
         CancellationToken cancellation,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         LastWicError = null;
         var bytes = await TryReadLocalBytesAsync(path, cancellation).ConfigureAwait(false);
@@ -1134,7 +1114,7 @@ internal static class HdrWicDecode
         bool wantRgba,
         bool measure,
         CancellationToken cancellation,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         var converted = Convert(data, format, width, height, probe, wantRgba, cancellation);
         if (converted is null)
@@ -1295,7 +1275,7 @@ internal static class HdrWicDecode
         int viewportPixelHeight,
         ImageScaling scaling,
         CancellationToken cancellation,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         cancellation.ThrowIfCancellationRequested();
         var decoded = JxlDecode.TryDecodeFile(
@@ -1386,7 +1366,7 @@ internal static class HdrWicDecode
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         var encoded = PngFile.TryDecodeEncodedRgba(path);
         if (encoded is null)
@@ -1516,7 +1496,7 @@ internal static class HdrWicDecode
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         try
         {
@@ -1809,7 +1789,7 @@ internal static class HdrWicDecode
         int nativeWidth,
         int nativeHeight,
         HdrProbe probe,
-        bool buildWorking = true)
+        bool buildWorking)
     {
         var converted = Convert(data, format, width, height, probe, wantRgba: true, default);
         if (converted is null)
