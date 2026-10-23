@@ -397,6 +397,70 @@ public class ImagingStillNormalizeTests
         Assert.True(float.IsFinite(built.Stats.MaxScrgb));
     }
 
+    /// <summary>R4: buildWorking false → null Working; present matches Working path.</summary>
+    [Fact]
+    public void R4_BuildWorkingFalse_NullWorking_SamePresent()
+    {
+        const int w = 8;
+        const int h = 8;
+        var chrom = new float[]
+        {
+            0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f,
+        };
+        var opts = new NormalizeOptions(
+            TransferKind.LinearScene,
+            ColorPrimaries.Bt709,
+            WhiteLuminance: 80f,
+            Chromaticities: new Chromaticities(
+                0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f));
+
+        var scene = new float[w * h * 4];
+        for (var i = 0; i < scene.Length; i += 4)
+        {
+            scene[i] = 0.5f;
+            scene[i + 1] = 0.2f;
+            scene[i + 2] = 0.1f;
+            scene[i + 3] = 1f;
+        }
+
+        var withWorking = ExrPresentWorking.Run(
+            (float[])scene.Clone(), w, h, chrom, opts, buildWorking: true);
+        var without = ExrPresentWorking.Run(
+            (float[])scene.Clone(), w, h, chrom, opts, buildWorking: false);
+
+        Assert.NotNull(withWorking.Working);
+        Assert.Null(without.Working);
+        Assert.Null(without.WorkingOptions);
+        Assert.True(BuffersEqual(withWorking.PresentRgba, without.PresentRgba));
+        Assert.Equal(withWorking.Stats.MaxScrgb, without.Stats.MaxScrgb, 5);
+        Assert.Equal(withWorking.Stats.AvgNits, without.Stats.AvgNits, 5);
+    }
+
+    /// <summary>R4: over-budget frame skips Working; present still succeeds.</summary>
+    [Fact]
+    public void R4_OverBudget_NullWorking_PresentOk()
+    {
+        // Just over 16 MP budget (4001²). Allocate matching RGBA so FrameFromScrgb is safe.
+        const int side = 4001;
+        Assert.False(ImagingStillNormalize.FitsWorkingBudget(side, side));
+        var rgba = GC.AllocateUninitializedArray<float>(side * side * 4);
+        for (var i = 0; i < rgba.Length; i += 4)
+        {
+            rgba[i] = 1f;
+            rgba[i + 1] = 1f;
+            rgba[i + 2] = 1f;
+            rgba[i + 3] = 1f;
+        }
+
+        var opts = ImagingStillNormalize.OptionsForRadiance();
+        var built = ExrPresentWorking.Run(
+            rgba, side, side, chromaticities: null, opts, buildWorking: true);
+        Assert.Null(built.Working);
+        Assert.Null(built.WorkingOptions);
+        Assert.True(float.IsFinite(built.Stats.MaxScrgb));
+        Assert.Same(rgba, built.PresentRgba);
+    }
+
     private static bool BuffersEqual(float[] a, float[] b)
     {
         if (a.Length != b.Length)

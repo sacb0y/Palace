@@ -1537,12 +1537,13 @@ internal static class HdrWicDecode
                 var willScale = dw > 0 && dh > 0 && (dw < nativeW || dh < nativeH);
 
                 // R4: sanitize → Working → in-place convert → stats (testable helper).
+                // OptionsForExr is lazy inside Run's try/catch.
                 var built = ExrPresentWorking.Run(
                     scene.Rgba,
                     scene.Width,
                     scene.Height,
                     ExrFile.TryReadChromaticities(bytes),
-                    ImagingStillNormalize.OptionsForExr(bytes),
+                    bytes,
                     buildWorking && !willScale);
                 working = built.Working;
                 workingOpts = built.WorkingOptions;

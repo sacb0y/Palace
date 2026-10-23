@@ -17,17 +17,36 @@ public static class ExrPresentWorking
         NormalizeOptions? WorkingOptions);
 
     /// <summary>
-    /// Runs the production EXR present/Working sequence on a scene-linear
-    /// float buffer. <paramref name="sceneRgba"/> is sanitized then converted
-    /// in place; Working (when built) is a separate allocation.
+    /// Production path: <see cref="ImagingStillNormalize.OptionsForExr"/> runs
+    /// inside the Working try/catch so header/options failures never kill present.
     /// </summary>
     public static Built Run(
         float[] sceneRgba,
         int width,
         int height,
         float[]? chromaticities,
+        ReadOnlySpan<byte> exrFile,
+        bool buildWorking) =>
+        RunCore(sceneRgba, width, height, chromaticities, buildWorking, exrFile, options: null);
+
+    /// <summary>Test path with pre-built options (same order as production).</summary>
+    public static Built Run(
+        float[] sceneRgba,
+        int width,
+        int height,
+        float[]? chromaticities,
         NormalizeOptions options,
-        bool buildWorking)
+        bool buildWorking) =>
+        RunCore(sceneRgba, width, height, chromaticities, buildWorking, exrFile: default, options);
+
+    private static Built RunCore(
+        float[] sceneRgba,
+        int width,
+        int height,
+        float[]? chromaticities,
+        bool buildWorking,
+        ReadOnlySpan<byte> exrFile,
+        NormalizeOptions? options)
     {
         ExrFile.SanitizeNonFinite(sceneRgba);
 
@@ -37,10 +56,12 @@ public static class ExrPresentWorking
         {
             try
             {
-                working = ImagingStillNormalize.TryRun(sceneRgba, width, height, options);
+                // Doktor: OptionsForExr must be inside try/catch (lazy).
+                var opts = options ?? ImagingStillNormalize.OptionsForExr(exrFile);
+                working = ImagingStillNormalize.TryRun(sceneRgba, width, height, opts);
                 if (working is not null)
                 {
-                    workingOpts = options;
+                    workingOpts = opts;
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

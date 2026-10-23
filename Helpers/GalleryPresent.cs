@@ -1071,11 +1071,6 @@ public static class GalleryPresent
     public const int FastPresentLongEdge = 2048;
 
     /// <summary>
-    /// WIC decode size for first paint. Fit/Fill use the viewport, not the
-    /// full 4K buffer. Actual is 1:1 native. Unknown layout caps the long
-    /// edge so PQ convert does not block Open.
-    /// </summary>
-    /// <summary>
     /// R3: whether to build <c>Working</c> for a still that will present at
     /// <see cref="PresentDecodeSize"/>. False when Fit/Fill will box-scale
     /// (avoids ≤256 MB + Normalize that would be dropped).
@@ -1098,6 +1093,11 @@ public static class GalleryPresent
         return !willScale;
     }
 
+    /// <summary>
+    /// WIC decode size for first paint. Fit/Fill use the viewport, not the
+    /// full 4K buffer. Actual is 1:1 native. Unknown layout caps the long
+    /// edge so PQ convert does not block Open.
+    /// </summary>
     public static (int Width, int Height) PresentDecodeSize(
         int imageW,
         int imageH,
