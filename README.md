@@ -23,7 +23,7 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 - **Durable catalog.** The catalog lives outside the app package, so reinstalling Palace does not wipe your projects and tags (see [Where your data lives](#where-your-data-lives)).
 - **Early features:** Rooms (create rooms and pin assets into sectioned grids), dry-run and optional auto organize with undo, Recycle Bin delete, and Dropbox / OneDrive "online-only" files without mass re-downloading.
 
-![Tags page with tag groups and an implied tag](docs/images/tags.png)
+![Tags board: groups list and alphabet chips (Character selected)](docs/images/tags.png)
 
 ### Supported formats
 
@@ -35,7 +35,7 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 
 EXR, TGA, ICO, PSD/PSB, JPEG XL and Clip Studio files are decoded by Palace itself, so they don't need extra Windows codecs. Files with an image extension that aren't really images get a placeholder tile. Video thumbnails that Windows can't make itself (for example MKV with H.264 4:4:4, or WebM/AV1 without the Store codec extensions) come from a small bundled LGPL ffmpeg.
 
-![HDR image in the full-screen viewer](docs/images/hdr-preview.jpg)
+![Gallery overlay: HDR still with Details card and tonemap chrome](docs/images/hdr-preview.jpg)
 
 ### Imaging rewrite
 
@@ -81,7 +81,7 @@ $env:PALACE_DATA_DIR = Join-Path $env:TEMP 'palace-agent-data'
 .\BuildAndRun.ps1 . --arch x64
 ```
 
-`Prepare-TestIdentity.ps1` **patches `Package.appxmanifest` in place** (Name, PhoneProductId, DisplayName). Restore it from git or the script’s `.release-backup` **before committing** so the release identity is never pushed. `BuildAndRun.ps1` builds and launches the packaged Debug layout under that test identity. Register the **build output** `AppxManifest.xml`, not `winapp run --no-launch` on the source manifest.
+`Prepare-TestIdentity.ps1` **patches `Package.appxmanifest` in place** (Name, PhoneProductId, DisplayName) to a **test** identity. Restore that file from git or the script’s `.release-backup` **before committing** so the **test** identity is never committed. `BuildAndRun.ps1` builds and launches the packaged Debug layout under that test identity. Register the **build output** `AppxManifest.xml`, not `winapp run --no-launch` on the source manifest.
 
 The build downloads a slim, static LGPL ffmpeg (about 12 MB) for video thumbnails and packages it with the app. The download comes from this repo's GitHub releases and is checked against a pinned SHA-256 by `tools/Get-Ffmpeg.ps1`. `tools/build-ffmpeg.sh` rebuilds it from source; its license and source offer ship next to it as `ffmpeg\LICENSE.txt` and `ffmpeg\SOURCE.txt`. To build without it (shell thumbnails only):
 
