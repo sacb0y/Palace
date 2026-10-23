@@ -35,6 +35,13 @@ public static class ScanNotice
         return string.IsNullOrEmpty(sourceName) ? $"Indexed {counts}" : $"Indexed {sourceName}: {counts}";
     }
 
+    /// <summary>
+    /// One-line footer: Indexed summary only. Long skip/undecodable text belongs in
+    /// <see cref="Describe"/> behind a Details link — do not concatenate into the status bar.
+    /// </summary>
+    public static string FooterLine(ScanReport report, string? sourceName = null) =>
+        Summary(report, sourceName);
+
     public static string? Describe(ScanReport report)
     {
         var parts = new List<string>();

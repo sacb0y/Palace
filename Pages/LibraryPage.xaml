@@ -40,10 +40,12 @@
 
     <Grid PreviewKeyDown="LibraryRoot_PreviewKeyDown">
     <Grid
+        x:Name="GrdLibraryColumns"
         Padding="12,8,12,8"
         ColumnSpacing="12"
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
-        RowSpacing="8">
+        RowSpacing="8"
+        SizeChanged="GrdLibraryColumns_SizeChanged">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -51,9 +53,20 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="340" />
+            <!-- Fixed widths from LibraryColumnLayout.Allocate (no Star / no mosaic MinWidth
+                 floor — that pinned DesiredSize after Preview show and froze resize). -->
+            <ColumnDefinition
+                x:Name="ColFolderTree"
+                Width="260"
+                MinWidth="0" />
+            <ColumnDefinition
+                x:Name="ColMosaic"
+                Width="560"
+                MinWidth="0" />
+            <ColumnDefinition
+                x:Name="ColPreview"
+                Width="340"
+                MinWidth="0" />
         </Grid.ColumnDefinitions>
 
         <Grid Grid.ColumnSpan="3" RowSpacing="4">
@@ -61,6 +74,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+            <!-- Narrow widths: New folder / Undo / Add to room move into BtnLibraryToolbarMore. -->
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnAddFolder"
@@ -83,6 +97,7 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnOrganize"
                     AutomationProperties.AutomationId="BtnOrganize"
                     AutomationProperties.Name="Organize"
                     Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
@@ -132,6 +147,7 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnAddToRoom"
                     AutomationProperties.AutomationId="BtnAddToRoom"
                     AutomationProperties.Name="Add to room"
                     Command="{x:Bind ViewModel.AddSelectionToRoomCommand}"
@@ -141,6 +157,55 @@
                         <TextBlock VerticalAlignment="Center" Text="Add to room" />
                     </StackPanel>
                 </Button>
+                <DropDownButton
+                    x:Name="BtnLibraryToolbarMore"
+                    MinWidth="32"
+                    MinHeight="32"
+                    AutomationProperties.AutomationId="BtnLibraryToolbarMore"
+                    AutomationProperties.Name="More library actions"
+                    ToolTipService.ToolTip="More"
+                    Visibility="Collapsed">
+                    <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="Bottom">
+                            <!-- Visibility toggled with tight in UpdateLibraryToolbarOverflow. -->
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarOrganize"
+                                AutomationProperties.AutomationId="MnuToolbarOrganize"
+                                Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
+                                IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                                Text="Organize"
+                                Visibility="Collapsed" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarReview"
+                                AutomationProperties.AutomationId="MnuToolbarReview"
+                                Command="{x:Bind ViewModel.StartReviewCommand}"
+                                Text="Review"
+                                ToolTipService.ToolTip="Review selection or this folder (swipe left reject, right keep, up skip)"
+                                Visibility="Collapsed" />
+                            <MenuFlyoutSeparator
+                                x:Name="SepToolbarTight"
+                                Visibility="Collapsed" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarNewFolder"
+                                AutomationProperties.AutomationId="MnuToolbarNewFolder"
+                                Command="{x:Bind ViewModel.NewFolderCommand}"
+                                Text="New folder" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarUndo"
+                                AutomationProperties.AutomationId="MnuToolbarUndo"
+                                Command="{x:Bind ViewModel.UndoFileOpCommand}"
+                                IsEnabled="{x:Bind ViewModel.CanUndoFileOp, Mode=OneWay}"
+                                Text="Undo" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarAddToRoom"
+                                AutomationProperties.AutomationId="MnuToolbarAddToRoom"
+                                Command="{x:Bind ViewModel.AddSelectionToRoomCommand}"
+                                IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                                Text="Add to room" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
             </StackPanel>
             <ProgressBar
                 x:Name="PrgLibrary"
@@ -519,8 +584,12 @@
                     ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="ArrowSort" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}" />
+                        <TextBlock
+                            x:Name="TxtMosaicSortLabel"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}" />
                     </StackPanel>
+                    <!-- Sort items mirrored in MnuMosaicSortOverflow (x:Bind can't share one flyout). -->
                     <DropDownButton.Flyout>
                         <MenuFlyout Placement="Bottom">
                             <RadioMenuFlyoutItem
@@ -590,6 +659,100 @@
                         </MenuFlyout>
                     </DropDownButton.Flyout>
                 </DropDownButton>
+                <!-- Visibility also toggled in UpdateMosaicToolbarOverflow (narrow → More menu). -->
+                <ToggleButton
+                    x:Name="TglFlattenSubfolders"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TglFlattenSubfolders"
+                    AutomationProperties.Name="Flatten subfolders"
+                    IsChecked="{x:Bind ViewModel.FlattenSubfolders, Mode=TwoWay}"
+                    ToolTipService.ToolTip="Flatten subfolders into one continuous grid"
+                    Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="AppsList" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Flatten" />
+                    </StackPanel>
+                </ToggleButton>
+                <DropDownButton
+                    x:Name="BtnFolderSectionsMore"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnFolderSectionsMore"
+                    AutomationProperties.Name="Folder section options"
+                    ToolTipService.ToolTip="Folder section options"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowFolderSectionsChrome), Mode=OneWay}">
+                    <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="Bottom">
+                            <ToggleMenuFlyoutItem
+                                x:Name="MnuFlattenSubfolders"
+                                AutomationProperties.AutomationId="MnuFlattenSubfolders"
+                                IsChecked="{x:Bind ViewModel.FlattenSubfolders, Mode=TwoWay}"
+                                Text="Flatten subfolders" />
+                            <!-- Mirror of BtnMosaicSort flyout — keep fields/dirs in sync when editing either. -->
+                            <MenuFlyoutSubItem
+                                x:Name="MnuMosaicSortOverflow"
+                                AutomationProperties.AutomationId="MnuMosaicSortOverflow"
+                                Text="Sort"
+                                Visibility="Collapsed">
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="DateTaken"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateTaken'), Mode=OneWay}"
+                                    Text="Date taken" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="DateModified"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateModified'), Mode=OneWay}"
+                                    Text="Date modified" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="DateAdded"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateAdded'), Mode=OneWay}"
+                                    Text="Date added" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Name"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Name'), Mode=OneWay}"
+                                    Text="Name" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Size"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Size'), Mode=OneWay}"
+                                    Text="Size" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Type"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Type'), Mode=OneWay}"
+                                    Text="Type" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                    CommandParameter="Rating"
+                                    GroupName="MosaicSortFieldOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Rating'), Mode=OneWay}"
+                                    Text="Rating" />
+                                <MenuFlyoutSeparator />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                    CommandParameter="true"
+                                    GroupName="MosaicSortDirOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort), Mode=OneWay}"
+                                    Text="{x:Bind ViewModel.SortDescendingLabel, Mode=OneWay}" />
+                                <RadioMenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                    CommandParameter="false"
+                                    GroupName="MosaicSortDirOverflow"
+                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicAscending(ViewModel.MosaicSort), Mode=OneWay}"
+                                    Text="{x:Bind ViewModel.SortAscendingLabel, Mode=OneWay}" />
+                            </MenuFlyoutSubItem>
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
                 <TextBlock
                     x:Name="TxtSelectionCount"
                     VerticalAlignment="Center"
@@ -622,53 +785,56 @@
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
+            <!-- Right inset matches MosaicLayoutWidth.ViewportGutterDip (overlay scrollbar). -->
             <AutoSuggestBox
                 x:Name="AsbSearch"
                 Grid.Row="2"
+                Margin="0,0,16,0"
                 AutomationProperties.AutomationId="AsbSearch"
                 PlaceholderText="Search filename, tags, prompt, model"
                 QueryIcon="Find"
                 QuerySubmitted="AsbSearch_QuerySubmitted"
                 Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <ItemsView
-                x:Name="GrdAssets"
-                Grid.Row="3"
-                AutomationProperties.AutomationId="GrdAssets"
-                AutomationProperties.Name="Assets"
-                DoubleTapped="GrdAssets_DoubleTapped"
-                IsHoldingEnabled="True"
-                IsItemInvokedEnabled="True"
-                IsTabStop="True"
-                ItemInvoked="GrdAssets_ItemInvoked"
-                ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
-                PreviewKeyDown="GrdAssets_PreviewKeyDown"
-                SelectionChanged="GrdAssets_SelectionChanged"
-                SelectionMode="Single">
-                <ItemsView.Layout>
-                    <helpers:JustifiedMosaicLayout
-                        x:Name="MosaicLayout"
-                        CaptionHeight="0"
-                        HeaderHeight="28"
-                        ItemSpacing="8"
-                        RowHeight="{x:Bind ViewModel.MosaicRowHeight, Mode=OneWay}" />
-                </ItemsView.Layout>
-                <ItemsView.ItemTemplate>
-                    <DataTemplate x:DataType="models:AssetItem">
-                        <ItemContainer
-                            AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
-                            CanDrag="False"
-                            ContextRequested="AssetItem_ContextRequested"
-                            DragStarting="AssetItem_DragStarting"
-                            DoubleTapped="AssetItem_DoubleTapped"
-                            IsDoubleTapEnabled="True"
-                            IsHoldingEnabled="True"
-                            IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
-                            ManipulationMode="System"
-                            Tag="{x:Bind MosaicTag, Mode=OneWay}">
-                            <ItemContainer.ContextFlyout>
-                                <MenuFlyout Opening="AssetMenu_Opening">
-                                    <MenuFlyoutItem
-                                        AutomationProperties.AutomationId="MnuOpen"
+            <Grid Grid.Row="3">
+                <ItemsView
+                    x:Name="GrdAssets"
+                    AutomationProperties.AutomationId="GrdAssets"
+                    AutomationProperties.Name="Assets"
+                    DoubleTapped="GrdAssets_DoubleTapped"
+                    IsHoldingEnabled="True"
+                    IsItemInvokedEnabled="True"
+                    IsTabStop="True"
+                    ItemInvoked="GrdAssets_ItemInvoked"
+                    ItemsSource="{x:Bind ViewModel.Assets, Mode=OneWay}"
+                    PreviewKeyDown="GrdAssets_PreviewKeyDown"
+                    SelectionChanged="GrdAssets_SelectionChanged"
+                    SelectionMode="Single"
+                    SizeChanged="GrdAssets_SizeChanged">
+                    <ItemsView.Layout>
+                        <helpers:JustifiedMosaicLayout
+                            x:Name="MosaicLayout"
+                            CaptionHeight="0"
+                            HeaderHeight="34"
+                            ItemSpacing="8"
+                            RowHeight="{x:Bind ViewModel.MosaicRowHeight, Mode=OneWay}" />
+                    </ItemsView.Layout>
+                    <ItemsView.ItemTemplate>
+                        <DataTemplate x:DataType="models:AssetItem">
+                            <ItemContainer
+                                AutomationProperties.Name="{x:Bind MosaicItemName, Mode=OneWay}"
+                                CanDrag="False"
+                                ContextRequested="AssetItem_ContextRequested"
+                                DragStarting="AssetItem_DragStarting"
+                                DoubleTapped="AssetItem_DoubleTapped"
+                                IsDoubleTapEnabled="True"
+                                IsHoldingEnabled="True"
+                                IsTabStop="True"
+                                ManipulationMode="System"
+                                Tag="{x:Bind MosaicTag, Mode=OneWay}">
+                                <ItemContainer.ContextFlyout>
+                                    <MenuFlyout Opening="AssetMenu_Opening">
+                                        <MenuFlyoutItem
+                                            AutomationProperties.AutomationId="MnuOpen"
                                         Command="{x:Bind pages:LibraryPage.GetOpenOverlayCommand()}"
                                         CommandParameter="{x:Bind}"
                                         Text="Open">
@@ -755,38 +921,165 @@
                                 </MenuFlyout>
                             </ItemContainer.ContextFlyout>
                             <Grid>
-                                <Button
+                                <!-- Full section header (34px sticky / unpinable). -->
+                                <Grid
                                     Padding="4,2"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Left"
                                     VerticalAlignment="Stretch"
-                                    AutomationProperties.Name="{x:Bind FolderGroupTitle, Mode=OneWay}"
                                     Background="Transparent"
-                                    BorderThickness="0"
-                                    Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
-                                    CommandParameter="{x:Bind}"
-                                    IsTabStop="False"
+                                    ColumnSpacing="4"
                                     PointerPressed="FolderGroupHeader_PointerPressed"
                                     Tag="{x:Bind MosaicTag, Mode=OneWay}"
-                                    Tapped="FolderGroupHeader_Tapped"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFolderHeader), Mode=OneWay}">
-                                    <StackPanel
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowFullFolderHeader), Mode=OneWay}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        Padding="2"
                                         VerticalAlignment="Center"
-                                        Orientation="Horizontal"
-                                        Spacing="6">
-                                        <ic:FluentIcon
-                                            Icon="Folder"
-                                            IconSize="Size16"
-                                            IconVariant="Regular" />
-                                        <TextBlock
+                                        AutomationProperties.AutomationId="BtnFolderCollapse"
+                                        AutomationProperties.Name="{x:Bind FolderCollapseAutomationName, Mode=OneWay}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:LibraryPage.GetToggleFolderSectionCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        IsTabStop="False"
+                                        ToolTipService.ToolTip="{x:Bind FolderCollapseAutomationName, Mode=OneWay}">
+                                        <Grid>
+                                            <ic:FluentIcon
+                                                Icon="ChevronDown"
+                                                IconSize="Size16"
+                                                IconVariant="Regular"
+                                                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsFolderCollapsed), Mode=OneWay}" />
+                                            <ic:FluentIcon
+                                                Icon="ChevronRight"
+                                                IconSize="Size16"
+                                                IconVariant="Regular"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsFolderCollapsed), Mode=OneWay}" />
+                                        </Grid>
+                                    </Button>
+                                    <Button
+                                        Grid.Column="1"
+                                        Padding="2,0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="{x:Bind FolderGroupTitle, Mode=OneWay}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        IsTabStop="False"
+                                        Tapped="FolderGroupHeader_Tapped"
+                                        ToolTipService.ToolTip="Open folder">
+                                        <StackPanel
                                             VerticalAlignment="Center"
-                                            AutomationProperties.AutomationId="{x:Bind FolderGroupAutomationId, Mode=OneWay}"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                            Tag="{x:Bind MosaicTag, Mode=OneWay}"
-                                            Text="{x:Bind FolderGroupTitle, Mode=OneWay}" />
-                                    </StackPanel>
-                                </Button>
+                                            Orientation="Horizontal"
+                                            Spacing="6">
+                                            <ic:FluentIcon
+                                                Icon="Folder"
+                                                IconSize="Size16"
+                                                IconVariant="Regular" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                AutomationProperties.AutomationId="{x:Bind FolderGroupAutomationId, Mode=OneWay}"
+                                                FontWeight="SemiBold"
+                                                FontSize="14"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Tag="{x:Bind MosaicTag, Mode=OneWay}"
+                                                Text="{x:Bind FolderGroupTitle, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <Border
+                                                Padding="6,1"
+                                                VerticalAlignment="Center"
+                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                CornerRadius="8"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowFolderCount), Mode=OneWay}">
+                                                <TextBlock
+                                                    AutomationProperties.AutomationId="{x:Bind FolderCountAutomationId, Mode=OneWay}"
+                                                    FontSize="11"
+                                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                                    Text="{x:Bind FolderCountText, Mode=OneWay}" />
+                                            </Border>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Grid.Column="2"
+                                        Padding="4,2"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.AutomationId="BtnFolderOpen"
+                                        AutomationProperties.Name="Open folder"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        IsTabStop="False"
+                                        ToolTipService.ToolTip="Open folder">
+                                        <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                    </Button>
+                                </Grid>
+                                <!-- Mini packed header (22px): 📁 name · count · ↗ -->
+                                <Grid
+                                    Padding="2,0"
+                                    VerticalAlignment="Stretch"
+                                    Background="Transparent"
+                                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                                    BorderThickness="2,0,0,0"
+                                    ColumnSpacing="2"
+                                    PointerPressed="FolderGroupHeader_PointerPressed"
+                                    Tag="{x:Bind MosaicTag, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowMiniFolderHeader), Mode=OneWay}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button
+                                        Padding="0"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.Name="{x:Bind FolderGroupTitle, Mode=OneWay}"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        IsTabStop="False"
+                                        Tapped="FolderGroupHeader_Tapped"
+                                        ToolTipService.ToolTip="Open folder">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <ic:FluentIcon Icon="Folder" IconSize="Size16" IconVariant="Regular" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind FolderGroupTitle, Mode=OneWay}"
+                                                TextTrimming="CharacterEllipsis" />
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="11"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind FolderCountText, Mode=OneWay}"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowFolderCount), Mode=OneWay}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Grid.Column="1"
+                                        Padding="2"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.AutomationId="BtnFolderOpenMini"
+                                        AutomationProperties.Name="Open folder"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:LibraryPage.GetActivateFolderHeaderCommand()}"
+                                        CommandParameter="{x:Bind}"
+                                        IsTabStop="False"
+                                        ToolTipService.ToolTip="Open folder">
+                                        <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                                    </Button>
+                                </Grid>
                                 <Grid
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"
@@ -802,6 +1095,7 @@
                                         ManipulationMode="System"
                                         Source="{x:Bind ThumbImage, Mode=OneWay}"
                                         Stretch="UniformToFill"
+                                        VerticalAlignment="{x:Bind helpers:BindHelpers.MosaicTileVerticalAlignment(IsFolderHeader, AspectRatio), Mode=OneWay}"
                                         Tag="{x:Bind Id, Mode=OneWay}"
                                         Unloaded="TileImage_Unloaded" />
                                     <TextBlock
@@ -922,13 +1216,106 @@
                             </Grid>
                         </ItemContainer>
                     </DataTemplate>
-                </ItemsView.ItemTemplate>
-            </ItemsView>
+                    </ItemsView.ItemTemplate>
+                </ItemsView>
+                <Border
+                    x:Name="BrdStickyFolderHeader"
+                    Height="34"
+                    Padding="8,4"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0,0,0,1"
+                    Visibility="Collapsed">
+                    <Grid ColumnSpacing="6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            x:Name="BtnStickyCollapse"
+                            Padding="2"
+                            AutomationProperties.AutomationId="BtnStickyCollapse"
+                            AutomationProperties.Name="Collapse section"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="BtnStickyCollapse_Click"
+                            IsTabStop="False">
+                            <ic:FluentIcon
+                                x:Name="IcnStickyCollapse"
+                                Icon="ChevronDown"
+                                IconSize="Size16"
+                                IconVariant="Regular" />
+                        </Button>
+                        <Button
+                            Grid.Column="1"
+                            Padding="2,0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            AutomationProperties.AutomationId="BtnStickyFolderOpen"
+                            AutomationProperties.Name="Open folder"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="BtnStickyFolderOpen_Click"
+                            IsTabStop="False">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:FluentIcon Icon="Folder" IconSize="Size16" IconVariant="Regular" />
+                                <TextBlock
+                                    x:Name="TxtStickyFolderTitle"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    FontWeight="SemiBold"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <Border
+                                    x:Name="BrdStickyFolderCount"
+                                    Padding="6,1"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="8">
+                                    <TextBlock
+                                        x:Name="TxtStickyFolderCount"
+                                        FontSize="11"
+                                        Style="{StaticResource CaptionTextBlockStyle}" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            Grid.Column="2"
+                            Padding="4,2"
+                            AutomationProperties.AutomationId="BtnStickyOpenArrow"
+                            AutomationProperties.Name="Open folder"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="BtnStickyFolderOpen_Click"
+                            IsTabStop="False"
+                            ToolTipService.ToolTip="Open folder">
+                            <ic:FluentIcon Icon="Open" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
+                        <ToggleButton
+                            x:Name="TglStickyFlatten"
+                            Grid.Column="3"
+                            Padding="6,2"
+                            AutomationProperties.AutomationId="TglStickyFlatten"
+                            AutomationProperties.Name="Flatten subfolders"
+                            Checked="TglStickyFlatten_Changed"
+                            Unchecked="TglStickyFlatten_Changed">
+                            <TextBlock FontSize="11" Text="Flatten" />
+                        </ToggleButton>
+                    </Grid>
+                </Border>
+            </Grid>
         </Grid>
 
         <ScrollViewer
+            x:Name="ScrPreviewPane"
             Grid.Row="1"
             Grid.Column="2"
+            AutomationProperties.AutomationId="ScrPreviewPane"
             VerticalScrollBarVisibility="Auto">
             <StackPanel Spacing="12">
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Preview" />
@@ -1392,12 +1779,13 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Toast slot overlays the mosaic so opening/closing does not reflow the grid. -->
+        <!-- Toast slot overlays the mosaic so opening/closing does not reflow the grid.
+             Right inset matches MosaicLayoutWidth.ViewportGutterDip (overlay scrollbar). -->
         <StackPanel
             Grid.Row="1"
             Grid.Column="1"
             MaxWidth="720"
-            Margin="0,0,0,12"
+            Margin="0,0,16,12"
             Padding="8,0"
             VerticalAlignment="Bottom"
             Spacing="4">
@@ -1433,13 +1821,28 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock
-                x:Name="TxtStatus"
+            <StackPanel
                 VerticalAlignment="Center"
-                AutomationProperties.AutomationId="TxtStatus"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
-                TextTrimming="CharacterEllipsis" />
+                Orientation="Horizontal"
+                Spacing="8">
+                <TextBlock
+                    x:Name="TxtStatus"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtStatus"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis" />
+                <HyperlinkButton
+                    x:Name="BtnStatusDetails"
+                    Padding="4,0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnStatusDetails"
+                    AutomationProperties.Name="Details"
+                    Command="{x:Bind ViewModel.ShowStatusDetailsCommand}"
+                    Content="Details"
+                    FontSize="12"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasStatusDetails), Mode=OneWay}" />
+            </StackPanel>
             <StackPanel
                 Grid.Column="1"
                 VerticalAlignment="Center"

@@ -88,14 +88,29 @@ public partial class LibraryViewModel
         }
     }
 
-    /// <summary>Opens the status InfoBar when the scan skipped or could not decode files.</summary>
+    /// <summary>Keeps the footer to one line; full notice lives behind Details + InfoBar.</summary>
     private void ShowScanNotice(ScanReport report)
     {
         if (ScanNotice.Describe(report) is { } notice)
         {
-            var summary = StatusText;
+            StatusDetails = notice;
             Notify(notice, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
-            StatusText = summary + " " + notice;
+            // StatusText stays the Indexed summary only (one line).
         }
+        else
+        {
+            StatusDetails = null;
+        }
+    }
+
+    [RelayCommand]
+    private void ShowStatusDetails()
+    {
+        if (string.IsNullOrWhiteSpace(StatusDetails))
+        {
+            return;
+        }
+
+        Notify(StatusDetails, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Informational);
     }
 }

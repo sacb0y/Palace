@@ -89,4 +89,10 @@ public static class BindHelpers
             ImageScaling.Fill => Stretch.UniformToFill,
             _ => Stretch.Uniform
         };
+
+    /// <summary>Clamped portraits crop top-weighted; others stay centered.</summary>
+    public static VerticalAlignment MosaicTileVerticalAlignment(bool isFolderHeader, double aspectRatio) =>
+        GalleryMedia.UsesTopWeightedCrop(isFolderHeader, aspectRatio)
+            ? VerticalAlignment.Top
+            : VerticalAlignment.Center;
 }

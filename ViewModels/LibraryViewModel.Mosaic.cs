@@ -14,7 +14,12 @@ namespace Palace.ViewModels;
 /// <summary>Library: mosaic population, folder headers, row height and sort.</summary>
 public partial class LibraryViewModel
 {
-    private async Task PopulateMosaicAsync(IReadOnlyList<AssetItem> items, int epoch, string doneStatus)
+    private async Task PopulateMosaicAsync(
+        IReadOnlyList<AssetItem> items,
+        int epoch,
+        string doneStatus,
+        bool clearSelection = true,
+        Action? beforeRestoreReady = null)
     {
         await UiDispatch.RunAsync(() =>
         {
@@ -23,20 +28,21 @@ public partial class LibraryViewModel
                 return;
             }
 
-            ClearSelection();
+            if (clearSelection)
+            {
+                ClearSelection();
+            }
+
             Assets.Clear();
+            InvalidateDisplayedSelectionCache();
             MosaicReset?.Invoke();
         });
 
         var total = items.Count;
-        var assetTotal = 0;
-        for (var n = 0; n < total; n++)
-        {
-            if (!items[n].IsFolderHeader)
-            {
-                assetTotal++;
-            }
-        }
+        // "of N" counts the full ordered mosaic (collapsed sections still count).
+        var assetTotal = _mosaicOrder.Count > 0
+            ? _mosaicOrder.Count(item => !item.IsFolderHeader)
+            : items.Count(item => !item.IsFolderHeader);
 
         var shown = 0;
         for (var i = 0; i < total; i += MosaicChunkSize)
@@ -83,11 +89,82 @@ public partial class LibraryViewModel
             }
 
             StatusText = doneStatus;
+            // Selection restore (section republish) runs before MosaicRestoreReady
+            // so scroll/focus see the re-stamped IsSelected flags.
+            beforeRestoreReady?.Invoke();
+            MosaicRestoreReady?.Invoke(epoch);
         });
     }
 
     [RelayCommand]
     private void ActivateFolderHeader(AssetItem? header) => SelectFolderGroup(header);
+
+    [RelayCommand]
+    private void ToggleFolderSection(AssetItem? header)
+    {
+        if (header is not { IsFolderHeader: true })
+        {
+            return;
+        }
+
+        var path = ResolveHeaderPath(header);
+        if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(_sectionBrowsePath))
+        {
+            return;
+        }
+
+        var collapsed = FolderSectionPrefs.ToggleCollapsed(_collapsedSections, path);
+        _collapsedSections = collapsed;
+        header.IsFolderCollapsed = FolderSectionPrefs.IsCollapsed(collapsed, path);
+        foreach (var item in _mosaicOrder)
+        {
+            if (item.IsFolderHeader
+                && string.Equals(ResolveHeaderPath(item), path, StringComparison.OrdinalIgnoreCase))
+            {
+                item.IsFolderCollapsed = header.IsFolderCollapsed;
+            }
+        }
+
+        PendingSectionFocusPath = path;
+        // Prefs save must not block the in-memory collapse + republish (half-applied UI).
+        try
+        {
+            // Bypass TrySave so failures are logged (TrySave swallows without a log).
+            ApplicationData.Current.LocalSettings.Values[
+                    FolderSectionPrefs.CollapsedKey(_sectionBrowsePath)] =
+                FolderSectionPrefs.SerializeCollapsed(collapsed);
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("Save collapsed sections", ex);
+            // Once per app session — repeat Notify would replace a pending Undo toast.
+            if (!s_collapseSaveNotifyShown)
+            {
+                s_collapseSaveNotifyShown = true;
+                Notify(
+                    "Collapse state won't persist this time.",
+                    Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
+            }
+        }
+
+        // Arm the page guard only once Republish is about to run — a throw above
+        // must not leave the page section-toggle guard depth > 0 with no Ended.
+        var guardGeneration = SectionToggleStarting?.Invoke() ?? 0;
+        // Fire-and-forget: Republish always ends the page section-toggle guard
+        // (try/finally) even when Populate throws or the epoch is superseded.
+        _ = RepublishSectionDisplayAsync(guardGeneration);
+    }
+
+    [RelayCommand]
+    private void ToggleFlattenSubfolders()
+    {
+        if (string.IsNullOrEmpty(_sectionBrowsePath) || !ShowFolderSectionsChrome)
+        {
+            return;
+        }
+
+        FlattenSubfolders = !FlattenSubfolders;
+    }
 
     public void SelectFolderGroup(AssetItem? header)
     {
@@ -96,12 +173,7 @@ public partial class LibraryViewModel
             return;
         }
 
-        var path = header.FolderGroupPath;
-        if (string.IsNullOrEmpty(path))
-        {
-            path = FolderGroups.FolderPathFromMosaicTag(header.MosaicTag);
-        }
-
+        var path = ResolveHeaderPath(header);
         if (string.IsNullOrEmpty(path))
         {
             return;
@@ -114,35 +186,184 @@ public partial class LibraryViewModel
         }
     }
 
-    private List<AssetItem> BuildMosaicItems(
+    /// <summary>
+    /// Select every non-header asset in the full ordered mosaic (includes collapsed
+    /// sections). Library grid Ctrl+A; turns Select mode on when needed (same as
+    /// hold-to-select: select first, then enter mode so exit/Esc keeps selection).
+    /// </summary>
+    public void SelectAllMosaicAssets()
+    {
+        IReadOnlyList<AssetItem> source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+        SetSelection(MosaicDelete.OrderedNonHeaderTargets(source, a => a.IsFolderHeader));
+        if (!IsSelectMode)
+        {
+            IsSelectMode = true;
+        }
+    }
+
+    private static string? ResolveHeaderPath(AssetItem header)
+    {
+        var path = header.FolderGroupPath;
+        if (string.IsNullOrEmpty(path))
+        {
+            path = FolderGroups.FolderPathFromMosaicTag(header.MosaicTag);
+        }
+
+        return string.IsNullOrEmpty(path) ? null : path;
+    }
+
+    private readonly record struct MosaicBuild(
+        List<AssetItem> Ordered,
+        List<AssetItem> Display,
+        string BrowsePath,
+        bool ShowSections,
+        bool Flatten,
+        HashSet<string> Collapsed);
+
+    private MosaicBuild BuildMosaicItems(
         IReadOnlyList<Asset> assets,
         bool groupFolders,
         string folderName,
-        string folderPath)
+        string folderPath,
+        bool flatten,
+        HashSet<string> collapsed)
     {
         var mapped = assets.Select(ToItem).ToList();
         if (!groupFolders)
         {
-            return mapped;
+            return new MosaicBuild(mapped, mapped, "", false, false, []);
         }
 
         var groups = FolderGroups.GroupByTopFolders(mapped, folderName, folderPath, item => item.Path);
         if (!FolderGroups.NeedsHeaders(groups))
         {
-            return mapped;
+            return new MosaicBuild(mapped, mapped, folderPath, false, flatten, collapsed);
         }
 
-        return FolderGroups.InterleaveHeaders(groups, group => ToFolderHeader(group, folderPath));
+        if (flatten)
+        {
+            return new MosaicBuild(mapped, mapped, folderPath, true, true, collapsed);
+        }
+
+        var livePaths = groups
+            .Select(group => FolderGroups.CombineUnder(folderPath, group.RelativeSegments))
+            .ToList();
+        collapsed = FolderSectionPrefs.PruneCollapsed(collapsed, livePaths);
+
+        // Full ordered list always includes every section's tiles (collapse is view-only).
+        var ordered = FolderGroups.InterleaveHeaders(
+            groups,
+            group => ToFolderHeader(group, folderPath, collapsed));
+        var display = FolderSectionPrefs.FilterCollapsedDisplay(
+            ordered,
+            item => item.IsFolderHeader,
+            item => item.IsFolderCollapsed);
+        return new MosaicBuild(ordered, display, folderPath, true, false, collapsed);
     }
 
-    private static AssetItem ToFolderHeader(FolderGroup<AssetItem> group, string selectedPath) =>
-        new()
+    private async Task RepublishSectionDisplayAsync(int guardGeneration)
+    {
+        // Epoch bumped even on the empty-order path so the page can ignore a
+        // superseded toggle's scroll restore.
+        var epoch = ++_filterEpoch;
+        SectionToggleEpochArmed?.Invoke(epoch);
+        try
+        {
+            if (_mosaicOrder.Count == 0)
+            {
+                await ApplyFilterAsync();
+                return;
+            }
+
+            // Capture by id before Assets.Clear — ItemsView SelectionChanged would
+            // otherwise replace _selection with an empty visible set.
+            var selectedIds = _selection
+                .Where(item => !item.IsFolderHeader && !string.IsNullOrEmpty(item.Id))
+                .Select(item => item.Id)
+                .ToList();
+            var display = FolderSectionPrefs.FilterCollapsedDisplay(
+                _mosaicOrder,
+                item => item.IsFolderHeader,
+                item => item.IsFolderCollapsed);
+            var assetCount = _mosaicOrder.Count(item => !item.IsFolderHeader);
+            var doneStatus = SelectedFolder is not null
+                ? $"{assetCount} in {SelectedFolder.Name}"
+                : $"{assetCount} assets";
+            // Keep selection (collapsed tiles stay selected in the ordered list).
+            // beforeRestoreReady runs inside Populate immediately before
+            // MosaicRestoreReady (same UI tick) so IsSelected is stamped first.
+            await PopulateMosaicAsync(
+                display,
+                epoch,
+                doneStatus,
+                clearSelection: false,
+                beforeRestoreReady: () =>
+                {
+                    InvalidateDisplayedSelectionCache();
+                    RestoreSelectionByIds(selectedIds, loadPreview: false);
+                });
+        }
+        finally
+        {
+            // Always release the page guard — including throw / superseded epoch
+            // (Populate returns early and never fires MosaicRestoreReady).
+            SectionToggleEnded?.Invoke(epoch, guardGeneration);
+        }
+    }
+
+    private static AssetItem ToFolderHeader(
+        FolderGroup<AssetItem> group,
+        string selectedPath,
+        IReadOnlySet<string> collapsed)
+    {
+        var path = FolderGroups.CombineUnder(selectedPath, group.RelativeSegments);
+        return new AssetItem
         {
             IsFolderHeader = true,
             FolderGroupTitle = group.Title,
-            FolderGroupPath = FolderGroups.CombineUnder(selectedPath, group.RelativeSegments),
+            FolderGroupPath = path,
+            FolderItemCount = group.Items.Count,
+            IsFolderCollapsed = FolderSectionPrefs.IsCollapsed(collapsed, path),
             FileName = group.Title
         };
+    }
+
+    private static (bool Flatten, HashSet<string> Collapsed) ReadSectionPrefs(string folderPath)
+    {
+        var settings = ApplicationData.Current.LocalSettings.Values;
+        FolderSectionPrefs.EnsureLegacyKeysPruned(
+            settings.Keys.OfType<string>(),
+            key => settings.TryGetValue(key, out var value) ? value : null,
+            key => settings.Remove(key),
+            (key, value) => settings[key] = value);
+
+        var flatten = FolderSectionPrefs.ParseBool(
+            settings.TryGetValue(FolderSectionPrefs.FlattenKey(folderPath), out var f) ? f : null);
+        var collapsed = FolderSectionPrefs.ParseCollapsed(
+            settings.TryGetValue(FolderSectionPrefs.CollapsedKey(folderPath), out var c) ? c : null);
+        return (flatten, collapsed);
+    }
+
+    private void ApplyMosaicBuildChrome(MosaicBuild build)
+    {
+        _sectionBrowsePath = build.BrowsePath;
+        _collapsedSections = build.Collapsed;
+        // Every Assets repopulate path resets _mosaicOrder here (or clears it below).
+        // Assets must remain a subset of _mosaicOrder (shared AssetItem references).
+        _mosaicOrder = build.Ordered;
+        Debug.Assert(
+            build.Display.All(item => build.Ordered.Contains(item)),
+            "Display mosaic must be a subset of the ordered mosaic.");
+        var was = _suppressFilter;
+        _suppressFilter = true;
+        ShowFolderSectionsChrome = build.ShowSections;
+        FlattenSubfolders = build.Flatten;
+        _suppressFilter = was;
+    }
+
+    private void SaveFlatten(string folderPath, bool flatten) =>
+        FolderSectionPrefs.TrySave(() =>
+            ApplicationData.Current.LocalSettings.Values[FolderSectionPrefs.FlattenKey(folderPath)] = flatten);
 
     private AssetItem ToItem(Asset asset)
     {

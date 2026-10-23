@@ -1,0 +1,313 @@
+using System.Security.Cryptography;
+using System.Text;
+
+namespace Palace.Helpers;
+
+/// <summary>
+/// Per-folder Library mosaic prefs: flatten subfolders, and which child
+/// sections are collapsed. Off WinUI so Palace.Tests can cover the keys.
+/// Keys hash the folder path (LocalSettings has no catalog column yet —
+/// deviation from storing layout prefs on the folder row).
+/// </summary>
+public static class FolderSectionPrefs
+{
+    public const string FlattenPrefix = "FolderFlatten_";
+    public const string CollapsedPrefix = "FolderCollapsed_";
+    /// <summary>Set once after pruning pre-hash LocalSettings keys.</summary>
+    public const string LegacyPrunedFlagKey = "FolderSectionPrefs_LegacyPruned_v1";
+
+    /// <summary>Sections smaller than this fraction of the row pack side by side.</summary>
+    public const double PackRowFraction = 0.6;
+
+    /// <summary>Portrait tiles may not be narrower than this × row height.</summary>
+    public const double MinPortraitAspect = 0.6;
+
+    public static string FlattenKey(string folderPath) =>
+        FlattenPrefix + PathHash(folderPath);
+
+    public static string CollapsedKey(string folderPath) =>
+        CollapsedPrefix + PathHash(folderPath);
+
+    /// <summary>
+    /// Stable short hash of the normalized path (not reversible). Prefixed with
+    /// <c>h</c> so a 16-hex raw path fragment is never mistaken for a current key.
+    /// </summary>
+    public static string PathHash(string? path)
+    {
+        var norm = NormalizePath(path);
+        if (norm.Length == 0)
+        {
+            return "h0";
+        }
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(norm));
+        return "h" + Convert.ToHexString(hash.AsSpan(0, 8)).ToLowerInvariant();
+    }
+
+    public static string NormalizePath(string? path)
+    {
+        var text = (path ?? "").Trim().TrimEnd('\\', '/').ToLowerInvariant();
+        return text.Replace('\\', '/');
+    }
+
+    public static bool ParseBool(object? stored, bool defaultValue = false) => stored switch
+    {
+        bool value => value,
+        string text when bool.TryParse(text, out var parsed) => parsed,
+        int i => i != 0,
+        _ => defaultValue
+    };
+
+    public static HashSet<string> ParseCollapsed(object? stored)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (stored is not string text || string.IsNullOrWhiteSpace(text))
+        {
+            return set;
+        }
+
+        foreach (var part in text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var path = NormalizePath(part);
+            if (path.Length > 0)
+            {
+                set.Add(path);
+            }
+        }
+
+        return set;
+    }
+
+    public static string SerializeCollapsed(IEnumerable<string> paths) =>
+        string.Join(
+            "\n",
+            paths
+                .Select(NormalizePath)
+                .Where(path => path.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
+
+    public static bool IsCollapsed(IReadOnlySet<string> collapsed, string? sectionPath) =>
+        collapsed.Contains(NormalizePath(sectionPath));
+
+    public static HashSet<string> ToggleCollapsed(IReadOnlySet<string> collapsed, string sectionPath)
+    {
+        var next = new HashSet<string>(collapsed, StringComparer.OrdinalIgnoreCase);
+        var key = NormalizePath(sectionPath);
+        if (key.Length == 0)
+        {
+            return next;
+        }
+
+        if (!next.Add(key))
+        {
+            next.Remove(key);
+        }
+
+        return next;
+    }
+
+    /// <summary>
+    /// Drop collapsed paths that are no longer live section folders under the browse root.
+    /// </summary>
+    public static HashSet<string> PruneCollapsed(
+        IReadOnlySet<string> collapsed,
+        IEnumerable<string> liveSectionPaths)
+    {
+        var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in liveSectionPaths)
+        {
+            var norm = NormalizePath(path);
+            if (norm.Length > 0)
+            {
+                live.Add(norm);
+            }
+        }
+
+        var next = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in collapsed)
+        {
+            var norm = NormalizePath(path);
+            if (live.Contains(norm))
+            {
+                next.Add(norm);
+            }
+        }
+
+        return next;
+    }
+
+    /// <summary>
+    /// Legacy keys stored the raw path (or bare 16-hex) after the prefix.
+    /// Current keys are <c>h</c> + 16 hex (see <see cref="PathHash"/>).
+    /// </summary>
+    public static bool IsLegacySettingsKey(string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        string rest;
+        if (key.StartsWith(FlattenPrefix, StringComparison.Ordinal))
+        {
+            rest = key[FlattenPrefix.Length..];
+        }
+        else if (key.StartsWith(CollapsedPrefix, StringComparison.Ordinal))
+        {
+            rest = key[CollapsedPrefix.Length..];
+        }
+        else
+        {
+            return false;
+        }
+
+        return !IsCurrentHashSuffix(rest);
+    }
+
+    /// <summary>Current suffix: <c>h</c> + 16 hex (or <c>h0</c> empty path).</summary>
+    public static bool IsCurrentHashSuffix(string? rest)
+    {
+        if (string.IsNullOrEmpty(rest) || rest[0] != 'h')
+        {
+            return false;
+        }
+
+        if (rest == "h0")
+        {
+            return true;
+        }
+
+        return rest.Length == 17 && rest.Skip(1).All(IsHex);
+    }
+
+    public static int PruneLegacySettingsKeys(IDictionary<string, object> values)
+    {
+        var remove = values.Keys.Where(IsLegacySettingsKey).ToList();
+        foreach (var key in remove)
+        {
+            values.Remove(key);
+        }
+
+        return remove.Count;
+    }
+
+    /// <summary>
+    /// One-shot legacy-key cleanup behind <see cref="LegacyPrunedFlagKey"/>.
+    /// </summary>
+    public static int EnsureLegacyKeysPruned(
+        IDictionary<string, object> values,
+        Action<string, object> setFlag)
+    {
+        if (ParseBool(values.TryGetValue(LegacyPrunedFlagKey, out var flag) ? flag : null))
+        {
+            return 0;
+        }
+
+        var removed = PruneLegacySettingsKeys(values);
+        setFlag(LegacyPrunedFlagKey, true);
+        return removed;
+    }
+
+    /// <summary>
+    /// Same one-shot prune for LocalSettings <c>IPropertySet</c> (not an
+    /// <see cref="IDictionary{TKey,TValue}"/>).
+    /// </summary>
+    public static int EnsureLegacyKeysPruned(
+        IEnumerable<string> keys,
+        Func<string, object?> tryGet,
+        Action<string> removeKey,
+        Action<string, object> setFlag)
+    {
+        if (ParseBool(tryGet(LegacyPrunedFlagKey)))
+        {
+            return 0;
+        }
+
+        var remove = keys.Where(IsLegacySettingsKey).ToList();
+        foreach (var key in remove)
+        {
+            removeKey(key);
+        }
+
+        setFlag(LegacyPrunedFlagKey, true);
+        return remove.Count;
+    }
+
+    public static bool TrySave(Action save)
+    {
+        try
+        {
+            save();
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Natural justified width of <paramref name="aspects"/> at
+    /// <paramref name="rowHeight"/> (spacing between tiles only).
+    /// </summary>
+    public static double SectionNaturalWidth(
+        IReadOnlyList<double> aspects,
+        double rowHeight,
+        double spacing)
+    {
+        if (aspects.Count == 0 || rowHeight <= 0)
+        {
+            return 0;
+        }
+
+        var sum = 0d;
+        foreach (var aspect in aspects)
+        {
+            sum += rowHeight * MosaicRows.ClampTileAspect(aspect);
+        }
+
+        return sum + spacing * Math.Max(0, aspects.Count - 1);
+    }
+
+    public static bool IsSmallSection(
+        IReadOnlyList<double> aspects,
+        double rowWidth,
+        double rowHeight,
+        double spacing,
+        double fraction = PackRowFraction) =>
+        rowWidth > 0
+        && SectionNaturalWidth(aspects, rowHeight, spacing) < rowWidth * Math.Clamp(fraction, 0.1, 1);
+
+    /// <summary>
+    /// Display mosaic omits tiles under collapsed headers; the full ordered
+    /// list still holds them for Review / select-all / range.
+    /// </summary>
+    public static List<T> FilterCollapsedDisplay<T>(
+        IReadOnlyList<T> ordered,
+        Func<T, bool> isHeader,
+        Func<T, bool> isCollapsed)
+    {
+        var list = new List<T>(ordered.Count);
+        var hide = false;
+        foreach (var item in ordered)
+        {
+            if (isHeader(item))
+            {
+                hide = isCollapsed(item);
+                list.Add(item);
+                continue;
+            }
+
+            if (!hide)
+            {
+                list.Add(item);
+            }
+        }
+
+        return list;
+    }
+
+    private static bool IsHex(char c) =>
+        c is (>= '0' and <= '9') or (>= 'a' and <= 'f') or (>= 'A' and <= 'F');
+}

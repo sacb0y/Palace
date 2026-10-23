@@ -33,6 +33,9 @@ public sealed partial class LibraryPage : Page
     private long _lastPlanLogMs;
     private ScrollViewer? _mosaicScrollViewer;
     private ScrollView? _mosaicScrollView;
+    private AssetItem? _stickySection;
+    private double _restoreScrollOffset;
+    private bool _restoreScrollPending;
     private readonly ThumbLoadQueue _thumbQueue = new(
         ThumbScheduler.EffectiveConcurrencyCap(Environment.ProcessorCount));
     private readonly ThumbMemoryCache<ImageSource> _thumbMemory = new(256);
@@ -43,7 +46,30 @@ public sealed partial class LibraryPage : Page
     private readonly Dictionary<Image, AssetItem> _realizedTiles = [];
     private readonly Dictionary<Image, long> _tileTagCallbacks = [];
     private bool _suppressBrowseChrome;
+    /// <summary>Short-lived suppress for mode/range/header Select churn (not section toggle).</summary>
     private bool _suppressMosaicSelection;
+    /// <summary>Last allocated mosaic width — HostWidth ceiling.</summary>
+    private double _allocatedMosaicWidth;
+    /// <summary>Preview reducer (#134 UserShow fixed true; 0.3.9 adds toggle UI).</summary>
+    private PreviewPaneState _previewPane = PreviewPane.Initial;
+    private PaneMode _previewPaneMode = PaneMode.Hidden;
+    private NavigationView? _shellNav;
+    private bool _shellNavHooked;
+    private bool _libraryLayoutHooked;
+    private XamlRoot? _libraryLayoutXamlRoot;
+    /// <summary>
+    /// Section collapse republish depth + generation. Separate from
+    /// <see cref="_suppressMosaicSelection"/> so TglSelectMode / range / header
+    /// finally blocks cannot clear the toggle guard mid-rebuild.
+    /// </summary>
+    private readonly SectionToggleGuard _sectionToggleGuard = new();
+    /// <summary>Epoch armed for the current section-toggle scroll restore.</summary>
+    private int _sectionToggleRestoreEpoch;
+    /// <summary>
+    /// Header path to focus after republish; applied in Ended under selection
+    /// suppress so ItemsView.Select cannot wipe expand-restored selection.
+    /// </summary>
+    private string? _sectionToggleFocusPath;
     private VirtualKey _mosaicArrow;
     private long _headerGestureAtMs = -1;
     private RangeSelectSession? _rangeSelect;
@@ -94,6 +120,10 @@ public sealed partial class LibraryPage : Page
         PerformanceSettings.Changed += PerformanceSettings_Changed;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+        ViewModel.SectionToggleStarting = OnSectionToggleStarting;
+        ViewModel.SectionToggleEpochArmed = OnSectionToggleEpochArmed;
+        ViewModel.MosaicRestoreReady = OnMosaicRestoreReady;
+        ViewModel.SectionToggleEnded = OnSectionToggleEnded;
         ViewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LibraryViewModel.PreviewPath) or nameof(LibraryViewModel.IsVideoPreview) or nameof(LibraryViewModel.IsImagePreview))
@@ -101,9 +131,13 @@ public sealed partial class LibraryPage : Page
                 UpdatePreview();
             }
 
-            if (e.PropertyName is nameof(LibraryViewModel.MosaicRowHeight))
+            if (e.PropertyName is nameof(LibraryViewModel.MosaicRowHeight)
+                or nameof(LibraryViewModel.FlattenSubfolders)
+                or nameof(LibraryViewModel.ShowFolderSectionsChrome))
             {
                 InvalidateMosaicLayout();
+                UpdateStickyFolderHeader();
+                RefreshMosaicToolbarOverflow();
             }
 
             if (e.PropertyName is nameof(LibraryViewModel.OverlayGallery) or nameof(LibraryViewModel.IsGalleryOverlayOpen))
@@ -138,6 +172,17 @@ public sealed partial class LibraryPage : Page
             {
                 ViewModel.MosaicReset = OnMosaicReset;
                 ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
+                ViewModel.SectionToggleStarting = OnSectionToggleStarting;
+                ViewModel.SectionToggleEpochArmed = OnSectionToggleEpochArmed;
+                ViewModel.MosaicRestoreReady = OnMosaicRestoreReady;
+                ViewModel.SectionToggleEnded = OnSectionToggleEnded;
+                // Cached page: Unloaded nulls SectionToggleEnded mid-rebuild, so
+                // depth may still be >0 — clear guard and re-stamp highlights.
+                ResetSectionToggleGuardOnLoaded();
+                HookLibraryLayoutTracking();
+                HookShellNavPaneTracking();
+                RefreshLibraryLayout();
+                RefreshMosaicToolbarOverflow();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
                 ViewerMediaElement.SuppressFullWindow(MpeOverlay);
                 HookOverlayGallery();
@@ -149,6 +194,11 @@ public sealed partial class LibraryPage : Page
             }
 
             _shellReady = true;
+            ResetSectionToggleGuardOnLoaded();
+            HookLibraryLayoutTracking();
+            HookShellNavPaneTracking();
+            RefreshLibraryLayout();
+            RefreshMosaicToolbarOverflow();
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
             ViewerMediaElement.SuppressFullWindow(MpeOverlay);
             _suppressBrowseChrome = true;
@@ -183,11 +233,17 @@ public sealed partial class LibraryPage : Page
         Unloaded += (_, _) =>
         {
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
+            UnhookLibraryLayoutTracking();
+            UnhookShellNavPaneTracking();
             UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
                 ViewModel.MosaicChunkAppended = null;
+                ViewModel.SectionToggleStarting = null;
+                ViewModel.SectionToggleEpochArmed = null;
+                ViewModel.MosaicRestoreReady = null;
+                ViewModel.SectionToggleEnded = null;
             }
 
             if (_hookedOverlay is not null)
@@ -196,6 +252,7 @@ public sealed partial class LibraryPage : Page
                 _hookedOverlay = null;
             }
         };
+        SizeChanged += (_, _) => RefreshLibraryLayout();
     }
 
     private void PerformanceSettings_Changed(object? sender, EventArgs e)
@@ -209,6 +266,8 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand<PromptSuggestion> GetAcceptSuggestionCommand() => AppServices.Library.AcceptSuggestionCommand;
 
     public static IRelayCommand<AssetItem?> GetActivateFolderHeaderCommand() => AppServices.Library.ActivateFolderHeaderCommand;
+
+    public static IRelayCommand<AssetItem?> GetToggleFolderSectionCommand() => AppServices.Library.ToggleFolderSectionCommand;
 
     public static IRelayCommand<AssetItem?> GetOpenOverlayCommand() => AppServices.Library.OpenOverlayCommand;
 
@@ -393,10 +452,37 @@ public sealed partial class LibraryPage : Page
     private void ShowAssignTagsFlyout(bool preferTagSelectedCta)
     {
         ViewModel.RebuildAssignPanelPublic();
-        var anchor = preferTagSelectedCta && ViewModel.ShowTagSelectedCta
-            ? BtnTagSelected
-            : BtnBrowseTags;
+        // Preview auto-hides under ~1296 client DIP; BtnBrowseTags is inside
+        // ScrPreviewPane — never ShowAt a Collapsed target (flyout misses / misplaces).
+        var kind = AssignTagsFlyoutAnchor.Resolve(
+            preferTagSelectedCta,
+            ViewModel.ShowTagSelectedCta,
+            ScrPreviewPane.Visibility == Visibility.Visible);
+        FrameworkElement anchor = kind switch
+        {
+            AssignTagsFlyoutAnchor.Kind.TagSelectedCta => BtnTagSelected,
+            AssignTagsFlyoutAnchor.Kind.BrowseTagsInPreview => BtnBrowseTags,
+            _ => ResolveAssignTagsFallbackAnchor(),
+        };
         FlyAssignTags.ShowAt(anchor);
+    }
+
+    /// <summary>
+    /// Anchor when Preview is Collapsed: prefer a realized selected tile, else mosaic host.
+    /// </summary>
+    private FrameworkElement ResolveAssignTagsFallbackAnchor()
+    {
+        var selected = ViewModel.SelectedAsset;
+        if (selected is not null && !string.IsNullOrEmpty(selected.MosaicTag))
+        {
+            var container = FindRealizedItemContainerByTag(GrdAssets, selected.MosaicTag);
+            if (container is not null)
+            {
+                return container;
+            }
+        }
+
+        return GrdAssets;
     }
 
     private void FlyAssignTags_Opening(object sender, object e)
@@ -406,6 +492,402 @@ public sealed partial class LibraryPage : Page
     }
 
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
+
+    /// <summary>
+    /// Grid SizeChanged is a backup only — available width must come from XamlRoot /
+    /// page, never from this grid's own ActualWidth (docked Preview MinWidths used to
+    /// floor DesiredSize and stop SizeChanged entirely).
+    /// </summary>
+    private void GrdLibraryColumns_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RefreshLibraryLayout();
+
+    /// <summary>
+    /// OnWidth → Effective → columns, pane, HostWidth, both toolbar overflows.
+    /// Available width from XamlRoot / page (not GrdLibraryColumns.ActualWidth).
+    /// </summary>
+    private void RefreshLibraryLayout()
+    {
+        var windowDip = ResolveWindowClientDip();
+        var contentWidth = ResolveAvailableContentWidth(windowDip);
+        if (contentWidth < 1)
+        {
+            return;
+        }
+
+        _previewPane = PreviewPane.OnWidth(_previewPane, contentWidth);
+        var effective = PreviewPane.Effective(_previewPane, contentWidth);
+        ApplyLibraryColumnLayout(effective);
+        UpdateLibraryToolbarOverflow(windowDip);
+    }
+
+    /// <summary>Window client DIP — toolbar overflow thresholds use this.</summary>
+    private double ResolveWindowClientDip()
+    {
+        var root = XamlRoot?.Size.Width ?? 0;
+        if (root >= MosaicLayoutWidth.MinUsable)
+        {
+            return root;
+        }
+
+        // Page is nav content; add shell pane to approximate client.
+        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
+        {
+            return ActualWidth + ResolveShellNavPaneWidthDip();
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Live shell NavigationView occupied width (open / compact / overlay).
+    /// </summary>
+    private double ResolveShellNavPaneWidthDip()
+    {
+        EnsureShellNavReference();
+        if (_shellNav is null)
+        {
+            return LibraryColumnLayout.ShellNavPaneWidthDip;
+        }
+
+        return LibraryColumnLayout.ShellNavOccupiedWidthDip(
+            MapShellNavDisplayMode(_shellNav.DisplayMode),
+            _shellNav.IsPaneOpen,
+            _shellNav.OpenPaneLength,
+            _shellNav.CompactPaneLength);
+    }
+
+    private static ShellNavDisplayMode MapShellNavDisplayMode(NavigationViewDisplayMode mode) =>
+        mode switch
+        {
+            NavigationViewDisplayMode.Minimal => ShellNavDisplayMode.Minimal,
+            NavigationViewDisplayMode.Compact => ShellNavDisplayMode.Compact,
+            _ => ShellNavDisplayMode.Expanded,
+        };
+
+    /// <summary>
+    /// Library columns content width from available (window/page) space — never from
+    /// the columns grid's arranged width (that latches when Preview docks).
+    /// </summary>
+    private double ResolveAvailableContentWidth(double windowClientDip)
+    {
+        if (windowClientDip >= MosaicLayoutWidth.MinUsable)
+        {
+            return LibraryColumnLayout.ContentWidthFromClientDip(
+                windowClientDip,
+                ResolveShellNavPaneWidthDip());
+        }
+
+        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
+        {
+            return LibraryColumnLayout.ContentWidthFromHostDip(ActualWidth);
+        }
+
+        // Last resort before first layout.
+        return LibraryColumnLayout.ContentWidthFromHostDip(GrdLibraryColumns.ActualWidth);
+    }
+
+    private void HookLibraryLayoutTracking()
+    {
+        if (XamlRoot is null)
+        {
+            return;
+        }
+
+        if (_libraryLayoutXamlRoot is not null && !ReferenceEquals(_libraryLayoutXamlRoot, XamlRoot))
+        {
+            _libraryLayoutXamlRoot.Changed -= LibraryLayoutXamlRoot_Changed;
+            _libraryLayoutHooked = false;
+        }
+
+        if (_libraryLayoutHooked && ReferenceEquals(_libraryLayoutXamlRoot, XamlRoot))
+        {
+            return;
+        }
+
+        XamlRoot.Changed += LibraryLayoutXamlRoot_Changed;
+        _libraryLayoutXamlRoot = XamlRoot;
+        _libraryLayoutHooked = true;
+    }
+
+    private void UnhookLibraryLayoutTracking()
+    {
+        if (_libraryLayoutXamlRoot is not null)
+        {
+            _libraryLayoutXamlRoot.Changed -= LibraryLayoutXamlRoot_Changed;
+            _libraryLayoutXamlRoot = null;
+        }
+
+        _libraryLayoutHooked = false;
+    }
+
+    private void LibraryLayoutXamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args) =>
+        RefreshLibraryLayout();
+
+    private void HookShellNavPaneTracking()
+    {
+        EnsureShellNavReference();
+        if (_shellNav is null || _shellNavHooked)
+        {
+            return;
+        }
+
+        // Opened/Closed after IsPaneOpen settles; Opening/Closing + DisplayMode for
+        // mid-toggle and Left→Compact/Minimal so content width tracks the real pane.
+        _shellNav.PaneOpened += ShellNav_PaneLayoutChanged;
+        _shellNav.PaneClosed += ShellNav_PaneLayoutChanged;
+        _shellNav.PaneOpening += ShellNav_PaneLayoutChanged;
+        _shellNav.PaneClosing += ShellNav_PaneClosing;
+        _shellNav.DisplayModeChanged += ShellNav_DisplayModeChanged;
+        _shellNavHooked = true;
+    }
+
+    private void UnhookShellNavPaneTracking()
+    {
+        if (_shellNav is not null && _shellNavHooked)
+        {
+            _shellNav.PaneOpened -= ShellNav_PaneLayoutChanged;
+            _shellNav.PaneClosed -= ShellNav_PaneLayoutChanged;
+            _shellNav.PaneOpening -= ShellNav_PaneLayoutChanged;
+            _shellNav.PaneClosing -= ShellNav_PaneClosing;
+            _shellNav.DisplayModeChanged -= ShellNav_DisplayModeChanged;
+        }
+
+        _shellNavHooked = false;
+        _shellNav = null;
+    }
+
+    private void EnsureShellNavReference()
+    {
+        if (_shellNav is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is NavigationView nav)
+            {
+                _shellNav = nav;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+    }
+
+    private void ShellNav_PaneLayoutChanged(NavigationView sender, object args) =>
+        RefreshLibraryLayout();
+
+    private void ShellNav_PaneClosing(NavigationView sender, NavigationViewPaneClosingEventArgs args) =>
+        RefreshLibraryLayout();
+
+    private void ShellNav_DisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args) =>
+        RefreshLibraryLayout();
+
+    private void ApplyLibraryColumnLayout(PreviewPaneEffective effective)
+    {
+        var widths = effective.Widths;
+        var mode = effective.Mode;
+        var wasDocked = _previewPaneMode == PaneMode.Docked;
+        _previewPaneMode = mode;
+        _allocatedMosaicWidth = widths.Mosaic;
+
+        // Fixed widths from Effective — MinWidths always 0 so column mins never sum
+        // above available width (that floored DesiredSize and froze resize).
+        ColFolderTree.Width = new GridLength(widths.Tree);
+        ColFolderTree.MinWidth = 0;
+        ColMosaic.Width = new GridLength(widths.Mosaic);
+        ColMosaic.MinWidth = 0;
+        ColPreview.Width = new GridLength(widths.Preview);
+        ColPreview.MinWidth = 0;
+
+        var docked = mode == PaneMode.Docked;
+        if (!docked)
+        {
+            // Move focus before Collapsed — after hide WinUI may already have
+            // reassigned focus and MoveFocusFromPreviewPaneIfNeeded misses.
+            MoveFocusFromPreviewPaneIfNeeded();
+            if (wasDocked)
+            {
+                // Pause only on docked→hidden; every resize refresh while hidden
+                // used to null Source / bump epoch needlessly.
+                PausePreviewPaneMedia();
+            }
+        }
+
+        ScrPreviewPane.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
+        if (docked && !wasDocked)
+        {
+            // Pane just docked — refresh decode for the current selection.
+            UpdatePreview();
+        }
+
+        // HostWidth from Allocate mosaic (Overlay also uses preview=0 widths).
+        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic));
+        UpdateMosaicToolbarOverflow(widths.Mosaic);
+    }
+
+    private void PausePreviewPaneMedia()
+    {
+        try
+        {
+            MpePreview.MediaPlayer?.Pause();
+        }
+        catch
+        {
+            // Ignore pause failures when the player was never created.
+        }
+
+        MpePreview.Source = null;
+        ImgPreview.Source = null;
+        _previewCts?.Cancel();
+        Interlocked.Increment(ref _previewEpoch);
+    }
+
+    private void MoveFocusFromPreviewPaneIfNeeded()
+    {
+        if (XamlRoot is null)
+        {
+            return;
+        }
+
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
+        if (focused is null || !IsDescendantOf(focused, ScrPreviewPane))
+        {
+            return;
+        }
+
+        GrdAssets.Focus(FocusState.Programmatic);
+    }
+
+    private static bool IsDescendantOf(DependencyObject? node, DependencyObject ancestor)
+    {
+        while (node is not null)
+        {
+            if (ReferenceEquals(node, ancestor))
+            {
+                return true;
+            }
+
+            node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Keep mosaic packing on the <b>visible column</b> width. ItemsView / column
+    /// ActualWidth can lag a shrink (still reporting the prior wide extent) and must
+    /// never raise HostWidth above the last Allocate mosaic width.
+    /// </summary>
+    private void GrdAssets_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var visible = VisibleMosaicColumnWidth(e.NewSize.Width);
+        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(visible));
+        UpdateMosaicToolbarOverflow(visible);
+    }
+
+    /// <summary>
+    /// True visible mosaic column DIP — min of column ActualWidth, ItemsView, and
+    /// last Allocate (never the hidden Preview span or a stale wide extent).
+    /// </summary>
+    private double VisibleMosaicColumnWidth(double itemsViewWidth)
+    {
+        double measured;
+        var column = ColMosaic.ActualWidth;
+        if (column >= MosaicLayoutWidth.MinUsable)
+        {
+            // Cap ItemsView (may report overflow extent) to the column viewport.
+            if (double.IsFinite(itemsViewWidth) && itemsViewWidth >= MosaicLayoutWidth.MinUsable)
+            {
+                measured = Math.Min(column, itemsViewWidth);
+            }
+            else
+            {
+                measured = column;
+            }
+        }
+        else
+        {
+            measured = itemsViewWidth;
+        }
+
+        return MosaicLayoutWidth.CapToAllocatedMosaic(measured, _allocatedMosaicWidth);
+    }
+
+    /// <summary>
+    /// Top toolbar spans all columns — at narrow widths move New folder / Undo /
+    /// Add to room into the overflow menu so buttons are not clipped mid-element.
+    /// Same available-width signal as Preview OnWidth (window client DIP).
+    /// </summary>
+    private void UpdateLibraryToolbarOverflow(double windowClientDip)
+    {
+        var windowDip = windowClientDip;
+        if (windowDip < MosaicLayoutWidth.MinUsable)
+        {
+            windowDip = ResolveWindowClientDip();
+        }
+
+        var compact = LibraryColumnLayout.IsLibraryToolbarCompact(windowDip);
+        var tight = LibraryColumnLayout.IsLibraryToolbarTight(windowDip);
+        BtnNewFolder.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        BtnUndo.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        BtnAddToRoom.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        // At ~770 DIP client (1155 px @ 150%), Organize/Review + More were cut —
+        // park them in … so Add folder / Scan stay fully on-screen.
+        BtnOrganize.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
+        BtnReview.Visibility = tight ? Visibility.Collapsed : Visibility.Visible;
+        // Menu twins only when face is hidden (800–920 would otherwise duplicate).
+        var tightMenu = tight ? Visibility.Visible : Visibility.Collapsed;
+        MnuToolbarOrganize.Visibility = tightMenu;
+        MnuToolbarReview.Visibility = tightMenu;
+        SepToolbarTight.Visibility = tightMenu;
+        BtnLibraryToolbarMore.Visibility = compact || tight
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    /// <summary>Toolbar overflow using the visible mosaic column (not raw ItemsView width).</summary>
+    private void RefreshMosaicToolbarOverflow() =>
+        UpdateMosaicToolbarOverflow(VisibleMosaicColumnWidth(GrdAssets.ActualWidth));
+
+    /// <summary>
+    /// Mosaic column toolbar: Flatten / Sort overflow so they are not clipped at
+    /// 1400 / 1250 / 1155 laptop widths (face controls hide; More keeps them).
+    /// </summary>
+    private void UpdateMosaicToolbarOverflow(double mosaicWidth)
+    {
+        if (mosaicWidth <= 0)
+        {
+            return;
+        }
+
+        var chrome = ViewModel.ShowFolderSectionsChrome;
+        var flattenOverflow = mosaicWidth < LibraryColumnLayout.MosaicToolbarFlattenBelowDip;
+        var sortCompact = mosaicWidth < LibraryColumnLayout.MosaicToolbarSortCompactBelowDip;
+        var sortOverflow = mosaicWidth < LibraryColumnLayout.MosaicToolbarSortOverflowBelowDip;
+
+        // More menu always has Flatten; hide the face toggle when the column is tight.
+        TglFlattenSubfolders.Visibility = !chrome || flattenOverflow
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        // Overflow Sort into More only when folder-section chrome (and More) is on.
+        if (sortOverflow && chrome)
+        {
+            BtnMosaicSort.Visibility = Visibility.Collapsed;
+            BtnMosaicSort.MinWidth = 0;
+            MnuMosaicSortOverflow.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            BtnMosaicSort.Visibility = Visibility.Visible;
+            TxtMosaicSortLabel.Visibility = sortCompact ? Visibility.Collapsed : Visibility.Visible;
+            BtnMosaicSort.MinWidth = sortCompact ? 32 : 200;
+            MnuMosaicSortOverflow.Visibility = Visibility.Collapsed;
+        }
+    }
 
     private void TglSelectMode_Changed(object sender, RoutedEventArgs e)
     {
@@ -451,7 +933,9 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_SelectionChanged(ItemsView sender, ItemsViewSelectionChangedEventArgs e)
     {
-        if (_suppressMosaicSelection)
+        // Section-toggle rebuild ignores ItemsView churn; highlights are reapplied
+        // when the guard depth returns to 0 (clicks during a long rebuild are swallowed).
+        if (_suppressMosaicSelection || _sectionToggleGuard.Depth > 0)
         {
             return;
         }
@@ -480,7 +964,9 @@ public sealed partial class LibraryPage : Page
         _mosaicArrow = VirtualKey.None;
         if (headerIndexes.Count == 0)
         {
-            ViewModel.SetSelection(keep);
+            // Select mode: merge collapsed-section tiles so ItemsSource rebuild
+            // cannot clear a view-only collapse selection.
+            ViewModel.SetSelectionFromItemsView(keep);
             return;
         }
 
@@ -523,10 +1009,9 @@ public sealed partial class LibraryPage : Page
             _suppressMosaicSelection = false;
         }
 
-        if (keep.Count > 0)
-        {
-            ViewModel.SetSelection(keep);
-        }
+        // Even when keep is empty (header-only Select for focus), merge so
+        // collapsed tiles are not wiped.
+        ViewModel.SetSelectionFromItemsView(keep);
     }
 
     private void FolderGroupHeader_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -981,6 +1466,33 @@ public sealed partial class LibraryPage : Page
         }
 
         var typing = FocusIsTextInput(e.OriginalSource);
+        var controlDown = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+
+        // Ctrl+A — select all mosaic assets including collapsed sections.
+        if (GalleryMedia.ShouldSelectAllMosaic(
+                ViewModel.IsGalleryOverlayOpen,
+                typing,
+                controlDown,
+                (int)e.Key))
+        {
+            ViewModel.SelectAllMosaicAssets();
+            e.Handled = true;
+            return;
+        }
+
+        // Esc exits select mode (keeps selection) — same as hold/Ctrl+A entry exit.
+        if (e.Key == VirtualKey.Escape
+            && SelectMode.ExitsSelectModeOnEscape(
+                ViewModel.IsSelectMode,
+                ViewModel.IsGalleryOverlayOpen)
+            && !typing)
+        {
+            ViewModel.ExitSelectMode();
+            e.Handled = true;
+            return;
+        }
+
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset
             ?? ViewModel.Assets.FirstOrDefault(asset => !asset.IsFolderHeader);
@@ -991,6 +1503,19 @@ public sealed partial class LibraryPage : Page
             && !typing)
         {
             ViewModel.SelectFolderGroup(item);
+            e.Handled = true;
+            return;
+        }
+
+        if (item is { IsFolderHeader: true }
+            && GalleryMedia.ShouldToggleFolderCollapse(
+                ViewModel.IsGalleryOverlayOpen,
+                typing,
+                true,
+                item.IsFolderCollapsed,
+                (int)e.Key))
+        {
+            ViewModel.ToggleFolderSectionCommand.Execute(item);
             e.Handled = true;
             return;
         }
@@ -1657,6 +2182,7 @@ public sealed partial class LibraryPage : Page
 
     private void OnMosaicReset()
     {
+        HideStickyFolderHeader();
         if (!IsLoaded)
         {
             return;
@@ -1676,6 +2202,7 @@ public sealed partial class LibraryPage : Page
         _thumbJobs.Clear();
         _realizedTiles.Clear();
         InvalidateMosaicLayout();
+        UpdateStickyFolderHeader();
     }
 
     private void OnMosaicChunkAppended()
@@ -1687,6 +2214,7 @@ public sealed partial class LibraryPage : Page
 
         InvalidateMosaicLayout();
         RefreshRealizedTiles();
+        UpdateStickyFolderHeader();
         if (ViewModel.Assets.Count == 0)
         {
             return;
@@ -1830,14 +2358,26 @@ public sealed partial class LibraryPage : Page
 
         var scale = RasterScale();
         var viewport = CurrentThumbViewport();
-        var specs = new (bool IsHeader, double Aspect)[ViewModel.Assets.Count];
+        var specs = new MosaicSpec[ViewModel.Assets.Count];
         for (var i = 0; i < ViewModel.Assets.Count; i++)
         {
             var asset = ViewModel.Assets[i];
-            specs[i] = (asset.IsFolderHeader, asset.AspectRatio);
+            specs[i] = asset.IsFolderHeader
+                ? new MosaicSpec(
+                    MosaicSlotKind.FullHeader,
+                    0,
+                    asset.IsFolderCollapsed,
+                    MosaicRows.MiniHeaderWidth(asset.FolderGroupTitle, asset.FolderItemCount))
+                : new MosaicSpec(MosaicSlotKind.Asset, MosaicRows.ClampTileAspect(asset.AspectRatio));
         }
 
-        var slots = MosaicRows.Layout(specs, width, ViewModel.MosaicRowHeight, 8, GalleryMedia.FolderHeaderHeight);
+        var slots = MosaicRows.Layout(
+            specs,
+            width,
+            ViewModel.MosaicRowHeight,
+            MosaicLayout.ItemSpacing,
+            MosaicLayout.HeaderHeight,
+            MosaicLayout.CaptionHeight);
         var tiles = new List<ThumbTile>();
         var cacheHits = 0;
         var count = Math.Min(ViewModel.Assets.Count, slots.Count);
@@ -2192,7 +2732,11 @@ public sealed partial class LibraryPage : Page
         _mosaicScrollViewer = FindDescendant<ScrollViewer>(GrdAssets);
         if (_mosaicScrollViewer is not null)
         {
-            _mosaicScrollViewer.ViewChanged += (_, _) => ScheduleThumbPlan("scroll");
+            _mosaicScrollViewer.ViewChanged += (_, _) =>
+            {
+                ScheduleThumbPlan("scroll");
+                UpdateStickyFolderHeader();
+            };
             _scrollHooked = true;
             return;
         }
@@ -2200,8 +2744,329 @@ public sealed partial class LibraryPage : Page
         _mosaicScrollView = FindDescendant<ScrollView>(GrdAssets);
         if (_mosaicScrollView is not null)
         {
-            _mosaicScrollView.ViewChanged += (_, _) => ScheduleThumbPlan("scroll");
+            _mosaicScrollView.ViewChanged += (_, _) =>
+            {
+                ScheduleThumbPlan("scroll");
+                UpdateStickyFolderHeader();
+            };
             _scrollHooked = true;
+        }
+    }
+
+    private void UpdateStickyFolderHeader()
+    {
+        if (!ViewModel.ShowFolderSectionsChrome
+            || ViewModel.FlattenSubfolders
+            || ViewModel.Assets.Count == 0)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        var offset = CurrentMosaicVerticalOffset();
+        // Same inputs as the repeater: last arrange width + XAML spacing/caption/header.
+        var headers = MosaicLayout.LastPinnableHeaders;
+        if (headers.Count == 0 || MosaicLayout.LastLaidOutWidth < 1)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        var stickyIndex = MosaicRows.FindStickyHeaderIndex(headers, offset);
+        if (stickyIndex < 0)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        var slot = headers[stickyIndex];
+        if ((uint)slot.Index >= (uint)ViewModel.Assets.Count
+            || slot.Y + slot.Height > offset + 0.5)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        var active = ViewModel.Assets[slot.Index];
+        if (!active.IsFolderHeader || active.IsPacked)
+        {
+            HideStickyFolderHeader();
+            return;
+        }
+
+        _stickySection = active;
+        TxtStickyFolderTitle.Text = active.FolderGroupTitle;
+        TxtStickyFolderCount.Text = active.FolderCountText;
+        BrdStickyFolderCount.Visibility = active.ShowFolderCount ? Visibility.Visible : Visibility.Collapsed;
+        BtnStickyCollapse.Visibility = Visibility.Visible;
+        IcnStickyCollapse.Icon = active.IsFolderCollapsed
+            ? FluentIcons.Common.Icon.ChevronRight
+            : FluentIcons.Common.Icon.ChevronDown;
+        BtnStickyCollapse.SetValue(
+            AutomationProperties.NameProperty,
+            active.FolderCollapseAutomationName);
+        var flatten = ViewModel.FlattenSubfolders;
+        TglStickyFlatten.Checked -= TglStickyFlatten_Changed;
+        TglStickyFlatten.Unchecked -= TglStickyFlatten_Changed;
+        TglStickyFlatten.IsChecked = flatten;
+        TglStickyFlatten.Checked += TglStickyFlatten_Changed;
+        TglStickyFlatten.Unchecked += TglStickyFlatten_Changed;
+        BrdStickyFolderHeader.Visibility = Visibility.Visible;
+    }
+
+    private double CurrentMosaicVerticalOffset() =>
+        _mosaicScrollViewer?.VerticalOffset
+        ?? _mosaicScrollView?.VerticalOffset
+        ?? 0;
+
+    private int OnSectionToggleStarting()
+    {
+        // Depth counter — not _suppressMosaicSelection — so mode/range/header
+        // finally blocks cannot clear the guard while Assets rebuild.
+        _restoreScrollOffset = CurrentMosaicVerticalOffset();
+        _restoreScrollPending = true;
+        return _sectionToggleGuard.Start();
+    }
+
+    private void OnSectionToggleEpochArmed(int epoch)
+    {
+        // Newer republish wins; older MosaicRestoreReady / enqueued scroll must no-op.
+        _sectionToggleRestoreEpoch = epoch;
+    }
+
+    private void OnMosaicRestoreReady(int epoch)
+    {
+        if (epoch != _sectionToggleRestoreEpoch)
+        {
+            // Superseded populate — do not apply this toggle's scroll/focus.
+            // Leave _restoreScrollPending for the newer armed epoch.
+            return;
+        }
+
+        if (!_restoreScrollPending && string.IsNullOrEmpty(ViewModel.PendingSectionFocusPath))
+        {
+            return;
+        }
+
+        // Focus runs in Ended under _suppressMosaicSelection — Select+Restore
+        // must be atomic or expand SelectionChanged wipes multi-select (87e299d).
+        _sectionToggleFocusPath = ViewModel.PendingSectionFocusPath;
+        ViewModel.PendingSectionFocusPath = null;
+        var offset = _restoreScrollOffset;
+        var restoreScroll = _restoreScrollPending;
+        _restoreScrollPending = false;
+        var restoreEpoch = epoch;
+
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
+        {
+            // Drop stale enqueued restores if a newer toggle armed meanwhile.
+            if (restoreEpoch != _sectionToggleRestoreEpoch)
+            {
+                return;
+            }
+
+            InvalidateMosaicLayout();
+            // Force extent to refresh after collapsed tiles leave the display list
+            // before clamping / restoring scroll (last-section collapse).
+            GrdAssets.UpdateLayout();
+            if (restoreScroll)
+            {
+                offset = ClampMosaicVerticalOffset(offset);
+                _mosaicScrollViewer?.ChangeView(null, offset, null, disableAnimation: true);
+                _mosaicScrollView?.ScrollTo(
+                    0,
+                    offset,
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled));
+            }
+
+            UpdateStickyFolderHeader();
+        });
+    }
+
+    private void OnSectionToggleEnded(int epoch, int guardGeneration)
+    {
+        // gen ≤ Loaded mark → stale (ignore). Otherwise always decrement so
+        // overlapping toggles cannot leave depth stuck at 1 (B1).
+        if (!_sectionToggleGuard.TryEnd(guardGeneration, out var shouldRestore))
+        {
+            return;
+        }
+
+        if (!shouldRestore)
+        {
+            return;
+        }
+
+        // Depth hit 0: Focus + re-stamp ItemsView while SelectionChanged is
+        // suppressed. Without suppress, RestoreMosaicSelectionHighlights'
+        // per-index Select fires SelectionChanged and expand drops multi-select
+        // (tiles are displayed again so MergeVisibleWithHiddenSelected cannot
+        // preserve them). Matches 87e299d EndSectionToggleSelectionGuard order.
+        _restoreScrollPending = false;
+        ViewModel.PendingSectionFocusPath = null;
+        _suppressMosaicSelection = true;
+        try
+        {
+            var path = _sectionToggleFocusPath;
+            _sectionToggleFocusPath = null;
+            if (!string.IsNullOrEmpty(path))
+            {
+                FocusFolderHeader(path);
+            }
+
+            RestoreMosaicSelectionHighlights();
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+
+        if (epoch == _sectionToggleRestoreEpoch)
+        {
+            _sectionToggleRestoreEpoch = 0;
+        }
+    }
+
+    /// <summary>
+    /// NavigationCacheMode keeps this page across Unloaded. Leaving during a
+    /// section republish nulls <see cref="LibraryViewModel.SectionToggleEnded"/>,
+    /// so depth never decrements — stamp a reset mark (do not zero generation)
+    /// and re-stamp highlights on every Loaded.
+    /// </summary>
+    private void ResetSectionToggleGuardOnLoaded()
+    {
+        _sectionToggleGuard.OnLoaded();
+        _restoreScrollPending = false;
+        _sectionToggleRestoreEpoch = 0;
+        _sectionToggleFocusPath = null;
+        ViewModel.PendingSectionFocusPath = null;
+        _suppressMosaicSelection = true;
+        try
+        {
+            RestoreMosaicSelectionHighlights();
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+    }
+
+    private double ClampMosaicVerticalOffset(double offset)
+    {
+        var viewport = _mosaicScrollViewer?.ViewportHeight
+            ?? _mosaicScrollView?.ViewportHeight
+            ?? 0;
+        var extent = _mosaicScrollViewer?.ExtentHeight
+            ?? _mosaicScrollView?.ExtentHeight
+            ?? 0;
+        if (viewport <= 0 || extent <= 0)
+        {
+            return Math.Max(0, offset);
+        }
+
+        var max = Math.Max(0, extent - viewport);
+        return Math.Clamp(offset, 0, max);
+    }
+
+    private void FocusFolderHeader(string sectionPath)
+    {
+        var index = -1;
+        for (var i = 0; i < ViewModel.Assets.Count; i++)
+        {
+            var asset = ViewModel.Assets[i];
+            if (asset.IsFolderHeader
+                && string.Equals(asset.FolderGroupPath, sectionPath, StringComparison.OrdinalIgnoreCase))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0)
+        {
+            return;
+        }
+
+        // ItemsView has no TryGetElement in WASDK 2.3 — Select realizes the
+        // container for focus. Caller must keep _suppressMosaicSelection so
+        // SelectionChanged cannot wipe asset selection; RestoreMosaicSelectionHighlights
+        // re-applies the real selection afterward (same order as 87e299d).
+        GrdAssets.Select(index);
+        var tag = ViewModel.Assets[index].MosaicTag;
+        if (string.IsNullOrEmpty(tag))
+        {
+            return;
+        }
+
+        var container = FindRealizedItemContainerByTag(GrdAssets, tag);
+        container?.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+        container?.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// Breadth-first over realized <see cref="ItemContainer"/>s only (capped) —
+    /// not a full visual-tree walk of every tile descendant.
+    /// </summary>
+    private static FrameworkElement? FindRealizedItemContainerByTag(DependencyObject root, string tag)
+    {
+        var queue = new Queue<DependencyObject>();
+        queue.Enqueue(root);
+        var visited = 0;
+        const int maxNodes = 500;
+        while (queue.Count > 0 && visited < maxNodes)
+        {
+            var node = queue.Dequeue();
+            visited++;
+            if (node is ItemContainer container)
+            {
+                if (container.Tag is string text
+                    && string.Equals(text, tag, StringComparison.Ordinal))
+                {
+                    return container;
+                }
+
+                // Tag lives on the ItemContainer; skip its deep content tree.
+                continue;
+            }
+
+            var count = VisualTreeHelper.GetChildrenCount(node);
+            for (var i = 0; i < count; i++)
+            {
+                queue.Enqueue(VisualTreeHelper.GetChild(node, i));
+            }
+        }
+
+        return null;
+    }
+
+    private void HideStickyFolderHeader()
+    {
+        _stickySection = null;
+        BrdStickyFolderHeader.Visibility = Visibility.Collapsed;
+    }
+
+    private void BtnStickyCollapse_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stickySection is not null)
+        {
+            ViewModel.ToggleFolderSectionCommand.Execute(_stickySection);
+        }
+    }
+
+    private void BtnStickyFolderOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (_stickySection is not null)
+        {
+            ViewModel.SelectFolderGroup(_stickySection);
+        }
+    }
+
+    private void TglStickyFlatten_Changed(object sender, RoutedEventArgs e)
+    {
+        var want = TglStickyFlatten.IsChecked == true;
+        if (ViewModel.FlattenSubfolders != want)
+        {
+            ViewModel.FlattenSubfolders = want;
         }
     }
 
@@ -2337,6 +3202,13 @@ public sealed partial class LibraryPage : Page
 
     private async void UpdatePreview()
     {
+        // Collapsed / overlay / user-hidden — no decode, pause any preview video.
+        if (_previewPaneMode != PaneMode.Docked)
+        {
+            PausePreviewPaneMedia();
+            return;
+        }
+
         var epoch = Interlocked.Increment(ref _previewEpoch);
         _previewCts?.Cancel();
         _previewCts = new CancellationTokenSource();
@@ -2380,11 +3252,21 @@ public sealed partial class LibraryPage : Page
             try
             {
                 var file = await StorageFile.GetFileFromPathAsync(ViewModel.PreviewPath);
+                // Pane may have hidden mid-await — do not arm a collapsed player.
+                if (epoch != Volatile.Read(ref _previewEpoch)
+                    || _previewPaneMode != PaneMode.Docked)
+                {
+                    return;
+                }
+
                 MpePreview.Source = MediaSource.CreateFromStorageFile(file);
             }
             catch
             {
-                MpePreview.Source = null;
+                if (epoch == Volatile.Read(ref _previewEpoch))
+                {
+                    MpePreview.Source = null;
+                }
             }
         }
         else

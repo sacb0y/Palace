@@ -162,6 +162,8 @@ public sealed partial class LibraryPage
         var title = selection.Count == 1
             ? $"Move {FileOpService.Quote(selection[0].FileName)}"
             : $"Move {selection.Count} items";
+        title += SelectMode.CollapsedClause(
+            ViewModel.CountCollapsedAmongTargetIds(selection.Select(t => t.Id)));
 
         var caption = new TextBlock
         {

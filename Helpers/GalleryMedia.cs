@@ -90,7 +90,7 @@ public static class GalleryMedia
     /// Compact folder-header row height in DIPs. Headers are caption rows
     /// (<see cref="MosaicRows"/>), not asset mosaic tiles / LinedFlow aspect.
     /// </summary>
-    public const double FolderHeaderHeight = 28.0;
+    public const double FolderHeaderHeight = 34.0;
 
     public static bool UsesAssetTileLayout(bool isFolderHeader) => !isFolderHeader;
 
@@ -139,6 +139,56 @@ public static class GalleryMedia
         bool isFolderHeader,
         int keyCode) =>
         GalleryScale.OpensOverlayFromEnter(overlayOpen, isTyping, keyCode) && !isFolderHeader;
+
+    /// <summary>
+    /// Space on a focused folder header toggles collapse (view-only). Left collapses
+    /// when expanded; Right expands when collapsed. Never while overlay/typing.
+    /// </summary>
+    public static bool ShouldToggleFolderCollapse(
+        bool overlayOpen,
+        bool isTyping,
+        bool isFolderHeader,
+        bool isCollapsed,
+        int keyCode)
+    {
+        if (overlayOpen || isTyping || !isFolderHeader)
+        {
+            return false;
+        }
+
+        // Space
+        if (keyCode == 32)
+        {
+            return true;
+        }
+
+        // Left = collapse when expanded; Right = expand when collapsed
+        if (keyCode == 37)
+        {
+            return !isCollapsed;
+        }
+
+        if (keyCode == 39)
+        {
+            return isCollapsed;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Clamped portraits use UniformToFill with top-weighted crop so faces stay in frame.
+    /// </summary>
+    public static bool UsesTopWeightedCrop(bool isFolderHeader, double aspectRatio) =>
+        !isFolderHeader && aspectRatio > 0 && aspectRatio < 1;
+
+    /// <summary>Ctrl+A on the Library mosaic (not while typing / overlay).</summary>
+    public static bool ShouldSelectAllMosaic(
+        bool overlayOpen,
+        bool isTyping,
+        bool controlDown,
+        int keyCode) =>
+        !overlayOpen && !isTyping && controlDown && keyCode is 65 or 97; // A / a
 
     /// <summary>
     /// ItemsView ItemInvoked (double-tap, Enter, or automation Invoke when

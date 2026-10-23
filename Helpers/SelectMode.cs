@@ -36,15 +36,77 @@ public static class SelectMode
     public static bool ViewerHoldOpensContext(bool overlayOpen, bool reviewMode) =>
         TouchGestures.ViewerHoldOpensContext(overlayOpen, reviewMode);
 
-    /// <summary>Count line beside the toggle. Empty when select mode is off and nothing is selected.</summary>
-    public static string Summary(bool selectMode, int selectedCount)
+    /// <summary>
+    /// Esc exits select mode while the overlay is closed (selection kept —
+    /// Clear is the path that drops tiles).
+    /// </summary>
+    public static bool ExitsSelectModeOnEscape(bool selectMode, bool overlayOpen) =>
+        selectMode && !overlayOpen;
+
+    /// <summary>
+    /// Trailing clause when some selected tiles live under collapsed sections:
+    /// <c> · 30 in collapsed sections</c>.
+    /// </summary>
+    public static string CollapsedClause(int collapsedSelectedCount) =>
+        collapsedSelectedCount > 0
+            ? $" · {collapsedSelectedCount} in collapsed sections"
+            : "";
+
+    /// <summary>
+    /// Count line beside the toggle / delete-move confirm. Empty when select
+    /// mode is off and nothing is selected. When some selected tiles live under
+    /// collapsed sections: <c>42 selected · 30 in collapsed sections</c>.
+    /// Esc exits select mode but keeps the count line (selection is not cleared).
+    /// </summary>
+    public static string Summary(bool selectMode, int selectedCount, int collapsedSelectedCount = 0)
     {
         if (selectedCount > 0)
         {
-            return $"{selectedCount} selected";
+            return $"{selectedCount} selected{CollapsedClause(collapsedSelectedCount)}";
         }
 
         return selectMode ? "Click or drag tiles to select" : "";
+    }
+
+    /// <summary>
+    /// How many of <paramref name="targetIds"/> are ordered mosaic tiles that are
+    /// not in the current display set (collapsed-section / hidden).
+    /// </summary>
+    public static int CountCollapsedAmongTargets<T>(
+        IReadOnlyList<T> ordered,
+        Func<T, bool> isHeader,
+        Func<T, string?> id,
+        IReadOnlySet<T> displayed,
+        IEnumerable<string> targetIds)
+        where T : class
+    {
+        var ids = targetIds as HashSet<string>
+            ?? new HashSet<string>(
+                targetIds.Where(x => !string.IsNullOrWhiteSpace(x)),
+                StringComparer.Ordinal);
+        if (ids.Count == 0 || ordered.Count == 0)
+        {
+            return 0;
+        }
+
+        var n = 0;
+        foreach (var item in ordered)
+        {
+            if (isHeader(item))
+            {
+                continue;
+            }
+
+            var assetId = id(item);
+            if (assetId is null || !ids.Contains(assetId) || displayed.Contains(item))
+            {
+                continue;
+            }
+
+            n++;
+        }
+
+        return n;
     }
 
     /// <summary>
@@ -52,4 +114,10 @@ public static class SelectMode
     /// </summary>
     public static bool ShowBatchTagCta(bool selectMode, int selectedCount) =>
         selectMode && selectedCount > 0;
+
+    /// <summary>
+    /// ItemsView SelectionChanged should keep collapsed-section tiles when select
+    /// mode is on (collapse is view-only). Single preview replace does not merge.
+    /// </summary>
+    public static bool MergesHiddenSelection(bool selectMode) => selectMode;
 }

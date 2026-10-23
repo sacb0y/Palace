@@ -54,7 +54,7 @@ public sealed class MosaicRowsTests
     [Fact]
     public void Layout_EmptyOrZeroWidthIsEmpty()
     {
-        Assert.Empty(MosaicRows.Layout([], 400, 120, 8, 28));
-        Assert.Empty(MosaicRows.Layout([(false, 1.0)], 0, 120, 8, 28));
+        Assert.Empty(MosaicRows.Layout(Array.Empty<(bool, double)>(), 400, 120, 8, 28));
+        Assert.Empty(MosaicRows.Layout(new (bool, double)[] { (false, 1.0) }, 0, 120, 8, 28));
     }
 }

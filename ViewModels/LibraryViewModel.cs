@@ -28,6 +28,8 @@ public partial class LibraryViewModel : ObservableObject
     private List<AssetItem> _selection = [];
     private List<AssetItem> _previewTargets = [];
     private AssetItem? _selectionAnchor;
+    /// <summary>Cached display set for drag-select / collapsed counts; cleared when Assets change.</summary>
+    private HashSet<AssetItem>? _displayedSelectionCache;
     private bool _suppressFilter;
     private int _filterEpoch;
     private int _previewEpoch;
@@ -36,7 +38,41 @@ public partial class LibraryViewModel : ObservableObject
     private int _busyDepth;
     private Dictionary<string, bool> _sourceIsCloud = new(StringComparer.Ordinal);
     private HashSet<string> _localSourceIds = new(StringComparer.Ordinal);
+    private string _sectionBrowsePath = "";
+    private HashSet<string> _collapsedSections = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Full mosaic order including tiles under collapsed headers (view-only collapse).</summary>
+    private List<AssetItem> _mosaicOrder = [];
     private const int MosaicChunkSize = 80;
+    /// <summary>Collapse prefs save failure Notify once per app session (log every time).</summary>
+    private static bool s_collapseSaveNotifyShown;
+
+    /// <summary>
+    /// LibraryPage captures scroll offset and returns a guard generation so a
+    /// stale Ended after leave/return cannot decrement a newer toggle's depth.
+    /// </summary>
+    public Func<int>? SectionToggleStarting { get; set; }
+
+    /// <summary>
+    /// Fired right after <c>_filterEpoch</c> bumps for a section republish so the
+    /// page can ignore MosaicRestoreReady from a superseded toggle.
+    /// </summary>
+    public Action<int>? SectionToggleEpochArmed { get; set; }
+
+    /// <summary>
+    /// Fired after mosaic chunks finish (and after selection restore on section
+    /// republish) so the page can restore scroll/focus. Argument is the
+    /// <c>_filterEpoch</c> for this populate — ignore when superseded.
+    /// </summary>
+    public Action<int>? MosaicRestoreReady { get; set; }
+
+    /// <summary>
+    /// Always fired when a section-toggle republish finishes (success, throw, or
+    /// superseded). Args: filter epoch, guard generation from Starting.
+    /// </summary>
+    public Action<int, int>? SectionToggleEnded { get; set; }
+
+    /// <summary>Section path to refocus after collapse toggle; cleared by the page.</summary>
+    public string? PendingSectionFocusPath { get; set; }
 
     public LibraryViewModel(
         CatalogService catalog,
@@ -109,6 +145,21 @@ public partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial double MosaicRowHeight { get; set; } = 140;
+
+    /// <summary>When true, folder browse shows one continuous mosaic (no section headers).</summary>
+    [ObservableProperty]
+    public partial bool FlattenSubfolders { get; set; }
+
+    /// <summary>True while the current folder browse has subfolder section chrome.</summary>
+    [ObservableProperty]
+    public partial bool ShowFolderSectionsChrome { get; set; }
+
+    /// <summary>Long scan notice text for the footer Details link; null when compact.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatusDetails))]
+    public partial string? StatusDetails { get; set; }
+
+    public bool HasStatusDetails => !string.IsNullOrWhiteSpace(StatusDetails);
 
     [ObservableProperty]
     public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
@@ -383,6 +434,17 @@ public partial class LibraryViewModel : ObservableObject
         {
             ApplicationData.Current.LocalSettings.Values[RowHeightKey(project.Id)] = clamped;
         }
+    }
+
+    partial void OnFlattenSubfoldersChanged(bool value)
+    {
+        if (_suppressFilter || string.IsNullOrEmpty(_sectionBrowsePath))
+        {
+            return;
+        }
+
+        SaveFlatten(_sectionBrowsePath, value);
+        _ = ApplyFilterAsync();
     }
 
     partial void OnSelectedAssetChanged(AssetItem? value) => _ = LoadPreviewAsync(value);

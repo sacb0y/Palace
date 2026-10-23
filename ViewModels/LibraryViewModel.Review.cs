@@ -442,11 +442,17 @@ public partial class LibraryViewModel
 
     private List<AssetItem> ReviewTargets()
     {
-        IEnumerable<AssetItem> source = _selection.Count > 0
-            ? _selection
-            : Assets;
-        return source
-            .Where(a => !a.IsFolderHeader && !ReviewReject.IsAlreadyRejected(a.Path))
+        // No selection → full ordered mosaic (collapsed sections still count).
+        if (_selection.Count > 0)
+        {
+            return _selection
+                .Where(a => !a.IsFolderHeader && !ReviewReject.IsAlreadyRejected(a.Path))
+                .ToList();
+        }
+
+        IReadOnlyList<AssetItem> source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
+        return MosaicDelete.OrderedNonHeaderTargets(source, a => a.IsFolderHeader)
+            .Where(a => !ReviewReject.IsAlreadyRejected(a.Path))
             .ToList();
     }
 

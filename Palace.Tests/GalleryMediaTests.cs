@@ -75,7 +75,7 @@ public sealed class GalleryMediaTests
     [Fact]
     public void MosaicAspect_HeadersAreNotAssetTiles()
     {
-        Assert.Equal(28.0, GalleryMedia.FolderHeaderHeight);
+        Assert.Equal(34.0, GalleryMedia.FolderHeaderHeight);
         Assert.True(MosaicRows.IsCompactHeader(GalleryMedia.FolderHeaderHeight, 96));
         Assert.False(GalleryMedia.UsesAssetTileLayout(true));
         Assert.True(GalleryMedia.UsesAssetTileLayout(false));
@@ -110,6 +110,29 @@ public sealed class GalleryMediaTests
         Assert.True(GalleryMedia.ShouldOpenOverlayFromItemInvoke(false, false));
         Assert.False(GalleryMedia.ShouldOpenOverlayFromItemInvoke(true, false));
         Assert.False(GalleryMedia.ShouldOpenOverlayFromItemInvoke(false, true));
+    }
+
+    [Fact]
+    public void ShouldToggleFolderCollapse_SpaceAndArrowsOnHeader()
+    {
+        // Space always toggles a focused header.
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, false, 32));
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, true, 32));
+        // Left collapses when expanded; Right expands when collapsed.
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, false, 37));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, true, 37));
+        Assert.True(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, true, 39));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, false, true, false, 39));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, false, false, false, 32));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(true, false, true, false, 32));
+        Assert.False(GalleryMedia.ShouldToggleFolderCollapse(false, true, true, false, 32));
+        Assert.True(GalleryMedia.UsesTopWeightedCrop(false, 0.5));
+        Assert.False(GalleryMedia.UsesTopWeightedCrop(true, 0.5));
+        Assert.False(GalleryMedia.UsesTopWeightedCrop(false, 1.5));
+        Assert.True(GalleryMedia.ShouldSelectAllMosaic(false, false, true, 65));
+        Assert.False(GalleryMedia.ShouldSelectAllMosaic(true, false, true, 65));
+        Assert.False(GalleryMedia.ShouldSelectAllMosaic(false, true, true, 65));
+        Assert.False(GalleryMedia.ShouldSelectAllMosaic(false, false, false, 65));
     }
 
     [Fact]

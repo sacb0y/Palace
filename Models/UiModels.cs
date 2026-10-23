@@ -109,10 +109,58 @@ public partial class AssetItem : ObservableObject
     public string FolderGroupTitle { get; set; } = "";
     public string FolderGroupPath { get; set; } = "";
 
+    /// <summary>Asset count in this folder section (headers only).</summary>
+    private int _folderItemCount;
+
+    public int FolderItemCount
+    {
+        get => _folderItemCount;
+        set
+        {
+            if (_folderItemCount == value)
+            {
+                return;
+            }
+
+            _folderItemCount = value;
+            OnPropertyChanged(nameof(FolderItemCount));
+            OnPropertyChanged(nameof(FolderCountText));
+            OnPropertyChanged(nameof(ShowFolderCount));
+        }
+    }
+
+    /// <summary>Collapsed section — header only in the display mosaic (tiles stay in ordered list).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FolderCollapseAutomationName))]
+    [NotifyPropertyChangedFor(nameof(ShowFolderCount))]
+    [NotifyPropertyChangedFor(nameof(ShowFullFolderHeader))]
+    [NotifyPropertyChangedFor(nameof(ShowMiniFolderHeader))]
+    public partial bool IsFolderCollapsed { get; set; }
+
+    /// <summary>Packed side-by-side section: mini 22px label instead of full sticky header.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowFullFolderHeader))]
+    [NotifyPropertyChangedFor(nameof(ShowMiniFolderHeader))]
+    public partial bool IsPacked { get; set; }
+
+    public bool ShowFullFolderHeader => IsFolderHeader && !IsPacked;
+
+    public bool ShowMiniFolderHeader => IsFolderHeader && IsPacked;
+
     public string MosaicTag => FolderGroups.MosaicTag(IsFolderHeader, Id, FolderGroupPath);
 
     public string FolderGroupAutomationId =>
         "TxtFolderGroup_" + string.Concat((FolderGroupTitle ?? "").Where(char.IsLetterOrDigit));
+
+    public string FolderCountAutomationId =>
+        "TxtFolderCount_" + string.Concat((FolderGroupTitle ?? "").Where(char.IsLetterOrDigit));
+
+    public string FolderCountText => FolderItemCount > 0 ? FolderItemCount.ToString() : "";
+
+    public bool ShowFolderCount => IsFolderHeader && FolderItemCount > 0;
+
+    public string FolderCollapseAutomationName =>
+        IsFolderCollapsed ? "Expand section" : "Collapse section";
 
     public string MosaicItemName =>
         IsFolderHeader

@@ -185,17 +185,29 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var items = await Task.Run(() => BuildMosaicItems(
+            var groupFolders = FolderGroups.ShouldGroup(
+                tagBrowse,
+                !string.IsNullOrWhiteSpace(search),
+                hasFolderPath);
+            var (flatten, collapsed) = groupFolders && folderPath is not null
+                ? ReadSectionPrefs(folderPath)
+                : (false, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            var build = await Task.Run(() => BuildMosaicItems(
                 assets,
-                FolderGroups.ShouldGroup(tagBrowse, !string.IsNullOrWhiteSpace(search), hasFolderPath),
+                groupFolders,
                 folderName ?? "",
-                folderPath ?? ""));
+                folderPath ?? "",
+                flatten,
+                collapsed));
             if (epoch != _filterEpoch)
             {
                 return;
             }
 
-            var assetCount = items.Count(item => !item.IsFolderHeader);
+            await UiDispatch.RunAsync(() => ApplyMosaicBuildChrome(build));
+            // Display omits collapsed-section tiles; Ordered keeps them for Review/select-all/range.
+            var items = build.Display;
+            var assetCount = build.Ordered.Count(item => !item.IsFolderHeader);
             var joiner = matchMode == TagFilterMode.All
                 ? " + "
                 : matchMode == TagFilterMode.None ? " except " : " or ";
