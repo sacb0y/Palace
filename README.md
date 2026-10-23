@@ -6,7 +6,7 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 
 > **Status: 0.3.9** (Settings restructure milestone). The Library — browsing, previews, tags, watched folders, search, and the gallery viewer — is the focus. Rooms, on-disk organization and cloud support exist but are early.
 
-![Library view with watched folders, the thumbnail mosaic and the side panel](docs/images/library.png)
+![Library: folder tree and mosaic with HDR-badged thumbnails](docs/images/library.png)
 
 ## Features
 
