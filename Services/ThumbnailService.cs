@@ -710,7 +710,14 @@ public sealed class ThumbnailService
             var probe = HdrFile.ProbePath(filePath);
             if (probe.IsHdr && probe.Kind != HdrKind.UltraHdrJpeg)
             {
-                var loaded = await HdrWicDecode.TryLoadAsync(filePath, probe, MaxSide, MaxSide, ImageScaling.Fit, cancellationToken)
+                var loaded = await HdrWicDecode.TryLoadAsync(
+                        filePath,
+                        probe,
+                        MaxSide,
+                        MaxSide,
+                        ImageScaling.Fit,
+                        cancellationToken,
+                        buildWorking: false)
                     .ConfigureAwait(false);
                 var frame = loaded.Frame;
                 if (frame is not null && frame.Width > 0 && frame.Height > 0)

@@ -20,7 +20,8 @@ internal static unsafe class HdrAvifDecode
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         if (!CanDecode(path, probe))
         {
@@ -36,7 +37,8 @@ internal static unsafe class HdrAvifDecode
                 viewportPixelHeight,
                 scaling,
                 wantRgba: true,
-                cancellation) is { } packed
+                cancellation,
+                buildWorking) is { } packed
                 ? new HdrFrame
                 {
                     ScrgbRgba = packed.Rgba!,
@@ -138,7 +140,8 @@ internal static unsafe class HdrAvifDecode
         int viewportPixelHeight,
         ImageScaling scaling,
         bool wantRgba,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         byte[] bytes;
         try
@@ -249,7 +252,8 @@ internal static unsafe class HdrAvifDecode
                         storedH,
                         probe,
                         wantRgba,
-                        cancellation);
+                        cancellation,
+                        buildWorking);
                     if (packed is null)
                     {
                         return null;
@@ -344,7 +348,8 @@ internal static unsafe class HdrAvifDecode
         int height,
         HdrProbe probe,
         bool wantRgba,
-        CancellationToken cancellation)
+        CancellationToken cancellation,
+        bool buildWorking = true)
     {
         var count = width * height;
         if (count <= 0 || rowBytes < width * 8)
@@ -353,10 +358,11 @@ internal static unsafe class HdrAvifDecode
         }
 
         var rgba = wantRgba ? new float[count * 4] : null;
-        // B2: only allocate encoded for Working when present wants RGBA + budget.
-        var buildWorking = wantRgba && ImagingStillNormalize.FitsWorkingBudget(width, height);
+        // B2/S2: only allocate encoded for Working when caller wants it + budget.
+        var wantWorking = wantRgba && buildWorking
+            && ImagingStillNormalize.FitsWorkingBudget(width, height);
         float[]? encoded = null;
-        if (buildWorking)
+        if (wantWorking)
         {
             try
             {
@@ -365,7 +371,7 @@ internal static unsafe class HdrAvifDecode
             catch (OutOfMemoryException)
             {
                 encoded = null;
-                buildWorking = false;
+                wantWorking = false;
             }
         }
 
