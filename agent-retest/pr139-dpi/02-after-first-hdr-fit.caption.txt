@@ -1,0 +1,1 @@
+﻿#139 tip b285dc4 AFTER: first HDR 00_first.hdr Fit @ ~150% DPI. Judge crop/wrong-size vs letterbox OK.

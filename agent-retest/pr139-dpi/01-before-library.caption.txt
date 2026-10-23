@@ -1,0 +1,1 @@
+﻿#139 tip b285dc4 BEFORE open: Library @ AppliedDPI=144 (~150%). tiles=3
