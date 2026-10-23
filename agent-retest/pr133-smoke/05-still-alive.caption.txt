@@ -1,1 +1,1 @@
-﻿#133 tip a15e1b1 smoke END: process alive=True no crash observed
+﻿#133 tip 2ac0e9c smoke END: process alive, no crash (gallery next skipped — chrome absent)

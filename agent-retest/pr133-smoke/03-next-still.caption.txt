@@ -1,1 +1,0 @@
-﻿#133 tip a15e1b1 smoke: BtnGalleryNext after still; alive=True

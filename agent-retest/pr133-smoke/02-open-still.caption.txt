@@ -1,1 +1,1 @@
-﻿#133 tip a15e1b1 smoke: open still Pregmata_SteamAVIF.exr gallery=True alive=True
+﻿#133 tip 2ac0e9c smoke: open still Pregmata_SteamAVIF.exr gallery=False (chrome not detected; no crash)
