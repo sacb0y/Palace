@@ -1,0 +1,1 @@
+﻿#134 tip 83a91f4 S-1 MosaicFallback landing: Preview hidden @ ~1212 DIP; flyout on mosaic host (not selected tile / not collapsed BtnBrowseTags). AsbAssignTag visible.
