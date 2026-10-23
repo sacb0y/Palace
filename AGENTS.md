@@ -73,7 +73,7 @@ This file is the always-loaded core. Topic rules live in `.cursor/rules/*.mdc` a
 - Thumbnails: ~2–4 concurrent decodes, lazy in viewport order, short prefetch, cancel on scroll-away, full decodes off the UI thread.
 - Accent: Follow Windows or Palace pink (`#ED9FBC` Dark, `#A14165` Light). Retint in `OnLaunched`; do not touch `Application.Resources` in the App constructor.
 - Backgrounds: 13 presets plus Default, Mica, Mica Alt, Neutral, Custom. Recent custom images kept as copies; blur / darkness per entry.
-- Roadmap: Settings **0.3.0** done; next touch (long-press select; swipe keep/reject → `_rejected`), then 3D and audio, then moodboard.
+- Roadmap: Settings **0.3.0** done; long-press select and Review swipe keep/reject (`_rejected`) have shipped (0.3.1–0.3.5). Next: finish imaging present (P3–P5), then 3D and audio, then Rooms moodboard.
 
 ## PR descriptions
 

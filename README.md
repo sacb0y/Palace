@@ -50,7 +50,7 @@ Palace is migrating still decode and present onto a pure `Palace.Imaging` librar
 | **P4–P5** | Pending — SDR full view, then HDR present + HLSL |
 | **P6–P7** | Later — delete legacy path; gain maps / desat engagement |
 
-Until P4–P5 land, the gallery still uses the existing present path for full view. Design notes live with maintainers; the in-repo surface for agents is `AGENTS.md` and `.cursor/rules/gallery-hdr.mdc`.
+Until P4–P5 land, the gallery still uses the existing present path for full view. See [`docs/hdr-sdr-tuning.md`](docs/hdr-sdr-tuning.md). Agent surface: `AGENTS.md` and `.cursor/rules/gallery-hdr.mdc`.
 
 ## Requirements
 
@@ -81,7 +81,7 @@ $env:PALACE_DATA_DIR = Join-Path $env:TEMP 'palace-agent-data'
 .\BuildAndRun.ps1 . --arch x64
 ```
 
-`BuildAndRun.ps1` builds and launches the packaged Debug layout under that test identity. Register the **build output** `AppxManifest.xml`, not `winapp run --no-launch` on the source manifest.
+`Prepare-TestIdentity.ps1` **patches `Package.appxmanifest` in place** (Name, PhoneProductId, DisplayName). Restore it from git or the script’s `.release-backup` **before committing** so the release identity is never pushed. `BuildAndRun.ps1` builds and launches the packaged Debug layout under that test identity. Register the **build output** `AppxManifest.xml`, not `winapp run --no-launch` on the source manifest.
 
 The build downloads a slim, static LGPL ffmpeg (about 12 MB) for video thumbnails and packages it with the app. The download comes from this repo's GitHub releases and is checked against a pinned SHA-256 by `tools/Get-Ffmpeg.ps1`. `tools/build-ffmpeg.sh` rebuilds it from source; its license and source offer ship next to it as `ffmpeg\LICENSE.txt` and `ffmpeg\SOURCE.txt`. To build without it (shell thumbnails only):
 
