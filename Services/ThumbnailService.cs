@@ -675,6 +675,7 @@ public sealed class ThumbnailService
                         HdrJxlPresent.ThumbMaxPixels,
                         jxlTransfer,
                         jxlPrimaries,
+                        buildWorking: false,
                         cancellationToken),
                     cancellationToken).ConfigureAwait(false);
                 if (jxl is not null)
