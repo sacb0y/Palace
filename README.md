@@ -46,25 +46,24 @@ Review mode is a dedicated triage pass in the Library gallery overlay. You work 
 
 **Enter Review** from the Library toolbar **Review** button (also under the overflow menu). If tiles are selected, those become the queue; otherwise Palace uses the visible mosaic (non-headers, skipping anything already under `_rejected`). The overlay opens on the first item and the queue stays fixed for the session.
 
-<img src="docs/screenshots/03-review-idle.png" width="100%" alt="Full Palace window: Review mode idle with Reject, Skip, Keep and progress chip" />
+<img src="docs/screenshots/03a-review-idle.png" width="100%" alt="Full Palace window: Review mode idle with Reject, Skip, and Keep" />
 
-- Swipe **right** or press **K** to keep
-- Swipe **left** or press **X** to reject → sibling `_rejected` (undoable)
-- Swipe **up** or press **S** to skip
-- Progress chip counts through the queue
-- **Ctrl+Z** undoes the last Review decision
+- **Keep:** swipe right or `K`
+- **Reject:** swipe left or `X`; the image moves to `_rejected` and can be undone
+- **Skip:** swipe up or `S`
+- **Undo:** `Ctrl+Z`
 
-<img src="docs/screenshots/04-review-b.png" width="100%" alt="Full Palace window: Review mode mid-keep swipe or end-of-queue skipped pass" />
+<img src="docs/screenshots/03b-review.png" width="100%" alt="Full Palace window: Review mode mid-keep swipe or end-of-queue skipped pass" />
 
 ### Full viewer
 
-<img src="docs/screenshots/05-viewer.png" width="100%" alt="Full Palace window: gallery overlay with swipe and keyboard navigation" />
+<img src="docs/screenshots/04-viewer.png" width="100%" alt="Full Palace window: gallery overlay with Fit and 1:1 controls" />
 
 *Full-screen viewer with swipe and keyboard navigation.*
 
 ### HDR
 
-<img src="docs/screenshots/06-hdr.png" width="100%" alt="Full Palace window: HDR still (for example sample.exr or lapa_1k.hdr) in the gallery viewer" />
+<img src="docs/screenshots/05-hdr.png" width="100%" alt="Full Palace window: HDR still (for example sample.exr or lapa_1k.hdr) with histogram open" />
 
 *Native HDR display (AVIF/JXR/EXR…), tone-mapped on SDR screens.*
 
