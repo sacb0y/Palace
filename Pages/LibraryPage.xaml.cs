@@ -53,6 +53,8 @@ public sealed partial class LibraryPage : Page
     /// <summary>Preview reducer (#134 UserShow fixed true; 0.3.9 adds toggle UI).</summary>
     private PreviewPaneState _previewPane = PreviewPane.Initial;
     private PaneMode _previewPaneMode = PaneMode.Hidden;
+    private NavigationView? _shellNav;
+    private bool _shellNavHooked;
     private bool _libraryLayoutHooked;
     private XamlRoot? _libraryLayoutXamlRoot;
     /// <summary>
@@ -178,6 +180,7 @@ public sealed partial class LibraryPage : Page
                 // depth may still be >0 — clear guard and re-stamp highlights.
                 ResetSectionToggleGuardOnLoaded();
                 HookLibraryLayoutTracking();
+                HookShellNavPaneTracking();
                 RefreshLibraryLayout();
                 RefreshMosaicToolbarOverflow();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
@@ -193,6 +196,7 @@ public sealed partial class LibraryPage : Page
             _shellReady = true;
             ResetSectionToggleGuardOnLoaded();
             HookLibraryLayoutTracking();
+            HookShellNavPaneTracking();
             RefreshLibraryLayout();
             RefreshMosaicToolbarOverflow();
             CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
@@ -230,6 +234,7 @@ public sealed partial class LibraryPage : Page
         {
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
             UnhookLibraryLayoutTracking();
+            UnhookShellNavPaneTracking();
             UnhookFolderTreeExpansion();
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
@@ -447,10 +452,37 @@ public sealed partial class LibraryPage : Page
     private void ShowAssignTagsFlyout(bool preferTagSelectedCta)
     {
         ViewModel.RebuildAssignPanelPublic();
-        var anchor = preferTagSelectedCta && ViewModel.ShowTagSelectedCta
-            ? BtnTagSelected
-            : BtnBrowseTags;
+        // Preview auto-hides under ~1296 client DIP; BtnBrowseTags is inside
+        // ScrPreviewPane — never ShowAt a Collapsed target (flyout misses / misplaces).
+        var kind = AssignTagsFlyoutAnchor.Resolve(
+            preferTagSelectedCta,
+            ViewModel.ShowTagSelectedCta,
+            ScrPreviewPane.Visibility == Visibility.Visible);
+        FrameworkElement anchor = kind switch
+        {
+            AssignTagsFlyoutAnchor.Kind.TagSelectedCta => BtnTagSelected,
+            AssignTagsFlyoutAnchor.Kind.BrowseTagsInPreview => BtnBrowseTags,
+            _ => ResolveAssignTagsFallbackAnchor(),
+        };
         FlyAssignTags.ShowAt(anchor);
+    }
+
+    /// <summary>
+    /// Anchor when Preview is Collapsed: prefer a realized selected tile, else mosaic host.
+    /// </summary>
+    private FrameworkElement ResolveAssignTagsFallbackAnchor()
+    {
+        var selected = ViewModel.SelectedAsset;
+        if (selected is not null && !string.IsNullOrEmpty(selected.MosaicTag))
+        {
+            var container = FindRealizedItemContainerByTag(GrdAssets, selected.MosaicTag);
+            if (container is not null)
+            {
+                return container;
+            }
+        }
+
+        return GrdAssets;
     }
 
     private void FlyAssignTags_Opening(object sender, object e)
@@ -500,11 +532,37 @@ public sealed partial class LibraryPage : Page
         // Page is nav content; add shell pane to approximate client.
         if (ActualWidth >= MosaicLayoutWidth.MinUsable)
         {
-            return ActualWidth + LibraryColumnLayout.ShellNavPaneWidthDip;
+            return ActualWidth + ResolveShellNavPaneWidthDip();
         }
 
         return 0;
     }
+
+    /// <summary>
+    /// Live shell NavigationView occupied width (open / compact / overlay).
+    /// </summary>
+    private double ResolveShellNavPaneWidthDip()
+    {
+        EnsureShellNavReference();
+        if (_shellNav is null)
+        {
+            return LibraryColumnLayout.ShellNavPaneWidthDip;
+        }
+
+        return LibraryColumnLayout.ShellNavOccupiedWidthDip(
+            MapShellNavDisplayMode(_shellNav.DisplayMode),
+            _shellNav.IsPaneOpen,
+            _shellNav.OpenPaneLength,
+            _shellNav.CompactPaneLength);
+    }
+
+    private static ShellNavDisplayMode MapShellNavDisplayMode(NavigationViewDisplayMode mode) =>
+        mode switch
+        {
+            NavigationViewDisplayMode.Minimal => ShellNavDisplayMode.Minimal,
+            NavigationViewDisplayMode.Compact => ShellNavDisplayMode.Compact,
+            _ => ShellNavDisplayMode.Expanded,
+        };
 
     /// <summary>
     /// Library columns content width from available (window/page) space — never from
@@ -514,7 +572,9 @@ public sealed partial class LibraryPage : Page
     {
         if (windowClientDip >= MosaicLayoutWidth.MinUsable)
         {
-            return LibraryColumnLayout.ContentWidthFromClientDip(windowClientDip);
+            return LibraryColumnLayout.ContentWidthFromClientDip(
+                windowClientDip,
+                ResolveShellNavPaneWidthDip());
         }
 
         if (ActualWidth >= MosaicLayoutWidth.MinUsable)
@@ -563,6 +623,68 @@ public sealed partial class LibraryPage : Page
     private void LibraryLayoutXamlRoot_Changed(XamlRoot sender, XamlRootChangedEventArgs args) =>
         RefreshLibraryLayout();
 
+    private void HookShellNavPaneTracking()
+    {
+        EnsureShellNavReference();
+        if (_shellNav is null || _shellNavHooked)
+        {
+            return;
+        }
+
+        // Opened/Closed after IsPaneOpen settles; Opening/Closing + DisplayMode for
+        // mid-toggle and Left→Compact/Minimal so content width tracks the real pane.
+        _shellNav.PaneOpened += ShellNav_PaneLayoutChanged;
+        _shellNav.PaneClosed += ShellNav_PaneLayoutChanged;
+        _shellNav.PaneOpening += ShellNav_PaneLayoutChanged;
+        _shellNav.PaneClosing += ShellNav_PaneClosing;
+        _shellNav.DisplayModeChanged += ShellNav_DisplayModeChanged;
+        _shellNavHooked = true;
+    }
+
+    private void UnhookShellNavPaneTracking()
+    {
+        if (_shellNav is not null && _shellNavHooked)
+        {
+            _shellNav.PaneOpened -= ShellNav_PaneLayoutChanged;
+            _shellNav.PaneClosed -= ShellNav_PaneLayoutChanged;
+            _shellNav.PaneOpening -= ShellNav_PaneLayoutChanged;
+            _shellNav.PaneClosing -= ShellNav_PaneClosing;
+            _shellNav.DisplayModeChanged -= ShellNav_DisplayModeChanged;
+        }
+
+        _shellNavHooked = false;
+        _shellNav = null;
+    }
+
+    private void EnsureShellNavReference()
+    {
+        if (_shellNav is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is NavigationView nav)
+            {
+                _shellNav = nav;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+    }
+
+    private void ShellNav_PaneLayoutChanged(NavigationView sender, object args) =>
+        RefreshLibraryLayout();
+
+    private void ShellNav_PaneClosing(NavigationView sender, NavigationViewPaneClosingEventArgs args) =>
+        RefreshLibraryLayout();
+
+    private void ShellNav_DisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args) =>
+        RefreshLibraryLayout();
+
     private void ApplyLibraryColumnLayout(PreviewPaneEffective effective)
     {
         var widths = effective.Widths;
@@ -581,13 +703,21 @@ public sealed partial class LibraryPage : Page
         ColPreview.MinWidth = 0;
 
         var docked = mode == PaneMode.Docked;
-        ScrPreviewPane.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
         if (!docked)
         {
-            PausePreviewPaneMedia();
+            // Move focus before Collapsed — after hide WinUI may already have
+            // reassigned focus and MoveFocusFromPreviewPaneIfNeeded misses.
             MoveFocusFromPreviewPaneIfNeeded();
+            if (wasDocked)
+            {
+                // Pause only on docked→hidden; every resize refresh while hidden
+                // used to null Source / bump epoch needlessly.
+                PausePreviewPaneMedia();
+            }
         }
-        else if (!wasDocked)
+
+        ScrPreviewPane.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
+        if (docked && !wasDocked)
         {
             // Pane just docked — refresh decode for the current selection.
             UpdatePreview();
@@ -3122,11 +3252,21 @@ public sealed partial class LibraryPage : Page
             try
             {
                 var file = await StorageFile.GetFileFromPathAsync(ViewModel.PreviewPath);
+                // Pane may have hidden mid-await — do not arm a collapsed player.
+                if (epoch != Volatile.Read(ref _previewEpoch)
+                    || _previewPaneMode != PaneMode.Docked)
+                {
+                    return;
+                }
+
                 MpePreview.Source = MediaSource.CreateFromStorageFile(file);
             }
             catch
             {
-                MpePreview.Source = null;
+                if (epoch == Volatile.Read(ref _previewEpoch))
+                {
+                    MpePreview.Source = null;
+                }
             }
         }
         else

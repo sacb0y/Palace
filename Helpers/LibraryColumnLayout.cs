@@ -32,10 +32,16 @@ public static class LibraryColumnLayout
     public const int MinWindowHeightDip = 480;
 
     /// <summary>
-    /// <c>MainPage</c> <c>NavMain.OpenPaneLength</c> — Library content width is
-    /// window client minus this when the pane is open (Left display mode).
+    /// <c>MainPage</c> <c>NavMain.OpenPaneLength</c> — default when the Left pane
+    /// is expanded. Compact hamburger leaves only <see cref="ShellNavCompactPaneWidthDip"/>.
     /// </summary>
     public const double ShellNavPaneWidthDip = 248;
+
+    /// <summary>
+    /// <c>NavigationView</c> default <c>CompactPaneLength</c> when the Left pane
+    /// is collapsed (hamburger rail).
+    /// </summary>
+    public const double ShellNavCompactPaneWidthDip = 48;
 
     /// <summary>
     /// Below this <b>window client</b> width (DIP), New folder / Undo / Add to room
@@ -47,7 +53,7 @@ public static class LibraryColumnLayout
     /// <summary>
     /// Below this <b>window client</b> width (DIP), also park Organize / Review in
     /// More. Face buttons show at ≥800 client DIP; comparing Library grid width
-    /// instead kept them collapsed (grid ≈ client − 248).
+    /// instead kept them collapsed (grid ≈ client − 248 when the pane is open).
     /// </summary>
     public const double LibraryToolbarTightBelowDip = 800;
 
@@ -69,18 +75,49 @@ public static class LibraryColumnLayout
         windowClientDip < LibraryToolbarOverflowBelowDip;
 
     /// <summary>
-    /// Library columns content width from a window client DIP size (nav pane open).
-    /// Matches page/nav content slot ≈ client − <see cref="ShellNavPaneWidthDip"/>,
-    /// then minus horizontal page padding.
+    /// Width the shell <c>NavigationView</c> currently occupies from the window
+    /// client (DIP). Minimal overlays content (0). Compact keeps the rail.
+    /// Expanded uses open vs compact length from <paramref name="isPaneOpen"/>.
     /// </summary>
-    public static double ContentWidthFromClientDip(double windowClientDip)
+    public static double ShellNavOccupiedWidthDip(
+        ShellNavDisplayMode displayMode,
+        bool isPaneOpen,
+        double openPaneLength = ShellNavPaneWidthDip,
+        double compactPaneLength = ShellNavCompactPaneWidthDip)
+    {
+        var open = double.IsFinite(openPaneLength) && openPaneLength >= 0
+            ? openPaneLength
+            : ShellNavPaneWidthDip;
+        var compact = double.IsFinite(compactPaneLength) && compactPaneLength >= 0
+            ? compactPaneLength
+            : ShellNavCompactPaneWidthDip;
+
+        return displayMode switch
+        {
+            ShellNavDisplayMode.Minimal => 0,
+            ShellNavDisplayMode.Compact => compact,
+            _ => isPaneOpen ? open : compact,
+        };
+    }
+
+    /// <summary>
+    /// Library columns content width from a window client DIP size.
+    /// Pass the live nav pane width (<see cref="ShellNavOccupiedWidthDip"/>) —
+    /// hard-coding open length left ~200 DIP dead space when the hamburger collapsed.
+    /// </summary>
+    public static double ContentWidthFromClientDip(
+        double windowClientDip,
+        double navPaneWidthDip = ShellNavPaneWidthDip)
     {
         if (!double.IsFinite(windowClientDip) || windowClientDip <= 0)
         {
             return 0;
         }
 
-        var host = Math.Max(0, windowClientDip - ShellNavPaneWidthDip);
+        var pane = double.IsFinite(navPaneWidthDip) && navPaneWidthDip > 0
+            ? navPaneWidthDip
+            : 0;
+        var host = Math.Max(0, windowClientDip - pane);
         return ContentWidthFromHostDip(host);
     }
 
@@ -104,13 +141,18 @@ public static class LibraryColumnLayout
     /// Client-X of the packed mosaic's right edge (nav + pad + tree + gap + pack).
     /// Must stay ≤ <paramref name="windowClientDip"/> − right page pad.
     /// </summary>
-    public static double MosaicPackRightEdgeClientDip(double windowClientDip)
+    public static double MosaicPackRightEdgeClientDip(
+        double windowClientDip,
+        double navPaneWidthDip = ShellNavPaneWidthDip)
     {
-        var content = ContentWidthFromClientDip(windowClientDip);
+        var content = ContentWidthFromClientDip(windowClientDip, navPaneWidthDip);
         var state = PreviewPane.OnWidth(PreviewPane.Initial, content);
         var widths = PreviewPane.Effective(state, content).Widths;
         var pack = MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic);
-        return ShellNavPaneWidthDip
+        var pane = double.IsFinite(navPaneWidthDip) && navPaneWidthDip > 0
+            ? navPaneWidthDip
+            : 0;
+        return pane
             + PagePaddingEdgeDip
             + widths.Tree
             + ColumnSpacing
@@ -261,3 +303,14 @@ public readonly record struct LibraryColumnWidths(
     double Mosaic,
     double Preview,
     bool PreviewHidden);
+
+/// <summary>
+/// WinUI-free mirror of <c>NavigationViewDisplayMode</c> for
+/// <see cref="LibraryColumnLayout.ShellNavOccupiedWidthDip"/>.
+/// </summary>
+public enum ShellNavDisplayMode
+{
+    Minimal = 0,
+    Compact = 1,
+    Expanded = 2,
+}

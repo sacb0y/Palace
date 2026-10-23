@@ -128,7 +128,48 @@ public sealed class LibraryColumnLayoutTests
         Assert.Equal(24, LibraryColumnLayout.PagePaddingHorizontalDip);
         Assert.Equal(12, LibraryColumnLayout.PagePaddingEdgeDip);
         Assert.Equal(248, LibraryColumnLayout.ShellNavPaneWidthDip);
+        Assert.Equal(48, LibraryColumnLayout.ShellNavCompactPaneWidthDip);
         Assert.True(LibraryColumnLayout.MosaicToolbarFlattenBelowDip > LibraryColumnLayout.MosaicToolbarSortCompactBelowDip);
         Assert.True(LibraryColumnLayout.MosaicToolbarSortCompactBelowDip > LibraryColumnLayout.MosaicToolbarSortOverflowBelowDip);
+    }
+
+    [Theory]
+    [InlineData(ShellNavDisplayMode.Expanded, true, 248)]
+    [InlineData(ShellNavDisplayMode.Expanded, false, 48)]
+    [InlineData(ShellNavDisplayMode.Compact, true, 48)]
+    [InlineData(ShellNavDisplayMode.Compact, false, 48)]
+    [InlineData(ShellNavDisplayMode.Minimal, true, 0)]
+    [InlineData(ShellNavDisplayMode.Minimal, false, 0)]
+    public void ShellNavOccupiedWidthDip_TracksDisplayModeAndOpen(
+        ShellNavDisplayMode mode,
+        bool isOpen,
+        double expected)
+    {
+        Assert.Equal(
+            expected,
+            LibraryColumnLayout.ShellNavOccupiedWidthDip(mode, isOpen),
+            0.01);
+    }
+
+    [Fact]
+    public void ContentWidthFromClientDip_UsesPassedPaneWidth()
+    {
+        const double client = 1200;
+        var open = LibraryColumnLayout.ContentWidthFromClientDip(
+            client,
+            LibraryColumnLayout.ShellNavPaneWidthDip);
+        var compact = LibraryColumnLayout.ContentWidthFromClientDip(
+            client,
+            LibraryColumnLayout.ShellNavCompactPaneWidthDip);
+        Assert.Equal(
+            client - 248 - LibraryColumnLayout.PagePaddingHorizontalDip,
+            open,
+            0.01);
+        Assert.Equal(
+            client - 48 - LibraryColumnLayout.PagePaddingHorizontalDip,
+            compact,
+            0.01);
+        // Collapsed hamburger frees ~200 DIP — Preview threshold must shift with it.
+        Assert.Equal(200, compact - open, 0.01);
     }
 }

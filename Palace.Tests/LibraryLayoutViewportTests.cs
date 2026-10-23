@@ -100,9 +100,42 @@ public sealed class LibraryLayoutViewportTests
         Assert.Equal(expectCompact, LibraryColumnLayout.IsLibraryToolbarCompact(clientDip));
 
     [Fact]
-    public void ShellNavPane_MatchesMainPageOpenPaneLength()
+    public void ShellNavPane_MatchesMainPageOpenAndCompactLengths()
     {
         Assert.Equal(248, LibraryColumnLayout.ShellNavPaneWidthDip);
+        Assert.Equal(48, LibraryColumnLayout.ShellNavCompactPaneWidthDip);
+        Assert.Equal(
+            248,
+            LibraryColumnLayout.ShellNavOccupiedWidthDip(ShellNavDisplayMode.Expanded, isPaneOpen: true),
+            0.01);
+        Assert.Equal(
+            48,
+            LibraryColumnLayout.ShellNavOccupiedWidthDip(ShellNavDisplayMode.Expanded, isPaneOpen: false),
+            0.01);
+    }
+
+    [Fact]
+    public void ContentWidthFromClientDip_CompactPane_WidensContentByOpenMinusCompact()
+    {
+        const double client = 1200;
+        var openContent = LibraryColumnLayout.ContentWidthFromClientDip(
+            client,
+            LibraryColumnLayout.ShellNavPaneWidthDip);
+        var compactContent = LibraryColumnLayout.ContentWidthFromClientDip(
+            client,
+            LibraryColumnLayout.ShellNavCompactPaneWidthDip);
+        Assert.Equal(
+            LibraryColumnLayout.ShellNavPaneWidthDip - LibraryColumnLayout.ShellNavCompactPaneWidthDip,
+            compactContent - openContent,
+            0.01);
+
+        // At 1200 client with open pane Preview stays hidden; with compact rail
+        // content gains 200 DIP and may dock — pack right edge still inside viewport.
+        var rightCompact = LibraryColumnLayout.MosaicPackRightEdgeClientDip(
+            client,
+            LibraryColumnLayout.ShellNavCompactPaneWidthDip);
+        Assert.True(
+            rightCompact <= client - LibraryColumnLayout.PagePaddingEdgeDip + 0.01);
     }
 
     [Fact]
