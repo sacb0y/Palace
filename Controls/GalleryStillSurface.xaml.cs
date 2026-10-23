@@ -1044,8 +1044,15 @@ public sealed partial class GalleryStillSurface : UserControl
             HdrAnalysisResult bins;
             try
             {
+                // R2: histogram only reads ScrgbRgba — skip Working.
                 var loaded = await HdrWicDecode.TryLoadAsync(
-                    path, probe, viewPxW, viewPxH, scaling, token).ConfigureAwait(false);
+                    path,
+                    probe,
+                    viewPxW,
+                    viewPxH,
+                    scaling,
+                    token,
+                    buildWorking: false).ConfigureAwait(false);
                 var frame = loaded.Frame;
                 bins = frame is null
                     ? HdrAnalysisResult.Empty
