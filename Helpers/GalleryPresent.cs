@@ -910,6 +910,68 @@ public static class GalleryPresent
         return null;
     }
 
+    /// <summary>
+    /// Fit/Fill layout size while the still (or HDR present) is still loading.
+    /// Prefer an HDR native frame, then a full still bitmap. Mosaic thumb /
+    /// LargePreview placeholders must not win over header/catalog geometry —
+    /// that letterboxes the next image wrong during swipe-nav.
+    /// </summary>
+    public static (int Width, int Height)? LayoutPixelSize(
+        int? hdrNativeWidth,
+        int? hdrNativeHeight,
+        int? stillBitmapWidth,
+        int? stillBitmapHeight,
+        bool stillIsPipelinePreview,
+        int? headerWidth,
+        int? headerHeight,
+        int? catalogWidth,
+        int? catalogHeight,
+        bool undecodable = false)
+    {
+        if (hdrNativeWidth is > 0 && hdrNativeHeight is > 0)
+        {
+            return (hdrNativeWidth.Value, hdrNativeHeight.Value);
+        }
+
+        if (!stillIsPipelinePreview
+            && stillBitmapWidth is > 0
+            && stillBitmapHeight is > 0)
+        {
+            return (stillBitmapWidth.Value, stillBitmapHeight.Value);
+        }
+
+        return FilePixelSize(
+            null,
+            null,
+            headerWidth,
+            headerHeight,
+            catalogWidth,
+            catalogHeight,
+            undecodable);
+    }
+
+    /// <summary>
+    /// Previous HDR swapchain pixels must leave the screen when the still path
+    /// changes — do not keep a stale FP16 frame while the next decode runs.
+    /// Full HDR layout/present fidelity stays on imaging rewrite P4/P5.
+    /// </summary>
+    public static bool ShouldClearHdrSurfaceOnNavigate(
+        string? previousHdrPath,
+        string? nextStillPath)
+    {
+        if (string.IsNullOrEmpty(previousHdrPath))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(nextStillPath))
+        {
+            return true;
+        }
+
+        return !string.Equals(previousHdrPath, nextStillPath, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static float TonemapScale(float contentMaxNits, float displayPeakNits)
     {
         if (contentMaxNits <= 0 || displayPeakNits <= 0 || contentMaxNits <= displayPeakNits)

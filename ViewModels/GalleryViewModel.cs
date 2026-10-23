@@ -207,6 +207,20 @@ public partial class GalleryViewModel : ObservableObject
     private bool _nativeHdrStats;
     private string _displayProbe = "";
 
+    /// <summary>
+    /// Oriented file pixels for Fit layout / Info: native decode, header, then
+    /// catalog. Safe to read after <see cref="StillRevision"/> bumps.
+    /// </summary>
+    public (int Width, int Height)? LayoutPixelSize =>
+        GalleryPresent.FilePixelSize(
+            _nativePixelWidth > 0 ? _nativePixelWidth : null,
+            _nativePixelHeight > 0 ? _nativePixelHeight : null,
+            _headerPixelWidth > 0 ? _headerPixelWidth : null,
+            _headerPixelHeight > 0 ? _headerPixelHeight : null,
+            Current?.Width,
+            Current?.Height,
+            Current?.Undecodable == true);
+
     [ObservableProperty]
     public partial string? PreviewModel { get; set; }
 

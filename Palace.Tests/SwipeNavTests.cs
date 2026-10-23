@@ -177,6 +177,13 @@ public sealed class SwipeNavTests
         Assert.Equal(0, SwipeNav.CommitSlot(TouchGestures.SwipeAction.SpringBack));
         Assert.Equal(136, SwipeNav.PostCommitStartX(releaseX: -80, slot: 1, viewerWidth: 200), 3);
         Assert.Equal(-136, SwipeNav.PostCommitStartX(releaseX: 80, slot: -1, viewerWidth: 200), 3);
+        // Browse promotes the sliding-in neighbor onto current before settle;
+        // Review never revealed a neighbor during drag.
+        Assert.True(SwipeNav.PromotesNeighborOnCommit(reviewMode: false));
+        Assert.False(SwipeNav.PromotesNeighborOnCommit(reviewMode: true));
+        Assert.Equal(1, SwipeNav.PromoteNeighborDelta(1));
+        Assert.Equal(-1, SwipeNav.PromoteNeighborDelta(-1));
+        Assert.Equal(0, SwipeNav.PromoteNeighborDelta(0));
         Assert.Equal(500, SwipeNav.AwaitingContentTimeoutMs);
         Assert.Equal(1500, SwipeNav.AwaitingContentTimeoutReviewMs);
         Assert.Equal(100, SwipeNav.EstimateSettleX(100, 0, elapsedMs: 0, durationMs: 220), 3);

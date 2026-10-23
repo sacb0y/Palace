@@ -524,6 +524,46 @@ public sealed class HdrFileTests
     }
 
     [Fact]
+    public void LayoutPixelSize_SkipsPipelinePreviewWhenHeaderKnown()
+    {
+        // Mosaic thumb 512² must not letterbox a 16384×8192 HDR during swipe load.
+        Assert.Equal(
+            (16384, 8192),
+            GalleryPresent.LayoutPixelSize(
+                hdrNativeWidth: null,
+                hdrNativeHeight: null,
+                stillBitmapWidth: 512,
+                stillBitmapHeight: 512,
+                stillIsPipelinePreview: true,
+                headerWidth: 16384,
+                headerHeight: 8192,
+                catalogWidth: 512,
+                catalogHeight: 512));
+        // Full still bitmap wins when it is not a pipeline placeholder.
+        Assert.Equal(
+            (1920, 1080),
+            GalleryPresent.LayoutPixelSize(
+                null, null, 1920, 1080, stillIsPipelinePreview: false,
+                headerWidth: 16384, headerHeight: 8192, catalogWidth: 512, catalogHeight: 512));
+        // HDR native wins over everything.
+        Assert.Equal(
+            (3840, 2160),
+            GalleryPresent.LayoutPixelSize(
+                3840, 2160, 512, 512, stillIsPipelinePreview: true,
+                headerWidth: 16384, headerHeight: 8192, catalogWidth: 512, catalogHeight: 512));
+    }
+
+    [Fact]
+    public void ShouldClearHdrSurfaceOnNavigate_WhenPathChanges()
+    {
+        Assert.False(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(null, @"D:\a.hdr"));
+        Assert.False(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\a.hdr"));
+        Assert.False(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\A.HDR"));
+        Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\b.hdr"));
+        Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", null));
+    }
+
+    [Fact]
     public void LuminanceY_IsCieYNotMaxRgb()
     {
         var maxRgb = 32.156f * GalleryPresent.ScrgbNits;
