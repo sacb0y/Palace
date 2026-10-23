@@ -1,0 +1,16 @@
+﻿{
+    "fit":  {
+                "chip_before":  "",
+                "chip_after":  "",
+                "hash_before":  "0AFE20065E0E8ED5",
+                "hash_after":  "D7B0DC8EF06AB2F7",
+                "advanced":  true
+            },
+    "nonfit":  {
+                   "chip_before":  "",
+                   "chip_after":  "",
+                   "hash_before":  "BA322B3E6E1070C0",
+                   "hash_after":  "879A19CF593258EE",
+                   "advanced":  true
+               }
+}

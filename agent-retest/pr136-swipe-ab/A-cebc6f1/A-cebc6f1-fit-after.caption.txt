@@ -1,0 +1,1 @@
+A cebc6f1 Fit AFTER same drag. ROI identical (still tall-blue) - no index advance. FAIL.
