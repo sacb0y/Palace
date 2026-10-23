@@ -321,6 +321,110 @@ public class ImagingStillNormalizeTests
         Assert.False(float.IsNaN(frame.MaxScrgb));
     }
 
+    /// <summary>R3: Fit box-scale skips Working; Actual keeps it when asked.</summary>
+    [Fact]
+    public void R3_ShouldBuildWorking_SkipsWhenFitScales()
+    {
+        Assert.False(GalleryPresent.ShouldBuildWorkingAtPresentSize(
+            buildWorking: true, 4000, 3000, 1280, 720, ImageScaling.Fit));
+        Assert.True(GalleryPresent.ShouldBuildWorkingAtPresentSize(
+            buildWorking: true, 800, 600, 1280, 720, ImageScaling.Fit));
+        Assert.True(GalleryPresent.ShouldBuildWorkingAtPresentSize(
+            buildWorking: true, 4000, 3000, 1280, 720, ImageScaling.Actual));
+        Assert.False(GalleryPresent.ShouldBuildWorkingAtPresentSize(
+            buildWorking: false, 800, 600, 1280, 720, ImageScaling.Actual));
+    }
+
+    /// <summary>
+    /// R4 / ZProbe138c: 64×64 ACEScg with NaN/Inf — Working ≠ scene array,
+    /// TryRun leaves input, in-place convert leaves Working, present matches
+    /// clone-then-convert reference.
+    /// </summary>
+    [Fact]
+    public void R4_ZProbe138c_SanitizeWorkingConvertOrder()
+    {
+        const int w = 64;
+        const int h = 64;
+        var chrom = new float[]
+        {
+            0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f,
+        };
+        var opts = new NormalizeOptions(
+            TransferKind.LinearScene,
+            ColorPrimaries.Bt709,
+            WhiteLuminance: 80f,
+            Chromaticities: new Chromaticities(
+                0.713f, 0.293f, 0.165f, 0.830f, 0.128f, 0.044f, 0.32168f, 0.33767f));
+
+        var scene = new float[w * h * 4];
+        for (var i = 0; i < scene.Length; i += 4)
+        {
+            scene[i] = 0.5f;
+            scene[i + 1] = 0.2f;
+            scene[i + 2] = 0.1f;
+            scene[i + 3] = 1f;
+        }
+
+        // Plant NaN / Inf like Doktor's probe.
+        scene[4] = float.NaN;
+        scene[9] = float.PositiveInfinity;
+        scene[15] = float.NaN; // alpha
+
+        // Reference: sanitize → clone for Working → convert clone for present.
+        var forWorking = (float[])scene.Clone();
+        ExrFile.SanitizeNonFinite(forWorking);
+        var afterSanitize = (float[])forWorking.Clone();
+        var workingRef = ImagingStillNormalize.TryRun(forWorking, w, h, opts);
+        Assert.NotNull(workingRef);
+        Assert.True(BuffersEqual(afterSanitize, forWorking), "TryRun must leave input untouched");
+
+        var presentRef = (float[])afterSanitize.Clone();
+        ExrFile.ConvertToRec709(presentRef, chrom);
+        var statsRef = RadianceFile.FrameFromScrgb(presentRef, w, h);
+        var workingSnapshot = (float[])workingRef!.Rgba.Clone();
+
+        // Production helper on a fresh copy of the unsanitized scene.
+        var built = ExrPresentWorking.Run(
+            (float[])scene.Clone(), w, h, chrom, opts, buildWorking: true);
+        Assert.NotNull(built.Working);
+        Assert.False(ReferenceEquals(built.Working!.Rgba, built.PresentRgba));
+        Assert.True(BuffersEqual(workingSnapshot, built.Working.Rgba),
+            "in-place convert must not mutate Working");
+        Assert.True(BuffersEqual(presentRef, built.PresentRgba));
+        Assert.Equal(statsRef.MaxScrgb, built.Stats.MaxScrgb, 5);
+        Assert.Equal(statsRef.MaxNits, built.Stats.MaxNits, 5);
+        Assert.Equal(statsRef.AvgNits, built.Stats.AvgNits, 5);
+        Assert.True(float.IsFinite(built.Stats.MaxScrgb));
+    }
+
+    private static bool BuffersEqual(float[] a, float[] b)
+    {
+        if (a.Length != b.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Length; i++)
+        {
+            if (!float.IsFinite(a[i]) || !float.IsFinite(b[i]))
+            {
+                if (!(float.IsNaN(a[i]) && float.IsNaN(b[i])))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (Math.Abs(a[i] - b[i]) > 1e-6f)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static void AssertNear(float expected, float actual, float tol) =>
         Assert.True(
             Math.Abs(expected - actual) <= tol,

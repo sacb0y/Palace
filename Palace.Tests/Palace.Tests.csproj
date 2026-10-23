@@ -62,6 +62,7 @@
     <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />
     <Compile Include="..\Helpers\HdrJxlPresent.cs" Link="HdrJxlPresent.cs" />
     <Compile Include="..\Helpers\ImagingStillNormalize.cs" Link="ImagingStillNormalize.cs" />
+    <Compile Include="..\Helpers\ExrPresentWorking.cs" Link="ExrPresentWorking.cs" />
     <Compile Include="..\Helpers\SdrTonemapLog.cs" Link="SdrTonemapLog.cs" />
     <Compile Include="..\Services\JxlDecode.cs" Link="JxlDecode.cs" />
     <Compile Include="..\Helpers\PngFile.cs" Link="PngFile.cs" />

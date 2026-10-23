@@ -1075,6 +1075,29 @@ public static class GalleryPresent
     /// full 4K buffer. Actual is 1:1 native. Unknown layout caps the long
     /// edge so PQ convert does not block Open.
     /// </summary>
+    /// <summary>
+    /// R3: whether to build <c>Working</c> for a still that will present at
+    /// <see cref="PresentDecodeSize"/>. False when Fit/Fill will box-scale
+    /// (avoids ≤256 MB + Normalize that would be dropped).
+    /// </summary>
+    public static bool ShouldBuildWorkingAtPresentSize(
+        bool buildWorking,
+        int nativeW,
+        int nativeH,
+        int viewportW,
+        int viewportH,
+        ImageScaling scaling)
+    {
+        if (!buildWorking || nativeW <= 0 || nativeH <= 0)
+        {
+            return false;
+        }
+
+        var (dw, dh) = PresentDecodeSize(nativeW, nativeH, viewportW, viewportH, scaling);
+        var willScale = dw > 0 && dh > 0 && (dw < nativeW || dh < nativeH);
+        return !willScale;
+    }
+
     public static (int Width, int Height) PresentDecodeSize(
         int imageW,
         int imageH,
