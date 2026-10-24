@@ -1,15 +1,12 @@
 # README screenshots
 
-Files land here after Constructor relays **Isiac’s OK** (see PR #143). No binaries until then.
+Isiac-approved stills for PR #143 (run #3152). Hero video (`01-hero.gif` / `01-hero.mp4`) is **not** included.
 
 | File | Shot |
 | --- | --- |
-| `01-hero.gif` | Review hero animation |
-| `01-hero.png` | First-frame fallback |
+| `01-hero-first.png` | Review hero still |
 | `02-library.png` | Library grid |
-| `03a-review-idle.png` | Review idle (~20 queue) |
-| `03b-review.png` | Mid-swipe Keep or end-of-queue skipped |
+| `03-review-idle.png` | Review idle |
+| `03-review-b.png` | Review mid-queue / skipped |
 | `04-viewer.png` | Full viewer outside Review |
-| `05-hdr.png` | HDR viewer (`sample.exr` / `lapa_1k.hdr`) |
-
-Capture notes: Release title bar `Palace 0.3.9`; crop border to window edge. Callouts under Review are README bullets only (not drawn markers). Progress-chip bullet only if the chip is visible in the shot.
+| `05-hdr.png` | HDR viewer with histogram |

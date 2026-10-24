@@ -6,11 +6,9 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 
 > **Status: 0.3.9** (Settings restructure milestone). The Library — browsing, previews, tags, watched folders, search, and the gallery viewer — is the focus. Rooms, on-disk organization and cloud support exist but are early.
 
-<img src="docs/screenshots/01-hero.gif" width="100%" alt="Review mode: swipe keep, reject, and skip through a queue" />
+<img src="docs/screenshots/01-hero-first.png" width="100%" alt="Full Palace window: Review mode on an HDR racing still, 1 of 16, with Reject, Skip, and Keep" />
 
 *Keep, reject, or skip — Review through your library in one pass.*
-
-(First-frame still: [`docs/screenshots/01-hero.png`](docs/screenshots/01-hero.png).)
 
 ## Install
 
@@ -20,7 +18,7 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 
 ## Library
 
-<img src="docs/screenshots/02-library.png" width="100%" alt="Full Palace window: Library mosaic with folders tree and preview pane" />
+<img src="docs/screenshots/02-library.png" width="100%" alt="Full Palace window: Library mosaic with folders tree, justified grid, and Preview on a tagged and rated taxi still" />
 
 *Browse, tag and rate your whole library.*
 
@@ -46,24 +44,24 @@ Review mode is a dedicated triage pass in the Library gallery overlay. You work 
 
 **Enter Review** from the Library toolbar **Review** button (also under the overflow menu). If tiles are selected, those become the queue; otherwise Palace uses the visible mosaic (non-headers, skipping anything already under `_rejected`). The overlay opens on the first item and the queue stays fixed for the session.
 
-<img src="docs/screenshots/03a-review-idle.png" width="100%" alt="Full Palace window: Review mode idle with Reject, Skip, and Keep" />
+<img src="docs/screenshots/03-review-idle.png" width="100%" alt="Full Palace window: Review mode idle with Reject, Skip, Keep, Undo, and progress 5 of 15" />
 
 - **Keep:** swipe right or `K`
 - **Reject:** swipe left or `X`; the image moves to `_rejected` and can be undone
 - **Skip:** swipe up or `S`
 - **Undo:** `Ctrl+Z`
 
-<img src="docs/screenshots/03b-review.png" width="100%" alt="Full Palace window: Review mode mid-keep swipe or end-of-queue skipped pass" />
+<img src="docs/screenshots/03-review-b.png" width="100%" alt="Full Palace window: Review in progress with Keep path and skipped count" />
 
 ### Full viewer
 
-<img src="docs/screenshots/04-viewer.png" width="100%" alt="Full Palace window: gallery overlay with Fit and 1:1 controls" />
+<img src="docs/screenshots/04-viewer.png" width="100%" alt="Full Palace window: gallery viewer outside Review with Fit and 1:1 controls" />
 
 *Full-screen viewer with swipe and keyboard navigation.*
 
 ### HDR
 
-<img src="docs/screenshots/05-hdr.png" width="100%" alt="Full Palace window: HDR still (for example sample.exr or lapa_1k.hdr) with histogram open" />
+<img src="docs/screenshots/05-hdr.png" width="100%" alt="Full Palace window: HDR AVIF in the gallery viewer with histogram and gamut open" />
 
 *Native HDR display (AVIF/JXR/EXR…), tone-mapped on SDR screens.*
 
