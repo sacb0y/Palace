@@ -1,1 +1,4 @@
-Review in seconds � Keep, Reject (with undo), Skip; the chip keeps score.
+﻿Keep · K / swipe right
+Reject · X / swipe left → `_rejected` + undo toast
+Skip · S / swipe up
+Undo · Ctrl+Z

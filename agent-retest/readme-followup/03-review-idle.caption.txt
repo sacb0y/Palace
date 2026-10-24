@@ -1,1 +1,2 @@
-Review mode � Reject, Skip, Keep with progress chip.
+﻿Review progress · plain TxtReviewProgress (no ● chip)
+Keep · K / swipe right · Reject · X / swipe left · Skip · S / swipe up · Undo · Ctrl+Z

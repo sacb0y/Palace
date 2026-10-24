@@ -1,1 +1,2 @@
-Review in progress � Keep / Skip / Reject with undo and counting chip.
+﻿End of queue · Review n skipped CTA
+(Not a duplicate of idle progress)

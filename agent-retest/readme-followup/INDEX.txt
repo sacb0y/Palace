@@ -1,10 +1,13 @@
-Gooey README follow-up set — FENRIR-STUDIO — store only (no PR push)
-Tip used for capture app: main af88283 / 0.3.9 packaged Debug (PalaceReadme-FU2)
-Banned: Pragmata; room.jxl / bedroom. HDR: sample.exr.
+﻿Gooey README reshoot — FENRIR-STUDIO — store only (NO #143 push)
+Build: PalaceReadme-Rel-A1 Release @ af88283 / 0.3.9 — title Palace 0.3.9 (not Debug)
+Library: ONLY C:\cursor\stores\self\media\palace-readme-showcase\ (16 files)
+Banned: Pragmata, room/bedroom, Bloom, non-showcase thumbs
 
-01-hero.gif (+ 01-hero-first.png, 01-hero.mp4) — Review GIF
-02-library.png — Library mosaic + folders
-03-review-idle.png — Review Reject/Skip/Keep + chip
-03-review-b.png — Review mid-queue Keep/Skip
-04-viewer.png — Full viewer controls
-05-hdr.png — sample.exr HDR viewer
+01-hero.gif (+ 01-hero-first.png, 01-hero.mp4) — Review on MP4; keep/reject/skip; counter advances
+02-library.png — full grid showcase
+03-review-idle.png — Review idle "5 of 15" plain TxtReviewProgress (no ● chip)
+03-review-b.png — end-of-queue "Review 11 skipped"
+04-viewer.png — plain viewer outside Review; Fit + 1:1
+05-hdr.png — HDR AVIF 3061810_… histogram+gamut open (BT.2020 PQ)
+
+Hold for Gooey review → Constructor → Isiac OK before #143.

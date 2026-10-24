@@ -1,1 +1,1 @@
-Native HDR display (AVIF/JXR/EXR�), tone-mapped on SDR screens.
+﻿HDR AVIF · histogram / gamut panel open (PQ BT.2020 showcase file)
