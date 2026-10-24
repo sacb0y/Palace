@@ -1,13 +1,11 @@
-﻿Gooey README reshoot — FENRIR-STUDIO — store only (NO #143 push)
-Build: PalaceReadme-Rel-A1 Release @ af88283 / 0.3.9 — title Palace 0.3.9 (not Debug)
-Library: ONLY C:\cursor\stores\self\media\palace-readme-showcase\ (16 files)
-Banned: Pragmata, room/bedroom, Bloom, non-showcase thumbs
-
-01-hero.gif (+ 01-hero-first.png, 01-hero.mp4) — Review on MP4; keep/reject/skip; counter advances
-02-library.png — full grid showcase
-03-review-idle.png — Review idle "5 of 15" plain TxtReviewProgress (no ● chip)
-03-review-b.png — end-of-queue "Review 11 skipped"
-04-viewer.png — plain viewer outside Review; Fit + 1:1
-05-hdr.png — HDR AVIF 3061810_… histogram+gamut open (BT.2020 PQ)
-
-Hold for Gooey review → Constructor → Isiac OK before #143.
+﻿Gooey README reshoot v2 — FENRIR-STUDIO — NO #143
+Build: PalaceReadme-Rel-A1 @ af88283 · title Palace 0.3.9
+Library path: C:\Users\iadag\palace-readme-showcase (16 files; Isiac opened)
+ALL stills: 2px border crop applied
+RESHOT: 01-hero-first/mp4/gif, 02-library, 03-review-b
+BORDER-ONLY (content kept): 03-review-idle, 04-viewer, 05-hdr
+01: HDR still start (racing AVIF), counter N of 16, keep/reject/skip recorded
+02: Taxi selected, tag showcase + 4★ rating in Preview; mouse off row-height
+03b: mid-queue Keep path — 9 of 16 · 7 skipped on non-wallls interior still (not wallpaper)
+Subtitle still includes "Release · preview" (no rebuild)
+Picker fix notes: ADD-FOLDER-AUTOMATION.md
