@@ -6,24 +6,64 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 
 > **Status: 0.3.9** (Settings restructure milestone). The Library — browsing, previews, tags, watched folders, search, and the gallery viewer — is the focus. Rooms, on-disk organization and cloud support exist but are early.
 
-![Library: folder tree and mosaic with HDR-badged thumbnails](docs/images/library.png)
+<img src="docs/screenshots/01-hero-first.png" width="100%" alt="Full Palace window: Review mode on an HDR racing still, 1 of 16, with Reject, Skip, and Keep" />
+
+*Keep, reject, or skip — Review through your library in one pass.*
+
+## Install
+
+**Microsoft Store:** coming soon.
+
+**Developer build:** build and run from source as described in [Build and run](#build-and-run).
+
+## Library
+
+<img src="docs/screenshots/02-library.png" width="100%" alt="Full Palace window: Library mosaic with folders tree, justified grid, and Preview on a tagged and rated taxi still" />
+
+*Browse, tag and rate your whole library.*
 
 ## Features
 
 - **Projects.** Each project has its own library of watched folders. Switch or create projects from the sidebar.
 - **Watched folders.** Add a folder and Palace scans it and keeps it up to date as files change. Files are never moved or copied unless you ask.
 - **Library mosaic.** A thumbnail grid with adjustable row height, grouped by subfolder, plus a full-screen gallery/overlay viewer for images, GIFs and video. Long-press or select mode for multi-select and batch actions.
-- **Viewer.** Overlay and separate Gallery window with Fit / 1:1 / Fill, Details card, volume control, GIF frame scrub, and touch gestures (including swipe next/prev and Review mode keep / reject / skip).
+- **Review mode.** A focused keep / reject / skip pass over a queue — swipe or hotkeys, with rejects moved into a sibling `_rejected` folder. See [Review mode](#review-mode).
+- **Viewer.** Overlay and separate Gallery window with Fit / 1:1 / Fill, Details card, volume control, GIF frame scrub, and touch gestures (swipe next/prev outside Review).
 - **Search.** Full-text search over file names, tags, prompts and model metadata.
 - **Global tags.** Tags are shared across all projects. Tags can be grouped and nested, filtered with Any / All / None, starred and colored.
 - **Implied tags.** Give a tag implications so that assigning it also applies the implied tags automatically.
 - **Tag export and import.** Back up your tag set as JSON from Settings and merge it back in later.
 - **Settings.** Two-pane Settings with search: Appearance (accent, density, glass backgrounds), Library & Folders, Viewer, Tags & Rooms, Input, Performance, and About.
-- **HDR.** HDR files are detected and badged, presented in HDR on HDR displays, and tone-mapped for SDR. Supported kinds include Ultra HDR JPEG, HDR PNG, HDR AVIF/HEIF, JPEG XR, JPEG XL, OpenEXR and Radiance `.hdr`. A shared `Palace.Imaging` pipeline (normalize → tone-map) is landing in phases — see [Imaging rewrite](#imaging-rewrite).
+- **HDR.** HDR files are detected and badged, presented in HDR on HDR displays, and tone-mapped for SDR. Supported kinds include Ultra HDR JPEG, HDR PNG, HDR AVIF/HEIF, JPEG XR, JPEG XL, OpenEXR and Radiance `.hdr` (for example `sample.exr` or `lapa_1k.hdr`). A shared `Palace.Imaging` pipeline (normalize → tone-map) is landing in phases — see [Imaging rewrite](#imaging-rewrite).
 - **Durable catalog.** The catalog lives outside the app package, so reinstalling Palace does not wipe your projects and tags (see [Where your data lives](#where-your-data-lives)).
 - **Early features:** Rooms (create rooms and pin assets into sectioned grids), dry-run and optional auto organize with undo, Recycle Bin delete, and Dropbox / OneDrive "online-only" files without mass re-downloading.
 
-![Tags board: groups list and alphabet chips (Character selected)](docs/images/tags.png)
+### Review mode
+
+Review mode is a dedicated triage pass in the Library gallery overlay. You work through a frozen queue one asset at a time — keep it, skip it for later, or reject it (Palace moves the file into a sibling `_rejected` folder next to the asset). Outside Review, browse swipes only change the current image; they never keep or reject.
+
+**Enter Review** from the Library toolbar **Review** button (also under the overflow menu). If tiles are selected, those become the queue; otherwise Palace uses the visible mosaic (non-headers, skipping anything already under `_rejected`). The overlay opens on the first item and the queue stays fixed for the session.
+
+<img src="docs/screenshots/03-review-idle.png" width="100%" alt="Full Palace window: Review mode idle with Reject, Skip, Keep, Undo, and progress 5 of 15" />
+
+- **Keep:** swipe right or `K`
+- **Reject:** swipe left or `X`; the image moves to `_rejected` and can be undone
+- **Skip:** swipe up or `S`
+- **Undo:** `Ctrl+Z`
+
+<img src="docs/screenshots/03-review-b.png" width="100%" alt="Full Palace window: Review in progress with Keep path and skipped count" />
+
+### Full viewer
+
+<img src="docs/screenshots/04-viewer.png" width="100%" alt="Full Palace window: gallery viewer outside Review with Fit and 1:1 controls" />
+
+*Full-screen viewer with swipe and keyboard navigation.*
+
+### HDR
+
+<img src="docs/screenshots/05-hdr.png" width="100%" alt="Full Palace window: HDR AVIF in the gallery viewer with histogram and gamut open" />
+
+*Native HDR display (AVIF/JXR/EXR…), tone-mapped on SDR screens.*
 
 ### Supported formats
 
@@ -34,8 +74,6 @@ It is built with WinUI 3 and the Windows App SDK, with SQLite (FTS5) as the cata
 | Video | `.mp4` `.mov` `.mkv` `.webm` `.avi` |
 
 EXR, TGA, ICO, PSD/PSB, JPEG XL and Clip Studio files are decoded by Palace itself, so they don't need extra Windows codecs. Files with an image extension that aren't really images get a placeholder tile. Video thumbnails that Windows can't make itself (for example MKV with H.264 4:4:4, or WebM/AV1 without the Store codec extensions) come from a small bundled LGPL ffmpeg.
-
-![Gallery overlay: HDR still with Details card and tonemap chrome](docs/images/hdr-preview.jpg)
 
 ### Imaging rewrite
 
@@ -56,12 +94,6 @@ Until P4–P5 land, the gallery still uses the existing present path for full vi
 
 - Windows 10 version 1809 (build 17763) or later, x64
 - An HDR-capable display is optional, for HDR presentation
-
-## Install
-
-**Microsoft Store:** coming soon.
-
-**Developer build:** build and run from source as described below.
 
 ## Build and run
 
@@ -122,7 +154,7 @@ Data/            SQLite database layer
 Palace.Imaging/  Pure normalize + tone-map library (net10.0; P1+)
 Palace.Tests/    Unit tests (cross-platform)
 tools/           Helper scripts (e.g. Get-Ffmpeg.ps1, build-ffmpeg.sh, openexr/)
-docs/            Design notes and README images
+docs/            Design notes and README screenshots (`docs/screenshots/`)
 Assets/          App icons and package art
 ```
 

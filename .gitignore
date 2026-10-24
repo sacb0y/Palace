@@ -69,7 +69,10 @@ appsettings.*.local.json
 *.db-shm
 thumbs/
 thumbnails/
+# Agent / UI-test capture dumps (not README media)
 screenshots/
+!docs/screenshots/
+!docs/screenshots/**
 test-results.json
 test-screenshot.png
 
