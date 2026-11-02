@@ -629,7 +629,11 @@ public sealed partial class GalleryStillSurface : UserControl
 
         // Stale-frame guard: never keep the previous swapchain visible while
         // this path's FP16 decode runs (swipe letterbox / wrong aspect).
-        if (GalleryPresent.ShouldClearHdrSurfaceOnNavigate(_hdrFramePath, still))
+        // Compare against CurrentPath (HDR identity), not PreviewImageUri —
+        // a cloud/thumb URI would falsely clear on Fit/1:1 re-decode.
+        var navigateStill = GalleryPresent.HdrNavigateStillPath(
+            gallery.PreviewImageUri, gallery.CurrentPath);
+        if (GalleryPresent.ShouldClearHdrSurfaceOnNavigate(_hdrFramePath, navigateStill))
         {
             ClearHdrCache();
             HideHdr();
@@ -676,6 +680,20 @@ public sealed partial class GalleryStillSurface : UserControl
             catch (OperationCanceledException)
             {
                 // Quick Next/Prev cancels the in-flight decode — not an error.
+                // If this surface is still current, collapse any Opacity-0 armed
+                // ScpHdr so it cannot catch input while invisible.
+                if (epoch == _epoch && ReferenceEquals(_gallery, gallery))
+                {
+                    await UiDispatch.RunAsync(() =>
+                    {
+                        if (epoch == _epoch && ReferenceEquals(_gallery, gallery))
+                        {
+                            HideHdr();
+                            gallery.SetHdrPresentResult(false, false);
+                        }
+                    });
+                }
+
                 return;
             }
             catch (Exception ex)
@@ -954,7 +972,7 @@ public sealed partial class GalleryStillSurface : UserControl
             peakOverride = GalleryPeak.PresentOverrideNits;
             mapMaxNits = GalleryPresent.StickyContentMaxNitsForStill(
                 _hdrFramePath,
-                g.PreviewImageUri ?? g.CurrentPath,
+                GalleryPresent.HdrNavigateStillPath(g.PreviewImageUri, g.CurrentPath),
                 f.MaxScrgb,
                 f.MaxNits,
                 g.CurrentProbe.MaxCllNits,
@@ -1008,6 +1026,20 @@ public sealed partial class GalleryStillSurface : UserControl
                 sdrExposure: stickyExposure,
                 sdrReinhardWhite: stickyWhite);
         }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("GalleryStillSurface HDR present", ex);
+            await UiDispatch.RunAsync(() =>
+            {
+                if (GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+                        presented: false, stillCurrent: StillCurrent()))
+                {
+                    HideHdr();
+                    galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
+                }
+            });
+            return;
+        }
         finally
         {
             await UiDispatch.RunAsync(() =>
@@ -1019,8 +1051,21 @@ public sealed partial class GalleryStillSurface : UserControl
             });
         }
 
-        if (outcome == HdrPresentOutcome.Cancelled || !StillCurrent())
+        var presented = outcome == HdrPresentOutcome.Presented;
+        if (!presented || !StillCurrent())
         {
+            // Failed / Cancelled (or superseded): Collapse Opacity-0 armed ScpHdr
+            // while still current so it cannot catch input. Leave alone when a
+            // newer Refresh owns the panel.
+            await UiDispatch.RunAsync(() =>
+            {
+                if (GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+                        presented, stillCurrent: StillCurrent()))
+                {
+                    HideHdr();
+                    galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
+                }
+            });
             return;
         }
 
@@ -1031,40 +1076,33 @@ public sealed partial class GalleryStillSurface : UserControl
                 return;
             }
 
-            if (outcome == HdrPresentOutcome.Presented)
+            // Cache thumb-match stats for SDR and hdr-display+linear (LastSdr*>0).
+            if (presenterRef.LastSdrExposure > 0
+                && !string.IsNullOrEmpty(_hdrFramePath))
             {
-                // Cache thumb-match stats for SDR and hdr-display+linear (LastSdr*>0).
-                if (presenterRef.LastSdrExposure > 0
-                    && !string.IsNullOrEmpty(_hdrFramePath))
-                {
-                    _sdrTonePath = _hdrFramePath;
-                    _sdrToneExposure = presenterRef.LastSdrExposure;
-                    _sdrToneWhite = presenterRef.LastSdrReinhardWhite;
-                    _sdrToneDisplayHdr = presenterRef.DisplayIsHdr;
-                }
-
-                // Reveal swapchain only after this frame uploaded — never the prior still.
-                ScpHdr.Opacity = 1;
-                ScpHdr.Visibility = Visibility.Visible;
-                ImgStill.Visibility = Visibility.Collapsed;
-                galleryRef.SetHdrPresentResult(
-                    true,
-                    presenterRef.DisplayIsHdr,
-                    presenterRef.DisplayPeakNits,
-                    frameRef.MaxNits,
-                    frameRef.AvgNits,
-                    frameRef.MinNits,
-                    frameRef.MaxScrgb,
-                    frameRef.NativeWidth,
-                    frameRef.NativeHeight,
-                    GalleryPresent.IsNativeDecode(
-                        frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
-                    maxScrgbChannel: frameRef.MaxScrgbChannel);
-                return;
+                _sdrTonePath = _hdrFramePath;
+                _sdrToneExposure = presenterRef.LastSdrExposure;
+                _sdrToneWhite = presenterRef.LastSdrReinhardWhite;
+                _sdrToneDisplayHdr = presenterRef.DisplayIsHdr;
             }
 
-            HideHdr();
-            galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
+            // Reveal swapchain only after this frame uploaded — never the prior still.
+            ScpHdr.Opacity = 1;
+            ScpHdr.Visibility = Visibility.Visible;
+            ImgStill.Visibility = Visibility.Collapsed;
+            galleryRef.SetHdrPresentResult(
+                true,
+                presenterRef.DisplayIsHdr,
+                presenterRef.DisplayPeakNits,
+                frameRef.MaxNits,
+                frameRef.AvgNits,
+                frameRef.MinNits,
+                frameRef.MaxScrgb,
+                frameRef.NativeWidth,
+                frameRef.NativeHeight,
+                GalleryPresent.IsNativeDecode(
+                    frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
+                maxScrgbChannel: frameRef.MaxScrgbChannel);
         });
     }
     private (double Width, double Height) HdrPanelDips()
@@ -1312,7 +1350,9 @@ public sealed partial class GalleryStillSurface : UserControl
     /// </summary>
     private void ClearStaleHdrOnNavigate()
     {
-        var next = _gallery?.PreviewImageUri ?? _gallery?.CurrentPath;
+        // Prefer CurrentPath over PreviewImageUri — see HdrNavigateStillPath.
+        var next = GalleryPresent.HdrNavigateStillPath(
+            _gallery?.PreviewImageUri, _gallery?.CurrentPath);
         if (!GalleryPresent.ShouldClearHdrSurfaceOnNavigate(_hdrFramePath, next))
         {
             return;

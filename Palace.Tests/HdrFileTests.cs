@@ -562,6 +562,36 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"D:\b.hdr"));
         Assert.True(GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", null));
 
+        // PreviewImageUri (cloud / thumb substitute) can differ from CurrentPath
+        // while the HDR frame is still keyed to the file. Prefer CurrentPath so
+        // Fit/1:1 re-decode of the same still does not wipe HDR.
+        Assert.Equal(
+            @"D:\a.hdr",
+            GalleryPresent.HdrNavigateStillPath(@"C:\thumbs\a.jpg", @"D:\a.hdr"));
+        Assert.Equal(
+            @"D:\a.hdr",
+            GalleryPresent.HdrNavigateStillPath(null, @"D:\a.hdr"));
+        Assert.Equal(
+            @"https://cdn.example/a.jpg",
+            GalleryPresent.HdrNavigateStillPath(@"https://cdn.example/a.jpg", null));
+        Assert.Null(GalleryPresent.HdrNavigateStillPath(null, null));
+        Assert.False(
+            GalleryPresent.ShouldClearHdrSurfaceOnNavigate(
+                @"D:\a.hdr",
+                GalleryPresent.HdrNavigateStillPath(@"C:\thumbs\a.jpg", @"D:\a.hdr")));
+        Assert.True(
+            GalleryPresent.ShouldClearHdrSurfaceOnNavigate(
+                @"D:\a.hdr",
+                GalleryPresent.HdrNavigateStillPath(@"C:\thumbs\b.jpg", @"D:\b.hdr")));
+        // Naive PreviewImageUri-first compare would falsely clear same-still HDR.
+        Assert.True(
+            GalleryPresent.ShouldClearHdrSurfaceOnNavigate(@"D:\a.hdr", @"C:\thumbs\a.jpg"));
+
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: true, stillCurrent: true));
+        Assert.True(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: false, stillCurrent: true));
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: false, stillCurrent: false));
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: true, stillCurrent: false));
+
         // Collapsed / never-shown SwapChainPanel: CompositionScale 1.0 is not
         // trustworthy — use RasterizationScale (125%/150% DPI Fit).
         Assert.False(GalleryPresent.HdrPanelCompositionScaleReliable(false, 800, 600));
