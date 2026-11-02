@@ -996,6 +996,18 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// Path used to decide whether a prior HDR present is still the current
+    /// still. Prefer <paramref name="currentPath"/> (file / catalog still)
+    /// over <paramref name="previewImageUri"/> — PreviewImageUri can be a
+    /// cloud URL or pipeline substitute and would falsely clear HDR on a
+    /// same-asset Fit/1:1 re-decode when compared to <c>_hdrFramePath</c>.
+    /// </summary>
+    public static string? HdrNavigateStillPath(
+        string? previewImageUri,
+        string? currentPath) =>
+        !string.IsNullOrEmpty(currentPath) ? currentPath : previewImageUri;
+
+    /// <summary>
     /// Previous HDR swapchain pixels must leave the screen when the still path
     /// changes — do not keep a stale FP16 frame while the next decode runs.
     /// Full HDR layout/present fidelity stays on imaging rewrite P4/P5.
@@ -1016,6 +1028,18 @@ public static class GalleryPresent
 
         return !string.Equals(previousHdrPath, nextStillPath, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// After arming <c>ScpHdr</c> at Opacity 0 + Visible, Failed or Cancelled
+    /// must HideHdr while the surface is still current — otherwise the panel
+    /// stays Visible at Opacity 0 and can catch pointer input. Superseded
+    /// presents (<paramref name="stillCurrent"/> false) leave the panel alone
+    /// for the newer Refresh.
+    /// </summary>
+    public static bool ShouldHideHdrAfterPresentOutcome(
+        bool presented,
+        bool stillCurrent) =>
+        stillCurrent && !presented;
 
     public static float TonemapScale(float contentMaxNits, float displayPeakNits)
     {
