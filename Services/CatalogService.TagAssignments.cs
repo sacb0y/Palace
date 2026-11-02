@@ -21,7 +21,7 @@ public sealed partial class CatalogService
         foreach (var chunk in assetIds.Chunk(75))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            updated += await _db.WriteAsync(conn => ApplyMissingImplied(conn, chunk)).ConfigureAwait(false);
+            updated += await _db.WriteAsync(conn => ApplyMissingImplied(conn, chunk).Count).ConfigureAwait(false);
         }
 
         return updated;
@@ -313,9 +313,15 @@ public sealed partial class CatalogService
         return list;
     }
 
-    private static void UpsertAssetTag(SqliteConnection conn, string assetId, string tagId, TagSource source)
+    private static void UpsertAssetTag(
+        SqliteConnection conn,
+        string assetId,
+        string tagId,
+        TagSource source,
+        SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT INTO AssetTag (AssetId, TagId, Source)
             VALUES ($asset, $tag, $source)
@@ -331,19 +337,27 @@ public sealed partial class CatalogService
         cmd.ExecuteNonQuery();
     }
 
-    private static void DeleteAssetTag(SqliteConnection conn, string assetId, string tagId)
+    private static void DeleteAssetTag(
+        SqliteConnection conn,
+        string assetId,
+        string tagId,
+        SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "DELETE FROM AssetTag WHERE AssetId = $asset AND TagId = $tag";
         cmd.Parameters.AddWithValue("$asset", assetId);
         cmd.Parameters.AddWithValue("$tag", tagId);
         cmd.ExecuteNonQuery();
     }
 
-    private static List<string> TagsThatImply(SqliteConnection conn, string targetId)
+    private static List<string> TagsThatImply(
+        SqliteConnection conn,
+        string targetId,
+        SqliteTransaction? tx = null)
     {
         var sources = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (var edge in LoadImplications(conn))
+        foreach (var edge in LoadImplications(conn, tx))
         {
             if (!sources.TryGetValue(edge.ImpliedTagId, out var list))
             {
@@ -379,7 +393,10 @@ public sealed partial class CatalogService
         return found;
     }
 
-    private static List<string> AssetsHavingAnyTag(SqliteConnection conn, IReadOnlyList<string> tagIds)
+    private static List<string> AssetsHavingAnyTag(
+        SqliteConnection conn,
+        IReadOnlyList<string> tagIds,
+        SqliteTransaction? tx = null)
     {
         var ids = tagIds.Distinct(StringComparer.Ordinal).ToList();
         if (ids.Count == 0)
@@ -388,6 +405,7 @@ public sealed partial class CatalogService
         }
 
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         var names = new List<string>();
         for (var i = 0; i < ids.Count; i++)
         {
@@ -407,41 +425,54 @@ public sealed partial class CatalogService
         return list;
     }
 
-    private int ApplyMissingImplied(SqliteConnection conn, IReadOnlyList<string> assetIds)
+    private List<string> ApplyMissingImplied(
+        SqliteConnection conn,
+        IReadOnlyList<string> assetIds,
+        SqliteTransaction? tx = null,
+        bool refreshFts = true)
     {
-        var updated = 0;
+        var touched = new List<string>();
         foreach (var assetId in assetIds)
         {
-            var assigned = LoadAssignedRefs(conn, assetId);
+            var assigned = LoadAssignedRefs(conn, assetId, tx);
             var have = assigned.Select(t => t.TagId).ToHashSet(StringComparer.Ordinal);
             var changed = false;
             foreach (var tag in assigned)
             {
-                foreach (var impliedId in TransitiveImplied(conn, tag.TagId))
+                foreach (var impliedId in TransitiveImplied(conn, tag.TagId, tx))
                 {
                     if (!have.Add(impliedId))
                     {
                         continue;
                     }
 
-                    UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied);
+                    UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied, tx);
                     changed = true;
                 }
             }
 
-            if (changed)
+            if (!changed)
             {
-                RefreshFts(conn, assetId);
-                updated++;
+                continue;
+            }
+
+            touched.Add(assetId);
+            if (refreshFts)
+            {
+                RefreshFts(conn, assetId, tx);
             }
         }
 
-        return updated;
+        return touched;
     }
 
-    private static List<(string TagId, TagSource Source)> LoadAssignedRefs(SqliteConnection conn, string assetId)
+    private static List<(string TagId, TagSource Source)> LoadAssignedRefs(
+        SqliteConnection conn,
+        string assetId,
+        SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "SELECT TagId, Source FROM AssetTag WHERE AssetId = $id";
         cmd.Parameters.AddWithValue("$id", assetId);
         var list = new List<(string, TagSource)>();
@@ -454,13 +485,16 @@ public sealed partial class CatalogService
         return list;
     }
 
-    private static void SweepUnjustifiedImplied(SqliteConnection conn, string assetId)
+    private static void SweepUnjustifiedImplied(
+        SqliteConnection conn,
+        string assetId,
+        SqliteTransaction? tx = null)
     {
-        var remaining = LoadAssignedRefs(conn, assetId);
+        var remaining = LoadAssignedRefs(conn, assetId, tx);
         var justified = new HashSet<string>(StringComparer.Ordinal);
         foreach (var assigned in remaining.Where(t => t.Source != TagSource.Implied))
         {
-            foreach (var impliedId in TransitiveImplied(conn, assigned.TagId))
+            foreach (var impliedId in TransitiveImplied(conn, assigned.TagId, tx))
             {
                 justified.Add(impliedId);
             }
@@ -468,7 +502,7 @@ public sealed partial class CatalogService
 
         foreach (var orphan in remaining.Where(t => t.Source == TagSource.Implied && !justified.Contains(t.TagId)))
         {
-            DeleteAssetTag(conn, assetId, orphan.TagId);
+            DeleteAssetTag(conn, assetId, orphan.TagId, tx);
         }
     }
 }

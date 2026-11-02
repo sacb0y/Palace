@@ -134,7 +134,7 @@ public sealed partial class CatalogService
             UPDATE Tag SET Priority = $p, Color = $c, IsStarred = $s WHERE Id = $id
             """;
         cmd.Parameters.AddWithValue("$p", priority);
-        cmd.Parameters.AddWithValue("$c", (object?)TagColor.Normalize(color) ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$c", (object?)TagInk.Normalize(color) ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$s", starred ? 1 : 0);
         cmd.Parameters.AddWithValue("$id", id);
         cmd.ExecuteNonQuery();
@@ -151,17 +151,78 @@ public sealed partial class CatalogService
                 .ToList();
         });
 
+    /// <summary>
+    /// Adds an implication and applies newly implied tags on affected assets in the same write.
+    /// Never changes Manual/Prompt/AI assignments. Returns false when the edge would cycle.
+    /// </summary>
     public Task<bool> AddImplicationAsync(string tagId, string impliedTagId) =>
-        _db.WriteAsync(conn => TryAddImplication(conn, tagId, impliedTagId));
+        _db.WriteAsync(conn =>
+        {
+            List<string> touched;
+            using (var tx = conn.BeginTransaction())
+            {
+                if (!TryAddImplication(conn, tagId, impliedTagId, tx))
+                {
+                    return false;
+                }
 
+                var sources = TagsThatImply(conn, tagId, tx);
+                sources.Add(tagId);
+                var assetIds = AssetsHavingAnyTag(conn, sources, tx);
+                // AssetTag graph commits with the edge; FTS refresh runs after commit
+                // (contentless FTS5 delete/insert is unreliable mid-transaction).
+                touched = ApplyMissingImplied(conn, assetIds, tx, refreshFts: false);
+                tx.Commit();
+            }
+
+            foreach (var assetId in touched)
+            {
+                RefreshFts(conn, assetId);
+            }
+
+            return true;
+        });
+
+    /// <summary>
+    /// Removes an implication and sweeps Implied-only tags that are no longer justified
+    /// on affected assets in the same write. Never deletes applied (non-Implied) tags.
+    /// </summary>
     public Task RemoveImplicationAsync(string tagId, string impliedTagId) =>
         _db.WriteAsync(conn =>
         {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM TagImplication WHERE TagId = $t AND ImpliedTagId = $i";
-            cmd.Parameters.AddWithValue("$t", tagId);
-            cmd.Parameters.AddWithValue("$i", impliedTagId);
-            cmd.ExecuteNonQuery();
+            var touched = new List<string>();
+            using (var tx = conn.BeginTransaction())
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    cmd.CommandText = "DELETE FROM TagImplication WHERE TagId = $t AND ImpliedTagId = $i";
+                    cmd.Parameters.AddWithValue("$t", tagId);
+                    cmd.Parameters.AddWithValue("$i", impliedTagId);
+                    cmd.ExecuteNonQuery();
+                }
+
+                // Source tag holders may lose the implied chain; assets that still carry the
+                // previously-implied tag may need a sweep if it is no longer justified.
+                var assetIds = AssetsHavingAnyTag(conn, [tagId, impliedTagId], tx);
+                foreach (var assetId in assetIds)
+                {
+                    var before = LoadAssignedRefs(conn, assetId, tx);
+                    SweepUnjustifiedImplied(conn, assetId, tx);
+                    var after = LoadAssignedRefs(conn, assetId, tx);
+                    if (before.Count != after.Count)
+                    {
+                        touched.Add(assetId);
+                    }
+                }
+
+                tx.Commit();
+            }
+
+            foreach (var assetId in touched)
+            {
+                RefreshFts(conn, assetId);
+            }
         });
 
     public Task<Tag?> FindTagByNameAsync(string name) =>
@@ -313,7 +374,7 @@ public sealed partial class CatalogService
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE Tag SET Color = $c WHERE Id = $id";
-            cmd.Parameters.AddWithValue("$c", (object?)TagColor.Normalize(color) ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$c", (object?)TagInk.Normalize(color) ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
         });
@@ -357,7 +418,7 @@ public sealed partial class CatalogService
         IReadOnlyList<Tag> tags,
         IReadOnlyList<TagMembership> memberships)
     {
-        if (!string.IsNullOrWhiteSpace(tag.Color) && TagColor.Normalize(tag.Color) is not null)
+        if (!string.IsNullOrWhiteSpace(tag.Color) && TagInk.Normalize(tag.Color) is not null)
         {
             return "Custom";
         }
@@ -450,9 +511,10 @@ public sealed partial class CatalogService
         return list;
     }
 
-    private static List<TagImplication> LoadImplications(SqliteConnection conn)
+    private static List<TagImplication> LoadImplications(SqliteConnection conn, SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "SELECT TagId, ImpliedTagId FROM TagImplication";
         var list = new List<TagImplication>();
         using var reader = cmd.ExecuteReader();
@@ -464,14 +526,20 @@ public sealed partial class CatalogService
         return list;
     }
 
-    private static bool TryAddImplication(SqliteConnection conn, string tagId, string impliedTagId)
+    private static bool TryAddImplication(
+        SqliteConnection conn,
+        string tagId,
+        string impliedTagId,
+        SqliteTransaction? tx = null)
     {
-        if (string.Equals(tagId, impliedTagId, StringComparison.Ordinal) || WouldImplicationCycle(conn, tagId, impliedTagId))
+        if (string.Equals(tagId, impliedTagId, StringComparison.Ordinal)
+            || WouldImplicationCycle(conn, tagId, impliedTagId, tx))
         {
             return false;
         }
 
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "INSERT OR IGNORE INTO TagImplication (TagId, ImpliedTagId) VALUES ($t, $i)";
         cmd.Parameters.AddWithValue("$t", tagId);
         cmd.Parameters.AddWithValue("$i", impliedTagId);
@@ -479,13 +547,20 @@ public sealed partial class CatalogService
         return true;
     }
 
-    private static bool WouldImplicationCycle(SqliteConnection conn, string tagId, string impliedTagId) =>
-        TransitiveImplied(conn, impliedTagId).Contains(tagId);
+    private static bool WouldImplicationCycle(
+        SqliteConnection conn,
+        string tagId,
+        string impliedTagId,
+        SqliteTransaction? tx = null) =>
+        TransitiveImplied(conn, impliedTagId, tx).Contains(tagId);
 
-    private static List<string> TransitiveImplied(SqliteConnection conn, string tagId)
+    private static List<string> TransitiveImplied(
+        SqliteConnection conn,
+        string tagId,
+        SqliteTransaction? tx = null)
     {
         var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (var edge in LoadImplications(conn))
+        foreach (var edge in LoadImplications(conn, tx))
         {
             if (!children.TryGetValue(edge.TagId, out var list))
             {
@@ -538,7 +613,7 @@ public sealed partial class CatalogService
             return null;
         }
 
-        if (TagColor.Normalize(tag.Color) is { } own)
+        if (TagInk.Normalize(tag.Color) is { } own)
         {
             cache[tagId] = own;
             visiting.Remove(tagId);
@@ -588,7 +663,7 @@ public sealed partial class CatalogService
         var seen = new HashSet<string>(StringComparer.Ordinal);
         while (seen.Add(current) && tags.TryGetValue(current, out var tag))
         {
-            if (current != tagId && TagColor.Normalize(tag.Color) is not null)
+            if (current != tagId && TagInk.Normalize(tag.Color) is not null)
             {
                 return tag.Name;
             }

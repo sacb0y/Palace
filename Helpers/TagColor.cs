@@ -27,8 +27,7 @@ public static class TagColor
     public static string ToHex(Color color) =>
         TagInk.ToHex(new TagInk.Rgba(color.A, color.R, color.G, color.B));
 
-    public static string? Normalize(string? hex) =>
-        TryParse(hex, out var color) ? ToHex(color) : null;
+    public static string? Normalize(string? hex) => TagInk.Normalize(hex);
 
     public static bool HasColor(string? hex) => TagInk.TryParse(hex, out _);
 

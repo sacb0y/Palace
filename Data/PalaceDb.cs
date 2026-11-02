@@ -242,6 +242,7 @@ public sealed class PalaceDb : IDisposable
                 Model,
                 Notes,
                 content='',
+                contentless_delete=1,
                 tokenize='unicode61'
             );
 
@@ -265,9 +266,65 @@ public sealed class PalaceDb : IDisposable
         EnsureColumn("Asset", "Undecodable", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Asset", "DateTaken", "TEXT");
         EnsureColumn("Collection", "Icon", "TEXT");
+        EnsureAssetFtsContentlessDelete();
         EnsureUniqueTagNames();
         SeedDefaults();
         EnsureDefaultProject();
+    }
+
+    /// <summary>
+    /// Older catalogs created AssetFts with <c>content=''</c> only. On those tables the FTS5
+    /// <c>delete</c> command is a silent no-op, so tag removals left stale Tokens. Recreate with
+    /// <c>contentless_delete=1</c> and reindex so <c>DELETE FROM AssetFts</c> works.
+    /// </summary>
+    private void EnsureAssetFtsContentlessDelete()
+    {
+        using (var probe = _connection.CreateCommand())
+        {
+            probe.CommandText = "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'AssetFts'";
+            var sql = Convert.ToString(probe.ExecuteScalar()) ?? "";
+            if (sql.Contains("contentless_delete", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        using var tx = _connection.BeginTransaction();
+        using (var drop = _connection.CreateCommand())
+        {
+            drop.Transaction = tx;
+            drop.CommandText = """
+                DROP TABLE IF EXISTS AssetFts;
+                CREATE VIRTUAL TABLE AssetFts USING fts5(
+                    FileName,
+                    Path,
+                    Tags,
+                    Prompt,
+                    Model,
+                    Notes,
+                    content='',
+                    contentless_delete=1,
+                    tokenize='unicode61'
+                );
+                INSERT INTO AssetFts (rowid, FileName, Path, Tags, Prompt, Model, Notes)
+                SELECT a.RowId,
+                       a.FileName,
+                       a.Path,
+                       COALESCE((
+                           SELECT group_concat(t.Name, ' ')
+                           FROM AssetTag at
+                           JOIN Tag t ON t.Id = at.TagId
+                           WHERE at.AssetId = a.Id
+                       ), ''),
+                       COALESCE(a.Prompt, ''),
+                       COALESCE(a.Model, ''),
+                       COALESCE(a.Notes, '')
+                FROM Asset a;
+                """;
+            drop.ExecuteNonQuery();
+        }
+
+        tx.Commit();
     }
 
     /// <summary>Survivors of the startup duplicate-name merge; their implications may need a backfill.</summary>

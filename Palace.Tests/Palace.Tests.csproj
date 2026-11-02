@@ -158,8 +158,10 @@
     <Compile Include="..\Helpers\OrganizeNames.cs" Link="OrganizeNames.cs" />
     <Compile Include="..\Services\CatalogService.FileOps.cs" Link="CatalogService.FileOps.cs" />
     <Compile Include="..\Services\CatalogService.TagUndo.cs" Link="CatalogService.TagUndo.cs" />
+    <Compile Include="..\Services\CatalogService.TagAssignments.cs" Link="CatalogService.TagAssignments.cs" />
+    <Compile Include="..\Services\CatalogService.Tags.cs" Link="CatalogService.Tags.cs" />
     <Compile Include="..\Services\FileOpService.cs" Link="FileOpService.cs" />
-    <!-- FileOpService.Tags.cs / CatalogService.Tags.cs stay out (need TagColor / full assign). -->
+    <!-- FileOpService.Tags.cs stays out (WinUI assign UI). CatalogService.Tags uses TagInk (WinUI-free). -->
     <Compile Include="..\Helpers\FolderNames.cs" Link="FolderNames.cs" />
     <Compile Include="..\Helpers\DestinationRecents.cs" Link="DestinationRecents.cs" />
     <Compile Include="..\Helpers\MosaicMove.cs" Link="MosaicMove.cs" />
