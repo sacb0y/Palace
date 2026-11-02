@@ -499,15 +499,17 @@ public partial class LibraryViewModel : ObservableObject
     {
         // Snapshot live selection at change time — never write via stale _previewTargets
         // if selection moved while LoadPreviewAsync was still in flight.
-        var targets = _selection.Where(s => !s.IsFolderHeader).ToList();
-        var selectionIds = targets.Select(t => t.Id).ToList();
+        var selection = _selection.Where(s => !s.IsFolderHeader).ToList();
+        var selectionIds = selection.Select(t => t.Id).ToList();
         var previewIds = _previewTargets.Select(t => t.Id).ToList();
-        if (!PreviewPersist.ShouldApplyRatingChange(
-                _applyingPreview, CanEditRating, selectionIds, previewIds))
+        var writeIds = PreviewPersist.RatingWriteTargetIds(
+            _applyingPreview, CanEditRating, selectionIds, previewIds);
+        if (writeIds.Count == 0)
         {
             return;
         }
 
+        var targets = selection.Where(s => writeIds.Contains(s.Id)).ToList();
         var rating = (int)Math.Round(value);
         if (targets.Count <= 1)
         {

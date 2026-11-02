@@ -87,4 +87,19 @@ public static class PreviewPersist
         IReadOnlyList<string> previewTargetIds) =>
         ShouldWriteRating(applyingPreview, canEditRating, selectionIdsAtChange.Count)
         && PreviewTargetsMatchSelection(previewTargetIds, selectionIdsAtChange);
+
+    /// <summary>
+    /// Ids that a rating change may write. Always the selection snapshot when
+    /// the gate passes — never the stale preview-target list. Empty when a
+    /// LoadPreviewAsync is still in flight after a selection change.
+    /// </summary>
+    public static IReadOnlyList<string> RatingWriteTargetIds(
+        bool applyingPreview,
+        bool canEditRating,
+        IReadOnlyList<string> selectionIdsAtChange,
+        IReadOnlyList<string> previewTargetIds) =>
+        ShouldApplyRatingChange(
+            applyingPreview, canEditRating, selectionIdsAtChange, previewTargetIds)
+            ? selectionIdsAtChange
+            : [];
 }
