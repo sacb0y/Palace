@@ -1,10 +1,8 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// Pure Preview pane state for Library columns. #134 drives auto-hide from available
-/// width (hysteresis). Toggle / pin / overlay UI on the same reducer is a later
-/// slice (not 0.3.9 — that version is swipe flicker / stale HDR).
-/// Off WinUI for Palace.Tests.
+/// Pure Preview pane state for Library columns. Auto-hide from available width
+/// (40 DIP hysteresis); 0.3.12 toggle / pin / overlay. Off WinUI for Palace.Tests.
 /// </summary>
 public enum PaneMode
 {
@@ -16,8 +14,8 @@ public enum PaneMode
 /// <summary>User + auto-hide intent for the Library Preview pane.</summary>
 /// <param name="UserShow">User wants the pane; auto-hide must never overwrite this.</param>
 /// <param name="AutoHidden">True when available width cannot keep mosaic ≥560 with Preview.</param>
-/// <param name="OverlayOpen">Future floating overlay; cleared when auto-hide crosses.</param>
-/// <param name="Pinned">Future pin; cleared when auto-hide crosses.</param>
+/// <param name="OverlayOpen">Floating overlay while auto-hidden; cleared when auto-hide crosses.</param>
+/// <param name="Pinned">Pin docks while width would auto-hide; cleared when auto-hide crosses.</param>
 /// <param name="UserWidth">Persisted dock width (280–560); default 340.</param>
 public readonly record struct PreviewPaneState(
     bool UserShow,
@@ -37,7 +35,22 @@ public static class PreviewPane
     /// <summary>DIP hysteresis between auto-hide and auto-show thresholds.</summary>
     public const double AutoHideHysteresisDip = 40;
 
-    /// <summary>#134 default: user wants Preview; no overlay/pin UI yet.</summary>
+    /// <summary>Fixed overlay panel width while auto-hidden (Isiac).</summary>
+    public const double OverlayWidthDip = 360;
+
+    /// <summary>Edge chevron tab size (Isiac).</summary>
+    public const double EdgeTabWidthDip = 14;
+
+    /// <summary>Edge chevron tab height (Isiac).</summary>
+    public const double EdgeTabHeightDip = 56;
+
+    /// <summary>Show-in motion duration (ms).</summary>
+    public const int MotionInMs = 250;
+
+    /// <summary>Hide-out motion duration (ms).</summary>
+    public const int MotionOutMs = 167;
+
+    /// <summary>Default: user wants Preview under Automatic; no overlay/pin.</summary>
     public static PreviewPaneState Initial { get; } = new(
         UserShow: true,
         AutoHidden: false,
@@ -74,14 +87,29 @@ public static class PreviewPane
 
     /// <summary>
     /// Recompute <see cref="PreviewPaneState.AutoHidden"/> from available content width.
+    /// When <paramref name="autoHideEnabled"/> is false (Settings Show), AutoHidden stays false.
     /// Crossing the auto-hide band clears <see cref="PreviewPaneState.Pinned"/> and
     /// <see cref="PreviewPaneState.OverlayOpen"/>. Never changes UserShow.
     /// </summary>
-    public static PreviewPaneState OnWidth(PreviewPaneState state, double contentWidth)
+    public static PreviewPaneState OnWidth(
+        PreviewPaneState state,
+        double contentWidth,
+        bool autoHideEnabled = true)
     {
         if (!double.IsFinite(contentWidth) || contentWidth < 0)
         {
             contentWidth = 0;
+        }
+
+        if (!autoHideEnabled)
+        {
+            var wasHidden = state.AutoHidden;
+            return state with
+            {
+                AutoHidden = false,
+                Pinned = wasHidden ? false : state.Pinned,
+                OverlayOpen = wasHidden ? false : state.OverlayOpen
+            };
         }
 
         var hideBelow = AutoHideBelowContentDip;
@@ -102,9 +130,33 @@ public static class PreviewPane
     public static PreviewPaneState Toggle(PreviewPaneState state) =>
         state with { UserShow = !state.UserShow };
 
-    /// <summary>User pin — does not touch AutoHidden / UserShow.</summary>
+    /// <summary>
+    /// Toolbar / Alt+P / edge-tab intent: open overlay while auto-hidden,
+    /// dismiss overlay, or flip UserShow when docked / roomy.
+    /// </summary>
+    public static PreviewPaneState ApplyToggle(PreviewPaneState state)
+    {
+        if (state.OverlayOpen)
+        {
+            return state with { OverlayOpen = false };
+        }
+
+        if (state.AutoHidden)
+        {
+            return state with { UserShow = true, OverlayOpen = true, Pinned = false };
+        }
+
+        return state with { UserShow = !state.UserShow, OverlayOpen = false };
+    }
+
+    /// <summary>User pin — docks while auto-hidden until width band crosses or restart.</summary>
     public static PreviewPaneState Pin(PreviewPaneState state, bool pinned = true) =>
-        state with { Pinned = pinned };
+        state with
+        {
+            Pinned = pinned,
+            OverlayOpen = pinned ? false : state.OverlayOpen,
+            UserShow = pinned ? true : state.UserShow
+        };
 
     /// <summary>User overlay open — does not touch AutoHidden / UserShow.</summary>
     public static PreviewPaneState SetOverlayOpen(PreviewPaneState state, bool open) =>
@@ -114,21 +166,68 @@ public static class PreviewPane
     public static PreviewPaneState SetUserWidth(PreviewPaneState state, double width) =>
         state with { UserWidth = ClampUserWidth(width) };
 
+    /// <summary>Reset dock width to the product default.</summary>
+    public static PreviewPaneState ResetUserWidth(PreviewPaneState state) =>
+        state with { UserWidth = LibraryColumnLayout.PreviewDefaultWidth };
+
+    /// <summary>
+    /// Toggle checked when the pane is visible (docked or overlay), not merely UserShow.
+    /// </summary>
+    public static bool IsChromeChecked(PreviewPaneState state)
+    {
+        if (!state.UserShow)
+        {
+            return false;
+        }
+
+        if (state.OverlayOpen)
+        {
+            return true;
+        }
+
+        if (state.AutoHidden && !state.Pinned)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Tooltip while auto-hidden and overlay closed.</summary>
+    public const string AutoHiddenTooltip =
+        "Hidden to fit this window width. Opening it shows it over the grid.";
+
+    /// <summary>Default tooltip when the pane can dock or is open.</summary>
+    public const string DefaultTooltip = "Preview pane (Alt+P)";
+
+    public static string ChromeTooltip(PreviewPaneState state) =>
+        state.AutoHidden && state.UserShow && !state.OverlayOpen && !state.Pinned
+            ? AutoHiddenTooltip
+            : DefaultTooltip;
+
     /// <summary>
     /// Resolve pane mode + column widths for available content width.
-    /// Overlay allocates with preview=0 (mosaic uses the full span).
+    /// Overlay (including while auto-hidden) allocates with preview=0 so the mosaic
+    /// does not reflow. Pin docks even when AutoHidden.
     /// </summary>
     public static PreviewPaneEffective Effective(PreviewPaneState state, double contentWidth)
     {
         var width = ClampUserWidth(state.UserWidth);
-        if (state.OverlayOpen && state.UserShow && !state.AutoHidden)
+        if (!state.UserShow)
+        {
+            return new PreviewPaneEffective(
+                PaneMode.Hidden,
+                LibraryColumnLayout.AllocateWithoutPreview(contentWidth));
+        }
+
+        if (state.OverlayOpen)
         {
             return new PreviewPaneEffective(
                 PaneMode.Overlay,
                 LibraryColumnLayout.AllocateWithoutPreview(contentWidth));
         }
 
-        if (!state.UserShow || state.AutoHidden)
+        if (state.AutoHidden && !state.Pinned)
         {
             return new PreviewPaneEffective(
                 PaneMode.Hidden,

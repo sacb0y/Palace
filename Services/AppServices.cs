@@ -272,6 +272,10 @@ public static class AppServices
             LibrarySettings.ParseBool(
                 values[LibrarySettings.GenerateThumbsOnScanKey],
                 LibrarySettings.DefaultGenerateThumbsOnScan));
+        PreviewPaneSettings.Apply(
+            PreviewPaneSettings.ParseMode(values[PreviewPaneSettings.ModeKey]),
+            PreviewPaneSettings.ParseUserShow(values[PreviewPaneSettings.UserShowKey]),
+            PreviewPaneSettings.ParseWidth(values[PreviewPaneSettings.WidthKey]));
     }
 
     internal static void LoadViewerSettings()

@@ -829,6 +829,20 @@
                                 </controls:SettingsCard>
                             </controls:SettingsExpander.Items>
                         </controls:SettingsExpander>
+                        <controls:SettingsCard
+                            x:Name="CardPreviewPane"
+                            AutomationProperties.AutomationId="CardPreviewPane"
+                            Description="Show, hide, or automatically hide the Library Preview pane when the window is narrow"
+                            Header="Preview pane"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <ComboBox
+                                x:Name="CmbPreviewPane"
+                                MinWidth="160"
+                                AutomationProperties.AutomationId="CmbPreviewPane"
+                                AutomationProperties.Name="Preview pane"
+                                ItemsSource="{x:Bind ViewModel.PreviewPaneOptions, Mode=OneWay}"
+                                SelectedItem="{x:Bind ViewModel.SelectedPreviewPane, Mode=TwoWay}" />
+                        </controls:SettingsCard>
                         <controls:SettingsExpander
                             x:Name="CardScanning"
                             AutomationProperties.AutomationId="CardScanning"

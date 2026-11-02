@@ -65,6 +65,9 @@ public sealed class SettingsPortableTests
     {
         Assert.Contains(PerformanceSettings.ThumbConcurrencyKey, SettingsPortable.ExportKeys);
         Assert.Contains(PerformanceSettings.PreviewQualityKey, SettingsPortable.ExportKeys);
+        Assert.Contains(PreviewPaneSettings.ModeKey, SettingsPortable.ExportKeys);
+        Assert.Contains(PreviewPaneSettings.WidthKey, SettingsPortable.ExportKeys);
+        Assert.Contains(PreviewPaneSettings.UserShowKey, SettingsPortable.ExportKeys);
         Assert.DoesNotContain(MediaCache.AccessTokenKey, SettingsPortable.ExportKeys);
         Assert.DoesNotContain(CatalogStore.AccessTokenKey, SettingsPortable.ExportKeys);
     }

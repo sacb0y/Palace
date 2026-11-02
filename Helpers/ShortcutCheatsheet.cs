@@ -64,6 +64,7 @@ public static class ShortcutCheatsheet
         new("K", "Review: Keep", "TxtShortcutReviewKeep"),
         new("S", "Review: Skip", "TxtShortcutReviewSkip"),
         new("Ctrl+Z", "Undo (Review decisions or file ops)", "TxtShortcutUndo"),
+        new("Alt+P", "Library: Preview pane", "TxtShortcutPreviewPane"),
         new("Ctrl+F", "Settings: Find", "TxtShortcutSettingsFind"),
         new("Ctrl+E", "Settings: Find", "TxtShortcutSettingsFindAlt")
     ];
