@@ -19,11 +19,20 @@ public partial class LibraryViewModel
         SelectionSummary = SelectMode.Summary(IsSelectMode, _selection.Count, CountCollapsedSelected());
         ShowTagSelectedCta = SelectMode.ShowBatchTagCta(IsSelectMode, _selection.Count);
         CanToolbarAddToRoom = SelectCommandBar.ToolbarAddToRoomEnabled(IsSelectMode, _selection.Count > 0);
-        CanEditRating = _selection.Count > 0;
+        // Keep rating off until LoadPreviewAsync finishes and _previewTargets match
+        // this selection — otherwise OnPreviewRatingChanged can write the stale set.
+        CanEditRating = PreviewPersist.ShouldEnableRatingEdit(
+            _selection.Count,
+            PreviewTargetsMatchSelection());
         IsMultiSelectPreview = SelectCommandBar.ShowMultiSelectPreview(_selection.Count);
         AddTagButtonLabel = IsMultiSelectPreview ? "Add tag to all" : "Add tag";
         RebuildMultiSelectThumbs();
     }
+
+    private bool PreviewTargetsMatchSelection() =>
+        PreviewPersist.PreviewTargetsMatchSelection(
+            _previewTargets.Select(t => t.Id).ToList(),
+            _selection.Select(s => s.Id).ToList());
 
     private void RebuildMultiSelectThumbs()
     {

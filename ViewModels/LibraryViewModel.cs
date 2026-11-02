@@ -497,29 +497,35 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnPreviewRatingChanged(double value)
     {
-        if (!PreviewPersist.ShouldWriteRating(_applyingPreview, CanEditRating, _previewTargets.Count))
+        // Snapshot live selection at change time — never write via stale _previewTargets
+        // if selection moved while LoadPreviewAsync was still in flight.
+        var targets = _selection.Where(s => !s.IsFolderHeader).ToList();
+        var selectionIds = targets.Select(t => t.Id).ToList();
+        var previewIds = _previewTargets.Select(t => t.Id).ToList();
+        if (!PreviewPersist.ShouldApplyRatingChange(
+                _applyingPreview, CanEditRating, selectionIds, previewIds))
         {
             return;
         }
 
         var rating = (int)Math.Round(value);
-        if (_previewTargets.Count <= 1)
+        if (targets.Count <= 1)
         {
-            if (SelectedAsset is null
+            var single = targets.Count == 1 ? targets[0] : SelectedAsset;
+            if (single is null
                 || !PreviewPersist.ShouldWriteNotes(
-                    _applyingPreview, CanEditNotes, SelectedAsset.Id, _previewAssetId))
+                    _applyingPreview, CanEditNotes, single.Id, _previewAssetId))
             {
                 return;
             }
 
-            _ = _catalog.UpdateNotesAndRatingAsync(SelectedAsset.Id, PreviewNotes, rating);
+            _ = _catalog.UpdateNotesAndRatingAsync(single.Id, PreviewNotes, rating);
             return;
         }
 
-        // Multi-select: stars apply to all selected; keep each asset's notes.
+        // Multi-select: stars apply to the selection snapshot; keep each asset's notes.
         PreviewRatingMixed = false;
         RatingCaption = SelectCommandBar.RatingCaption(false);
-        var targets = _previewTargets.ToList();
         _ = ErrorReporter.RunAsync("Set rating", Notify, async () =>
         {
             foreach (var target in targets)

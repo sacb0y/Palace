@@ -147,9 +147,36 @@ public static class SelectCommandBar
     public static string DeleteTitle(int count) =>
         count == 1 ? "Delete 1 item?" : $"Delete {Math.Max(0, count)} items?";
 
-    public static string DeleteBody(int count)
+    /// <summary>
+    /// Short filename / "N files (a, b, c, …)" lead-in for the delete confirm.
+    /// </summary>
+    public static string DeleteFilePreview(IReadOnlyList<string> fileNames)
+    {
+        if (fileNames.Count == 0)
+        {
+            return "";
+        }
+
+        if (fileNames.Count == 1)
+        {
+            return fileNames[0];
+        }
+
+        var shown = string.Join(", ", fileNames.Take(3));
+        return fileNames.Count > 3
+            ? $"{fileNames.Count} files ({shown}, …)"
+            : $"{fileNames.Count} files ({shown})";
+    }
+
+    public static string DeleteBody(int count, IReadOnlyList<string>? fileNames = null)
     {
         var n = Math.Max(0, count);
+        var preview = fileNames is { Count: > 0 } ? DeleteFilePreview(fileNames) : "";
+        if (!string.IsNullOrEmpty(preview))
+        {
+            return $"Send {preview} to the Recycle Bin? This also removes them from the catalog. You can restore them from the Recycle Bin.";
+        }
+
         var files = n == 1 ? "The 1 file goes" : $"The {n} files go";
         return $"{files} to the Recycle Bin and leave the catalog. You can restore them from the Recycle Bin.";
     }

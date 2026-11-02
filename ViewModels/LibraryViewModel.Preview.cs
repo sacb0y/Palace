@@ -123,13 +123,18 @@ public partial class LibraryViewModel
             }
 
             CanEditNotes = canEditNotes;
-            CanEditRating = total > 0;
             IsMultiSelectPreview = multi;
             AddTagButtonLabel = multi ? "Add tag to all" : "Add tag";
             MultiSelectDetail = multiDetail;
             PreviewRatingMixed = ratingMixed;
             RatingCaption = SelectCommandBar.RatingCaption(ratingMixed);
+            // Assign targets before enabling rating so CanEditRating never races a stale set.
             _previewTargets = targets;
+            CanEditRating = PreviewPersist.ShouldEnableRatingEdit(
+                total,
+                PreviewPersist.PreviewTargetsMatchSelection(
+                    targets.Select(t => t.Id).ToList(),
+                    _selection.Select(s => s.Id).ToList()));
             PreviewPath = previewPath;
             IsVideoPreview = !multi && !cloudish && asset.Kind == AssetKind.Video && previewPath is not null;
             IsImagePreview = !multi && previewPath is not null &&

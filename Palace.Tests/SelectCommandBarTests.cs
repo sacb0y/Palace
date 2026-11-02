@@ -95,6 +95,13 @@ public sealed class SelectCommandBarTests
         Assert.Contains("Recycle Bin", SelectCommandBar.DeleteBody(4));
         Assert.Contains("leave the catalog", SelectCommandBar.DeleteBody(4));
         Assert.Equal("Delete", SelectCommandBar.DeletePrimary);
+        Assert.Equal("shot.png", SelectCommandBar.DeleteFilePreview(["shot.png"]));
+        Assert.Equal("3 files (a.png, b.png, c.png)", SelectCommandBar.DeleteFilePreview(["a.png", "b.png", "c.png"]));
+        Assert.Equal(
+            "4 files (a.png, b.png, c.png, …)",
+            SelectCommandBar.DeleteFilePreview(["a.png", "b.png", "c.png", "d.png"]));
+        Assert.Contains("shot.png", SelectCommandBar.DeleteBody(1, ["shot.png"]));
+        Assert.Contains("Send", SelectCommandBar.DeleteBody(1, ["shot.png"]));
     }
 
     [Fact]

@@ -150,9 +150,11 @@ public partial class LibraryViewModel
                 return;
             }
 
-            // SelectCommandBar copy (mockups v2). Append collapsed-section clause when targets sit under collapsed headers.
+            // SelectCommandBar copy (mockups v2) + filename preview. Append collapsed-section clause when needed.
             var collapsed = CountCollapsedAmongTargetIds(targets.Select(t => t.Id));
-            var body = SelectCommandBar.DeleteBody(targets.Count);
+            var body = SelectCommandBar.DeleteBody(
+                targets.Count,
+                targets.Select(t => t.FileName).ToList());
             if (collapsed > 0)
             {
                 body = $"{body}\n{SelectMode.Summary(true, targets.Count, collapsed)}.";
