@@ -119,6 +119,11 @@ public sealed class SettingsNavTests
         var thumbs = SettingsNav.FindHit("build thumbnails");
         Assert.NotNull(thumbs);
         Assert.Equal("CardThumbnailCache", thumbs.Value.CardAutomationId);
+
+        var preview = SettingsNav.FindHit("preview pane");
+        Assert.NotNull(preview);
+        Assert.Equal(SettingsNav.Library, preview.Value.SectionId);
+        Assert.Equal("CardPreviewPane", preview.Value.CardAutomationId);
     }
 
     [Fact]

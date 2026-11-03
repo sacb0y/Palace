@@ -51,7 +51,7 @@ public sealed partial class LibraryPage : Page
     private bool _suppressMosaicSelection;
     /// <summary>Last allocated mosaic width — HostWidth ceiling.</summary>
     private double _allocatedMosaicWidth;
-    /// <summary>Preview reducer (#134 UserShow fixed true; toggle/pin UI is later).</summary>
+    /// <summary>Preview reducer + 0.3.12 toggle / overlay / pin.</summary>
     private PreviewPaneState _previewPane = PreviewPane.Initial;
     private PaneMode _previewPaneMode = PaneMode.Hidden;
     private NavigationView? _shellNav;
@@ -229,6 +229,7 @@ public sealed partial class LibraryPage : Page
                 ResetSectionToggleGuardOnLoaded();
                 HookLibraryLayoutTracking();
                 HookShellNavPaneTracking();
+                HookPreviewPaneSettings();
                 RefreshLibraryLayout();
                 RefreshMosaicToolbarOverflow();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
@@ -245,6 +246,7 @@ public sealed partial class LibraryPage : Page
             ResetSectionToggleGuardOnLoaded();
             HookLibraryLayoutTracking();
             HookShellNavPaneTracking();
+            HookPreviewPaneSettings();
             RefreshLibraryLayout();
             RefreshMosaicToolbarOverflow();
             HookOverlayStillGestures();
@@ -284,6 +286,7 @@ public sealed partial class LibraryPage : Page
             PerformanceSettings.Changed -= PerformanceSettings_Changed;
             UnhookLibraryLayoutTracking();
             UnhookShellNavPaneTracking();
+            UnhookPreviewPaneSettings();
             // Still gesture handlers: -= in HookOverlayStillGestures on next Loaded
             // (NavigationCacheMode=Required reuses this page after Settings).
             SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayReviewSwipe;
@@ -590,7 +593,10 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        _previewPane = PreviewPane.OnWidth(_previewPane, contentWidth);
+        _previewPane = PreviewPane.OnWidth(
+            _previewPane,
+            contentWidth,
+            PreviewPaneSettings.AutoHideEnabled);
         var effective = PreviewPane.Effective(_previewPane, contentWidth);
         ApplyLibraryColumnLayout(effective);
         UpdateLibraryToolbarOverflow(windowDip);
@@ -765,6 +771,8 @@ public sealed partial class LibraryPage : Page
     {
         var widths = effective.Widths;
         var mode = effective.Mode;
+        var wasShowing = _previewPaneMode is PaneMode.Docked or PaneMode.Overlay;
+        var showing = mode is PaneMode.Docked or PaneMode.Overlay;
         var wasDocked = _previewPaneMode == PaneMode.Docked;
         _previewPaneMode = mode;
         _allocatedMosaicWidth = widths.Mosaic;
@@ -778,26 +786,31 @@ public sealed partial class LibraryPage : Page
         ColPreview.Width = new GridLength(widths.Preview);
         ColPreview.MinWidth = 0;
 
-        var docked = mode == PaneMode.Docked;
-        if (!docked)
+        if (!showing)
         {
             // Move focus before Collapsed — after hide WinUI may already have
             // reassigned focus and MoveFocusFromPreviewPaneIfNeeded misses.
             MoveFocusFromPreviewPaneIfNeeded();
-            if (wasDocked)
+            if (wasShowing)
             {
-                // Pause only on docked→hidden; every resize refresh while hidden
+                // Pause only on visible→hidden; every resize refresh while hidden
                 // used to null Source / bump epoch needlessly.
                 PausePreviewPaneMedia();
             }
         }
 
-        ScrPreviewPane.Visibility = docked ? Visibility.Visible : Visibility.Collapsed;
-        if (docked && !wasDocked)
+        SyncPreviewChrome(effective);
+        if (showing && !wasShowing)
         {
-            // Pane just docked — refresh decode for the current selection.
+            // Pane just shown (docked or overlay) — refresh decode.
             UpdatePreview();
         }
+        else if (mode == PaneMode.Docked && !wasDocked && showing)
+        {
+            UpdatePreview();
+        }
+
+        AnchorMosaicOnFirstVisibleTile();
 
         // HostWidth from Allocate mosaic (Overlay also uses preview=0 widths).
         MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic));
@@ -829,7 +842,14 @@ public sealed partial class LibraryPage : Page
         }
 
         var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot) as DependencyObject;
-        if (focused is null || !IsDescendantOf(focused, ScrPreviewPane))
+        if (focused is null)
+        {
+            return;
+        }
+
+        var inDock = IsDescendantOf(focused, ScrPreviewPane) || IsDescendantOf(focused, GrdPreviewDockHost);
+        var inOverlay = IsDescendantOf(focused, BrdPreviewOverlay);
+        if (!inDock && !inOverlay)
         {
             return;
         }
@@ -1146,6 +1166,12 @@ public sealed partial class LibraryPage : Page
         // Touch/pen: force CanDrag off so ItemsView can pan. Mouse: hover already
         // pre-armed (press alone is too late for WinUI's first-drag sample).
         SyncMouseCanDragArm(e);
+
+        if (TryDismissPreviewOverlayOnEmptyGrid(e.OriginalSource as DependencyObject))
+        {
+            e.Handled = true;
+            return;
+        }
 
         if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
         {
@@ -3532,8 +3558,8 @@ public sealed partial class LibraryPage : Page
 
     private async void UpdatePreview()
     {
-        // Collapsed / overlay / user-hidden — no decode, pause any preview video.
-        if (_previewPaneMode != PaneMode.Docked)
+        // Hidden — no decode, pause any preview video. Overlay still decodes.
+        if (_previewPaneMode is not (PaneMode.Docked or PaneMode.Overlay))
         {
             PausePreviewPaneMedia();
             return;
@@ -3584,7 +3610,7 @@ public sealed partial class LibraryPage : Page
                 var file = await StorageFile.GetFileFromPathAsync(ViewModel.PreviewPath);
                 // Pane may have hidden mid-await — do not arm a collapsed player.
                 if (epoch != Volatile.Read(ref _previewEpoch)
-                    || _previewPaneMode != PaneMode.Docked)
+                    || _previewPaneMode is not (PaneMode.Docked or PaneMode.Overlay))
                 {
                     return;
                 }

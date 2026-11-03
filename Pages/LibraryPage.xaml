@@ -74,8 +74,13 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <!-- Narrow widths: New folder / Undo / Add to room move into BtnLibraryToolbarMore. -->
-            <StackPanel Orientation="Horizontal" Spacing="8">
+            <!-- Narrow widths: New folder / Undo / Add to room move into BtnLibraryToolbarMore.
+                 Preview toggle stays far right (Isiac icon-only). -->
+            <Grid>
+            <StackPanel
+                HorizontalAlignment="Left"
+                Orientation="Horizontal"
+                Spacing="8">
                 <Button
                     AutomationProperties.AutomationId="BtnAddFolder"
                     AutomationProperties.Name="Add folder"
@@ -208,6 +213,22 @@
                     </DropDownButton.Flyout>
                 </DropDownButton>
             </StackPanel>
+                <ToggleButton
+                    x:Name="TglPreviewPane"
+                    MinWidth="32"
+                    MinHeight="32"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AcceleratorKey="Alt+P"
+                    AutomationProperties.AutomationId="TglPreviewPane"
+                    AutomationProperties.Name="Preview pane"
+                    Checked="TglPreviewPane_Changed"
+                    ToolTipService.ToolTip="Preview pane (Alt+P)"
+                    Unchecked="TglPreviewPane_Changed">
+                    <!-- Alt+P is handled on LibraryRoot_PreviewKeyDown (no AccessKey P). -->
+                    <ic:FluentIcon Icon="PanelRight" IconSize="Size16" IconVariant="Regular" />
+                </ToggleButton>
+            </Grid>
             <Grid
                 Grid.Row="1"
                 ColumnSpacing="8"
@@ -1621,13 +1642,34 @@
             </Grid>
         </Grid>
 
+        <Grid
+            x:Name="GrdPreviewDockHost"
+            Grid.Row="1"
+            Grid.Column="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border
+                x:Name="BrdPreviewResize"
+                Width="4"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Stretch"
+                AutomationProperties.AutomationId="BrdPreviewResize"
+                Background="Transparent"
+                DoubleTapped="BrdPreviewResize_DoubleTapped"
+                PointerCanceled="BrdPreviewResize_PointerCanceled"
+                PointerCaptureLost="BrdPreviewResize_PointerCaptureLost"
+                PointerMoved="BrdPreviewResize_PointerMoved"
+                PointerPressed="BrdPreviewResize_PointerPressed"
+                PointerReleased="BrdPreviewResize_PointerReleased"
+                ToolTipService.ToolTip="Drag to resize Preview. Double-click to reset" />
         <ScrollViewer
             x:Name="ScrPreviewPane"
-            Grid.Row="1"
-            Grid.Column="2"
+            Grid.Column="1"
             AutomationProperties.AutomationId="ScrPreviewPane"
             VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
+            <StackPanel x:Name="PnlPreviewBody" Spacing="12">
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Preview" />
                 <Border
                     MinHeight="200"
@@ -2175,6 +2217,7 @@
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
+        </Grid>
 
         <!-- Toast slot overlays the mosaic so opening/closing does not reflow the grid.
              Right inset matches MosaicLayoutWidth.ViewportGutterDip (overlay scrollbar). -->
@@ -2263,6 +2306,83 @@
             </StackPanel>
         </Grid>
     </Grid>
+
+        <!-- Preview overlay (auto-hidden open): acrylic right panel; mosaic does not reflow. -->
+        <Border
+            x:Name="BrdPreviewOverlay"
+            Width="360"
+            Margin="0,8,12,8"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Stretch"
+            AutomationProperties.AutomationId="BrdPreviewOverlay"
+            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Translation="0,0,32"
+            Visibility="Collapsed">
+            <Border.Shadow>
+                <ThemeShadow />
+            </Border.Shadow>
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Padding="8,6" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="Preview" />
+                    <Button
+                        x:Name="BtnPreviewPanePin"
+                        Grid.Column="1"
+                        MinWidth="32"
+                        MinHeight="32"
+                        AutomationProperties.AutomationId="BtnPreviewPanePin"
+                        AutomationProperties.Name="Pin Preview pane"
+                        Click="BtnPreviewPanePin_Click"
+                        ToolTipService.ToolTip="Pin Preview pane (dock until window resize or restart)">
+                        <ic:FluentIcon Icon="Pin" IconSize="Size16" IconVariant="Regular" />
+                    </Button>
+                </Grid>
+                <ScrollViewer
+                    x:Name="ScrPreviewOverlay"
+                    Grid.Row="1"
+                    AutomationProperties.AutomationId="ScrPreviewOverlay"
+                    VerticalScrollBarVisibility="Auto" />
+            </Grid>
+        </Border>
+
+        <!-- Hover/touch edge chevron: pane left edge when open; window right when hidden. -->
+        <Button
+            x:Name="BtnPreviewPaneEdge"
+            Width="14"
+            Height="56"
+            Padding="0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
+            AutomationProperties.AutomationId="BtnPreviewPaneEdge"
+            AutomationProperties.Name="Preview pane edge"
+            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+            BorderThickness="0"
+            Click="BtnPreviewPaneEdge_Click"
+            CornerRadius="4,0,0,4"
+            Opacity="0.35"
+            PointerEntered="BtnPreviewPaneEdge_PointerEntered"
+            PointerExited="BtnPreviewPaneEdge_PointerExited"
+            ToolTipService.ToolTip="Preview pane (Alt+P)">
+            <TextBlock
+                x:Name="TxtPreviewPaneEdge"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                FontSize="12"
+                Text="‹" />
+        </Button>
 
         <Grid
             x:Name="GrdGalleryOverlay"

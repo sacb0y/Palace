@@ -84,6 +84,11 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool GenerateThumbsOnScan { get; set; } = LibrarySettings.DefaultGenerateThumbsOnScan;
 
+    [ObservableProperty]
+    public partial string SelectedPreviewPane { get; set; } = PreviewPaneSettings.DefaultMode;
+
+    public IReadOnlyList<string> PreviewPaneOptions { get; } = PreviewPaneSettings.ModeOptions;
+
     public string ImagesFormatsCaption { get; } = LibrarySettings.ImagesFormatsCaption;
 
     public string VideoFormatsCaption { get; } = LibrarySettings.VideoFormatsCaption;
@@ -478,6 +483,7 @@ public partial class SettingsViewModel : ObservableObject
         IndexImages = LibrarySettings.IndexImages;
         IndexVideo = LibrarySettings.IndexVideo;
         GenerateThumbsOnScan = LibrarySettings.GenerateThumbsOnScan;
+        SelectedPreviewPane = PreviewPaneSettings.Mode;
     }
 
     private void PersistLibraryChrome()
@@ -488,6 +494,25 @@ public partial class SettingsViewModel : ObservableObject
         values[LibrarySettings.IndexVideoKey] = IndexVideo;
         values[LibrarySettings.GenerateThumbsOnScanKey] = GenerateThumbsOnScan;
         LibrarySettings.Apply(WatchForChanges, IndexImages, IndexVideo, GenerateThumbsOnScan);
+        PersistPreviewPaneChrome();
+    }
+
+    private void PersistPreviewPaneChrome()
+    {
+        var mode = PreviewPaneSettings.NormalizeMode(SelectedPreviewPane);
+        var values = ApplicationData.Current.LocalSettings.Values;
+        values[PreviewPaneSettings.ModeKey] = mode;
+        // Show / Hide force UserShow; Automatic keeps the last toolbar preference.
+        var userShow = mode switch
+        {
+            PreviewPaneSettings.ModeHide => false,
+            PreviewPaneSettings.ModeShow => true,
+            _ => PreviewPaneSettings.UserShow
+        };
+        values[PreviewPaneSettings.UserShowKey] = userShow;
+        values[PreviewPaneSettings.WidthKey] = PreviewPaneSettings.UserWidth;
+        PreviewPaneSettings.Apply(mode, userShow, PreviewPaneSettings.UserWidth);
+        SelectedPreviewPane = mode;
     }
 
     private void LoadViewerChrome()
@@ -575,6 +600,17 @@ public partial class SettingsViewModel : ObservableObject
 
         ApplicationData.Current.LocalSettings.Values[AppearanceSettings.AnimationsKey] = value;
         StatusText = value ? "Animations on." : "Animations off.";
+    }
+
+    partial void OnSelectedPreviewPaneChanged(string value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistPreviewPaneChrome();
+        StatusText = "Preview pane: " + PreviewPaneSettings.NormalizeMode(value) + ".";
     }
 
     partial void OnWatchForChangesChanged(bool value)

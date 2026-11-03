@@ -31,6 +31,7 @@ public sealed class PreviewPaneTests
             PreviewPane.AutoHideBelowContentDip + 40,
             PreviewPane.AutoShowAboveContentDip,
             0.01);
+        Assert.Equal(360, PreviewPane.OverlayWidthDip);
     }
 
     [Fact]
@@ -54,6 +55,17 @@ public sealed class PreviewPaneTests
         s = PreviewPane.OnWidth(s, show);
         Assert.False(s.AutoHidden);
         Assert.True(s.UserShow); // never overwritten
+    }
+
+    [Fact]
+    public void OnWidth_AutoHideDisabled_NeverHides()
+    {
+        var s = PreviewPane.OnWidth(
+            PreviewPane.Initial,
+            PreviewPane.AutoHideBelowContentDip - 1,
+            autoHideEnabled: false);
+        Assert.False(s.AutoHidden);
+        Assert.Equal(PaneMode.Docked, PreviewPane.Effective(s, PreviewPane.AutoHideBelowContentDip - 1).Mode);
     }
 
     [Fact]
@@ -87,6 +99,56 @@ public sealed class PreviewPaneTests
         s = PreviewPane.Toggle(s);
         Assert.True(s.UserShow);
         Assert.True(s.AutoHidden);
+    }
+
+    [Fact]
+    public void ApplyToggle_AutoHiddenOpensOverlay_DoesNotFlipUserShowOff()
+    {
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, PreviewPane.AutoHideBelowContentDip - 1);
+        Assert.True(s.AutoHidden);
+        Assert.True(s.UserShow);
+        Assert.False(PreviewPane.IsChromeChecked(s));
+        Assert.Equal(PreviewPane.AutoHiddenTooltip, PreviewPane.ChromeTooltip(s));
+
+        s = PreviewPane.ApplyToggle(s);
+        Assert.True(s.UserShow);
+        Assert.True(s.OverlayOpen);
+        Assert.True(PreviewPane.IsChromeChecked(s));
+        Assert.Equal(PaneMode.Overlay, PreviewPane.Effective(s, PreviewPane.AutoHideBelowContentDip - 1).Mode);
+
+        s = PreviewPane.ApplyToggle(s);
+        Assert.False(s.OverlayOpen);
+        Assert.True(s.UserShow);
+        Assert.False(PreviewPane.IsChromeChecked(s));
+    }
+
+    [Fact]
+    public void ApplyToggle_DockedFlipsUserShow()
+    {
+        var wide = PreviewPane.AutoShowAboveContentDip + 100;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, wide);
+        Assert.True(PreviewPane.IsChromeChecked(s));
+        s = PreviewPane.ApplyToggle(s);
+        Assert.False(s.UserShow);
+        Assert.Equal(PaneMode.Hidden, PreviewPane.Effective(s, wide).Mode);
+        s = PreviewPane.ApplyToggle(s);
+        Assert.True(s.UserShow);
+        Assert.Equal(PaneMode.Docked, PreviewPane.Effective(s, wide).Mode);
+    }
+
+    [Fact]
+    public void Pin_DocksWhileAutoHidden_UntilCleared()
+    {
+        var narrow = PreviewPane.AutoHideBelowContentDip - 1;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
+        s = PreviewPane.ApplyToggle(s);
+        Assert.Equal(PaneMode.Overlay, PreviewPane.Effective(s, narrow).Mode);
+
+        s = PreviewPane.Pin(s);
+        Assert.True(s.Pinned);
+        Assert.False(s.OverlayOpen);
+        Assert.True(s.AutoHidden);
+        Assert.Equal(PaneMode.Docked, PreviewPane.Effective(s, narrow).Mode);
     }
 
     [Fact]
@@ -125,7 +187,7 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void Effective_OverlayAllocatesPreviewZero()
+    public void Effective_OverlayAllocatesPreviewZero_EvenWhenWide()
     {
         var wide = PreviewPane.AutoShowAboveContentDip + 100;
         var s = PreviewPane.OnWidth(PreviewPane.Initial, wide);
@@ -137,10 +199,24 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
+    public void Effective_OverlayWhileAutoHidden_DoesNotReflowGrid()
+    {
+        var narrow = PreviewPane.AutoHideBelowContentDip - 1;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
+        var without = PreviewPane.Effective(s, narrow);
+        s = PreviewPane.ApplyToggle(s);
+        var overlay = PreviewPane.Effective(s, narrow);
+        Assert.Equal(PaneMode.Overlay, overlay.Mode);
+        Assert.Equal(without.Widths.Mosaic, overlay.Widths.Mosaic, 0.01);
+        Assert.Equal(0, overlay.Widths.Preview);
+    }
+
+    [Fact]
     public void ClampUserWidth_Bounds280To560()
     {
         Assert.Equal(280, PreviewPane.ClampUserWidth(100));
         Assert.Equal(560, PreviewPane.ClampUserWidth(900));
         Assert.Equal(340, PreviewPane.ClampUserWidth(double.NaN));
+        Assert.Equal(340, PreviewPane.ResetUserWidth(PreviewPane.Initial with { UserWidth = 500 }).UserWidth);
     }
 }

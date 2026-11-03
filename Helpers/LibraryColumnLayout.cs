@@ -4,7 +4,7 @@ namespace Palace.Helpers;
 /// Library page three-column widths. The mosaic/grid column keeps a hard
 /// minimum (<see cref="MosaicMinWidth"/>); the folder tree shrinks next, then
 /// the Preview pane (down to <see cref="PreviewMinWidth"/>, then auto-hidden).
-/// Matches the queued Preview panel toggle rule: auto-hide when the grid would
+/// Matches the Preview panel toggle rule (0.3.12): auto-hide when the grid would
 /// drop below 560 DIP. Off WinUI for Palace.Tests.
 /// </summary>
 public static class LibraryColumnLayout

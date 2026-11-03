@@ -31,6 +31,20 @@ public sealed partial class LibraryPage
             return;
         }
 
+        if (TryHandlePreviewPaneAccelerator(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == VirtualKey.Escape
+            && !FocusIsTextInput(e.OriginalSource)
+            && TryDismissPreviewOverlayOnEscape())
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == VirtualKey.Escape
             && !FocusIsTextInput(e.OriginalSource)
             && SelectMode.ExitsSelectModeOnEscape(ViewModel.IsSelectMode, ViewModel.IsGalleryOverlayOpen))

@@ -91,6 +91,7 @@ public static class SettingsNav
         new(Appearance, "CardBackground", ["background", "wallpaper", "preset", "blur", "darkness", "tint", "mica", "custom", "recent"]),
         new(Library, "CardWatchedFolders", ["watched", "folder", "folders", "source", "add folder", "remove", "open folder"]),
         new(Library, "CardSelectedFolder", ["auto-organize", "organize", "template", "destination", "filename"]),
+        new(Library, "CardPreviewPane", ["preview pane", "preview", "automatic", "show preview", "hide preview"]),
         new(Library, "CardScanning", ["scan", "scanning", "watch for changes", "watcher", "rescan"]),
         new(Library, "CardThumbnailCache", ["thumbnail", "thumbnails", "thumb cache", "build thumbnails"]),
         new(Library, "CardFormats", ["formats", "images", "video", "gif", "3d", "audio", "extensions"]),
