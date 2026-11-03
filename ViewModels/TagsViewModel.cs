@@ -259,8 +259,6 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowDetails { get; set; }
 
-    private int _backfillEpoch;
-
     public async Task LoadAsync() => await RefreshAsync();
 
     partial void OnMosaicSortChanged(MosaicSort value)
@@ -871,9 +869,10 @@ public partial class TagsViewModel : ObservableObject
             StatusText = ok
                 ? $"Assigning this tag will also apply {target.Name}."
                 : "That implicit tag would create a cycle.";
-            if (ok)
+            // AddImplicationAsync recalculates AssetTag + FTS in the same catalog write (T3 / N1).
+            if (ok && AppServices.Library is { } library)
             {
-                QueueBackfill(() => _catalog.BackfillImplicationAddedAsync(sourceId));
+                await library.ReloadAssignedTagsAsync();
             }
         });
 
@@ -886,11 +885,14 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            var impliedId = item.TagId;
-            await _catalog.RemoveImplicationAsync(SelectedNode.TagId, impliedId);
+            await _catalog.RemoveImplicationAsync(SelectedNode.TagId, item.TagId);
             await RefreshAsync();
             StatusText = $"{item.Name} is no longer implied.";
-            QueueBackfill(() => _catalog.BackfillImplicationRemovedAsync(impliedId));
+            // RemoveImplicationAsync recalculates AssetTag + FTS in the same catalog write (T3 / N1).
+            if (AppServices.Library is { } library)
+            {
+                await library.ReloadAssignedTagsAsync();
+            }
         });
 
     [RelayCommand]
@@ -1499,41 +1501,4 @@ public partial class TagsViewModel : ObservableObject
         }
     }
 
-    private void QueueBackfill(Func<Task<int>> work)
-    {
-        var epoch = Interlocked.Increment(ref _backfillEpoch);
-        _ = Task.Run(() => RunBackfillAsync(work, epoch));
-    }
-
-    private async Task RunBackfillAsync(Func<Task<int>> work, int epoch)
-    {
-        await UiDispatch.RunAsync(() => BackfillStatus = "Updating tagged images…");
-        try
-        {
-            var updated = await work();
-            if (epoch != _backfillEpoch)
-            {
-                return;
-            }
-
-            await UiDispatch.RunAsync(() =>
-                BackfillStatus = updated == 0
-                    ? "No tagged images needed updating."
-                    : $"Updated {updated} images.");
-            if (AppServices.Library is { } library)
-            {
-                await library.ReloadAssignedTagsAsync();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            if (epoch == _backfillEpoch)
-            {
-                await UiDispatch.RunAsync(() => BackfillStatus = $"Could not update tagged images. {ex.Message}");
-            }
-        }
-    }
 }

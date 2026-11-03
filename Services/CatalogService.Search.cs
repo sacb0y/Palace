@@ -33,20 +33,21 @@ public sealed partial class CatalogService
             }
         });
 
-    public void RefreshFts(SqliteConnection conn, string assetId)
+    public void RefreshFts(SqliteConnection conn, string assetId, SqliteTransaction? tx = null)
     {
         try
         {
-            var asset = GetAssetById(conn, assetId);
+            var asset = GetAssetById(conn, assetId, tx);
             if (asset is null)
             {
                 return;
             }
 
-            var tags = string.Join(" ", AssignedTagNamesForFts(conn, assetId));
-            DeleteFtsRow(conn, asset.RowId);
+            var tags = string.Join(" ", AssignedTagNamesForFts(conn, assetId, tx));
+            DeleteFtsRow(conn, asset.RowId, tx);
 
             using var ins = conn.CreateCommand();
+            ins.Transaction = tx;
             ins.CommandText = """
                 INSERT INTO AssetFts (rowid, FileName, Path, Tags, Prompt, Model, Notes)
                 VALUES ($row, $name, $path, $tags, $prompt, $model, $notes)
@@ -70,11 +71,9 @@ public sealed partial class CatalogService
     {
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        // content='' FTS5 tables reject DELETE; tombstone with the 'delete' command.
-        cmd.CommandText = """
-            INSERT INTO AssetFts(AssetFts, rowid, FileName, Path, Tags, Prompt, Model, Notes)
-            VALUES('delete', $row, '', '', '', '', '', '')
-            """;
+        // contentless_delete=1 allows a real DELETE (the FTS5 'delete' command is a no-op
+        // without that option, which left stale tag tokens after implication sweeps).
+        cmd.CommandText = "DELETE FROM AssetFts WHERE rowid = $row";
         cmd.Parameters.AddWithValue("$row", rowId);
         try
         {
@@ -82,7 +81,7 @@ public sealed partial class CatalogService
         }
         catch (SqliteException)
         {
-            // Row was never indexed.
+            // Row was never indexed, or an older contentless table rejected DELETE.
         }
     }
 
@@ -106,9 +105,13 @@ public sealed partial class CatalogService
         }
     }
 
-    private static IEnumerable<string> AssignedTagNamesForFts(SqliteConnection conn, string assetId)
+    private static IEnumerable<string> AssignedTagNamesForFts(
+        SqliteConnection conn,
+        string assetId,
+        SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "SELECT t.Name FROM AssetTag at JOIN Tag t ON t.Id = at.TagId WHERE at.AssetId = $id";
         cmd.Parameters.AddWithValue("$id", assetId);
         var names = new List<string>();

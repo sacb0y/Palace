@@ -358,9 +358,10 @@ public sealed partial class CatalogService
         RefreshFts(conn, asset.Id);
     }
 
-    internal static Asset? GetAssetById(SqliteConnection conn, string id)
+    internal static Asset? GetAssetById(SqliteConnection conn, string id, SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = SelectAssetSql + " WHERE Id = $id";
         cmd.Parameters.AddWithValue("$id", id);
         var list = ReadAssets(cmd);
