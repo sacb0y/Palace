@@ -14,7 +14,8 @@ public sealed partial class CatalogService
         MosaicSort sort = MosaicSort.Name) =>
         _db.ReadAsync(conn =>
         {
-            var match = ToFtsQuery(query);
+            // Alias tokens OR with their ideal name so rewrite-on-assign rows still match.
+            var match = ToFtsQuery(conn, query);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = SelectAssetSql + $"""
                  WHERE RowId IN (SELECT rowid FROM AssetFts WHERE AssetFts MATCH $q)
@@ -127,7 +128,7 @@ public sealed partial class CatalogService
         return names;
     }
 
-    private static string ToFtsQuery(string query)
+    private static List<string> TokenizeSearch(string query)
     {
         var parts = new List<string>();
         var current = new System.Text.StringBuilder();
@@ -149,15 +150,71 @@ public sealed partial class CatalogService
             parts.Add(current.ToString());
         }
 
+        return parts;
+    }
+
+    private static string FtsPrefixTerm(string token)
+    {
+        var clean = token.Replace("\"", "");
+        return string.IsNullOrWhiteSpace(clean) ? "\"\"" : $"{clean}*";
+    }
+
+    /// <summary>
+    /// Build an FTS MATCH expression. Tokens that are alias tag names OR with their
+    /// ideal name so assets that only store the rewritten ideal still match.
+    /// </summary>
+    private static string ToFtsQuery(SqliteConnection conn, string query)
+    {
+        var parts = TokenizeSearch(query);
         if (parts.Count == 0)
         {
             return "\"\"";
         }
 
-        return string.Join(" AND ", parts.Select(p =>
+        var aliasMap = LoadAliasMap(conn);
+        Dictionary<string, string>? nameById = null;
+        Dictionary<string, string>? idByName = null;
+        if (aliasMap.Count > 0)
         {
-            var clean = p.Replace("\"", "");
-            return string.IsNullOrWhiteSpace(clean) ? "\"\"" : $"{clean}*";
-        }));
+            nameById = new Dictionary<string, string>(StringComparer.Ordinal);
+            idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id, Name FROM Tag";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetString(0);
+                var name = reader.GetString(1);
+                nameById[id] = name;
+                idByName.TryAdd(name, id);
+            }
+        }
+
+        var clauses = new List<string>(parts.Count);
+        foreach (var part in parts)
+        {
+            var term = FtsPrefixTerm(part);
+            if (aliasMap.Count == 0
+                || idByName is null
+                || nameById is null
+                || !idByName.TryGetValue(part, out var tagId))
+            {
+                clauses.Add(term);
+                continue;
+            }
+
+            var idealId = TagAliasResolve.Ideal(tagId, aliasMap);
+            if (string.Equals(idealId, tagId, StringComparison.Ordinal)
+                || !nameById.TryGetValue(idealId, out var idealName)
+                || string.Equals(idealName, part, StringComparison.OrdinalIgnoreCase))
+            {
+                clauses.Add(term);
+                continue;
+            }
+
+            clauses.Add($"({term} OR {FtsPrefixTerm(idealName)})");
+        }
+
+        return string.Join(" AND ", clauses);
     }
 }

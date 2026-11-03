@@ -109,6 +109,7 @@ public sealed partial class CatalogService
                 SELECT
                     (SELECT COUNT(*) FROM TagMembership WHERE ChildId = $id OR ParentId = $id)
                   + (SELECT COUNT(*) FROM TagImplication WHERE TagId = $id OR ImpliedTagId = $id)
+                  + (SELECT COUNT(*) FROM TagAlias WHERE AliasTagId = $id OR IdealTagId = $id)
                 """;
             cmd.Parameters.AddWithValue("$id", tagId);
             return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
@@ -185,6 +186,21 @@ public sealed partial class CatalogService
             }
         }
 
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT AliasTagId, IdealTagId FROM TagAlias WHERE AliasTagId = $id OR IdealTagId = $id";
+            cmd.Parameters.AddWithValue("$id", tagId);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                snapshot.Aliases.Add(new TagAlias
+                {
+                    AliasTagId = reader.GetString(0),
+                    IdealTagId = reader.GetString(1)
+                });
+            }
+        }
+
         return snapshot;
     }
 
@@ -231,6 +247,15 @@ public sealed partial class CatalogService
             cmd.CommandText = "INSERT OR IGNORE INTO TagImplication (TagId, ImpliedTagId) VALUES ($t, $i)";
             cmd.Parameters.AddWithValue("$t", edge.TagId);
             cmd.Parameters.AddWithValue("$i", edge.ImpliedTagId);
+            cmd.ExecuteNonQuery();
+        }
+
+        foreach (var edge in snapshot.Aliases)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT OR IGNORE INTO TagAlias (AliasTagId, IdealTagId) VALUES ($a, $i)";
+            cmd.Parameters.AddWithValue("$a", edge.AliasTagId);
+            cmd.Parameters.AddWithValue("$i", edge.IdealTagId);
             cmd.ExecuteNonQuery();
         }
 

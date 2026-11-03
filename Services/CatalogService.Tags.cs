@@ -20,6 +20,29 @@ public sealed partial class CatalogService
     public Task<IReadOnlyList<TagImplication>> GetImplicationsAsync() =>
         _db.ReadAsync(conn => (IReadOnlyList<TagImplication>)LoadImplications(conn));
 
+    public Task<IReadOnlyList<TagAlias>> GetAliasesAsync() =>
+        _db.ReadAsync(conn => (IReadOnlyList<TagAlias>)LoadAliases(conn));
+
+    /// <summary>
+    /// Maps <paramref name="aliasTagId"/> → <paramref name="idealTagId"/> (Hydrus sibling).
+    /// n→1 only; rejects self and cycles. Returns false when the edge is refused.
+    /// </summary>
+    public Task<bool> AddAliasAsync(string aliasTagId, string idealTagId) =>
+        _db.WriteAsync(conn => TryAddAlias(conn, aliasTagId, idealTagId));
+
+    public Task RemoveAliasAsync(string aliasTagId) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a";
+            cmd.Parameters.AddWithValue("$a", aliasTagId);
+            cmd.ExecuteNonQuery();
+        });
+
+    /// <summary>Resolve alias → ideal transitively (before implications).</summary>
+    public Task<string> ResolveIdealTagIdAsync(string tagId) =>
+        _db.ReadAsync(conn => ResolveIdealTagId(conn, tagId));
+
     /// <summary>Export the global tag catalog to portable JSON (Sacb0y).</summary>
     public Task<string> ExportTagsJsonAsync() =>
         _db.ReadAsync(conn =>
@@ -232,9 +255,16 @@ public sealed partial class CatalogService
     public Task<Tag> CreateTagAsync(string name, int priority = 0) =>
         _db.WriteAsync(conn => InsertTag(conn, name, priority));
 
-    /// <summary>Returns the existing tag with this name (any case), or creates it, in one write.</summary>
+    /// <summary>
+    /// Returns the existing tag with this name (any case), or creates it, in one write.
+    /// Alias names resolve to their ideal (v1 rewrite-on-assign / create path).
+    /// </summary>
     public Task<Tag> GetOrCreateTagAsync(string name) =>
-        _db.WriteAsync(conn => FindTagByName(conn, name) ?? InsertTag(conn, name, 0));
+        _db.WriteAsync(conn =>
+        {
+            var tag = FindTagByName(conn, name) ?? InsertTag(conn, name, 0);
+            return ResolveIdealTag(conn, tag);
+        });
 
     public Task<Tag> CreateChildTagAsync(string parentId, string name, int priority = 0) =>
         _db.WriteAsync(conn =>
@@ -262,7 +292,8 @@ public sealed partial class CatalogService
                 }
                 else
                 {
-                    tag = existing;
+                    // Existing alias names resolve to ideal before membership / return.
+                    tag = ResolveIdealTag(conn, existing);
                     existed++;
                 }
 
@@ -524,6 +555,82 @@ public sealed partial class CatalogService
         }
 
         return list;
+    }
+
+    private static List<TagAlias> LoadAliases(SqliteConnection conn, SqliteTransaction? tx = null)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT AliasTagId, IdealTagId FROM TagAlias";
+        var list = new List<TagAlias>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new TagAlias { AliasTagId = reader.GetString(0), IdealTagId = reader.GetString(1) });
+        }
+
+        return list;
+    }
+
+    private static Dictionary<string, string> LoadAliasMap(SqliteConnection conn, SqliteTransaction? tx = null)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var edge in LoadAliases(conn, tx))
+        {
+            map[edge.AliasTagId] = edge.IdealTagId;
+        }
+
+        return map;
+    }
+
+    /// <summary>Alias → ideal transitively. Call before implication fan-out.</summary>
+    private static string ResolveIdealTagId(
+        SqliteConnection conn,
+        string tagId,
+        SqliteTransaction? tx = null) =>
+        TagAliasResolve.Ideal(tagId, LoadAliasMap(conn, tx));
+
+    private static Tag ResolveIdealTag(SqliteConnection conn, Tag tag, SqliteTransaction? tx = null)
+    {
+        var idealId = ResolveIdealTagId(conn, tag.Id, tx);
+        if (string.Equals(idealId, tag.Id, StringComparison.Ordinal))
+        {
+            return tag;
+        }
+
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag WHERE Id = $id";
+        cmd.Parameters.AddWithValue("$id", idealId);
+        var list = ReadTags(cmd);
+        return list.Count > 0 ? list[0] : tag;
+    }
+
+    private static bool TryAddAlias(
+        SqliteConnection conn,
+        string aliasTagId,
+        string idealTagId,
+        SqliteTransaction? tx = null)
+    {
+        var map = LoadAliasMap(conn, tx);
+        if (!TagAliasResolve.CanAdd(aliasTagId, idealTagId, map))
+        {
+            return false;
+        }
+
+        if (map.TryGetValue(aliasTagId, out var existing)
+            && string.Equals(existing, idealTagId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "INSERT INTO TagAlias (AliasTagId, IdealTagId) VALUES ($a, $i)";
+        cmd.Parameters.AddWithValue("$a", aliasTagId);
+        cmd.Parameters.AddWithValue("$i", idealTagId);
+        cmd.ExecuteNonQuery();
+        return true;
     }
 
     private static bool TryAddImplication(

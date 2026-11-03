@@ -197,10 +197,12 @@ public sealed partial class CatalogService
     public Task AssignTagAsync(string assetId, string tagId, TagSource source) =>
         _db.WriteAsync(conn =>
         {
-            UpsertAssetTag(conn, assetId, tagId, source);
-            foreach (var impliedId in TransitiveImplied(conn, tagId))
+            // v1: rewrite alias → ideal on assign (before implications).
+            var idealId = ResolveIdealTagId(conn, tagId);
+            UpsertAssetTag(conn, assetId, idealId, source);
+            foreach (var impliedId in TransitiveImplied(conn, idealId))
             {
-                UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied);
+                UpsertAssetTag(conn, assetId, ResolveIdealTagId(conn, impliedId), TagSource.Implied);
             }
 
             RefreshFts(conn, assetId);
@@ -214,7 +216,8 @@ public sealed partial class CatalogService
             // Direct (Manual/Prompt/AI) assignments are never stripped just because an
             // implying tag went away. We do not re-apply implications here, so removing
             // an Implied tag while its source tag stays assigned keeps that removal.
-            DeleteAssetTag(conn, assetId, tagId);
+            // Alias ids resolve to ideal so remove matches rewrite-on-assign storage.
+            DeleteAssetTag(conn, assetId, ResolveIdealTagId(conn, tagId));
             SweepUnjustifiedImplied(conn, assetId);
             RefreshFts(conn, assetId);
         });
@@ -439,8 +442,9 @@ public sealed partial class CatalogService
             var changed = false;
             foreach (var tag in assigned)
             {
-                foreach (var impliedId in TransitiveImplied(conn, tag.TagId, tx))
+                foreach (var rawImplied in TransitiveImplied(conn, tag.TagId, tx))
                 {
+                    var impliedId = ResolveIdealTagId(conn, rawImplied, tx);
                     if (!have.Add(impliedId))
                     {
                         continue;
@@ -494,9 +498,9 @@ public sealed partial class CatalogService
         var justified = new HashSet<string>(StringComparer.Ordinal);
         foreach (var assigned in remaining.Where(t => t.Source != TagSource.Implied))
         {
-            foreach (var impliedId in TransitiveImplied(conn, assigned.TagId, tx))
+            foreach (var rawImplied in TransitiveImplied(conn, assigned.TagId, tx))
             {
-                justified.Add(impliedId);
+                justified.Add(ResolveIdealTagId(conn, rawImplied, tx));
             }
         }
 
