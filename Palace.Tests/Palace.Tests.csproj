@@ -163,7 +163,10 @@
     <Compile Include="..\Services\CatalogService.TagAssignments.cs" Link="CatalogService.TagAssignments.cs" />
     <Compile Include="..\Services\CatalogService.Tags.cs" Link="CatalogService.Tags.cs" />
     <Compile Include="..\Services\FileOpService.cs" Link="FileOpService.cs" />
-    <!-- FileOpService.Tags.cs stays out (WinUI assign UI). CatalogService.Tags uses TagInk (WinUI-free). -->
+    <!-- FileOpService.Tags.cs is WinUI-free; linked so alias→ideal journal tests can call AssignTagAsync. -->
+    <Compile Include="..\Services\FileOpService.Tags.cs" Link="FileOpService.Tags.cs" />
+    <Compile Include="..\Helpers\TagFtsQuery.cs" Link="TagFtsQuery.cs" />
+
     <Compile Include="..\Helpers\FolderNames.cs" Link="FolderNames.cs" />
     <Compile Include="..\Helpers\DestinationRecents.cs" Link="DestinationRecents.cs" />
     <Compile Include="..\Helpers\MosaicMove.cs" Link="MosaicMove.cs" />

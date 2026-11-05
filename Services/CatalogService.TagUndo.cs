@@ -262,6 +262,8 @@ public sealed partial class CatalogService
         var touched = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in snapshot.Assignments)
         {
+            // Snapshot restore rewrites alias ids to ideal (same as assign).
+            var tagId = ResolveIdealTagId(conn, row.TagId);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO AssetTag (AssetId, TagId, Source)
@@ -273,7 +275,7 @@ public sealed partial class CatalogService
                     END
                 """;
             cmd.Parameters.AddWithValue("$asset", row.AssetId);
-            cmd.Parameters.AddWithValue("$tag", row.TagId);
+            cmd.Parameters.AddWithValue("$tag", tagId);
             cmd.Parameters.AddWithValue("$source", row.Source.ToString());
             cmd.ExecuteNonQuery();
             touched.Add(row.AssetId);
