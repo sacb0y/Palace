@@ -20,6 +20,8 @@ public sealed class PalaceDb : IDisposable
     public string? ImpliedPurgeSkipReason { get; private set; }
 
     private const int ImpliedPurgeBackupKeep = 3;
+    private const string ImpliedPurgeBackoffFileName = "implied-purge-backoff.txt";
+    private static readonly TimeSpan ImpliedPurgeBackoff = TimeSpan.FromDays(1);
 
     public PalaceDb(string dbPath)
     {
@@ -255,11 +257,6 @@ public sealed class PalaceDb : IDisposable
                 CreatedAt TEXT
             );
 
-            CREATE TABLE IF NOT EXISTS CatalogMeta (
-                Key TEXT PRIMARY KEY,
-                Value TEXT NOT NULL
-            );
-
             CREATE VIRTUAL TABLE IF NOT EXISTS AssetFts USING fts5(
                 FileName,
                 Path,
@@ -293,6 +290,7 @@ public sealed class PalaceDb : IDisposable
         EnsureColumn("Asset", "Undecodable", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Asset", "DateTaken", "TEXT");
         EnsureColumn("Collection", "Icon", "TEXT");
+        DropLegacyCatalogMeta();
         EnsureAssetFtsContentlessDelete();
         EnsureUniqueTagNames();
         MigratePurgeMaterializedImplied();
@@ -300,10 +298,19 @@ public sealed class PalaceDb : IDisposable
         EnsureDefaultProject();
     }
 
+    /// <summary>T7: drop unused one-shot purge flag table from 0.3.20.</summary>
+    private void DropLegacyCatalogMeta()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "DROP TABLE IF EXISTS CatalogMeta";
+        cmd.ExecuteNonQuery();
+    }
+
     /// <summary>
-    /// T5/T6: each launch, if any <c>Source='Implied'</c> rows remain (e.g. after a
+    /// T5–T7: each launch, if any <c>Source='Implied'</c> rows remain (e.g. after a
     /// downgrade→re-upgrade), backup+verify then delete them and refresh FTS in one
-    /// transaction. Backup failures skip the purge, log why, and retry next launch.
+    /// transaction. Backup failures skip and retry next launch. After a delete/FTS
+    /// failure, back off for a day so backups do not pile up.
     /// </summary>
     private void MigratePurgeMaterializedImplied()
     {
@@ -324,6 +331,16 @@ public sealed class PalaceDb : IDisposable
 
         if (impliedCount == 0)
         {
+            ClearImpliedPurgeBackoff();
+            return;
+        }
+
+        if (IsImpliedPurgeBackedOff(out var until))
+        {
+            ImpliedPurgeSkipReason = $"FTS/delete backoff until {until:o}";
+            ErrorReporter.LogOnly(
+                "Implied purge skipped (backoff)",
+                new InvalidOperationException(ImpliedPurgeSkipReason));
             return;
         }
 
@@ -379,12 +396,72 @@ public sealed class PalaceDb : IDisposable
 
                 tx.Commit();
             }
+
+            ClearImpliedPurgeBackoff();
         }
         catch (Exception ex)
         {
             ImpliedPurgeSkipReason = ex.Message;
             ImpliedRowsPurged = 0;
+            MarkImpliedPurgeBackoff();
             ErrorReporter.LogOnly("Implied purge skipped (delete/FTS)", ex);
+        }
+    }
+
+    private string ImpliedPurgeBackoffPath =>
+        Path.Combine(Path.GetDirectoryName(_dbPath) ?? ".", ImpliedPurgeBackoffFileName);
+
+    private bool IsImpliedPurgeBackedOff(out DateTimeOffset until)
+    {
+        until = default;
+        try
+        {
+            var path = ImpliedPurgeBackoffPath;
+            if (!File.Exists(path))
+            {
+                return false;
+            }
+
+            var text = File.ReadAllText(path).Trim();
+            if (!DateTimeOffset.TryParse(text, null, System.Globalization.DateTimeStyles.RoundtripKind, out var when))
+            {
+                return false;
+            }
+
+            until = when + ImpliedPurgeBackoff;
+            return DateTimeOffset.UtcNow < until;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void MarkImpliedPurgeBackoff()
+    {
+        try
+        {
+            File.WriteAllText(ImpliedPurgeBackoffPath, DateTimeOffset.UtcNow.ToString("o"));
+        }
+        catch
+        {
+            // best-effort
+        }
+    }
+
+    private void ClearImpliedPurgeBackoff()
+    {
+        try
+        {
+            var path = ImpliedPurgeBackoffPath;
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // best-effort
         }
     }
 
