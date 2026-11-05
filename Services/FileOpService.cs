@@ -1243,10 +1243,18 @@ public sealed partial class FileOpService
 
                 try
                 {
+                    // Resolve in case an older journal still stored an alias id.
+                    var assignIdeal = await _catalog.ResolveIdealTagIdAsync(item.OldPath).ConfigureAwait(false);
+                    var impliedIdeals = new List<string>();
+                    foreach (var id in TagAssignUndo.Decode(item.NewSourceId))
+                    {
+                        impliedIdeals.Add(await _catalog.ResolveIdealTagIdAsync(id).ConfigureAwait(false));
+                    }
+
                     await _catalog.RemoveTagForUndoAsync(
                         item.AssetId,
-                        TagAssignUndo.TouchesAssignedTag(item.NewSourceId) ? item.OldPath : null,
-                        TagAssignUndo.Decode(item.NewSourceId)).ConfigureAwait(false);
+                        TagAssignUndo.TouchesAssignedTag(item.NewSourceId) ? assignIdeal : null,
+                        impliedIdeals).ConfigureAwait(false);
                     return null;
                 }
                 catch (Exception ex)
@@ -1262,17 +1270,19 @@ public sealed partial class FileOpService
 
                 try
                 {
+                    var removeIdeal = await _catalog.ResolveIdealTagIdAsync(item.OldPath).ConfigureAwait(false);
                     if (TagAssignUndo.TouchesAssignedTag(item.NewSourceId))
                     {
                         var source = Enum.TryParse<TagSource>(item.OldSourceId, out var parsed)
                             ? parsed
                             : TagSource.Manual;
-                        await _catalog.AssignTagForUndoAsync(item.AssetId, item.OldPath, source).ConfigureAwait(false);
+                        await _catalog.AssignTagForUndoAsync(item.AssetId, removeIdeal, source).ConfigureAwait(false);
                     }
 
                     foreach (var impliedId in TagAssignUndo.Decode(item.NewSourceId))
                     {
-                        await _catalog.AssignTagForUndoAsync(item.AssetId, impliedId, TagSource.Implied).ConfigureAwait(false);
+                        var idealImplied = await _catalog.ResolveIdealTagIdAsync(impliedId).ConfigureAwait(false);
+                        await _catalog.AssignTagForUndoAsync(item.AssetId, idealImplied, TagSource.Implied).ConfigureAwait(false);
                     }
 
                     return null;

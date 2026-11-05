@@ -200,9 +200,9 @@ public sealed partial class CatalogService
             // v1: rewrite alias → ideal on assign (before implications).
             var idealId = ResolveIdealTagId(conn, tagId);
             UpsertAssetTag(conn, assetId, idealId, source);
-            foreach (var impliedId in TransitiveImplied(conn, idealId))
+            foreach (var impliedId in CollectImpliedIdeals(conn, idealId))
             {
-                UpsertAssetTag(conn, assetId, ResolveIdealTagId(conn, impliedId), TagSource.Implied);
+                UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied);
             }
 
             RefreshFts(conn, assetId);
@@ -442,9 +442,8 @@ public sealed partial class CatalogService
             var changed = false;
             foreach (var tag in assigned)
             {
-                foreach (var rawImplied in TransitiveImplied(conn, tag.TagId, tx))
+                foreach (var impliedId in CollectImpliedIdeals(conn, tag.TagId, tx))
                 {
-                    var impliedId = ResolveIdealTagId(conn, rawImplied, tx);
                     if (!have.Add(impliedId))
                     {
                         continue;
@@ -498,9 +497,9 @@ public sealed partial class CatalogService
         var justified = new HashSet<string>(StringComparer.Ordinal);
         foreach (var assigned in remaining.Where(t => t.Source != TagSource.Implied))
         {
-            foreach (var rawImplied in TransitiveImplied(conn, assigned.TagId, tx))
+            foreach (var impliedId in CollectImpliedIdeals(conn, assigned.TagId, tx))
             {
-                justified.Add(ResolveIdealTagId(conn, rawImplied, tx));
+                justified.Add(impliedId);
             }
         }
 
@@ -508,5 +507,43 @@ public sealed partial class CatalogService
         {
             DeleteAssetTag(conn, assetId, orphan.TagId, tx);
         }
+    }
+
+    /// <summary>
+    /// Implication closure from <paramref name="tagId"/>, resolving every hop through
+    /// aliases and continuing from each ideal so alias-as-implied still fans out the
+    /// ideal's own implications (aliases before implications).
+    /// </summary>
+    private static List<string> CollectImpliedIdeals(
+        SqliteConnection conn,
+        string tagId,
+        SqliteTransaction? tx = null)
+    {
+        var map = LoadAliasMap(conn, tx);
+        var found = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var stack = new Stack<string>();
+        stack.Push(tagId);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            foreach (var raw in TransitiveImplied(conn, current, tx))
+            {
+                var ideal = TagAliasResolve.Ideal(raw, map);
+                if (!seen.Add(ideal))
+                {
+                    continue;
+                }
+
+                found.Add(ideal);
+                // Ideal may imply further tags that the alias id never listed.
+                if (!string.Equals(ideal, raw, StringComparison.Ordinal))
+                {
+                    stack.Push(ideal);
+                }
+            }
+        }
+
+        return found;
     }
 }

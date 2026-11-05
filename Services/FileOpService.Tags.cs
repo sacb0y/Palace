@@ -43,6 +43,16 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("Select items first.");
         }
 
+        // Journal the ideal so undo/restore match rewrite-on-assign storage.
+        var ideal = await _catalog.GetIdealTagAsync(tagId).ConfigureAwait(false);
+        if (ideal is null)
+        {
+            return FileOpResult.Fail("That tag is gone.");
+        }
+
+        tagId = ideal.Id;
+        tagName = ideal.Name;
+
         var items = new List<FileOpItem>();
         foreach (var assetId in ids)
         {
@@ -100,6 +110,15 @@ public sealed partial class FileOpService
         {
             return FileOpResult.Fail("Select items first.");
         }
+
+        var ideal = await _catalog.GetIdealTagAsync(tagId).ConfigureAwait(false);
+        if (ideal is null)
+        {
+            return FileOpResult.Fail("That tag is gone.");
+        }
+
+        tagId = ideal.Id;
+        tagName = ideal.Name;
 
         var items = new List<FileOpItem>();
         foreach (var (assetId, source) in list)

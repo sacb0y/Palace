@@ -26,9 +26,32 @@ public sealed partial class CatalogService
     /// <summary>
     /// Maps <paramref name="aliasTagId"/> → <paramref name="idealTagId"/> (Hydrus sibling).
     /// n→1 only; rejects self and cycles. Returns false when the edge is refused.
+    /// On success, migrates existing <c>AssetTag</c> rows from alias→ideal (deduped) in one transaction.
     /// </summary>
     public Task<bool> AddAliasAsync(string aliasTagId, string idealTagId) =>
-        _db.WriteAsync(conn => TryAddAlias(conn, aliasTagId, idealTagId));
+        _db.WriteAsync(conn =>
+        {
+            List<string> touched;
+            using (var tx = conn.BeginTransaction())
+            {
+                if (!TryAddAlias(conn, aliasTagId, idealTagId, tx, out var inserted))
+                {
+                    return false;
+                }
+
+                touched = inserted
+                    ? MigrateAssetTagsAliasToIdeal(conn, aliasTagId, idealTagId, tx)
+                    : [];
+                tx.Commit();
+            }
+
+            foreach (var assetId in touched)
+            {
+                RefreshFts(conn, assetId);
+            }
+
+            return true;
+        });
 
     public Task RemoveAliasAsync(string aliasTagId) =>
         _db.WriteAsync(conn =>
@@ -42,6 +65,17 @@ public sealed partial class CatalogService
     /// <summary>Resolve alias → ideal transitively (before implications).</summary>
     public Task<string> ResolveIdealTagIdAsync(string tagId) =>
         _db.ReadAsync(conn => ResolveIdealTagId(conn, tagId));
+
+    /// <summary>Tag after alias→ideal resolve, or null when <paramref name="tagId"/> is unknown.</summary>
+    public Task<Tag?> GetIdealTagAsync(string tagId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$id", tagId);
+            var list = ReadTags(cmd);
+            return list.Count == 0 ? null : ResolveIdealTag(conn, list[0]);
+        });
 
     /// <summary>Export the global tag catalog to portable JSON (Sacb0y).</summary>
     public Task<string> ExportTagsJsonAsync() =>
@@ -606,12 +640,18 @@ public sealed partial class CatalogService
         return list.Count > 0 ? list[0] : tag;
     }
 
+    /// <summary>
+    /// Inserts the alias edge when allowed. <paramref name="inserted"/> is false for an
+    /// idempotent same-edge no-op (no AssetTag migration needed).
+    /// </summary>
     private static bool TryAddAlias(
         SqliteConnection conn,
         string aliasTagId,
         string idealTagId,
-        SqliteTransaction? tx = null)
+        SqliteTransaction? tx,
+        out bool inserted)
     {
+        inserted = false;
         var map = LoadAliasMap(conn, tx);
         if (!TagAliasResolve.CanAdd(aliasTagId, idealTagId, map))
         {
@@ -630,7 +670,77 @@ public sealed partial class CatalogService
         cmd.Parameters.AddWithValue("$a", aliasTagId);
         cmd.Parameters.AddWithValue("$i", idealTagId);
         cmd.ExecuteNonQuery();
+        inserted = true;
         return true;
+    }
+
+    /// <summary>
+    /// Rewrite AssetTag rows from alias→ideal in one pass: applied sources win over Implied;
+    /// duplicate alias rows are dropped. Returns touched asset ids (FTS refresh after commit).
+    /// </summary>
+    private static List<string> MigrateAssetTagsAliasToIdeal(
+        SqliteConnection conn,
+        string aliasTagId,
+        string idealTagId,
+        SqliteTransaction tx)
+    {
+        var touched = new List<string>();
+        using (var read = conn.CreateCommand())
+        {
+            read.Transaction = tx;
+            read.CommandText = "SELECT DISTINCT AssetId FROM AssetTag WHERE TagId = $alias";
+            read.Parameters.AddWithValue("$alias", aliasTagId);
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                touched.Add(reader.GetString(0));
+            }
+        }
+
+        if (touched.Count == 0)
+        {
+            return touched;
+        }
+
+        // Ideal was Implied but alias was applied → keep applied Source on ideal.
+        using (var upgrade = conn.CreateCommand())
+        {
+            upgrade.Transaction = tx;
+            upgrade.CommandText = """
+                UPDATE AssetTag SET Source = (
+                    SELECT l.Source FROM AssetTag l
+                    WHERE l.AssetId = AssetTag.AssetId AND l.TagId = $alias)
+                WHERE TagId = $ideal AND Source = 'Implied'
+                  AND EXISTS (
+                    SELECT 1 FROM AssetTag l
+                    WHERE l.AssetId = AssetTag.AssetId AND l.TagId = $alias AND l.Source <> 'Implied')
+                """;
+            upgrade.Parameters.AddWithValue("$alias", aliasTagId);
+            upgrade.Parameters.AddWithValue("$ideal", idealTagId);
+            upgrade.ExecuteNonQuery();
+        }
+
+        using (var insert = conn.CreateCommand())
+        {
+            insert.Transaction = tx;
+            insert.CommandText = """
+                INSERT OR IGNORE INTO AssetTag (AssetId, TagId, Source)
+                SELECT AssetId, $ideal, Source FROM AssetTag WHERE TagId = $alias
+                """;
+            insert.Parameters.AddWithValue("$alias", aliasTagId);
+            insert.Parameters.AddWithValue("$ideal", idealTagId);
+            insert.ExecuteNonQuery();
+        }
+
+        using (var delete = conn.CreateCommand())
+        {
+            delete.Transaction = tx;
+            delete.CommandText = "DELETE FROM AssetTag WHERE TagId = $alias";
+            delete.Parameters.AddWithValue("$alias", aliasTagId);
+            delete.ExecuteNonQuery();
+        }
+
+        return touched;
     }
 
     private static bool TryAddImplication(
