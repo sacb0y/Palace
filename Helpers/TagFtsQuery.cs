@@ -2,7 +2,7 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// FTS5 MATCH helpers: quote/escape terms so <c>-</c> <c>:</c> <c>+</c> <c>(</c> and
-/// keywords like <c>NOT</c> stay literal, and expand multi-word alias names.
+/// keywords like <c>NOT</c> stay literal, and expand multi-word alias / implication names.
 /// </summary>
 public static class TagFtsQuery
 {
@@ -42,15 +42,16 @@ public static class TagFtsQuery
     }
 
     /// <summary>
-    /// Build an AND of prefix terms. When a contiguous token span matches an alias
-    /// tag name (via <paramref name="idByName"/>), that span becomes one clause that
-    /// ORs the ideal name so rewrite-on-assign rows still hit.
+    /// Build an AND of prefix terms. When a contiguous token span matches a tag name,
+    /// the clause ORs the ideal (alias) and every tag that implies the matched tag
+    /// (transitive), so applied-only FTS still finds wolf-only assets for <c>canine</c>.
     /// </summary>
     public static string Build(
         string query,
         IReadOnlyDictionary<string, string> aliasToIdeal,
         IReadOnlyDictionary<string, string> idByName,
-        IReadOnlyDictionary<string, string> nameById)
+        IReadOnlyDictionary<string, string> nameById,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? implyingIds = null)
     {
         var parts = Tokenize(query);
         if (parts.Count == 0)
@@ -78,30 +79,97 @@ public static class TagFtsQuery
             }
 
             var (tagId, length, spanText) = match.Value;
-            var term = PrefixTerm(spanText);
-            if (aliasToIdeal.Count == 0)
-            {
-                clauses.Add(term);
-                i += length;
-                continue;
-            }
-
-            var idealId = TagAliasResolve.Ideal(tagId, aliasToIdeal);
-            if (string.Equals(idealId, tagId, StringComparison.Ordinal)
-                || !nameById.TryGetValue(idealId, out var idealName)
-                || string.Equals(idealName, spanText, StringComparison.OrdinalIgnoreCase))
-            {
-                clauses.Add(term);
-            }
-            else
-            {
-                clauses.Add($"({term} OR {PrefixTerm(idealName)})");
-            }
-
+            clauses.Add(BuildExpandedClause(tagId, spanText, aliasToIdeal, nameById, implyingIds));
             i += length;
         }
 
         return string.Join(" AND ", clauses);
+    }
+
+    private static string BuildExpandedClause(
+        string tagId,
+        string spanText,
+        IReadOnlyDictionary<string, string> aliasToIdeal,
+        IReadOnlyDictionary<string, string> nameById,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? implyingIds)
+    {
+        var orTerms = new List<string> { PrefixTerm(spanText) };
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { spanText };
+
+        void AddName(string? name)
+        {
+            if (string.IsNullOrEmpty(name) || !seenNames.Add(name))
+            {
+                return;
+            }
+
+            orTerms.Add(PrefixTerm(name));
+        }
+
+        var idealId = aliasToIdeal.Count == 0
+            ? tagId
+            : TagAliasResolve.Ideal(tagId, aliasToIdeal);
+        if (!string.Equals(idealId, tagId, StringComparison.Ordinal)
+            && nameById.TryGetValue(idealId, out var idealName))
+        {
+            AddName(idealName);
+        }
+
+        if (implyingIds is not null && implyingIds.Count > 0)
+        {
+            foreach (var childId in ImplyingClosure(tagId, implyingIds))
+            {
+                if (nameById.TryGetValue(childId, out var childName))
+                {
+                    AddName(childName);
+                }
+            }
+
+            if (!string.Equals(idealId, tagId, StringComparison.Ordinal))
+            {
+                foreach (var childId in ImplyingClosure(idealId, implyingIds))
+                {
+                    if (nameById.TryGetValue(childId, out var childName))
+                    {
+                        AddName(childName);
+                    }
+                }
+            }
+        }
+
+        return orTerms.Count == 1 ? orTerms[0] : $"({string.Join(" OR ", orTerms)})";
+    }
+
+    /// <summary>
+    /// Tags that imply <paramref name="tagId"/> directly or transitively
+    /// (<c>implyingIds</c> maps ImpliedTagId → TagIds that imply it).
+    /// </summary>
+    public static IEnumerable<string> ImplyingClosure(
+        string tagId,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> implyingIds)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { tagId };
+        var queue = new Queue<string>();
+        queue.Enqueue(tagId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!implyingIds.TryGetValue(current, out var children))
+            {
+                continue;
+            }
+
+            foreach (var child in children)
+            {
+                if (!seen.Add(child))
+                {
+                    continue;
+                }
+
+                yield return child;
+                queue.Enqueue(child);
+            }
+        }
     }
 
     /// <summary>

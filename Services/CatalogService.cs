@@ -13,14 +13,24 @@ namespace Palace.Services;
 public sealed partial class CatalogService
 {
     private readonly PalaceDb _db;
+    private readonly object _graphCacheLock = new();
     private Dictionary<string, string>? _aliasMapCache;
+    /// <summary>ImpliedTagId → tag ids that imply it (for FTS parent→child expand).</summary>
+    private Dictionary<string, List<string>>? _implyingIdsCache;
 
     public CatalogService(PalaceDb db)
     {
         _db = db;
     }
 
-    private void InvalidateAliasMapCache() => _aliasMapCache = null;
+    private void InvalidateGraphCaches()
+    {
+        lock (_graphCacheLock)
+        {
+            _aliasMapCache = null;
+            _implyingIdsCache = null;
+        }
+    }
 
     public Task<IReadOnlyList<Project>> GetProjectsAsync() =>
         _db.ReadAsync(conn =>

@@ -15,6 +15,12 @@ public sealed class PalaceDb : IDisposable
     /// <summary>How many <c>Source=Implied</c> rows the T5 purge removed (0 when already clean).</summary>
     public int ImpliedRowsPurged { get; private set; }
 
+    /// <summary>Set when backup/verify failed and purge was skipped (retry next launch).</summary>
+    public string? ImpliedPurgeSkipReason { get; private set; }
+
+    internal const string ImpliedPurgeMetaKey = "ImpliedPurgeV1";
+    private const int ImpliedPurgeBackupKeep = 3;
+
     public PalaceDb(string dbPath)
     {
         _dbPath = dbPath;
@@ -249,6 +255,11 @@ public sealed class PalaceDb : IDisposable
                 CreatedAt TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS CatalogMeta (
+                Key TEXT PRIMARY KEY,
+                Value TEXT NOT NULL
+            );
+
             CREATE VIRTUAL TABLE IF NOT EXISTS AssetFts USING fts5(
                 FileName,
                 Path,
@@ -290,57 +301,130 @@ public sealed class PalaceDb : IDisposable
     }
 
     /// <summary>
-    /// T5: backup, then delete only <c>AssetTag.Source='Implied'</c> in one transaction and
-    /// refresh FTS so implied tokens leave the index. Applied tags are never touched.
+    /// T5: one-shot gate; backup+verify; then delete only <c>Source='Implied'</c> and refresh FTS
+    /// in the same transaction. Backup failures skip the purge and retry next launch.
     /// </summary>
     private void MigratePurgeMaterializedImplied()
     {
-        long count;
-        using (var probe = _connection.CreateCommand())
-        {
-            probe.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE Source = 'Implied'";
-            count = Convert.ToInt64(probe.ExecuteScalar());
-        }
-
-        if (count == 0)
+        EnsureCatalogMeta();
+        if (string.Equals(GetCatalogMeta(ImpliedPurgeMetaKey), "1", StringComparison.Ordinal))
         {
             return;
         }
 
-        var root = Path.GetDirectoryName(_dbPath) ?? ".";
-        var backupDir = Path.Combine(root, "backups", $"pre-t5-implied-{DateTime.UtcNow.Ticks}");
-        Directory.CreateDirectory(backupDir);
-        BackupCatalogCopy(Path.Combine(backupDir, "palace.db"));
-        ImpliedPurgeBackupDir = backupDir;
-
-        var touched = new List<string>();
-        using (var tx = _connection.BeginTransaction())
+        long impliedCount;
+        long assetTagCount;
+        using (var probe = _connection.CreateCommand())
         {
-            using (var read = _connection.CreateCommand())
+            probe.CommandText = """
+                SELECT
+                    (SELECT COUNT(*) FROM AssetTag WHERE Source = 'Implied'),
+                    (SELECT COUNT(*) FROM AssetTag)
+                """;
+            using var reader = probe.ExecuteReader();
+            reader.Read();
+            impliedCount = reader.GetInt64(0);
+            assetTagCount = reader.GetInt64(1);
+        }
+
+        if (impliedCount == 0)
+        {
+            SetCatalogMeta(ImpliedPurgeMetaKey, "1");
+            return;
+        }
+
+        try
+        {
+            var root = Path.GetDirectoryName(_dbPath) ?? ".";
+            var backupsRoot = Path.Combine(root, "backups");
+            Directory.CreateDirectory(backupsRoot);
+            var backupDir = Path.Combine(backupsRoot, $"pre-t5-implied-{DateTime.UtcNow.Ticks}");
+            Directory.CreateDirectory(backupDir);
+            var backupDb = Path.Combine(backupDir, "palace.db");
+            BackupCatalogCopy(backupDb);
+            VerifyCatalogBackup(backupDb, assetTagCount);
+            ImpliedPurgeBackupDir = backupDir;
+            PruneImpliedPurgeBackups(backupsRoot);
+        }
+        catch (Exception ex)
+        {
+            // Disk full, locked/busy, refuse-to-overwrite, dir create, verify mismatch — skip purge.
+            ImpliedPurgeSkipReason = ex.Message;
+            ImpliedPurgeBackupDir = null;
+            return;
+        }
+
+        try
+        {
+            var touched = new List<string>();
+            using (var tx = _connection.BeginTransaction())
             {
-                read.Transaction = tx;
-                read.CommandText = "SELECT DISTINCT AssetId FROM AssetTag WHERE Source = 'Implied'";
-                using var reader = read.ExecuteReader();
-                while (reader.Read())
+                using (var read = _connection.CreateCommand())
                 {
-                    touched.Add(reader.GetString(0));
+                    read.Transaction = tx;
+                    read.CommandText = "SELECT DISTINCT AssetId FROM AssetTag WHERE Source = 'Implied'";
+                    using var reader = read.ExecuteReader();
+                    while (reader.Read())
+                    {
+                        touched.Add(reader.GetString(0));
+                    }
                 }
+
+                using (var del = _connection.CreateCommand())
+                {
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM AssetTag WHERE Source = 'Implied'";
+                    ImpliedRowsPurged = del.ExecuteNonQuery();
+                }
+
+                foreach (var assetId in touched)
+                {
+                    RefreshAssetFtsTags(assetId, tx);
+                }
+
+                tx.Commit();
             }
 
-            using (var del = _connection.CreateCommand())
-            {
-                del.Transaction = tx;
-                del.CommandText = "DELETE FROM AssetTag WHERE Source = 'Implied'";
-                ImpliedRowsPurged = del.ExecuteNonQuery();
-            }
-
-            tx.Commit();
+            SetCatalogMeta(ImpliedPurgeMetaKey, "1");
         }
-
-        foreach (var assetId in touched)
+        catch (Exception ex)
         {
-            RefreshAssetFtsTags(assetId);
+            ImpliedPurgeSkipReason = ex.Message;
+            ImpliedRowsPurged = 0;
+            // Leave gate unset so the next launch retries.
         }
+    }
+
+    private void EnsureCatalogMeta()
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS CatalogMeta (
+                Key TEXT PRIMARY KEY,
+                Value TEXT NOT NULL
+            );
+            """;
+        cmd.ExecuteNonQuery();
+    }
+
+    private string? GetCatalogMeta(string key)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT Value FROM CatalogMeta WHERE Key = $k";
+        cmd.Parameters.AddWithValue("$k", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    private void SetCatalogMeta(string key, string value)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO CatalogMeta (Key, Value) VALUES ($k, $v)
+            ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value
+            """;
+        cmd.Parameters.AddWithValue("$k", key);
+        cmd.Parameters.AddWithValue("$v", value);
+        cmd.ExecuteNonQuery();
     }
 
     private void BackupCatalogCopy(string destDb)
@@ -377,8 +461,63 @@ public sealed class PalaceDb : IDisposable
         }
     }
 
+    private static void VerifyCatalogBackup(string backupDb, long expectedAssetTagCount)
+    {
+        using var conn = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = backupDb,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false
+        }.ToString());
+        conn.Open();
+
+        using (var check = conn.CreateCommand())
+        {
+            check.CommandText = "PRAGMA quick_check";
+            var result = Convert.ToString(check.ExecuteScalar()) ?? "";
+            if (!string.Equals(result, "ok", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Backup quick_check failed: {result}");
+            }
+        }
+
+        using (var countCmd = conn.CreateCommand())
+        {
+            countCmd.CommandText = "SELECT COUNT(*) FROM AssetTag";
+            var n = Convert.ToInt64(countCmd.ExecuteScalar());
+            if (n != expectedAssetTagCount)
+            {
+                throw new InvalidOperationException(
+                    $"Backup AssetTag count {n} does not match live count {expectedAssetTagCount}.");
+            }
+        }
+    }
+
+    private static void PruneImpliedPurgeBackups(string backupsRoot)
+    {
+        if (!Directory.Exists(backupsRoot))
+        {
+            return;
+        }
+
+        var dirs = Directory.GetDirectories(backupsRoot, "pre-t5-implied-*")
+            .OrderByDescending(d => d, StringComparer.Ordinal)
+            .ToList();
+        for (var i = ImpliedPurgeBackupKeep; i < dirs.Count; i++)
+        {
+            try
+            {
+                Directory.Delete(dirs[i], recursive: true);
+            }
+            catch
+            {
+                // best-effort prune
+            }
+        }
+    }
+
     /// <summary>Rebuild one asset's contentless FTS row after Implied purge (applied tags only).</summary>
-    private void RefreshAssetFtsTags(string assetId)
+    private void RefreshAssetFtsTags(string assetId, SqliteTransaction? tx = null)
     {
         long rowId;
         string fileName;
@@ -388,6 +527,7 @@ public sealed class PalaceDb : IDisposable
         string? notes;
         using (var cmd = _connection.CreateCommand())
         {
+            cmd.Transaction = tx;
             cmd.CommandText = """
                 SELECT RowId, FileName, Path, Prompt, Model, Notes FROM Asset WHERE Id = $id
                 """;
@@ -409,6 +549,7 @@ public sealed class PalaceDb : IDisposable
         var tagNames = new List<string>();
         using (var tags = _connection.CreateCommand())
         {
+            tags.Transaction = tx;
             tags.CommandText = """
                 SELECT t.Name FROM AssetTag at
                 JOIN Tag t ON t.Id = at.TagId
@@ -429,12 +570,14 @@ public sealed class PalaceDb : IDisposable
         {
             using (var del = _connection.CreateCommand())
             {
+                del.Transaction = tx;
                 del.CommandText = "DELETE FROM AssetFts WHERE rowid = $row";
                 del.Parameters.AddWithValue("$row", rowId);
                 del.ExecuteNonQuery();
             }
 
             using var ins = _connection.CreateCommand();
+            ins.Transaction = tx;
             ins.CommandText = """
                 INSERT INTO AssetFts (rowid, FileName, Path, Tags, Prompt, Model, Notes)
                 VALUES ($row, $name, $path, $tags, $prompt, $model, $notes)

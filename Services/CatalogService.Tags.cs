@@ -32,7 +32,7 @@ public sealed partial class CatalogService
     public Task<AliasAddResult> AddAliasAsync(string aliasTagId, string idealTagId) =>
         _db.WriteAsync(conn =>
         {
-            InvalidateAliasMapCache();
+            InvalidateGraphCaches();
             IReadOnlyList<AssetTag> migrated = [];
             string resolvedIdeal;
             using (var tx = conn.BeginTransaction())
@@ -69,7 +69,7 @@ public sealed partial class CatalogService
     public Task UndoAliasAddAsync(string aliasTagId, string idealTagId, IReadOnlyList<AssetTag> migrated) =>
         _db.WriteAsync(conn =>
         {
-            InvalidateAliasMapCache();
+            InvalidateGraphCaches();
             using (var tx = conn.BeginTransaction())
             {
                 using (var del = conn.CreateCommand())
@@ -110,7 +110,7 @@ public sealed partial class CatalogService
     public Task RemoveAliasAsync(string aliasTagId) =>
         _db.WriteAsync(conn =>
         {
-            InvalidateAliasMapCache();
+            InvalidateGraphCaches();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a";
             cmd.Parameters.AddWithValue("$a", aliasTagId);
@@ -268,7 +268,16 @@ public sealed partial class CatalogService
     /// Returns false when the edge would cycle.
     /// </summary>
     public Task<bool> AddImplicationAsync(string tagId, string impliedTagId) =>
-        _db.WriteAsync(conn => TryAddImplication(conn, tagId, impliedTagId));
+        _db.WriteAsync(conn =>
+        {
+            var ok = TryAddImplication(conn, tagId, impliedTagId);
+            if (ok)
+            {
+                InvalidateGraphCaches();
+            }
+
+            return ok;
+        });
 
     /// <summary>
     /// Removes an implication edge only (T5: no Implied AssetTag sweep).
@@ -281,6 +290,7 @@ public sealed partial class CatalogService
             cmd.Parameters.AddWithValue("$t", tagId);
             cmd.Parameters.AddWithValue("$i", impliedTagId);
             cmd.ExecuteNonQuery();
+            InvalidateGraphCaches();
         });
 
     public Task<Tag?> FindTagByNameAsync(string name) =>
@@ -362,7 +372,7 @@ public sealed partial class CatalogService
     public Task DeleteTagAsync(string id) =>
         _db.WriteAsync(conn =>
         {
-            InvalidateAliasMapCache();
+            InvalidateGraphCaches();
             var assetIds = AssetsHavingAnyTag(conn, [id]);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM Tag WHERE Id = $id";
@@ -609,14 +619,44 @@ public sealed partial class CatalogService
 
     private Dictionary<string, string> LoadAliasMapCached(SqliteConnection conn)
     {
-        if (_aliasMapCache is not null)
+        lock (_graphCacheLock)
         {
-            return _aliasMapCache;
-        }
+            if (_aliasMapCache is not null)
+            {
+                return _aliasMapCache;
+            }
 
-        var map = LoadAliasMap(conn);
-        _aliasMapCache = map;
-        return map;
+            var map = LoadAliasMap(conn);
+            _aliasMapCache = map;
+            return map;
+        }
+    }
+
+    /// <summary>ImpliedTagId → tags that imply it (cached, thread-safe).</summary>
+    private Dictionary<string, List<string>> LoadImplyingIdsCached(SqliteConnection conn)
+    {
+        lock (_graphCacheLock)
+        {
+            if (_implyingIdsCache is not null)
+            {
+                return _implyingIdsCache;
+            }
+
+            var map = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var edge in LoadImplications(conn))
+            {
+                if (!map.TryGetValue(edge.ImpliedTagId, out var list))
+                {
+                    list = [];
+                    map[edge.ImpliedTagId] = list;
+                }
+
+                list.Add(edge.TagId);
+            }
+
+            _implyingIdsCache = map;
+            return map;
+        }
     }
 
     private static Dictionary<string, string> LoadAliasMap(SqliteConnection conn, SqliteTransaction? tx = null)

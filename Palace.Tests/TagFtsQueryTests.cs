@@ -61,4 +61,27 @@ public sealed class TagFtsQueryTests
         var q = TagFtsQuery.Build("foo-bar", alias, idByName, nameById);
         Assert.Equal("(\"foo bar\"* OR \"ideal\"*)", q);
     }
+
+    [Fact]
+    public void Build_ParentTerm_OrsImplyingChildren()
+    {
+        var emptyAlias = new Dictionary<string, string>(StringComparer.Ordinal);
+        var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["canine"] = "p1",
+            ["wolf"] = "c1"
+        };
+        var nameById = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["p1"] = "canine",
+            ["c1"] = "wolf"
+        };
+        var implying = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+        {
+            ["p1"] = new[] { "c1" }
+        };
+
+        var q = TagFtsQuery.Build("canine", emptyAlias, idByName, nameById, implying);
+        Assert.Equal("(\"canine\"* OR \"wolf\"*)", q);
+    }
 }
