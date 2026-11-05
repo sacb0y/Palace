@@ -161,6 +161,7 @@ public static class TagNames
 
         var skipped = MoveEdges(conn, tx, "TagMembership", "ParentId", "ChildId", loser.Id, survivor.Id);
         skipped += MoveEdges(conn, tx, "TagImplication", "TagId", "ImpliedTagId", loser.Id, survivor.Id);
+        skipped += MoveEdges(conn, tx, "TagAlias", "AliasTagId", "IdealTagId", loser.Id, survivor.Id);
 
         using (var fields = conn.CreateCommand())
         {

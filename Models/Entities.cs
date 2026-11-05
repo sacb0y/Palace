@@ -101,6 +101,16 @@ public sealed class TagImplication
     public string ImpliedTagId { get; set; } = "";
 }
 
+/// <summary>
+/// Hydrus-style sibling: <see cref="AliasTagId"/> rewrites to <see cref="IdealTagId"/> (n→1).
+/// Not a <see cref="TagMembership"/> group edge and not <c>TagSiblings</c> (group children).
+/// </summary>
+public sealed class TagAlias
+{
+    public string AliasTagId { get; set; } = "";
+    public string IdealTagId { get; set; } = "";
+}
+
 public sealed class TagPath
 {
     public IReadOnlyList<Tag> Nodes { get; init; } = [];
@@ -337,4 +347,5 @@ public sealed class TagDeleteSnapshot
     public List<AssetTag> Assignments { get; set; } = [];
     public List<TagMembership> Memberships { get; set; } = [];
     public List<TagImplication> Implications { get; set; } = [];
+    public List<TagAlias> Aliases { get; set; } = [];
 }

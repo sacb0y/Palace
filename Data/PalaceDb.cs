@@ -159,6 +159,13 @@ public sealed class PalaceDb : IDisposable
                 FOREIGN KEY (ImpliedTagId) REFERENCES Tag(Id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS TagAlias (
+                AliasTagId TEXT NOT NULL PRIMARY KEY,
+                IdealTagId TEXT NOT NULL,
+                FOREIGN KEY(AliasTagId) REFERENCES Tag(Id) ON DELETE CASCADE,
+                FOREIGN KEY(IdealTagId) REFERENCES Tag(Id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS OrganizeRule (
                 Id TEXT PRIMARY KEY,
                 Name TEXT NOT NULL,
@@ -252,6 +259,7 @@ public sealed class PalaceDb : IDisposable
             CREATE INDEX IF NOT EXISTS IX_TagMembership_Child ON TagMembership(ChildId);
             CREATE INDEX IF NOT EXISTS IX_TagImplication_Tag ON TagImplication(TagId);
             CREATE INDEX IF NOT EXISTS IX_TagImplication_Implied ON TagImplication(ImpliedTagId);
+            CREATE INDEX IF NOT EXISTS IX_TagAlias_Ideal ON TagAlias(IdealTagId);
             CREATE INDEX IF NOT EXISTS IX_SourceFolder_Project ON SourceFolder(ProjectId);
             CREATE INDEX IF NOT EXISTS IX_CloudAccount_Provider ON CloudAccount(Provider);
             CREATE INDEX IF NOT EXISTS IX_FileOpBatch_Project ON FileOpBatch(ProjectId, IsUndone, CreatedAt);
