@@ -47,10 +47,10 @@ public sealed class TagAliasTests : IAsyncLifetime
         var doggy = await _catalog.CreateTagAsync("doggy");
         var dog = await _catalog.CreateTagAsync("dog");
 
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id));
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id), "Same edge is idempotent.");
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok, "Same edge is idempotent.");
         var pup = await _catalog.CreateTagAsync("pup");
-        Assert.False(await _catalog.AddAliasAsync(doggy.Id, pup.Id), "n→1: alias already bound elsewhere.");
+        Assert.False((await _catalog.AddAliasAsync(doggy.Id, pup.Id)).Ok, "n→1: alias already bound elsewhere.");
 
         var aliases = await _catalog.GetAliasesAsync();
         Assert.Contains(aliases, a => a.AliasTagId == doggy.Id && a.IdealTagId == dog.Id);
@@ -65,9 +65,9 @@ public sealed class TagAliasTests : IAsyncLifetime
         var a = await _catalog.CreateTagAsync("alpha");
         var b = await _catalog.CreateTagAsync("beta");
 
-        Assert.False(await _catalog.AddAliasAsync(a.Id, a.Id));
-        Assert.True(await _catalog.AddAliasAsync(b.Id, a.Id));
-        Assert.False(await _catalog.AddAliasAsync(a.Id, b.Id));
+        Assert.False((await _catalog.AddAliasAsync(a.Id, a.Id)).Ok);
+        Assert.True((await _catalog.AddAliasAsync(b.Id, a.Id)).Ok);
+        Assert.False((await _catalog.AddAliasAsync(a.Id, b.Id)).Ok);
     }
 
     [Fact]
@@ -77,8 +77,8 @@ public sealed class TagAliasTests : IAsyncLifetime
         var b = await _catalog.CreateTagAsync("b-name");
         var c = await _catalog.CreateTagAsync("c-name");
 
-        Assert.True(await _catalog.AddAliasAsync(a.Id, b.Id));
-        Assert.True(await _catalog.AddAliasAsync(b.Id, c.Id));
+        Assert.True((await _catalog.AddAliasAsync(a.Id, b.Id)).Ok);
+        Assert.True((await _catalog.AddAliasAsync(b.Id, c.Id)).Ok);
         Assert.Equal(c.Id, await _catalog.ResolveIdealTagIdAsync(a.Id));
     }
 
@@ -88,16 +88,19 @@ public sealed class TagAliasTests : IAsyncLifetime
         var doggy = await _catalog.CreateTagAsync("doggy");
         var dog = await _catalog.CreateTagAsync("dog");
         var animal = await _catalog.CreateTagAsync("animal");
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id));
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
         Assert.True(await _catalog.AddImplicationAsync(dog.Id, animal.Id));
 
         var asset = await AddAssetAsync("pet.png");
         await _catalog.AssignTagAsync(asset.Id, doggy.Id, TagSource.Manual);
 
-        var assigned = await SourcesByTagAsync(asset.Id);
-        Assert.False(assigned.ContainsKey(doggy.Id), "Alias must not be stored on assign (v1 rewrite).");
-        Assert.Equal(TagSource.Manual, assigned[dog.Id]);
-        Assert.Equal(TagSource.Implied, assigned[animal.Id]);
+        var stored = await SourcesByTagAsync(asset.Id);
+        Assert.False(stored.ContainsKey(doggy.Id), "Alias must not be stored on assign (v1 rewrite).");
+        Assert.Equal(TagSource.Manual, stored[dog.Id]);
+        Assert.False(stored.ContainsKey(animal.Id), "T5: implied not materialized.");
+
+        var display = await _catalog.GetAssignedTagsAsync(asset.Id);
+        Assert.Equal(TagSource.Implied, display.Single(t => t.TagId == animal.Id).Source);
     }
 
     [Fact]
@@ -105,7 +108,7 @@ public sealed class TagAliasTests : IAsyncLifetime
     {
         var doggy = await _catalog.CreateTagAsync("doggy");
         var dog = await _catalog.CreateTagAsync("dog");
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id));
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
 
         var resolved = await _catalog.GetOrCreateTagAsync("doggy");
         Assert.Equal(dog.Id, resolved.Id);
@@ -117,7 +120,7 @@ public sealed class TagAliasTests : IAsyncLifetime
     {
         var doggy = await _catalog.CreateTagAsync("doggy");
         var dog = await _catalog.CreateTagAsync("dog");
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id));
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
 
         var asset = await AddAssetAsync("hound.png");
         await _catalog.AssignTagAsync(asset.Id, dog.Id, TagSource.Manual);

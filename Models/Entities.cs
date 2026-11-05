@@ -111,6 +111,16 @@ public sealed class TagAlias
     public string IdealTagId { get; set; } = "";
 }
 
+/// <summary>Result of <c>AddAliasAsync</c>: edge + AssetTag rows rewritten alias→ideal (for undo journal).</summary>
+public sealed class AliasAddResult
+{
+    public bool Ok { get; init; }
+    public string AliasTagId { get; init; } = "";
+    public string IdealTagId { get; init; } = "";
+    /// <summary>Assignments that lived on the alias before migrate (restore these on undo).</summary>
+    public IReadOnlyList<AssetTag> Migrated { get; init; } = [];
+}
+
 public sealed class TagPath
 {
     public IReadOnlyList<Tag> Nodes { get; init; } = [];

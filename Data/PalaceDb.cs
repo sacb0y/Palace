@@ -5,11 +5,19 @@ namespace Palace.Data;
 
 public sealed class PalaceDb : IDisposable
 {
+    private readonly string _dbPath;
     private readonly SqliteConnection _connection;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
+    /// <summary>Folder of the pre-T5 backup that purged materialized Implied rows, when one ran.</summary>
+    public string? ImpliedPurgeBackupDir { get; private set; }
+
+    /// <summary>How many <c>Source=Implied</c> rows the T5 purge removed (0 when already clean).</summary>
+    public int ImpliedRowsPurged { get; private set; }
+
     public PalaceDb(string dbPath)
     {
+        _dbPath = dbPath;
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
         _connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
@@ -276,8 +284,174 @@ public sealed class PalaceDb : IDisposable
         EnsureColumn("Collection", "Icon", "TEXT");
         EnsureAssetFtsContentlessDelete();
         EnsureUniqueTagNames();
+        MigratePurgeMaterializedImplied();
         SeedDefaults();
         EnsureDefaultProject();
+    }
+
+    /// <summary>
+    /// T5: backup, then delete only <c>AssetTag.Source='Implied'</c> in one transaction and
+    /// refresh FTS so implied tokens leave the index. Applied tags are never touched.
+    /// </summary>
+    private void MigratePurgeMaterializedImplied()
+    {
+        long count;
+        using (var probe = _connection.CreateCommand())
+        {
+            probe.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE Source = 'Implied'";
+            count = Convert.ToInt64(probe.ExecuteScalar());
+        }
+
+        if (count == 0)
+        {
+            return;
+        }
+
+        var root = Path.GetDirectoryName(_dbPath) ?? ".";
+        var backupDir = Path.Combine(root, "backups", $"pre-t5-implied-{DateTime.UtcNow.Ticks}");
+        Directory.CreateDirectory(backupDir);
+        BackupCatalogCopy(Path.Combine(backupDir, "palace.db"));
+        ImpliedPurgeBackupDir = backupDir;
+
+        var touched = new List<string>();
+        using (var tx = _connection.BeginTransaction())
+        {
+            using (var read = _connection.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = "SELECT DISTINCT AssetId FROM AssetTag WHERE Source = 'Implied'";
+                using var reader = read.ExecuteReader();
+                while (reader.Read())
+                {
+                    touched.Add(reader.GetString(0));
+                }
+            }
+
+            using (var del = _connection.CreateCommand())
+            {
+                del.Transaction = tx;
+                del.CommandText = "DELETE FROM AssetTag WHERE Source = 'Implied'";
+                ImpliedRowsPurged = del.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+        }
+
+        foreach (var assetId in touched)
+        {
+            RefreshAssetFtsTags(assetId);
+        }
+    }
+
+    private void BackupCatalogCopy(string destDb)
+    {
+        if (File.Exists(destDb))
+        {
+            throw new IOException($"Refusing to overwrite existing catalog at {destDb}.");
+        }
+
+        var tmp = destDb + ".partial";
+        if (File.Exists(tmp))
+        {
+            File.Delete(tmp);
+        }
+
+        try
+        {
+            using (var src = new SqliteConnection(new SqliteConnectionStringBuilder
+                   { DataSource = _dbPath, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString()))
+            using (var dst = new SqliteConnection(new SqliteConnectionStringBuilder
+                   { DataSource = tmp, Pooling = false }.ToString()))
+            {
+                src.Open();
+                dst.Open();
+                src.BackupDatabase(dst);
+            }
+
+            File.Move(tmp, destDb);
+        }
+        catch
+        {
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best-effort */ }
+            throw;
+        }
+    }
+
+    /// <summary>Rebuild one asset's contentless FTS row after Implied purge (applied tags only).</summary>
+    private void RefreshAssetFtsTags(string assetId)
+    {
+        long rowId;
+        string fileName;
+        string path;
+        string? prompt;
+        string? model;
+        string? notes;
+        using (var cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT RowId, FileName, Path, Prompt, Model, Notes FROM Asset WHERE Id = $id
+                """;
+            cmd.Parameters.AddWithValue("$id", assetId);
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read())
+            {
+                return;
+            }
+
+            rowId = reader.GetInt64(0);
+            fileName = reader.GetString(1);
+            path = reader.GetString(2);
+            prompt = reader.IsDBNull(3) ? null : reader.GetString(3);
+            model = reader.IsDBNull(4) ? null : reader.GetString(4);
+            notes = reader.IsDBNull(5) ? null : reader.GetString(5);
+        }
+
+        var tagNames = new List<string>();
+        using (var tags = _connection.CreateCommand())
+        {
+            tags.CommandText = """
+                SELECT t.Name FROM AssetTag at
+                JOIN Tag t ON t.Id = at.TagId
+                WHERE at.AssetId = $id
+                """;
+            tags.Parameters.AddWithValue("$id", assetId);
+            using var reader = tags.ExecuteReader();
+            while (reader.Read())
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    tagNames.Add(reader.GetString(0));
+                }
+            }
+        }
+
+        try
+        {
+            using (var del = _connection.CreateCommand())
+            {
+                del.CommandText = "DELETE FROM AssetFts WHERE rowid = $row";
+                del.Parameters.AddWithValue("$row", rowId);
+                del.ExecuteNonQuery();
+            }
+
+            using var ins = _connection.CreateCommand();
+            ins.CommandText = """
+                INSERT INTO AssetFts (rowid, FileName, Path, Tags, Prompt, Model, Notes)
+                VALUES ($row, $name, $path, $tags, $prompt, $model, $notes)
+                """;
+            ins.Parameters.AddWithValue("$row", rowId);
+            ins.Parameters.AddWithValue("$name", fileName);
+            ins.Parameters.AddWithValue("$path", path);
+            ins.Parameters.AddWithValue("$tags", string.Join(" ", tagNames));
+            ins.Parameters.AddWithValue("$prompt", prompt ?? "");
+            ins.Parameters.AddWithValue("$model", model ?? "");
+            ins.Parameters.AddWithValue("$notes", notes ?? "");
+            ins.ExecuteNonQuery();
+        }
+        catch (SqliteException)
+        {
+            // Contentless FTS may reject DELETE on older tables; EnsureAssetFts ran first.
+        }
     }
 
     /// <summary>

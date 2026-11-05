@@ -130,10 +130,20 @@ public sealed partial class CatalogService
 
     /// <summary>
     /// Quoted FTS MATCH with multi-word alias→ideal expansion (see <see cref="TagFtsQuery"/>).
+    /// Early-exits when there are no aliases (Doktor d); uses a cached alias map.
     /// </summary>
-    private static string ToFtsQuery(SqliteConnection conn, string query)
+    private string ToFtsQuery(SqliteConnection conn, string query)
     {
-        var aliasMap = LoadAliasMap(conn);
+        var aliasMap = LoadAliasMapCached(conn);
+        if (aliasMap.Count == 0)
+        {
+            return TagFtsQuery.Build(
+                query,
+                aliasMap,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, string>(StringComparer.Ordinal));
+        }
+
         var nameById = new Dictionary<string, string>(StringComparer.Ordinal);
         var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         using (var cmd = conn.CreateCommand())

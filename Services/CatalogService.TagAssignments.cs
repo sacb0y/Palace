@@ -5,61 +5,29 @@ using Palace.Models;
 
 namespace Palace.Services;
 
-/// <summary>Catalog: tags assigned to assets, tag filters and implied-tag backfill.</summary>
+/// <summary>Catalog: tags assigned to assets, tag filters. Implied tags are computed, not stored (T5).</summary>
 public sealed partial class CatalogService
 {
-    public async Task<int> BackfillImplicationAddedAsync(string sourceTagId, CancellationToken cancellationToken = default)
+    /// <summary>No-op after T5 (implied tags are not materialized).</summary>
+    public Task<int> BackfillImplicationAddedAsync(string sourceTagId, CancellationToken cancellationToken = default)
     {
-        var assetIds = await _db.ReadAsync(conn =>
-        {
-            var sources = TagsThatImply(conn, sourceTagId);
-            sources.Add(sourceTagId);
-            return AssetsHavingAnyTag(conn, sources);
-        }).ConfigureAwait(false);
-
-        var updated = 0;
-        foreach (var chunk in assetIds.Chunk(75))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            updated += await _db.WriteAsync(conn => ApplyMissingImplied(conn, chunk).Count).ConfigureAwait(false);
-        }
-
-        return updated;
+        _ = sourceTagId;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(0);
     }
 
-    public async Task<int> BackfillImplicationRemovedAsync(string impliedTagId, CancellationToken cancellationToken = default)
+    /// <summary>No-op after T5 (implied tags are not materialized).</summary>
+    public Task<int> BackfillImplicationRemovedAsync(string impliedTagId, CancellationToken cancellationToken = default)
     {
-        var assetIds = await _db.ReadAsync(conn => AssetsHavingAnyTag(conn, [impliedTagId])).ConfigureAwait(false);
-        var updated = 0;
-        foreach (var chunk in assetIds.Chunk(75))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            updated += await _db.WriteAsync(conn =>
-            {
-                var count = 0;
-                foreach (var assetId in chunk)
-                {
-                    var before = LoadAssignedRefs(conn, assetId);
-                    SweepUnjustifiedImplied(conn, assetId);
-                    var after = LoadAssignedRefs(conn, assetId);
-                    if (before.Count != after.Count)
-                    {
-                        RefreshFts(conn, assetId);
-                        count++;
-                    }
-                }
-
-                return count;
-            }).ConfigureAwait(false);
-        }
-
-        return updated;
+        _ = impliedTagId;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(0);
     }
 
     public Task<int> CountAssetsForTagsAsync(IEnumerable<string> tagIds, string? projectId = null) =>
         _db.ReadAsync(conn =>
         {
-            var ids = tagIds.Distinct().ToList();
+            var ids = ExpandTagsForParentFilter(conn, tagIds);
             if (ids.Count == 0)
             {
                 return 0;
@@ -89,7 +57,8 @@ public sealed partial class CatalogService
         MosaicSort sort = MosaicSort.Name) =>
         _db.ReadAsync(conn =>
         {
-            var ids = tagIds.Distinct().ToList();
+            // Parent filter finds children: include tags that imply each requested ideal.
+            var ids = ExpandTagsForParentFilter(conn, tagIds);
             if (ids.Count == 0)
             {
                 return (IReadOnlyList<Asset>)[];
@@ -197,33 +166,30 @@ public sealed partial class CatalogService
     public Task AssignTagAsync(string assetId, string tagId, TagSource source) =>
         _db.WriteAsync(conn =>
         {
-            // v1: rewrite alias → ideal on assign (before implications).
-            var idealId = ResolveIdealTagId(conn, tagId);
-            UpsertAssetTag(conn, assetId, idealId, source);
-            foreach (var impliedId in CollectImpliedIdeals(conn, idealId))
+            // Rewrite alias → ideal. Do not materialize implied (T5 — compute at display/search).
+            if (source == TagSource.Implied)
             {
-                UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied);
+                return;
             }
 
+            var idealId = ResolveIdealTagId(conn, tagId);
+            UpsertAssetTag(conn, assetId, idealId, source);
             RefreshFts(conn, assetId);
         });
 
     public Task RemoveTagAsync(string assetId, string tagId) =>
         _db.WriteAsync(conn =>
         {
-            // Explicit remove wins: we delete the requested tag and any Implied-only
-            // tags that are no longer justified by a remaining non-Implied assignment.
-            // Direct (Manual/Prompt/AI) assignments are never stripped just because an
-            // implying tag went away. We do not re-apply implications here, so removing
-            // an Implied tag while its source tag stays assigned keeps that removal.
-            // Alias ids resolve to ideal so remove matches rewrite-on-assign storage.
             DeleteAssetTag(conn, assetId, ResolveIdealTagId(conn, tagId));
-            SweepUnjustifiedImplied(conn, assetId);
             RefreshFts(conn, assetId);
         });
 
     public Task<IReadOnlyList<AssignedTag>> GetAssignedTagsAsync(string assetId) =>
         _db.ReadAsync(conn => GetAssignedTags(conn, assetId));
+
+    /// <summary>Stored applied tags only (no computed Implied) — for file-op journaling.</summary>
+    public Task<IReadOnlyList<AssignedTag>> GetStoredAssignedTagsAsync(string assetId) =>
+        _db.ReadAsync(conn => GetAssignedTags(conn, assetId, includeComputedImplied: false));
 
     public Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetAssignedTagIdsByAssetAsync(
         IEnumerable<string> assetIds) =>
@@ -273,7 +239,10 @@ public sealed partial class CatalogService
                 StringComparer.Ordinal);
         });
 
-    internal static IReadOnlyList<AssignedTag> GetAssignedTags(SqliteConnection conn, string assetId)
+    internal static IReadOnlyList<AssignedTag> GetAssignedTags(
+        SqliteConnection conn,
+        string assetId,
+        bool includeComputedImplied = true)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -301,9 +270,41 @@ public sealed partial class CatalogService
         }
 
         var tags = LoadTags(conn);
+        var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
+
+        if (includeComputedImplied)
+        {
+            var have = list.Select(t => t.TagId).ToHashSet(StringComparer.Ordinal);
+            var impliedIds = new HashSet<string>(StringComparer.Ordinal);
+            var applied = list.Where(t => t.Source != TagSource.Implied).ToList();
+            foreach (var row in applied)
+            {
+                foreach (var impliedId in CollectImpliedIdeals(conn, row.TagId))
+                {
+                    if (have.Contains(impliedId) || !impliedIds.Add(impliedId))
+                    {
+                        continue;
+                    }
+
+                    if (!byId.TryGetValue(impliedId, out var tag))
+                    {
+                        continue;
+                    }
+
+                    list.Add(new AssignedTag
+                    {
+                        TagId = tag.Id,
+                        TagName = tag.Name,
+                        TagPriority = tag.Priority,
+                        Source = TagSource.Implied,
+                        Slug = tag.Slug
+                    });
+                }
+            }
+        }
+
         var memberships = LoadMemberships(conn);
         var colors = MapEffectiveColors(tags, memberships);
-        var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
         foreach (var tag in list)
         {
             tag.ParentNames = memberships
@@ -313,7 +314,34 @@ public sealed partial class CatalogService
             tag.EffectiveColor = colors.GetValueOrDefault(tag.TagId);
         }
 
-        return list;
+        return list
+            .OrderByDescending(t => t.TagPriority)
+            .ThenBy(t => t.TagName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Resolve aliases, then add every tag that transitively implies each ideal
+    /// so a parent filter finds children (applied on those children).
+    /// </summary>
+    private static List<string> ExpandTagsForParentFilter(SqliteConnection conn, IEnumerable<string> tagIds)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var raw in tagIds.Where(id => !string.IsNullOrEmpty(id)))
+        {
+            var ideal = ResolveIdealTagId(conn, raw);
+            if (!result.Add(ideal))
+            {
+                continue;
+            }
+
+            foreach (var child in TagsThatImply(conn, ideal))
+            {
+                result.Add(ResolveIdealTagId(conn, child));
+            }
+        }
+
+        return result.ToList();
     }
 
     private static void UpsertAssetTag(
@@ -428,47 +456,6 @@ public sealed partial class CatalogService
         return list;
     }
 
-    private List<string> ApplyMissingImplied(
-        SqliteConnection conn,
-        IReadOnlyList<string> assetIds,
-        SqliteTransaction? tx = null,
-        bool refreshFts = true)
-    {
-        var touched = new List<string>();
-        foreach (var assetId in assetIds)
-        {
-            var assigned = LoadAssignedRefs(conn, assetId, tx);
-            var have = assigned.Select(t => t.TagId).ToHashSet(StringComparer.Ordinal);
-            var changed = false;
-            foreach (var tag in assigned)
-            {
-                foreach (var impliedId in CollectImpliedIdeals(conn, tag.TagId, tx))
-                {
-                    if (!have.Add(impliedId))
-                    {
-                        continue;
-                    }
-
-                    UpsertAssetTag(conn, assetId, impliedId, TagSource.Implied, tx);
-                    changed = true;
-                }
-            }
-
-            if (!changed)
-            {
-                continue;
-            }
-
-            touched.Add(assetId);
-            if (refreshFts)
-            {
-                RefreshFts(conn, assetId, tx);
-            }
-        }
-
-        return touched;
-    }
-
     private static List<(string TagId, TagSource Source)> LoadAssignedRefs(
         SqliteConnection conn,
         string assetId,
@@ -488,31 +475,9 @@ public sealed partial class CatalogService
         return list;
     }
 
-    private static void SweepUnjustifiedImplied(
-        SqliteConnection conn,
-        string assetId,
-        SqliteTransaction? tx = null)
-    {
-        var remaining = LoadAssignedRefs(conn, assetId, tx);
-        var justified = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var assigned in remaining.Where(t => t.Source != TagSource.Implied))
-        {
-            foreach (var impliedId in CollectImpliedIdeals(conn, assigned.TagId, tx))
-            {
-                justified.Add(impliedId);
-            }
-        }
-
-        foreach (var orphan in remaining.Where(t => t.Source == TagSource.Implied && !justified.Contains(t.TagId)))
-        {
-            DeleteAssetTag(conn, assetId, orphan.TagId, tx);
-        }
-    }
-
     /// <summary>
     /// Implication closure from <paramref name="tagId"/>, resolving every hop through
-    /// aliases and continuing from each ideal so alias-as-implied still fans out the
-    /// ideal's own implications (aliases before implications).
+    /// aliases and continuing from each ideal (aliases before implications).
     /// </summary>
     private static List<string> CollectImpliedIdeals(
         SqliteConnection conn,
@@ -536,7 +501,6 @@ public sealed partial class CatalogService
                 }
 
                 found.Add(ideal);
-                // Ideal may imply further tags that the alias id never listed.
                 if (!string.Equals(ideal, raw, StringComparison.Ordinal))
                 {
                     stack.Push(ideal);

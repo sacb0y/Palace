@@ -28,6 +28,8 @@ public sealed partial class CatalogService
     public Task AssignTagForUndoAsync(string assetId, string tagId, TagSource source) =>
         _db.WriteAsync(conn =>
         {
+            // Resolve alias→ideal; may restore Source=Implied from pre-T5 journals.
+            var idealId = ResolveIdealTagId(conn, tagId);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO AssetTag (AssetId, TagId, Source)
@@ -35,7 +37,7 @@ public sealed partial class CatalogService
                 ON CONFLICT(AssetId, TagId) DO UPDATE SET Source = excluded.Source
                 """;
             cmd.Parameters.AddWithValue("$asset", assetId);
-            cmd.Parameters.AddWithValue("$tag", tagId);
+            cmd.Parameters.AddWithValue("$tag", idealId);
             cmd.Parameters.AddWithValue("$source", source.ToString());
             cmd.ExecuteNonQuery();
             RefreshFts(conn, assetId);
@@ -98,6 +100,26 @@ public sealed partial class CatalogService
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    public static string SerializeAliasMigration(IReadOnlyList<AssetTag> migrated) =>
+        JsonSerializer.Serialize(migrated, TagSnapshotJson);
+
+    public static IReadOnlyList<AssetTag> DeserializeAliasMigration(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<AssetTag>>(json, TagSnapshotJson) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
         }
     }
 

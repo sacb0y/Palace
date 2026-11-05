@@ -174,6 +174,7 @@ public sealed partial class FileOpService
             FileOpKind.TagAssign => $"Undo tag on {Items(batch.Items.Count(i => i.Step == FileOpStep.AssignTag))}",
             FileOpKind.TagRemove => $"Undo remove tag from {Items(batch.Items.Count(i => i.Step == FileOpStep.RemoveTag))}",
             FileOpKind.TagDelete => $"Undo delete of “{TagDeleteName(batch)}”",
+            FileOpKind.TagAliasAdd => "Undo tag alias",
             _ => "Undo"
         };
 
@@ -1224,6 +1225,7 @@ public sealed partial class FileOpService
             case FileOpStep.AssignTag:
             case FileOpStep.RemoveTag:
             case FileOpStep.DeleteTag:
+            case FileOpStep.AddAlias:
                 return await UndoTagOpStepAsync(item).ConfigureAwait(false);
 
             default:
@@ -1312,6 +1314,25 @@ public sealed partial class FileOpService
                 catch (Exception ex)
                 {
                     return UndoNote.Retry($"{snapshot.Tag.Name}: {ex.Message}");
+                }
+            }
+
+            case FileOpStep.AddAlias:
+            {
+                if (string.IsNullOrEmpty(item.OldPath) || string.IsNullOrEmpty(item.NewPath))
+                {
+                    return UndoNote.Skip("tag alias: incomplete journal row");
+                }
+
+                var migrated = CatalogService.DeserializeAliasMigration(item.NewSourceId);
+                try
+                {
+                    await _catalog.UndoAliasAddAsync(item.OldPath, item.NewPath, migrated).ConfigureAwait(false);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"alias undo: {ex.Message}");
                 }
             }
 

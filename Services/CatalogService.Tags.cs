@@ -24,38 +24,93 @@ public sealed partial class CatalogService
         _db.ReadAsync(conn => (IReadOnlyList<TagAlias>)LoadAliases(conn));
 
     /// <summary>
-    /// Maps <paramref name="aliasTagId"/> → <paramref name="idealTagId"/> (Hydrus sibling).
-    /// n→1 only; rejects self and cycles. Returns false when the edge is refused.
-    /// On success, migrates existing <c>AssetTag</c> rows from alias→ideal (deduped) in one transaction.
+    /// Maps <paramref name="aliasTagId"/> → ideal (Hydrus sibling). Resolves an ideal that is
+    /// itself an alias to its ultimate ideal (or refuses when that collapses to self).
+    /// Migrates existing <c>AssetTag</c> rows alias→ideal (deduped) in one transaction; returns
+    /// those rows so callers can journal undo (Doktor c).
     /// </summary>
-    public Task<bool> AddAliasAsync(string aliasTagId, string idealTagId) =>
+    public Task<AliasAddResult> AddAliasAsync(string aliasTagId, string idealTagId) =>
         _db.WriteAsync(conn =>
         {
-            List<string> touched;
+            InvalidateAliasMapCache();
+            IReadOnlyList<AssetTag> migrated = [];
+            string resolvedIdeal;
             using (var tx = conn.BeginTransaction())
             {
-                if (!TryAddAlias(conn, aliasTagId, idealTagId, tx, out var inserted))
+                resolvedIdeal = ResolveIdealTagId(conn, idealTagId, tx);
+                if (!TryAddAlias(conn, aliasTagId, resolvedIdeal, tx, out var inserted))
                 {
-                    return false;
+                    return new AliasAddResult { Ok = false, AliasTagId = aliasTagId, IdealTagId = resolvedIdeal };
                 }
 
-                touched = inserted
-                    ? MigrateAssetTagsAliasToIdeal(conn, aliasTagId, idealTagId, tx)
-                    : [];
+                if (inserted)
+                {
+                    migrated = MigrateAssetTagsAliasToIdeal(conn, aliasTagId, resolvedIdeal, tx);
+                }
+
                 tx.Commit();
             }
 
-            foreach (var assetId in touched)
+            foreach (var assetId in migrated.Select(m => m.AssetId).Distinct(StringComparer.Ordinal))
             {
                 RefreshFts(conn, assetId);
             }
 
-            return true;
+            return new AliasAddResult
+            {
+                Ok = true,
+                AliasTagId = aliasTagId,
+                IdealTagId = resolvedIdeal,
+                Migrated = migrated
+            };
+        });
+
+    /// <summary>Restore AssetTag rows moved by <see cref="AddAliasAsync"/> and drop the edge.</summary>
+    public Task UndoAliasAddAsync(string aliasTagId, string idealTagId, IReadOnlyList<AssetTag> migrated) =>
+        _db.WriteAsync(conn =>
+        {
+            InvalidateAliasMapCache();
+            using (var tx = conn.BeginTransaction())
+            {
+                using (var del = conn.CreateCommand())
+                {
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a AND IdealTagId = $i";
+                    del.Parameters.AddWithValue("$a", aliasTagId);
+                    del.Parameters.AddWithValue("$i", idealTagId);
+                    del.ExecuteNonQuery();
+                }
+
+                foreach (var row in migrated)
+                {
+                    // Put the assignment back on the alias.
+                    UpsertAssetTag(conn, row.AssetId, aliasTagId, row.Source, tx);
+                    // Drop the ideal copy when it still matches the migrated source (no other applied).
+                    using var check = conn.CreateCommand();
+                    check.Transaction = tx;
+                    check.CommandText = "SELECT Source FROM AssetTag WHERE AssetId = $a AND TagId = $t";
+                    check.Parameters.AddWithValue("$a", row.AssetId);
+                    check.Parameters.AddWithValue("$t", idealTagId);
+                    var idealSource = check.ExecuteScalar() as string;
+                    if (string.Equals(idealSource, row.Source.ToString(), StringComparison.Ordinal))
+                    {
+                        DeleteAssetTag(conn, row.AssetId, idealTagId, tx);
+                    }
+                }
+
+                tx.Commit();
+            }
+
+            foreach (var assetId in migrated.Select(m => m.AssetId).Distinct(StringComparer.Ordinal))
+            {
+                RefreshFts(conn, assetId);
+            }
         });
 
     public Task RemoveAliasAsync(string aliasTagId) =>
         _db.WriteAsync(conn =>
         {
+            InvalidateAliasMapCache();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a";
             cmd.Parameters.AddWithValue("$a", aliasTagId);
@@ -209,77 +264,23 @@ public sealed partial class CatalogService
         });
 
     /// <summary>
-    /// Adds an implication and applies newly implied tags on affected assets in the same write.
-    /// Never changes Manual/Prompt/AI assignments. Returns false when the edge would cycle.
+    /// Adds an implication edge only (T5: implied tags are not materialized on AssetTag).
+    /// Returns false when the edge would cycle.
     /// </summary>
     public Task<bool> AddImplicationAsync(string tagId, string impliedTagId) =>
-        _db.WriteAsync(conn =>
-        {
-            List<string> touched;
-            using (var tx = conn.BeginTransaction())
-            {
-                if (!TryAddImplication(conn, tagId, impliedTagId, tx))
-                {
-                    return false;
-                }
-
-                var sources = TagsThatImply(conn, tagId, tx);
-                sources.Add(tagId);
-                var assetIds = AssetsHavingAnyTag(conn, sources, tx);
-                // AssetTag graph commits with the edge; FTS refresh runs after commit
-                // (contentless FTS5 delete/insert is unreliable mid-transaction).
-                touched = ApplyMissingImplied(conn, assetIds, tx, refreshFts: false);
-                tx.Commit();
-            }
-
-            foreach (var assetId in touched)
-            {
-                RefreshFts(conn, assetId);
-            }
-
-            return true;
-        });
+        _db.WriteAsync(conn => TryAddImplication(conn, tagId, impliedTagId));
 
     /// <summary>
-    /// Removes an implication and sweeps Implied-only tags that are no longer justified
-    /// on affected assets in the same write. Never deletes applied (non-Implied) tags.
+    /// Removes an implication edge only (T5: no Implied AssetTag sweep).
     /// </summary>
     public Task RemoveImplicationAsync(string tagId, string impliedTagId) =>
         _db.WriteAsync(conn =>
         {
-            var touched = new List<string>();
-            using (var tx = conn.BeginTransaction())
-            {
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.Transaction = tx;
-                    cmd.CommandText = "DELETE FROM TagImplication WHERE TagId = $t AND ImpliedTagId = $i";
-                    cmd.Parameters.AddWithValue("$t", tagId);
-                    cmd.Parameters.AddWithValue("$i", impliedTagId);
-                    cmd.ExecuteNonQuery();
-                }
-
-                // Source tag holders may lose the implied chain; assets that still carry the
-                // previously-implied tag may need a sweep if it is no longer justified.
-                var assetIds = AssetsHavingAnyTag(conn, [tagId, impliedTagId], tx);
-                foreach (var assetId in assetIds)
-                {
-                    var before = LoadAssignedRefs(conn, assetId, tx);
-                    SweepUnjustifiedImplied(conn, assetId, tx);
-                    var after = LoadAssignedRefs(conn, assetId, tx);
-                    if (before.Count != after.Count)
-                    {
-                        touched.Add(assetId);
-                    }
-                }
-
-                tx.Commit();
-            }
-
-            foreach (var assetId in touched)
-            {
-                RefreshFts(conn, assetId);
-            }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM TagImplication WHERE TagId = $t AND ImpliedTagId = $i";
+            cmd.Parameters.AddWithValue("$t", tagId);
+            cmd.Parameters.AddWithValue("$i", impliedTagId);
+            cmd.ExecuteNonQuery();
         });
 
     public Task<Tag?> FindTagByNameAsync(string name) =>
@@ -361,6 +362,7 @@ public sealed partial class CatalogService
     public Task DeleteTagAsync(string id) =>
         _db.WriteAsync(conn =>
         {
+            InvalidateAliasMapCache();
             var assetIds = AssetsHavingAnyTag(conn, [id]);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM Tag WHERE Id = $id";
@@ -368,7 +370,6 @@ public sealed partial class CatalogService
             cmd.ExecuteNonQuery();
             foreach (var assetId in assetIds)
             {
-                SweepUnjustifiedImplied(conn, assetId);
                 RefreshFts(conn, assetId);
             }
         });
@@ -606,6 +607,18 @@ public sealed partial class CatalogService
         return list;
     }
 
+    private Dictionary<string, string> LoadAliasMapCached(SqliteConnection conn)
+    {
+        if (_aliasMapCache is not null)
+        {
+            return _aliasMapCache;
+        }
+
+        var map = LoadAliasMap(conn);
+        _aliasMapCache = map;
+        return map;
+    }
+
     private static Dictionary<string, string> LoadAliasMap(SqliteConnection conn, SqliteTransaction? tx = null)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -676,30 +689,37 @@ public sealed partial class CatalogService
 
     /// <summary>
     /// Rewrite AssetTag rows from alias→ideal in one pass: applied sources win over Implied;
-    /// duplicate alias rows are dropped. Returns touched asset ids (FTS refresh after commit).
+    /// duplicate alias rows are dropped. Returns the pre-migrate alias rows for undo journaling.
     /// </summary>
-    private static List<string> MigrateAssetTagsAliasToIdeal(
+    private static List<AssetTag> MigrateAssetTagsAliasToIdeal(
         SqliteConnection conn,
         string aliasTagId,
         string idealTagId,
         SqliteTransaction tx)
     {
-        var touched = new List<string>();
+        var migrated = new List<AssetTag>();
         using (var read = conn.CreateCommand())
         {
             read.Transaction = tx;
-            read.CommandText = "SELECT DISTINCT AssetId FROM AssetTag WHERE TagId = $alias";
+            read.CommandText = "SELECT AssetId, TagId, Source FROM AssetTag WHERE TagId = $alias";
             read.Parameters.AddWithValue("$alias", aliasTagId);
             using var reader = read.ExecuteReader();
             while (reader.Read())
             {
-                touched.Add(reader.GetString(0));
+                migrated.Add(new AssetTag
+                {
+                    AssetId = reader.GetString(0),
+                    TagId = reader.GetString(1),
+                    Source = Enum.TryParse<TagSource>(reader.GetString(2), out var source)
+                        ? source
+                        : TagSource.Manual
+                });
             }
         }
 
-        if (touched.Count == 0)
+        if (migrated.Count == 0)
         {
-            return touched;
+            return migrated;
         }
 
         // Ideal was Implied but alias was applied → keep applied Source on ideal.
@@ -740,7 +760,7 @@ public sealed partial class CatalogService
             delete.ExecuteNonQuery();
         }
 
-        return touched;
+        return migrated;
     }
 
     private static bool TryAddImplication(

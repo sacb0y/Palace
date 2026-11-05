@@ -13,11 +13,14 @@ namespace Palace.Services;
 public sealed partial class CatalogService
 {
     private readonly PalaceDb _db;
+    private Dictionary<string, string>? _aliasMapCache;
 
     public CatalogService(PalaceDb db)
     {
         _db = db;
     }
+
+    private void InvalidateAliasMapCache() => _aliasMapCache = null;
 
     public Task<IReadOnlyList<Project>> GetProjectsAsync() =>
         _db.ReadAsync(conn =>
