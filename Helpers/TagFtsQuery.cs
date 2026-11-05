@@ -6,6 +6,12 @@ namespace Palace.Helpers;
 /// </summary>
 public static class TagFtsQuery
 {
+    /// <summary>
+    /// Cap on OR terms per matched parent (matched name + ideal + implying children).
+    /// Keeps MATCH strings bounded when a parent has a huge implication fan-in.
+    /// </summary>
+    public const int MaxParentExpandOrTerms = 24;
+
     /// <summary>Alphanumeric runs only (same tokenization as catalog search).</summary>
     public static List<string> Tokenize(string query)
     {
@@ -117,24 +123,38 @@ public static class TagFtsQuery
 
         if (implyingIds is not null && implyingIds.Count > 0)
         {
-            foreach (var childId in ImplyingClosure(tagId, implyingIds))
+            var childNames = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            void CollectChildren(string rootId)
             {
-                if (nameById.TryGetValue(childId, out var childName))
-                {
-                    AddName(childName);
-                }
-            }
-
-            if (!string.Equals(idealId, tagId, StringComparison.Ordinal))
-            {
-                foreach (var childId in ImplyingClosure(idealId, implyingIds))
+                foreach (var childId in ImplyingClosure(rootId, implyingIds))
                 {
                     if (nameById.TryGetValue(childId, out var childName))
                     {
-                        AddName(childName);
+                        childNames.Add(childName);
                     }
                 }
             }
+
+            CollectChildren(tagId);
+            if (!string.Equals(idealId, tagId, StringComparison.Ordinal))
+            {
+                CollectChildren(idealId);
+            }
+
+            foreach (var childName in childNames)
+            {
+                if (orTerms.Count >= MaxParentExpandOrTerms)
+                {
+                    break;
+                }
+
+                AddName(childName);
+            }
+        }
+
+        if (orTerms.Count > MaxParentExpandOrTerms)
+        {
+            orTerms.RemoveRange(MaxParentExpandOrTerms, orTerms.Count - MaxParentExpandOrTerms);
         }
 
         return orTerms.Count == 1 ? orTerms[0] : $"({string.Join(" OR ", orTerms)})";

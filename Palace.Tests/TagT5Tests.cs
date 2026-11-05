@@ -7,8 +7,7 @@ using Xunit;
 namespace Palace.Tests;
 
 /// <summary>
-/// T5: purge materialized Implied, compute at display/filter time, Doktor alias notes a–d,
-/// and Doktor blockers B1/B2 (undo Implied skip, backup-failure skip + retry).
+/// T5 purge + Doktor blockers; T6 fold-in: launch-time Implied check (no permanent gate).
 /// </summary>
 public sealed class TagT5Tests : IAsyncLifetime
 {
@@ -56,7 +55,6 @@ public sealed class TagT5Tests : IAsyncLifetime
         Directory.CreateDirectory(Path.Combine(fixtureDir, "catalog"));
         var fixtureDb = Path.Combine(fixtureDir, "catalog", "palace.db");
 
-        // Build a catalog with a stored Implied row, clear the one-shot gate, then reopen.
         string assetId;
         string parentId;
         string childId;
@@ -95,12 +93,10 @@ public sealed class TagT5Tests : IAsyncLifetime
                 cmd.CommandText = """
                     INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $p, 'Manual');
                     INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $c, 'Implied');
-                    DELETE FROM CatalogMeta WHERE Key = $k;
                     """;
                 cmd.Parameters.AddWithValue("$a", assetId);
                 cmd.Parameters.AddWithValue("$p", parentId);
                 cmd.Parameters.AddWithValue("$c", childId);
-                cmd.Parameters.AddWithValue("$k", PalaceDb.ImpliedPurgeMetaKey);
                 cmd.ExecuteNonQuery();
             });
             await catalog.AssignTagAsync(assetId, parent.Id, TagSource.Manual);
@@ -118,15 +114,10 @@ public sealed class TagT5Tests : IAsyncLifetime
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE Source = 'Implied'";
             Assert.Equal(0L, Convert.ToInt64(cmd.ExecuteScalar()));
-
-            cmd.Parameters.Clear();
-            cmd.CommandText = "SELECT Value FROM CatalogMeta WHERE Key = $k";
-            cmd.Parameters.AddWithValue("$k", PalaceDb.ImpliedPurgeMetaKey);
-            Assert.Equal("1", cmd.ExecuteScalar() as string);
             return 0;
         });
 
-        // Second open must not re-count / re-backup (gate set).
+        // Clean reopen: no Implied rows → no backup/purge work.
         SqliteConnection.ClearAllPools();
         using var again = new PalaceDb(fixtureDb);
         Assert.Equal(0, again.ImpliedRowsPurged);
@@ -134,7 +125,89 @@ public sealed class TagT5Tests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task BackupFailure_SkipsPurge_RetriesNextLaunch()
+    public async Task DowngradeReupgrade_StillPurgesImpliedRows()
+    {
+        var fixtureDir = Path.Combine(_dir, "reupgrade");
+        Directory.CreateDirectory(Path.Combine(fixtureDir, "catalog"));
+        var fixtureDb = Path.Combine(fixtureDir, "catalog", "palace.db");
+
+        string assetId;
+        string childId;
+        using (var seed = new PalaceDb(fixtureDb))
+        {
+            var catalog = new CatalogService(seed);
+            var projectId = (await catalog.GetProjectsAsync())[0].Id;
+            var source = new SourceFolder
+            {
+                Id = PalaceDb.NewId(),
+                Path = Path.Combine(fixtureDir, "watched"),
+                ProjectId = projectId
+            };
+            Directory.CreateDirectory(source.Path);
+            await catalog.UpsertSourceFolderAsync(source);
+            var parent = await catalog.CreateTagAsync("ru-parent");
+            var child = await catalog.CreateTagAsync("ru-child");
+            childId = child.Id;
+            var path = Path.Combine(source.Path, "r.png");
+            await File.WriteAllTextAsync(path, "x");
+            var asset = new Asset
+            {
+                Id = PalaceDb.NewId(),
+                SourceFolderId = source.Id,
+                Path = path,
+                FileName = "r.png",
+                Kind = AssetKind.Image,
+                DateAdded = PalaceDb.NowIso()
+            };
+            await catalog.UpsertAssetAsync(asset, "");
+            assetId = asset.Id;
+            await seed.WriteAsync(conn =>
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = """
+                    INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $p, 'Manual');
+                    INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $c, 'Implied');
+                    """;
+                cmd.Parameters.AddWithValue("$a", assetId);
+                cmd.Parameters.AddWithValue("$p", parent.Id);
+                cmd.Parameters.AddWithValue("$c", childId);
+                cmd.ExecuteNonQuery();
+            });
+        }
+
+        SqliteConnection.ClearAllPools();
+        using (var first = new PalaceDb(fixtureDb))
+        {
+            Assert.True(first.ImpliedRowsPurged >= 1);
+        }
+
+        // Simulate old build rematerializing Implied after a downgrade.
+        SqliteConnection.ClearAllPools();
+        await using (var raw = new SqliteConnection(new SqliteConnectionStringBuilder
+               { DataSource = fixtureDb, Pooling = false }.ToString()))
+        {
+            await raw.OpenAsync();
+            using var cmd = raw.CreateCommand();
+            cmd.CommandText = "INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $c, 'Implied')";
+            cmd.Parameters.AddWithValue("$a", assetId);
+            cmd.Parameters.AddWithValue("$c", childId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        SqliteConnection.ClearAllPools();
+        using var second = new PalaceDb(fixtureDb);
+        Assert.True(second.ImpliedRowsPurged >= 1);
+        await second.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE Source = 'Implied'";
+            Assert.Equal(0L, Convert.ToInt64(cmd.ExecuteScalar()));
+            return 0;
+        });
+    }
+
+    [Fact]
+    public async Task BackupFailure_SkipsPurge_LogsReason_RetriesNextLaunch()
     {
         var fixtureDir = Path.Combine(_dir, "backup-fail");
         Directory.CreateDirectory(Path.Combine(fixtureDir, "catalog"));
@@ -176,19 +249,16 @@ public sealed class TagT5Tests : IAsyncLifetime
                 cmd.CommandText = """
                     INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $p, 'Manual');
                     INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $c, 'Implied');
-                    DELETE FROM CatalogMeta WHERE Key = $k;
                     """;
                 cmd.Parameters.AddWithValue("$a", assetId);
                 cmd.Parameters.AddWithValue("$p", parent.Id);
                 cmd.Parameters.AddWithValue("$c", childId);
-                cmd.Parameters.AddWithValue("$k", PalaceDb.ImpliedPurgeMetaKey);
                 cmd.ExecuteNonQuery();
             });
         }
 
         SqliteConnection.ClearAllPools();
 
-        // Block backup dir creation: a file where the backups folder should be.
         var backupsBlock = Path.Combine(fixtureDir, "catalog", "backups");
         await File.WriteAllTextAsync(backupsBlock, "not-a-directory");
 
@@ -202,9 +272,6 @@ public sealed class TagT5Tests : IAsyncLifetime
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE Source = 'Implied'";
                 Assert.Equal(1L, Convert.ToInt64(cmd.ExecuteScalar()));
-                cmd.CommandText = "SELECT Value FROM CatalogMeta WHERE Key = $k";
-                cmd.Parameters.AddWithValue("$k", PalaceDb.ImpliedPurgeMetaKey);
-                Assert.Null(cmd.ExecuteScalar());
                 return 0;
             });
         }
@@ -232,27 +299,22 @@ public sealed class TagT5Tests : IAsyncLifetime
         var asset = await AddAssetAsync("undo.png");
         await _catalog.AssignTagAsync(asset.Id, canine.Id, TagSource.Manual);
 
-        // Pre-T5 journal reverse of a remove would re-apply Source=Implied.
         await _catalog.AssignTagForUndoAsync(asset.Id, canine.Id, TagSource.Implied);
         var afterUndo = await SourcesByTagAsync(asset.Id);
         Assert.Equal(TagSource.Manual, afterUndo[canine.Id]);
 
-        // Also never rematerialize Implied onto an empty slot.
         await _catalog.AssignTagForUndoAsync(asset.Id, decoy.Id, TagSource.Implied);
         afterUndo = await SourcesByTagAsync(asset.Id);
         Assert.False(afterUndo.ContainsKey(decoy.Id));
 
-        // Purge must keep the Manual row.
         await _db.WriteAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $d, 'Implied');
-                DELETE FROM CatalogMeta WHERE Key = $k;
                 """;
             cmd.Parameters.AddWithValue("$a", asset.Id);
             cmd.Parameters.AddWithValue("$d", decoy.Id);
-            cmd.Parameters.AddWithValue("$k", PalaceDb.ImpliedPurgeMetaKey);
             cmd.ExecuteNonQuery();
         });
 
@@ -316,11 +378,9 @@ public sealed class TagT5Tests : IAsyncLifetime
         var display = await _catalog.GetAssignedTagsAsync(asset.Id);
         Assert.Contains(display, t => t.TagId == canine.Id && t.Source == TagSource.Implied);
 
-        // FTS indexes applied only — parent name on the asset still matches.
         var wolfHits = await _catalog.SearchAsync("wolf");
         Assert.Contains(wolfHits, a => a.Id == asset.Id);
 
-        // Query-time expand: searching the implied parent finds wolf-only assets.
         var canineHits = await _catalog.SearchAsync("canine");
         Assert.Contains(canineHits, a => a.Id == asset.Id);
     }
@@ -335,7 +395,6 @@ public sealed class TagT5Tests : IAsyncLifetime
         var backupsRoot = Path.Combine(catalogDir, "backups");
         Directory.CreateDirectory(backupsRoot);
 
-        // Four stale backup dirs; purge should leave the newest three after a successful run.
         for (var i = 1; i <= 4; i++)
         {
             var d = Path.Combine(backupsRoot, $"pre-t5-implied-{i:D4}");
@@ -375,12 +434,10 @@ public sealed class TagT5Tests : IAsyncLifetime
                 cmd.CommandText = """
                     INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $p, 'Manual');
                     INSERT INTO AssetTag (AssetId, TagId, Source) VALUES ($a, $c, 'Implied');
-                    DELETE FROM CatalogMeta WHERE Key = $k;
                     """;
                 cmd.Parameters.AddWithValue("$a", asset.Id);
                 cmd.Parameters.AddWithValue("$p", parent.Id);
                 cmd.Parameters.AddWithValue("$c", child.Id);
-                cmd.Parameters.AddWithValue("$k", PalaceDb.ImpliedPurgeMetaKey);
                 cmd.ExecuteNonQuery();
             });
         }
