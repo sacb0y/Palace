@@ -17,6 +17,8 @@ public sealed partial class CatalogService
     private Dictionary<string, string>? _aliasMapCache;
     /// <summary>ImpliedTagId → tag ids that imply it (for FTS parent→child expand).</summary>
     private Dictionary<string, List<string>>? _implyingIdsCache;
+    private Dictionary<string, string>? _tagNameByIdCache;
+    private Dictionary<string, string>? _tagIdByNameCache;
 
     public CatalogService(PalaceDb db)
     {
@@ -29,6 +31,8 @@ public sealed partial class CatalogService
         {
             _aliasMapCache = null;
             _implyingIdsCache = null;
+            _tagNameByIdCache = null;
+            _tagIdByNameCache = null;
         }
     }
 

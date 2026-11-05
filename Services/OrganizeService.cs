@@ -32,7 +32,8 @@ public sealed class OrganizeService
         var items = new List<OrganizePreviewItem>();
         foreach (var asset in assets)
         {
-            var tags = await _catalog.GetAssignedTagsAsync(asset.Id);
+                // T6: organize {tags} / facet tokens use applied tags only (not computed Implied).
+                var tags = await _catalog.GetExportTagsAsync(asset.Id, includeImplied: false);
             var source = await _catalog.GetSourceFolderAsync(asset.SourceFolderId);
             var preview = new OrganizePreviewItem
             {

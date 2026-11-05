@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using Palace.Helpers;
 using Palace.Models;
 
 namespace Palace.Data;
@@ -18,7 +19,6 @@ public sealed class PalaceDb : IDisposable
     /// <summary>Set when backup/verify failed and purge was skipped (retry next launch).</summary>
     public string? ImpliedPurgeSkipReason { get; private set; }
 
-    internal const string ImpliedPurgeMetaKey = "ImpliedPurgeV1";
     private const int ImpliedPurgeBackupKeep = 3;
 
     public PalaceDb(string dbPath)
@@ -301,17 +301,12 @@ public sealed class PalaceDb : IDisposable
     }
 
     /// <summary>
-    /// T5: one-shot gate; backup+verify; then delete only <c>Source='Implied'</c> and refresh FTS
-    /// in the same transaction. Backup failures skip the purge and retry next launch.
+    /// T5/T6: each launch, if any <c>Source='Implied'</c> rows remain (e.g. after a
+    /// downgrade→re-upgrade), backup+verify then delete them and refresh FTS in one
+    /// transaction. Backup failures skip the purge, log why, and retry next launch.
     /// </summary>
     private void MigratePurgeMaterializedImplied()
     {
-        EnsureCatalogMeta();
-        if (string.Equals(GetCatalogMeta(ImpliedPurgeMetaKey), "1", StringComparison.Ordinal))
-        {
-            return;
-        }
-
         long impliedCount;
         long assetTagCount;
         using (var probe = _connection.CreateCommand())
@@ -329,7 +324,6 @@ public sealed class PalaceDb : IDisposable
 
         if (impliedCount == 0)
         {
-            SetCatalogMeta(ImpliedPurgeMetaKey, "1");
             return;
         }
 
@@ -351,6 +345,7 @@ public sealed class PalaceDb : IDisposable
             // Disk full, locked/busy, refuse-to-overwrite, dir create, verify mismatch — skip purge.
             ImpliedPurgeSkipReason = ex.Message;
             ImpliedPurgeBackupDir = null;
+            ErrorReporter.LogOnly("Implied purge skipped (backup/verify)", ex);
             return;
         }
 
@@ -384,47 +379,13 @@ public sealed class PalaceDb : IDisposable
 
                 tx.Commit();
             }
-
-            SetCatalogMeta(ImpliedPurgeMetaKey, "1");
         }
         catch (Exception ex)
         {
             ImpliedPurgeSkipReason = ex.Message;
             ImpliedRowsPurged = 0;
-            // Leave gate unset so the next launch retries.
+            ErrorReporter.LogOnly("Implied purge skipped (delete/FTS)", ex);
         }
-    }
-
-    private void EnsureCatalogMeta()
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS CatalogMeta (
-                Key TEXT PRIMARY KEY,
-                Value TEXT NOT NULL
-            );
-            """;
-        cmd.ExecuteNonQuery();
-    }
-
-    private string? GetCatalogMeta(string key)
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT Value FROM CatalogMeta WHERE Key = $k";
-        cmd.Parameters.AddWithValue("$k", key);
-        return cmd.ExecuteScalar() as string;
-    }
-
-    private void SetCatalogMeta(string key, string value)
-    {
-        using var cmd = _connection.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO CatalogMeta (Key, Value) VALUES ($k, $v)
-            ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value
-            """;
-        cmd.Parameters.AddWithValue("$k", key);
-        cmd.Parameters.AddWithValue("$v", value);
-        cmd.ExecuteNonQuery();
     }
 
     private void BackupCatalogCopy(string destDb)
@@ -591,9 +552,11 @@ public sealed class PalaceDb : IDisposable
             ins.Parameters.AddWithValue("$notes", notes ?? "");
             ins.ExecuteNonQuery();
         }
-        catch (SqliteException)
+        catch (SqliteException ex)
         {
             // Contentless FTS may reject DELETE on older tables; EnsureAssetFts ran first.
+            ErrorReporter.LogOnly($"Implied purge FTS refresh ({assetId})", ex);
+            throw;
         }
     }
 

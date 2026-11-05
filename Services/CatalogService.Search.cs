@@ -131,7 +131,7 @@ public sealed partial class CatalogService
     /// <summary>
     /// Quoted FTS MATCH with alias→ideal and parent→child implication expansion
     /// (see <see cref="TagFtsQuery"/>). Early-exits when both graphs are empty; uses
-    /// cached alias + implying maps.
+    /// cached alias, implying, and tag-name maps.
     /// </summary>
     private string ToFtsQuery(SqliteConnection conn, string query)
     {
@@ -146,20 +146,7 @@ public sealed partial class CatalogService
                 new Dictionary<string, string>(StringComparer.Ordinal));
         }
 
-        var nameById = new Dictionary<string, string>(StringComparer.Ordinal);
-        var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        using (var cmd = conn.CreateCommand())
-        {
-            cmd.CommandText = "SELECT Id, Name FROM Tag";
-            using var reader = cmd.ExecuteReader();
-            while (reader.Read())
-            {
-                var id = reader.GetString(0);
-                var name = reader.GetString(1);
-                nameById[id] = name;
-                idByName.TryAdd(name, id);
-            }
-        }
+        var (nameById, idByName) = LoadTagNamesCached(conn);
 
         IReadOnlyDictionary<string, IReadOnlyList<string>>? implying = null;
         if (implyingRaw.Count > 0)

@@ -298,7 +298,12 @@ public sealed partial class CatalogService
 
     /// <summary>Creates a tag; throws <see cref="DuplicateTagNameException"/> if the name is taken (any case).</summary>
     public Task<Tag> CreateTagAsync(string name, int priority = 0) =>
-        _db.WriteAsync(conn => InsertTag(conn, name, priority));
+        _db.WriteAsync(conn =>
+        {
+            var tag = InsertTag(conn, name, priority);
+            InvalidateGraphCaches();
+            return tag;
+        });
 
     /// <summary>
     /// Returns the existing tag with this name (any case), or creates it, in one write.
@@ -307,7 +312,13 @@ public sealed partial class CatalogService
     public Task<Tag> GetOrCreateTagAsync(string name) =>
         _db.WriteAsync(conn =>
         {
-            var tag = FindTagByName(conn, name) ?? InsertTag(conn, name, 0);
+            var existing = FindTagByName(conn, name);
+            var tag = existing ?? InsertTag(conn, name, 0);
+            if (existing is null)
+            {
+                InvalidateGraphCaches();
+            }
+
             return ResolveIdealTag(conn, tag);
         });
 
@@ -316,6 +327,7 @@ public sealed partial class CatalogService
         {
             var tag = InsertTag(conn, name, priority);
             TryAddMembership(conn, parentId, tag.Id);
+            InvalidateGraphCaches();
             return tag;
         });
 
@@ -348,6 +360,11 @@ public sealed partial class CatalogService
                 }
 
                 tags.Add(tag);
+            }
+
+            if (created > 0)
+            {
+                InvalidateGraphCaches();
             }
 
             return new TagCreateBatchResult
@@ -432,6 +449,7 @@ public sealed partial class CatalogService
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
             RefreshFtsForTag(conn, id);
+            InvalidateGraphCaches();
             return true;
         });
 
@@ -656,6 +674,38 @@ public sealed partial class CatalogService
 
             _implyingIdsCache = map;
             return map;
+        }
+    }
+
+    /// <summary>Cached Tag Id↔Name maps for FTS query expansion (thread-safe).</summary>
+    private (Dictionary<string, string> NameById, Dictionary<string, string> IdByName) LoadTagNamesCached(
+        SqliteConnection conn)
+    {
+        lock (_graphCacheLock)
+        {
+            if (_tagNameByIdCache is not null && _tagIdByNameCache is not null)
+            {
+                return (_tagNameByIdCache, _tagIdByNameCache);
+            }
+
+            var nameById = new Dictionary<string, string>(StringComparer.Ordinal);
+            var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT Id, Name FROM Tag";
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                {
+                    var id = reader.GetString(0);
+                    var name = reader.GetString(1);
+                    nameById[id] = name;
+                    idByName.TryAdd(name, id);
+                }
+            }
+
+            _tagNameByIdCache = nameById;
+            _tagIdByNameCache = idByName;
+            return (nameById, idByName);
         }
     }
 

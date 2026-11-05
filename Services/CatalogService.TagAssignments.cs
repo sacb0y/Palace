@@ -191,6 +191,16 @@ public sealed partial class CatalogService
     public Task<IReadOnlyList<AssignedTag>> GetStoredAssignedTagsAsync(string assetId) =>
         _db.ReadAsync(conn => GetAssignedTags(conn, assetId, includeComputedImplied: false));
 
+    /// <summary>
+    /// Tags for export / organize naming. Defaults to applied only; pass
+    /// <paramref name="includeImplied"/> to add the computed implication closure.
+    /// Global option only — no per-asset implied exclusion.
+    /// </summary>
+    public Task<IReadOnlyList<AssignedTag>> GetExportTagsAsync(
+        string assetId,
+        bool includeImplied = false) =>
+        _db.ReadAsync(conn => GetAssignedTags(conn, assetId, includeComputedImplied: includeImplied));
+
     public Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> GetAssignedTagIdsByAssetAsync(
         IEnumerable<string> assetIds) =>
         _db.ReadAsync(conn =>
