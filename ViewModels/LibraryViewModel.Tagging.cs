@@ -30,36 +30,27 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var assigned = new List<string>();
+            // T7: multi-tag paste → one FileOp batch (one Undo).
+            var tags = new List<(string TagId, string TagName, TagSource Source)>();
             foreach (var query in names)
             {
                 var match = FindTagPick(query);
-                string tagId;
-                string tagName;
                 if (match is null)
                 {
                     var created = await _catalog.GetOrCreateTagAsync(query);
-                    tagId = created.Id;
-                    tagName = created.Name;
+                    tags.Add((created.Id, created.Name, TagSource.Manual));
                 }
                 else
                 {
-                    tagId = match.TagId;
-                    tagName = match.Name;
+                    tags.Add((match.TagId, match.Name, TagSource.Manual));
                 }
-
-                await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Manual);
-                assigned.Add(tagName);
             }
 
+            await AssignManyToSelectionAsync(targets, tags);
             await UiDispatch.RunAsync(() =>
             {
                 TagQuery = "";
                 SelectedPickTag = null;
-                if (assigned.Count > 1)
-                {
-                    StatusText = $"Tagged {AssetNouns.Count(targets.Count)} with {string.Join(", ", assigned)}";
-                }
             });
             await LoadPreviewAsync(SelectedAsset);
             await ReloadTagCatalogAsync();
@@ -81,12 +72,15 @@ public partial class LibraryViewModel
                 return;
             }
 
+            // T7: multi-tag create/paste → one FileOp batch.
+            var tags = new List<(string TagId, string TagName, TagSource Source)>();
             foreach (var name in names)
             {
                 var tag = await _catalog.GetOrCreateTagAsync(name);
-                await AssignToSelectionAsync(targets, tag.Id, tag.Name, TagSource.Manual);
+                tags.Add((tag.Id, tag.Name, TagSource.Manual));
             }
 
+            await AssignManyToSelectionAsync(targets, tags);
             await UiDispatch.RunAsync(() => NewTagName = "");
             await LoadPreviewAsync(SelectedAsset);
             await ReloadTagCatalogAsync();
@@ -293,17 +287,27 @@ public partial class LibraryViewModel
         return picks;
     }
 
-    private async Task AssignToSelectionAsync(IReadOnlyList<AssetItem> targets, string tagId, string tagName, TagSource source)
+    private Task AssignToSelectionAsync(
+        IReadOnlyList<AssetItem> targets,
+        string tagId,
+        string tagName,
+        TagSource source) =>
+        AssignManyToSelectionAsync(targets, [(tagId, tagName, source)]);
+
+    private async Task AssignManyToSelectionAsync(
+        IReadOnlyList<AssetItem> targets,
+        IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags)
     {
-        var result = await _fileOps.AssignTagAsync(
+        var result = await _fileOps.AssignTagsAsync(
             targets.Select(t => t.Id).ToList(),
-            tagId,
-            tagName,
-            source,
+            tags,
             AppServices.CurrentProject.Id);
-        if (source == TagSource.Manual)
+        foreach (var (tagId, _, source) in tags)
         {
-            RememberRecent(tagId);
+            if (source == TagSource.Manual)
+            {
+                RememberRecent(tagId);
+            }
         }
 
         if (result.Ok)

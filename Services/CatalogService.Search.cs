@@ -157,6 +157,15 @@ public sealed partial class CatalogService
                 StringComparer.Ordinal);
         }
 
-        return TagFtsQuery.Build(query, aliasMap, idByName, nameById, implying);
+        var match = TagFtsQuery.Build(query, aliasMap, idByName, nameById, implying, out var truncated);
+        if (truncated)
+        {
+            ErrorReporter.LogOnly(
+                "FTS parent expand truncated",
+                new InvalidOperationException(
+                    $"Parent-term OR expansion capped at {TagFtsQuery.MaxParentExpandOrTerms}."));
+        }
+
+        return match;
     }
 }

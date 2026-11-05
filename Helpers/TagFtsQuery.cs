@@ -57,8 +57,19 @@ public static class TagFtsQuery
         IReadOnlyDictionary<string, string> aliasToIdeal,
         IReadOnlyDictionary<string, string> idByName,
         IReadOnlyDictionary<string, string> nameById,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? implyingIds = null)
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? implyingIds = null) =>
+        Build(query, aliasToIdeal, idByName, nameById, implyingIds, out _);
+
+    /// <inheritdoc cref="Build(string,IReadOnlyDictionary{string,string},IReadOnlyDictionary{string,string},IReadOnlyDictionary{string,string},IReadOnlyDictionary{string,IReadOnlyList{string}}?)"/>
+    public static string Build(
+        string query,
+        IReadOnlyDictionary<string, string> aliasToIdeal,
+        IReadOnlyDictionary<string, string> idByName,
+        IReadOnlyDictionary<string, string> nameById,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? implyingIds,
+        out bool parentExpandTruncated)
     {
+        parentExpandTruncated = false;
         var parts = Tokenize(query);
         if (parts.Count == 0)
         {
@@ -85,7 +96,8 @@ public static class TagFtsQuery
             }
 
             var (tagId, length, spanText) = match.Value;
-            clauses.Add(BuildExpandedClause(tagId, spanText, aliasToIdeal, nameById, implyingIds));
+            clauses.Add(BuildExpandedClause(
+                tagId, spanText, aliasToIdeal, nameById, implyingIds, ref parentExpandTruncated));
             i += length;
         }
 
@@ -97,7 +109,8 @@ public static class TagFtsQuery
         string spanText,
         IReadOnlyDictionary<string, string> aliasToIdeal,
         IReadOnlyDictionary<string, string> nameById,
-        IReadOnlyDictionary<string, IReadOnlyList<string>>? implyingIds)
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? implyingIds,
+        ref bool truncated)
     {
         var orTerms = new List<string> { PrefixTerm(spanText) };
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { spanText };
@@ -145,6 +158,7 @@ public static class TagFtsQuery
             {
                 if (orTerms.Count >= MaxParentExpandOrTerms)
                 {
+                    truncated = true;
                     break;
                 }
 
@@ -154,6 +168,7 @@ public static class TagFtsQuery
 
         if (orTerms.Count > MaxParentExpandOrTerms)
         {
+            truncated = true;
             orTerms.RemoveRange(MaxParentExpandOrTerms, orTerms.Count - MaxParentExpandOrTerms);
         }
 
