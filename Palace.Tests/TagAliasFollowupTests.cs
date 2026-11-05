@@ -72,7 +72,7 @@ public sealed class TagAliasFollowupTests : IAsyncLifetime
     {
         var doggy = await _catalog.CreateTagAsync("doggy");
         var dog = await _catalog.CreateTagAsync("dog");
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id));
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
         var asset = await AddAssetAsync("pet.png");
 
         var assign = await _ops.AssignTagAsync([asset.Id], doggy.Id, doggy.Name, TagSource.Manual, _projectId);
@@ -108,7 +108,7 @@ public sealed class TagAliasFollowupTests : IAsyncLifetime
     {
         var doggy = await _catalog.CreateTagAsync("doggy");
         var dog = await _catalog.CreateTagAsync("dog");
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id));
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
         var asset = await AddAssetAsync("snap.png");
 
         // Craft a snapshot that still points at the alias id (pre-migrate / old journal).
@@ -136,11 +136,10 @@ public sealed class TagAliasFollowupTests : IAsyncLifetime
         var dog = await _catalog.CreateTagAsync("dog");
         var asset = await AddAssetAsync("legacy.png");
 
-        // Pre-alias world: asset still carries the soon-to-be alias id.
+        // Pre-alias world: asset still carries the soon-to-be alias id (applied only — T5).
         await UpsertRawAsync(asset.Id, doggy.Id, TagSource.Manual);
-        await UpsertRawAsync(asset.Id, dog.Id, TagSource.Implied);
 
-        Assert.True(await _catalog.AddAliasAsync(doggy.Id, dog.Id));
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
 
         var assigned = await SourcesByTagAsync(asset.Id);
         Assert.False(assigned.ContainsKey(doggy.Id));
@@ -154,7 +153,7 @@ public sealed class TagAliasFollowupTests : IAsyncLifetime
     {
         var alias = await _catalog.CreateTagAsync("blue doggy");
         var ideal = await _catalog.CreateTagAsync("large canine");
-        Assert.True(await _catalog.AddAliasAsync(alias.Id, ideal.Id));
+        Assert.True((await _catalog.AddAliasAsync(alias.Id, ideal.Id)).Ok);
         var asset = await AddAssetAsync("hound.png");
         await _catalog.AssignTagAsync(asset.Id, ideal.Id, TagSource.Manual);
 
@@ -170,7 +169,7 @@ public sealed class TagAliasFollowupTests : IAsyncLifetime
         var canine = await _catalog.CreateTagAsync("canine");
         var mammal = await _catalog.CreateTagAsync("mammal");
 
-        Assert.True(await _catalog.AddAliasAsync(canineAlias.Id, canine.Id));
+        Assert.True((await _catalog.AddAliasAsync(canineAlias.Id, canine.Id)).Ok);
         // Implication targets the alias; ideal carries the next hop.
         Assert.True(await _catalog.AddImplicationAsync(wolf.Id, canineAlias.Id));
         Assert.True(await _catalog.AddImplicationAsync(canine.Id, mammal.Id));
@@ -178,11 +177,15 @@ public sealed class TagAliasFollowupTests : IAsyncLifetime
         var asset = await AddAssetAsync("pack.png");
         await _catalog.AssignTagAsync(asset.Id, wolf.Id, TagSource.Manual);
 
-        var assigned = await SourcesByTagAsync(asset.Id);
-        Assert.Equal(TagSource.Manual, assigned[wolf.Id]);
-        Assert.False(assigned.ContainsKey(canineAlias.Id));
-        Assert.Equal(TagSource.Implied, assigned[canine.Id]);
-        Assert.Equal(TagSource.Implied, assigned[mammal.Id]);
+        var stored = await SourcesByTagAsync(asset.Id);
+        Assert.Equal(TagSource.Manual, stored[wolf.Id]);
+        Assert.False(stored.ContainsKey(canineAlias.Id));
+        Assert.False(stored.ContainsKey(canine.Id), "T5: implied not stored.");
+        Assert.False(stored.ContainsKey(mammal.Id));
+
+        var display = await _catalog.GetAssignedTagsAsync(asset.Id);
+        Assert.Equal(TagSource.Implied, display.Single(t => t.TagId == canine.Id).Source);
+        Assert.Equal(TagSource.Implied, display.Single(t => t.TagId == mammal.Id).Source);
     }
 
     private async Task<Asset> AddAssetAsync(string fileName)

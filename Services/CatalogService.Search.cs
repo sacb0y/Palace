@@ -129,11 +129,23 @@ public sealed partial class CatalogService
     }
 
     /// <summary>
-    /// Quoted FTS MATCH with multi-word alias→ideal expansion (see <see cref="TagFtsQuery"/>).
+    /// Quoted FTS MATCH with alias→ideal and parent→child implication expansion
+    /// (see <see cref="TagFtsQuery"/>). Early-exits when both graphs are empty; uses
+    /// cached alias + implying maps.
     /// </summary>
-    private static string ToFtsQuery(SqliteConnection conn, string query)
+    private string ToFtsQuery(SqliteConnection conn, string query)
     {
-        var aliasMap = LoadAliasMap(conn);
+        var aliasMap = LoadAliasMapCached(conn);
+        var implyingRaw = LoadImplyingIdsCached(conn);
+        if (aliasMap.Count == 0 && implyingRaw.Count == 0)
+        {
+            return TagFtsQuery.Build(
+                query,
+                aliasMap,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                new Dictionary<string, string>(StringComparer.Ordinal));
+        }
+
         var nameById = new Dictionary<string, string>(StringComparer.Ordinal);
         var idByName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         using (var cmd = conn.CreateCommand())
@@ -149,6 +161,15 @@ public sealed partial class CatalogService
             }
         }
 
-        return TagFtsQuery.Build(query, aliasMap, idByName, nameById);
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? implying = null;
+        if (implyingRaw.Count > 0)
+        {
+            implying = implyingRaw.ToDictionary(
+                static kv => kv.Key,
+                static kv => (IReadOnlyList<string>)kv.Value,
+                StringComparer.Ordinal);
+        }
+
+        return TagFtsQuery.Build(query, aliasMap, idByName, nameById, implying);
     }
 }

@@ -1179,7 +1179,8 @@ public sealed class FileOpServiceTests : IAsyncLifetime
 
         var undo = await _ops.UndoLastAsync(_projectId);
         Assert.True(undo.Ok, undo.Message);
-        Assert.Equal(TagSource.Implied, await SourceOf(exr.Id, tag));
+        // T5/B1: old journals that recorded Implied must not rematerialize or downgrade.
+        Assert.Null(await SourceOf(exr.Id, tag));
         Assert.Equal(TagSource.Manual, await SourceOf(hdr.Id, tag));
     }
 

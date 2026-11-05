@@ -7,8 +7,8 @@ using Xunit;
 namespace Palace.Tests;
 
 /// <summary>
-/// T3 / Doktor N1: AddImplicationAsync and RemoveImplicationAsync recalculate implied
-/// AssetTag rows + FTS in the same catalog write. Never strip applied tags.
+/// T5: implications are edges only — Implied is computed at display/filter time,
+/// never stored on AssetTag. Add/RemoveImplication no longer rewrite AssetTag.
 /// </summary>
 public sealed class TagImplicationRecalcTests : IAsyncLifetime
 {
@@ -42,7 +42,7 @@ public sealed class TagImplicationRecalcTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddImplication_AppliesTransitiveImplied_InSameWrite()
+    public async Task AddImplication_ComputesTransitiveImplied_AtDisplay_NotStored()
     {
         var wolf = await _catalog.CreateTagAsync("wolf");
         var canine = await _catalog.CreateTagAsync("canine");
@@ -51,19 +51,22 @@ public sealed class TagImplicationRecalcTests : IAsyncLifetime
 
         Assert.True(await _catalog.AddImplicationAsync(canine.Id, mammal.Id));
         await _catalog.AssignTagAsync(asset.Id, wolf.Id, TagSource.Manual);
-
         Assert.True(await _catalog.AddImplicationAsync(wolf.Id, canine.Id));
 
-        var assigned = await SourcesByTagAsync(asset.Id);
-        Assert.Equal(TagSource.Manual, assigned[wolf.Id]);
-        Assert.Equal(TagSource.Implied, assigned[canine.Id]);
-        Assert.Equal(TagSource.Implied, assigned[mammal.Id]);
-        Assert.True(await FtsHasAsync(asset.Id, "canine"));
-        Assert.True(await FtsHasAsync(asset.Id, "mammal"));
+        var stored = await SourcesByTagAsync(asset.Id);
+        Assert.Equal(new[] { wolf.Id }, stored.Keys.OrderBy(k => k, StringComparer.Ordinal));
+        Assert.False(await FtsHasAsync(asset.Id, "canine"));
+        Assert.False(await FtsHasAsync(asset.Id, "mammal"));
+        Assert.True(await FtsHasAsync(asset.Id, "wolf"));
+
+        var display = await _catalog.GetAssignedTagsAsync(asset.Id);
+        Assert.Equal(TagSource.Manual, display.Single(t => t.TagId == wolf.Id).Source);
+        Assert.Equal(TagSource.Implied, display.Single(t => t.TagId == canine.Id).Source);
+        Assert.Equal(TagSource.Implied, display.Single(t => t.TagId == mammal.Id).Source);
     }
 
     [Fact]
-    public async Task RemoveImplication_SweepsTransitiveChain_AndFts_KeepsApplied()
+    public async Task RemoveImplication_StopsComputingChain_KeepsApplied()
     {
         var wolf = await _catalog.CreateTagAsync("wolf");
         var canine = await _catalog.CreateTagAsync("canine");
@@ -73,53 +76,35 @@ public sealed class TagImplicationRecalcTests : IAsyncLifetime
         Assert.True(await _catalog.AddImplicationAsync(wolf.Id, canine.Id));
         Assert.True(await _catalog.AddImplicationAsync(canine.Id, mammal.Id));
         await _catalog.AssignTagAsync(asset.Id, wolf.Id, TagSource.Manual);
-        // Also apply mammal directly — must survive when the implication chain is cut.
         await _catalog.AssignTagAsync(asset.Id, mammal.Id, TagSource.Manual);
-
-        var before = await SourcesByTagAsync(asset.Id);
-        Assert.Equal(TagSource.Manual, before[wolf.Id]);
-        Assert.Equal(TagSource.Implied, before[canine.Id]);
-        Assert.Equal(TagSource.Manual, before[mammal.Id]);
 
         await _catalog.RemoveImplicationAsync(wolf.Id, canine.Id);
 
-        var after = await SourcesByTagAsync(asset.Id);
-        Assert.Equal(TagSource.Manual, after[wolf.Id]);
-        Assert.False(after.ContainsKey(canine.Id), "Implied canine must be swept after removing wolf→canine.");
-        Assert.Equal(TagSource.Manual, after[mammal.Id]);
-        Assert.False(await FtsHasAsync(asset.Id, "canine"));
-        Assert.True(await FtsHasAsync(asset.Id, "mammal"));
-        Assert.True(await FtsHasAsync(asset.Id, "wolf"));
+        var stored = await SourcesByTagAsync(asset.Id);
+        Assert.Equal(TagSource.Manual, stored[wolf.Id]);
+        Assert.Equal(TagSource.Manual, stored[mammal.Id]);
+        Assert.False(stored.ContainsKey(canine.Id));
+
+        var display = await _catalog.GetAssignedTagsAsync(asset.Id);
+        Assert.DoesNotContain(display, t => t.TagId == canine.Id);
+        Assert.Equal(TagSource.Manual, display.Single(t => t.TagId == mammal.Id).Source);
     }
 
     [Fact]
-    public async Task RemoveImplication_ClearsTransitiveImplied_WhenNoOtherJustification()
+    public async Task ParentFilter_FindsChildrenThatImplyParent()
     {
-        var a = await _catalog.CreateTagAsync("alpha");
-        var b = await _catalog.CreateTagAsync("beta");
-        var c = await _catalog.CreateTagAsync("gamma");
-        var asset = await AddAssetAsync("chain.png");
+        var wolf = await _catalog.CreateTagAsync("wolf");
+        var canine = await _catalog.CreateTagAsync("canine");
+        Assert.True(await _catalog.AddImplicationAsync(wolf.Id, canine.Id));
+        var asset = await AddAssetAsync("pack.png");
+        await _catalog.AssignTagAsync(asset.Id, wolf.Id, TagSource.Manual);
 
-        Assert.True(await _catalog.AddImplicationAsync(a.Id, b.Id));
-        Assert.True(await _catalog.AddImplicationAsync(b.Id, c.Id));
-        await _catalog.AssignTagAsync(asset.Id, a.Id, TagSource.Manual);
-
-        var mid = await SourcesByTagAsync(asset.Id);
-        Assert.Equal(TagSource.Implied, mid[b.Id]);
-        Assert.Equal(TagSource.Implied, mid[c.Id]);
-
-        await _catalog.RemoveImplicationAsync(a.Id, b.Id);
-
-        var after = await SourcesByTagAsync(asset.Id);
-        Assert.Equal(new[] { a.Id }, after.Keys.OrderBy(k => k, StringComparer.Ordinal));
-        Assert.Equal(TagSource.Manual, after[a.Id]);
-        Assert.False(await FtsHasAsync(asset.Id, "beta"));
-        Assert.False(await FtsHasAsync(asset.Id, "gamma"));
-        Assert.True(await FtsHasAsync(asset.Id, "alpha"));
+        var hits = await _catalog.GetAssetsForTagsAsync([canine.Id]);
+        Assert.Contains(hits, a => a.Id == asset.Id);
     }
 
     [Fact]
-    public async Task RemoveImplication_DoesNotDeleteAppliedTagsThatWereAlsoImplied()
+    public async Task RemoveImplication_DoesNotDeleteAppliedTags()
     {
         var parent = await _catalog.CreateTagAsync("parent");
         var child = await _catalog.CreateTagAsync("child");
@@ -127,7 +112,6 @@ public sealed class TagImplicationRecalcTests : IAsyncLifetime
 
         Assert.True(await _catalog.AddImplicationAsync(parent.Id, child.Id));
         await _catalog.AssignTagAsync(asset.Id, parent.Id, TagSource.Manual);
-        // Upgrade implied child to Manual (user also applied it).
         await _catalog.AssignTagAsync(asset.Id, child.Id, TagSource.Manual);
 
         await _catalog.RemoveImplicationAsync(parent.Id, child.Id);

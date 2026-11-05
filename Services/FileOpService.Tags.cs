@@ -56,9 +56,9 @@ public sealed partial class FileOpService
         var items = new List<FileOpItem>();
         foreach (var assetId in ids)
         {
-            var before = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
+            var before = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
             await _catalog.AssignTagAsync(assetId, tagId, source).ConfigureAwait(false);
-            var after = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
+            var after = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
             var change = TagAssignUndo.PlanAssign(
                 before.Select(t => t.TagId),
                 after.Select(t => t.TagId),
@@ -123,9 +123,9 @@ public sealed partial class FileOpService
         var items = new List<FileOpItem>();
         foreach (var (assetId, source) in list)
         {
-            var before = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
+            var before = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
             await _catalog.RemoveTagAsync(assetId, tagId).ConfigureAwait(false);
-            var after = await _catalog.GetAssignedTagsAsync(assetId).ConfigureAwait(false);
+            var after = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
             var change = TagAssignUndo.PlanRemove(
                 before.Select(t => (t.TagId, t.Source)),
                 after.Select(t => (t.TagId, t.Source)),
@@ -165,6 +165,64 @@ public sealed partial class FileOpService
         if (batchId is null)
         {
             return FileOpResult.Fail(LastJournalPartial ? JournalFailedPartialMessage : JournalFailedMessage);
+        }
+
+        return new FileOpResult { Ok = true, Message = summary + ".", BatchId = batchId, Summary = summary };
+    }
+
+    /// <summary>Add alias→ideal; journals migrated AssetTag rows for Undo.</summary>
+    public Task<FileOpResult> AddAliasAsync(string aliasTagId, string idealTagId, string projectId) =>
+        GatedAsync(projectId, () => AddAliasCoreAsync(aliasTagId, idealTagId, projectId));
+
+    private async Task<FileOpResult> AddAliasCoreAsync(string aliasTagId, string idealTagId, string projectId)
+    {
+        if (string.IsNullOrEmpty(aliasTagId) || string.IsNullOrEmpty(idealTagId))
+        {
+            return FileOpResult.Fail("Pick two tags.");
+        }
+
+        var result = await _catalog.AddAliasAsync(aliasTagId, idealTagId).ConfigureAwait(false);
+        if (!result.Ok)
+        {
+            return FileOpResult.Fail("That alias is not allowed.");
+        }
+
+        if (result.Migrated.Count == 0)
+        {
+            return new FileOpResult
+            {
+                Ok = true,
+                Message = "Alias added.",
+                Summary = "Alias added"
+            };
+        }
+
+        var payload = CatalogService.SerializeAliasMigration(result.Migrated);
+        var items = new List<FileOpItem>
+        {
+            new()
+            {
+                Step = FileOpStep.AddAlias,
+                OldPath = result.AliasTagId,
+                NewPath = result.IdealTagId,
+                NewSourceId = payload
+            }
+        };
+        var summary = $"Aliased tag ({AssetNouns.Count(result.Migrated.Count)} updated)";
+        var batchId = await LogAsync(projectId, FileOpKind.TagAliasAdd, summary, items).ConfigureAwait(false);
+        if (batchId is null)
+        {
+            try
+            {
+                await _catalog.UndoAliasAddAsync(result.AliasTagId, result.IdealTagId, result.Migrated)
+                    .ConfigureAwait(false);
+            }
+            catch
+            {
+                return FileOpResult.Fail(JournalFailedPartialMessage);
+            }
+
+            return FileOpResult.Fail(JournalFailedMessage);
         }
 
         return new FileOpResult { Ok = true, Message = summary + ".", BatchId = batchId, Summary = summary };

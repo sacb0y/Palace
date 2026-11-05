@@ -22,20 +22,35 @@ public sealed partial class CatalogService
         _db.ReadAsync(conn => ReadTagSnapshot(conn, tagId));
 
     public Task RestoreTagSnapshotAsync(TagDeleteSnapshot snapshot) =>
-        _db.WriteAsync(conn => RestoreTagSnapshot(conn, snapshot));
+        _db.WriteAsync(conn =>
+        {
+            RestoreTagSnapshot(conn, snapshot);
+            InvalidateGraphCaches();
+        });
 
     /// <summary>Undo helper: assign without implication fan-out (journal reverse of a remove).</summary>
     public Task AssignTagForUndoAsync(string assetId, string tagId, TagSource source) =>
         _db.WriteAsync(conn =>
         {
+            // B1: never re-materialize Implied from old journals; never downgrade applied.
+            if (source == TagSource.Implied)
+            {
+                return;
+            }
+
+            var idealId = ResolveIdealTagId(conn, tagId);
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT INTO AssetTag (AssetId, TagId, Source)
                 VALUES ($asset, $tag, $source)
-                ON CONFLICT(AssetId, TagId) DO UPDATE SET Source = excluded.Source
+                ON CONFLICT(AssetId, TagId) DO UPDATE SET
+                    Source = CASE
+                        WHEN AssetTag.Source <> 'Implied' THEN AssetTag.Source
+                        ELSE excluded.Source
+                    END
                 """;
             cmd.Parameters.AddWithValue("$asset", assetId);
-            cmd.Parameters.AddWithValue("$tag", tagId);
+            cmd.Parameters.AddWithValue("$tag", idealId);
             cmd.Parameters.AddWithValue("$source", source.ToString());
             cmd.ExecuteNonQuery();
             RefreshFts(conn, assetId);
@@ -98,6 +113,26 @@ public sealed partial class CatalogService
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    public static string SerializeAliasMigration(IReadOnlyList<AssetTag> migrated) =>
+        JsonSerializer.Serialize(migrated, TagSnapshotJson);
+
+    public static IReadOnlyList<AssetTag> DeserializeAliasMigration(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<AssetTag>>(json, TagSnapshotJson) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
         }
     }
 

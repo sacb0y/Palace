@@ -117,7 +117,9 @@ public enum FileOpKind
     /// <summary>Remove tag(s) from asset(s); Undo re-assigns them.</summary>
     TagRemove,
     /// <summary>Delete a tag row (assignments / memberships / implications snapshotted); Undo restores.</summary>
-    TagDelete
+    TagDelete,
+    /// <summary>Add a TagAlias edge (+ AssetTag rewrite); Undo restores alias assignments.</summary>
+    TagAliasAdd
 }
 
 /// <summary>One step inside a <see cref="FileOpKind"/> batch. Undo replays steps in reverse.</summary>
@@ -132,5 +134,7 @@ public enum FileOpStep
     /// <summary>Same fields as <see cref="AssignTag"/>. OldSourceId is that asset's own TagSource.</summary>
     RemoveTag,
     /// <summary>OldPath=tagId; NewPath=JSON <c>TagDeleteSnapshot</c>.</summary>
-    DeleteTag
+    DeleteTag,
+    /// <summary>OldPath=aliasId; NewPath=idealId; NewSourceId=JSON migrated AssetTag rows.</summary>
+    AddAlias
 }
