@@ -163,6 +163,11 @@ public sealed partial class CatalogService
             return ReadAssets(cmd);
         });
 
+    /// <summary>
+    /// Low-level AssetTag upsert (no FileOp journal). Product UI must assign through
+    /// <see cref="FileOpService.AssignTagAsync"/> / <see cref="FileOpService.AssignTagsAsync"/>
+    /// so Undo is journaled. Tests may seed via this method.
+    /// </summary>
     public Task AssignTagAsync(string assetId, string tagId, TagSource source) =>
         _db.WriteAsync(conn =>
         {

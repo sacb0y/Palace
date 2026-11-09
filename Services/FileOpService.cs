@@ -1262,18 +1262,13 @@ public sealed partial class FileOpService
                     }
                     else
                     {
-                        // KeepAssigned: restore prior applied source, then strip new implied only.
-                        if (Enum.TryParse<TagSource>(item.OldSourceId, out var prior)
-                            && prior != TagSource.Implied)
-                        {
-                            await _catalog.RemoveTagForUndoAsync(
-                                item.AssetId, assignIdeal, impliedAdded: null).ConfigureAwait(false);
-                            await _catalog.AssignTagForUndoAsync(
-                                item.AssetId, assignIdeal, prior).ConfigureAwait(false);
-                        }
-
-                        await _catalog.RemoveTagForUndoAsync(
-                            item.AssetId, tagId: null, impliedIdeals).ConfigureAwait(false);
+                        // KeepAssigned: one WriteAsync UPDATE Source + strip new implied.
+                        TagSource? prior = Enum.TryParse<TagSource>(item.OldSourceId, out var parsed)
+                            && parsed != TagSource.Implied
+                            ? parsed
+                            : null;
+                        await _catalog.UndoKeepAssignedAssignAsync(
+                            item.AssetId, assignIdeal, prior, impliedIdeals).ConfigureAwait(false);
                     }
 
                     return null;

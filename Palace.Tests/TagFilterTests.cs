@@ -128,4 +128,44 @@ public sealed class TagFilterTests
         Assert.Contains("doggy", expanded);
         Assert.DoesNotContain("animal", expanded);
     }
+
+    [Fact]
+    public void Match_AllAndNone_AliasExpandEqualsIdealExpand()
+    {
+        // Doktor gap: Match helpers with alias-expanded sets for All / None.
+        var memberships = new List<TagMembership>
+        {
+            new() { ParentId = "dog", ChildId = "puppy" }
+        };
+        var aliases = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["doggy"] = "dog"
+        };
+
+        var viaAlias = TagFilter.Expand("doggy", memberships, aliases);
+        var viaIdeal = TagFilter.Expand("dog", memberships, aliases);
+        var tags = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
+        {
+            ["both"] = ["dog", "closeup"],
+            ["dogOnly"] = ["puppy"],
+            ["other"] = ["closeup"]
+        };
+        var universe = new HashSet<string>(StringComparer.Ordinal) { "both", "dogOnly", "other" };
+
+        var allAlias = TagFilter.MatchAssetIds(
+            TagFilterMode.All,
+            [viaAlias, new HashSet<string>(StringComparer.Ordinal) { "closeup" }],
+            tags);
+        var allIdeal = TagFilter.MatchAssetIds(
+            TagFilterMode.All,
+            [viaIdeal, new HashSet<string>(StringComparer.Ordinal) { "closeup" }],
+            tags);
+        Assert.Equal(allIdeal.OrderBy(x => x), allAlias.OrderBy(x => x));
+        Assert.Equal(["both"], allAlias.OrderBy(x => x));
+
+        var noneAlias = TagFilter.MatchAssetIds(TagFilterMode.None, [viaAlias], tags, universe);
+        var noneIdeal = TagFilter.MatchAssetIds(TagFilterMode.None, [viaIdeal], tags, universe);
+        Assert.Equal(noneIdeal.OrderBy(x => x), noneAlias.OrderBy(x => x));
+        Assert.Equal(["other"], noneAlias.OrderBy(x => x));
+    }
 }

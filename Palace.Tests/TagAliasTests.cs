@@ -233,6 +233,123 @@ public sealed class TagAliasTests : IAsyncLifetime
             aliasHits.Select(a => a.Id).OrderBy(x => x));
     }
 
+    [Fact]
+    public async Task EmptyDb_ExportImport_RoundTripsAliases()
+    {
+        // Doktor gap: empty catalog → import alias graph → export → second empty DB import.
+        var json = """
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "doggy", "aliasOf": "dog" },
+                { "name": "pup", "aliasOf": "dog" },
+                { "name": "dog" }
+              ]
+            }
+            """;
+
+        var plan = await _catalog.ImportTagsJsonAsync(json);
+        Assert.Equal(2, plan.AliasAdded);
+        Assert.Equal(0, plan.AliasRejected);
+
+        var exported = await _catalog.ExportTagsJsonAsync();
+        Assert.Contains("\"aliasOf\": \"dog\"", exported, StringComparison.Ordinal);
+
+        var dir2 = Path.Combine(Path.GetTempPath(), "palace-alias-empty2-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir2);
+        try
+        {
+            using var db2 = new PalaceDb(Path.Combine(dir2, "catalog", "palace.db"));
+            var catalog2 = new CatalogService(db2);
+            var plan2 = await catalog2.ImportTagsJsonAsync(exported);
+            Assert.Equal(2, plan2.AliasAdded);
+            Assert.Equal(0, plan2.AliasRejected);
+
+            var aliases = await catalog2.GetAliasesAsync();
+            var dog = Assert.Single(await catalog2.GetTagsAsync(), t => t.Name == "dog");
+            var doggy = Assert.Single(await catalog2.GetTagsAsync(), t => t.Name == "doggy");
+            var pup = Assert.Single(await catalog2.GetTagsAsync(), t => t.Name == "pup");
+            Assert.Contains(aliases, a => a.AliasTagId == doggy.Id && a.IdealTagId == dog.Id);
+            Assert.Contains(aliases, a => a.AliasTagId == pup.Id && a.IdealTagId == dog.Id);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            try { Directory.Delete(dir2, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    [Fact]
+    public async Task Import_AliasOf_MigratesExistingAssetTagOnAlias()
+    {
+        // Doktor gap: AssetTag already on the alias name before import binds alias→ideal.
+        var doggy = await _catalog.CreateTagAsync("doggy");
+        var asset = await AddAssetAsync("pre-alias.png");
+        await _catalog.AssignTagAsync(asset.Id, doggy.Id, TagSource.Manual);
+        Assert.Equal(TagSource.Manual, (await SourcesByTagAsync(asset.Id))[doggy.Id]);
+
+        var json = """
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "dog" },
+                { "name": "doggy", "aliasOf": "dog" }
+              ]
+            }
+            """;
+        var plan = await _catalog.ImportTagsJsonAsync(json);
+        Assert.Equal(1, plan.AliasAdded);
+
+        var dog = Assert.Single(await _catalog.GetTagsAsync(), t => t.Name == "dog");
+        var stored = await SourcesByTagAsync(asset.Id);
+        Assert.Equal(TagSource.Manual, stored[dog.Id]);
+        Assert.DoesNotContain(doggy.Id, stored.Keys);
+        Assert.DoesNotContain(TagSource.Implied, stored.Values);
+    }
+
+    [Fact]
+    public async Task TagFilter_AliasAndIdeal_MatchSameAssets_AllAndNone()
+    {
+        // Doktor gap: Any already covered; All / None must also treat alias ≡ ideal.
+        var doggy = await _catalog.CreateTagAsync("doggy");
+        var dog = await _catalog.CreateTagAsync("dog");
+        var subject = await _catalog.CreateTagAsync("n8-subject");
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
+
+        var both = await AddAssetAsync("both.png");
+        var dogOnly = await AddAssetAsync("dog-only.png");
+        var subjectOnly = await AddAssetAsync("subject-only.png");
+        await _catalog.AssignTagAsync(both.Id, dog.Id, TagSource.Manual);
+        await _catalog.AssignTagAsync(both.Id, subject.Id, TagSource.Manual);
+        await _catalog.AssignTagAsync(dogOnly.Id, dog.Id, TagSource.Manual);
+        await _catalog.AssignTagAsync(subjectOnly.Id, subject.Id, TagSource.Manual);
+
+        var memberships = (await _catalog.GetMembershipsAsync()).ToList();
+        var aliasMap = (await _catalog.GetAliasesAsync())
+            .ToDictionary(a => a.AliasTagId, a => a.IdealTagId, StringComparer.Ordinal);
+        var projectId = _source.ProjectId;
+
+        var allViaAlias = TagFilter.ExpandEach([doggy.Id, subject.Id], memberships, aliasMap);
+        var allViaIdeal = TagFilter.ExpandEach([dog.Id, subject.Id], memberships, aliasMap);
+        var allAliasHits = await _catalog.GetAssetsForTagFilterAsync(allViaAlias, TagFilterMode.All, projectId);
+        var allIdealHits = await _catalog.GetAssetsForTagFilterAsync(allViaIdeal, TagFilterMode.All, projectId);
+        Assert.Equal(
+            allIdealHits.Select(a => a.Id).OrderBy(x => x),
+            allAliasHits.Select(a => a.Id).OrderBy(x => x));
+        Assert.Equal([both.Id], allAliasHits.Select(a => a.Id).OrderBy(x => x));
+
+        var noneViaAlias = TagFilter.ExpandEach([doggy.Id], memberships, aliasMap);
+        var noneViaIdeal = TagFilter.ExpandEach([dog.Id], memberships, aliasMap);
+        var noneAliasHits = await _catalog.GetAssetsForTagFilterAsync(noneViaAlias, TagFilterMode.None, projectId);
+        var noneIdealHits = await _catalog.GetAssetsForTagFilterAsync(noneViaIdeal, TagFilterMode.None, projectId);
+        Assert.Equal(
+            noneIdealHits.Select(a => a.Id).OrderBy(x => x),
+            noneAliasHits.Select(a => a.Id).OrderBy(x => x));
+        Assert.Contains(noneAliasHits, a => a.Id == subjectOnly.Id);
+        Assert.DoesNotContain(noneAliasHits, a => a.Id == both.Id);
+        Assert.DoesNotContain(noneAliasHits, a => a.Id == dogOnly.Id);
+    }
+
     private async Task<Asset> AddAssetAsync(string fileName)
     {
         var path = Path.Combine(_source.Path, fileName);
