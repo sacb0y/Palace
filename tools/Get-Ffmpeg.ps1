@@ -22,7 +22,24 @@ if ([IO.File]::Exists([IO.Path]::Combine($dest, 'bin', 'ffmpeg.exe')) -and [IO.F
 $zip = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'palace-ffmpeg-' + [guid]::NewGuid().ToString('N') + '.zip')
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    (New-Object Net.WebClient).DownloadFile($Url, $zip)
+    # GitHub release CDN occasionally 504s; retry with backoff so CI build-test is not flaky.
+    $attempts = 4
+    $lastError = $null
+    for ($i = 1; $i -le $attempts; $i++) {
+        try {
+            if ([IO.File]::Exists($zip)) { [IO.File]::Delete($zip) }
+            (New-Object Net.WebClient).DownloadFile($Url, $zip)
+            $lastError = $null
+            break
+        } catch {
+            $lastError = $_
+            if ($i -eq $attempts) { throw }
+            $delaySec = [Math]::Min(30, [Math]::Pow(2, $i))
+            [Console]::Error.WriteLine("ffmpeg download attempt $i/$attempts failed: $($_.Exception.Message); retry in ${delaySec}s")
+            Start-Sleep -Seconds $delaySec
+        }
+    }
+    if ($null -ne $lastError) { throw $lastError }
     $sha = [Security.Cryptography.SHA256]::Create()
     $fs = [IO.File]::OpenRead($zip)
     try { $hash = -join ($sha.ComputeHash($fs) | ForEach-Object { $_.ToString('x2') }) } finally { $fs.Dispose() }
