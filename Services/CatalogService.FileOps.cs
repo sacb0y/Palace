@@ -105,56 +105,66 @@ public sealed partial class CatalogService
     public Task<string> AddFileOpBatchAsync(FileOpBatch batch) =>
         _db.WriteAsync(conn =>
         {
-            if (string.IsNullOrEmpty(batch.Id))
-            {
-                batch.Id = PalaceDb.NewId();
-            }
-
-            if (string.IsNullOrEmpty(batch.CreatedAt))
-            {
-                batch.CreatedAt = PalaceDb.NowIso();
-            }
-
             using var tx = conn.BeginTransaction();
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.Transaction = tx;
-                cmd.CommandText = """
-                    INSERT INTO FileOpBatch (Id, ProjectId, Kind, Summary, CreatedAt, IsUndone)
-                    VALUES ($id, $project, $kind, $summary, $at, 0)
-                    """;
-                cmd.Parameters.AddWithValue("$id", batch.Id);
-                cmd.Parameters.AddWithValue("$project", batch.ProjectId);
-                cmd.Parameters.AddWithValue("$kind", batch.Kind.ToString());
-                cmd.Parameters.AddWithValue("$summary", batch.Summary);
-                cmd.Parameters.AddWithValue("$at", batch.CreatedAt);
-                cmd.ExecuteNonQuery();
-            }
-
-            for (var i = 0; i < batch.Items.Count; i++)
-            {
-                var item = batch.Items[i];
-                item.Seq = i;
-                using var cmd = conn.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = """
-                    INSERT INTO FileOpItem (BatchId, Seq, Step, AssetId, OldPath, NewPath, OldSourceId, NewSourceId)
-                    VALUES ($batch, $seq, $step, $asset, $old, $new, $oldSource, $newSource)
-                    """;
-                cmd.Parameters.AddWithValue("$batch", batch.Id);
-                cmd.Parameters.AddWithValue("$seq", i);
-                cmd.Parameters.AddWithValue("$step", item.Step.ToString());
-                cmd.Parameters.AddWithValue("$asset", (object?)item.AssetId ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("$old", item.OldPath);
-                cmd.Parameters.AddWithValue("$new", item.NewPath);
-                cmd.Parameters.AddWithValue("$oldSource", (object?)item.OldSourceId ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("$newSource", (object?)item.NewSourceId ?? DBNull.Value);
-                cmd.ExecuteNonQuery();
-            }
-
+            var id = InsertFileOpBatch(conn, tx, batch);
             tx.Commit();
-            return batch.Id;
+            return id;
         });
+
+    /// <summary>
+    /// Inserts a journal batch inside an open transaction (caller commits / rolls back).
+    /// Used by bulk tag assign/remove so mutates + journal share one SQLite transaction.
+    /// </summary>
+    internal static string InsertFileOpBatch(SqliteConnection conn, SqliteTransaction tx, FileOpBatch batch)
+    {
+        if (string.IsNullOrEmpty(batch.Id))
+        {
+            batch.Id = PalaceDb.NewId();
+        }
+
+        if (string.IsNullOrEmpty(batch.CreatedAt))
+        {
+            batch.CreatedAt = PalaceDb.NowIso();
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT INTO FileOpBatch (Id, ProjectId, Kind, Summary, CreatedAt, IsUndone)
+                VALUES ($id, $project, $kind, $summary, $at, 0)
+                """;
+            cmd.Parameters.AddWithValue("$id", batch.Id);
+            cmd.Parameters.AddWithValue("$project", batch.ProjectId);
+            cmd.Parameters.AddWithValue("$kind", batch.Kind.ToString());
+            cmd.Parameters.AddWithValue("$summary", batch.Summary);
+            cmd.Parameters.AddWithValue("$at", batch.CreatedAt);
+            cmd.ExecuteNonQuery();
+        }
+
+        for (var i = 0; i < batch.Items.Count; i++)
+        {
+            var item = batch.Items[i];
+            item.Seq = i;
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT INTO FileOpItem (BatchId, Seq, Step, AssetId, OldPath, NewPath, OldSourceId, NewSourceId)
+                VALUES ($batch, $seq, $step, $asset, $old, $new, $oldSource, $newSource)
+                """;
+            cmd.Parameters.AddWithValue("$batch", batch.Id);
+            cmd.Parameters.AddWithValue("$seq", i);
+            cmd.Parameters.AddWithValue("$step", item.Step.ToString());
+            cmd.Parameters.AddWithValue("$asset", (object?)item.AssetId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$old", item.OldPath);
+            cmd.Parameters.AddWithValue("$new", item.NewPath);
+            cmd.Parameters.AddWithValue("$oldSource", (object?)item.OldSourceId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$newSource", (object?)item.NewSourceId ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+        }
+
+        return batch.Id;
+    }
 
     /// <summary>Newest not-yet-undone file operation for a project, with its steps in order.</summary>
     public Task<FileOpBatch?> GetLastUndoableFileOpAsync(string projectId) =>

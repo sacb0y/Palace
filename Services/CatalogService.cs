@@ -8,7 +8,8 @@ namespace Palace.Services;
 /// <summary>
 /// SQLite catalog access. Split by area into partial files: <c>.Sources</c> (watched folders, cloud
 /// accounts), <c>.Assets</c>, <c>.Tags</c> (global tag graph), <c>.TagAssignments</c> (asset tags,
-/// filters, implied backfill), <c>.Organize</c>, <c>.Rooms</c>, <c>.Search</c> (FTS). Projects live here.
+/// filters, implied backfill), <c>.BulkTagOps</c> (transactional bulk assign/remove + journal),
+/// <c>.Organize</c>, <c>.Rooms</c>, <c>.Search</c> (FTS). Projects live here.
 /// </summary>
 public sealed partial class CatalogService
 {
