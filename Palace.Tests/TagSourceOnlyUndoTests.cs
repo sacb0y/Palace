@@ -149,6 +149,126 @@ public sealed class TagSourceOnlyUndoTests : IAsyncLifetime
         Assert.Equal(TagSource.Manual, await SourceOf(asset.Id, tag.Id));
     }
 
+    [Fact]
+    public async Task SourceOnly_ManualToPrompt_JournalsAndUndoes()
+    {
+        var tag = await _catalog.CreateTagAsync("man-prompt");
+        var asset = await AddAssetAsync("mp.png");
+        await _catalog.AssignTagAsync(asset.Id, tag.Id, TagSource.Manual);
+
+        var result = await _ops.AssignTagAsync(
+            [asset.Id], tag.Id, tag.Name, TagSource.Prompt, _projectId);
+        Assert.True(result.Ok, result.Message);
+        Assert.False(string.IsNullOrEmpty(result.BatchId));
+        Assert.Equal(TagSource.Prompt, await SourceOf(asset.Id, tag.Id));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(TagSource.Manual, await SourceOf(asset.Id, tag.Id));
+    }
+
+    [Fact]
+    public async Task KeepAssigned_Undo_StripsImpliedOnly_KeepsAssignedSource()
+    {
+        var parent = await _catalog.CreateTagAsync("keep-parent");
+        var winter = await _catalog.CreateTagAsync("keep-winter");
+        var asset = await AddAssetAsync("ki.png");
+        await _catalog.AssignTagAsync(asset.Id, parent.Id, TagSource.Manual);
+        await _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO AssetTag (AssetId, TagId, Source)
+                VALUES ($a, $t, $s)
+                """;
+            cmd.Parameters.AddWithValue("$a", asset.Id);
+            cmd.Parameters.AddWithValue("$t", winter.Id);
+            cmd.Parameters.AddWithValue("$s", TagSource.Implied.ToString());
+            cmd.ExecuteNonQuery();
+        });
+
+        // Simulate a KeepAssigned journal: assigned tag stayed Manual; Implied winter was added.
+        await _catalog.AddFileOpBatchAsync(new FileOpBatch
+        {
+            ProjectId = _projectId,
+            Kind = FileOpKind.TagAssign,
+            Summary = "Tagged 1 item with keep-parent",
+            Items =
+            [
+                new FileOpItem
+                {
+                    Step = FileOpStep.AssignTag,
+                    AssetId = asset.Id,
+                    OldPath = parent.Id,
+                    NewPath = parent.Name,
+                    OldSourceId = TagSource.Manual.ToString(),
+                    NewSourceId = TagAssignUndo.Encode([winter.Id], touchAssignedTag: false)
+                }
+            ]
+        });
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(TagSource.Manual, await SourceOf(asset.Id, parent.Id));
+        Assert.Null(await SourceOf(asset.Id, winter.Id));
+    }
+
+    [Fact]
+    public async Task Bulk_MultiAsset_SourceOnly_Journals_Undoes_AndRedo()
+    {
+        var tag = await _catalog.CreateTagAsync("bulk-src");
+        var a = await AddAssetAsync("bsa.png");
+        var b = await AddAssetAsync("bsb.png");
+        var c = await AddAssetAsync("bsc.png");
+        await _catalog.AssignTagAsync(a.Id, tag.Id, TagSource.Prompt);
+        await _catalog.AssignTagAsync(b.Id, tag.Id, TagSource.Prompt);
+        await _catalog.AssignTagAsync(c.Id, tag.Id, TagSource.Manual);
+
+        var result = await _ops.AssignTagAsync(
+            [a.Id, b.Id, c.Id], tag.Id, tag.Name, TagSource.Manual, _projectId);
+        Assert.True(result.Ok, result.Message);
+        Assert.False(string.IsNullOrEmpty(result.BatchId));
+        Assert.Equal(TagSource.Manual, await SourceOf(a.Id, tag.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(b.Id, tag.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(c.Id, tag.Id));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(TagSource.Prompt, await SourceOf(a.Id, tag.Id));
+        Assert.Equal(TagSource.Prompt, await SourceOf(b.Id, tag.Id));
+        // c was already Manual — not journaled; stays Manual.
+        Assert.Equal(TagSource.Manual, await SourceOf(c.Id, tag.Id));
+
+        var redo = await _ops.AssignTagAsync(
+            [a.Id, b.Id, c.Id], tag.Id, tag.Name, TagSource.Manual, _projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.Equal(TagSource.Manual, await SourceOf(a.Id, tag.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(b.Id, tag.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(c.Id, tag.Id));
+    }
+
+    [Fact]
+    public async Task SourceOnly_PromptToManual_UndoThenRedo()
+    {
+        var tag = await _catalog.CreateTagAsync("redo-src");
+        var asset = await AddAssetAsync("rd.png");
+        await _catalog.AssignTagAsync(asset.Id, tag.Id, TagSource.Prompt);
+
+        var first = await _ops.AssignTagAsync(
+            [asset.Id], tag.Id, tag.Name, TagSource.Manual, _projectId);
+        Assert.True(first.Ok, first.Message);
+        Assert.Equal(TagSource.Manual, await SourceOf(asset.Id, tag.Id));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(TagSource.Prompt, await SourceOf(asset.Id, tag.Id));
+
+        var redo = await _ops.AssignTagAsync(
+            [asset.Id], tag.Id, tag.Name, TagSource.Manual, _projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.Equal(TagSource.Manual, await SourceOf(asset.Id, tag.Id));
+    }
+
     private async Task<Asset> AddAssetAsync(string fileName)
     {
         var path = Path.Combine(_source.Path, fileName);

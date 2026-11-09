@@ -57,6 +57,58 @@ public sealed partial class CatalogService
         });
 
     /// <summary>
+    /// KeepAssigned AssignTag Undo in <b>one</b> write: UPDATE the assigned row's
+    /// Source back to the prior applied value (never rematerialize Implied), then
+    /// strip Implied extras that assignment added. No delete+reinsert across
+    /// separate <c>WriteAsync</c> calls.
+    /// </summary>
+    public Task UndoKeepAssignedAssignAsync(
+        string assetId,
+        string assignedTagId,
+        TagSource? priorAppliedSource,
+        IReadOnlyList<string>? impliedAdded = null) =>
+        _db.WriteAsync(conn =>
+        {
+            var idealId = ResolveIdealTagId(conn, assignedTagId);
+            if (priorAppliedSource is TagSource prior && prior != TagSource.Implied)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = """
+                    UPDATE AssetTag SET Source = $source
+                    WHERE AssetId = $asset AND TagId = $tag
+                    """;
+                cmd.Parameters.AddWithValue("$asset", assetId);
+                cmd.Parameters.AddWithValue("$tag", idealId);
+                cmd.Parameters.AddWithValue("$source", prior.ToString());
+                cmd.ExecuteNonQuery();
+            }
+
+            if (impliedAdded is not null)
+            {
+                foreach (var extra in impliedAdded)
+                {
+                    if (string.IsNullOrEmpty(extra) || string.Equals(extra, idealId, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    var idealExtra = ResolveIdealTagId(conn, extra);
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = """
+                        DELETE FROM AssetTag
+                        WHERE AssetId = $asset AND TagId = $tag AND Source = $source
+                        """;
+                    cmd.Parameters.AddWithValue("$asset", assetId);
+                    cmd.Parameters.AddWithValue("$tag", idealExtra);
+                    cmd.Parameters.AddWithValue("$source", TagSource.Implied.ToString());
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            RefreshFts(conn, assetId);
+        });
+
+    /// <summary>
     /// Undo helper: remove the assigned tag and any implied tags that assignment added.
     /// Implied extras are deleted only while they are still <see cref="TagSource.Implied"/>.
     /// </summary>
