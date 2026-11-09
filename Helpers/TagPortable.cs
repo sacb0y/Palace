@@ -551,6 +551,17 @@ public sealed class TagMergePlan
     public int AliasSkipped { get; set; }
     public int SkippedEmptyNames { get; set; }
 
+    /// <summary>
+    /// True when import would mutate the catalog. Single source for the import
+    /// backup / apply gate — keep in sync with every change <see cref="List{T}"/> on this plan.
+    /// </summary>
+    public bool HasWork =>
+        Creates.Count > 0
+        || Updates.Count > 0
+        || Memberships.Count > 0
+        || Implications.Count > 0
+        || Aliases.Count > 0;
+
     public string Summary =>
         $"Created {Created}, updated {Updated}, memberships +{MembershipAdded} (rejected {MembershipRejected}), implicits +{ImplicationAdded} (rejected {ImplicationRejected}), aliases +{AliasAdded} (rejected {AliasRejected}).";
 }
