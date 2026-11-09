@@ -1225,6 +1225,7 @@ public sealed partial class FileOpService
             case FileOpStep.AssignTag:
             case FileOpStep.RemoveTag:
             case FileOpStep.DeleteTag:
+            case FileOpStep.CreateTag:
             case FileOpStep.AddAlias:
                 return await UndoTagOpStepAsync(item).ConfigureAwait(false);
 
@@ -1328,6 +1329,33 @@ public sealed partial class FileOpService
                 catch (Exception ex)
                 {
                     return UndoNote.Retry($"{snapshot.Tag.Name}: {ex.Message}");
+                }
+            }
+
+            case FileOpStep.CreateTag:
+            {
+                if (string.IsNullOrEmpty(item.OldPath))
+                {
+                    return UndoNote.Skip("tag create: incomplete journal row");
+                }
+
+                try
+                {
+                    // Unused-check + DELETE in one WriteAsync (CASCADE) — never delete an in-use tag.
+                    var deleted = await _catalog.TryDeleteUnusedCreatedTagAsync(item.OldPath)
+                        .ConfigureAwait(false);
+                    if (!deleted)
+                    {
+                        var keepName = string.IsNullOrWhiteSpace(item.NewPath) ? "tag" : item.NewPath;
+                        return UndoNote.Skip($"kept {keepName}: still used");
+                    }
+
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    var name = string.IsNullOrWhiteSpace(item.NewPath) ? item.OldPath : item.NewPath;
+                    return UndoNote.Retry($"{name}: {ex.Message}");
                 }
             }
 

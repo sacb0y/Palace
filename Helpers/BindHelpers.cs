@@ -58,6 +58,32 @@ public static class BindHelpers
     public static Thickness SelectedBorder(bool selected) =>
         selected ? new Thickness(2) : new Thickness(0);
 
+    /// <summary>T2 assigned-chip fill: accent when selected for Remove from all.</summary>
+    public static Brush AssignedChipBackground(bool selected)
+    {
+        var key = selected ? "AccentFillColorDefaultBrush" : "ControlFillColorDefaultBrush";
+        if (Application.Current?.Resources.TryGetValue(key, out var brush) == true
+            && brush is Brush theme)
+        {
+            return theme;
+        }
+
+        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    /// <summary>T2 assigned-chip label: on-accent when selected.</summary>
+    public static Brush AssignedChipForeground(bool selected)
+    {
+        var key = selected ? "TextOnAccentFillColorPrimaryBrush" : "TextFillColorPrimaryBrush";
+        if (Application.Current?.Resources.TryGetValue(key, out var brush) == true
+            && brush is Brush theme)
+        {
+            return theme;
+        }
+
+        return new SolidColorBrush(Microsoft.UI.Colors.White);
+    }
+
     /// <summary>
     /// Next-plate margin: left-docked Details never steals the right inset.
     /// </summary>

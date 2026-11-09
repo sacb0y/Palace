@@ -138,6 +138,12 @@ public enum FileOpStep
     RemoveTag,
     /// <summary>OldPath=tagId; NewPath=JSON <c>TagDeleteSnapshot</c>.</summary>
     DeleteTag,
+    /// <summary>
+    /// Tag row created during TagAssign (quick-create). OldPath=tagId; NewPath=tagName.
+    /// Undo deletes the tag when unused. Journaled before AssignTag so Undo strips
+    /// assignments first, then the empty Tag row.
+    /// </summary>
+    CreateTag,
     /// <summary>OldPath=aliasId; NewPath=idealId; NewSourceId=JSON migrated AssetTag rows.</summary>
     AddAlias
 }

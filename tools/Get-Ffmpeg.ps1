@@ -23,7 +23,7 @@ $zip = [IO.Path]::Combine([IO.Path]::GetTempPath(), 'palace-ffmpeg-' + [guid]::N
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     # GitHub release CDN occasionally 504s; retry with backoff so CI build-test is not flaky.
-    $attempts = 4
+    $attempts = 8
     $lastError = $null
     for ($i = 1; $i -le $attempts; $i++) {
         try {
@@ -34,7 +34,7 @@ try {
         } catch {
             $lastError = $_
             if ($i -eq $attempts) { throw }
-            $delaySec = [Math]::Min(30, [Math]::Pow(2, $i))
+            $delaySec = [Math]::Min(60, [Math]::Pow(2, $i))
             [Console]::Error.WriteLine("ffmpeg download attempt $i/$attempts failed: $($_.Exception.Message); retry in ${delaySec}s")
             Start-Sleep -Seconds $delaySec
         }

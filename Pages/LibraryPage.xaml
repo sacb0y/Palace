@@ -1214,7 +1214,8 @@
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuAddTag"
                                         Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
-                                        Text="Add tag…">
+                                        KeyboardAcceleratorTextOverride="T"
+                                        Text="Add tags…">
                                         <MenuFlyoutItem.Icon>
                                             <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
                                         </MenuFlyoutItem.Icon>
@@ -1760,7 +1761,26 @@
                     TextWrapping="Wrap"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}" />
 
-                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Tags" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="{x:Bind ViewModel.AssignedTagsHeader, Mode=OneWay}" />
+                    <HyperlinkButton
+                        x:Name="BtnRemoveTags"
+                        Grid.Column="1"
+                        Padding="4,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="BtnRemoveTags"
+                        AutomationProperties.Name="Remove tags"
+                        Command="{x:Bind ViewModel.OpenRemoveTagsDialogCommand}"
+                        Content="Remove tags…"
+                        FontSize="12"
+                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+                </Grid>
                 <TextBlock
                     x:Name="TxtAssignedTags"
                     AutomationProperties.AutomationId="TxtAssignedTags"
@@ -1779,27 +1799,47 @@
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:AssignedTagItem">
-                            <Grid HorizontalAlignment="Left" Opacity="{x:Bind ChromeOpacity, Mode=OneWay}">
+                            <Grid
+                                HorizontalAlignment="Left"
+                                Opacity="{x:Bind ChromeOpacity, Mode=OneWay}">
                                 <Border
                                     MinWidth="0"
-                                    Padding="8,4"
+                                    Padding="8,4,4,4"
                                     AutomationProperties.Name="{x:Bind ChipAutomationName, Mode=OneWay}"
-                                    Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
+                                    Background="{x:Bind helpers:BindHelpers.AssignedChipBackground(IsChipSelected), Mode=OneWay}"
                                     BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="12"
-                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsPartial), Mode=OneWay}">
+                                    CornerRadius="16"
+                                    Tapped="AssignedTagChip_Tapped"
+                                    Tag="{x:Bind}">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <TextBlock
                                             VerticalAlignment="Center"
-                                            Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            FontSize="12"
+                                            FontWeight="SemiBold"
+                                            Foreground="{x:Bind helpers:BindHelpers.AssignedChipForeground(IsChipSelected), Mode=OneWay}"
+                                            Text="✓"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowOnAllCheck), Mode=OneWay}" />
+                                        <Ellipse
+                                            Width="8"
+                                            Height="8"
+                                            VerticalAlignment="Center"
+                                            Fill="{x:Bind helpers:TagColor.ChipFill(DotColor), Mode=OneWay}" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{x:Bind helpers:BindHelpers.AssignedChipForeground(IsChipSelected), Mode=OneWay}"
+                                            Style="{StaticResource BodyTextBlockStyle}"
                                             Text="{x:Bind TagName, Mode=OneWay}"
                                             ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind CountLabel, Mode=OneWay}"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
                                         <Button
                                             Width="24"
                                             Height="24"
-                                            Margin="-4,-4,-6,-4"
                                             Padding="4"
                                             VerticalAlignment="Center"
                                             AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
@@ -1808,272 +1848,205 @@
                                             BorderThickness="0"
                                             Command="{x:Bind pages:LibraryPage.GetRemoveTagCommand()}"
                                             CommandParameter="{x:Bind}"
-                                            ToolTipService.ToolTip="{x:Bind RemoveAutomationName, Mode=OneWay}">
+                                            ToolTipService.ToolTip="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowRemove), Mode=OneWay}">
                                             <ic:FluentIcon
-                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
                                                 Icon="Dismiss"
                                                 IconSize="Size12"
                                                 IconVariant="Regular" />
                                         </Button>
                                     </StackPanel>
                                 </Border>
-                                <!-- Partial tags: dashed accent outline (Border cannot dash). -->
-                                <Grid Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}">
-                                    <Border
-                                        MinWidth="0"
-                                        Padding="8,4"
-                                        Background="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneWay}"
-                                        BorderThickness="0"
-                                        CornerRadius="12">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock
-                                                VerticalAlignment="Center"
-                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                Text="{x:Bind TagName, Mode=OneWay}"
-                                                ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}" />
-                                            <TextBlock
-                                                VerticalAlignment="Center"
-                                                Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                                Text="{x:Bind CountLabel, Mode=OneWay}" />
-                                            <Button
-                                                Width="24"
-                                                Height="24"
-                                                Margin="-4,-4,-6,-4"
-                                                Padding="4"
-                                                VerticalAlignment="Center"
-                                                AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
-                                                AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                Command="{x:Bind pages:LibraryPage.GetRemoveTagCommand()}"
-                                                CommandParameter="{x:Bind}"
-                                                ToolTipService.ToolTip="{x:Bind RemoveAutomationName, Mode=OneWay}">
-                                                <ic:FluentIcon
-                                                    Foreground="{x:Bind helpers:TagColor.ChipInk(EffectiveColor), Mode=OneWay}"
-                                                    Icon="Dismiss"
-                                                    IconSize="Size12"
-                                                    IconVariant="Regular" />
-                                            </Button>
-                                        </StackPanel>
-                                    </Border>
-                                    <Rectangle
-                                        RadiusX="12"
-                                        RadiusY="12"
-                                        Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-                                        StrokeDashArray="1.5,1.5"
-                                        StrokeThickness="1.5"
-                                        IsHitTestVisible="False" />
-                                </Grid>
+                                <Rectangle
+                                    RadiusX="16"
+                                    RadiusY="16"
+                                    Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                                    StrokeDashArray="1.5,1.5"
+                                    StrokeThickness="1.5"
+                                    IsHitTestVisible="False"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
                             </Grid>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
-                <Button
-                    x:Name="BtnBrowseTags"
-                    AutomationProperties.AutomationId="BtnBrowseTags"
-                    AutomationProperties.Name="{x:Bind ViewModel.AddTagButtonLabel, Mode=OneWay}"
-                    Click="BtnBrowseTags_Click"
-                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                <StackPanel
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRemoveFromAllBar), Mode=OneWay}">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.RemoveFromAllSummary, Mode=OneWay}" />
+                    <Button
+                        x:Name="BtnRemoveFromAll"
+                        AutomationProperties.AutomationId="BtnRemoveFromAll"
+                        AutomationProperties.Name="Remove from all"
+                        Command="{x:Bind ViewModel.RemoveSelectedAssignedTagsCommand}"
+                        Content="Remove from all"
+                        Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+
+                <!-- T2 merged Add tags box (shortcut T). Keeps AsbAssignTag / BtnAssignTag AutomationIds. -->
+                <StackPanel
+                    x:Name="PnlAddTags"
+                    Spacing="8"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasSelection), Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock
+                        <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Add tags" />
+                        <Border
+                            Padding="5,0"
                             VerticalAlignment="Center"
-                            Text="{x:Bind ViewModel.AddTagButtonLabel, Mode=OneWay}" />
+                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="3">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                FontSize="11"
+                                Text="T" />
+                        </Border>
                     </StackPanel>
-                    <Button.Flyout>
-                        <Flyout
-                            x:Name="FlyAssignTags"
-                            AutomationProperties.AutomationId="FlyAssignTags"
-                            Opening="FlyAssignTags_Opening">
-                            <ScrollViewer
-                                MaxWidth="420"
-                                MaxHeight="480"
-                                HorizontalScrollBarVisibility="Disabled"
-                                VerticalScrollBarVisibility="Auto">
-                                <StackPanel Width="400" Spacing="12">
-                                    <AutoSuggestBox
-                                        x:Name="AsbAssignTag"
-                                        AutomationProperties.AutomationId="AsbAssignTag"
-                                        AutomationProperties.Name="Find or create a tag"
-                                        ItemsSource="{x:Bind ViewModel.TagSuggestions, Mode=OneWay}"
-                                        PlaceholderText="Find or create a tag"
-                                        QueryIcon="Find"
-                                        QuerySubmitted="AsbAssignTag_QuerySubmitted"
-                                        SuggestionChosen="AsbAssignTag_SuggestionChosen"
-                                        TextChanged="AsbAssignTag_TextChanged"
-                                        Text="{x:Bind ViewModel.TagQuery, Mode=OneWay}"
-                                        TextMemberPath="Display"
-                                        UpdateTextOnSelect="True">
-                                        <AutoSuggestBox.ItemTemplate>
-                                            <DataTemplate x:DataType="models:TagPickItem">
-                                                <Grid ColumnSpacing="8">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <Ellipse
-                                                        Width="10"
-                                                        Height="10"
-                                                        VerticalAlignment="Center"
-                                                        Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneTime}"
-                                                        Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                        StrokeThickness="1"
-                                                        Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(EffectiveColor), Mode=OneTime}" />
-                                                    <TextBlock
-                                                        Grid.Column="1"
-                                                        VerticalAlignment="Center"
-                                                        Text="{x:Bind Display, Mode=OneTime}" />
-                                                </Grid>
-                                            </DataTemplate>
-                                        </AutoSuggestBox.ItemTemplate>
-                                    </AutoSuggestBox>
-                                    <TextBlock
-                                        x:Name="TxtAssignChipLegend"
-                                        AutomationProperties.AutomationId="TxtAssignChipLegend"
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="✓ all selected · – some" />
-                                    <Button
-                                        AutomationProperties.AutomationId="BtnAssignTag"
-                                        Click="BtnAssignTag_Click"
-                                        Content="Assign tag"
-                                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
-                                    <TextBlock
-                                        x:Name="TxtAssignAnnouncement"
-                                        AutomationProperties.LiveSetting="Assertive"
-                                        Style="{StaticResource CaptionTextBlockStyle}"
-                                        Text="{x:Bind ViewModel.AssignAnnouncement, Mode=OneWay}" />
-                                    <TextBlock
-                                        AutomationProperties.HeadingLevel="Level2"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Starred"
-                                        Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.StarredAssignTags.Count), Mode=OneWay}" />
-                                    <ItemsRepeater
-                                        ItemsSource="{x:Bind ViewModel.StarredAssignTags, Mode=OneWay}"
-                                        Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.StarredAssignTags.Count), Mode=OneWay}">
-                                        <ItemsRepeater.Layout>
-                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="models:TagChipItem">
-                                                <controls:TagChip
-                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
-                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
-                                                    CommandParameter="{x:Bind}"
-                                                    Compact="True"
-                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
-                                                    Label="{x:Bind Name, Mode=OneWay}"
-                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
-                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
-                                                    ShowStar="True"
-                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
-                                    <TextBlock
-                                        AutomationProperties.HeadingLevel="Level2"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Recent"
-                                        Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecentAssignTags.Count), Mode=OneWay}" />
-                                    <ItemsRepeater
-                                        ItemsSource="{x:Bind ViewModel.RecentAssignTags, Mode=OneWay}"
-                                        Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecentAssignTags.Count), Mode=OneWay}">
-                                        <ItemsRepeater.Layout>
-                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="models:TagChipItem">
-                                                <controls:TagChip
-                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
-                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
-                                                    CommandParameter="{x:Bind}"
-                                                    Compact="True"
-                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
-                                                    Label="{x:Bind Name, Mode=OneWay}"
-                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
-                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
-                                                    ShowStar="True"
-                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
-                                    <TextBlock
-                                        AutomationProperties.HeadingLevel="Level2"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="Suggested"
-                                        Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecommendedAssignTags.Count), Mode=OneWay}" />
-                                    <ItemsRepeater
-                                        ItemsSource="{x:Bind ViewModel.RecommendedAssignTags, Mode=OneWay}"
-                                        Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.RecommendedAssignTags.Count), Mode=OneWay}">
-                                        <ItemsRepeater.Layout>
-                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="models:TagChipItem">
-                                                <controls:TagChip
-                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
-                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
-                                                    CommandParameter="{x:Bind}"
-                                                    Compact="True"
-                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
-                                                    Label="{x:Bind Name, Mode=OneWay}"
-                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
-                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
-                                                    ShowStar="True"
-                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
-                                    <TextBlock
-                                        AutomationProperties.HeadingLevel="Level2"
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="All tags"
-                                        Visibility="{x:Bind helpers:BindHelpers.CountToVisibility(ViewModel.AssignGroups.Count), Mode=OneWay}" />
-                                    <ItemsControl ItemsSource="{x:Bind ViewModel.AssignGroups, Mode=OneWay}">
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate x:DataType="models:TagBoardGroup">
-                                                <Expander
-                                                    HorizontalAlignment="Stretch"
-                                                    HorizontalContentAlignment="Stretch"
+                    <Border
+                        MinHeight="40"
+                        Padding="6,4"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                        BorderThickness="1,1,1,2"
+                        CornerRadius="4">
+                        <StackPanel Spacing="6">
+                            <ItemsRepeater
+                                x:Name="RepPendingTags"
+                                AutomationProperties.AutomationId="RepPendingTags"
+                                ItemsSource="{x:Bind ViewModel.PendingTags, Mode=OneWay}"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasPendingTags), Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <helpers:ChipWrapLayout HorizontalSpacing="5" VerticalSpacing="5" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:PendingTagChip">
+                                        <Border
+                                            Padding="8,2,2,2"
+                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="13">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <Ellipse
+                                                    Width="8"
+                                                    Height="8"
+                                                    VerticalAlignment="Center"
+                                                    Fill="{x:Bind helpers:TagColor.ChipFill(DotColor), Mode=OneWay}" />
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    FontSize="13"
+                                                    Text="{x:Bind FaceLabel, Mode=OneWay}" />
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    FontSize="11"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                                    Text="+ new"
+                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsNew), Mode=OneWay}" />
+                                                <Button
+                                                    Width="20"
+                                                    Height="20"
+                                                    Padding="2"
                                                     AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
-                                                    Header="{x:Bind Name, Mode=OneWay}"
-                                                    IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
-                                                    <ItemsRepeater ItemsSource="{x:Bind Chips, Mode=OneWay}">
-                                                        <ItemsRepeater.Layout>
-                                                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
-                                                        </ItemsRepeater.Layout>
-                                                        <ItemsRepeater.ItemTemplate>
-                                                            <DataTemplate x:DataType="models:TagChipItem">
-                                                                <controls:TagChip
-                                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
-                                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                                    Command="{x:Bind pages:LibraryPage.GetToggleAssignChipCommand()}"
-                                                                    CommandParameter="{x:Bind}"
-                                                                    Compact="True"
-                                                                    IsStarred="{x:Bind IsStarred, Mode=OneWay}"
-                                                                    Label="{x:Bind Name, Mode=OneWay}"
-                                                                    PartialCount="{x:Bind PartialCount, Mode=OneWay}"
-                                                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
-                                                                    ShowStar="True"
-                                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
-                                                            </DataTemplate>
-                                                        </ItemsRepeater.ItemTemplate>
-                                                    </ItemsRepeater>
-                                                </Expander>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
+                                                    AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Command="{x:Bind pages:LibraryPage.GetRemovePendingTagCommand()}"
+                                                    CommandParameter="{x:Bind}">
+                                                    <ic:FluentIcon Icon="Dismiss" IconSize="Size12" IconVariant="Regular" />
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                            <AutoSuggestBox
+                                x:Name="AsbAssignTag"
+                                AutomationProperties.AutomationId="AsbAssignTag"
+                                AutomationProperties.Name="Add tags"
+                                ItemsSource="{x:Bind ViewModel.TagSuggestions, Mode=OneWay}"
+                                PlaceholderText="Add tags — type, or paste a list"
+                                QuerySubmitted="AsbAssignTag_QuerySubmitted"
+                                SuggestionChosen="AsbAssignTag_SuggestionChosen"
+                                TextChanged="AsbAssignTag_TextChanged"
+                                Text="{x:Bind ViewModel.TagQuery, Mode=OneWay}"
+                                TextMemberPath="Display"
+                                UpdateTextOnSelect="True">
+                                <AutoSuggestBox.ItemTemplate>
+                                    <DataTemplate x:DataType="models:TagPickItem">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse
+                                                Width="10"
+                                                Height="10"
+                                                VerticalAlignment="Center"
+                                                Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneTime}"
+                                                Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                StrokeThickness="1" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                VerticalAlignment="Center"
+                                                Text="{x:Bind Display, Mode=OneTime}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </AutoSuggestBox.ItemTemplate>
+                            </AutoSuggestBox>
+                        </StackPanel>
+                    </Border>
+                    <TextBlock
+                        x:Name="TxtPendingSummary"
+                        AutomationProperties.AutomationId="TxtPendingSummary"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.PendingSummary, Mode=OneWay}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowPendingSummary), Mode=OneWay}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="BtnAssignTag"
+                            AutomationProperties.AutomationId="BtnAssignTag"
+                            AutomationProperties.Name="Apply tags"
+                            Click="BtnAssignTag_Click"
+                            Content="{x:Bind ViewModel.ApplyPendingLabel, Mode=OneWay}"
+                            IsEnabled="{x:Bind ViewModel.CanApplyPendingTags, Mode=OneWay}"
+                            Style="{StaticResource AccentButtonStyle}" />
+                        <Button
+                            x:Name="BtnClearPendingTags"
+                            AutomationProperties.AutomationId="BtnClearPendingTags"
+                            Command="{x:Bind ViewModel.ClearPendingTagsCommand}"
+                            Content="Clear"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasPendingTags), Mode=OneWay}" />
+                    </StackPanel>
+                    <TextBlock
+                        x:Name="TxtAssignAnnouncement"
+                        AutomationProperties.LiveSetting="Assertive"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.AssignAnnouncement, Mode=OneWay}" />
+                    <!-- Hidden anchor kept for Tag selected… ShowAt when Preview is visible. -->
+                    <Button
+                        x:Name="BtnBrowseTags"
+                        AutomationProperties.AutomationId="BtnBrowseTags"
+                        AutomationProperties.Name="{x:Bind ViewModel.AddTagButtonLabel, Mode=OneWay}"
+                        Click="BtnBrowseTags_Click"
+                        Height="1"
+                        Width="1"
+                        Opacity="0"
+                        IsTabStop="False">
+                        <Button.Flyout>
+                            <Flyout
+                                x:Name="FlyAssignTags"
+                                AutomationProperties.AutomationId="FlyAssignTags"
+                                Opening="FlyAssignTags_Opening" />
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
 
                 <StackPanel
                     AutomationProperties.AutomationId="PnlGeneration"
@@ -2272,6 +2245,21 @@
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis" />
+                <Button
+                    x:Name="BtnStatusUndo"
+                    Padding="10,2"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnStatusUndo"
+                    AutomationProperties.Name="Undo"
+                    Command="{x:Bind ViewModel.UndoFileOpCommand}"
+                    Content="Undo"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowStatusUndo), Mode=OneWay}" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Ctrl+Z"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowStatusUndo), Mode=OneWay}" />
                 <HyperlinkButton
                     x:Name="BtnStatusDetails"
                     Padding="4,0"
@@ -2703,7 +2691,8 @@
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuOverlayAddTag"
                                         Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
-                                        Text="Add tag…">
+                                        KeyboardAcceleratorTextOverride="T"
+                                        Text="Add tags…">
                                         <MenuFlyoutItem.Icon>
                                             <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
                                         </MenuFlyoutItem.Icon>

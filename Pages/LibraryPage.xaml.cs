@@ -105,13 +105,12 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestPickRoom = AskRoomAsync;
         ViewModel.RequestPickMoveDestination = AskMoveDestinationAsync;
         ViewModel.RequestFocusAssignTag = () =>
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                ShowAssignTagsFlyout(preferTagSelectedCta: true);
-                AsbAssignTag.Focus(FocusState.Programmatic);
-            });
+            DispatcherQueue.TryEnqueue(FocusAddTagsBox);
         ViewModel.RequestOpenAssignPanel = () =>
-            DispatcherQueue.TryEnqueue(() => ShowAssignTagsFlyout(preferTagSelectedCta: true));
+            DispatcherQueue.TryEnqueue(FocusAddTagsBox);
+        ViewModel.RequestRemoveTagsDialog = AskRemoveTagsAsync;
+        ViewModel.RequestChipRemoveConfirm = AskChipRemoveConfirmAsync;
+        ViewModel.RequestBarRemoveConfirm = AskBarRemoveConfirmAsync;
         ViewModel.RequestRestoreMosaicSelection = () =>
             DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
@@ -334,6 +333,8 @@ public sealed partial class LibraryPage : Page
 
     public static IRelayCommand<AssignedTagItem> GetRemoveTagCommand() => AppServices.Library.RemoveAssignedTagCommand;
 
+    public static IRelayCommand<PendingTagChip> GetRemovePendingTagCommand() => AppServices.Library.RemovePendingTagCommand;
+
     public static IRelayCommand<PromptSuggestion> GetAcceptSuggestionCommand() => AppServices.Library.AcceptSuggestionCommand;
 
     public static IRelayCommand<AssetItem?> GetActivateFolderHeaderCommand() => AppServices.Library.ActivateFolderHeaderCommand;
@@ -518,56 +519,67 @@ public sealed partial class LibraryPage : Page
     private void InfUndo_FocusExited(object sender, RoutedEventArgs e) =>
         ViewModel.ResumeUndoToastTimer();
 
-    private void BtnBrowseTags_Click(object sender, RoutedEventArgs e)
+    private void BtnBrowseTags_Click(object sender, RoutedEventArgs e) => FocusAddTagsBox();
+
+    private void BtnTagSelected_Click(object sender, RoutedEventArgs e) => FocusAddTagsBox();
+
+    /// <summary>T2: Tag selected… / T / legacy flyout AutomationId all focus the Add tags box.</summary>
+    private void FocusAddTagsBox()
     {
         ViewModel.RebuildAssignPanelPublic();
-    }
-
-    private void BtnTagSelected_Click(object sender, RoutedEventArgs e)
-    {
-        ShowAssignTagsFlyout(preferTagSelectedCta: true);
-    }
-
-    private void ShowAssignTagsFlyout(bool preferTagSelectedCta)
-    {
-        ViewModel.RebuildAssignPanelPublic();
-        // Preview auto-hides under ~1296 client DIP; BtnBrowseTags is inside
-        // ScrPreviewPane — never ShowAt a Collapsed target (flyout misses / misplaces).
-        var kind = AssignTagsFlyoutAnchor.Resolve(
-            preferTagSelectedCta,
-            ViewModel.ShowTagSelectedCta,
-            ScrPreviewPane.Visibility == Visibility.Visible);
-        FrameworkElement anchor = kind switch
+        // Open the preview only when the user has it hidden — never flip a visible pane off.
+        var openedPreview = false;
+        if (ViewModel.HasSelection
+            && ScrPreviewPane.Visibility != Visibility.Visible
+            && (!_previewPane.UserShow || _previewPane.AutoHidden))
         {
-            AssignTagsFlyoutAnchor.Kind.TagSelectedCta => BtnTagSelected,
-            AssignTagsFlyoutAnchor.Kind.BrowseTagsInPreview => BtnBrowseTags,
-            _ => ResolveAssignTagsFallbackAnchor(),
-        };
-        FlyAssignTags.ShowAt(anchor);
-    }
-
-    /// <summary>
-    /// Anchor when Preview is Collapsed: prefer a realized selected tile, else mosaic host.
-    /// </summary>
-    private FrameworkElement ResolveAssignTagsFallbackAnchor()
-    {
-        var selected = ViewModel.SelectedAsset;
-        if (selected is not null && !string.IsNullOrEmpty(selected.MosaicTag))
-        {
-            var container = FindRealizedItemContainerByTag(GrdAssets, selected.MosaicTag);
-            if (container is not null)
-            {
-                return container;
-            }
+            ApplyPreviewToggleFromUser();
+            openedPreview = true;
         }
 
-        return GrdAssets;
+        // After opening Preview, AsbAssignTag may not be focusable until the next layout
+        // pass — an immediate Focus can land on BtnRemoveTags (earlier tab stop). Defer.
+        if (openedPreview)
+        {
+            DispatcherQueue.TryEnqueue(() => FocusAsbAssignTagWithRetry());
+        }
+        else
+        {
+            FocusAsbAssignTagWithRetry();
+        }
+    }
+
+    private void FocusAsbAssignTagWithRetry()
+    {
+        if (AsbAssignTag.Focus(FocusState.Programmatic))
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
     }
 
     private void FlyAssignTags_Opening(object sender, object e)
     {
+        // Legacy AutomationId shell — content moved into the always-visible Add tags box.
         ViewModel.RebuildAssignPanelPublic();
         DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
+    }
+
+    private void AssignedTagChip_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source
+            && FindAncestor<Button>(source) is not null)
+        {
+            // × button owns remove; don't also toggle selection.
+            return;
+        }
+
+        if (sender is FrameworkElement { Tag: AssignedTagItem item })
+        {
+            ViewModel.ToggleAssignedChipSelectionCommand.Execute(item);
+            e.Handled = true;
+        }
     }
 
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
@@ -1509,11 +1521,15 @@ public sealed partial class LibraryPage : Page
         }
 
         ViewModel.TagQuery = sender.Text ?? "";
-        // Updating ItemsSource can reset AutoSuggestBox.Text; keep the query the user typed.
-        if (!string.Equals(sender.Text, ViewModel.TagQuery, StringComparison.Ordinal))
+        // Paste/list mode clears TagQuery asynchronously after committing pending chips —
+        // re-sync so the box does not keep the pasted string.
+        DispatcherQueue.TryEnqueue(() =>
         {
-            sender.Text = ViewModel.TagQuery;
-        }
+            if (!string.Equals(AsbAssignTag.Text, ViewModel.TagQuery, StringComparison.Ordinal))
+            {
+                AsbAssignTag.Text = ViewModel.TagQuery;
+            }
+        });
     }
 
     private void AsbAssignTag_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
@@ -1527,8 +1543,12 @@ public sealed partial class LibraryPage : Page
 
     private void BtnAssignTag_Click(object sender, RoutedEventArgs e)
     {
-        ViewModel.TagQuery = AsbAssignTag.Text ?? "";
-        ViewModel.AssignFromQueryCommand.Execute(null);
+        if (!string.Equals(ViewModel.TagQuery, AsbAssignTag.Text ?? "", StringComparison.Ordinal))
+        {
+            ViewModel.TagQuery = AsbAssignTag.Text ?? "";
+        }
+
+        ViewModel.ApplyPendingTagsCommand.Execute(null);
     }
 
     private void AsbAssignTag_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -1538,12 +1558,12 @@ public sealed partial class LibraryPage : Page
             ViewModel.SelectedPickTag = pick;
             ViewModel.TagQuery = pick.Name;
         }
-        else
+        else if (!string.Equals(ViewModel.TagQuery, sender.Text ?? "", StringComparison.Ordinal))
         {
-            ViewModel.TagQuery = sender.Text;
+            ViewModel.TagQuery = sender.Text ?? "";
         }
 
-        ViewModel.AssignFromQueryCommand.Execute(null);
+        ViewModel.ApplyPendingTagsCommand.Execute(null);
     }
 
     private void GrdAssets_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e) =>
@@ -1667,7 +1687,9 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (!e.Handled && TryHandleMosaicMoveKey(e))
+        // handledEventsToo: ItemsView / ItemContainer may mark KeyDown Handled.
+        // Same path as Move (M) so T still reaches Add tags when mosaic has focus.
+        if (TryHandleMosaicMoveKey(e) || TryHandleAddTagsKey(e))
         {
             e.Handled = true;
         }
@@ -3838,6 +3860,231 @@ public sealed partial class LibraryPage : Page
 
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
+
+    /// <summary>T2: &gt;10 chip × confirm — flyout anchored to the chip's Remove button (t2-04a).</summary>
+    private async Task<bool> AskChipRemoveConfirmAsync(AssignedTagItem item, int affectedFiles)
+    {
+        var anchor = FindDescendantByAutomationId(LstTags, item.RemoveAutomationId) as FrameworkElement
+            ?? LstTags;
+        return await ShowRemoveConfirmFlyoutAsync(
+            anchor,
+            TagRemoveConfirm.ChipFlyoutTitle(item.TagName, affectedFiles),
+            TagRemoveConfirm.ChipFlyoutBody);
+    }
+
+    /// <summary>T2: &gt;10 Remove from all confirm — flyout on the bar button.</summary>
+    private Task<bool> AskBarRemoveConfirmAsync(string tagNames, int affectedFiles) =>
+        ShowRemoveConfirmFlyoutAsync(
+            BtnRemoveFromAll,
+            TagRemoveConfirm.ChipFlyoutTitle(tagNames, affectedFiles),
+            TagRemoveConfirm.ChipFlyoutBody);
+
+    private async Task<bool> ShowRemoveConfirmFlyoutAsync(
+        FrameworkElement anchor,
+        string title,
+        string body)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        var titleBlock = new TextBlock
+        {
+            Text = title,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var bodyBlock = new TextBlock
+        {
+            Text = body,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush
+        };
+        var removeBtn = new Button
+        {
+            Content = TagRemoveConfirm.Primary,
+            Style = Application.Current.Resources["AccentButtonStyle"] as Style,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinWidth = 100
+        };
+        AutomationProperties.SetAutomationId(removeBtn, "BtnChipRemoveConfirm");
+        var cancelBtn = new Button
+        {
+            Content = TagRemoveConfirm.Cancel,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinWidth = 100
+        };
+        AutomationProperties.SetAutomationId(cancelBtn, "BtnChipRemoveCancel");
+        var actions = new Grid { Margin = new Thickness(0, 12, 0, 0), ColumnSpacing = 8 };
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(removeBtn, 0);
+        Grid.SetColumn(cancelBtn, 1);
+        actions.Children.Add(removeBtn);
+        actions.Children.Add(cancelBtn);
+
+        var root = new StackPanel { Spacing = 0, Width = 280 };
+        root.Children.Add(titleBlock);
+        root.Children.Add(bodyBlock);
+        root.Children.Add(actions);
+
+        var flyout = new Flyout
+        {
+            Content = root,
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom
+        };
+        AutomationProperties.SetAutomationId(flyout, "FlyChipRemoveConfirm");
+
+        void Complete(bool remove)
+        {
+            flyout.Hide();
+            tcs.TrySetResult(remove);
+        }
+
+        removeBtn.Click += (_, _) => Complete(true);
+        cancelBtn.Click += (_, _) => Complete(false);
+        flyout.Closed += (_, _) => tcs.TrySetResult(false);
+        flyout.ShowAt(anchor);
+        return await tcs.Task;
+    }
+
+    private static DependencyObject? FindDescendantByAutomationId(DependencyObject root, string automationId)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe
+                && string.Equals(
+                    AutomationProperties.GetAutomationId(fe),
+                    automationId,
+                    StringComparison.Ordinal))
+            {
+                return child;
+            }
+
+            var nested = FindDescendantByAutomationId(child, automationId);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>T2 Remove tags… dialog: tick tags, see counts, one Undo batch.</summary>
+    private async Task<IReadOnlyList<string>?> AskRemoveTagsAsync()
+    {
+        var picks = ViewModel.RemovableTags;
+        if (picks.Count == 0)
+        {
+            return null;
+        }
+
+        var fileCount = Math.Max(ViewModel.SelectionCount, picks.Max(p => p.SelectionTotal));
+        var list = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.None,
+            MaxHeight = 320,
+            ItemsSource = picks
+        };
+        AutomationProperties.SetAutomationId(list, "LstRemoveTags");
+        list.ItemTemplate = BuildRemovableTagTemplate();
+
+        var summary = new TextBlock
+        {
+            Margin = new Thickness(0, 8, 0, 0),
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
+            Text = TagRemoveConfirm.AssignmentSummary(picks.Sum(p => p.AppliedCount))
+        };
+        AutomationProperties.SetAutomationId(summary, "TxtRemoveTagsSummary");
+
+        var hint = new TextBlock
+        {
+            Text = TagRemoveConfirm.DialogHint,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 8),
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style
+        };
+        var implied = new TextBlock
+        {
+            Text = TagRemoveConfirm.DialogImpliedNote,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 0),
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush
+        };
+
+        var root = new StackPanel { Spacing = 4 };
+        root.Children.Add(hint);
+        root.Children.Add(list);
+        root.Children.Add(summary);
+        root.Children.Add(implied);
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = TagRemoveConfirm.DialogTitle(fileCount),
+            Content = root,
+            PrimaryButtonText = TagRemoveConfirm.RemoveButtonLabel(0),
+            CloseButtonText = TagRemoveConfirm.Cancel,
+            DefaultButton = ContentDialogButton.Close,
+            IsPrimaryButtonEnabled = false
+        };
+        dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
+        AutomationProperties.SetAutomationId(dialog, "DlgRemoveTags");
+
+        void RefreshPrimary()
+        {
+            var checkedCount = picks.Count(p => p.IsChecked);
+            dialog.IsPrimaryButtonEnabled = checkedCount > 0;
+            dialog.PrimaryButtonText = TagRemoveConfirm.RemoveButtonLabel(checkedCount);
+            var assignments = picks.Where(p => p.IsChecked).Sum(p => p.AppliedCount);
+            summary.Text = TagRemoveConfirm.AssignmentSummary(assignments);
+        }
+
+        foreach (var pick in picks)
+        {
+            pick.PropertyChanged += (_, _) => RefreshPrimary();
+        }
+
+        var result = await dialog.ShowAsync();
+        if (result != ContentDialogResult.Primary)
+        {
+            return null;
+        }
+
+        return picks.Where(p => p.IsChecked).Select(p => p.TagId).ToList();
+    }
+
+    private static DataTemplate BuildRemovableTagTemplate() =>
+        (DataTemplate)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            """
+            <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                          xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+              <Grid ColumnSpacing="10" Padding="0,4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <CheckBox Grid.Column="0"
+                          IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                          MinWidth="0"
+                          VerticalAlignment="Center"/>
+                <Border Grid.Column="1" Width="10" Height="10" CornerRadius="5"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource AccentFillColorDefaultBrush}"/>
+                <TextBlock Grid.Column="2" Text="{Binding Name}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+                <TextBlock Grid.Column="3" Text="{Binding CountLabel}" VerticalAlignment="Center"
+                           Opacity="0.7"
+                           Style="{StaticResource CaptionTextBlockStyle}"/>
+              </Grid>
+            </DataTemplate>
+            """);
 
     private async Task<Room?> AskRoomAsync(IReadOnlyList<Room> rooms)
     {
