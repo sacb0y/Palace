@@ -559,21 +559,6 @@ public sealed partial class LibraryPage : Page
         }
     }
 
-    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
-    {
-        while (node is not null)
-        {
-            if (node is T match)
-            {
-                return match;
-            }
-
-            node = VisualTreeHelper.GetParent(node);
-        }
-
-        return null;
-    }
-
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
 
     /// <summary>
