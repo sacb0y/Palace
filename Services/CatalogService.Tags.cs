@@ -352,17 +352,38 @@ public sealed partial class CatalogService
     /// Returns the existing tag with this name (any case), or creates it, in one write.
     /// Alias names resolve to their ideal (v1 rewrite-on-assign / create path).
     /// </summary>
-    public Task<Tag> GetOrCreateTagAsync(string name) =>
+    public async Task<Tag> GetOrCreateTagAsync(string name)
+    {
+        var (tag, _) = await GetOrCreateTagResultAsync(name).ConfigureAwait(false);
+        return tag;
+    }
+
+    /// <summary>
+    /// Like <see cref="GetOrCreateTagAsync"/> but reports whether a new Tag row was inserted
+    /// (for TagAssign CreateTag journaling). Alias hits return the ideal with Created=false.
+    /// </summary>
+    public Task<(Tag Tag, bool Created)> GetOrCreateTagResultAsync(string name) =>
         _db.WriteAsync(conn =>
         {
             var existing = FindTagByName(conn, name);
-            var tag = existing ?? InsertTag(conn, name, 0);
-            if (existing is null)
+            if (existing is not null)
             {
-                InvalidateGraphCaches();
+                return (ResolveIdealTag(conn, existing), false);
             }
 
-            return ResolveIdealTag(conn, tag);
+            var tag = InsertTag(conn, name, 0);
+            InvalidateGraphCaches();
+            return (ResolveIdealTag(conn, tag), true);
+        });
+
+    /// <summary>How many AssetTag rows reference this tag (any source).</summary>
+    public Task<int> CountAssetTagsAsync(string tagId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE TagId = $id";
+            cmd.Parameters.AddWithValue("$id", tagId);
+            return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
         });
 
     public Task<Tag> CreateChildTagAsync(string parentId, string name, int priority = 0) =>

@@ -50,15 +50,37 @@ public sealed partial class CatalogService
     /// Assign many tags × many assets and journal <see cref="FileOpKind.TagAssign"/> in
     /// <b>one</b> SQLite transaction. Mid-loop or journal failure rolls everything back.
     /// Caller must already resolve alias→ideal and drop <see cref="TagSource.Implied"/>.
+    /// <paramref name="createdTags"/> are Tag rows inserted for this apply; journaled as
+    /// <see cref="FileOpStep.CreateTag"/> before AssignTag so Undo deletes unused rows.
     /// </summary>
     public Task<BulkTagBatchResult> ApplyBulkAssignJournaledAsync(
         string projectId,
         IReadOnlyList<string> assetIds,
-        IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags) =>
+        IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,
+        IReadOnlyList<(string TagId, string TagName)>? createdTags = null) =>
         _db.WriteAsync(conn =>
         {
             var probe = TakeBulkTagFault();
             using var tx = conn.BeginTransaction();
+            var createItems = new List<FileOpItem>();
+            if (createdTags is { Count: > 0 })
+            {
+                foreach (var (tagId, tagName) in createdTags)
+                {
+                    if (string.IsNullOrEmpty(tagId))
+                    {
+                        continue;
+                    }
+
+                    createItems.Add(new FileOpItem
+                    {
+                        Step = FileOpStep.CreateTag,
+                        OldPath = tagId,
+                        NewPath = tagName
+                    });
+                }
+            }
+
             var items = new List<FileOpItem>();
             var appliedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var mutations = 0;
@@ -96,7 +118,12 @@ public sealed partial class CatalogService
                     }
                 }
 
-                if (items.Count == 0)
+                // CreateTag first (lower Seq) so Undo (descending Seq) strips AssignTag, then Tag row.
+                var journalItems = new List<FileOpItem>(createItems.Count + items.Count);
+                journalItems.AddRange(createItems);
+                journalItems.AddRange(items);
+
+                if (journalItems.Count == 0)
                 {
                     tx.Commit();
                     var already = tags.Count == 1
@@ -106,12 +133,23 @@ public sealed partial class CatalogService
                 }
 
                 ThrowIfBeforeJournalFault(probe);
-                var assetCount = items.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).Count();
-                var summary = appliedNames.Count == 1
-                    ? $"Tagged {AssetNouns.Count(assetCount)} with {appliedNames.First()}"
-                    : $"Tagged {AssetNouns.Count(assetCount)} with {appliedNames.Count} tags";
+                string summary;
+                if (items.Count == 0)
+                {
+                    summary = createItems.Count == 1
+                        ? $"Created tag {createItems[0].NewPath}"
+                        : $"Created {createItems.Count} tags";
+                }
+                else
+                {
+                    var assetCount = items.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).Count();
+                    summary = appliedNames.Count == 1
+                        ? $"Tagged {AssetNouns.Count(assetCount)} with {appliedNames.First()}"
+                        : $"Tagged {AssetNouns.Count(assetCount)} with {appliedNames.Count} tags";
+                }
+
                 var batchId = InsertJournaledBatch(
-                    conn, tx, projectId, FileOpKind.TagAssign, summary, items, probe);
+                    conn, tx, projectId, FileOpKind.TagAssign, summary, journalItems, probe);
                 tx.Commit();
                 return new BulkTagBatchResult
                 {

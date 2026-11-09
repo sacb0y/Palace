@@ -24,12 +24,14 @@ public sealed partial class FileOpService
     /// <summary>
     /// Assign many tags across many assets in <b>one</b> <see cref="FileOpKind.TagAssign"/>
     /// batch (T7 paste). Resolves aliases→ideal; never journals <see cref="TagSource.Implied"/>.
+    /// <paramref name="createdTags"/> are Tag rows inserted for this apply (CreateTag undo steps).
     /// </summary>
     public Task<FileOpResult> AssignTagsAsync(
         IReadOnlyList<string> assetIds,
         IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,
-        string projectId) =>
-        GatedAsync(projectId, () => AssignTagsCoreAsync(assetIds, tags, projectId));
+        string projectId,
+        IReadOnlyList<(string TagId, string TagName)>? createdTags = null) =>
+        GatedAsync(projectId, () => AssignTagsCoreAsync(assetIds, tags, projectId, createdTags));
 
     /// <summary>Remove <paramref name="tagId"/> from each asset; journals <see cref="FileOpKind.TagRemove"/>.</summary>
     public Task<FileOpResult> RemoveTagAsync(
@@ -56,7 +58,8 @@ public sealed partial class FileOpService
     private async Task<FileOpResult> AssignTagsCoreAsync(
         IReadOnlyList<string> assetIds,
         IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,
-        string projectId)
+        string projectId,
+        IReadOnlyList<(string TagId, string TagName)>? createdTags = null)
     {
         var ids = assetIds.Where(id => !string.IsNullOrEmpty(id)).Distinct(StringComparer.Ordinal).ToList();
         if (ids.Count == 0 || tags.Count == 0)
@@ -99,10 +102,26 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("No tags to assign.");
         }
 
+        // Only journal CreateTag for ids that survived alias→ideal resolve.
+        List<(string TagId, string TagName)>? created = null;
+        if (createdTags is { Count: > 0 })
+        {
+            created = createdTags
+                .Where(c => !string.IsNullOrEmpty(c.TagId) && unique.ContainsKey(c.TagId))
+                .GroupBy(c => c.TagId, StringComparer.Ordinal)
+                .Select(g => g.First())
+                .ToList();
+            if (created.Count == 0)
+            {
+                created = null;
+            }
+        }
+
         var batch = await _catalog.ApplyBulkAssignJournaledAsync(
             projectId,
             ids,
-            unique.Values.ToList()).ConfigureAwait(false);
+            unique.Values.ToList(),
+            created).ConfigureAwait(false);
         return ToFileOpResult(batch);
     }
 

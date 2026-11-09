@@ -20,6 +20,16 @@ public partial class LibraryViewModel
     /// </summary>
     public Func<Task<IReadOnlyList<string>?>>? RequestRemoveTagsDialog { get; set; }
 
+    /// <summary>
+    /// Page shows the &gt;10 chip-anchored Remove confirm flyout (t2-04a). True = Remove.
+    /// </summary>
+    public Func<AssignedTagItem, int, Task<bool>>? RequestChipRemoveConfirm { get; set; }
+
+    /// <summary>
+    /// Page shows the &gt;10 Remove from all confirm flyout anchored to the bar button.
+    /// </summary>
+    public Func<string, int, Task<bool>>? RequestBarRemoveConfirm { get; set; }
+
     [RelayCommand]
     private Task AssignFromQueryAsync() => ApplyPendingTagsAsync();
 
@@ -44,7 +54,8 @@ public partial class LibraryViewModel
             }
 
             var pending = PendingTags.ToList();
-            var created = 0;
+            var createdCount = 0;
+            var createdTags = new List<(string TagId, string TagName)>();
             var tags = new List<(string TagId, string TagName, TagSource Source)>();
             foreach (var chip in pending)
             {
@@ -54,11 +65,12 @@ public partial class LibraryViewModel
                     continue;
                 }
 
-                var createdTag = await _catalog.GetOrCreateTagAsync(chip.TypedName);
+                var (createdTag, wasCreated) = await _catalog.GetOrCreateTagResultAsync(chip.TypedName);
                 tags.Add((createdTag.Id, createdTag.Name, TagSource.Manual));
-                if (chip.IsNew)
+                if (wasCreated)
                 {
-                    created++;
+                    createdCount++;
+                    createdTags.Add((createdTag.Id, createdTag.Name));
                 }
             }
 
@@ -69,7 +81,8 @@ public partial class LibraryViewModel
                 unique[row.TagId] = row;
             }
 
-            await AssignManyToSelectionAsync(targets, unique.Values.ToList(), created);
+            await AssignManyToSelectionAsync(
+                targets, unique.Values.ToList(), createdCount, createdTags);
             await UiDispatch.RunAsync(ClearPendingTags);
             await LoadPreviewAsync(SelectedAsset);
             await ReloadTagCatalogAsync();
@@ -111,11 +124,8 @@ public partial class LibraryViewModel
                 item.IsPartial, item.AppliedCount, Math.Max(targets.Count, item.SelectionTotal));
             if (TagRemoveConfirm.NeedsConfirm(affected))
             {
-                var ok = RequestConfirm is not null
-                    && await RequestConfirm(
-                        TagRemoveConfirm.ChipFlyoutTitle(item.TagName, affected),
-                        TagRemoveConfirm.ChipFlyoutBody,
-                        TagRemoveConfirm.Primary);
+                var ok = RequestChipRemoveConfirm is not null
+                    && await RequestChipRemoveConfirm(item, affected);
                 if (!ok)
                 {
                     return;
@@ -156,11 +166,8 @@ public partial class LibraryViewModel
             if (TagRemoveConfirm.NeedsConfirm(affected))
             {
                 var names = string.Join(", ", selected.Select(t => t.TagName));
-                var ok = RequestConfirm is not null
-                    && await RequestConfirm(
-                        TagRemoveConfirm.ChipFlyoutTitle(names, affected),
-                        TagRemoveConfirm.ChipFlyoutBody,
-                        TagRemoveConfirm.Primary);
+                var ok = RequestBarRemoveConfirm is not null
+                    && await RequestBarRemoveConfirm(names, affected);
                 if (!ok)
                 {
                     return;
@@ -219,6 +226,8 @@ public partial class LibraryViewModel
 
             string tagId;
             string tagName = suggestion.Token;
+            List<(string TagId, string TagName)>? createdTags = null;
+            var createdCount = 0;
             if (suggestion.ExistingTagId is not null)
             {
                 tagId = suggestion.ExistingTagId;
@@ -226,12 +235,18 @@ public partial class LibraryViewModel
             }
             else
             {
-                var created = await _catalog.GetOrCreateTagAsync(suggestion.Token);
+                var (created, wasCreated) = await _catalog.GetOrCreateTagResultAsync(suggestion.Token);
                 tagId = created.Id;
                 tagName = created.Name;
+                if (wasCreated)
+                {
+                    createdCount = 1;
+                    createdTags = [(tagId, tagName)];
+                }
             }
 
-            await AssignManyToSelectionAsync(targets, [(tagId, tagName, TagSource.Prompt)], createdCount: 0);
+            await AssignManyToSelectionAsync(
+                targets, [(tagId, tagName, TagSource.Prompt)], createdCount, createdTags);
             await LoadPreviewAsync(SelectedAsset);
             await ReloadTagCatalogAsync();
         });
@@ -314,7 +329,7 @@ public partial class LibraryViewModel
             return;
         }
 
-        _ = HandleTagQueryChangedAsync(value);
+        _ = ErrorReporter.RunAsync("Add tags input", Notify, () => HandleTagQueryChangedAsync(value));
     }
 
     private async Task HandleTagQueryChangedAsync(string value)
@@ -611,12 +626,14 @@ public partial class LibraryViewModel
     private async Task AssignManyToSelectionAsync(
         IReadOnlyList<AssetItem> targets,
         IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,
-        int createdCount)
+        int createdCount,
+        IReadOnlyList<(string TagId, string TagName)>? createdTags = null)
     {
         var result = await _fileOps.AssignTagsAsync(
             targets.Select(t => t.Id).ToList(),
             tags,
-            AppServices.CurrentProject.Id);
+            AppServices.CurrentProject.Id,
+            createdTags);
         foreach (var (tagId, _, source) in tags)
         {
             if (source == TagSource.Manual)

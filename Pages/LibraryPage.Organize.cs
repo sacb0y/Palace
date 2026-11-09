@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -38,6 +39,12 @@ public sealed partial class LibraryPage
         }
 
         if (TryHandleAddTagsKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (TryHandleAddTagsEscape(e))
         {
             e.Handled = true;
             return;
@@ -116,6 +123,59 @@ public sealed partial class LibraryPage
 
         ViewModel.FocusAssignTagCommand.Execute(null);
         return true;
+    }
+
+    /// <summary>
+    /// Escape in Add tags: first clears pending/typed input; second unfocuses the box.
+    /// </summary>
+    private bool TryHandleAddTagsEscape(KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Escape || ViewModel.IsGalleryOverlayOpen)
+        {
+            return false;
+        }
+
+        if (!IsFocusInsideAddTagsBox(e.OriginalSource))
+        {
+            return false;
+        }
+
+        var hasTyped = !string.IsNullOrWhiteSpace(ViewModel.TagQuery)
+            || !string.IsNullOrWhiteSpace(AsbAssignTag.Text);
+        var action = TagAddEscape.Resolve(ViewModel.HasPendingTags, hasTyped);
+        switch (action)
+        {
+            case TagAddEscapeAction.ClearInput:
+                ViewModel.ClearPendingTagsCommand.Execute(null);
+                AsbAssignTag.Text = "";
+                AsbAssignTag.Focus(FocusState.Programmatic);
+                return true;
+            case TagAddEscapeAction.Unfocus:
+                GrdAssets.Focus(FocusState.Programmatic);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private bool IsFocusInsideAddTagsBox(object? source)
+    {
+        if (source is DependencyObject node)
+        {
+            for (var cur = node; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+            {
+                if (ReferenceEquals(cur, AsbAssignTag)
+                    || ReferenceEquals(cur, PnlAddTags)
+                    || ReferenceEquals(cur, RepPendingTags)
+                    || ReferenceEquals(cur, BtnAssignTag)
+                    || ReferenceEquals(cur, BtnClearPendingTags))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return AsbAssignTag.FocusState != FocusState.Unfocused;
     }
 
     /// <summary>Fill the tile context menu's "Move to recent" sub-menu (hidden when empty).</summary>

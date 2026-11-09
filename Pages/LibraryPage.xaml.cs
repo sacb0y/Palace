@@ -109,6 +109,8 @@ public sealed partial class LibraryPage : Page
         ViewModel.RequestOpenAssignPanel = () =>
             DispatcherQueue.TryEnqueue(FocusAddTagsBox);
         ViewModel.RequestRemoveTagsDialog = AskRemoveTagsAsync;
+        ViewModel.RequestChipRemoveConfirm = AskChipRemoveConfirmAsync;
+        ViewModel.RequestBarRemoveConfirm = AskBarRemoveConfirmAsync;
         ViewModel.RequestRestoreMosaicSelection = () =>
             DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
         ViewModel.RequestOpenGalleryWindow = GalleryWindow.Show;
@@ -3834,6 +3836,117 @@ public sealed partial class LibraryPage : Page
         }
 
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    /// <summary>T2: &gt;10 chip × confirm — flyout anchored to the chip's Remove button (t2-04a).</summary>
+    private async Task<bool> AskChipRemoveConfirmAsync(AssignedTagItem item, int affectedFiles)
+    {
+        var anchor = FindDescendantByAutomationId(LstTags, item.RemoveAutomationId) as FrameworkElement
+            ?? LstTags;
+        return await ShowRemoveConfirmFlyoutAsync(
+            anchor,
+            TagRemoveConfirm.ChipFlyoutTitle(item.TagName, affectedFiles),
+            TagRemoveConfirm.ChipFlyoutBody);
+    }
+
+    /// <summary>T2: &gt;10 Remove from all confirm — flyout on the bar button.</summary>
+    private Task<bool> AskBarRemoveConfirmAsync(string tagNames, int affectedFiles) =>
+        ShowRemoveConfirmFlyoutAsync(
+            BtnRemoveFromAll,
+            TagRemoveConfirm.ChipFlyoutTitle(tagNames, affectedFiles),
+            TagRemoveConfirm.ChipFlyoutBody);
+
+    private async Task<bool> ShowRemoveConfirmFlyoutAsync(
+        FrameworkElement anchor,
+        string title,
+        string body)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        var titleBlock = new TextBlock
+        {
+            Text = title,
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var bodyBlock = new TextBlock
+        {
+            Text = body,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush
+        };
+        var removeBtn = new Button
+        {
+            Content = TagRemoveConfirm.Primary,
+            Style = Application.Current.Resources["AccentButtonStyle"] as Style,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinWidth = 100
+        };
+        AutomationProperties.SetAutomationId(removeBtn, "BtnChipRemoveConfirm");
+        var cancelBtn = new Button
+        {
+            Content = TagRemoveConfirm.Cancel,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinWidth = 100
+        };
+        AutomationProperties.SetAutomationId(cancelBtn, "BtnChipRemoveCancel");
+        var actions = new Grid { Margin = new Thickness(0, 12, 0, 0), ColumnSpacing = 8 };
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        actions.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(removeBtn, 0);
+        Grid.SetColumn(cancelBtn, 1);
+        actions.Children.Add(removeBtn);
+        actions.Children.Add(cancelBtn);
+
+        var root = new StackPanel { Spacing = 0, Width = 280 };
+        root.Children.Add(titleBlock);
+        root.Children.Add(bodyBlock);
+        root.Children.Add(actions);
+
+        var flyout = new Flyout
+        {
+            Content = root,
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom
+        };
+        AutomationProperties.SetAutomationId(flyout, "FlyChipRemoveConfirm");
+
+        void Complete(bool remove)
+        {
+            flyout.Hide();
+            tcs.TrySetResult(remove);
+        }
+
+        removeBtn.Click += (_, _) => Complete(true);
+        cancelBtn.Click += (_, _) => Complete(false);
+        flyout.Closed += (_, _) => tcs.TrySetResult(false);
+        flyout.ShowAt(anchor);
+        return await tcs.Task;
+    }
+
+    private static DependencyObject? FindDescendantByAutomationId(DependencyObject root, string automationId)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is FrameworkElement fe
+                && string.Equals(
+                    AutomationProperties.GetAutomationId(fe),
+                    automationId,
+                    StringComparison.Ordinal))
+            {
+                return child;
+            }
+
+            var nested = FindDescendantByAutomationId(child, automationId);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>T2 Remove tags… dialog: tick tags, see counts, one Undo batch.</summary>
