@@ -161,6 +161,7 @@
     <Compile Include="..\Services\CatalogService.FileOps.cs" Link="CatalogService.FileOps.cs" />
     <Compile Include="..\Services\CatalogService.TagUndo.cs" Link="CatalogService.TagUndo.cs" />
     <Compile Include="..\Services\CatalogService.TagAssignments.cs" Link="CatalogService.TagAssignments.cs" />
+    <Compile Include="..\Services\CatalogService.BulkTagOps.cs" Link="CatalogService.BulkTagOps.cs" />
     <Compile Include="..\Services\CatalogService.Tags.cs" Link="CatalogService.Tags.cs" />
     <Compile Include="..\Services\FileOpService.cs" Link="FileOpService.cs" />
     <!-- FileOpService.Tags.cs is WinUI-free; linked so alias→ideal journal tests can call AssignTagAsync. -->

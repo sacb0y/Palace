@@ -5,7 +5,10 @@ namespace Palace.Services;
 
 /// <summary>
 /// Forward tag assign / remove / delete through the shared undo journal.
-/// App-only partial (Palace.Tests links <see cref="FileOpService"/> without this file).
+/// Bulk assign/remove/paste mutate AssetTag + journal in one SQLite transaction
+/// (<see cref="CatalogService.ApplyBulkAssignJournaledAsync"/> /
+/// <see cref="CatalogService.ApplyBulkRemoveJournaledAsync"/>) so a mid-loop or
+/// journal failure cannot leave an unjournaled partial.
 /// </summary>
 public sealed partial class FileOpService
 {
@@ -96,56 +99,11 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("No tags to assign.");
         }
 
-        var items = new List<FileOpItem>();
-        var appliedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (tagId, tagName, source) in unique.Values)
-        {
-            foreach (var assetId in ids)
-            {
-                var before = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
-                await _catalog.AssignTagAsync(assetId, tagId, source).ConfigureAwait(false);
-                var after = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
-                var change = TagAssignUndo.PlanAssign(
-                    before.Select(t => t.TagId),
-                    after.Select(t => t.TagId),
-                    tagId);
-                if (!change.Journal)
-                {
-                    continue;
-                }
-
-                appliedNames.Add(tagName);
-                items.Add(new FileOpItem
-                {
-                    Step = FileOpStep.AssignTag,
-                    AssetId = assetId,
-                    OldPath = tagId,
-                    NewPath = tagName,
-                    OldSourceId = source.ToString(),
-                    NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
-                });
-            }
-        }
-
-        if (items.Count == 0)
-        {
-            var already = unique.Count == 1
-                ? $"{unique.Values.First().TagName} was already on the selection."
-                : "Those tags were already on the selection.";
-            return new FileOpResult { Ok = true, Message = already, Summary = already };
-        }
-
-        var assetCount = items.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).Count();
-        var summary = appliedNames.Count == 1
-            ? $"Tagged {AssetNouns.Count(assetCount)} with {appliedNames.First()}"
-            : $"Tagged {AssetNouns.Count(assetCount)} with {appliedNames.Count} tags";
-        var batchId = await LogAsync(projectId, FileOpKind.TagAssign, summary, items).ConfigureAwait(false);
-        if (batchId is null)
-        {
-            return FileOpResult.Fail(LastJournalPartial ? JournalFailedPartialMessage : JournalFailedMessage);
-        }
-
-        return new FileOpResult { Ok = true, Message = summary + ".", BatchId = batchId, Summary = summary };
+        var batch = await _catalog.ApplyBulkAssignJournaledAsync(
+            projectId,
+            ids,
+            unique.Values.ToList()).ConfigureAwait(false);
+        return ToFileOpResult(batch);
     }
 
     private async Task<FileOpResult> RemoveTagCoreAsync(
@@ -166,63 +124,11 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("That tag is gone.");
         }
 
-        tagId = ideal.Id;
-        tagName = ideal.Name;
-
-        var items = new List<FileOpItem>();
-        foreach (var (assetId, source) in list)
-        {
-            var before = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
-            var recorded = TagAssignUndo.RecordedSource(
-                before.Select(t => (t.TagId, t.Source)),
-                tagId,
-                source);
-            if (recorded == TagSource.Implied)
-            {
-                await _catalog.RemoveTagAsync(assetId, tagId).ConfigureAwait(false);
-                continue;
-            }
-
-            await _catalog.RemoveTagAsync(assetId, tagId).ConfigureAwait(false);
-            var after = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
-            var change = TagAssignUndo.PlanRemove(
-                before.Select(t => (t.TagId, t.Source)),
-                after.Select(t => (t.TagId, t.Source)),
-                tagId);
-            if (!change.Journal)
-            {
-                continue;
-            }
-
-            items.Add(new FileOpItem
-            {
-                Step = FileOpStep.RemoveTag,
-                AssetId = assetId,
-                OldPath = tagId,
-                NewPath = tagName,
-                OldSourceId = recorded.ToString(),
-                NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
-            });
-        }
-
-        if (items.Count == 0)
-        {
-            return new FileOpResult
-            {
-                Ok = true,
-                Message = $"{tagName} was not on the selection.",
-                Summary = tagName
-            };
-        }
-
-        var summary = $"Removed {tagName} from {AssetNouns.Count(items.Count)}";
-        var batchId = await LogAsync(projectId, FileOpKind.TagRemove, summary, items).ConfigureAwait(false);
-        if (batchId is null)
-        {
-            return FileOpResult.Fail(LastJournalPartial ? JournalFailedPartialMessage : JournalFailedMessage);
-        }
-
-        return new FileOpResult { Ok = true, Message = summary + ".", BatchId = batchId, Summary = summary };
+        var batch = await _catalog.ApplyBulkRemoveJournaledAsync(
+            projectId,
+            list.Select(r => (r.AssetId, r.Source)).ToList(),
+            [(ideal.Id, ideal.Name)]).ConfigureAwait(false);
+        return ToFileOpResult(batch);
     }
 
     private async Task<FileOpResult> RemoveTagsCoreAsync(
@@ -264,68 +170,24 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("No tags to remove.");
         }
 
-        var items = new List<FileOpItem>();
-        var removedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (tagId, tagName) in unique.Values)
-        {
-            foreach (var assetId in ids)
-            {
-                var before = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
-                var recorded = TagAssignUndo.RecordedSource(
-                    before.Select(t => (t.TagId, t.Source)),
-                    tagId,
-                    TagSource.Manual);
-                // T7: never journal Source=Implied (undo would rematerialize / no-op).
-                if (recorded == TagSource.Implied)
-                {
-                    await _catalog.RemoveTagAsync(assetId, tagId).ConfigureAwait(false);
-                    continue;
-                }
-
-                await _catalog.RemoveTagAsync(assetId, tagId).ConfigureAwait(false);
-                var after = await _catalog.GetStoredAssignedTagsAsync(assetId).ConfigureAwait(false);
-                var change = TagAssignUndo.PlanRemove(
-                    before.Select(t => (t.TagId, t.Source)),
-                    after.Select(t => (t.TagId, t.Source)),
-                    tagId);
-                if (!change.Journal)
-                {
-                    continue;
-                }
-
-                removedNames.Add(tagName);
-                items.Add(new FileOpItem
-                {
-                    Step = FileOpStep.RemoveTag,
-                    AssetId = assetId,
-                    OldPath = tagId,
-                    NewPath = tagName,
-                    OldSourceId = recorded.ToString(),
-                    NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
-                });
-            }
-        }
-
-        if (items.Count == 0)
-        {
-            var missing = unique.Count == 1
-                ? $"{unique.Values.First().TagName} was not on the selection."
-                : "Those tags were not on the selection.";
-            return new FileOpResult { Ok = true, Message = missing, Summary = missing };
-        }
-
-        var assetCount = items.Select(i => i.AssetId).Distinct(StringComparer.Ordinal).Count();
-        var summary = removedNames.Count == 1
-            ? $"Removed {removedNames.First()} from {AssetNouns.Count(assetCount)}"
-            : $"Removed {removedNames.Count} tags from {AssetNouns.Count(assetCount)}";
-        var batchId = await LogAsync(projectId, FileOpKind.TagRemove, summary, items).ConfigureAwait(false);
-        if (batchId is null)
-        {
-            return FileOpResult.Fail(LastJournalPartial ? JournalFailedPartialMessage : JournalFailedMessage);
-        }
-
-        return new FileOpResult { Ok = true, Message = summary + ".", BatchId = batchId, Summary = summary };
+        var rows = ids.Select(id => (id, TagSource.Manual)).ToList();
+        var batch = await _catalog.ApplyBulkRemoveJournaledAsync(
+            projectId,
+            rows,
+            unique.Values.ToList()).ConfigureAwait(false);
+        return ToFileOpResult(batch);
     }
+
+    private static FileOpResult ToFileOpResult(BulkTagBatchResult batch) =>
+        batch.Ok
+            ? new FileOpResult
+            {
+                Ok = true,
+                Message = batch.Message,
+                BatchId = batch.BatchId,
+                Summary = batch.Summary
+            }
+            : FileOpResult.Fail(batch.Message);
 
     /// <summary>Add alias→ideal; journals migrated AssetTag rows for Undo.</summary>
     public Task<FileOpResult> AddAliasAsync(string aliasTagId, string idealTagId, string projectId) =>
