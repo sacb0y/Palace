@@ -269,72 +269,8 @@ public static class TagPortable
         // Live id maps for cycle checks (include pending creates).
         var idByName = byName.ToDictionary(kv => kv.Key, kv => kv.Value.Id, StringComparer.OrdinalIgnoreCase);
 
-        foreach (var entry in document.Tags ?? [])
-        {
-            if (string.IsNullOrWhiteSpace(entry.Name) || !idByName.TryGetValue(entry.Name.Trim(), out var childId))
-            {
-                continue;
-            }
-
-            foreach (var parentName in entry.Parents ?? [])
-            {
-                if (string.IsNullOrWhiteSpace(parentName) || !idByName.TryGetValue(parentName.Trim(), out var parentId))
-                {
-                    plan.MembershipSkipped++;
-                    continue;
-                }
-
-                if (string.Equals(parentId, childId, StringComparison.Ordinal)
-                    || WouldMembershipCycle(parentId, childId, memberships))
-                {
-                    plan.MembershipRejected++;
-                    continue;
-                }
-
-                if (memberships.Add((parentId, childId)))
-                {
-                    plan.Memberships.Add(new TagMergeEdge
-                    {
-                        ParentName = parentName.Trim(),
-                        ChildName = entry.Name.Trim(),
-                        ParentId = parentId,
-                        ChildId = childId
-                    });
-                    plan.MembershipAdded++;
-                }
-            }
-
-            foreach (var impliedName in entry.Implies ?? [])
-            {
-                if (string.IsNullOrWhiteSpace(impliedName) || !idByName.TryGetValue(impliedName.Trim(), out var impliedId))
-                {
-                    plan.ImplicationSkipped++;
-                    continue;
-                }
-
-                if (string.Equals(childId, impliedId, StringComparison.Ordinal)
-                    || WouldImplicationCycle(childId, impliedId, implications))
-                {
-                    plan.ImplicationRejected++;
-                    continue;
-                }
-
-                if (implications.Add((childId, impliedId)))
-                {
-                    plan.Implications.Add(new TagMergeEdge
-                    {
-                        ParentName = entry.Name.Trim(),
-                        ChildName = impliedName.Trim(),
-                        ParentId = childId,
-                        ChildId = impliedId
-                    });
-                    plan.ImplicationAdded++;
-                }
-            }
-        }
-
-        // Alias edges: parents/implies endpoint names are NOT alias-resolved here
-        // (pre-existing PlanMerge behavior). Alias edges alone resolve to ultimate ideal.
+        // Alias edges first so parents/implies can Ideal-resolve endpoints through
+        // the same-file + existing alias map (Doktor PlanMerge follow-up).
         foreach (var entry in document.Tags ?? [])
         {
             if (string.IsNullOrWhiteSpace(entry.Name)
@@ -407,6 +343,87 @@ public static class TagPortable
             aliasMap[edge.ParentId] = ultimateIdealId;
             edge.ChildId = ultimateIdealId;
             edge.ChildName = ultimateIdealName;
+        }
+
+        string IdealName(string id)
+        {
+            var idealId = TagAliasResolve.Ideal(id, aliasMap);
+            return byName.Values
+                .FirstOrDefault(t => string.Equals(t.Id, idealId, StringComparison.Ordinal))
+                ?.Name
+                ?? byName.Values
+                    .FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.Ordinal))
+                    ?.Name
+                ?? id;
+        }
+
+        foreach (var entry in document.Tags ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(entry.Name) || !idByName.TryGetValue(entry.Name.Trim(), out var childRaw))
+            {
+                continue;
+            }
+
+            var childId = TagAliasResolve.Ideal(childRaw, aliasMap);
+            var childName = IdealName(childId);
+
+            foreach (var parentName in entry.Parents ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(parentName) || !idByName.TryGetValue(parentName.Trim(), out var parentRaw))
+                {
+                    plan.MembershipSkipped++;
+                    continue;
+                }
+
+                var parentId = TagAliasResolve.Ideal(parentRaw, aliasMap);
+                if (string.Equals(parentId, childId, StringComparison.Ordinal)
+                    || WouldMembershipCycle(parentId, childId, memberships))
+                {
+                    plan.MembershipRejected++;
+                    continue;
+                }
+
+                if (memberships.Add((parentId, childId)))
+                {
+                    plan.Memberships.Add(new TagMergeEdge
+                    {
+                        ParentName = IdealName(parentId),
+                        ChildName = childName,
+                        ParentId = parentId,
+                        ChildId = childId
+                    });
+                    plan.MembershipAdded++;
+                }
+            }
+
+            foreach (var impliedName in entry.Implies ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(impliedName) || !idByName.TryGetValue(impliedName.Trim(), out var impliedRaw))
+                {
+                    plan.ImplicationSkipped++;
+                    continue;
+                }
+
+                var impliedId = TagAliasResolve.Ideal(impliedRaw, aliasMap);
+                if (string.Equals(childId, impliedId, StringComparison.Ordinal)
+                    || WouldImplicationCycle(childId, impliedId, implications))
+                {
+                    plan.ImplicationRejected++;
+                    continue;
+                }
+
+                if (implications.Add((childId, impliedId)))
+                {
+                    plan.Implications.Add(new TagMergeEdge
+                    {
+                        ParentName = childName,
+                        ChildName = IdealName(impliedId),
+                        ParentId = childId,
+                        ChildId = impliedId
+                    });
+                    plan.ImplicationAdded++;
+                }
+            }
         }
 
         return plan;

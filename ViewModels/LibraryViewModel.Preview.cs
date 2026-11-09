@@ -181,19 +181,27 @@ public partial class LibraryViewModel
                 var isPartial = total > 1 && entry.Count < total;
                 var impliedOnly = AssignedTagPartition.IsImpliedOnly(entry.Sources);
                 var source = AssignedTagPartition.EffectiveSource(entry.Sources, tag.Source);
-                var nearestId = impliedOnly
-                    ? ImpliedNearest.NearestSourceId(tag.TagId, appliedIds, reverseImplications)
-                    : ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, reverseImplications)
-                        ? ImpliedNearest.NearestSourceId(
-                            tag.TagId,
-                            appliedIds.Where(id => !string.Equals(id, tag.TagId, StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal),
-                            reverseImplications)
-                        : null;
+                // One IsAlsoImplied / NearestSourceId walk per chip (exclude self for also-implied).
+                string? nearestId = null;
+                var alsoImplied = false;
+                if (impliedOnly)
+                {
+                    nearestId = ImpliedNearest.NearestSourceId(
+                        tag.TagId, appliedIds, reverseImplications);
+                }
+                else
+                {
+                    var others = appliedIds
+                        .Where(id => !string.Equals(id, tag.TagId, StringComparison.Ordinal))
+                        .ToHashSet(StringComparer.Ordinal);
+                    nearestId = ImpliedNearest.NearestSourceId(
+                        tag.TagId, others, reverseImplications);
+                    alsoImplied = nearestId is not null;
+                }
+
                 var nearestName = nearestId is not null && nameById.TryGetValue(nearestId, out var n)
                     ? n
                     : null;
-                var alsoImplied = !impliedOnly
-                    && ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, reverseImplications);
                 var item = new AssignedTagItem
                 {
                     TagId = tag.TagId,

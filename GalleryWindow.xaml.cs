@@ -238,7 +238,13 @@ public sealed partial class GalleryWindow : Window
             if (current is Microsoft.UI.Xaml.Controls.TextBox
                 or Microsoft.UI.Xaml.Controls.RichEditBox
                 or Microsoft.UI.Xaml.Controls.PasswordBox
-                or Microsoft.UI.Xaml.Controls.AutoSuggestBox)
+                or Microsoft.UI.Xaml.Controls.AutoSuggestBox
+                or Microsoft.UI.Xaml.Controls.NumberBox)
+            {
+                return true;
+            }
+
+            if (current is Microsoft.UI.Xaml.Controls.ComboBox { IsEditable: true })
             {
                 return true;
             }

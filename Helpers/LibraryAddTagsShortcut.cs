@@ -5,7 +5,7 @@ namespace Palace.Helpers;
 /// Wired on LibraryRoot PreviewKeyDown (tunnel) and GrdAssets KeyDown
 /// (handledEventsToo, same pattern as Move <c>M</c>) so ItemsView children
 /// cannot swallow the key. Never use a page KeyboardAccelerator for bare T —
-/// that would steal typing in TextBox / AutoSuggestBox.
+/// that would steal typing in TextBox / AutoSuggestBox / NumberBox / editable ComboBox.
 /// </summary>
 public static class LibraryAddTagsShortcut
 {

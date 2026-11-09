@@ -266,8 +266,19 @@ public sealed partial class FileOpService
     public Task<FileOpResult> UndoBatchAsync(string projectId, string batchId) =>
         GatedAsync(projectId, () => UndoBatchCoreAsync(projectId, batchId));
 
+    /// <summary>
+    /// Re-apply the newest redoable journal batch (after Undo). TagAssign
+    /// (incl. quick-create <see cref="FileOpStep.CreateTag"/>) is supported;
+    /// other kinds refuse with a clear message.
+    /// </summary>
+    public Task<FileOpResult> RedoLastAsync(string projectId) =>
+        GatedAsync(projectId, () => RedoLastCoreAsync(projectId));
+
     public Task<FileOpBatch?> PeekUndoAsync(string projectId) =>
         _catalog.GetLastUndoableFileOpAsync(projectId);
+
+    public Task<FileOpBatch?> PeekRedoAsync(string projectId) =>
+        _catalog.GetLastRedoableFileOpAsync(projectId);
 
     private async Task<FileOpResult> ApplyOrganizeCoreAsync(string projectId, IReadOnlyList<OrganizeApplyItem> planned)
     {
@@ -947,6 +958,122 @@ public sealed partial class FileOpService
         }
 
         return await UndoKnownBatchAsync(batch, projectId).ConfigureAwait(false);
+    }
+
+    private async Task<FileOpResult> RedoLastCoreAsync(string projectId)
+    {
+        var batch = await _catalog.GetLastRedoableFileOpAsync(projectId).ConfigureAwait(false);
+        if (batch is null)
+        {
+            return FileOpResult.Fail("Nothing to redo.");
+        }
+
+        if (batch.Kind != FileOpKind.TagAssign)
+        {
+            return FileOpResult.Fail("Redo for this operation isn't available yet.");
+        }
+
+        var notes = new List<string>();
+        var done = 0;
+        // Forward order: CreateTag (low Seq) then AssignTag.
+        foreach (var item in batch.Items.OrderBy(i => i.Seq))
+        {
+            var note = await RedoTagOpStepAsync(item).ConfigureAwait(false);
+            if (note is null)
+            {
+                done++;
+            }
+            else
+            {
+                notes.Add(note.Text);
+            }
+        }
+
+        if (done == 0)
+        {
+            return FileOpResult.Fail(
+                notes.Count == 0
+                    ? "Couldn't redo tag assign."
+                    : $"Couldn't redo tag assign. {notes[0].TrimEnd('.')}.");
+        }
+
+        await _catalog.MarkFileOpRedoneAsync(batch.Id).ConfigureAwait(false);
+        var message = notes.Count == 0
+            ? "Redid tag assign."
+            : $"Redid tag assign, {notes.Count} step(s) skipped. {notes[0]}.";
+        return new FileOpResult
+        {
+            Ok = true,
+            Message = message,
+            BatchId = batch.Id,
+            Summary = batch.Summary,
+            Skipped = notes
+        };
+    }
+
+    private async Task<UndoNote?> RedoTagOpStepAsync(FileOpItem item)
+    {
+        switch (item.Step)
+        {
+            case FileOpStep.CreateTag:
+            {
+                if (string.IsNullOrEmpty(item.OldPath) || string.IsNullOrWhiteSpace(item.NewPath))
+                {
+                    return UndoNote.Skip("tag create redo: incomplete journal row");
+                }
+
+                try
+                {
+                    await _catalog.EnsureCreatedTagAsync(item.OldPath, item.NewPath).ConfigureAwait(false);
+                    return null;
+                }
+                catch (DuplicateTagNameException)
+                {
+                    return UndoNote.Skip($"kept create of {item.NewPath}: a tag with that name exists again");
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"{item.NewPath}: {ex.Message}");
+                }
+            }
+
+            case FileOpStep.AssignTag:
+            {
+                if (string.IsNullOrEmpty(item.AssetId) || string.IsNullOrEmpty(item.OldPath))
+                {
+                    return UndoNote.Skip("tag assign redo: incomplete journal row");
+                }
+
+                try
+                {
+                    var ideal = await _catalog.ResolveIdealTagIdAsync(item.OldPath).ConfigureAwait(false);
+                    if (TagAssignUndo.TouchesAssignedTag(item.NewSourceId))
+                    {
+                        var source = Enum.TryParse<TagSource>(item.OldSourceId, out var parsed)
+                            && parsed != TagSource.Implied
+                            ? parsed
+                            : TagSource.Manual;
+                        await _catalog.AssignTagForUndoAsync(item.AssetId, ideal, source)
+                            .ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // KeepAssigned: re-apply Manual (Prompt→Manual upgrade path).
+                        await _catalog.AssignTagForUndoAsync(item.AssetId, ideal, TagSource.Manual)
+                            .ConfigureAwait(false);
+                    }
+
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"{item.NewPath}: {ex.Message}");
+                }
+            }
+
+            default:
+                return UndoNote.Skip($"redo does not support {item.Step}");
+        }
     }
 
     private async Task<FileOpResult> UndoBatchCoreAsync(string projectId, string batchId)

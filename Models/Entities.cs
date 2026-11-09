@@ -334,6 +334,8 @@ public sealed class FileOpBatch
     public string Summary { get; set; } = "";
     public string CreatedAt { get; set; } = "";
     public bool IsUndone { get; set; }
+    /// <summary>When Undo marked this batch; drives Redo LIFO. Null while live / after Redo.</summary>
+    public string? UndoneAt { get; set; }
     public List<FileOpItem> Items { get; set; } = [];
 
     public override string ToString() => Summary;
