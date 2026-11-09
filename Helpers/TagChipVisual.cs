@@ -15,9 +15,13 @@ public static class TagChipVisual
 {
     public const int HeightDip = 32;
 
-    public const int CompactHeightDip = 28;
+    /// <summary>Pending chips inside the Add tags box (T8 mockup: 26px).</summary>
+    public const int CompactHeightDip = 26;
 
     public const int CornerRadiusDip = 16;
+
+    /// <summary>Compact corner radius for 26px pending chips.</summary>
+    public const int CompactCornerRadiusDip = 13;
 
     /// <summary>Reserved leading slot for Checkmark / Subtract (or empty when off).</summary>
     public const int LeadingGlyphSlotDip = 14;

@@ -254,8 +254,8 @@ public partial class LibraryViewModel
     [RelayCommand]
     private void FocusAssignTag()
     {
-        RebuildAssignPanel();
-        // T2: one Add tags box — focus it; do not open the legacy empty flyout.
+        RefreshPendingChrome();
+        // T2/T8: one Add tags box — focus it (legacy FlyAssignTags removed).
         RequestFocusAssignTag?.Invoke();
     }
 
@@ -288,7 +288,7 @@ public partial class LibraryViewModel
                 targets, [(chip.TagId, chip.Name, TagSource.Manual)], createdCount: 0);
             AssignAnnouncement = TagChipVisual.AnnounceAdded(chip.Name, targets.Count);
             await LoadPreviewAsync(SelectedAsset);
-            RebuildAssignPanel();
+            RefreshPendingChrome();
         });
 
     public Task ReloadAssignedTagsAsync() => LoadPreviewAsync(SelectedAsset);
@@ -298,6 +298,7 @@ public partial class LibraryViewModel
         var tags = await _catalog.GetTagsAsync();
         var memberships = await _catalog.GetMembershipsAsync();
         var aliases = await _catalog.GetAliasesAsync();
+        var implications = await _catalog.GetImplicationsAsync();
         var pickItems = BuildTagPicks(tags, memberships);
         var selectedTagId = SelectedTag?.TagId;
         var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
@@ -305,6 +306,7 @@ public partial class LibraryViewModel
         {
             _tags = tags.ToList();
             _memberships = memberships.ToList();
+            _implications = implications.ToList();
             _aliasToIdeal = aliases.ToDictionary(
                 a => a.AliasTagId, a => a.IdealTagId, StringComparer.Ordinal);
             TagTreeBuilder.Replace(TagTree, tags, memberships);
@@ -316,7 +318,8 @@ public partial class LibraryViewModel
             }
 
             ReplaceTagPicks(pickItems);
-            RebuildAssignPanel();
+            RebuildBrowseTags();
+            RefreshPendingChrome();
             RefreshAssignedTagsHeader();
             RefreshRemoveFromAllBar();
         });
@@ -350,13 +353,11 @@ public partial class LibraryViewModel
                 ? "Pending chips — Enter applies"
                 : "Type to find a tag";
             RefreshPendingChrome();
-            RebuildAssignPanel();
             return;
         }
 
         ApplyTagSuggestionFilter(value);
         ShowTagSuggestions = TagAddInput.OpensSuggestions(value) && TagSuggestions.Count > 0;
-        RebuildAssignPanel();
         RefreshPendingChrome();
     }
 
@@ -707,124 +708,6 @@ public partial class LibraryViewModel
         ApplicationData.Current.LocalSettings.Values[RecentTags.SettingsKey] = RecentTags.Serialize(_recentTagIds);
     }
 
-    private TagChipItem ToAssignChip(TagPanelChip chip)
-    {
-        var assigned = AssignedTags.FirstOrDefault(t => t.TagId == chip.TagId);
-        var total = Math.Max(1, TagTargets().Count);
-        var partialCount = 0;
-        if (assigned?.IsPartial == true)
-        {
-            partialCount = assigned.AppliedCount > 0
-                ? assigned.AppliedCount
-                : ParsePartialCount(assigned.CountLabel);
-        }
-        else if (assigned is not null && assigned.IsPartial == false)
-        {
-            partialCount = total;
-        }
-
-        return new TagChipItem
-        {
-            TagId = chip.TagId,
-            Name = chip.Name,
-            EffectiveColor = chip.EffectiveColor,
-            IsStarred = chip.IsStarred,
-            IsAssigned = assigned is not null,
-            IsPartial = assigned?.IsPartial == true,
-            PartialCount = partialCount,
-            SelectionTotal = total,
-            AutomationPrefix = "BtnAssignChip_"
-        };
-    }
-
-    private static int ParsePartialCount(string? label)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-        {
-            return 0;
-        }
-
-        var slash = label.IndexOf('/', StringComparison.Ordinal);
-        if (slash > 0 && int.TryParse(label.AsSpan(0, slash), out var n))
-        {
-            return n;
-        }
-
-        var of = label.IndexOf(" of ", StringComparison.Ordinal);
-        if (of > 0 && int.TryParse(label.AsSpan(0, of), out var legacy))
-        {
-            return legacy;
-        }
-
-        return 0;
-    }
-
-    public void RebuildAssignPanelPublic() => RebuildAssignPanel();
-
-    private void RebuildAssignPanel()
-    {
-        var recommended = new List<string>();
-        foreach (var suggestion in Suggestions)
-        {
-            if (suggestion.ExistingTagId is { } id)
-            {
-                recommended.Add(id);
-            }
-        }
-
-        foreach (var tag in AssignedTags.Where(t => t.IsPartial))
-        {
-            recommended.Add(tag.TagId);
-        }
-
-        var query = TagNameList.Split(TagQuery);
-        var panelQuery = query.Count == 1 ? query[0] : query.Count == 0 ? TagQuery : "";
-        var colors = _tags.Count == 0
-            ? null
-            : CatalogService.MapEffectiveColors(_tags, _memberships);
-        var model = TagPanelBuilder.Build(
-            _tags,
-            _memberships,
-            _recentTagIds,
-            recommended,
-            panelQuery,
-            colors);
-
-        var collapsed = AssignGroups
-            .Where(g => !g.IsExpanded)
-            .Select(g => g.GroupId ?? g.Name)
-            .ToHashSet(StringComparer.Ordinal);
-        ReplaceChips(StarredAssignTags, model.Starred);
-        ReplaceChips(RecentAssignTags, model.Recent);
-        ReplaceChips(RecommendedAssignTags, model.Recommended);
-        AssignGroups.Clear();
-        foreach (var group in model.Groups)
-        {
-            var item = new TagBoardGroup
-            {
-                GroupId = group.GroupId,
-                Name = group.Name,
-                Color = group.Color,
-                IsUngrouped = group.IsUngrouped,
-                IsExpanded = !collapsed.Contains(group.GroupId ?? group.Name)
-            };
-            foreach (var chip in group.Chips)
-            {
-                item.Chips.Add(ToAssignChip(chip));
-            }
-
-            AssignGroups.Add(item);
-        }
-
-        RefreshPendingChrome();
-    }
-
-    private void ReplaceChips(ObservableCollection<TagChipItem> target, IReadOnlyList<TagPanelChip> source)
-    {
-        target.Clear();
-        foreach (var chip in source)
-        {
-            target.Add(ToAssignChip(chip));
-        }
-    }
+    /// <summary>T2 leftover hook — Assign panel collections removed in T8; refresh pending only.</summary>
+    public void RebuildAssignPanelPublic() => RefreshPendingChrome();
 }

@@ -88,6 +88,8 @@ public partial class LibraryViewModel
         }
 
         var existing = await _catalog.GetTagsAsync();
+        var implications = await _catalog.GetImplicationsAsync();
+        var aliases = await _catalog.GetAliasesAsync();
         var suggestions = PromptTagSuggester.Suggest(asset.Prompt, existing);
         var hydrateOnOpen = AccessService.WouldHydrateOnOpen(asset.Path);
         var apiOnly = AssetItemMapper.IsApiOnly(asset);
@@ -149,6 +151,29 @@ public partial class LibraryViewModel
             SetPreviewNotes(canEditNotes ? asset.Notes : null, ratingValue, canEditNotes ? asset.Id : null);
 
             AssignedTags.Clear();
+            ImpliedAssignedTags.Clear();
+            var implicationEdges = implications
+                .Select(i => (i.TagId, i.ImpliedTagId))
+                .ToList();
+            var aliasesByIdeal = aliases
+                .GroupBy(a => a.IdealTagId, StringComparer.Ordinal)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (IReadOnlyList<string>)g
+                        .Select(a => existing.FirstOrDefault(t => t.Id == a.AliasTagId)?.Name ?? "")
+                        .Where(n => n.Length > 0)
+                        .ToList(),
+                    StringComparer.Ordinal);
+            var nameById = existing.ToDictionary(t => t.Id, t => t.Name, StringComparer.Ordinal);
+            var appliedIds = union.Values
+                .Where(v =>
+                {
+                    var src = v.Sources.Count == 1 ? v.Sources.First() : v.Sample.Source;
+                    return src != TagSource.Implied;
+                })
+                .Select(v => v.Sample.TagId)
+                .ToHashSet(StringComparer.Ordinal);
+
             foreach (var entry in union.Values
                 .OrderBy(v => v.Sample.TagName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(v => v.Sample.TagName, StringComparer.Ordinal))
@@ -157,7 +182,20 @@ public partial class LibraryViewModel
                 var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
                 var isPartial = total > 1 && entry.Count < total;
                 var source = entry.Sources.Count == 1 ? entry.Sources.First() : tag.Source;
-                AssignedTags.Add(new AssignedTagItem
+                var nearestId = source == TagSource.Implied
+                    ? ImpliedNearest.NearestSourceId(tag.TagId, appliedIds, implicationEdges)
+                    : ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, implicationEdges)
+                        ? ImpliedNearest.NearestSourceId(
+                            tag.TagId,
+                            appliedIds.Where(id => !string.Equals(id, tag.TagId, StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal),
+                            implicationEdges)
+                        : null;
+                var nearestName = nearestId is not null && nameById.TryGetValue(nearestId, out var n)
+                    ? n
+                    : null;
+                var alsoImplied = source != TagSource.Implied
+                    && ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, implicationEdges);
+                var item = new AssignedTagItem
                 {
                     TagId = tag.TagId,
                     TagName = tag.TagName,
@@ -171,21 +209,36 @@ public partial class LibraryViewModel
                     AppliedCount = entry.Count,
                     SelectionTotal = total,
                     IsChipSelected = false,
-                    CountLabel = isPartial ? TagChipVisual.PartialBadge(entry.Count, total) : ""
-                });
+                    CountLabel = isPartial ? TagChipVisual.PartialBadge(entry.Count, total) : "",
+                    NearestImpliedByName = nearestName,
+                    IsAlsoImplied = alsoImplied,
+                    AliasNames = aliasesByIdeal.GetValueOrDefault(tag.TagId) ?? []
+                };
+
+                // T8 Option A: applied chips first; implied-only under their own subsection.
+                if (source == TagSource.Implied)
+                {
+                    ImpliedAssignedTags.Add(item);
+                }
+                else
+                {
+                    AssignedTags.Add(item);
+                }
             }
 
-            AssignedTagsSummary = AssignedTags.Count == 0
+            HasImpliedAssignedTags = ImpliedAssignedTags.Count > 0;
+            AssignedTagsSummary = AssignedTags.Count == 0 && ImpliedAssignedTags.Count == 0
                 ? "No tags assigned"
-                : string.Join(", ", AssignedTags.Select(t => t.TagName));
-            ShowAssignedTagsSummary = AssignedTags.Count == 0;
+                : string.Join(", ", AssignedTags.Concat(ImpliedAssignedTags).Select(t => t.TagName));
+            ShowAssignedTagsSummary = AssignedTags.Count == 0 && ImpliedAssignedTags.Count == 0;
 
             Suggestions.Clear();
             if (!multi)
             {
                 foreach (var suggestion in suggestions)
                 {
-                    if (AssignedTags.Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
+                    if (AssignedTags.Concat(ImpliedAssignedTags)
+                        .Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
                     {
                         continue;
                     }
@@ -194,7 +247,7 @@ public partial class LibraryViewModel
                 }
             }
 
-            RebuildAssignPanel();
+            RefreshPendingChrome();
         });
     }
 
@@ -227,6 +280,8 @@ public partial class LibraryViewModel
     private void ClearPreview()
     {
         AssignedTags.Clear();
+        ImpliedAssignedTags.Clear();
+        HasImpliedAssignedTags = false;
         Suggestions.Clear();
         _previewTargets = [];
         AssignedTagsSummary = "";
