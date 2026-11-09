@@ -152,16 +152,21 @@ public sealed partial class CatalogService
             var implications = LoadImplications(conn)
                 .Select(i => new TagPortableEdge { FromId = i.TagId, ToId = i.ImpliedTagId })
                 .ToList();
-            return TagPortable.Serialize(TagPortable.FromCatalog(tags, memberships, implications));
+            var aliases = LoadAliases(conn)
+                .Select(a => new TagPortableEdge { FromId = a.AliasTagId, ToId = a.IdealTagId })
+                .ToList();
+            return TagPortable.Serialize(TagPortable.FromCatalog(tags, memberships, implications, aliases));
         });
 
     /// <summary>
     /// Merge a portable tag JSON into the global catalog. Upsert by name;
-    /// does not delete unrelated tags. Cycle-safe for parents and implicits.
+    /// does not delete unrelated tags. Per-edge cycle/rebind refusal for
+    /// parents, implicits, and aliases — not whole-file atomic.
     /// </summary>
     public Task<TagMergePlan> ImportTagsJsonAsync(string json) =>
         _db.WriteAsync(conn =>
         {
+            InvalidateGraphCaches();
             var document = TagPortable.Parse(json);
             var existing = LoadTags(conn)
                 .Select(t => new TagPortableTagSource
@@ -179,7 +184,10 @@ public sealed partial class CatalogService
             var implications = LoadImplications(conn)
                 .Select(i => new TagPortableEdge { FromId = i.TagId, ToId = i.ImpliedTagId })
                 .ToList();
-            var plan = TagPortable.PlanMerge(existing, memberships, implications, document);
+            var aliases = LoadAliases(conn)
+                .Select(a => new TagPortableEdge { FromId = a.AliasTagId, ToId = a.IdealTagId })
+                .ToList();
+            var plan = TagPortable.PlanMerge(existing, memberships, implications, aliases, document);
 
             // Apply creates first so name→id resolves to real SQLite ids.
             // Names are unique ignoring case and padding (TagNames); keys are trimmed so a
@@ -229,6 +237,41 @@ public sealed partial class CatalogService
                 }
 
                 TryAddImplication(conn, tagId, impliedId);
+            }
+
+            // ParentName = alias, ChildName = ideal. Resolve ideal through current map
+            // so same-file chains land on the ultimate ideal; migrate AssetTag on insert.
+            var ftsAssets = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var edge in plan.Aliases)
+            {
+                if (!idByName.TryGetValue(TagNames.Normalize(edge.ParentName), out var aliasId)
+                    || !idByName.TryGetValue(TagNames.Normalize(edge.ChildName), out var idealId))
+                {
+                    continue;
+                }
+
+                using var tx = conn.BeginTransaction();
+                var resolvedIdeal = ResolveIdealTagId(conn, idealId, tx);
+                if (!TryAddAlias(conn, aliasId, resolvedIdeal, tx, out var inserted))
+                {
+                    tx.Rollback();
+                    continue;
+                }
+
+                if (inserted)
+                {
+                    foreach (var row in MigrateAssetTagsAliasToIdeal(conn, aliasId, resolvedIdeal, tx))
+                    {
+                        ftsAssets.Add(row.AssetId);
+                    }
+                }
+
+                tx.Commit();
+            }
+
+            foreach (var assetId in ftsAssets)
+            {
+                RefreshFts(conn, assetId);
             }
 
             return plan;

@@ -1318,11 +1318,11 @@ public partial class TagsViewModel : ObservableObject
         try
         {
             var tagId = SelectedNode.TagId;
-            var sets = TagFilter.ExpandEach([tagId], _memberships);
-            if (!IncludeNested)
-            {
-                sets = [new HashSet<string>(StringComparer.Ordinal) { tagId }];
-            }
+            var aliasMap = (await _catalog.GetAliasesAsync())
+                .ToDictionary(a => a.AliasTagId, a => a.IdealTagId, StringComparer.Ordinal);
+            // Nested: ideal + membership descendants. Flat: still alias-expand (ideal + siblings).
+            var filterMemberships = IncludeNested ? _memberships : (IReadOnlyList<TagMembership>)[];
+            var sets = TagFilter.ExpandEach([tagId], filterMemberships, aliasMap);
 
             var projectId = AppServices.CurrentProject?.Id;
             var assets = await _catalog.GetAssetsForTagFilterAsync(
