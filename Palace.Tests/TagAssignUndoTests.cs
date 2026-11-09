@@ -49,9 +49,48 @@ public sealed class TagAssignUndoTests
         var change = TagAssignUndo.PlanAssign(["prgamma"], ["prgamma", "winter"], "prgamma");
         Assert.True(change.Journal);
         Assert.False(change.TouchAssignedTag);
+        Assert.Equal(TagSource.Manual, change.PriorAssignedSource);
         var encoded = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag);
         Assert.False(TagAssignUndo.TouchesAssignedTag(encoded));
         Assert.Equal(["winter"], TagAssignUndo.Decode(encoded));
+    }
+
+    [Fact]
+    public void PlanAssign_journals_source_only_upgrade()
+    {
+        var change = TagAssignUndo.PlanAssign(
+            [("prgamma", TagSource.Prompt)],
+            [("prgamma", TagSource.Manual)],
+            "prgamma");
+        Assert.True(change.Journal);
+        Assert.False(change.TouchAssignedTag);
+        Assert.Equal(TagSource.Prompt, change.PriorAssignedSource);
+        Assert.Empty(change.ImpliedIds);
+        var encoded = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag);
+        Assert.False(TagAssignUndo.TouchesAssignedTag(encoded));
+    }
+
+    [Fact]
+    public void PlanAssign_same_source_is_not_journaled()
+    {
+        var change = TagAssignUndo.PlanAssign(
+            [("prgamma", TagSource.Manual)],
+            [("prgamma", TagSource.Manual)],
+            "prgamma");
+        Assert.False(change.Journal);
+    }
+
+    [Fact]
+    public void PlanAssign_Implied_to_Manual_touches_assigned()
+    {
+        // Undo deletes the applied row and never rematerializes Implied.
+        var change = TagAssignUndo.PlanAssign(
+            [("prgamma", TagSource.Implied)],
+            [("prgamma", TagSource.Manual)],
+            "prgamma");
+        Assert.True(change.Journal);
+        Assert.True(change.TouchAssignedTag);
+        Assert.Null(change.PriorAssignedSource);
     }
 
     [Fact]

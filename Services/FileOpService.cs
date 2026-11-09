@@ -1253,10 +1253,29 @@ public sealed partial class FileOpService
                         impliedIdeals.Add(await _catalog.ResolveIdealTagIdAsync(id).ConfigureAwait(false));
                     }
 
-                    await _catalog.RemoveTagForUndoAsync(
-                        item.AssetId,
-                        TagAssignUndo.TouchesAssignedTag(item.NewSourceId) ? assignIdeal : null,
-                        impliedIdeals).ConfigureAwait(false);
+                    if (TagAssignUndo.TouchesAssignedTag(item.NewSourceId))
+                    {
+                        // New apply (or stored Implied → applied): delete assigned + new implied.
+                        // Never rematerialize Implied.
+                        await _catalog.RemoveTagForUndoAsync(
+                            item.AssetId, assignIdeal, impliedIdeals).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        // KeepAssigned: restore prior applied source, then strip new implied only.
+                        if (Enum.TryParse<TagSource>(item.OldSourceId, out var prior)
+                            && prior != TagSource.Implied)
+                        {
+                            await _catalog.RemoveTagForUndoAsync(
+                                item.AssetId, assignIdeal, impliedAdded: null).ConfigureAwait(false);
+                            await _catalog.AssignTagForUndoAsync(
+                                item.AssetId, assignIdeal, prior).ConfigureAwait(false);
+                        }
+
+                        await _catalog.RemoveTagForUndoAsync(
+                            item.AssetId, tagId: null, impliedIdeals).ConfigureAwait(false);
+                    }
+
                     return null;
                 }
                 catch (Exception ex)

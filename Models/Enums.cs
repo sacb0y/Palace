@@ -129,7 +129,10 @@ public enum FileOpStep
     CreateDir,
     RenameDir,
     DeleteDir,
-    /// <summary>AssetId + OldPath=tagId + NewPath=tagName + OldSourceId=TagSource.</summary>
+    /// <summary>
+    /// AssetId + OldPath=tagId + NewPath=tagName + OldSourceId=prior applied TagSource
+    /// when KeepAssigned (source-only / already-had), else the applied source.
+    /// </summary>
     AssignTag,
     /// <summary>Same fields as <see cref="AssignTag"/>. OldSourceId is that asset's own TagSource.</summary>
     RemoveTag,
