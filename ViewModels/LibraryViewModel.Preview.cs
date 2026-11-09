@@ -165,12 +165,10 @@ public partial class LibraryViewModel
                         .ToList(),
                     StringComparer.Ordinal);
             var nameById = existing.ToDictionary(t => t.Id, t => t.Name, StringComparer.Ordinal);
+            // Build reverse implication map once per preview — not per chip.
+            var reverseImplications = ImpliedNearest.BuildReverse(implicationEdges);
             var appliedIds = union.Values
-                .Where(v =>
-                {
-                    var src = v.Sources.Count == 1 ? v.Sources.First() : v.Sample.Source;
-                    return src != TagSource.Implied;
-                })
+                .Where(v => !AssignedTagPartition.IsImpliedOnly(v.Sources))
                 .Select(v => v.Sample.TagId)
                 .ToHashSet(StringComparer.Ordinal);
 
@@ -181,20 +179,21 @@ public partial class LibraryViewModel
                 var tag = entry.Sample;
                 var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
                 var isPartial = total > 1 && entry.Count < total;
-                var source = entry.Sources.Count == 1 ? entry.Sources.First() : tag.Source;
-                var nearestId = source == TagSource.Implied
-                    ? ImpliedNearest.NearestSourceId(tag.TagId, appliedIds, implicationEdges)
-                    : ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, implicationEdges)
+                var impliedOnly = AssignedTagPartition.IsImpliedOnly(entry.Sources);
+                var source = AssignedTagPartition.EffectiveSource(entry.Sources, tag.Source);
+                var nearestId = impliedOnly
+                    ? ImpliedNearest.NearestSourceId(tag.TagId, appliedIds, reverseImplications)
+                    : ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, reverseImplications)
                         ? ImpliedNearest.NearestSourceId(
                             tag.TagId,
                             appliedIds.Where(id => !string.Equals(id, tag.TagId, StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal),
-                            implicationEdges)
+                            reverseImplications)
                         : null;
                 var nearestName = nearestId is not null && nameById.TryGetValue(nearestId, out var n)
                     ? n
                     : null;
-                var alsoImplied = source != TagSource.Implied
-                    && ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, implicationEdges);
+                var alsoImplied = !impliedOnly
+                    && ImpliedNearest.IsAlsoImplied(tag.TagId, appliedIds, reverseImplications);
                 var item = new AssignedTagItem
                 {
                     TagId = tag.TagId,
@@ -216,7 +215,8 @@ public partial class LibraryViewModel
                 };
 
                 // T8 Option A: applied chips first; implied-only under their own subsection.
-                if (source == TagSource.Implied)
+                // Mixed Manual+Implied must stay in Assigned — never the Implied strip.
+                if (impliedOnly)
                 {
                     ImpliedAssignedTags.Add(item);
                 }

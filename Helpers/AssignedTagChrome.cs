@@ -37,7 +37,8 @@ public static class AssignedTagChrome
     {
         if (source == TagSource.Implied)
         {
-            return ImpliedNearest.ImpliedTooltipWithEditHint(nearestImpliedByName);
+            // No context menu yet — do not promise right-click edit.
+            return ImpliedNearest.ImpliedTooltip(nearestImpliedByName);
         }
 
         var parts = new List<string>();

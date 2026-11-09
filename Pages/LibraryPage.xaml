@@ -2078,7 +2078,7 @@
                                     BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                                     BorderThickness="1"
                                     CornerRadius="16"
-                                    Opacity="0.9"
+                                    Opacity="{x:Bind ChromeOpacity, Mode=OneWay}"
                                     ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <ic:FluentIcon

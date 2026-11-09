@@ -111,6 +111,7 @@
     <Compile Include="..\Helpers\TagBoardExpand.cs" Link="TagBoardExpand.cs" />
     <Compile Include="..\Helpers\TagBrowseMosaic.cs" Link="TagBrowseMosaic.cs" />
     <Compile Include="..\Helpers\AssignedTagChrome.cs" Link="AssignedTagChrome.cs" />
+    <Compile Include="..\Helpers\AssignedTagPartition.cs" Link="AssignedTagPartition.cs" />
     <Compile Include="..\Helpers\ImpliedNearest.cs" Link="ImpliedNearest.cs" />
     <Compile Include="..\Helpers\TagBrowsePanel.cs" Link="TagBrowsePanel.cs" />
     <Compile Include="..\Helpers\AssetNouns.cs" Link="AssetNouns.cs" />

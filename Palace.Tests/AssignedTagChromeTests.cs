@@ -27,7 +27,7 @@ public sealed class AssignedTagChromeTests
         Assert.Equal(expected, AssignedTagChrome.Tooltip(source, count));
 
     [Fact]
-    public void ChipTooltip_ImpliedUsesNearestAndEditHint()
+    public void ChipTooltip_ImpliedUsesNearest_NoRightClickPromise()
     {
         var tip = AssignedTagChrome.ChipTooltip(
             TagSource.Implied,
@@ -37,8 +37,8 @@ public sealed class AssignedTagChromeTests
             isPartial: false,
             countLabel: null,
             tagName: "figure");
-        Assert.Contains("Implied by character", tip, StringComparison.Ordinal);
-        Assert.Contains("Right-click to edit the rule", tip, StringComparison.Ordinal);
+        Assert.Equal("Implied by character", tip);
+        Assert.DoesNotContain("Right-click", tip, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

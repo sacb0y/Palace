@@ -259,38 +259,6 @@ public partial class LibraryViewModel
         RequestFocusAssignTag?.Invoke();
     }
 
-    [RelayCommand]
-    private Task ToggleAssignChipAsync(TagChipItem? chip) =>
-        ErrorReporter.RunAsync("Toggle assign chip", Notify, async () =>
-        {
-            var targets = TagTargets();
-            if (chip is null || targets.Count == 0)
-            {
-                return;
-            }
-
-            var state = TagChipVisual.Resolve(chip.IsPartial, chip.IsAssigned);
-            if (TagChipVisual.ToggleRemoves(state))
-            {
-                await RemoveAssignedTagAsync(new AssignedTagItem
-                {
-                    TagId = chip.TagId,
-                    TagName = chip.Name,
-                    Source = TagSource.Manual,
-                    AppliedCount = targets.Count,
-                    SelectionTotal = targets.Count
-                });
-                AssignAnnouncement = TagChipVisual.AnnounceRemoved(chip.Name, targets.Count);
-                return;
-            }
-
-            await AssignManyToSelectionAsync(
-                targets, [(chip.TagId, chip.Name, TagSource.Manual)], createdCount: 0);
-            AssignAnnouncement = TagChipVisual.AnnounceAdded(chip.Name, targets.Count);
-            await LoadPreviewAsync(SelectedAsset);
-            RefreshPendingChrome();
-        });
-
     public Task ReloadAssignedTagsAsync() => LoadPreviewAsync(SelectedAsset);
 
     public async Task ReloadTagCatalogAsync()

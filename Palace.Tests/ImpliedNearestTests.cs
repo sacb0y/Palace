@@ -22,12 +22,11 @@ public sealed class ImpliedNearestTests
     }
 
     [Fact]
-    public void NearestSource_AmongSeveral_PicksShortest()
+    public void NearestSource_AmongSeveral_PicksOrdinalTieBreak()
     {
-        // landscape and vista both imply environment; both applied → either is distance 1.
-        var applied = new HashSet<string>(StringComparer.Ordinal) { "landscape", "vista" };
-        var nearest = ImpliedNearest.NearestSourceId("environment", applied, Edges);
-        Assert.True(nearest is "landscape" or "vista");
+        // landscape and vista both imply environment at distance 1 → Ordinal "landscape".
+        var applied = new HashSet<string>(StringComparer.Ordinal) { "vista", "landscape" };
+        Assert.Equal("landscape", ImpliedNearest.NearestSourceId("environment", applied, Edges));
     }
 
     [Fact]
@@ -35,6 +34,41 @@ public sealed class ImpliedNearestTests
     {
         var applied = new HashSet<string>(StringComparer.Ordinal) { "sketch" };
         Assert.Null(ImpliedNearest.NearestSourceId("figure", applied, Edges));
+    }
+
+    [Fact]
+    public void NearestSource_CycleDoesNotHang_AndOrdinalTieBreakStillHolds()
+    {
+        (string TagId, string ImpliedTagId)[] cyclic =
+        [
+            ("a", "b"),
+            ("b", "a"),
+            ("vista", "environment"),
+            ("landscape", "environment")
+        ];
+
+        // Pure cycle with no applied source — terminates, returns null.
+        Assert.Null(ImpliedNearest.NearestSourceId(
+            "a",
+            new HashSet<string>(StringComparer.Ordinal) { "z" },
+            cyclic));
+
+        // Same-distance applied sources still Ordinal-stable with a cycle present.
+        Assert.Equal(
+            "landscape",
+            ImpliedNearest.NearestSourceId(
+                "environment",
+                new HashSet<string>(StringComparer.Ordinal) { "vista", "landscape" },
+                cyclic));
+    }
+
+    [Fact]
+    public void BuildReverse_ReusableAcrossChips()
+    {
+        var reverse = ImpliedNearest.BuildReverse(Edges);
+        var applied = new HashSet<string>(StringComparer.Ordinal) { "knight" };
+        Assert.Equal("knight", ImpliedNearest.NearestSourceId("character", applied, reverse));
+        Assert.Equal("knight", ImpliedNearest.NearestSourceId("figure", applied, reverse));
     }
 
     [Fact]
@@ -63,13 +97,5 @@ public sealed class ImpliedNearestTests
             "also: scenery, vista",
             ImpliedNearest.AliasAlsoLine(["vista", "scenery", " vista "]));
         Assert.Equal("", ImpliedNearest.AliasAlsoLine(null));
-    }
-
-    [Fact]
-    public void ImpliedTooltipWithEditHint_HasSecondLine()
-    {
-        var tip = ImpliedNearest.ImpliedTooltipWithEditHint("character");
-        Assert.Contains("Implied by character", tip, StringComparison.Ordinal);
-        Assert.Contains("Right-click to edit the rule", tip, StringComparison.Ordinal);
     }
 }

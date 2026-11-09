@@ -369,8 +369,6 @@ public sealed partial class LibraryPage : Page
 
     public static IRelayCommand<TagChipItem> GetToggleFilterChipCommand() => AppServices.Library.ToggleFilterChipCommand;
 
-    public static IRelayCommand<TagChipItem> GetToggleAssignChipCommand() => AppServices.Library.ToggleAssignChipCommand;
-
     public static IRelayCommand<TagBoardGroup> GetToggleBrowseTagGroupCommand() =>
         AppServices.Library.ToggleBrowseTagGroupCommand;
 
