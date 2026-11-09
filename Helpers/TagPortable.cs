@@ -5,8 +5,8 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Portable tag catalog (JSON) for export/import. Tags stay global. Merge is
-/// upsert-by-name (case-insensitive); parents and implicits are cycle-safe and
-/// never wipe unrelated rows. Requested by Sacb0y.
+/// upsert-by-name (case-insensitive); parents, implicits, and aliases are
+/// per-edge cycle/rebind-safe and never wipe unrelated rows. Requested by Sacb0y.
 /// </summary>
 public static class TagPortable
 {
@@ -50,7 +50,8 @@ public static class TagPortable
     public static TagPortableDocument FromCatalog(
         IEnumerable<TagPortableTagSource> tags,
         IEnumerable<TagPortableEdge> memberships,
-        IEnumerable<TagPortableEdge> implications)
+        IEnumerable<TagPortableEdge> implications,
+        IEnumerable<TagPortableEdge>? aliases = null)
     {
         var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
         var parentsByChild = memberships
@@ -67,6 +68,14 @@ public static class TagPortable
                 g => g.Key,
                 g => g.Select(e => byId[e.ToId].Name).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList(),
                 StringComparer.Ordinal);
+        // Alias edge: FromId = alias, ToId = ideal.
+        var aliasOfByAliasId = (aliases ?? [])
+            .Where(e => byId.ContainsKey(e.FromId) && byId.ContainsKey(e.ToId))
+            .GroupBy(e => e.FromId, StringComparer.Ordinal)
+            .ToDictionary(
+                g => g.Key,
+                g => byId[g.First().ToId].Name,
+                StringComparer.Ordinal);
 
         var exported = byId.Values
             .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
@@ -81,6 +90,9 @@ public static class TagPortable
                     : null,
                 Implies = impliesByTag.TryGetValue(t.Id, out var implies) && implies.Count > 0
                     ? implies
+                    : null,
+                AliasOf = aliasOfByAliasId.TryGetValue(t.Id, out var idealName)
+                    ? idealName
                     : null
             })
             .ToList();
@@ -95,12 +107,22 @@ public static class TagPortable
 
     /// <summary>
     /// Pure merge planner. Does not touch SQLite. Upserts by name; skips
-    /// membership/implication edges that would cycle.
+    /// membership/implication/alias edges that would cycle or rebind. Per-edge
+    /// refusal — not whole-file atomic.
     /// </summary>
     public static TagMergePlan PlanMerge(
         IReadOnlyList<TagPortableTagSource> existing,
         IReadOnlyList<TagPortableEdge> existingMemberships,
         IReadOnlyList<TagPortableEdge> existingImplications,
+        TagPortableDocument document) =>
+        PlanMerge(existing, existingMemberships, existingImplications, [], document);
+
+    /// <inheritdoc cref="PlanMerge(IReadOnlyList{TagPortableTagSource},IReadOnlyList{TagPortableEdge},IReadOnlyList{TagPortableEdge},TagPortableDocument)"/>
+    public static TagMergePlan PlanMerge(
+        IReadOnlyList<TagPortableTagSource> existing,
+        IReadOnlyList<TagPortableEdge> existingMemberships,
+        IReadOnlyList<TagPortableEdge> existingImplications,
+        IReadOnlyList<TagPortableEdge> existingAliases,
         TagPortableDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -120,6 +142,15 @@ public static class TagPortable
         var implications = existingImplications
             .Select(e => (e.FromId, e.ToId))
             .ToHashSet();
+        // Working alias map (AliasId → IdealId); updated as edges are accepted.
+        var aliasMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var edge in existingAliases)
+        {
+            if (!string.IsNullOrEmpty(edge.FromId) && !string.IsNullOrEmpty(edge.ToId))
+            {
+                aliasMap[edge.FromId] = edge.ToId;
+            }
+        }
 
         // Synthetic ids for tags that will be created (stable within this plan).
         var pendingCreates = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -227,6 +258,12 @@ public static class TagPortable
             {
                 EnsureNamed(implied);
             }
+
+            // Empty aliasOf is skipped later; non-empty missing ideal → EnsureNamed.
+            if (!string.IsNullOrWhiteSpace(entry.AliasOf))
+            {
+                EnsureNamed(entry.AliasOf);
+            }
         }
 
         // Live id maps for cycle checks (include pending creates).
@@ -294,6 +331,63 @@ public static class TagPortable
                     plan.ImplicationAdded++;
                 }
             }
+        }
+
+        // Alias edges: parents/implies endpoint names are NOT alias-resolved here
+        // (pre-existing PlanMerge behavior). Alias edges alone resolve to ultimate ideal.
+        foreach (var entry in document.Tags ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(entry.Name)
+                || !idByName.TryGetValue(entry.Name.Trim(), out var aliasId))
+            {
+                continue;
+            }
+
+            if (entry.AliasOf is null)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(entry.AliasOf))
+            {
+                plan.AliasSkipped++;
+                continue;
+            }
+
+            var idealName = entry.AliasOf.Trim();
+            if (!idByName.TryGetValue(idealName, out var rawIdealId))
+            {
+                plan.AliasSkipped++;
+                continue;
+            }
+
+            var ultimateIdealId = TagAliasResolve.Ideal(rawIdealId, aliasMap);
+            var ultimateIdealName = byName.Values
+                .FirstOrDefault(t => string.Equals(t.Id, ultimateIdealId, StringComparison.Ordinal))
+                ?.Name ?? idealName;
+
+            if (!TagAliasResolve.CanAdd(aliasId, ultimateIdealId, aliasMap))
+            {
+                plan.AliasRejected++;
+                continue;
+            }
+
+            if (aliasMap.TryGetValue(aliasId, out var existingIdeal)
+                && string.Equals(existingIdeal, ultimateIdealId, StringComparison.Ordinal))
+            {
+                // Idempotent same edge — nothing to apply.
+                continue;
+            }
+
+            aliasMap[aliasId] = ultimateIdealId;
+            plan.Aliases.Add(new TagMergeEdge
+            {
+                ParentName = entry.Name.Trim(),
+                ChildName = ultimateIdealName,
+                ParentId = aliasId,
+                ChildId = ultimateIdealId
+            });
+            plan.AliasAdded++;
         }
 
         return plan;
@@ -366,6 +460,8 @@ public sealed class TagPortableEntry
     public bool? Starred { get; set; }
     public List<string>? Parents { get; set; }
     public List<string>? Implies { get; set; }
+    /// <summary>Ideal tag name this entry aliases (n→1). Null/omitted = no alias edge.</summary>
+    public string? AliasOf { get; set; }
 }
 
 public sealed class TagPortableTagSource
@@ -390,6 +486,8 @@ public sealed class TagMergePlan
     public List<TagMergeUpsert> Updates { get; } = [];
     public List<TagMergeEdge> Memberships { get; } = [];
     public List<TagMergeEdge> Implications { get; } = [];
+    /// <summary>Alias→ideal edges (ParentName/Id = alias, ChildName/Id = ideal).</summary>
+    public List<TagMergeEdge> Aliases { get; } = [];
     public int Created { get; set; }
     public int Updated { get; set; }
     public int MembershipAdded { get; set; }
@@ -398,10 +496,13 @@ public sealed class TagMergePlan
     public int ImplicationAdded { get; set; }
     public int ImplicationRejected { get; set; }
     public int ImplicationSkipped { get; set; }
+    public int AliasAdded { get; set; }
+    public int AliasRejected { get; set; }
+    public int AliasSkipped { get; set; }
     public int SkippedEmptyNames { get; set; }
 
     public string Summary =>
-        $"Created {Created}, updated {Updated}, memberships +{MembershipAdded} (rejected {MembershipRejected}), implicits +{ImplicationAdded} (rejected {ImplicationRejected}).";
+        $"Created {Created}, updated {Updated}, memberships +{MembershipAdded} (rejected {MembershipRejected}), implicits +{ImplicationAdded} (rejected {ImplicationRejected}), aliases +{AliasAdded} (rejected {AliasRejected}).";
 }
 
 public sealed class TagMergeUpsert

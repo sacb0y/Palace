@@ -91,4 +91,41 @@ public sealed class TagFilterTests
         var hit = TagFilter.MatchAssetIds(TagFilterMode.All, [], tags, universe);
         Assert.Equal(["a", "b"], hit.OrderBy(x => x));
     }
+
+    [Fact]
+    public void Expand_AliasAndIdeal_MatchSameMembershipSet()
+    {
+        var memberships = new List<TagMembership>
+        {
+            new() { ParentId = "dog", ChildId = "puppy" }
+        };
+        var aliases = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["doggy"] = "dog"
+        };
+
+        var viaAlias = TagFilter.Expand("doggy", memberships, aliases);
+        var viaIdeal = TagFilter.Expand("dog", memberships, aliases);
+
+        Assert.Contains("dog", viaAlias);
+        Assert.Contains("puppy", viaAlias);
+        Assert.Contains("doggy", viaAlias); // sibling / selected stale-row defense
+        Assert.Equal(viaIdeal.OrderBy(x => x), viaAlias.OrderBy(x => x));
+    }
+
+    [Fact]
+    public void Expand_Alias_DoesNotAddImplicationClosure()
+    {
+        // Filter expand is membership-only even when aliases exist — unlike TagFtsQuery.
+        var memberships = new List<TagMembership>();
+        var aliases = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["doggy"] = "dog"
+        };
+
+        var expanded = TagFilter.Expand("doggy", memberships, aliases);
+        Assert.Contains("dog", expanded);
+        Assert.Contains("doggy", expanded);
+        Assert.DoesNotContain("animal", expanded);
+    }
 }

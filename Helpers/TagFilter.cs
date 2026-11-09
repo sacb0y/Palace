@@ -46,10 +46,57 @@ public static class TagFilter
         return found;
     }
 
+    /// <summary>
+    /// Library tag-filter expand: resolve <paramref name="tagId"/> through
+    /// <see cref="TagAliasResolve.Ideal"/>, then membership-descendants of that ideal.
+    /// Optionally unions sibling alias ids (stale AssetTag defense).
+    /// Does <b>not</b> add implication closure — intentional vs search/FTS.
+    /// </summary>
+    public static HashSet<string> Expand(
+        string tagId,
+        IReadOnlyList<TagMembership> memberships,
+        IReadOnlyDictionary<string, string> aliasToIdeal,
+        bool includeSiblingAliases = true)
+    {
+        if (aliasToIdeal is null || aliasToIdeal.Count == 0)
+        {
+            return Expand(tagId, memberships);
+        }
+
+        var idealId = TagAliasResolve.Ideal(tagId, aliasToIdeal);
+        var found = Expand(idealId, memberships);
+        if (!includeSiblingAliases)
+        {
+            return found;
+        }
+
+        found.Add(tagId);
+        foreach (var (aliasId, _) in aliasToIdeal)
+        {
+            if (string.Equals(
+                    TagAliasResolve.Ideal(aliasId, aliasToIdeal),
+                    idealId,
+                    StringComparison.Ordinal))
+            {
+                found.Add(aliasId);
+            }
+        }
+
+        return found;
+    }
+
     public static List<HashSet<string>> ExpandEach(
         IEnumerable<string> tagIds,
         IReadOnlyList<TagMembership> memberships) =>
         tagIds.Select(id => Expand(id, memberships)).ToList();
+
+    /// <inheritdoc cref="Expand(string,IReadOnlyList{TagMembership},IReadOnlyDictionary{string,string},bool)"/>
+    public static List<HashSet<string>> ExpandEach(
+        IEnumerable<string> tagIds,
+        IReadOnlyList<TagMembership> memberships,
+        IReadOnlyDictionary<string, string> aliasToIdeal,
+        bool includeSiblingAliases = true) =>
+        tagIds.Select(id => Expand(id, memberships, aliasToIdeal, includeSiblingAliases)).ToList();
 
     public static HashSet<string> MatchAssetIds(
         TagFilterMode mode,

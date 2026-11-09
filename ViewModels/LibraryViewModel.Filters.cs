@@ -158,7 +158,10 @@ public partial class LibraryViewModel
             if (IsTagBrowse && filterIds.Count > 0)
             {
                 var memberships = _memberships.Count > 0 ? _memberships : (await _catalog.GetMembershipsAsync()).ToList();
-                var sets = TagFilter.ExpandEach(filterIds, memberships);
+                var aliasMap = (await _catalog.GetAliasesAsync())
+                    .ToDictionary(a => a.AliasTagId, a => a.IdealTagId, StringComparer.Ordinal);
+                // Alias→ideal then membership of ideal; no implication closure (vs search/FTS).
+                var sets = TagFilter.ExpandEach(filterIds, memberships, aliasMap);
                 assets = await _catalog.GetAssetsForTagFilterAsync(sets, matchMode, projectId, MosaicSort);
             }
             else if (folderPath is not null)

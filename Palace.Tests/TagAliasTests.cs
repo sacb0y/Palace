@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Palace.Data;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Xunit;
@@ -130,6 +131,106 @@ public sealed class TagAliasTests : IAsyncLifetime
 
         var hits = await _catalog.SearchAsync("doggy");
         Assert.Contains(hits, a => a.Id == asset.Id);
+    }
+
+    [Fact]
+    public async Task ExportImport_RoundTripsAliasOf()
+    {
+        var doggy = await _catalog.CreateTagAsync("doggy");
+        var dog = await _catalog.CreateTagAsync("dog");
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
+
+        var json = await _catalog.ExportTagsJsonAsync();
+        Assert.Contains("\"aliasOf\": \"dog\"", json, StringComparison.Ordinal);
+
+        // Fresh catalog: import into empty-ish tag set via second service on same DB is messy —
+        // parse + re-import on same catalog is idempotent.
+        var plan = await _catalog.ImportTagsJsonAsync(json);
+        Assert.Equal(0, plan.AliasRejected);
+        var aliases = await _catalog.GetAliasesAsync();
+        Assert.Contains(aliases, a => a.AliasTagId == doggy.Id && a.IdealTagId == dog.Id);
+    }
+
+    [Fact]
+    public async Task Import_AliasOf_CreatesEdge_AndDoesNotMaterializeImplied()
+    {
+        var json = """
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "animal" },
+                { "name": "dog", "implies": ["animal"] },
+                { "name": "doggy", "aliasOf": "dog" }
+              ]
+            }
+            """;
+
+        var plan = await _catalog.ImportTagsJsonAsync(json);
+        Assert.Equal(1, plan.AliasAdded);
+        Assert.True(plan.ImplicationAdded >= 1);
+
+        var aliases = await _catalog.GetAliasesAsync();
+        var doggy = Assert.Single(await _catalog.GetTagsAsync(), t => t.Name == "doggy");
+        var dog = Assert.Single(await _catalog.GetTagsAsync(), t => t.Name == "dog");
+        Assert.Contains(aliases, a => a.AliasTagId == doggy.Id && a.IdealTagId == dog.Id);
+
+        var asset = await AddAssetAsync("pet2.png");
+        await _catalog.AssignTagAsync(asset.Id, doggy.Id, TagSource.Manual);
+
+        var stored = await SourcesByTagAsync(asset.Id);
+        Assert.Equal(TagSource.Manual, stored[dog.Id]);
+        Assert.DoesNotContain(TagSource.Implied, stored.Values);
+        Assert.DoesNotContain(doggy.Id, stored.Keys);
+    }
+
+    [Fact]
+    public async Task Import_BadAliasEdge_DoesNotUndoPriorCreates()
+    {
+        var dog = await _catalog.CreateTagAsync("dog");
+        var doggy = await _catalog.CreateTagAsync("doggy");
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
+
+        // Rebind doggy→pup must reject; new tag "pup" still created (per-edge, not whole-file atomic).
+        var json = """
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "pup" },
+                { "name": "doggy", "aliasOf": "pup" }
+              ]
+            }
+            """;
+        var plan = await _catalog.ImportTagsJsonAsync(json);
+        Assert.Equal(1, plan.AliasRejected);
+        Assert.Contains(await _catalog.GetTagsAsync(), t => t.Name == "pup");
+        var aliases = await _catalog.GetAliasesAsync();
+        Assert.Contains(aliases, a => a.AliasTagId == doggy.Id && a.IdealTagId == dog.Id);
+    }
+
+    [Fact]
+    public async Task TagFilter_AliasAndIdeal_MatchSameAssets()
+    {
+        var doggy = await _catalog.CreateTagAsync("doggy");
+        var dog = await _catalog.CreateTagAsync("dog");
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
+
+        var asset = await AddAssetAsync("match.png");
+        await _catalog.AssignTagAsync(asset.Id, dog.Id, TagSource.Manual);
+
+        var memberships = (await _catalog.GetMembershipsAsync()).ToList();
+        var aliasMap = (await _catalog.GetAliasesAsync())
+            .ToDictionary(a => a.AliasTagId, a => a.IdealTagId, StringComparer.Ordinal);
+
+        var viaAlias = TagFilter.ExpandEach([doggy.Id], memberships, aliasMap);
+        var viaIdeal = TagFilter.ExpandEach([dog.Id], memberships, aliasMap);
+        var projectId = _source.ProjectId;
+        var aliasHits = await _catalog.GetAssetsForTagFilterAsync(viaAlias, TagFilterMode.Any, projectId);
+        var idealHits = await _catalog.GetAssetsForTagFilterAsync(viaIdeal, TagFilterMode.Any, projectId);
+
+        Assert.Contains(aliasHits, a => a.Id == asset.Id);
+        Assert.Equal(
+            idealHits.Select(a => a.Id).OrderBy(x => x),
+            aliasHits.Select(a => a.Id).OrderBy(x => x));
     }
 
     private async Task<Asset> AddAssetAsync(string fileName)

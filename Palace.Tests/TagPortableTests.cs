@@ -159,4 +159,164 @@ public sealed class TagPortableTests
         Assert.Throws<InvalidOperationException>(() =>
             TagPortable.Parse("""{ "schema": "other/1", "tags": [] }"""));
     }
+
+    [Fact]
+    public void FromCatalog_ExportsAliasOfByName()
+    {
+        var tags = new[]
+        {
+            new TagPortableTagSource { Id = "1", Name = "dog" },
+            new TagPortableTagSource { Id = "2", Name = "doggy" },
+        };
+        var aliases = new[] { new TagPortableEdge { FromId = "2", ToId = "1" } };
+
+        var doc = TagPortable.FromCatalog(tags, [], [], aliases);
+        var doggy = Assert.Single(doc.Tags, t => t.Name == "doggy");
+        Assert.Equal("dog", doggy.AliasOf);
+        Assert.Null(Assert.Single(doc.Tags, t => t.Name == "dog").AliasOf);
+    }
+
+    [Fact]
+    public void Serialize_OmitsNullAliasOf_RoundTripsPresent()
+    {
+        var json = TagPortable.Serialize(new TagPortableDocument
+        {
+            Tags =
+            [
+                new TagPortableEntry { Name = "dog" },
+                new TagPortableEntry { Name = "doggy", AliasOf = "dog" }
+            ]
+        });
+        Assert.Contains("\"aliasOf\": \"dog\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"aliasOf\": null", json, StringComparison.Ordinal);
+
+        var parsed = TagPortable.Parse(json);
+        Assert.Equal("dog", Assert.Single(parsed.Tags, t => t.Name == "doggy").AliasOf);
+        Assert.Null(Assert.Single(parsed.Tags, t => t.Name == "dog").AliasOf);
+    }
+
+    [Fact]
+    public void PlanMerge_OldFileWithoutAliasOf_Unchanged()
+    {
+        var existing = new[] { new TagPortableTagSource { Id = "a", Name = "Character" } };
+        var doc = TagPortable.Parse("""
+            { "schema": "palace-tags/1", "tags": [ { "name": "Sonic", "parents": ["Character"] } ] }
+            """);
+
+        var plan = TagPortable.PlanMerge(existing, [], [], [], doc);
+        Assert.Equal(1, plan.Created);
+        Assert.Equal(1, plan.MembershipAdded);
+        Assert.Equal(0, plan.AliasAdded);
+        Assert.Equal(0, plan.AliasRejected);
+        Assert.Equal(0, plan.AliasSkipped);
+    }
+
+    [Fact]
+    public void PlanMerge_EmptyAliasOf_Skipped()
+    {
+        var doc = TagPortable.Parse("""
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "doggy", "aliasOf": "   " },
+                { "name": "dog" }
+              ]
+            }
+            """);
+
+        var plan = TagPortable.PlanMerge([], [], [], [], doc);
+        Assert.Equal(0, plan.AliasAdded);
+        Assert.Equal(1, plan.AliasSkipped);
+        Assert.Equal(2, plan.Created);
+    }
+
+    [Fact]
+    public void PlanMerge_MissingIdeal_EnsureNamedThenAlias()
+    {
+        var doc = TagPortable.Parse("""
+            {
+              "schema": "palace-tags/1",
+              "tags": [ { "name": "doggy", "aliasOf": "dog" } ]
+            }
+            """);
+
+        var plan = TagPortable.PlanMerge([], [], [], [], doc);
+        Assert.Equal(2, plan.Created);
+        Assert.Equal(1, plan.AliasAdded);
+        Assert.Contains(plan.Creates, c => c.Name == "dog");
+        Assert.Contains(plan.Aliases, a => a.ParentName == "doggy" && a.ChildName == "dog");
+    }
+
+    [Fact]
+    public void PlanMerge_RejectsAliasRebind_AndSelf_AndCycle()
+    {
+        var existing = new[]
+        {
+            new TagPortableTagSource { Id = "a", Name = "alpha" },
+            new TagPortableTagSource { Id = "b", Name = "beta" },
+            new TagPortableTagSource { Id = "c", Name = "gamma" }
+        };
+        var aliases = new[] { new TagPortableEdge { FromId = "b", ToId = "a" } };
+
+        var rebind = TagPortable.Parse("""
+            { "schema": "palace-tags/1", "tags": [ { "name": "beta", "aliasOf": "gamma" } ] }
+            """);
+        var rebindPlan = TagPortable.PlanMerge(existing, [], [], aliases, rebind);
+        Assert.Equal(0, rebindPlan.AliasAdded);
+        Assert.Equal(1, rebindPlan.AliasRejected);
+
+        var self = TagPortable.Parse("""
+            { "schema": "palace-tags/1", "tags": [ { "name": "alpha", "aliasOf": "alpha" } ] }
+            """);
+        var selfPlan = TagPortable.PlanMerge(existing, [], [], [], self);
+        Assert.Equal(0, selfPlan.AliasAdded);
+        Assert.Equal(1, selfPlan.AliasRejected);
+
+        var cycle = TagPortable.Parse("""
+            { "schema": "palace-tags/1", "tags": [ { "name": "alpha", "aliasOf": "beta" } ] }
+            """);
+        var cyclePlan = TagPortable.PlanMerge(existing, [], [], aliases, cycle);
+        Assert.Equal(0, cyclePlan.AliasAdded);
+        Assert.Equal(1, cyclePlan.AliasRejected);
+    }
+
+    [Fact]
+    public void PlanMerge_SameFileChain_ResolvesUltimateIdeal()
+    {
+        var doc = TagPortable.Parse("""
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "c" },
+                { "name": "b", "aliasOf": "c" },
+                { "name": "a", "aliasOf": "b" }
+              ]
+            }
+            """);
+
+        var plan = TagPortable.PlanMerge([], [], [], [], doc);
+        Assert.Equal(2, plan.AliasAdded);
+        Assert.Contains(plan.Aliases, e => e.ParentName == "b" && e.ChildName == "c");
+        // a→b with b already→c in working map → ultimate c
+        Assert.Contains(plan.Aliases, e => e.ParentName == "a" && e.ChildName == "c");
+    }
+
+    [Fact]
+    public void PlanMerge_IdempotentSameAliasEdge()
+    {
+        var existing = new[]
+        {
+            new TagPortableTagSource { Id = "1", Name = "dog" },
+            new TagPortableTagSource { Id = "2", Name = "doggy" }
+        };
+        var aliases = new[] { new TagPortableEdge { FromId = "2", ToId = "1" } };
+        var doc = TagPortable.Parse("""
+            { "schema": "palace-tags/1", "tags": [ { "name": "doggy", "aliasOf": "dog" } ] }
+            """);
+
+        var plan = TagPortable.PlanMerge(existing, [], [], aliases, doc);
+        Assert.Equal(0, plan.AliasAdded);
+        Assert.Equal(0, plan.AliasRejected);
+        Assert.Empty(plan.Aliases);
+    }
 }
