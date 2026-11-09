@@ -75,10 +75,7 @@ public sealed partial class CatalogService
                         RefreshFts(conn, assetId, tx);
 
                         var after = LoadAssignedRefs(conn, assetId, tx);
-                        var change = TagAssignUndo.PlanAssign(
-                            before.Select(t => t.TagId),
-                            after.Select(t => t.TagId),
-                            tagId);
+                        var change = TagAssignUndo.PlanAssign(before, after, tagId);
                         if (!change.Journal)
                         {
                             continue;
@@ -91,7 +88,9 @@ public sealed partial class CatalogService
                             AssetId = assetId,
                             OldPath = tagId,
                             NewPath = tagName,
-                            OldSourceId = source.ToString(),
+                            // KeepAssigned: prior applied source for Undo restore.
+                            // TouchAssigned: applied source (unused on Undo delete).
+                            OldSourceId = change.PriorAssignedSource?.ToString() ?? source.ToString(),
                             NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
                         });
                     }
