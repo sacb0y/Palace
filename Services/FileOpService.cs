@@ -974,14 +974,14 @@ public sealed partial class FileOpService
         }
 
         var notes = new List<string>();
-        var done = 0;
+        var succeeded = new List<FileOpItem>();
         // Forward order: CreateTag (low Seq) then AssignTag.
         foreach (var item in batch.Items.OrderBy(i => i.Seq))
         {
             var note = await RedoTagOpStepAsync(item).ConfigureAwait(false);
             if (note is null)
             {
-                done++;
+                succeeded.Add(item);
             }
             else
             {
@@ -989,7 +989,7 @@ public sealed partial class FileOpService
             }
         }
 
-        if (done == 0)
+        if (succeeded.Count == 0)
         {
             return FileOpResult.Fail(
                 notes.Count == 0
@@ -999,12 +999,19 @@ public sealed partial class FileOpService
 
         // Partial redo (any skipped step) must stay on the redo stack — marking
         // IsUndone=0 would clear PeekRedo while CreateTag/AssignTag remain incomplete.
+        // Roll back what did apply so a following Undo cannot leave orphaned changes.
         if (notes.Count > 0)
         {
+            foreach (var item in succeeded.OrderByDescending(i => i.Seq))
+            {
+                await UndoTagOpStepAsync(item).ConfigureAwait(false);
+            }
+
             return new FileOpResult
             {
                 Ok = true,
-                Message = $"Redid tag assign, {notes.Count} step(s) skipped. {notes[0]} Try again.",
+                Message =
+                    $"Couldn't fully redo tag assign; restored prior state. {notes.Count} step(s) skipped. {notes[0]} Try again.",
                 BatchId = batch.Id,
                 Summary = batch.Summary,
                 Skipped = notes

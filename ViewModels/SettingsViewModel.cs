@@ -1792,7 +1792,7 @@ public partial class SettingsViewModel : ObservableObject
             }
 
             await AppServices.Tags.RefreshAsync();
-            StatusText = "Imported tags. " + plan.Summary;
+            StatusText = TagPortable.FormatImportStatus(plan.Summary, _catalog.LastTagImportBackupFile);
         });
 
     [RelayCommand]

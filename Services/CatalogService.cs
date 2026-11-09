@@ -26,6 +26,15 @@ public sealed partial class CatalogService
         _db = db;
     }
 
+    /// <summary>
+    /// Path to the last pre-import <c>palace.db</c> snapshot, when
+    /// <see cref="ImportTagsJsonAsync"/> ran a backup.
+    /// </summary>
+    public string? LastTagImportBackupFile =>
+        string.IsNullOrEmpty(_db.LastTagImportBackupDir)
+            ? null
+            : Path.Combine(_db.LastTagImportBackupDir, "palace.db");
+
     private void InvalidateGraphCaches()
     {
         lock (_graphCacheLock)

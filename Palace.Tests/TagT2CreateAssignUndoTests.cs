@@ -148,14 +148,72 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
         var redo = await _ops.RedoLastAsync(_projectId);
         Assert.True(redo.Ok, redo.Message);
         Assert.NotEmpty(redo.Skipped);
-        Assert.Contains(idB, await TagIdsOn(asset.Id));
+        // Successful steps were rolled back so nothing is orphaned while IsUndone.
+        Assert.DoesNotContain(idB, await TagIdsOn(asset.Id));
         Assert.DoesNotContain(idA, await TagIdsOn(asset.Id));
+        Assert.Null(await _catalog.FindTagByNameAsync("partial-b"));
+        Assert.NotNull(await _catalog.FindTagByNameAsync("partial-a")); // clash row
 
         // Skipped steps → still on the redo stack (not MarkFileOpRedone).
         var stillRedo = await _ops.PeekRedoAsync(_projectId);
         Assert.NotNull(stillRedo);
         Assert.Equal(result.BatchId, stillRedo!.Id);
         Assert.True(stillRedo.IsUndone);
+    }
+
+    [Fact]
+    public async Task PartialRedo_ThenUndo_LeavesNoOrphanedChanges()
+    {
+        // Partial Redo rolls successes back; a following Undo reverses the next
+        // live op and must not leave recreated tags/assigns from the Redo.
+        var asset = await AddAssetAsync("partial-redo-undo.png");
+        var other = await AddAssetAsync("after-partial.png");
+        var (a, createdA) = await _catalog.GetOrCreateTagResultAsync("redo-a");
+        Assert.True(createdA);
+        var (b, createdB) = await _catalog.GetOrCreateTagResultAsync("redo-b");
+        Assert.True(createdB);
+        var idA = a.Id;
+        var idB = b.Id;
+
+        var assignBoth = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [
+                (a.Id, a.Name, TagSource.Manual),
+                (b.Id, b.Name, TagSource.Manual)
+            ],
+            _projectId,
+            createdTags: [(a.Id, a.Name), (b.Id, b.Name)]);
+        Assert.True(assignBoth.Ok, assignBoth.Message);
+
+        var undoBoth = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoBoth.Ok, undoBoth.Message);
+        Assert.NotNull(await _ops.PeekRedoAsync(_projectId));
+
+        var clash = await _catalog.CreateTagAsync("redo-a");
+        Assert.NotEqual(idA, clash.Id);
+
+        var redo = await _ops.RedoLastAsync(_projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.NotEmpty(redo.Skipped);
+        Assert.Null(await _catalog.FindTagByNameAsync("redo-b"));
+        Assert.Empty(await TagIdsOn(asset.Id));
+        Assert.NotNull(await _ops.PeekRedoAsync(_projectId));
+
+        var after = await _catalog.CreateTagAsync("after-partial");
+        var afterAssign = await _ops.AssignTagsAsync(
+            [other.Id],
+            [(after.Id, after.Name, TagSource.Manual)],
+            _projectId);
+        Assert.True(afterAssign.Ok, afterAssign.Message);
+        Assert.Contains(after.Id, await TagIdsOn(other.Id));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.DoesNotContain(after.Id, await TagIdsOn(other.Id));
+        Assert.Null(await _catalog.FindTagByNameAsync("redo-b"));
+        Assert.DoesNotContain(idA, await TagIdsOn(asset.Id));
+        Assert.DoesNotContain(idB, await TagIdsOn(asset.Id));
+        Assert.Empty(await TagIdsOn(asset.Id));
     }
 
     [Fact]

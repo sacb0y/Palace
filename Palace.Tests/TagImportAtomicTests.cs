@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Palace.Data;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Xunit;
@@ -85,5 +86,11 @@ public sealed class TagImportAtomicTests : IAsyncLifetime
         Assert.NotNull(await _catalog.FindTagByNameAsync("wash"));
         Assert.False(string.IsNullOrEmpty(_db.LastTagImportBackupDir));
         Assert.True(File.Exists(Path.Combine(_db.LastTagImportBackupDir!, "palace.db")));
+        Assert.Equal(
+            Path.Combine(_db.LastTagImportBackupDir!, "palace.db"),
+            _catalog.LastTagImportBackupFile);
+        var status = TagPortable.FormatImportStatus(plan.Summary, _catalog.LastTagImportBackupFile);
+        Assert.Contains("Backup: ", status, StringComparison.Ordinal);
+        Assert.Contains(_catalog.LastTagImportBackupFile!, status, StringComparison.Ordinal);
     }
 }

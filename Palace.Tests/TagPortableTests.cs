@@ -365,4 +365,22 @@ public sealed class TagPortableTests
         Assert.Contains(plan.Implications, e => e.ParentName == "wolf" && e.ChildName == "dog");
         Assert.DoesNotContain(plan.Implications, e => e.ChildName == "doggy" || e.ParentName == "doggy");
     }
+
+    [Fact]
+    public void FormatImportStatus_IncludesBackupFilePath()
+    {
+        var summary = "Created 1, updated 0, memberships +0 (rejected 0), implicits +0 (rejected 0), aliases +0 (rejected 0).";
+        var backup = Path.Combine("catalog", "backups", "pre-tag-import-1", "palace.db");
+        var status = TagPortable.FormatImportStatus(summary, backup);
+        Assert.StartsWith("Imported tags. " + summary, status, StringComparison.Ordinal);
+        Assert.Contains("Backup: " + backup, status, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FormatImportStatus_OmitsBackupWhenMissing()
+    {
+        var status = TagPortable.FormatImportStatus("Created 0.", null);
+        Assert.Equal("Imported tags. Created 0.", status);
+        Assert.DoesNotContain("Backup:", status, StringComparison.Ordinal);
+    }
 }
