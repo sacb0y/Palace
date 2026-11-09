@@ -234,12 +234,8 @@ public sealed partial class CatalogService
                 .ToList();
             var plan = TagPortable.PlanMerge(existing, memberships, implications, aliases, document);
 
-            var hasWork = plan.Creates.Count > 0
-                || plan.Updates.Count > 0
-                || plan.Memberships.Count > 0
-                || plan.Implications.Count > 0
-                || plan.Aliases.Count > 0;
-            if (!hasWork)
+            // Derive from PlanMerge output only — do not re-list change kinds here.
+            if (!plan.HasWork)
             {
                 // No-op: leave LastTagImportBackupDir cleared (not a prior path).
                 return plan;

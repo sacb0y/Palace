@@ -383,4 +383,32 @@ public sealed class TagPortableTests
         Assert.Equal("Imported tags. Created 0.", status);
         Assert.DoesNotContain("Backup:", status, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void HasWork_FalseWhenEmpty()
+    {
+        Assert.False(new TagMergePlan().HasWork);
+    }
+
+    [Fact]
+    public void HasWork_TrueForEachChangeList_Alone()
+    {
+        // Drift guard: every List<> on TagMergePlan must count as work when non-empty.
+        // If PlanMerge gains a new change kind, this fails until HasWork includes it.
+        var listProps = typeof(TagMergePlan).GetProperties()
+            .Where(p => p.PropertyType.IsGenericType
+                && p.PropertyType.GetGenericTypeDefinition() == typeof(List<>))
+            .ToList();
+        Assert.NotEmpty(listProps);
+
+        foreach (var prop in listProps)
+        {
+            var plan = new TagMergePlan();
+            Assert.False(plan.HasWork);
+            var list = (System.Collections.IList)prop.GetValue(plan)!;
+            var elemType = prop.PropertyType.GetGenericArguments()[0];
+            list.Add(Activator.CreateInstance(elemType)!);
+            Assert.True(plan.HasWork, $"{prop.Name} must make HasWork true when non-empty");
+        }
+    }
 }

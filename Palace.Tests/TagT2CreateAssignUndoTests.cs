@@ -204,6 +204,43 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Redo_AfterFailedRollbackLeftover_CreateTagSameIdIsSuccess()
+    {
+        // Failed CreateTag undo during partial-redo rollback can leave the Tag row.
+        // A following Redo must treat CreateTag whose row already exists with the
+        // same id as success (idempotent), not a name clash.
+        var asset = await AddAssetAsync("leftover-create-redo.png");
+        var (tag, created) = await _catalog.GetOrCreateTagResultAsync("leftover-create");
+        Assert.True(created);
+        var tagId = tag.Id;
+
+        var result = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [(tag.Id, tag.Name, TagSource.Manual)],
+            _projectId,
+            createdTags: [(tag.Id, tag.Name)]);
+        Assert.True(result.Ok, result.Message);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Null(await _catalog.FindTagByNameAsync("leftover-create"));
+        Assert.NotNull(await _ops.PeekRedoAsync(_projectId));
+
+        // Simulate leftover after a failed CreateTag rollback delete.
+        await _catalog.EnsureCreatedTagAsync(tagId, "leftover-create");
+        Assert.Equal(tagId, (await _catalog.FindTagByNameAsync("leftover-create"))!.Id);
+
+        var redo = await _ops.RedoLastAsync(_projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.Empty(redo.Skipped);
+        Assert.Contains(tagId, await TagIdsOn(asset.Id));
+        var restored = await _catalog.FindTagByNameAsync("leftover-create");
+        Assert.NotNull(restored);
+        Assert.Equal(tagId, restored!.Id);
+        Assert.Null(await _ops.PeekRedoAsync(_projectId));
+    }
+
+    [Fact]
     public async Task PartialRedo_ThenUndo_LeavesNoOrphanedChanges()
     {
         // Partial Redo rolls successes back; a following Undo reverses the next
