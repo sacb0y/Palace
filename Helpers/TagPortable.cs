@@ -20,6 +20,20 @@ public static class TagPortable
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
+    /// <summary>
+    /// Settings status-bar line after a tag import (summary + optional pre-import backup file).
+    /// </summary>
+    public static string FormatImportStatus(string summary, string? backupFilePath)
+    {
+        var message = "Imported tags. " + summary;
+        if (!string.IsNullOrWhiteSpace(backupFilePath))
+        {
+            message += " Backup: " + backupFilePath;
+        }
+
+        return message;
+    }
+
     public static string Serialize(TagPortableDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);

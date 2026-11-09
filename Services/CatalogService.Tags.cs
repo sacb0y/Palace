@@ -15,6 +15,16 @@ public sealed class TagImportFaultProbe
     public int FailAfterCreates { get; init; }
 }
 
+/// <summary>
+/// Test-only fault injection for CreateTag Undo (<see cref="CatalogService.TryDeleteUnusedCreatedTagAsync"/>).
+/// Production leaves null.
+/// </summary>
+public sealed class TagCreateUndoFaultProbe
+{
+    /// <summary>Throw instead of deleting an unused CreateTag row.</summary>
+    public bool ThrowOnDelete { get; init; }
+}
+
 /// <summary>Catalog: the global tag graph (tags, groups / memberships, implications, colors, import / export).</summary>
 public sealed partial class CatalogService
 {
@@ -171,10 +181,20 @@ public sealed partial class CatalogService
     /// <summary>Test-only. Cleared after each import that observes it.</summary>
     public TagImportFaultProbe? TestTagImportFault { get; set; }
 
+    /// <summary>Test-only. Cleared after CreateTag Undo observes it.</summary>
+    public TagCreateUndoFaultProbe? TestTagCreateUndoFault { get; set; }
+
     private TagImportFaultProbe? TakeTagImportFault()
     {
         var probe = TestTagImportFault;
         TestTagImportFault = null;
+        return probe;
+    }
+
+    private TagCreateUndoFaultProbe? TakeTagCreateUndoFault()
+    {
+        var probe = TestTagCreateUndoFault;
+        TestTagCreateUndoFault = null;
         return probe;
     }
 
@@ -188,6 +208,9 @@ public sealed partial class CatalogService
     public Task<TagMergePlan> ImportTagsJsonAsync(string json) =>
         _db.WriteAsync(conn =>
         {
+            // Clear first so a no-op (or early failure before backup) cannot
+            // surface a previous import's backup path in status.
+            _db.ClearLastTagImportBackup();
             InvalidateGraphCaches();
             var document = TagPortable.Parse(json);
             var existing = LoadTags(conn)
@@ -210,6 +233,17 @@ public sealed partial class CatalogService
                 .Select(a => new TagPortableEdge { FromId = a.AliasTagId, ToId = a.IdealTagId })
                 .ToList();
             var plan = TagPortable.PlanMerge(existing, memberships, implications, aliases, document);
+
+            var hasWork = plan.Creates.Count > 0
+                || plan.Updates.Count > 0
+                || plan.Memberships.Count > 0
+                || plan.Implications.Count > 0
+                || plan.Aliases.Count > 0;
+            if (!hasWork)
+            {
+                // No-op: leave LastTagImportBackupDir cleared (not a prior path).
+                return plan;
+            }
 
             // Restore point before any mutate (same backup API as T5 implied purge).
             _db.BackupBeforeTagImport();

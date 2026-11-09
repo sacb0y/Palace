@@ -28,6 +28,9 @@ public sealed class PalaceDb : IDisposable
     /// <summary>Folder of the last pre-import catalog backup, when <see cref="BackupBeforeTagImport"/> ran.</summary>
     public string? LastTagImportBackupDir { get; private set; }
 
+    /// <summary>Clear before each import so a no-op cannot surface a prior backup path.</summary>
+    public void ClearLastTagImportBackup() => LastTagImportBackupDir = null;
+
     public PalaceDb(string dbPath)
     {
         _dbPath = dbPath;

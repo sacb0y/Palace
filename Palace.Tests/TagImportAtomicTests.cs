@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Palace.Data;
+using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Xunit;
@@ -85,5 +86,34 @@ public sealed class TagImportAtomicTests : IAsyncLifetime
         Assert.NotNull(await _catalog.FindTagByNameAsync("wash"));
         Assert.False(string.IsNullOrEmpty(_db.LastTagImportBackupDir));
         Assert.True(File.Exists(Path.Combine(_db.LastTagImportBackupDir!, "palace.db")));
+        Assert.Equal(
+            Path.Combine(_db.LastTagImportBackupDir!, "palace.db"),
+            _catalog.LastTagImportBackupFile);
+        var status = TagPortable.FormatImportStatus(plan.Summary, _catalog.LastTagImportBackupFile);
+        Assert.Contains("Backup: ", status, StringComparison.Ordinal);
+        Assert.Contains(_catalog.LastTagImportBackupFile!, status, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task NoOpImport_ClearsPriorBackupPathFromStatus()
+    {
+        var first = await _catalog.ImportTagsJsonAsync("""
+            { "schema": "palace-tags/1", "tags": [ { "name": "seed" } ] }
+            """);
+        Assert.True(first.Creates.Count >= 1);
+        var prior = _catalog.LastTagImportBackupFile;
+        Assert.False(string.IsNullOrEmpty(prior));
+
+        // Empty tags = no creates/updates/edges → no new backup; prior path must not linger.
+        var noop = await _catalog.ImportTagsJsonAsync("""
+            { "schema": "palace-tags/1", "tags": [] }
+            """);
+        Assert.Empty(noop.Creates);
+        Assert.Empty(noop.Updates);
+        Assert.Null(_db.LastTagImportBackupDir);
+        Assert.Null(_catalog.LastTagImportBackupFile);
+        var status = TagPortable.FormatImportStatus(noop.Summary, _catalog.LastTagImportBackupFile);
+        Assert.DoesNotContain("Backup:", status, StringComparison.Ordinal);
+        Assert.DoesNotContain(prior!, status, StringComparison.Ordinal);
     }
 }
