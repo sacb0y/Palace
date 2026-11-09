@@ -98,6 +98,7 @@ public partial class LibraryViewModel
             try
             {
                 ShowUndoToast = false;
+                ShowStatusUndo = false;
                 var peek = await _fileOps.PeekUndoAsync(projectId);
                 result = await _fileOps.UndoLastAsync(projectId);
                 if (peek?.Kind == FileOpKind.Move && result.Moves.Count > 0)
@@ -125,7 +126,15 @@ public partial class LibraryViewModel
                 await RefreshUndoStateAsync();
                 if (result.Ok)
                 {
-                    ShowUndoToastFor(result.Message, offerUndo: false);
+                    // Tag undos confirm in the status bar (T2); file-op undos keep InfUndo.
+                    if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
+                    {
+                        StatusText = result.Message;
+                    }
+                    else
+                    {
+                        ShowUndoToastFor(result.Message, offerUndo: false);
+                    }
                 }
                 else
                 {

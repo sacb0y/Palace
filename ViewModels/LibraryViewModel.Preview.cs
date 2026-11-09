@@ -124,7 +124,7 @@ public partial class LibraryViewModel
 
             CanEditNotes = canEditNotes;
             IsMultiSelectPreview = multi;
-            AddTagButtonLabel = multi ? "Add tag to all" : "Add tag";
+            AddTagButtonLabel = multi ? "Add tags to all" : "Add tags";
             MultiSelectDetail = multiDetail;
             PreviewRatingMixed = ratingMixed;
             RatingCaption = SelectCommandBar.RatingCaption(ratingMixed);
@@ -168,7 +168,10 @@ public partial class LibraryViewModel
                         : "Mixed",
                     EffectiveColor = tag.EffectiveColor,
                     IsPartial = isPartial,
-                    CountLabel = isPartial ? $"{entry.Count} of {total}" : ""
+                    AppliedCount = entry.Count,
+                    SelectionTotal = total,
+                    IsChipSelected = false,
+                    CountLabel = isPartial ? TagChipVisual.PartialBadge(entry.Count, total) : ""
                 });
             }
 

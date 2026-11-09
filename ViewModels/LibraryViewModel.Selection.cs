@@ -25,7 +25,7 @@ public partial class LibraryViewModel
             _selection.Count,
             PreviewTargetsMatchSelection());
         IsMultiSelectPreview = SelectCommandBar.ShowMultiSelectPreview(_selection.Count);
-        AddTagButtonLabel = IsMultiSelectPreview ? "Add tag to all" : "Add tag";
+        AddTagButtonLabel = IsMultiSelectPreview ? "Add tags to all" : "Add tags";
         RebuildMultiSelectThumbs();
     }
 

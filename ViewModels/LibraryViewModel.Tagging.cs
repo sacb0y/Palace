@@ -1,115 +1,210 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Palace.Data;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 
 namespace Palace.ViewModels;
 
-/// <summary>Library: assigning tags, tag picks / suggestions and the assign panel.</summary>
+/// <summary>Library T2: Add tags box (paste pending chips / typed autocomplete), status-bar Undo, bulk remove.</summary>
 public partial class LibraryViewModel
 {
+    private bool _suppressTagQueryHandler;
+    private Dictionary<string, string> _aliasToIdeal = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Page shows the Remove tags… dialog; returns checked tag ids or null when cancelled.
+    /// </summary>
+    public Func<Task<IReadOnlyList<string>?>>? RequestRemoveTagsDialog { get; set; }
+
     [RelayCommand]
-    private Task AssignFromQueryAsync() =>
-        ErrorReporter.RunAsync("Assign from query", Notify, async () =>
+    private Task AssignFromQueryAsync() => ApplyPendingTagsAsync();
+
+    [RelayCommand]
+    private Task CreateAndAssignTagAsync() => ApplyPendingTagsAsync();
+
+    [RelayCommand]
+    private Task ApplyPendingTagsAsync() =>
+        ErrorReporter.RunAsync("Add tags", Notify, async () =>
         {
             var targets = TagTargets();
-            if (targets.Count == 0 || string.IsNullOrWhiteSpace(TagQuery))
+            if (targets.Count == 0)
             {
                 return;
             }
 
-            var names = TagNameList.Split(TagQuery);
-            if (names.Count == 0)
+            // Absorb any typed remnant that has not become a pending chip yet.
+            await AbsorbTypedQueryIntoPendingAsync();
+            if (PendingTags.Count == 0)
             {
                 return;
             }
 
-            // T7: multi-tag paste → one FileOp batch (one Undo).
+            var pending = PendingTags.ToList();
+            var created = 0;
             var tags = new List<(string TagId, string TagName, TagSource Source)>();
-            foreach (var query in names)
+            foreach (var chip in pending)
             {
-                var match = FindTagPick(query);
-                if (match is null)
+                if (chip.TagId is { Length: > 0 } id)
                 {
-                    var created = await _catalog.GetOrCreateTagAsync(query);
-                    tags.Add((created.Id, created.Name, TagSource.Manual));
+                    tags.Add((id, chip.DisplayName, TagSource.Manual));
+                    continue;
                 }
-                else
+
+                var createdTag = await _catalog.GetOrCreateTagAsync(chip.TypedName);
+                tags.Add((createdTag.Id, createdTag.Name, TagSource.Manual));
+                if (chip.IsNew)
                 {
-                    tags.Add((match.TagId, match.Name, TagSource.Manual));
+                    created++;
                 }
             }
 
-            await AssignManyToSelectionAsync(targets, tags);
-            await UiDispatch.RunAsync(() =>
+            // Deduplicate by ideal id (aliases already resolved when pending was built).
+            var unique = new Dictionary<string, (string TagId, string TagName, TagSource Source)>(StringComparer.Ordinal);
+            foreach (var row in tags)
             {
-                TagQuery = "";
-                SelectedPickTag = null;
-            });
+                unique[row.TagId] = row;
+            }
+
+            await AssignManyToSelectionAsync(targets, unique.Values.ToList(), created);
+            await UiDispatch.RunAsync(ClearPendingTags);
             await LoadPreviewAsync(SelectedAsset);
             await ReloadTagCatalogAsync();
         });
 
     [RelayCommand]
-    private Task CreateAndAssignTagAsync() =>
-        ErrorReporter.RunAsync("Create and assign tag", Notify, async () =>
+    private void ClearPendingTags()
+    {
+        PendingTags.Clear();
+        SetTagQuerySilent("");
+        SelectedPickTag = null;
+        RefreshPendingChrome();
+        ApplyTagSuggestionFilter("");
+    }
+
+    [RelayCommand]
+    private void RemovePendingTag(PendingTagChip? chip)
+    {
+        if (chip is null)
         {
-            var targets = TagTargets();
-            if (targets.Count == 0 || string.IsNullOrWhiteSpace(NewTagName))
-            {
-                return;
-            }
+            return;
+        }
 
-            var names = TagNameList.Split(NewTagName);
-            if (names.Count == 0)
-            {
-                return;
-            }
-
-            // T7: multi-tag create/paste → one FileOp batch.
-            var tags = new List<(string TagId, string TagName, TagSource Source)>();
-            foreach (var name in names)
-            {
-                var tag = await _catalog.GetOrCreateTagAsync(name);
-                tags.Add((tag.Id, tag.Name, TagSource.Manual));
-            }
-
-            await AssignManyToSelectionAsync(targets, tags);
-            await UiDispatch.RunAsync(() => NewTagName = "");
-            await LoadPreviewAsync(SelectedAsset);
-            await ReloadTagCatalogAsync();
-        });
+        PendingTags.Remove(chip);
+        RefreshPendingChrome();
+    }
 
     [RelayCommand]
     private Task RemoveAssignedTagAsync(AssignedTagItem? item) =>
         ErrorReporter.RunAsync("Remove assigned tag", Notify, async () =>
         {
             var targets = TagTargets();
-            if (targets.Count == 0 || item is null)
+            if (targets.Count == 0 || item is null || !item.ShowRemove)
             {
                 return;
             }
 
-            var rows = targets.Select(a => (a.Id, item.Source)).ToList();
-            var result = await _fileOps.RemoveTagAsync(
-                rows, item.TagId, item.TagName, AppServices.CurrentProject.Id);
-            if (result.Ok)
+            var affected = TagRemoveConfirm.AffectedFileCount(
+                item.IsPartial, item.AppliedCount, Math.Max(targets.Count, item.SelectionTotal));
+            if (TagRemoveConfirm.NeedsConfirm(affected))
             {
-                OfferUndoToast(result.Message);
-            }
-            else
-            {
-                StatusText = result.Message;
+                var ok = RequestConfirm is not null
+                    && await RequestConfirm(
+                        TagRemoveConfirm.ChipFlyoutTitle(item.TagName, affected),
+                        TagRemoveConfirm.ChipFlyoutBody,
+                        TagRemoveConfirm.Primary);
+                if (!ok)
+                {
+                    return;
+                }
             }
 
-            await LoadPreviewAsync(SelectedAsset);
-            await RefreshUndoStateAsync();
+            await RemoveTagsFromSelectionAsync(
+                targets,
+                [(item.TagId, item.TagName)],
+                affectedFileCount: affected);
+        });
+
+    [RelayCommand]
+    private void ToggleAssignedChipSelection(AssignedTagItem? item)
+    {
+        if (item is null || !item.ShowRemove)
+        {
+            return;
+        }
+
+        item.IsChipSelected = !item.IsChipSelected;
+        RefreshRemoveFromAllBar();
+    }
+
+    [RelayCommand]
+    private Task RemoveSelectedAssignedTagsAsync() =>
+        ErrorReporter.RunAsync("Remove from all", Notify, async () =>
+        {
+            var targets = TagTargets();
+            var selected = AssignedTags.Where(t => t.IsChipSelected && t.ShowRemove).ToList();
+            if (targets.Count == 0 || selected.Count == 0)
+            {
+                return;
+            }
+
+            var affected = selected.Max(t =>
+                TagRemoveConfirm.AffectedFileCount(t.IsPartial, t.AppliedCount, Math.Max(targets.Count, t.SelectionTotal)));
+            if (TagRemoveConfirm.NeedsConfirm(affected))
+            {
+                var names = string.Join(", ", selected.Select(t => t.TagName));
+                var ok = RequestConfirm is not null
+                    && await RequestConfirm(
+                        TagRemoveConfirm.ChipFlyoutTitle(names, affected),
+                        TagRemoveConfirm.ChipFlyoutBody,
+                        TagRemoveConfirm.Primary);
+                if (!ok)
+                {
+                    return;
+                }
+            }
+
+            await RemoveTagsFromSelectionAsync(
+                targets,
+                selected.Select(t => (t.TagId, t.TagName)).ToList(),
+                affectedFileCount: targets.Count);
+        });
+
+    [RelayCommand]
+    private Task OpenRemoveTagsDialogAsync() =>
+        ErrorReporter.RunAsync("Remove tags", Notify, async () =>
+        {
+            var targets = TagTargets();
+            if (targets.Count == 0)
+            {
+                return;
+            }
+
+            RebuildRemovableTags(targets.Count);
+            if (RemovableTags.Count == 0 || RequestRemoveTagsDialog is null)
+            {
+                return;
+            }
+
+            var picked = await RequestRemoveTagsDialog();
+            if (picked is null || picked.Count == 0)
+            {
+                return;
+            }
+
+            var rows = RemovableTags
+                .Where(t => picked.Contains(t.TagId, StringComparer.Ordinal))
+                .Select(t => (t.TagId, t.Name))
+                .ToList();
+            if (rows.Count == 0)
+            {
+                return;
+            }
+
+            await RemoveTagsFromSelectionAsync(targets, rows, affectedFileCount: targets.Count);
         });
 
     [RelayCommand]
@@ -136,7 +231,7 @@ public partial class LibraryViewModel
                 tagName = created.Name;
             }
 
-            await AssignToSelectionAsync(targets, tagId, tagName, TagSource.Prompt);
+            await AssignManyToSelectionAsync(targets, [(tagId, tagName, TagSource.Prompt)], createdCount: 0);
             await LoadPreviewAsync(SelectedAsset);
             await ReloadTagCatalogAsync();
         });
@@ -144,9 +239,9 @@ public partial class LibraryViewModel
     [RelayCommand]
     private void FocusAssignTag()
     {
-        RequestFocusAssignTag?.Invoke();
-        RequestOpenAssignPanel?.Invoke();
         RebuildAssignPanel();
+        // T2: one Add tags box — focus it; do not open the legacy empty flyout.
+        RequestFocusAssignTag?.Invoke();
     }
 
     [RelayCommand]
@@ -166,13 +261,16 @@ public partial class LibraryViewModel
                 {
                     TagId = chip.TagId,
                     TagName = chip.Name,
-                    Source = TagSource.Manual
+                    Source = TagSource.Manual,
+                    AppliedCount = targets.Count,
+                    SelectionTotal = targets.Count
                 });
                 AssignAnnouncement = TagChipVisual.AnnounceRemoved(chip.Name, targets.Count);
                 return;
             }
 
-            await AssignToSelectionAsync(targets, chip.TagId, chip.Name, TagSource.Manual);
+            await AssignManyToSelectionAsync(
+                targets, [(chip.TagId, chip.Name, TagSource.Manual)], createdCount: 0);
             AssignAnnouncement = TagChipVisual.AnnounceAdded(chip.Name, targets.Count);
             await LoadPreviewAsync(SelectedAsset);
             RebuildAssignPanel();
@@ -184,6 +282,7 @@ public partial class LibraryViewModel
     {
         var tags = await _catalog.GetTagsAsync();
         var memberships = await _catalog.GetMembershipsAsync();
+        var aliases = await _catalog.GetAliasesAsync();
         var pickItems = BuildTagPicks(tags, memberships);
         var selectedTagId = SelectedTag?.TagId;
         var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
@@ -191,6 +290,8 @@ public partial class LibraryViewModel
         {
             _tags = tags.ToList();
             _memberships = memberships.ToList();
+            _aliasToIdeal = aliases.ToDictionary(
+                a => a.AliasTagId, a => a.IdealTagId, StringComparer.Ordinal);
             TagTreeBuilder.Replace(TagTree, tags, memberships);
             ApplyLibraryTreeColors();
             RestoreFilterSelection(filterIds);
@@ -201,13 +302,212 @@ public partial class LibraryViewModel
 
             ReplaceTagPicks(pickItems);
             RebuildAssignPanel();
+            RefreshAssignedTagsHeader();
+            RefreshRemoveFromAllBar();
         });
     }
 
     partial void OnTagQueryChanged(string value)
     {
+        if (_suppressTagQueryHandler)
+        {
+            return;
+        }
+
+        _ = HandleTagQueryChangedAsync(value);
+    }
+
+    private async Task HandleTagQueryChangedAsync(string value)
+    {
+        if (TagAddInput.ContainsSeparator(value))
+        {
+            var (committed, remainder) = TagAddInput.CommitOnSeparator(null, value);
+            // Clear the box immediately so the AutoSuggestBox can sync before async resolves.
+            SetTagQuerySilent(remainder);
+            ShowTagSuggestions = false;
+            TagSuggestions.Clear();
+            foreach (var name in committed)
+            {
+                await AddPendingNameAsync(name);
+            }
+
+            TagSuggestionsSummary = PendingTags.Count > 0
+                ? "Pending chips — Enter applies"
+                : "Type to find a tag";
+            RefreshPendingChrome();
+            RebuildAssignPanel();
+            return;
+        }
+
         ApplyTagSuggestionFilter(value);
+        ShowTagSuggestions = TagAddInput.OpensSuggestions(value) && TagSuggestions.Count > 0;
         RebuildAssignPanel();
+        RefreshPendingChrome();
+    }
+
+    private async Task AbsorbTypedQueryIntoPendingAsync()
+    {
+        var typed = (TagQuery ?? "").Trim();
+        if (typed.Length == 0)
+        {
+            return;
+        }
+
+        if (SelectedPickTag is not null
+            && (SelectedPickTag.Name.Equals(typed, StringComparison.OrdinalIgnoreCase)
+                || SelectedPickTag.Display.Equals(typed, StringComparison.OrdinalIgnoreCase)))
+        {
+            await AddPendingNameAsync(SelectedPickTag.Name);
+        }
+        else
+        {
+            await AddPendingNameAsync(typed);
+        }
+
+        SetTagQuerySilent("");
+        SelectedPickTag = null;
+        RefreshPendingChrome();
+    }
+
+    private async Task AddPendingNameAsync(string rawName)
+    {
+        var name = rawName.Trim();
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        // Deduplicate pending by typed name / ideal id (case-insensitive).
+        if (PendingTags.Any(p =>
+                p.TypedName.Equals(name, StringComparison.OrdinalIgnoreCase)
+                || p.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var match = FindTagPick(name) ?? await ResolveTagByNameAsync(name);
+        if (match is null)
+        {
+            PendingTags.Add(new PendingTagChip
+            {
+                TypedName = name,
+                DisplayName = name,
+                IsNew = true,
+                EffectiveColor = null
+            });
+            return;
+        }
+
+        var ideal = await _catalog.GetIdealTagAsync(match.TagId);
+        var idealId = ideal?.Id ?? match.TagId;
+        var idealName = ideal?.Name ?? match.Name;
+        if (PendingTags.Any(p => p.TagId == idealId))
+        {
+            return;
+        }
+
+        var isAlias = !string.Equals(match.TagId, idealId, StringComparison.Ordinal)
+            || !match.Name.Equals(idealName, StringComparison.OrdinalIgnoreCase);
+        var colors = _tags.Count == 0
+            ? null
+            : CatalogService.MapEffectiveColors(_tags, _memberships);
+        PendingTags.Add(new PendingTagChip
+        {
+            TypedName = name,
+            DisplayName = idealName,
+            TagId = idealId,
+            AliasName = isAlias ? match.Name : null,
+            IsNew = false,
+            EffectiveColor = colors?.GetValueOrDefault(idealId) ?? match.EffectiveColor
+        });
+    }
+
+    private async Task<TagPickItem?> ResolveTagByNameAsync(string name)
+    {
+        var tag = await _catalog.FindTagByNameAsync(name);
+        if (tag is null)
+        {
+            return null;
+        }
+
+        var colors = _tags.Count == 0
+            ? null
+            : CatalogService.MapEffectiveColors(_tags, _memberships);
+        return new TagPickItem
+        {
+            TagId = tag.Id,
+            Name = tag.Name,
+            Display = tag.Name,
+            EffectiveColor = colors?.GetValueOrDefault(tag.Id)
+        };
+    }
+
+    private void SetTagQuerySilent(string value)
+    {
+        _suppressTagQueryHandler = true;
+        try
+        {
+            TagQuery = value;
+        }
+        finally
+        {
+            _suppressTagQueryHandler = false;
+        }
+    }
+
+    private void RefreshPendingChrome()
+    {
+        HasPendingTags = PendingTags.Count > 0;
+        var newCount = PendingTags.Count(p => p.IsNew);
+        var aliasCount = PendingTags.Count(p => p.IsAlias);
+        ShowPendingSummary = HasPendingTags;
+        PendingSummary = HasPendingTags
+            ? TagAddInput.PasteSummary(PendingTags.Count, newCount, aliasCount)
+            : "";
+        var targets = TagTargets().Count;
+        ApplyPendingLabel = TagAddInput.ApplyButtonLabel(PendingTags.Count, targets);
+        CanApplyPendingTags = targets > 0
+            && (PendingTags.Count > 0 || !string.IsNullOrWhiteSpace(TagQuery));
+        RefreshAssignedTagsHeader();
+    }
+
+    private void RefreshAssignedTagsHeader()
+    {
+        var n = TagTargets().Count;
+        AssignedTagsHeader = n <= 1 ? "Tags" : $"Tags on {n} selected";
+    }
+
+    private void RefreshRemoveFromAllBar()
+    {
+        var selected = AssignedTags.Where(t => t.IsChipSelected && t.ShowRemove).ToList();
+        ShowRemoveFromAllBar = selected.Count > 0;
+        if (!ShowRemoveFromAllBar)
+        {
+            RemoveFromAllSummary = "";
+            return;
+        }
+
+        var files = selected.Sum(t =>
+            TagRemoveConfirm.AffectedFileCount(t.IsPartial, t.AppliedCount, t.SelectionTotal));
+        RemoveFromAllSummary = TagRemoveConfirm.SelectedBarLabel(selected.Count, files);
+    }
+
+    private void RebuildRemovableTags(int selectionTotal)
+    {
+        RemovableTags.Clear();
+        foreach (var tag in AssignedTags.Where(t => t.ShowRemove)
+                     .OrderBy(t => t.TagName, StringComparer.OrdinalIgnoreCase))
+        {
+            RemovableTags.Add(new RemovableTagPick
+            {
+                TagId = tag.TagId,
+                Name = tag.TagName,
+                EffectiveColor = tag.EffectiveColor,
+                AppliedCount = tag.AppliedCount > 0 ? tag.AppliedCount : selectionTotal,
+                SelectionTotal = selectionTotal,
+                IsChecked = false
+            });
+        }
     }
 
     private void ReplaceTagPicks(List<TagPickItem> pickItems)
@@ -224,9 +524,20 @@ public partial class LibraryViewModel
 
     private void ApplyTagSuggestionFilter(string? query)
     {
+        if (!TagAddInput.OpensSuggestions(query))
+        {
+            TagSuggestions.Clear();
+            ShowTagSuggestions = false;
+            TagSuggestionsSummary = PendingTags.Count > 0
+                ? "Pending chips — Enter applies"
+                : "Type to find a tag";
+            return;
+        }
+
         var q = (query ?? "").Trim();
         var byId = _tagPicks.ToDictionary(t => t.TagId, StringComparer.Ordinal);
-        var assignedIds = AssignedTags.Select(t => t.TagId);
+        var assignedIds = AssignedTags.Select(t => t.TagId)
+            .Concat(PendingTags.Where(p => p.TagId is not null).Select(p => p.TagId!));
         var ranked = TagSuggest.Rank(
             _tagPicks.Select(t => new TagSuggest.Candidate(t.TagId, t.Name, t.Display)),
             q,
@@ -237,17 +548,27 @@ public partial class LibraryViewModel
             .Cast<TagPickItem>()
             .ToList();
 
+        // Annotate aliases in Display for the suggestion list (vista › landscape [alias]).
+        foreach (var item in items)
+        {
+            var idealId = TagAliasResolve.Ideal(item.TagId, _aliasToIdeal);
+            if (!string.Equals(idealId, item.TagId, StringComparison.Ordinal)
+                && byId.TryGetValue(idealId, out var ideal))
+            {
+                item.Display = $"{item.Name} › {ideal.Name} [alias]";
+            }
+        }
+
         TagSuggestions.Clear();
         foreach (var item in items)
         {
             TagSuggestions.Add(item);
         }
 
-        TagSuggestionsSummary = q.Length == 0
-            ? "Type to find a tag"
-            : items.Count == 0
-                ? "No matching tags"
-                : string.Join(", ", items.Select(t => t.Name));
+        ShowTagSuggestions = items.Count > 0 || q.Length > 0;
+        TagSuggestionsSummary = items.Count == 0
+            ? $"Create tag “{q}”"
+            : string.Join(", ", items.Select(t => t.Name));
     }
 
     private TagPickItem? FindTagPick(string query)
@@ -287,16 +608,10 @@ public partial class LibraryViewModel
         return picks;
     }
 
-    private Task AssignToSelectionAsync(
-        IReadOnlyList<AssetItem> targets,
-        string tagId,
-        string tagName,
-        TagSource source) =>
-        AssignManyToSelectionAsync(targets, [(tagId, tagName, source)]);
-
     private async Task AssignManyToSelectionAsync(
         IReadOnlyList<AssetItem> targets,
-        IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags)
+        IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,
+        int createdCount)
     {
         var result = await _fileOps.AssignTagsAsync(
             targets.Select(t => t.Id).ToList(),
@@ -310,21 +625,57 @@ public partial class LibraryViewModel
             }
         }
 
+        await RefreshUndoStateAsync();
         if (result.Ok)
         {
-            if (result.BatchId is not null)
+            var names = tags.Select(t => t.TagName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var status = TagStatusBar.Tagged(targets.Count, names, createdCount);
+            await UiDispatch.RunAsync(() =>
             {
-                OfferUndoToast(result.Message);
-            }
-
-            await UiDispatch.RunAsync(() => AssignAnnouncement = result.Message);
+                StatusText = status;
+                ShowStatusUndo = result.BatchId is not null && CanUndoFileOp;
+                ShowUndoToast = false;
+                AssignAnnouncement = status;
+            });
         }
         else
         {
             StatusText = result.Message;
+            ShowStatusUndo = false;
+        }
+    }
+
+    private async Task RemoveTagsFromSelectionAsync(
+        IReadOnlyList<AssetItem> targets,
+        IReadOnlyList<(string TagId, string TagName)> tags,
+        int affectedFileCount)
+    {
+        var result = await _fileOps.RemoveTagsAsync(
+            targets.Select(t => t.Id).ToList(),
+            tags,
+            AppServices.CurrentProject.Id);
+        await RefreshUndoStateAsync();
+        if (result.Ok)
+        {
+            var names = tags.Select(t => t.TagName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var status = TagStatusBar.Removed(names, affectedFileCount > 0 ? affectedFileCount : targets.Count);
+            await UiDispatch.RunAsync(() =>
+            {
+                StatusText = status;
+                ShowStatusUndo = result.BatchId is not null && CanUndoFileOp;
+                ShowUndoToast = false;
+                AssignAnnouncement = status;
+            });
+        }
+        else
+        {
+            StatusText = result.Message;
+            ShowStatusUndo = false;
         }
 
+        await LoadPreviewAsync(SelectedAsset);
         await RefreshUndoStateAsync();
+        RefreshRemoveFromAllBar();
     }
 
     private void LoadRecentTags()
@@ -344,13 +695,11 @@ public partial class LibraryViewModel
         var assigned = AssignedTags.FirstOrDefault(t => t.TagId == chip.TagId);
         var total = Math.Max(1, TagTargets().Count);
         var partialCount = 0;
-        if (assigned?.IsPartial == true && assigned.CountLabel is { Length: > 0 } label)
+        if (assigned?.IsPartial == true)
         {
-            var of = label.IndexOf(" of ", StringComparison.Ordinal);
-            if (of > 0 && int.TryParse(label.AsSpan(0, of), out var n))
-            {
-                partialCount = n;
-            }
+            partialCount = assigned.AppliedCount > 0
+                ? assigned.AppliedCount
+                : ParsePartialCount(assigned.CountLabel);
         }
         else if (assigned is not null && assigned.IsPartial == false)
         {
@@ -369,6 +718,28 @@ public partial class LibraryViewModel
             SelectionTotal = total,
             AutomationPrefix = "BtnAssignChip_"
         };
+    }
+
+    private static int ParsePartialCount(string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            return 0;
+        }
+
+        var slash = label.IndexOf('/', StringComparison.Ordinal);
+        if (slash > 0 && int.TryParse(label.AsSpan(0, slash), out var n))
+        {
+            return n;
+        }
+
+        var of = label.IndexOf(" of ", StringComparison.Ordinal);
+        if (of > 0 && int.TryParse(label.AsSpan(0, of), out var legacy))
+        {
+            return legacy;
+        }
+
+        return 0;
     }
 
     public void RebuildAssignPanelPublic() => RebuildAssignPanel();
@@ -427,6 +798,8 @@ public partial class LibraryViewModel
 
             AssignGroups.Add(item);
         }
+
+        RefreshPendingChrome();
     }
 
     private void ReplaceChips(ObservableCollection<TagChipItem> target, IReadOnlyList<TagPanelChip> source)

@@ -344,6 +344,26 @@ public partial class AssignedTagItem : ObservableObject
     [ObservableProperty]
     public partial bool IsPartial { get; set; }
 
+    /// <summary>How many selected files carry this tag (k in k/n). Full apply = selection total.</summary>
+    [ObservableProperty]
+    public partial int AppliedCount { get; set; }
+
+    [ObservableProperty]
+    public partial int SelectionTotal { get; set; }
+
+    /// <summary>T2: chip selected for Remove from all (accent fill).</summary>
+    [ObservableProperty]
+    public partial bool IsChipSelected { get; set; }
+
+    /// <summary>Dot color: group inherit, else slate for ungrouped.</summary>
+    public string DotColor => Helpers.TagAddInput.DotColor(EffectiveColor, isNew: false);
+
+    public bool ShowRemove => Source != TagSource.Implied;
+
+    /// <summary>Leading ✓ when the tag is on every selected file (multi-select).</summary>
+    public bool ShowOnAllCheck =>
+        ShowRemove && !IsPartial && SelectionTotal > 1;
+
     public string RemoveAutomationName => $"Remove {TagName}";
 
     public string RemoveAutomationId =>
@@ -383,12 +403,121 @@ public partial class AssignedTagItem : ObservableObject
 
     partial void OnCountLabelChanged(string value) => OnPropertyChanged(nameof(ChipTooltip));
 
-    partial void OnSourceChanged(TagSource value) => OnPropertyChanged(nameof(ChromeOpacity));
+    partial void OnSourceChanged(TagSource value)
+    {
+        OnPropertyChanged(nameof(ChromeOpacity));
+        OnPropertyChanged(nameof(ShowRemove));
+        OnPropertyChanged(nameof(ShowOnAllCheck));
+    }
 
-    partial void OnIsPartialChanged(bool value) => OnPropertyChanged(nameof(ChromeOpacity));
+    partial void OnIsPartialChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ChromeOpacity));
+        OnPropertyChanged(nameof(ShowOnAllCheck));
+    }
+
+    partial void OnSelectionTotalChanged(int value) => OnPropertyChanged(nameof(ShowOnAllCheck));
+
+    partial void OnEffectiveColorChanged(string? value) => OnPropertyChanged(nameof(DotColor));
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => ChipAutomationName;
+}
+
+/// <summary>T2 pending chip inside the Add tags box (existing / + new / alias › ideal).</summary>
+public partial class PendingTagChip : ObservableObject
+{
+    /// <summary>Name the user typed or pasted (alias name when resolving).</summary>
+    public string TypedName { get; set; } = "";
+
+    /// <summary>Canonical / created name shown on the chip face.</summary>
+    [ObservableProperty]
+    public partial string DisplayName { get; set; } = "";
+
+    /// <summary>Ideal tag id when known; null when the tag will be created.</summary>
+    public string? TagId { get; set; }
+
+    [ObservableProperty]
+    public partial string? AliasName { get; set; }
+
+    [ObservableProperty]
+    public partial string? EffectiveColor { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsNew { get; set; }
+
+    public bool IsAlias => !string.IsNullOrWhiteSpace(AliasName);
+
+    public string FaceLabel =>
+        IsAlias
+            ? Helpers.TagAddInput.AliasFace(AliasName!, DisplayName)
+            : DisplayName;
+
+    public string DotColor => Helpers.TagAddInput.DotColor(EffectiveColor, IsNew);
+
+    public string RemoveAutomationName => $"Remove pending {FaceLabel}";
+
+    public string AutomationId =>
+        "BtnPendingTag_" + string.Concat((TypedName ?? "").Where(char.IsLetterOrDigit));
+
+    partial void OnDisplayNameChanged(string value) => OnPropertyChanged(nameof(FaceLabel));
+
+    partial void OnAliasNameChanged(string? value)
+    {
+        OnPropertyChanged(nameof(IsAlias));
+        OnPropertyChanged(nameof(FaceLabel));
+    }
+
+    partial void OnEffectiveColorChanged(string? value) => OnPropertyChanged(nameof(DotColor));
+
+    partial void OnIsNewChanged(bool value) => OnPropertyChanged(nameof(DotColor));
+
+    public override string ToString() => FaceLabel;
+}
+
+/// <summary>Row in the T2 Remove tags… dialog.</summary>
+public partial class RemovableTagPick : ObservableObject
+{
+    public string TagId { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string Name { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string? EffectiveColor { get; set; }
+
+    [ObservableProperty]
+    public partial int AppliedCount { get; set; }
+
+    [ObservableProperty]
+    public partial int SelectionTotal { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsChecked { get; set; }
+
+    public string CountLabel =>
+        SelectionTotal > 0 ? $"{AppliedCount} of {SelectionTotal}" : $"{AppliedCount}";
+
+    public string DotColor => Helpers.TagAddInput.DotColor(EffectiveColor, isNew: false);
+
+    public double Prevalence =>
+        SelectionTotal <= 0 ? 0 : Math.Clamp((double)AppliedCount / SelectionTotal, 0, 1);
+
+    partial void OnAppliedCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(CountLabel));
+        OnPropertyChanged(nameof(Prevalence));
+    }
+
+    partial void OnSelectionTotalChanged(int value)
+    {
+        OnPropertyChanged(nameof(CountLabel));
+        OnPropertyChanged(nameof(Prevalence));
+    }
+
+    partial void OnEffectiveColorChanged(string? value) => OnPropertyChanged(nameof(DotColor));
+
+    public override string ToString() => Name;
 }
 
 public partial class OrganizePreviewItem : ObservableObject

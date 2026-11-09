@@ -126,6 +126,9 @@
     <Compile Include="..\Helpers\TagGroups.cs" Link="TagGroups.cs" />
     <Compile Include="..\Helpers\TagMosaicGroups.cs" Link="TagMosaicGroups.cs" />
     <Compile Include="..\Helpers\TagNameList.cs" Link="TagNameList.cs" />
+    <Compile Include="..\Helpers\TagAddInput.cs" Link="TagAddInput.cs" />
+    <Compile Include="..\Helpers\TagRemoveConfirm.cs" Link="TagRemoveConfirm.cs" />
+    <Compile Include="..\Helpers\TagStatusBar.cs" Link="TagStatusBar.cs" />
     <Compile Include="..\Helpers\TagPanelBuilder.cs" Link="TagPanelBuilder.cs" />
     <Compile Include="..\Helpers\TagSelection.cs" Link="TagSelection.cs" />
     <Compile Include="..\Helpers\TagSiblings.cs" Link="TagSiblings.cs" />

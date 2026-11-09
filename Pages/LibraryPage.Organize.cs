@@ -37,6 +37,12 @@ public sealed partial class LibraryPage
             return;
         }
 
+        if (TryHandleAddTagsKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == VirtualKey.Escape
             && !FocusIsTextInput(e.OriginalSource)
             && TryDismissPreviewOverlayOnEscape())
@@ -91,6 +97,24 @@ public sealed partial class LibraryPage
         }
 
         ViewModel.MoveToFolderCommand.Execute(null);
+        return true;
+    }
+
+    /// <summary>T focuses the merged Add tags box (Isiac T2).</summary>
+    private bool TryHandleAddTagsKey(KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.T
+            || ViewModel.IsGalleryOverlayOpen
+            || IsKeyDown(VirtualKey.Control)
+            || IsKeyDown(VirtualKey.Menu)
+            || IsKeyDown(VirtualKey.Shift)
+            || FocusIsTextInput(e.OriginalSource)
+            || !ViewModel.HasSelection)
+        {
+            return false;
+        }
+
+        ViewModel.FocusAssignTagCommand.Execute(null);
         return true;
     }
 

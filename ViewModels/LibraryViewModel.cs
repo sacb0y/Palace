@@ -111,6 +111,8 @@ public partial class LibraryViewModel : ObservableObject
 
     public ObservableCollection<AssetItem> Assets { get; } = [];
     public ObservableCollection<AssignedTagItem> AssignedTags { get; } = [];
+    public ObservableCollection<PendingTagChip> PendingTags { get; } = [];
+    public ObservableCollection<RemovableTagPick> RemovableTags { get; } = [];
     public ObservableCollection<PromptSuggestion> Suggestions { get; } = [];
     public ObservableCollection<TagPickItem> AllTags { get; } = [];
     public ObservableCollection<TagPickItem> TagSuggestions { get; } = [];
@@ -288,7 +290,7 @@ public partial class LibraryViewModel : ObservableObject
 
     /// <summary>"Add tag" vs "Add tag to all" in the preview pane.</summary>
     [ObservableProperty]
-    public partial string AddTagButtonLabel { get; set; } = "Add tag";
+    public partial string AddTagButtonLabel { get; set; } = "Add tags";
 
     /// <summary>First 4–5 selected tiles for the multi-select preview stack.</summary>
     public ObservableCollection<AssetItem> MultiSelectThumbs { get; } = [];
@@ -348,6 +350,38 @@ public partial class LibraryViewModel : ObservableObject
     /// <summary>Live region text when the assign flyout toggles a tag.</summary>
     [ObservableProperty]
     public partial string AssignAnnouncement { get; set; } = "";
+
+    /// <summary>T2: status-bar Undo after tag assign/remove (no InfUndo toast).</summary>
+    [ObservableProperty]
+    public partial bool ShowStatusUndo { get; set; }
+
+    [ObservableProperty]
+    public partial string PendingSummary { get; set; } = "";
+
+    [ObservableProperty]
+    public partial bool ShowPendingSummary { get; set; }
+
+    [ObservableProperty]
+    public partial string ApplyPendingLabel { get; set; } = "Apply tags";
+
+    [ObservableProperty]
+    public partial bool ShowTagSuggestions { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasPendingTags { get; set; }
+
+    /// <summary>True when Apply can commit pending chips and/or the typed remnant.</summary>
+    [ObservableProperty]
+    public partial bool CanApplyPendingTags { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShowRemoveFromAllBar { get; set; }
+
+    [ObservableProperty]
+    public partial string RemoveFromAllSummary { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string AssignedTagsHeader { get; set; } = "Tags";
 
     [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }
