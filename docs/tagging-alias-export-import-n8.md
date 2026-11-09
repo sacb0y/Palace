@@ -1,33 +1,33 @@
 # N8 — Tag alias export/import + library filter expand (design)
 
-**Status:** design only — park for **Doktor** wording approval before any engine code.  
-**Against tip:** `main` @ `8cffefe` (**0.3.23**, after #154). Alias engine (T4), applied-only Implied (T5), portable tags (`palace-tags/1`) already ship; this note fills the portable + filter gaps.
+**Status:** Doktor wording OK @ tip `5f9a5d2f` (notes below folded in). Engine may proceed; park code for Doktor review before merge.  
+**Against tip:** `main` @ `8cffefe` (**0.3.23**). Alias engine (T4), applied-only Implied (T5), portable tags (`palace-tags/1`) already ship; this note fills the portable + filter gaps.
 
-No UI inventing. No Bugbot. Do not merge engine changes from this PR.
+No UI inventing. No Bugbot. No T2/T8 board work.
 
 ---
 
-## Current tip (facts, not proposals)
+## Current tip (facts)
 
 | Area | Behavior today |
 |---|---|
-| Portable schema | `Helpers/TagPortable.cs` — `palace-tags/1`; per tag: `name`, `priority`, `color`, `starred`, `parents[]`, `implies[]`. **No alias field.** |
-| Export / import | `CatalogService.ExportTagsJsonAsync` / `ImportTagsJsonAsync` — tags + memberships + implications only. Upsert by name; cycle-safe parents/implicits; never wipe unrelated tags. |
+| Portable schema | `Helpers/TagPortable.cs` — `palace-tags/1`; per tag: `name`, `priority`, `color`, `starred`, `parents[]`, `implies[]`. **No alias field yet.** |
+| Export / import | `CatalogService.ExportTagsJsonAsync` / `ImportTagsJsonAsync` — tags + memberships + implications. Upsert by name; **per-edge** cycle refusal + counters for parents/implicits; never wipe unrelated tags. **Not** whole-file atomic. |
 | Alias engine | `TagAlias` table; `TagAliasResolve` (Ideal / CanAdd / WouldCycle); `AddAliasAsync` is n→1, self/cycle refuse, idempotent same edge; migrates `AssetTag` alias→ideal. |
 | Assign | Alias rewritten to ideal **before** implications; `Source=Implied` refused on assign (T5+). FTS stores **applied ideal names only**. |
-| Search / FTS | `TagFtsQuery.Build` expands a matched name → ideal (+ implying children), cap 24 OR terms. Querying an alias finds ideal-tagged assets. |
-| Library tag filter | `LibraryViewModel.Filters` → `TagFilter.ExpandEach(ids, memberships)` then `GetAssetsForTagFilterAsync`. Expand is **membership descendants only** — **no alias resolve**. |
-| Implied rows | Importers / assign never rematerialize `Source=Implied`. Organize / export-tags-on-asset use applied-only (`GetExportTagsAsync`). |
+| Search / FTS | `TagFtsQuery.Build` expands a matched name → ideal (+ implying children), cap 24 OR terms. |
+| Library tag filter | `TagFilter.ExpandEach` = **membership descendants only** — no alias resolve yet. |
+| Implied rows | Importers / assign never rematerialize `Source=Implied`. |
 
-**Gap:** aliases round-trip nowhere in `.palace-tags.json`, and picking an alias chip in Library tag browse does not match the same assets as picking its ideal (or as searching the alias).
+**Gap:** aliases do not round-trip in `.palace-tags.json`; Library tag-filter alias chip ≠ ideal chip.
 
 ---
 
 ## 1. Portable format — aliases
 
-### Shape
+### Shape — keep `palace-tags/1`
 
-Keep schema family **`palace-tags/1`** (parser already accepts any `palace-tags/*`). Add one optional field on the **alias** entry (edge direction matches `TagAlias.AliasTagId → IdealTagId`, and n→1):
+Optional field on the **alias** entry (edge = `TagAlias.AliasTagId → IdealTagId`, n→1):
 
 ```json
 {
@@ -41,44 +41,51 @@ Keep schema family **`palace-tags/1`** (parser already accepts any `palace-tags/
 }
 ```
 
-- **`aliasOf`:** single string (ideal **name**), not an array — encodes n→1.
-- Omit when null/empty (`WhenWritingNull`); old exports without the field stay valid.
-- Do **not** dual-list aliases on the ideal (`aliases: […]`) in v1 — one representation avoids import contradictions.
-- Alias tags remain ordinary `Tag` rows (name/priority/color/starred/parents/implies may still appear). `aliasOf` is only the sibling edge.
+- **`aliasOf`:** single string (ideal **name**). Not an array. No dual `aliases[]` on the ideal in v1.
+- Omit when null/empty (`WhenWritingNull`).
+- Alias tags remain ordinary `Tag` rows; `aliasOf` is only the sibling edge.
+
+### Silent-drop / back-compat
+
+| Consumer | Behavior |
+|---|---|
+| **Old importer** (pre-N8) reading a file that has `aliasOf` | System.Text.Json ignores unknown properties → upserts the alias as a **plain tag**; **relationship is lost** (silent drop). Document this; do not bump schema for that alone. |
+| **New importer** reading an old file without `aliasOf` | Tags / parents / implies only — unchanged. |
+| **New importer** reading `aliasOf` | Plan + apply alias edges (after tag upserts so names resolve). |
 
 ### Export
 
-`TagPortable.FromCatalog` gains alias edges (or a parallel list). For each `TagAlias` row, set `aliasOf` on the alias entry to the ideal’s name. Unknown / orphan edge ids are skipped (same as today’s membership/implication filters).
+`TagPortable.FromCatalog` takes alias edges. For each `TagAlias` row, set `aliasOf` on the alias entry to the ideal’s name. Skip orphan ids (same as membership/implication).
 
-### Import — back-compat
+### Import — per-edge refusal + counters (not whole-file atomic)
 
-| File | Behavior |
-|---|---|
-| Existing `palace-tags/1` without `aliasOf` | Unchanged: tags / parents / implies only. |
-| New files with `aliasOf` | Plan + apply alias edges after tag upserts (and after parent/imply planning so names resolve). |
-
-Missing ideal name → **EnsureNamed** stub create (same as parents/implies today), then bind.
-
-### Import — conflict / refuse (mirror `TagAliasResolve` + `TryAddAlias`)
-
-Apply through the same guards as live `AddAliasAsync` (prefer calling that path so `AssetTag` migrate runs):
+`ImportTagsJsonAsync` already applies creates/updates then memberships then implications **edge by edge**, counting added/rejected/skipped. Aliases follow the **same** pattern. Do **not** describe or implement import as an all-or-nothing whole-file transaction that rolls back prior successful edges.
 
 | Case | Action |
 |---|---|
-| Same alias → same ideal already present | Idempotent OK (no-op / count as present). |
-| Alias already bound to a **different** ideal | **Reject** that edge; keep existing binding. Count `AliasRejected`. |
-| Ideal name empty / unresolvable after EnsureNamed | Skip; count `AliasSkipped`. |
+| Empty / whitespace `aliasOf` | **Skip** that edge (`AliasSkipped`). Tag upsert still happens. |
+| Missing ideal name | **EnsureNamed** stub create (same as parents/implies), then bind. |
+| Same alias → same ideal already present | Idempotent OK. |
+| Alias already bound to a **different** ideal | **Reject** edge; keep existing binding (`AliasRejected`). |
 | Self (`aliasOf` equals own name) | Reject. |
-| Cycle / would-cycle (incl. transitive) | Reject (`WouldCycle`). |
-| Ideal is itself an alias | Resolve to ultimate ideal first (catalog already does this on add); refuse if that collapses to self. |
+| Cycle / would-cycle | Reject (`TagAliasResolve.WouldCycle` / `CanAdd`). |
+| Ideal is itself an alias | Resolve through **ultimate ideal** (same-file chains and existing DB map); refuse if that collapses to self. |
 
-Planner counters (names illustrative): `AliasAdded`, `AliasRejected`, `AliasSkipped` — fold into `TagMergePlan.Summary`.
+Prefer applying via the live `AddAliasAsync` / `TryAddAlias` path so `AssetTag` migrate runs. Counters: `AliasAdded`, `AliasRejected`, `AliasSkipped` → `TagMergePlan.Summary`.
 
-Import still **does not wipe** unrelated tags or unrelated alias edges not mentioned in the file.
+Import does **not** wipe unrelated tags or unrelated alias edges omitted from the file.
+
+### Same-file alias chains
+
+When the file contains `a aliasOf b` and `b aliasOf c`, plan/apply so bindings resolve to the **ultimate** ideal (`c`), consistent with `AddAliasAsync` resolving the ideal argument through the alias map (including edges already accepted earlier in the same import).
+
+### Pre-existing PlanMerge note (unchanged by N8)
+
+`parents` / `implies` endpoint names are **not** alias-resolved in `PlanMerge` today (edges use the named tag ids after upsert). N8 does not change that for membership/implication. Alias edges alone go through ultimate-ideal resolve.
 
 ### Implied AssetTag rows
 
-Portable JSON is the **tag graph only** (tags, memberships, implications, aliases). It never writes `AssetTag`. Importers must **not** invent `Source=Implied` rows. Live assign already drops Implied; T5+ purge keeps that invariant. N8 does not reopen materializing implications.
+Portable JSON is the **tag graph only**. Never write `AssetTag`. Never invent `Source=Implied`. T5+ invariant stands.
 
 ---
 
@@ -86,46 +93,44 @@ Portable JSON is the **tag graph only** (tags, memberships, implications, aliase
 
 ### Goal
 
-Filtering by an **alias** or its **ideal** must match the **same assets**, consistent with search: **aliases resolve before implications**.
+Filtering by an **alias** or its **ideal** matches the **same assets**. Shared helper: `TagAliasResolve.Ideal`.
 
-### Paths (no new UI)
+### Intentional difference from search
 
-| Path | Today | N8 intent |
+| Path | Alias | Implication / parent expand |
 |---|---|---|
-| Library tag browse / Any·All·None | `TagFilter.Expand` = membership walk on selected ids → `AssetTag IN (…)`. Selected alias id rarely hits applied rows (assignments store ideal). | Before membership expand, resolve each selected id with `TagAliasResolve.Ideal`. Build each set from the **ideal** (+ membership descendants of that ideal). Optionally include the raw selected id and other aliases of that ideal so any stale alias-row still hits. |
-| Search box (FTS) | Already expands alias→ideal (+ implying children) in `TagFtsQuery`. | Unchanged; filter work should **not** diverge from this resolve order. |
-| Combined (tag browse **and** search) | Filter SQL then intersect FTS hits. | After filter alias expand, intersection stays as today. |
+| Search / FTS (`TagFtsQuery`) | Resolve → ideal, OR ideal name (+ implying children) | **Yes** — parent expand |
+| Library tag filter (`TagFilter`) | Resolve → ideal, then membership of ideal | **No** implication closure — **intentional** |
 
-Implication note (existing T5/N4 policy, not reinvented here): FTS parent expand ORs implying children so searching a parent finds applied-only children; library tag-filter expand remains **membership**, not implication closure. N8 only adds **alias** parity on the filter path so alias chip ≡ ideal chip.
+N8 does **not** add implication closure to library filters. Alias chip ≡ ideal chip for membership-based Any/All/None only.
 
-### Order (explicit)
+### Filter set construction
 
-1. Resolve selected filter tag → ideal (`TagAliasResolve.Ideal`).  
-2. Membership-expand from that ideal (`TagFilter.Expand`).  
-3. (Search path only, already shipped) implication / parent OR expansion in FTS — after alias resolve.
+1. `idealId = TagAliasResolve.Ideal(selectedId, aliasMap)`.
+2. Start set = `{ idealId }` ∪ membership descendants of **ideal** (`TagFilter.Expand(idealId, memberships)`).
+3. **Optional stale-row defense:** union other alias tag ids that map to the same ultimate ideal (and the raw selected id if it differed), so any leftover `AssetTag` on an alias still hits. Prefer including this union.
 
-### Tests to require when implementing (not in this PR)
+No new UI — wire where `LibraryViewModel.Filters` / Tags mosaic already call `TagFilter.ExpandEach`.
 
-- Export round-trip includes `aliasOf`; old JSON without it still imports.  
-- Import rejects rebind / cycle / self; accepts idempotent same edge; EnsureNamed for missing ideal.  
-- Import does not create Implied `AssetTag` rows.  
-- Filter by alias and by ideal return the same asset id set (Any / All / None).  
-- Search("alias") and filter(alias) agree on a single-ideal fixture.
+### Combined browse + search
+
+Filter SQL (alias-expanded) then intersect FTS hits — unchanged shape.
 
 ---
 
-## Out of scope (this note)
+## Tests (implementation)
 
-- Alias create/edit UI (Gooey / T2–T8 board work).  
-- Schema bump to `palace-tags/2` (optional later if Doktor wants a hard break).  
-- Changing implication materialization or FTS applied-only storage.  
-- Engine implementation — **park until Doktor wording OK**.
+- Export round-trip includes `aliasOf`; old JSON without it still imports.
+- Empty `aliasOf` skipped; missing ideal EnsureNamed; rebind/cycle/self rejected; same edge idempotent; same-file chain → ultimate ideal.
+- Import does not create Implied `AssetTag` rows; not whole-file atomic (one bad alias edge does not undo earlier tag upserts).
+- Filter by alias and by ideal → same asset id set (Any/All/None); no implication closure on filter.
+- Search("alias") still works as today (unchanged path).
 
 ---
 
-## Open for Doktor
+## Out of scope
 
-1. **`aliasOf` on the alias entry** (singular) vs listing `aliases[]` on the ideal — proposal is `aliasOf`.  
-2. Keep **`palace-tags/1`** with optional field vs bump schema id.  
-3. On conflicting rebind: **silent reject + count** (like implication cycles) vs surface in import summary UI copy (Settings already shows `TagMergePlan.Summary`).  
-4. Filter set: resolve-to-ideal + membership only, or also union every alias id of that ideal for stale-row defense?
+- Alias create/edit UI (Gooey / T2–T8).
+- Schema bump to `palace-tags/2`.
+- Changing implication materialization or giving filters FTS-style parent expand.
+- Merging before Doktor code review.
