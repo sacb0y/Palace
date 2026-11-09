@@ -12,7 +12,7 @@ No UI inventing. No Bugbot. No T2/T8 board work.
 | Area | Behavior today |
 |---|---|
 | Portable schema | `Helpers/TagPortable.cs` — `palace-tags/1`; per tag: `name`, `priority`, `color`, `starred`, `parents[]`, `implies[]`. **No alias field yet.** |
-| Export / import | `CatalogService.ExportTagsJsonAsync` / `ImportTagsJsonAsync` — tags + memberships + implications. Upsert by name; **per-edge** cycle refusal + counters for parents/implicits; never wipe unrelated tags. **Not** whole-file atomic. |
+| Export / import | `CatalogService.ExportTagsJsonAsync` / `ImportTagsJsonAsync` — tags + memberships + implications. Upsert by name; **per-edge** cycle refusal + counters for parents/implicits; never wipe unrelated tags. Mutates run in **one** SQLite transaction after a pre-import DB backup (exception rolls back; refused edges still commit with counters). |
 | Alias engine | `TagAlias` table; `TagAliasResolve` (Ideal / CanAdd / WouldCycle); `AddAliasAsync` is n→1, self/cycle refuse, idempotent same edge; migrates `AssetTag` alias→ideal. |
 | Assign | Alias rewritten to ideal **before** implications; `Source=Implied` refused on assign (T5+). FTS stores **applied ideal names only**. |
 | Search / FTS | `TagFtsQuery.Build` expands a matched name → ideal (+ implying children), cap 24 OR terms. |
@@ -57,9 +57,9 @@ Optional field on the **alias** entry (edge = `TagAlias.AliasTagId → IdealTagI
 
 `TagPortable.FromCatalog` takes alias edges. For each `TagAlias` row, set `aliasOf` on the alias entry to the ideal’s name. Skip orphan ids (same as membership/implication).
 
-### Import — per-edge refusal + counters (not whole-file atomic)
+### Import — per-edge refusal + counters (one transaction)
 
-`ImportTagsJsonAsync` already applies creates/updates then memberships then implications **edge by edge**, counting added/rejected/skipped. Aliases follow the **same** pattern. Do **not** describe or implement import as an all-or-nothing whole-file transaction that rolls back prior successful edges.
+`ImportTagsJsonAsync` applies creates/updates then memberships then implications **edge by edge**, counting added/rejected/skipped. Aliases follow the **same** pattern. All mutates share **one** SQLite transaction after a `pre-tag-import-*` catalog backup (same backup API as the T5 implied purge). A mid-import **exception** rolls the whole import back. A refused edge (cycle / rebind) does **not** undo earlier upserts within a successful commit — counters record the refusal.
 
 | Case | Action |
 |---|---|
@@ -122,7 +122,7 @@ Filter SQL (alias-expanded) then intersect FTS hits — unchanged shape.
 
 - Export round-trip includes `aliasOf`; old JSON without it still imports.
 - Empty `aliasOf` skipped; missing ideal EnsureNamed; rebind/cycle/self rejected; same edge idempotent; same-file chain → ultimate ideal.
-- Import does not create Implied `AssetTag` rows; not whole-file atomic (one bad alias edge does not undo earlier tag upserts).
+- Import does not create Implied `AssetTag` rows; one refused alias edge does not undo earlier tag upserts on a successful commit; a mid-import exception leaves the DB unchanged (backup + single transaction).
 - Filter by alias and by ideal → same asset id set (Any/All/None); no implication closure on filter.
 - Search("alias") still works as today (unchanged path).
 
