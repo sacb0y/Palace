@@ -209,6 +209,12 @@ public sealed partial class CatalogService
                 return false;
             }
 
+            var probe = TakeTagCreateUndoFault();
+            if (probe is { ThrowOnDelete: true })
+            {
+                throw new InvalidOperationException("Tag create undo fault probe: ThrowOnDelete");
+            }
+
             InvalidateGraphCaches();
             var assetIds = AssetsHavingAnyTag(conn, [tagId]);
             using var cmd = conn.CreateCommand();

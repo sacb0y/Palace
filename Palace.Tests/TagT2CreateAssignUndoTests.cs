@@ -146,8 +146,9 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
         Assert.NotEqual(idA, clash.Id);
 
         var redo = await _ops.RedoLastAsync(_projectId);
-        Assert.True(redo.Ok, redo.Message);
+        Assert.False(redo.Ok, redo.Message);
         Assert.NotEmpty(redo.Skipped);
+        Assert.Contains("restored prior state", redo.Message, StringComparison.Ordinal);
         // Successful steps were rolled back so nothing is orphaned while IsUndone.
         Assert.DoesNotContain(idB, await TagIdsOn(asset.Id));
         Assert.DoesNotContain(idA, await TagIdsOn(asset.Id));
@@ -159,6 +160,47 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
         Assert.NotNull(stillRedo);
         Assert.Equal(result.BatchId, stillRedo!.Id);
         Assert.True(stillRedo.IsUndone);
+    }
+
+    [Fact]
+    public async Task PartialRedo_RollbackFailure_ReportsCouldNotRollBack()
+    {
+        var asset = await AddAssetAsync("partial-redo-rollback-fail.png");
+        var (a, createdA) = await _catalog.GetOrCreateTagResultAsync("rb-fail-a");
+        Assert.True(createdA);
+        var (b, createdB) = await _catalog.GetOrCreateTagResultAsync("rb-fail-b");
+        Assert.True(createdB);
+        var idA = a.Id;
+        var idB = b.Id;
+
+        var result = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [
+                (a.Id, a.Name, TagSource.Manual),
+                (b.Id, b.Name, TagSource.Manual)
+            ],
+            _projectId,
+            createdTags: [(a.Id, a.Name), (b.Id, b.Name)]);
+        Assert.True(result.Ok, result.Message);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.NotNull(await _ops.PeekRedoAsync(_projectId));
+
+        var clash = await _catalog.CreateTagAsync("rb-fail-a");
+        Assert.NotEqual(idA, clash.Id);
+
+        // CreateTag undo during partial-redo rollback throws → non-null UndoNote.
+        _catalog.TestTagCreateUndoFault = new TagCreateUndoFaultProbe { ThrowOnDelete = true };
+        var redo = await _ops.RedoLastAsync(_projectId);
+        Assert.False(redo.Ok, redo.Message);
+        Assert.Contains("couldn't be rolled back", redo.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(redo.Skipped);
+        Assert.NotNull(await _ops.PeekRedoAsync(_projectId));
+        Assert.Equal(result.BatchId, (await _ops.PeekRedoAsync(_projectId))!.Id);
+        // Assign rollback still ran; CreateTag B may remain because delete faulted.
+        Assert.DoesNotContain(idB, await TagIdsOn(asset.Id));
+        Assert.NotNull(await _catalog.FindTagByNameAsync("rb-fail-b"));
     }
 
     [Fact]
@@ -193,7 +235,7 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
         Assert.NotEqual(idA, clash.Id);
 
         var redo = await _ops.RedoLastAsync(_projectId);
-        Assert.True(redo.Ok, redo.Message);
+        Assert.False(redo.Ok, redo.Message);
         Assert.NotEmpty(redo.Skipped);
         Assert.Null(await _catalog.FindTagByNameAsync("redo-b"));
         Assert.Empty(await TagIdsOn(asset.Id));

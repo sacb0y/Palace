@@ -1002,14 +1002,35 @@ public sealed partial class FileOpService
         // Roll back what did apply so a following Undo cannot leave orphaned changes.
         if (notes.Count > 0)
         {
+            var rollbackNotes = new List<string>();
             foreach (var item in succeeded.OrderByDescending(i => i.Seq))
             {
-                await UndoTagOpStepAsync(item).ConfigureAwait(false);
+                var rollback = await UndoTagOpStepAsync(item).ConfigureAwait(false);
+                if (rollback is not null)
+                {
+                    rollbackNotes.Add(rollback.Text);
+                }
+            }
+
+            if (rollbackNotes.Count > 0)
+            {
+                ErrorReporter.LogOnly(
+                    "Partial redo rollback",
+                    new InvalidOperationException(string.Join("; ", rollbackNotes)));
+                return new FileOpResult
+                {
+                    Ok = false,
+                    Message =
+                        $"Couldn't fully redo tag assign; some steps couldn't be rolled back. {notes.Count} step(s) skipped. {notes[0]} Try again.",
+                    BatchId = batch.Id,
+                    Summary = batch.Summary,
+                    Skipped = notes.Concat(rollbackNotes).ToList()
+                };
             }
 
             return new FileOpResult
             {
-                Ok = true,
+                Ok = false,
                 Message =
                     $"Couldn't fully redo tag assign; restored prior state. {notes.Count} step(s) skipped. {notes[0]} Try again.",
                 BatchId = batch.Id,
