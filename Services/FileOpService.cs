@@ -997,14 +997,25 @@ public sealed partial class FileOpService
                     : $"Couldn't redo tag assign. {notes[0].TrimEnd('.')}.");
         }
 
+        // Partial redo (any skipped step) must stay on the redo stack — marking
+        // IsUndone=0 would clear PeekRedo while CreateTag/AssignTag remain incomplete.
+        if (notes.Count > 0)
+        {
+            return new FileOpResult
+            {
+                Ok = true,
+                Message = $"Redid tag assign, {notes.Count} step(s) skipped. {notes[0]} Try again.",
+                BatchId = batch.Id,
+                Summary = batch.Summary,
+                Skipped = notes
+            };
+        }
+
         await _catalog.MarkFileOpRedoneAsync(batch.Id).ConfigureAwait(false);
-        var message = notes.Count == 0
-            ? "Redid tag assign."
-            : $"Redid tag assign, {notes.Count} step(s) skipped. {notes[0]}.";
         return new FileOpResult
         {
             Ok = true,
-            Message = message,
+            Message = "Redid tag assign.",
             BatchId = batch.Id,
             Summary = batch.Summary,
             Skipped = notes

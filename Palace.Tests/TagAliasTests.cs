@@ -190,7 +190,7 @@ public sealed class TagAliasTests : IAsyncLifetime
         var doggy = await _catalog.CreateTagAsync("doggy");
         Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
 
-        // Rebind doggy→pup must reject; new tag "pup" still created (per-edge, not whole-file atomic).
+        // Rebind doggy→pup must reject; new tag "pup" still created (refused edge does not undo upserts on commit).
         var json = """
             {
               "schema": "palace-tags/1",

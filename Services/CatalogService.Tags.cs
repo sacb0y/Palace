@@ -5,6 +5,16 @@ using Palace.Models;
 
 namespace Palace.Services;
 
+/// <summary>
+/// Test-only fault injection for tag import transaction coverage. Production leaves null.
+/// Throw from the probe to abort before Commit — SQLite rolls the whole import back.
+/// </summary>
+public sealed class TagImportFaultProbe
+{
+    /// <summary>Throw after this many new Tag inserts (1-based). 0 = never.</summary>
+    public int FailAfterCreates { get; init; }
+}
+
 /// <summary>Catalog: the global tag graph (tags, groups / memberships, implications, colors, import / export).</summary>
 public sealed partial class CatalogService
 {
@@ -158,10 +168,22 @@ public sealed partial class CatalogService
             return TagPortable.Serialize(TagPortable.FromCatalog(tags, memberships, implications, aliases));
         });
 
+    /// <summary>Test-only. Cleared after each import that observes it.</summary>
+    public TagImportFaultProbe? TestTagImportFault { get; set; }
+
+    private TagImportFaultProbe? TakeTagImportFault()
+    {
+        var probe = TestTagImportFault;
+        TestTagImportFault = null;
+        return probe;
+    }
+
     /// <summary>
     /// Merge a portable tag JSON into the global catalog. Upsert by name;
     /// does not delete unrelated tags. Per-edge cycle/rebind refusal for
-    /// parents, implicits, and aliases — not whole-file atomic.
+    /// parents, implicits, and aliases (counters on success). Mutates run in
+    /// <b>one</b> SQLite transaction after a pre-import DB backup — a mid-import
+    /// exception rolls everything back.
     /// </summary>
     public Task<TagMergePlan> ImportTagsJsonAsync(string json) =>
         _db.WriteAsync(conn =>
@@ -189,6 +211,11 @@ public sealed partial class CatalogService
                 .ToList();
             var plan = TagPortable.PlanMerge(existing, memberships, implications, aliases, document);
 
+            // Restore point before any mutate (same backup API as T5 implied purge).
+            _db.BackupBeforeTagImport();
+
+            var probe = TakeTagImportFault();
+            using var tx = conn.BeginTransaction();
             // Apply creates first so name→id resolves to real SQLite ids.
             // Names are unique ignoring case and padding (TagNames); keys are trimmed so a
             // stored " cat " still matches the trimmed edge names PlanMerge emits.
@@ -197,23 +224,30 @@ public sealed partial class CatalogService
             {
                 idByName.TryAdd(TagNames.Normalize(t.Name), t.Id);
             }
+
+            var createsDone = 0;
             foreach (var create in plan.Creates)
             {
                 // e.g. " cat " in the file vs "cat" here: reuse instead of creating a duplicate.
-                if (TagNames.FindId(conn, create.Name) is { } existingId)
+                if (TagNames.FindId(conn, create.Name, tx: tx) is { } existingId)
                 {
                     idByName[TagNames.Normalize(create.Name)] = existingId;
                     continue;
                 }
 
-                var tag = InsertTag(conn, create.Name, create.Priority);
-                ApplyTagFields(conn, tag.Id, create.Priority, create.Color, create.Starred);
+                var tag = InsertTag(conn, create.Name, create.Priority, tx);
+                ApplyTagFields(conn, tag.Id, create.Priority, create.Color, create.Starred, tx);
                 idByName[TagNames.Normalize(create.Name)] = tag.Id;
+                createsDone++;
+                if (probe is { FailAfterCreates: > 0 } && createsDone >= probe.FailAfterCreates)
+                {
+                    throw new InvalidOperationException("Tag import fault probe: FailAfterCreates");
+                }
             }
 
             foreach (var update in plan.Updates)
             {
-                ApplyTagFields(conn, update.Id, update.Priority, update.Color, update.Starred);
+                ApplyTagFields(conn, update.Id, update.Priority, update.Color, update.Starred, tx);
             }
 
             foreach (var edge in plan.Memberships)
@@ -224,7 +258,7 @@ public sealed partial class CatalogService
                     continue;
                 }
 
-                TryAddMembership(conn, parentId, childId);
+                TryAddMembership(conn, parentId, childId, tx);
             }
 
             foreach (var edge in plan.Implications)
@@ -236,7 +270,7 @@ public sealed partial class CatalogService
                     continue;
                 }
 
-                TryAddImplication(conn, tagId, impliedId);
+                TryAddImplication(conn, tagId, impliedId, tx);
             }
 
             // ParentName = alias, ChildName = ideal. Resolve ideal through current map
@@ -250,11 +284,9 @@ public sealed partial class CatalogService
                     continue;
                 }
 
-                using var tx = conn.BeginTransaction();
                 var resolvedIdeal = ResolveIdealTagId(conn, idealId, tx);
                 if (!TryAddAlias(conn, aliasId, resolvedIdeal, tx, out var inserted))
                 {
-                    tx.Rollback();
                     continue;
                 }
 
@@ -265,15 +297,14 @@ public sealed partial class CatalogService
                         ftsAssets.Add(row.AssetId);
                     }
                 }
-
-                tx.Commit();
             }
 
             foreach (var assetId in ftsAssets)
             {
-                RefreshFts(conn, assetId);
+                RefreshFts(conn, assetId, tx);
             }
 
+            tx.Commit();
             return plan;
         });
 
@@ -282,9 +313,11 @@ public sealed partial class CatalogService
         string id,
         int priority,
         string? color,
-        bool starred)
+        bool starred,
+        SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = """
             UPDATE Tag SET Priority = $p, Color = $c, IsStarred = $s WHERE Id = $id
             """;
@@ -649,9 +682,10 @@ public sealed partial class CatalogService
         return ReadTags(cmd);
     }
 
-    private static List<TagMembership> LoadMemberships(SqliteConnection conn)
+    private static List<TagMembership> LoadMemberships(SqliteConnection conn, SqliteTransaction? tx = null)
     {
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "SELECT ParentId, ChildId FROM TagMembership";
         var list = new List<TagMembership>();
         using var reader = cmd.ExecuteReader();
@@ -1067,9 +1101,13 @@ public sealed partial class CatalogService
         return null;
     }
 
-    private static Tag InsertTag(SqliteConnection conn, string name, int priority)
+    private static Tag InsertTag(
+        SqliteConnection conn,
+        string name,
+        int priority,
+        SqliteTransaction? tx = null)
     {
-        if (TagNames.FindId(conn, name) is not null)
+        if (TagNames.FindId(conn, name, tx: tx) is not null)
         {
             throw new DuplicateTagNameException(name);
         }
@@ -1082,6 +1120,7 @@ public sealed partial class CatalogService
             Slug = PathSafe.Slug(name)
         };
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "INSERT INTO Tag (Id, Name, Priority, Slug) VALUES ($id, $name, $priority, $slug)";
         cmd.Parameters.AddWithValue("$id", tag.Id);
         cmd.Parameters.AddWithValue("$name", tag.Name);
@@ -1127,14 +1166,19 @@ public sealed partial class CatalogService
             cmd.ExecuteNonQuery();
         });
 
-    private static bool TryAddMembership(SqliteConnection conn, string parentId, string childId)
+    private static bool TryAddMembership(
+        SqliteConnection conn,
+        string parentId,
+        string childId,
+        SqliteTransaction? tx = null)
     {
-        if (string.Equals(parentId, childId, StringComparison.Ordinal) || WouldCycle(conn, parentId, childId))
+        if (string.Equals(parentId, childId, StringComparison.Ordinal) || WouldCycle(conn, parentId, childId, tx))
         {
             return false;
         }
 
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = "INSERT OR IGNORE INTO TagMembership (ParentId, ChildId) VALUES ($p, $c)";
         cmd.Parameters.AddWithValue("$p", parentId);
         cmd.Parameters.AddWithValue("$c", childId);
@@ -1142,13 +1186,20 @@ public sealed partial class CatalogService
         return true;
     }
 
-    private static bool WouldCycle(SqliteConnection conn, string parentId, string childId) =>
-        DescendantsOf(conn, childId).Contains(parentId);
+    private static bool WouldCycle(
+        SqliteConnection conn,
+        string parentId,
+        string childId,
+        SqliteTransaction? tx = null) =>
+        DescendantsOf(conn, childId, tx).Contains(parentId);
 
-    private static List<string> DescendantsOf(SqliteConnection conn, string tagId)
+    private static List<string> DescendantsOf(
+        SqliteConnection conn,
+        string tagId,
+        SqliteTransaction? tx = null)
     {
         var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        foreach (var edge in LoadMemberships(conn))
+        foreach (var edge in LoadMemberships(conn, tx))
         {
             if (!children.TryGetValue(edge.ParentId, out var list))
             {

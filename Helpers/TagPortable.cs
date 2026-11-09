@@ -108,7 +108,7 @@ public static class TagPortable
     /// <summary>
     /// Pure merge planner. Does not touch SQLite. Upserts by name; skips
     /// membership/implication/alias edges that would cycle or rebind. Per-edge
-    /// refusal — not whole-file atomic.
+    /// refusal — refused edges keep earlier upserts on commit; exceptions roll the import tx back.
     /// </summary>
     public static TagMergePlan PlanMerge(
         IReadOnlyList<TagPortableTagSource> existing,

@@ -112,6 +112,53 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PartialRedo_WithSkippedSteps_DoesNotMarkRedone()
+    {
+        // Two quick-creates in one batch. After Undo, a conflicting name makes CreateTag
+        // skip for one tag while the other Create+Assign succeed — must stay redoable.
+        var asset = await AddAssetAsync("partial-redo.png");
+        var (a, createdA) = await _catalog.GetOrCreateTagResultAsync("partial-a");
+        Assert.True(createdA);
+        var (b, createdB) = await _catalog.GetOrCreateTagResultAsync("partial-b");
+        Assert.True(createdB);
+        var idA = a.Id;
+        var idB = b.Id;
+
+        var result = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [
+                (a.Id, a.Name, TagSource.Manual),
+                (b.Id, b.Name, TagSource.Manual)
+            ],
+            _projectId,
+            createdTags: [(a.Id, a.Name), (b.Id, b.Name)]);
+        Assert.True(result.Ok, result.Message);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Empty(await TagIdsOn(asset.Id));
+        Assert.Null(await _catalog.FindTagByNameAsync("partial-a"));
+        Assert.Null(await _catalog.FindTagByNameAsync("partial-b"));
+        Assert.NotNull(await _ops.PeekRedoAsync(_projectId));
+
+        // Name clash blocks restoring journaled id for partial-a.
+        var clash = await _catalog.CreateTagAsync("partial-a");
+        Assert.NotEqual(idA, clash.Id);
+
+        var redo = await _ops.RedoLastAsync(_projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.NotEmpty(redo.Skipped);
+        Assert.Contains(idB, await TagIdsOn(asset.Id));
+        Assert.DoesNotContain(idA, await TagIdsOn(asset.Id));
+
+        // Skipped steps → still on the redo stack (not MarkFileOpRedone).
+        var stillRedo = await _ops.PeekRedoAsync(_projectId);
+        Assert.NotNull(stillRedo);
+        Assert.Equal(result.BatchId, stillRedo!.Id);
+        Assert.True(stillRedo.IsUndone);
+    }
+
+    [Fact]
     public async Task PreexistingTag_NoCreateTagStep()
     {
         var existing = await _catalog.CreateTagAsync("sketch");

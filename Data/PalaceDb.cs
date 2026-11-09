@@ -20,8 +20,13 @@ public sealed class PalaceDb : IDisposable
     public string? ImpliedPurgeSkipReason { get; private set; }
 
     private const int ImpliedPurgeBackupKeep = 3;
+    private const int TagImportBackupKeep = 3;
     private const string ImpliedPurgeBackoffFileName = "implied-purge-backoff.txt";
+    private const string TagImportBackupPrefix = "pre-tag-import-";
     private static readonly TimeSpan ImpliedPurgeBackoff = TimeSpan.FromDays(1);
+
+    /// <summary>Folder of the last pre-import catalog backup, when <see cref="BackupBeforeTagImport"/> ran.</summary>
+    public string? LastTagImportBackupDir { get; private set; }
 
     public PalaceDb(string dbPath)
     {
@@ -466,6 +471,34 @@ public sealed class PalaceDb : IDisposable
         }
     }
 
+    /// <summary>
+    /// Snapshot <c>palace.db</c> under <c>backups/pre-tag-import-*</c> (SQLite backup API +
+    /// quick_check + AssetTag count) before a tag JSON import mutates the catalog. Same
+    /// pattern as the T5 implied purge. Caller must hold the write gate. Throws when
+    /// backup/verify fails so import does not proceed without a restore point.
+    /// </summary>
+    public string BackupBeforeTagImport()
+    {
+        long assetTagCount;
+        using (var probe = _connection.CreateCommand())
+        {
+            probe.CommandText = "SELECT COUNT(*) FROM AssetTag";
+            assetTagCount = Convert.ToInt64(probe.ExecuteScalar());
+        }
+
+        var root = Path.GetDirectoryName(_dbPath) ?? ".";
+        var backupsRoot = Path.Combine(root, "backups");
+        Directory.CreateDirectory(backupsRoot);
+        var backupDir = Path.Combine(backupsRoot, $"{TagImportBackupPrefix}{DateTime.UtcNow.Ticks}");
+        Directory.CreateDirectory(backupDir);
+        var backupDb = Path.Combine(backupDir, "palace.db");
+        BackupCatalogCopy(backupDb);
+        VerifyCatalogBackup(backupDb, assetTagCount);
+        LastTagImportBackupDir = backupDir;
+        PrunePrefixedBackups(backupsRoot, TagImportBackupPrefix, TagImportBackupKeep);
+        return backupDir;
+    }
+
     private void BackupCatalogCopy(string destDb)
     {
         if (File.Exists(destDb))
@@ -532,17 +565,20 @@ public sealed class PalaceDb : IDisposable
         }
     }
 
-    private static void PruneImpliedPurgeBackups(string backupsRoot)
+    private static void PruneImpliedPurgeBackups(string backupsRoot) =>
+        PrunePrefixedBackups(backupsRoot, "pre-t5-implied-", ImpliedPurgeBackupKeep);
+
+    private static void PrunePrefixedBackups(string backupsRoot, string prefix, int keep)
     {
         if (!Directory.Exists(backupsRoot))
         {
             return;
         }
 
-        var dirs = Directory.GetDirectories(backupsRoot, "pre-t5-implied-*")
+        var dirs = Directory.GetDirectories(backupsRoot, prefix + "*")
             .OrderByDescending(d => d, StringComparer.Ordinal)
             .ToList();
-        for (var i = ImpliedPurgeBackupKeep; i < dirs.Count; i++)
+        for (var i = keep; i < dirs.Count; i++)
         {
             try
             {
