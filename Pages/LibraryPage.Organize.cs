@@ -107,16 +107,20 @@ public sealed partial class LibraryPage
         return true;
     }
 
-    /// <summary>T focuses the merged Add tags box (Isiac T2).</summary>
+    /// <summary>
+    /// T focuses the merged Add tags box (Isiac T2). PreviewKeyDown tunnel +
+    /// GrdAssets KeyDown (handledEventsToo) — not a KeyboardAccelerator (would steal TextBox).
+    /// </summary>
     private bool TryHandleAddTagsKey(KeyRoutedEventArgs e)
     {
-        if (e.Key != VirtualKey.T
-            || ViewModel.IsGalleryOverlayOpen
-            || IsKeyDown(VirtualKey.Control)
-            || IsKeyDown(VirtualKey.Menu)
-            || IsKeyDown(VirtualKey.Shift)
-            || FocusIsTextInput(e.OriginalSource)
-            || !ViewModel.HasSelection)
+        if (!LibraryAddTagsShortcut.ShouldHandle(
+                (int)e.Key,
+                ViewModel.IsGalleryOverlayOpen,
+                IsKeyDown(VirtualKey.Control),
+                IsKeyDown(VirtualKey.Menu),
+                IsKeyDown(VirtualKey.Shift),
+                FocusIsTextInput(e.OriginalSource),
+                ViewModel.HasSelection))
         {
             return false;
         }

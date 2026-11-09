@@ -1214,6 +1214,7 @@
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuAddTag"
                                         Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
+                                        KeyboardAcceleratorTextOverride="T"
                                         Text="Add tags…">
                                         <MenuFlyoutItem.Icon>
                                             <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
@@ -2690,6 +2691,7 @@
                                     <MenuFlyoutItem
                                         AutomationProperties.AutomationId="MnuOverlayAddTag"
                                         Command="{x:Bind pages:LibraryPage.GetFocusAssignTagCommand()}"
+                                        KeyboardAcceleratorTextOverride="T"
                                         Text="Add tags…">
                                         <MenuFlyoutItem.Icon>
                                             <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />

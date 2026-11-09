@@ -528,14 +528,35 @@ public sealed partial class LibraryPage : Page
     {
         ViewModel.RebuildAssignPanelPublic();
         // Open the preview only when the user has it hidden — never flip a visible pane off.
+        var openedPreview = false;
         if (ViewModel.HasSelection
             && ScrPreviewPane.Visibility != Visibility.Visible
             && (!_previewPane.UserShow || _previewPane.AutoHidden))
         {
             ApplyPreviewToggleFromUser();
+            openedPreview = true;
         }
 
-        AsbAssignTag.Focus(FocusState.Programmatic);
+        // After opening Preview, AsbAssignTag may not be focusable until the next layout
+        // pass — an immediate Focus can land on BtnRemoveTags (earlier tab stop). Defer.
+        if (openedPreview)
+        {
+            DispatcherQueue.TryEnqueue(() => FocusAsbAssignTagWithRetry());
+        }
+        else
+        {
+            FocusAsbAssignTagWithRetry();
+        }
+    }
+
+    private void FocusAsbAssignTagWithRetry()
+    {
+        if (AsbAssignTag.Focus(FocusState.Programmatic))
+        {
+            return;
+        }
+
+        DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
     }
 
     private void FlyAssignTags_Opening(object sender, object e)
@@ -1666,7 +1687,9 @@ public sealed partial class LibraryPage : Page
 
     private void GrdAssets_KeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (!e.Handled && TryHandleMosaicMoveKey(e))
+        // handledEventsToo: ItemsView / ItemContainer may mark KeyDown Handled.
+        // Same path as Move (M) so T still reaches Add tags when mosaic has focus.
+        if (TryHandleMosaicMoveKey(e) || TryHandleAddTagsKey(e))
         {
             e.Handled = true;
         }

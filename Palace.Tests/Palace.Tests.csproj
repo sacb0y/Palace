@@ -128,6 +128,7 @@
     <Compile Include="..\Helpers\TagNameList.cs" Link="TagNameList.cs" />
     <Compile Include="..\Helpers\TagAddInput.cs" Link="TagAddInput.cs" />
     <Compile Include="..\Helpers\TagAddEscape.cs" Link="TagAddEscape.cs" />
+    <Compile Include="..\Helpers\LibraryAddTagsShortcut.cs" Link="LibraryAddTagsShortcut.cs" />
     <Compile Include="..\Helpers\TagRemoveConfirm.cs" Link="TagRemoveConfirm.cs" />
     <Compile Include="..\Helpers\TagStatusBar.cs" Link="TagStatusBar.cs" />
     <Compile Include="..\Helpers\TagPanelBuilder.cs" Link="TagPanelBuilder.cs" />
