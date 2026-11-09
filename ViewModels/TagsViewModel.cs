@@ -1321,8 +1321,8 @@ public partial class TagsViewModel : ObservableObject
             var aliasMap = (await _catalog.GetAliasesAsync())
                 .ToDictionary(a => a.AliasTagId, a => a.IdealTagId, StringComparer.Ordinal);
             // Nested: ideal + membership descendants. Flat: still alias-expand (ideal + siblings).
-            var memberships = IncludeNested ? _memberships : (IReadOnlyList<TagMembership>)[];
-            var sets = TagFilter.ExpandEach([tagId], memberships, aliasMap);
+            var filterMemberships = IncludeNested ? _memberships : (IReadOnlyList<TagMembership>)[];
+            var sets = TagFilter.ExpandEach([tagId], filterMemberships, aliasMap);
 
             var projectId = AppServices.CurrentProject?.Id;
             var assets = await _catalog.GetAssetsForTagFilterAsync(
