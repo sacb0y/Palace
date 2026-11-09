@@ -1834,7 +1834,8 @@
             Grid.Column="1"
             AutomationProperties.AutomationId="ScrPreviewPane"
             VerticalScrollBarVisibility="Auto">
-            <StackPanel x:Name="PnlPreviewBody" Spacing="12">
+            <!-- Shared body for docked + overlay; pad once so chips / Add tags / Apply share one inset. -->
+            <StackPanel x:Name="PnlPreviewBody" Padding="16" Spacing="12">
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Preview" />
                 <Border
                     MinHeight="200"
