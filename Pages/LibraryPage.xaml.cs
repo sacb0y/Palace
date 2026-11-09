@@ -369,7 +369,8 @@ public sealed partial class LibraryPage : Page
 
     public static IRelayCommand<TagChipItem> GetToggleFilterChipCommand() => AppServices.Library.ToggleFilterChipCommand;
 
-    public static IRelayCommand<TagChipItem> GetToggleAssignChipCommand() => AppServices.Library.ToggleAssignChipCommand;
+    public static IRelayCommand<TagBoardGroup> GetToggleBrowseTagGroupCommand() =>
+        AppServices.Library.ToggleBrowseTagGroupCommand;
 
     public static IRelayCommand GetDeleteFilesCommand() => AppServices.Library.DeleteFilesCommand;
 
@@ -523,7 +524,7 @@ public sealed partial class LibraryPage : Page
 
     private void BtnTagSelected_Click(object sender, RoutedEventArgs e) => FocusAddTagsBox();
 
-    /// <summary>T2: Tag selected… / T / legacy flyout AutomationId all focus the Add tags box.</summary>
+    /// <summary>T2/T8: Tag selected… / T focus the Add tags box (legacy FlyAssignTags removed).</summary>
     private void FocusAddTagsBox()
     {
         ViewModel.RebuildAssignPanelPublic();
@@ -556,13 +557,6 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
-    }
-
-    private void FlyAssignTags_Opening(object sender, object e)
-    {
-        // Legacy AutomationId shell — content moved into the always-visible Add tags box.
-        ViewModel.RebuildAssignPanelPublic();
         DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
     }
 

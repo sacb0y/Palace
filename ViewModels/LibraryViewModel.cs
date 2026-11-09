@@ -23,8 +23,11 @@ public partial class LibraryViewModel : ObservableObject
     private IReadOnlyList<Asset> _allAssets = [];
     private List<Tag> _tags = [];
     private List<TagMembership> _memberships = [];
+    private List<TagImplication> _implications = [];
     private List<TagPickItem> _tagPicks = [];
     private List<string> _recentTagIds = [];
+    private HashSet<string> _browseCollapsedKeys = new(StringComparer.Ordinal);
+    private HashSet<string> _browseShowAllGroups = new(StringComparer.Ordinal);
     private List<AssetItem> _selection = [];
     private List<AssetItem> _previewTargets = [];
     private AssetItem? _selectionAnchor;
@@ -111,16 +114,20 @@ public partial class LibraryViewModel : ObservableObject
 
     public ObservableCollection<AssetItem> Assets { get; } = [];
     public ObservableCollection<AssignedTagItem> AssignedTags { get; } = [];
+    /// <summary>T8: implied-only chips under "Implied by tag rules".</summary>
+    public ObservableCollection<AssignedTagItem> ImpliedAssignedTags { get; } = [];
     public ObservableCollection<PendingTagChip> PendingTags { get; } = [];
     public ObservableCollection<RemovableTagPick> RemovableTags { get; } = [];
     public ObservableCollection<PromptSuggestion> Suggestions { get; } = [];
     public ObservableCollection<TagPickItem> AllTags { get; } = [];
     public ObservableCollection<TagPickItem> TagSuggestions { get; } = [];
     public ObservableCollection<TagChipItem> SelectedFilterTags { get; } = [];
-    public ObservableCollection<TagChipItem> StarredAssignTags { get; } = [];
-    public ObservableCollection<TagChipItem> RecentAssignTags { get; } = [];
-    public ObservableCollection<TagChipItem> RecommendedAssignTags { get; } = [];
-    public ObservableCollection<TagBoardGroup> AssignGroups { get; } = [];
+    /// <summary>T8 Library ▸ Tags panel: Starred compact chips.</summary>
+    public ObservableCollection<TagChipItem> BrowseStarredTags { get; } = [];
+    /// <summary>T8 Library ▸ Tags panel: Recent compact chips.</summary>
+    public ObservableCollection<TagChipItem> BrowseRecentTags { get; } = [];
+    /// <summary>T8 Library ▸ Tags panel: collapsible groups.</summary>
+    public ObservableCollection<TagBoardGroup> BrowseTagGroups { get; } = [];
     public ObservableCollection<OrganizePreviewItem> OrganizePreview { get; } = [];
 
     [ObservableProperty]
@@ -383,6 +390,14 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial string AssignedTagsHeader { get; set; } = "Tags";
 
+    /// <summary>T8 inspector: show the Implied by tag rules subsection.</summary>
+    [ObservableProperty]
+    public partial bool HasImpliedAssignedTags { get; set; }
+
+    /// <summary>T8 Library Tags panel filter (matches tag and group names).</summary>
+    [ObservableProperty]
+    public partial string TagPanelFilter { get; set; } = "";
+
     [ObservableProperty]
     public partial bool ShowOrganizePanel { get; set; }
 
@@ -604,6 +619,7 @@ public partial class LibraryViewModel : ObservableObject
             var assets = await _catalog.GetAssetsAsync(projectId: projectId);
             var tags = await _catalog.GetTagsAsync();
             var memberships = await _catalog.GetMembershipsAsync();
+            var implications = await _catalog.GetImplicationsAsync();
             var selectedPath = preferredFolderPath ?? SelectedFolder?.Path;
             var selectedTagId = SelectedTag?.TagId;
             var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
@@ -630,6 +646,7 @@ public partial class LibraryViewModel : ObservableObject
                 _allAssets = assets;
                 _tags = tags.ToList();
                 _memberships = memberships.ToList();
+                _implications = implications.ToList();
                 _suppressFilter = true;
                 ReplaceFolderTree(tree);
                 TagTreeBuilder.Replace(TagTree, tags, memberships);

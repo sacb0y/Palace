@@ -179,11 +179,12 @@ public sealed partial class TagChip : UserControl
         }
 
         var height = Compact ? TagChipVisual.CompactHeightDip : TagChipVisual.HeightDip;
+        var radius = Compact ? TagChipVisual.CompactCornerRadiusDip : TagChipVisual.CornerRadiusDip;
         BrdChip.MinHeight = height;
         GrdRoot.MinHeight = height;
-        BrdChip.CornerRadius = new CornerRadius(TagChipVisual.CornerRadiusDip);
-        RectPartialDash.RadiusX = TagChipVisual.CornerRadiusDip;
-        RectPartialDash.RadiusY = TagChipVisual.CornerRadiusDip;
+        BrdChip.CornerRadius = new CornerRadius(radius);
+        RectPartialDash.RadiusX = radius;
+        RectPartialDash.RadiusY = radius;
 
         TxtLabel.Text = Label ?? "";
         var highContrast = ShellBackdrop.IsHighContrast();

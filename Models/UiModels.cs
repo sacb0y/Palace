@@ -355,10 +355,29 @@ public partial class AssignedTagItem : ObservableObject
     [ObservableProperty]
     public partial bool IsChipSelected { get; set; }
 
+    /// <summary>T8: nearest applied tag that implies this (tooltip only).</summary>
+    [ObservableProperty]
+    public partial string? NearestImpliedByName { get; set; }
+
+    /// <summary>T8: applied chip that is also reached by implication.</summary>
+    [ObservableProperty]
+    public partial bool IsAlsoImplied { get; set; }
+
+    /// <summary>T8: alias names for tooltip ("also: scenery, vista").</summary>
+    public IReadOnlyList<string> AliasNames { get; set; } = [];
+
     /// <summary>Dot color: group inherit, else slate for ungrouped.</summary>
     public string DotColor => Helpers.TagAddInput.DotColor(EffectiveColor, isNew: false);
 
     public bool ShowRemove => Source != TagSource.Implied;
+
+    public bool IsImpliedOnly => Source == TagSource.Implied;
+
+    /// <summary>Leading link glyph on implied-only chips.</summary>
+    public bool ShowImpliedLink => IsImpliedOnly;
+
+    /// <summary>Trailing link glyph when applied and also implied.</summary>
+    public bool ShowAlsoImpliedLink => ShowRemove && IsAlsoImplied;
 
     /// <summary>Leading ✓ when the tag is on every selected file (multi-select).</summary>
     public bool ShowOnAllCheck =>
@@ -379,7 +398,15 @@ public partial class AssignedTagItem : ObservableObject
                 parts.Add($"on {CountLabel}");
             }
 
-            if (!string.IsNullOrWhiteSpace(SourceLabel))
+            if (IsImpliedOnly && !string.IsNullOrWhiteSpace(NearestImpliedByName))
+            {
+                parts.Add($"implied by {NearestImpliedByName}");
+            }
+            else if (IsAlsoImplied && !string.IsNullOrWhiteSpace(NearestImpliedByName))
+            {
+                parts.Add($"also implied by {NearestImpliedByName}");
+            }
+            else if (!string.IsNullOrWhiteSpace(SourceLabel))
             {
                 parts.Add(SourceLabel.ToLowerInvariant());
             }
@@ -388,8 +415,15 @@ public partial class AssignedTagItem : ObservableObject
         }
     }
 
-    /// <summary>Source (and optional k/n) for ToolTipService — not shown as chip chrome text.</summary>
-    public string ChipTooltip => Helpers.AssignedTagChrome.Tooltip(SourceLabel, CountLabel);
+    /// <summary>T8 chip tooltip — nearest imply / also-implied / aliases / remove.</summary>
+    public string ChipTooltip => Helpers.AssignedTagChrome.ChipTooltip(
+        Source,
+        IsAlsoImplied,
+        NearestImpliedByName,
+        AliasNames,
+        IsPartial,
+        CountLabel,
+        TagName);
 
     public double ChromeOpacity => Helpers.AssignedTagChrome.Opacity(IsPartial, Source);
 
@@ -399,21 +433,44 @@ public partial class AssignedTagItem : ObservableObject
         OnPropertyChanged(nameof(ChipTooltip));
     }
 
-    partial void OnTagNameChanged(string value) => OnPropertyChanged(nameof(ChipAutomationName));
+    partial void OnTagNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(ChipAutomationName));
+        OnPropertyChanged(nameof(ChipTooltip));
+    }
 
     partial void OnCountLabelChanged(string value) => OnPropertyChanged(nameof(ChipTooltip));
+
+    partial void OnNearestImpliedByNameChanged(string? value)
+    {
+        OnPropertyChanged(nameof(ChipAutomationName));
+        OnPropertyChanged(nameof(ChipTooltip));
+    }
+
+    partial void OnIsAlsoImpliedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowAlsoImpliedLink));
+        OnPropertyChanged(nameof(ChipAutomationName));
+        OnPropertyChanged(nameof(ChipTooltip));
+    }
 
     partial void OnSourceChanged(TagSource value)
     {
         OnPropertyChanged(nameof(ChromeOpacity));
         OnPropertyChanged(nameof(ShowRemove));
+        OnPropertyChanged(nameof(IsImpliedOnly));
+        OnPropertyChanged(nameof(ShowImpliedLink));
+        OnPropertyChanged(nameof(ShowAlsoImpliedLink));
         OnPropertyChanged(nameof(ShowOnAllCheck));
+        OnPropertyChanged(nameof(ChipTooltip));
+        OnPropertyChanged(nameof(ChipAutomationName));
     }
 
     partial void OnIsPartialChanged(bool value)
     {
         OnPropertyChanged(nameof(ChromeOpacity));
         OnPropertyChanged(nameof(ShowOnAllCheck));
+        OnPropertyChanged(nameof(ChipTooltip));
     }
 
     partial void OnSelectionTotalChanged(int value) => OnPropertyChanged(nameof(ShowOnAllCheck));
@@ -766,6 +823,9 @@ public partial class TagBoardGroup : ObservableObject
             : "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit)));
 
     public string CountLabel => $"{Name} ({Chips.Count})";
+
+    /// <summary>Chip count alone for T8 group-row trailing label.</summary>
+    public string ChipCountText => Chips.Count.ToString();
 
     public ObservableCollection<TagChipItem> Chips { get; } = [];
 

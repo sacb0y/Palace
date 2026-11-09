@@ -246,20 +246,150 @@ public partial class LibraryViewModel
     private void RebuildBrowseTags()
     {
         var selected = SelectedFilterTags.Select(t => t.TagId).ToHashSet(StringComparer.Ordinal);
-        var nodes = TagBrowseMosaic.Flatten(TagTree, node => node.TagId, node => node.Children);
+        var colors = _tags.Count == 0
+            ? null
+            : CatalogService.MapEffectiveColors(_tags, _memberships);
+        var sections = TagBrowsePanel.Build(
+            _tags,
+            _memberships,
+            recentIds: _recentTagIds,
+            query: TagPanelFilter,
+            colors: colors,
+            collapsedKeys: _browseCollapsedKeys);
+
+        BrowseStarredTags.Clear();
+        BrowseRecentTags.Clear();
+        BrowseTagGroups.Clear();
         BrowseTags.Clear();
-        foreach (var node in nodes)
+
+        foreach (var section in sections)
         {
-            BrowseTags.Add(new TagChipItem
+            if (section.IsStarredSection)
             {
-                TagId = node.TagId ?? "",
-                Name = node.Name,
-                EffectiveColor = node.EffectiveColor,
-                IsStarred = node.IsStarred,
-                IsFilterSelected = node.TagId is { } id && selected.Contains(id),
-                AutomationPrefix = "BtnTagChip_"
-            });
+                foreach (var chip in section.Chips)
+                {
+                    var item = ToBrowseChip(chip, selected);
+                    BrowseStarredTags.Add(item);
+                    BrowseTags.Add(item);
+                }
+
+                continue;
+            }
+
+            if (section.IsRecentSection)
+            {
+                foreach (var chip in section.Chips)
+                {
+                    var item = ToBrowseChip(chip, selected);
+                    BrowseRecentTags.Add(item);
+                    if (BrowseTags.All(t => t.TagId != item.TagId))
+                    {
+                        BrowseTags.Add(item);
+                    }
+                }
+
+                continue;
+            }
+
+            if (section.IsGroupsHeader)
+            {
+                continue;
+            }
+
+            var showAll = _browseShowAllGroups.Contains(section.Key);
+            var visible = TagBrowsePanel.VisibleChipCount(section.Chips.Count, showAll);
+            var group = new TagBoardGroup
+            {
+                GroupId = section.Key,
+                Name = section.Name,
+                Color = section.Color,
+                IsUngrouped = section.IsUngrouped,
+                IsExpanded = section.IsExpanded,
+                AutomationIdOverride = section.IsUngrouped ? "BtnTagGroup_Ungrouped" : null
+            };
+            for (var i = 0; i < visible; i++)
+            {
+                var chip = ToBrowseChip(section.Chips[i], selected);
+                group.Chips.Add(chip);
+                if (BrowseTags.All(t => t.TagId != chip.TagId))
+                {
+                    BrowseTags.Add(chip);
+                }
+            }
+
+            BrowseTagGroups.Add(group);
         }
+    }
+
+    private static TagChipItem ToBrowseChip(TagPanelChip chip, HashSet<string> selected) => new()
+    {
+        TagId = chip.TagId,
+        Name = chip.Name,
+        EffectiveColor = chip.EffectiveColor,
+        IsStarred = chip.IsStarred,
+        IsFilterSelected = selected.Contains(chip.TagId),
+        AutomationPrefix = "BtnTagChip_"
+    };
+
+    partial void OnTagPanelFilterChanged(string value)
+    {
+        if (IsTagBrowse)
+        {
+            RebuildBrowseTags();
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleBrowseTagGroup(TagBoardGroup? group)
+    {
+        if (group is null)
+        {
+            return;
+        }
+
+        var key = group.GroupId ?? group.Name;
+        group.IsExpanded = !group.IsExpanded;
+        if (group.IsExpanded)
+        {
+            _browseCollapsedKeys.Remove(key);
+        }
+        else
+        {
+            _browseCollapsedKeys.Add(key);
+        }
+    }
+
+    [RelayCommand]
+    private void ExpandAllBrowseTagGroups()
+    {
+        _browseCollapsedKeys.Clear();
+        foreach (var group in BrowseTagGroups)
+        {
+            group.IsExpanded = true;
+        }
+    }
+
+    [RelayCommand]
+    private void CollapseAllBrowseTagGroups()
+    {
+        foreach (var group in BrowseTagGroups)
+        {
+            var key = group.GroupId ?? group.Name;
+            _browseCollapsedKeys.Add(key);
+            group.IsExpanded = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ShowMoreBrowseTagGroup(TagBoardGroup? group)
+    {
+        if (group?.GroupId is not { } key)
+        {
+            return;
+        }
+
+        _browseShowAllGroups.Add(key);
+        RebuildBrowseTags();
     }
 
     private static TagChipItem ToFilterChip(TagTreeNode node) => new()

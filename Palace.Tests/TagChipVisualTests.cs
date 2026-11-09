@@ -83,8 +83,9 @@ public sealed class TagChipVisualTests
     public void ChromeSizes_MatchGooey()
     {
         Assert.Equal(32, TagChipVisual.HeightDip);
-        Assert.Equal(28, TagChipVisual.CompactHeightDip);
+        Assert.Equal(26, TagChipVisual.CompactHeightDip);
         Assert.Equal(16, TagChipVisual.CornerRadiusDip);
+        Assert.Equal(13, TagChipVisual.CompactCornerRadiusDip);
         Assert.Equal(14, TagChipVisual.LeadingGlyphSlotDip);
         Assert.Equal(8, TagChipVisual.ColorDotDip);
         Assert.Equal(24, TagChipVisual.StarButtonDip);

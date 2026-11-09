@@ -68,7 +68,7 @@ alwaysApply: false
 | Tags mosaic groups | `Helpers/TagMosaicGroups.cs` (longest path under the selected root, then Priority then name) |
 | Tag name lists | `Helpers/TagNameList.cs` |
 | Tag filter sets | `Helpers/TagFilter.cs` |
-| Tag board / assign panel | `Helpers/TagPanelBuilder.cs` (`BuildBoard` pins All / Uncategorized / Starred, then user groups; Uncategorized keeps `BtnTagGroup_Ungrouped`) |
+| Tag board / assign panel | `Helpers/TagPanelBuilder.cs` (`BuildBoard` pins All / Uncategorized / Starred, then user groups; Uncategorized keeps `BtnTagGroup_Ungrouped`); Library ▸ Tags Eagle panel `Helpers/TagBrowsePanel.cs` + `BrowseStarredTags` / `BrowseRecentTags` / `BrowseTagGroups`; implied chip nearest source `Helpers/ImpliedNearest.cs` |
 | Tag board expand | `Helpers/TagBoardExpand.cs` (create/select opens the row that shows the tag) |
 | Tag sibling order | `Helpers/TagSiblings.cs` |
 | Tag group destinations | `Helpers/TagGroups.cs` |
@@ -76,7 +76,7 @@ alwaysApply: false
 | Tag children mosaic | `Pages/TagsPage.xaml` (`RepTagChildren` `WrapLayout` chips; keep `BtnTagChip_*`) |
 | Tag board / assign chip | `Controls/TagChip.*` + `Helpers/TagChipVisual.cs` (Gooey pill: accent/partial/off, never face "On"; color dot only) + `Helpers/TagChipChrome.cs` (wrap width) |
 | Tag rename apply | `Helpers/TagSelection.cs` |
-| Recent tags | `Helpers/RecentTags.cs` |
+| Recent tags | `Helpers/RecentTags.cs` (Library Tags panel Recent chips; assign flyout shell removed in T8) |
 | Preview generation fields | `Helpers/GenerationFields.cs` (empty Extract/catalog replaces prior Prompt/Model; hide Generation when `HasAny` is false) |
 | Preview notes persist | `Helpers/PreviewPersist.cs` (`ClearPreview` / overlay apply must not write notes or rating onto `SelectedAsset`) |
 | Fluent enum parse | `Helpers/FluentGlyph.cs` (XAML only) |
