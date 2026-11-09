@@ -79,9 +79,9 @@ Import does **not** wipe unrelated tags or unrelated alias edges omitted from th
 
 When the file contains `a aliasOf b` and `b aliasOf c`, plan/apply so bindings resolve to the **ultimate** ideal (`c`), consistent with `AddAliasAsync` resolving the ideal argument through the alias map (including edges already accepted earlier in the same import).
 
-### Pre-existing PlanMerge note (unchanged by N8)
+### PlanMerge parents / implies (alias-resolved)
 
-`parents` / `implies` endpoint names are **not** alias-resolved in `PlanMerge` today (edges use the named tag ids after upsert). N8 does not change that for membership/implication. Alias edges alone go through ultimate-ideal resolve.
+`PlanMerge` plans alias edges first, then Ideal-resolves `parents` / `implies` endpoints (and the entry’s own name) through the working alias map so membership and implication land on ultimate ideals — same resolve as assign.
 
 ### Implied AssetTag rows
 

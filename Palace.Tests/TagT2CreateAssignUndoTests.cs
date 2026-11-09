@@ -77,6 +77,41 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task QuickCreate_Assign_Undo_ThenFileOpRedo_RestoresSameTagId()
+    {
+        // Doktor #157 / P-60: true journal Redo — not re-calling AssignTagAsync.
+        var asset = await AddAssetAsync("redo.png");
+        var (tag, created) = await _catalog.GetOrCreateTagResultAsync("gouache study");
+        Assert.True(created);
+        var tagId = tag.Id;
+
+        var result = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [(tag.Id, tag.Name, TagSource.Manual)],
+            _projectId,
+            createdTags: [(tag.Id, tag.Name)]);
+        Assert.True(result.Ok, result.Message);
+        Assert.False(string.IsNullOrEmpty(result.BatchId));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(result.BatchId, undo.BatchId);
+        Assert.Empty(await TagIdsOn(asset.Id));
+        Assert.Null(await _catalog.FindTagByNameAsync("gouache study"));
+        Assert.NotNull(await _ops.PeekRedoAsync(_projectId));
+
+        var redo = await _ops.RedoLastAsync(_projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.Equal(result.BatchId, redo.BatchId);
+        Assert.Contains(tagId, await TagIdsOn(asset.Id));
+        var restored = await _catalog.FindTagByNameAsync("gouache study");
+        Assert.NotNull(restored);
+        Assert.Equal(tagId, restored!.Id);
+        Assert.Null(await _ops.PeekRedoAsync(_projectId));
+        Assert.NotNull(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    [Fact]
     public async Task PreexistingTag_NoCreateTagStep()
     {
         var existing = await _catalog.CreateTagAsync("sketch");

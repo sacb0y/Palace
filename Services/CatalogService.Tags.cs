@@ -1091,6 +1091,42 @@ public sealed partial class CatalogService
         return tag;
     }
 
+    /// <summary>
+    /// Redo of <see cref="FileOpStep.CreateTag"/>: restore a Tag row with the journaled id.
+    /// No-op when the id already exists. Refuses a name clash on a different id.
+    /// </summary>
+    public Task EnsureCreatedTagAsync(string tagId, string tagName) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrEmpty(tagId) || string.IsNullOrWhiteSpace(tagName))
+            {
+                return;
+            }
+
+            using (var exists = conn.CreateCommand())
+            {
+                exists.CommandText = "SELECT 1 FROM Tag WHERE Id = $id LIMIT 1";
+                exists.Parameters.AddWithValue("$id", tagId);
+                if (exists.ExecuteScalar() is not null)
+                {
+                    return;
+                }
+            }
+
+            var name = TagNames.Normalize(tagName);
+            if (TagNames.FindId(conn, name, excludeId: tagId) is not null)
+            {
+                throw new DuplicateTagNameException(name);
+            }
+
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO Tag (Id, Name, Priority, Slug) VALUES ($id, $name, 0, $slug)";
+            cmd.Parameters.AddWithValue("$id", tagId);
+            cmd.Parameters.AddWithValue("$name", name);
+            cmd.Parameters.AddWithValue("$slug", PathSafe.Slug(name));
+            cmd.ExecuteNonQuery();
+        });
+
     private static bool TryAddMembership(SqliteConnection conn, string parentId, string childId)
     {
         if (string.Equals(parentId, childId, StringComparison.Ordinal) || WouldCycle(conn, parentId, childId))

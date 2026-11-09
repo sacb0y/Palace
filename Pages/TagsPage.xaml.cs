@@ -1477,7 +1477,12 @@ public sealed partial class TagsPage : Page
     {
         for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
         {
-            if (current is TextBox or RichEditBox or PasswordBox or AutoSuggestBox)
+            if (current is TextBox or RichEditBox or PasswordBox or AutoSuggestBox or NumberBox)
+            {
+                return true;
+            }
+
+            if (current is ComboBox { IsEditable: true })
             {
                 return true;
             }

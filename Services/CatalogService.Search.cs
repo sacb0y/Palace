@@ -28,8 +28,9 @@ public sealed partial class CatalogService
             {
                 return ReadAssets(cmd);
             }
-            catch (SqliteException)
+            catch (SqliteException ex)
             {
+                ErrorReporter.LogOnly("FTS search MATCH", ex);
                 return (IReadOnlyList<Asset>)[];
             }
         });
@@ -62,9 +63,10 @@ public sealed partial class CatalogService
             ins.Parameters.AddWithValue("$notes", asset.Notes ?? "");
             ins.ExecuteNonQuery();
         }
-        catch (SqliteException)
+        catch (SqliteException ex)
         {
             // Tag writes must succeed even if the contentless FTS index is stale.
+            ErrorReporter.LogOnly($"FTS refresh ({assetId})", ex);
         }
     }
 
@@ -80,9 +82,10 @@ public sealed partial class CatalogService
         {
             cmd.ExecuteNonQuery();
         }
-        catch (SqliteException)
+        catch (SqliteException ex)
         {
             // Row was never indexed, or an older contentless table rejected DELETE.
+            ErrorReporter.LogOnly($"FTS delete row ({rowId})", ex);
         }
     }
 

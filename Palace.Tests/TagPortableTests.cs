@@ -340,4 +340,29 @@ public sealed class TagPortableTests
         Assert.Equal(0, plan.AliasRejected);
         Assert.Empty(plan.Aliases);
     }
+
+    [Fact]
+    public void PlanMerge_ParentsAndImplies_ResolveThroughAlias()
+    {
+        var doc = TagPortable.Parse("""
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "animal" },
+                { "name": "dog" },
+                { "name": "doggy", "aliasOf": "dog", "parents": ["animal"], "implies": ["animal"] },
+                { "name": "wolf", "implies": ["doggy"] }
+              ]
+            }
+            """);
+
+        var plan = TagPortable.PlanMerge([], [], [], [], doc);
+        Assert.Contains(plan.Aliases, e => e.ParentName == "doggy" && e.ChildName == "dog");
+        // doggy parents/implies land on dog (ideal), not the alias id.
+        Assert.Contains(plan.Memberships, e => e.ParentName == "animal" && e.ChildName == "dog");
+        Assert.DoesNotContain(plan.Memberships, e => e.ChildName == "doggy");
+        Assert.Contains(plan.Implications, e => e.ParentName == "dog" && e.ChildName == "animal");
+        Assert.Contains(plan.Implications, e => e.ParentName == "wolf" && e.ChildName == "dog");
+        Assert.DoesNotContain(plan.Implications, e => e.ChildName == "doggy" || e.ParentName == "doggy");
+    }
 }

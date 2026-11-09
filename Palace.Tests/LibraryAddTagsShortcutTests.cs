@@ -17,7 +17,7 @@ public sealed class LibraryAddTagsShortcutTests
             hasSelection: true));
 
     [Fact]
-    public void ShouldHandle_SkipsTextBoxAndAutoSuggest() =>
+    public void ShouldHandle_SkipsTextInputFocus() =>
         Assert.False(LibraryAddTagsShortcut.ShouldHandle(
             LibraryAddTagsShortcut.KeyT,
             galleryOverlayOpen: false,

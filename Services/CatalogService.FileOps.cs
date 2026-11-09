@@ -240,9 +240,63 @@ public sealed partial class CatalogService
         _db.WriteAsync(conn =>
         {
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE FileOpBatch SET IsUndone = 1 WHERE Id = $id";
+            cmd.CommandText = """
+                UPDATE FileOpBatch
+                SET IsUndone = 1, UndoneAt = $at
+                WHERE Id = $id
+                """;
+            cmd.Parameters.AddWithValue("$id", batchId);
+            cmd.Parameters.AddWithValue("$at", PalaceDb.NowIso());
+            cmd.ExecuteNonQuery();
+        });
+
+    /// <summary>Clear undo mark so the batch is live on the undo stack again (after Redo).</summary>
+    public Task MarkFileOpRedoneAsync(string batchId) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                UPDATE FileOpBatch
+                SET IsUndone = 0, UndoneAt = NULL
+                WHERE Id = $id
+                """;
             cmd.Parameters.AddWithValue("$id", batchId);
             cmd.ExecuteNonQuery();
+        });
+
+    /// <summary>
+    /// Newest redoable batch: last undone, and no newer live (IsUndone=0) op after
+    /// that undo. TagAssign redo (incl. CreateTag) is the first consumer.
+    /// </summary>
+    public Task<FileOpBatch?> GetLastRedoableFileOpAsync(string projectId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                SELECT Id, ProjectId, Kind, Summary, CreatedAt, IsUndone, UndoneAt FROM FileOpBatch
+                WHERE ProjectId = $project
+                  AND IsUndone = 1
+                  AND UndoneAt IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM FileOpBatch live
+                    WHERE live.ProjectId = FileOpBatch.ProjectId
+                      AND live.IsUndone = 0
+                      AND live.CreatedAt > FileOpBatch.UndoneAt
+                  )
+                ORDER BY UndoneAt DESC, rowid DESC
+                LIMIT 1
+                """;
+            cmd.Parameters.AddWithValue("$project", projectId);
+            using var reader = cmd.ExecuteReader();
+            if (!reader.Read())
+            {
+                return null;
+            }
+
+            var batch = ReadFileOpBatchRow(reader);
+            reader.Close();
+            batch.Items = ReadFileOpItems(conn, batch.Id);
+            return batch;
         });
 
     /// <summary>
@@ -259,7 +313,7 @@ public sealed partial class CatalogService
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = """
-                SELECT Id, ProjectId, Kind, Summary, CreatedAt, IsUndone FROM FileOpBatch
+                SELECT Id, ProjectId, Kind, Summary, CreatedAt, IsUndone, UndoneAt FROM FileOpBatch
                 WHERE Id = $id
                 LIMIT 1
                 """;
@@ -270,19 +324,23 @@ public sealed partial class CatalogService
                 return null;
             }
 
-            var batch = new FileOpBatch
-            {
-                Id = reader.GetString(0),
-                ProjectId = reader.GetString(1),
-                Kind = Enum.TryParse<FileOpKind>(reader.GetString(2), out var kind) ? kind : FileOpKind.Move,
-                Summary = reader.GetString(3),
-                CreatedAt = reader.GetString(4),
-                IsUndone = reader.GetInt32(5) != 0
-            };
+            var batch = ReadFileOpBatchRow(reader);
             reader.Close();
             batch.Items = ReadFileOpItems(conn, batch.Id);
             return batch;
         });
+
+    private static FileOpBatch ReadFileOpBatchRow(SqliteDataReader reader) =>
+        new()
+        {
+            Id = reader.GetString(0),
+            ProjectId = reader.GetString(1),
+            Kind = Enum.TryParse<FileOpKind>(reader.GetString(2), out var kind) ? kind : FileOpKind.Move,
+            Summary = reader.GetString(3),
+            CreatedAt = reader.GetString(4),
+            IsUndone = reader.GetInt32(5) != 0,
+            UndoneAt = reader.IsDBNull(6) ? null : reader.GetString(6)
+        };
 
     private static List<FileOpItem> ReadFileOpItems(SqliteConnection conn, string batchId)
     {

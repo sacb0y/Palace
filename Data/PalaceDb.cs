@@ -290,6 +290,7 @@ public sealed class PalaceDb : IDisposable
         EnsureColumn("Asset", "Undecodable", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Asset", "DateTaken", "TEXT");
         EnsureColumn("Collection", "Icon", "TEXT");
+        EnsureColumn("FileOpBatch", "UndoneAt", "TEXT");
         DropLegacyCatalogMeta();
         EnsureAssetFtsContentlessDelete();
         EnsureUniqueTagNames();
