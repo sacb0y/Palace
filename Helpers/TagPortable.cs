@@ -390,6 +390,25 @@ public static class TagPortable
             plan.AliasAdded++;
         }
 
+        // File order may list an alias before its ideal's own aliasOf. Collapse
+        // planned edges through the completed map so chains still land on the
+        // ultimate ideal (Doktor reverse-order gap).
+        foreach (var edge in plan.Aliases)
+        {
+            var ultimateIdealId = TagAliasResolve.Ideal(edge.ChildId, aliasMap);
+            if (string.Equals(ultimateIdealId, edge.ChildId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var ultimateIdealName = byName.Values
+                .FirstOrDefault(t => string.Equals(t.Id, ultimateIdealId, StringComparison.Ordinal))
+                ?.Name ?? edge.ChildName;
+            aliasMap[edge.ParentId] = ultimateIdealId;
+            edge.ChildId = ultimateIdealId;
+            edge.ChildName = ultimateIdealName;
+        }
+
         return plan;
     }
 

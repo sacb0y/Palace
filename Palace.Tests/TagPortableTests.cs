@@ -302,6 +302,27 @@ public sealed class TagPortableTests
     }
 
     [Fact]
+    public void PlanMerge_SameFileChain_AliasListedBeforeIdeal()
+    {
+        // Doktor gap: alias entries appear before their ideal in the file.
+        var doc = TagPortable.Parse("""
+            {
+              "schema": "palace-tags/1",
+              "tags": [
+                { "name": "a", "aliasOf": "b" },
+                { "name": "b", "aliasOf": "c" },
+                { "name": "c" }
+              ]
+            }
+            """);
+
+        var plan = TagPortable.PlanMerge([], [], [], [], doc);
+        Assert.Equal(2, plan.AliasAdded);
+        Assert.Contains(plan.Aliases, e => e.ParentName == "b" && e.ChildName == "c");
+        Assert.Contains(plan.Aliases, e => e.ParentName == "a" && e.ChildName == "c");
+    }
+
+    [Fact]
     public void PlanMerge_IdempotentSameAliasEdge()
     {
         var existing = new[]
