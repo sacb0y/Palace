@@ -1341,15 +1341,15 @@ public sealed partial class FileOpService
 
                 try
                 {
-                    var assetUses = await _catalog.CountAssetTagsAsync(item.OldPath).ConfigureAwait(false);
-                    var links = await _catalog.CountTagGroupLinksAsync(item.OldPath).ConfigureAwait(false);
-                    if (assetUses > 0 || links > 0)
+                    // Unused-check + DELETE in one WriteAsync (CASCADE) — never delete an in-use tag.
+                    var deleted = await _catalog.TryDeleteUnusedCreatedTagAsync(item.OldPath)
+                        .ConfigureAwait(false);
+                    if (!deleted)
                     {
                         var keepName = string.IsNullOrWhiteSpace(item.NewPath) ? "tag" : item.NewPath;
                         return UndoNote.Skip($"kept {keepName}: still used");
                     }
 
-                    await _catalog.DeleteTagAsync(item.OldPath).ConfigureAwait(false);
                     return null;
                 }
                 catch (Exception ex)

@@ -151,6 +151,116 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
         Assert.Equal(existing.Id, (await _catalog.FindTagByNameAsync("wip"))!.Id);
     }
 
+    [Fact]
+    public async Task CreateTagUndo_SkipsWhenStillOnAnotherAsset()
+    {
+        var a = await AddAssetAsync("keep-a.png");
+        var b = await AddAssetAsync("keep-b.png");
+        var (tag, created) = await _catalog.GetOrCreateTagResultAsync("shared");
+        Assert.True(created);
+
+        var result = await _ops.AssignTagsAsync(
+            [a.Id],
+            [(tag.Id, tag.Name, TagSource.Manual)],
+            _projectId,
+            createdTags: [(tag.Id, tag.Name)]);
+        Assert.True(result.Ok, result.Message);
+
+        // Second asset holds the tag outside the undo batch → CreateTag undo must keep the row.
+        await _catalog.AssignTagAsync(b.Id, tag.Id, TagSource.Manual);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.DoesNotContain(tag.Id, await TagIdsOn(a.Id));
+        Assert.Contains(tag.Id, await TagIdsOn(b.Id));
+        Assert.NotNull(await _catalog.FindTagByNameAsync("shared"));
+    }
+
+    [Fact]
+    public async Task CreateTagUndo_SkipsWhenMembershipRemains()
+    {
+        var parent = await _catalog.CreateTagAsync("Medium");
+        var asset = await AddAssetAsync("mem.png");
+        var (tag, created) = await _catalog.GetOrCreateTagResultAsync("charcoal");
+        Assert.True(created);
+
+        var result = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [(tag.Id, tag.Name, TagSource.Manual)],
+            _projectId,
+            createdTags: [(tag.Id, tag.Name)]);
+        Assert.True(result.Ok, result.Message);
+        Assert.True(await _catalog.AddMembershipAsync(parent.Id, tag.Id));
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Empty(await TagIdsOn(asset.Id));
+        Assert.NotNull(await _catalog.FindTagByNameAsync("charcoal"));
+        Assert.False(await _catalog.TryDeleteUnusedCreatedTagAsync(tag.Id));
+    }
+
+    [Fact]
+    public async Task CreateTagUndo_SkipsWhenImplicationRemains()
+    {
+        var figure = await _catalog.CreateTagAsync("imp-figure");
+        var asset = await AddAssetAsync("imp.png");
+        var (tag, created) = await _catalog.GetOrCreateTagResultAsync("imp-character");
+        Assert.True(created, "quick-create should insert a new Tag row");
+
+        var result = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [(tag.Id, tag.Name, TagSource.Manual)],
+            _projectId,
+            createdTags: [(tag.Id, tag.Name)]);
+        Assert.True(result.Ok, result.Message);
+        var implied = await _catalog.AddImplicationAsync(tag.Id, figure.Id);
+        Assert.True(implied, "character → figure implication should insert");
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Empty(await TagIdsOn(asset.Id));
+        Assert.NotNull(await _catalog.FindTagByNameAsync("imp-character"));
+        Assert.False(await _catalog.TryDeleteUnusedCreatedTagAsync(tag.Id));
+    }
+
+    [Fact]
+    public async Task CreateTagUndo_SkipsWhenAliasRemains()
+    {
+        var ideal = await _catalog.CreateTagAsync("landscape");
+        var asset = await AddAssetAsync("als.png");
+        var (tag, created) = await _catalog.GetOrCreateTagResultAsync("vista");
+        Assert.True(created);
+
+        var result = await _ops.AssignTagsAsync(
+            [asset.Id],
+            [(tag.Id, tag.Name, TagSource.Manual)],
+            _projectId,
+            createdTags: [(tag.Id, tag.Name)]);
+        Assert.True(result.Ok, result.Message);
+        Assert.True((await _catalog.AddAliasAsync(tag.Id, ideal.Id)).Ok);
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Empty(await TagIdsOn(asset.Id));
+        // Alias edge keeps the alias Tag row alive through CreateTag undo.
+        Assert.NotNull(await _catalog.FindTagByNameAsync("vista"));
+        Assert.False(await _catalog.TryDeleteUnusedCreatedTagAsync(tag.Id));
+    }
+
+    [Fact]
+    public async Task TryDeleteUnusedCreatedTag_Atomic_FalseWhenUsed_TrueWhenFree()
+    {
+        var tag = await _catalog.CreateTagAsync("temp-free");
+        var asset = await AddAssetAsync("tmp.png");
+        await _catalog.AssignTagAsync(asset.Id, tag.Id, TagSource.Manual);
+        Assert.False(await _catalog.TryDeleteUnusedCreatedTagAsync(tag.Id));
+        Assert.NotNull(await _catalog.FindTagByNameAsync("temp-free"));
+
+        await _catalog.RemoveTagAsync(asset.Id, tag.Id);
+        Assert.True(await _catalog.TryDeleteUnusedCreatedTagAsync(tag.Id));
+        Assert.Null(await _catalog.FindTagByNameAsync("temp-free"));
+    }
+
     private async Task<Asset> AddAssetAsync(string fileName)
     {
         var path = Path.Combine(_source.Path, fileName);

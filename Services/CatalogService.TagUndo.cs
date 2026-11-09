@@ -189,18 +189,70 @@ public sealed partial class CatalogService
     }
 
     public Task<int> CountTagGroupLinksAsync(string tagId) =>
-        _db.ReadAsync(conn =>
+        _db.ReadAsync(conn => CountTagGroupLinks(conn, tagId));
+
+    /// <summary>
+    /// CreateTag Undo: unused-check + DELETE in <b>one</b> write so an in-use tag cannot
+    /// be deleted. Tag CASCADE clears membership / implication / alias / AssetTag.
+    /// Returns false when AssetTag, membership, implication, or alias still references it.
+    /// </summary>
+    public Task<bool> TryDeleteUnusedCreatedTagAsync(string tagId) =>
+        _db.WriteAsync(conn =>
         {
+            if (string.IsNullOrEmpty(tagId))
+            {
+                return false;
+            }
+
+            if (CountAssetTags(conn, tagId) > 0 || CountTagGroupLinks(conn, tagId) > 0)
+            {
+                return false;
+            }
+
+            InvalidateGraphCaches();
+            var assetIds = AssetsHavingAnyTag(conn, [tagId]);
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                SELECT
-                    (SELECT COUNT(*) FROM TagMembership WHERE ChildId = $id OR ParentId = $id)
-                  + (SELECT COUNT(*) FROM TagImplication WHERE TagId = $id OR ImpliedTagId = $id)
-                  + (SELECT COUNT(*) FROM TagAlias WHERE AliasTagId = $id OR IdealTagId = $id)
-                """;
+            cmd.CommandText = "DELETE FROM Tag WHERE Id = $id";
             cmd.Parameters.AddWithValue("$id", tagId);
-            return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+            cmd.ExecuteNonQuery();
+            foreach (var assetId in assetIds)
+            {
+                RefreshFts(conn, assetId);
+            }
+
+            return true;
         });
+
+    private static int CountAssetTags(SqliteConnection conn, string tagId, SqliteTransaction? tx = null)
+    {
+        using var cmd = conn.CreateCommand();
+        if (tx is not null)
+        {
+            cmd.Transaction = tx;
+        }
+
+        cmd.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE TagId = $id";
+        cmd.Parameters.AddWithValue("$id", tagId);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
+
+    private static int CountTagGroupLinks(SqliteConnection conn, string tagId, SqliteTransaction? tx = null)
+    {
+        using var cmd = conn.CreateCommand();
+        if (tx is not null)
+        {
+            cmd.Transaction = tx;
+        }
+
+        cmd.CommandText = """
+            SELECT
+                (SELECT COUNT(*) FROM TagMembership WHERE ChildId = $id OR ParentId = $id)
+              + (SELECT COUNT(*) FROM TagImplication WHERE TagId = $id OR ImpliedTagId = $id)
+              + (SELECT COUNT(*) FROM TagAlias WHERE AliasTagId = $id OR IdealTagId = $id)
+            """;
+        cmd.Parameters.AddWithValue("$id", tagId);
+        return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
+    }
 
     private static TagDeleteSnapshot? ReadTagSnapshot(SqliteConnection conn, string tagId)
     {

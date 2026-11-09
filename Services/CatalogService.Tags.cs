@@ -378,13 +378,7 @@ public sealed partial class CatalogService
 
     /// <summary>How many AssetTag rows reference this tag (any source).</summary>
     public Task<int> CountAssetTagsAsync(string tagId) =>
-        _db.ReadAsync(conn =>
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT COUNT(*) FROM AssetTag WHERE TagId = $id";
-            cmd.Parameters.AddWithValue("$id", tagId);
-            return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
-        });
+        _db.ReadAsync(conn => CountAssetTags(conn, tagId));
 
     public Task<Tag> CreateChildTagAsync(string parentId, string name, int priority = 0) =>
         _db.WriteAsync(conn =>
