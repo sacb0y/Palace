@@ -30,10 +30,13 @@ public sealed class BulkTagFaultProbe
     /// <summary>Throw after all mutates, immediately before journal insert.</summary>
     public bool FailBeforeJournal { get; init; }
 
-    /// <summary>Throw while inserting the FileOp journal rows.</summary>
-    public bool FailDuringJournal { get; init; }
+    /// <summary>
+    /// Throw after the FileOpBatch header and this many FileOpItem inserts
+    /// (0 = after header only; 1 = header + first item; …). null = never.
+    /// Proves a mid-journal abort still rolls back tags <b>and</b> journal rows.
+    /// </summary>
+    public int? FailAfterJournalItems { get; init; }
 }
-
 /// <summary>Catalog: bulk assign/remove + FileOp journal in one write transaction (T7 failure-safety).</summary>
 public sealed partial class CatalogService
 {
@@ -246,18 +249,30 @@ public sealed partial class CatalogService
         List<FileOpItem> items,
         BulkTagFaultProbe? probe)
     {
-        if (probe is not null && probe.FailDuringJournal)
+        Action<int>? afterProgress = null;
+        if (probe?.FailAfterJournalItems is int failAfter)
         {
-            throw new BulkTagFaultException("bulk-tag fault during journal");
+            afterProgress = written =>
+            {
+                if (written >= failAfter)
+                {
+                    throw new BulkTagFaultException(
+                        $"bulk-tag fault after journal progress items={written}");
+                }
+            };
         }
 
-        return InsertFileOpBatch(conn, tx, new FileOpBatch
-        {
-            ProjectId = projectId,
-            Kind = kind,
-            Summary = summary,
-            Items = items
-        });
+        return InsertFileOpBatch(
+            conn,
+            tx,
+            new FileOpBatch
+            {
+                ProjectId = projectId,
+                Kind = kind,
+                Summary = summary,
+                Items = items
+            },
+            afterProgress);
     }
 
     private sealed class BulkTagFaultException : Exception

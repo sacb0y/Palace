@@ -91,23 +91,49 @@ public sealed class TagBulkFailureSafetyTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Assign_JournalFault_RollsBackMutates()
+    public async Task Assign_MidJournalFault_RollsBackTagsAndJournal()
     {
         var tag = await _catalog.CreateTagAsync("jrnl-a");
         var a = await AddAssetAsync("ja.png");
         var b = await AddAssetAsync("jb.png");
+        var c = await AddAssetAsync("jc.png");
 
-        _catalog.TestBulkTagFault = new BulkTagFaultProbe { FailDuringJournal = true };
+        // Header + first FileOpItem land inside the open tx, then fault — both tags and
+        // journal rows must disappear on rollback (not merely "before InsertFileOpBatch").
+        _catalog.TestBulkTagFault = new BulkTagFaultProbe { FailAfterJournalItems = 1 };
+        var result = await _ops.AssignTagsAsync(
+            [a.Id, b.Id, c.Id],
+            [(tag.Id, tag.Name, TagSource.Manual)],
+            _projectId);
+
+        Assert.False(result.Ok);
+        Assert.Equal(CatalogService.BulkTagAbortedMessage, result.Message);
+        Assert.DoesNotContain(tag.Id, await TagIdsOn(a.Id));
+        Assert.DoesNotContain(tag.Id, await TagIdsOn(b.Id));
+        Assert.DoesNotContain(tag.Id, await TagIdsOn(c.Id));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+        Assert.Equal(0, await CountFileOpBatchesAsync());
+        Assert.Equal(0, await CountFileOpItemsAsync());
+    }
+
+    [Fact]
+    public async Task Assign_JournalHeaderOnlyFault_RollsBackTagsAndJournal()
+    {
+        var tag = await _catalog.CreateTagAsync("jrnl-hdr");
+        var a = await AddAssetAsync("jha.png");
+        var b = await AddAssetAsync("jhb.png");
+
+        _catalog.TestBulkTagFault = new BulkTagFaultProbe { FailAfterJournalItems = 0 };
         var result = await _ops.AssignTagsAsync(
             [a.Id, b.Id],
             [(tag.Id, tag.Name, TagSource.Manual)],
             _projectId);
 
         Assert.False(result.Ok);
-        Assert.DoesNotContain(tag.Id, await TagIdsOn(a.Id));
-        Assert.DoesNotContain(tag.Id, await TagIdsOn(b.Id));
-        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+        Assert.Empty(await TagIdsOn(a.Id));
+        Assert.Empty(await TagIdsOn(b.Id));
         Assert.Equal(0, await CountFileOpBatchesAsync());
+        Assert.Equal(0, await CountFileOpItemsAsync());
     }
 
     [Fact]
@@ -178,30 +204,48 @@ public sealed class TagBulkFailureSafetyTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SuccessfulAssign_StillUndoesAndRedoesAsOneBatch()
+    public async Task SuccessfulAssign_UndoThenRedoRestoresManualOnCanonical()
     {
-        var tag = await _catalog.CreateTagAsync("ok-a");
+        // Palace has no FileOp Redo stack; redo = re-apply the same bulk assign after Undo.
+        var doggy = await _catalog.CreateTagAsync("redo-doggy");
+        var dog = await _catalog.CreateTagAsync("redo-dog");
+        Assert.True((await _catalog.AddAliasAsync(doggy.Id, dog.Id)).Ok);
         var a = await AddAssetAsync("oka.png");
         var b = await AddAssetAsync("okb.png");
 
-        var result = await _ops.AssignTagsAsync(
-            [a.Id, b.Id],
-            [(tag.Id, tag.Name, TagSource.Manual)],
-            _projectId);
+        var paste = new (string TagId, string TagName, TagSource Source)[]
+        {
+            (doggy.Id, doggy.Name, TagSource.Manual)
+        };
+        var result = await _ops.AssignTagsAsync([a.Id, b.Id], paste, _projectId);
         Assert.True(result.Ok, result.Message);
         Assert.False(string.IsNullOrEmpty(result.BatchId));
-        Assert.Contains(tag.Id, await TagIdsOn(a.Id));
-        Assert.Contains(tag.Id, await TagIdsOn(b.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(a.Id, dog.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(b.Id, dog.Id));
+        Assert.DoesNotContain(doggy.Id, await TagIdsOn(a.Id));
 
         var undo = await _ops.UndoLastAsync(_projectId);
         Assert.True(undo.Ok, undo.Message);
-        Assert.DoesNotContain(tag.Id, await TagIdsOn(a.Id));
-        Assert.DoesNotContain(tag.Id, await TagIdsOn(b.Id));
+        Assert.DoesNotContain(dog.Id, await TagIdsOn(a.Id));
+        Assert.DoesNotContain(dog.Id, await TagIdsOn(b.Id));
         Assert.Null(await _ops.PeekUndoAsync(_projectId));
+
+        var redo = await _ops.AssignTagsAsync([a.Id, b.Id], paste, _projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.False(string.IsNullOrEmpty(redo.BatchId));
+        Assert.Equal(TagSource.Manual, await SourceOf(a.Id, dog.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(b.Id, dog.Id));
+        Assert.DoesNotContain(doggy.Id, await TagIdsOn(a.Id));
+        Assert.DoesNotContain(doggy.Id, await TagIdsOn(b.Id));
+
+        var undoRedo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoRedo.Ok, undoRedo.Message);
+        Assert.Empty(await TagIdsOn(a.Id));
+        Assert.Empty(await TagIdsOn(b.Id));
     }
 
     [Fact]
-    public async Task SuccessfulRemove_StillUndoesRestoringSources()
+    public async Task SuccessfulRemove_UndoRestoresSources_RedoRemoveClearsAgain()
     {
         var tag = await _catalog.CreateTagAsync("ok-rm");
         var a = await AddAssetAsync("okra.png");
@@ -209,21 +253,32 @@ public sealed class TagBulkFailureSafetyTests : IAsyncLifetime
         await _catalog.AssignTagAsync(a.Id, tag.Id, TagSource.Manual);
         await _catalog.AssignTagAsync(b.Id, tag.Id, TagSource.Prompt);
 
-        var result = await _ops.RemoveTagAsync(
-            [(a.Id, TagSource.Manual), (b.Id, TagSource.Prompt)],
-            tag.Id,
-            tag.Name,
-            _projectId);
+        var rows = new (string AssetId, TagSource Source)[]
+        {
+            (a.Id, TagSource.Manual),
+            (b.Id, TagSource.Prompt)
+        };
+        var result = await _ops.RemoveTagAsync(rows, tag.Id, tag.Name, _projectId);
         Assert.True(result.Ok, result.Message);
 
         var undo = await _ops.UndoLastAsync(_projectId);
         Assert.True(undo.Ok, undo.Message);
         Assert.Equal(TagSource.Manual, await SourceOf(a.Id, tag.Id));
         Assert.Equal(TagSource.Prompt, await SourceOf(b.Id, tag.Id));
+
+        var redoRemove = await _ops.RemoveTagAsync(rows, tag.Id, tag.Name, _projectId);
+        Assert.True(redoRemove.Ok, redoRemove.Message);
+        Assert.DoesNotContain(tag.Id, await TagIdsOn(a.Id));
+        Assert.DoesNotContain(tag.Id, await TagIdsOn(b.Id));
+
+        var undoRedo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undoRedo.Ok, undoRedo.Message);
+        Assert.Equal(TagSource.Manual, await SourceOf(a.Id, tag.Id));
+        Assert.Equal(TagSource.Prompt, await SourceOf(b.Id, tag.Id));
     }
 
     [Fact]
-    public async Task SuccessfulPaste_AliasIdeal_OneUndoClearsAll()
+    public async Task SuccessfulPaste_AliasIdeal_UndoThenRedoRestoresCanonicalOnly()
     {
         var doggy = await _catalog.CreateTagAsync("failsafe-doggy");
         var dog = await _catalog.CreateTagAsync("failsafe-dog");
@@ -232,17 +287,15 @@ public sealed class TagBulkFailureSafetyTests : IAsyncLifetime
 
         var a = await AddAssetAsync("fsp1.png");
         var b = await AddAssetAsync("fsp2.png");
+        var paste = new (string TagId, string TagName, TagSource Source)[]
+        {
+            (doggy.Id, doggy.Name, TagSource.Manual),
+            (wolf.Id, wolf.Name, TagSource.Manual),
+            (doggy.Id, doggy.Name, TagSource.Implied)
+        };
 
-        var result = await _ops.AssignTagsAsync(
-            [a.Id, b.Id],
-            [
-                (doggy.Id, doggy.Name, TagSource.Manual),
-                (wolf.Id, wolf.Name, TagSource.Manual),
-                (doggy.Id, doggy.Name, TagSource.Implied)
-            ],
-            _projectId);
+        var result = await _ops.AssignTagsAsync([a.Id, b.Id], paste, _projectId);
         Assert.True(result.Ok, result.Message);
-
         Assert.Contains(dog.Id, await TagIdsOn(a.Id));
         Assert.DoesNotContain(doggy.Id, await TagIdsOn(a.Id));
         Assert.Contains(wolf.Id, await TagIdsOn(b.Id));
@@ -251,6 +304,15 @@ public sealed class TagBulkFailureSafetyTests : IAsyncLifetime
         Assert.True(undo.Ok, undo.Message);
         Assert.Empty(await TagIdsOn(a.Id));
         Assert.Empty(await TagIdsOn(b.Id));
+
+        var redo = await _ops.AssignTagsAsync([a.Id, b.Id], paste, _projectId);
+        Assert.True(redo.Ok, redo.Message);
+        Assert.Equal(TagSource.Manual, await SourceOf(a.Id, dog.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(a.Id, wolf.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(b.Id, dog.Id));
+        Assert.Equal(TagSource.Manual, await SourceOf(b.Id, wolf.Id));
+        Assert.DoesNotContain(doggy.Id, await TagIdsOn(a.Id));
+        Assert.DoesNotContain(doggy.Id, await TagIdsOn(b.Id));
     }
 
     private async Task<Asset> AddAssetAsync(string fileName)
@@ -291,6 +353,14 @@ public sealed class TagBulkFailureSafetyTests : IAsyncLifetime
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM FileOpBatch";
+            return Convert.ToInt64(cmd.ExecuteScalar());
+        });
+
+    private Task<long> CountFileOpItemsAsync() =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM FileOpItem";
             return Convert.ToInt64(cmd.ExecuteScalar());
         });
 

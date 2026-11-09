@@ -114,8 +114,14 @@ public sealed partial class CatalogService
     /// <summary>
     /// Inserts a journal batch inside an open transaction (caller commits / rolls back).
     /// Used by bulk tag assign/remove so mutates + journal share one SQLite transaction.
+    /// <paramref name="afterJournalProgress"/> is invoked after the batch header (itemsWritten=0)
+    /// and after each item insert (itemsWritten=1..N) for test fault injection.
     /// </summary>
-    internal static string InsertFileOpBatch(SqliteConnection conn, SqliteTransaction tx, FileOpBatch batch)
+    internal static string InsertFileOpBatch(
+        SqliteConnection conn,
+        SqliteTransaction tx,
+        FileOpBatch batch,
+        Action<int>? afterJournalProgress = null)
     {
         if (string.IsNullOrEmpty(batch.Id))
         {
@@ -142,6 +148,8 @@ public sealed partial class CatalogService
             cmd.ExecuteNonQuery();
         }
 
+        afterJournalProgress?.Invoke(0);
+
         for (var i = 0; i < batch.Items.Count; i++)
         {
             var item = batch.Items[i];
@@ -161,6 +169,7 @@ public sealed partial class CatalogService
             cmd.Parameters.AddWithValue("$oldSource", (object?)item.OldSourceId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$newSource", (object?)item.NewSourceId ?? DBNull.Value);
             cmd.ExecuteNonQuery();
+            afterJournalProgress?.Invoke(i + 1);
         }
 
         return batch.Id;
