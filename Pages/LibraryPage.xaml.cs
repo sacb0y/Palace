@@ -531,8 +531,9 @@ public sealed partial class LibraryPage : Page
         ViewModel.RebuildAssignPanelPublic();
         // Open the preview only when the user has it hidden — never flip a visible pane off.
         var openedPreview = false;
+        // Dock host stays Visibility=Visible (Opacity hide); use pane mode, not Visibility.
         if (ViewModel.HasSelection
-            && ScrPreviewPane.Visibility != Visibility.Visible
+            && _previewPaneMode is not (PaneMode.Docked or PaneMode.Overlay)
             && (!_previewPane.UserShow || _previewPane.AutoHidden))
         {
             ApplyPreviewToggleFromUser();
@@ -794,11 +795,11 @@ public sealed partial class LibraryPage : Page
         ColMosaic.MinWidth = 0;
         ColPreview.Width = new GridLength(PreviewPane.GridPreviewColumnWidth(layout));
         ColPreview.MinWidth = 0;
-        var dockWidth = PreviewPane.DockHostWidth(layout);
-        if (dockWidth > 0)
-        {
-            GrdPreviewDockHost.Width = dockWidth;
-        }
+        var dock = PreviewPane.DockChrome(layout);
+        GrdPreviewDockHost.Width = dock.Width;
+        GrdPreviewDockHost.Opacity = dock.Opacity;
+        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
+        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Right;
 
         if (!showing)
         {

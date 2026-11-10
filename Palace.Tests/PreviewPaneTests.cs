@@ -235,10 +235,14 @@ public sealed class PreviewPaneTests
         Assert.Equal(userWidth, docked.Preview, 0.01);
         Assert.Equal(userWidth, PreviewPane.DockHostWidth(docked), 0.01);
         Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(docked));
+        var dockShown = PreviewPane.DockChrome(docked);
+        Assert.Equal(userWidth, dockShown.Width, 0.01);
+        Assert.Equal(1, dockShown.Opacity);
+        Assert.True(dockShown.HitTestVisible);
         Assert.True(docked.Mosaic >= LibraryColumnLayout.MosaicMinWidth - 0.01);
 
-        // Hide → show three times: dock host width + mosaic reservation restore;
-        // Grid ColPreview stays 0 (right-aligned host — no Width 0↔N cycle).
+        // Hide → show three times: dock chrome width/opacity restore; ColPreview stays 0;
+        // hide is Opacity=0 (not Collapse) so WinUI never re-enters Collapsed→Visible.
         for (var i = 0; i < 3; i++)
         {
             s = PreviewPane.ApplyToggle(s);
@@ -249,6 +253,10 @@ public sealed class PreviewPaneTests
             Assert.Equal(0, hidden.Preview);
             Assert.Equal(0, PreviewPane.DockHostWidth(hidden));
             Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(hidden));
+            var dockHidden = PreviewPane.DockChrome(hidden);
+            Assert.Equal(0, dockHidden.Width);
+            Assert.Equal(0, dockHidden.Opacity);
+            Assert.False(dockHidden.HitTestVisible);
             Assert.True(hidden.Mosaic > docked.Mosaic);
 
             s = PreviewPane.ApplyToggle(s);
@@ -259,6 +267,10 @@ public sealed class PreviewPaneTests
             Assert.Equal(userWidth, shown.Preview, 0.01);
             Assert.Equal(userWidth, PreviewPane.DockHostWidth(shown), 0.01);
             Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(shown));
+            var chrome = PreviewPane.DockChrome(shown);
+            Assert.Equal(userWidth, chrome.Width, 0.01);
+            Assert.Equal(1, chrome.Opacity);
+            Assert.True(chrome.HitTestVisible);
             Assert.Equal(docked.Mosaic, shown.Mosaic, 0.01);
             Assert.Equal(docked.Tree, shown.Tree, 0.01);
             Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, shown.Mode));

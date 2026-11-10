@@ -201,34 +201,36 @@ public sealed partial class LibraryPage
     {
         var mode = effective.Mode;
         var fromMode = _previewVisualMode;
+        var layout = PreviewPane.Layout(effective);
+        var dock = PreviewPane.DockChrome(layout);
         HostPreviewBody(mode);
         ApplyPreviewOverlayWidth();
         UpdatePreviewEdgeTab(mode);
         SyncPreviewToggleButton();
 
-        // Show dock/overlay hosts before Composition motion — animating a Collapsed
-        // element left Offset/visual at the grid origin (Preview painted over the tree
-        // until the next resize). Hide collapses after kicking the out motion.
-        if (mode == PaneMode.Docked)
-        {
-            GrdPreviewDockHost.Visibility = Visibility.Visible;
-            ScrPreviewPane.Visibility = Visibility.Visible;
-        }
+        // Dock host: never Collapsed after load. FENRIR #177 — first Collapsed→Visible
+        // (cold start) was fine; every later hide→show left ScrPreviewPane at X≈451 over
+        // the folder tree. Opacity + Width + hit-test only; no Composition Offset on dock.
+        GrdPreviewDockHost.Visibility = Visibility.Visible;
+        ScrPreviewPane.Visibility = Visibility.Visible;
+        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Right;
+        GrdPreviewDockHost.Width = dock.Width;
+        GrdPreviewDockHost.Opacity = dock.Opacity;
+        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
+        ResetPreviewMotionOffset(GrdPreviewDockHost);
 
         if (mode == PaneMode.Overlay)
         {
             BrdPreviewOverlay.Visibility = Visibility.Visible;
         }
 
-        AnimatePreviewModeChange(fromMode, mode);
-        _previewVisualMode = mode;
-
-        if (mode != PaneMode.Docked)
+        // Overlay may still use slide motion; dock does not (Offset fights Right align).
+        if (mode == PaneMode.Overlay || fromMode == PaneMode.Overlay)
         {
-            GrdPreviewDockHost.Visibility = Visibility.Collapsed;
-            ScrPreviewPane.Visibility = Visibility.Collapsed;
-            ResetPreviewMotionOffset(GrdPreviewDockHost);
+            AnimatePreviewOverlayChange(fromMode, mode);
         }
+
+        _previewVisualMode = mode;
 
         if (mode != PaneMode.Overlay)
         {
@@ -317,32 +319,21 @@ public sealed partial class LibraryPage
         }
     }
 
-    private void AnimatePreviewModeChange(PaneMode fromMode, PaneMode toMode)
+    private void AnimatePreviewOverlayChange(PaneMode fromMode, PaneMode toMode)
     {
         if (fromMode == toMode || !PreviewMotionEnabled())
         {
             return;
         }
 
-        // Prefer the appearing panel; never start motion on the inactive host
-        // (old code targeted GrdPreviewDockHost whenever toMode != Overlay, including
-        // Overlay→Hidden, and started motion on Collapsed elements).
+        // Dock host is not animated — Composition Offset.X on it correlated with
+        // hide→show landing over the folder tree (FENRIR measured X≈451).
         UIElement? target = null;
         var showing = false;
-        if (toMode == PaneMode.Docked && fromMode != PaneMode.Docked)
-        {
-            target = GrdPreviewDockHost;
-            showing = true;
-        }
-        else if (toMode == PaneMode.Overlay && fromMode != PaneMode.Overlay)
+        if (toMode == PaneMode.Overlay && fromMode != PaneMode.Overlay)
         {
             target = BrdPreviewOverlay;
             showing = true;
-        }
-        else if (fromMode == PaneMode.Docked && toMode != PaneMode.Docked)
-        {
-            target = GrdPreviewDockHost;
-            showing = false;
         }
         else if (fromMode == PaneMode.Overlay && toMode != PaneMode.Overlay)
         {

@@ -1955,16 +1955,18 @@
             </Grid>
         </Grid>
 
-        <!-- Right-aligned over tree+mosaic: ColPreview stays Width=0 so hide→show never
-             cycles a ColumnDefinition 0↔N (that arranged this host over the folder tree). -->
+        <!-- Right-aligned over tree+mosaic. Stay Visibility=Visible; hide via Opacity=0
+             (Collapsed→Visible after the first show left the pane over the folder tree). -->
         <Grid
             x:Name="GrdPreviewDockHost"
             Grid.Row="1"
             Grid.Column="0"
             Grid.ColumnSpan="3"
-            Width="340"
+            Width="0"
             HorizontalAlignment="Right"
-            Visibility="Collapsed">
+            Opacity="0"
+            IsHitTestVisible="False"
+            Visibility="Visible">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
