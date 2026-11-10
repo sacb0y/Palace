@@ -68,7 +68,13 @@ HLSL / CPU–GPU agreement (P5), deleting legacy (P6), gain maps / desat tuning
 **P3 (thumbs):** `ImagingPathKind` Thumb/Full + `ImagingThumbToneMap` —
 lazy Working from present scRGB (absolute 80-nit) **or** relative linear
 (1.0 → Working 1.0 for SDR/WideGamut JXL), Option A LUT → BGRA8; mosaic
-cache gen 8. Full SDR (P4) and HDR present (P5) still legacy.
+cache gen 8.
+
+**P4 (SDR full):** `ImagingFullToneMap` — Option A
+`ImagingPathKind.Full` (direct `MapFrame`) → BT.709 linear for the gallery
+swapchain when `PresentMatchesThumbToneMap` (SDR panel, or linear JXL on
+HDR). Legacy Reinhard remains fallback; heatmap still measures source
+scRGB. HDR PQ/HLG present stays legacy until **P5**.
 
 ## P2 Working contract (accuracy / docs)
 

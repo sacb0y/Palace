@@ -167,8 +167,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             float outcomeExposure = 0f;
             float outcomeWhite = 0f;
             var sdrWhite = _sdrWhiteLevelNits;
-            // Same ToneMap.Analyze + Reinhard as mosaic thumbs (StillDecode.FromScrgb).
-            // Cached sticky exposure/white reuse Fit stats on 1:1 / resize.
+            // P4: Prefer Imaging Option A Full when present matches thumb tone
+            // (SDR panel, or linear JXL on HDR). Fall back to legacy Reinhard.
+            // Heatmap viz still measures source scRGB (not pre-tonemapped).
             var matchThumb = GalleryPresent.PresentMatchesThumbToneMap(
                 displayHdr, frame.BufferTransfer);
             // S5: HDR↔SDR switch must not reuse sticky Analyze from the other mode.
@@ -178,7 +179,31 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 resolvedWhite = null;
             }
 
-            if (matchThumb)
+            float[]? imagingScrgb = null;
+            var usedImaging = false;
+            if (matchThumb && viz == HdrVizMode.None)
+            {
+                imagingScrgb = await Task.Run(
+                    () => ImagingFullToneMap.TryMapFrameToPresentScrgb(
+                        frame.Working,
+                        frame.ScrgbRgba,
+                        frame.Width,
+                        frame.Height,
+                        cancellationToken: cancellation),
+                    cancellation).ConfigureAwait(false);
+                usedImaging = imagingScrgb is not null;
+            }
+
+            if (usedImaging)
+            {
+                map = GalleryPresent.PresentMapImagingFull(
+                    displayIsHdr: displayHdr,
+                    sdrWhiteLevelNits: sdrWhite);
+                // Imaging owns Analyze; do not stick Reinhard exposure/white.
+                outcomeExposure = 0f;
+                outcomeWhite = 0f;
+            }
+            else if (matchThumb)
             {
                 if (resolvedExposure is null or <= 0
                     || resolvedWhite is null or <= 0)
@@ -221,15 +246,19 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 p995Log = frame.MaxScrgb > 0 ? frame.MaxScrgb : p995Log;
             }
 
+            var shoulder = !usedImaging && matchThumb && map.ReinhardWhite > 1f ? 1 : 0;
             DisplayHdr.WriteDebug(
                 $"SdrTonemap {frame.Width}x{frame.Height} exposure={outcomeExposure:0.####} "
                 + $"white={outcomeWhite:0.####} sdrWhite={(sdrWhite > 0 ? sdrWhite : GalleryPresent.ScrgbNits):0.#} "
                 + $"peakScrgb={frame.MaxScrgb:0.####} maxNits={frame.MaxNits:0.#} "
-                + $"shoulder={(matchThumb && map.ReinhardWhite > 1f ? 1 : 0)}"
+                + $"shoulder={shoulder}"
+                + (usedImaging ? " imaging-full" : "")
                 + (displayHdr ? (matchThumb ? " hdr-display+thumb" : " hdr-display") : ""));
             SdrTonemapLog.TryAppendPresent(
                 path: frame.SourcePath,
-                decoder: displayHdr ? "hdr-display" : frame.PresentDecoder,
+                decoder: usedImaging
+                    ? "imaging-full"
+                    : displayHdr ? "hdr-display" : frame.PresentDecoder,
                 intensityTarget: frame.IntensityTarget,
                 scale: frame.IntensityScale,
                 bufferTransfer: HdrJxlPresent.BufferTransferLabel(frame.BufferTransfer),
@@ -237,7 +266,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 white: outcomeWhite,
                 exposure: outcomeExposure,
                 sdrWhiteLevelNits: sdrWhite,
-                shoulder: matchThumb && map.ReinhardWhite > 1f ? 1 : 0);
+                shoulder: shoulder);
 
             if (_disposed)
             {
@@ -249,9 +278,10 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 return HdrPresentOutcome.Failed;
             }
 
+            var rasterSrc = imagingScrgb ?? frame.ScrgbRgba;
             await Task.Run(
                 () => HdrRasterize.Fill(
-                    frame.ScrgbRgba,
+                    rasterSrc,
                     frame.Width,
                     frame.Height,
                     scaling,
@@ -284,9 +314,9 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 Upload(half, vw, vh);
                 Present();
                 AppendCompositionScaleLog();
-                // Sticky thumb Analyze stats when the map used them.
-                LastSdrExposure = matchThumb ? outcomeExposure : 0f;
-                LastSdrReinhardWhite = matchThumb ? outcomeWhite : 0f;
+                // Sticky Reinhard Analyze only when legacy thumb-match ran.
+                LastSdrExposure = matchThumb && !usedImaging ? outcomeExposure : 0f;
+                LastSdrReinhardWhite = matchThumb && !usedImaging ? outcomeWhite : 0f;
                 _stickyDisplayHdr = matchThumb ? displayHdr : null;
                 outcome = HdrPresentOutcome.Presented;
             });

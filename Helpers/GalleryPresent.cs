@@ -701,17 +701,38 @@ public static class GalleryPresent
         var white = reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f;
         // M1: leave exposure/white alone (Reinhard is not linear). OutputScale
         // and ClipScrgb = k → multiply curve output by k and fold/clip to k.
-        var k = 1f;
-        if (displayIsHdr)
+        var k = ThumbMatchOutputScale(displayIsHdr, sdrWhiteLevelNits);
+        return new(scale, k, ReinhardWhite: white, SoftNegatives: false, OutputScale: k);
+    }
+
+    /// <summary>
+    /// P4 Imaging full path: source is already Option A display-referred
+    /// BT.709 linear (no Reinhard). Same HDR-panel ×SdrWhite/80 lift as
+    /// <see cref="PresentMapThumbMatch"/>.
+    /// </summary>
+    public static HdrPresentMap PresentMapImagingFull(
+        bool displayIsHdr = false,
+        float sdrWhiteLevelNits = 0f)
+    {
+        var k = ThumbMatchOutputScale(displayIsHdr, sdrWhiteLevelNits);
+        return new(1f, k, ReinhardWhite: 0f, SoftNegatives: false, OutputScale: k);
+    }
+
+    /// <summary>
+    /// Composition lift for thumb-match / Imaging full on an HDR panel
+    /// (<c>SdrWhite/80</c>); 1 on SDR.
+    /// </summary>
+    public static float ThumbMatchOutputScale(
+        bool displayIsHdr,
+        float sdrWhiteLevelNits = 0f)
+    {
+        if (!displayIsHdr)
         {
-            var paper = EffectiveSdrWhiteNits(sdrWhiteLevelNits) / ScrgbNits;
-            if (paper > 0 && float.IsFinite(paper))
-            {
-                k = paper;
-            }
+            return 1f;
         }
 
-        return new(scale, k, ReinhardWhite: white, SoftNegatives: false, OutputScale: k);
+        var paper = EffectiveSdrWhiteNits(sdrWhiteLevelNits) / ScrgbNits;
+        return paper > 0 && float.IsFinite(paper) ? paper : 1f;
     }
 
     /// <summary>

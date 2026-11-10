@@ -67,6 +67,7 @@
     <Compile Include="..\Helpers\HdrJxlPresent.cs" Link="HdrJxlPresent.cs" />
     <Compile Include="..\Helpers\ImagingStillNormalize.cs" Link="ImagingStillNormalize.cs" />
     <Compile Include="..\Helpers\ImagingThumbToneMap.cs" Link="ImagingThumbToneMap.cs" />
+    <Compile Include="..\Helpers\ImagingFullToneMap.cs" Link="ImagingFullToneMap.cs" />
     <Compile Include="..\Helpers\ExrPresentWorking.cs" Link="ExrPresentWorking.cs" />
     <Compile Include="..\Helpers\SdrTonemapLog.cs" Link="SdrTonemapLog.cs" />
     <Compile Include="..\Services\JxlDecode.cs" Link="JxlDecode.cs" />
