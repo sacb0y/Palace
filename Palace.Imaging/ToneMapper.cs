@@ -35,8 +35,8 @@ public static class ToneMapper
         ob = b * scale;
 
         var ld = OutputLimit(in p);
-        // N2 / P7: desat vs Ld — with Option A ending at display white (HDR at
-        // Ld), peak rarely exceeds Ld, so desat currently never engages (P7).
+        // N2 / P7 B0: desat vs Ld is structurally dead under Option A / BT.2390
+        // (post-map peak = MapScalar ≤ Ld). No behaviour change; A1–A4 deferred.
         GamutMap.DesaturateHighlights(ref or, ref og, ref ob, ld);
         // SDR: clip at display white. HDR: at Ld. No reserved headroom above.
         GamutMap.HighlightSoftClip(ref or, ref og, ref ob, ld);

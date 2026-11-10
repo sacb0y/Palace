@@ -7,8 +7,14 @@ public static class GamutMap
 {
     /// <summary>
     /// Desaturate toward luminance when <b>tone-mapped</b> peak exceeds
-    /// display Ld (N2). At exactly Ld there is no desat — only the overshoot
-    /// is greyed. Uses <c>smoothstep(Ld, 1.25·Ld, peak)</c>.
+    /// display Ld (N2). Uses <c>smoothstep(Ld, 1.25·Ld, peak)</c>.
+    /// <para>
+    /// <b>Structurally dead under Option A / BT.2390 (P7 B0):</b> maxRGB scale
+    /// maps peak to <c>MapScalar(max) ≤ Ld</c> (SDR display white / HDR Ld), so
+    /// post-map peak never enters the smoothstep band. Kept as a no-op safety
+    /// hook; engagement (A1–A4) needs Isiac A/B — not invented here. Gain maps
+    /// stay detect + SDR base (hdr-skiv), not reconstruct.
+    /// </para>
     /// </summary>
     public static void DesaturateHighlights(ref float r, ref float g, ref float b, float ld)
     {
