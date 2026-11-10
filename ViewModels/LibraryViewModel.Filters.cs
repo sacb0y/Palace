@@ -167,10 +167,11 @@ public partial class LibraryViewModel
             else if (IsAllRejectedView && !IsTagBrowse)
             {
                 var all = await _catalog.GetAssetsAsync(projectId: projectId, sort: MosaicSort);
-                var sourceRoot = FolderTree.FirstOrDefault()?.Path;
+                var sourceRoot = AllRejectedSourceRoot;
+                var rejected = DeleteRejected.OnlyRejected(all);
                 assets = string.IsNullOrWhiteSpace(sourceRoot)
-                    ? DeleteRejected.OnlyRejected(all)
-                    : DeleteRejected.InScope(all, sourceRoot);
+                    ? rejected
+                    : DeleteRejected.InScope(rejected, sourceRoot);
             }
             else if (folderPath is not null)
             {

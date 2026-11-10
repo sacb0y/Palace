@@ -150,6 +150,37 @@ public static class DeleteRejected
             ? $"Delete {n} permanently"
             : $"Move {n} to Recycle Bin";
 
+    /// <summary>Retry after partial failure keeps the destination from that run.</summary>
+    public static DeleteRejectedDestination RetryDestination(DeleteRejectedDestination last) => last;
+
+    /// <summary>
+    /// Confirm-dialog primary count/bytes for the selected scope + destination.
+    /// Recycle subtracts network files in that scope; Permanent keeps the full totals.
+    /// </summary>
+    public static void DialogActionableTotals(
+        int count,
+        long bytes,
+        int networkInScope,
+        long networkBytesInScope,
+        DeleteRejectedDestination destination,
+        out int actionableCount,
+        out long actionableBytes,
+        out int networkShown)
+    {
+        networkShown = destination == DeleteRejectedDestination.RecycleBin
+            ? Math.Max(0, networkInScope)
+            : 0;
+        if (destination == DeleteRejectedDestination.RecycleBin && networkShown > 0)
+        {
+            actionableCount = Math.Max(0, count - networkShown);
+            actionableBytes = Math.Max(0, bytes - networkBytesInScope);
+            return;
+        }
+
+        actionableCount = count;
+        actionableBytes = bytes;
+    }
+
     public static string NetworkSkipNote(int k) =>
         k <= 0
             ? ""

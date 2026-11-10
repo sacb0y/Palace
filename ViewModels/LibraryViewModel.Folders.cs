@@ -201,7 +201,15 @@ public partial class LibraryViewModel
 
         if (IsAllRejectedView)
         {
-            var root = FolderTree.FirstOrDefault();
+            var sourceRoot = AllRejectedSourceRoot;
+            FolderNode? root = null;
+            if (!string.IsNullOrWhiteSpace(sourceRoot))
+            {
+                root = FolderTree.FirstOrDefault(r =>
+                    string.Equals(r.Path, sourceRoot, StringComparison.OrdinalIgnoreCase));
+            }
+
+            root ??= FolderTree.FirstOrDefault();
             if (root is not null)
             {
                 Breadcrumbs.Add(new PathCrumb { Name = root.Name, Path = root.Path });

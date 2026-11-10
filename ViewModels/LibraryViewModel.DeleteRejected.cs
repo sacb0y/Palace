@@ -14,6 +14,8 @@ public partial class LibraryViewModel
 {
     private List<DeleteRejectedFailure> _lastDeleteRejectedFailures = [];
     private List<Asset> _lastDeleteRejectedRetryTargets = [];
+    private DeleteRejectedDestination _lastDeleteRejectedDestination = DeleteRejectedDestination.RecycleBin;
+    private string? _allRejectedSourceRoot;
     private bool _statusDetailsIsFailures;
 
     /// <summary>
@@ -86,6 +88,12 @@ public partial class LibraryViewModel
     public bool ShowReviewEndCard =>
         IsReviewMode && IsGalleryOverlayOpen && _review is { IsComplete: true };
 
+    /// <summary>
+    /// Source root that All rejected count / mosaic / crumb / This-view share.
+    /// Captured when entering All rejected so clearing <see cref="SelectedFolder"/> does not inflate to whole-project.
+    /// </summary>
+    internal string? AllRejectedSourceRoot => ResolveAllRejectedSourceRoot();
+
     /// <summary>Refresh rejected counts for the toolbar pin (current folder) and All rejected.</summary>
     public async Task RefreshRejectedCountsAsync()
     {
@@ -102,10 +110,8 @@ public partial class LibraryViewModel
         var all = await _catalog.GetAssetsAsync(projectId: projectId);
         var rejected = DeleteRejected.OnlyRejected(all);
 
-        // All rejected for the current source root when a folder is selected; else whole project.
-        var sourceRoot = SelectedFolder is null
-            ? null
-            : FindRootPath(SelectedFolder);
+        // Pin + All rejected share one current-source root (not whole project when mosaic is source-scoped).
+        var sourceRoot = ResolveAllRejectedSourceRoot();
         var allScope = string.IsNullOrWhiteSpace(sourceRoot)
             ? rejected
             : DeleteRejected.InScope(rejected, sourceRoot);
@@ -124,7 +130,7 @@ public partial class LibraryViewModel
         }
         else
         {
-            RejectedCountInView = rejected.Count;
+            RejectedCountInView = allScope.Count;
         }
     }
 
@@ -135,6 +141,11 @@ public partial class LibraryViewModel
         {
             IsTagBrowse = false;
         }
+
+        // Remember the source before clearing selection so count/mosaic/This-view stay aligned.
+        _allRejectedSourceRoot = SelectedFolder is not null
+            ? FindRootPath(SelectedFolder)
+            : ResolveAllRejectedSourceRoot();
 
         IsAllRejectedView = true;
         if (SelectedFolder is not null)
@@ -157,7 +168,8 @@ public partial class LibraryViewModel
 
     [RelayCommand]
     private Task DeleteAllRejectedAsync() =>
-        OpenDeleteRejectedAsync(DeleteRejectedScope.WholeLibrary, preferViewPrefix: CurrentRejectedViewPrefix());
+        // Action bar "Delete all N" matches the All-rejected mosaic — default This view.
+        OpenDeleteRejectedAsync(DeleteRejectedScope.ThisView, preferViewPrefix: CurrentRejectedViewPrefix());
 
     [RelayCommand]
     private Task DeleteRejectedFromReviewAsync()
@@ -176,19 +188,35 @@ public partial class LibraryViewModel
             return Task.CompletedTask;
         }
 
+        // Keep the destination from the failed run (do not force Recycle after Permanent partial).
         return RunDeleteRejectedAsync(
             _lastDeleteRejectedRetryTargets,
-            DeleteRejectedDestination.RecycleBin);
+            DeleteRejected.RetryDestination(_lastDeleteRejectedDestination));
     }
 
     private string? CurrentRejectedViewPrefix()
     {
         if (IsAllRejectedView)
         {
-            return FindRootPath(SelectedFolder) ?? FolderTree.FirstOrDefault()?.Path;
+            return ResolveAllRejectedSourceRoot();
         }
 
         return SelectedFolder?.Path;
+    }
+
+    private string? ResolveAllRejectedSourceRoot()
+    {
+        if (!string.IsNullOrWhiteSpace(_allRejectedSourceRoot))
+        {
+            return _allRejectedSourceRoot;
+        }
+
+        if (SelectedFolder is not null)
+        {
+            return FindRootPath(SelectedFolder);
+        }
+
+        return FolderTree.FirstOrDefault()?.Path;
     }
 
     private string? FindRootPath(FolderNode? node)
@@ -241,8 +269,8 @@ public partial class LibraryViewModel
         }
 
         var library = rejected;
-        var networkInLibrary = DeleteRejected.PartitionNetwork(library, out var networkList);
-        _ = networkInLibrary;
+        DeleteRejected.PartitionNetwork(viewAssets, out var viewNetwork);
+        DeleteRejected.PartitionNetwork(library, out var libraryNetwork);
 
         var viewSourceName = viewPrefix is null
             ? "library"
@@ -252,11 +280,11 @@ public partial class LibraryViewModel
             viewSourceName = "this view";
         }
 
-        var networkLabel = networkList.Count == 0
+        var networkLabel = libraryNetwork.Count == 0
             ? ""
             : Path.GetFileName(
-                  Path.GetPathRoot(networkList[0].Path)?.TrimEnd('\\', '/')
-                  ?? networkList[0].Path)
+                  Path.GetPathRoot(libraryNetwork[0].Path)?.TrimEnd('\\', '/')
+                  ?? libraryNetwork[0].Path)
               is { Length: > 0 } leaf
                 ? leaf
                 : "network share";
@@ -264,7 +292,8 @@ public partial class LibraryViewModel
         // Prefer a source folder name when the network path sits under a watched root.
         foreach (var root in FolderTree)
         {
-            if (networkList.Any(a => FolderNames.IsSameOrUnder(a.Path, root.Path)))
+            if (libraryNetwork.Any(a => FolderNames.IsSameOrUnder(a.Path, root.Path))
+                || viewNetwork.Any(a => FolderNames.IsSameOrUnder(a.Path, root.Path)))
             {
                 networkLabel = root.Name;
                 break;
@@ -277,8 +306,10 @@ public partial class LibraryViewModel
             ViewBytes = DeleteRejected.TotalBytes(viewAssets),
             LibraryCount = library.Count,
             LibraryBytes = DeleteRejected.TotalBytes(library),
-            NetworkCount = networkList.Count,
-            NetworkBytes = DeleteRejected.TotalBytes(networkList),
+            ViewNetworkCount = viewNetwork.Count,
+            ViewNetworkBytes = DeleteRejected.TotalBytes(viewNetwork),
+            LibraryNetworkCount = libraryNetwork.Count,
+            LibraryNetworkBytes = DeleteRejected.TotalBytes(libraryNetwork),
             ViewScopeLabel = $"This view · All rejected in {viewSourceName}",
             NetworkFolderLabel = networkLabel,
             FolderCountView = DeleteRejected.DistinctRejectedFolders(viewAssets),
@@ -308,6 +339,8 @@ public partial class LibraryViewModel
             {
                 return;
             }
+
+            _lastDeleteRejectedDestination = destination;
 
             BeginBusy(destination == DeleteRejectedDestination.Permanent
                 ? "Deleting rejected…"

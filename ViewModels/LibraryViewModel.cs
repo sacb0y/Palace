@@ -429,6 +429,8 @@ public partial class LibraryViewModel : ObservableObject
         if (value is not null && IsAllRejectedView)
         {
             IsAllRejectedView = false;
+            // Leave All rejected: pin count follows the newly selected folder's source.
+            _allRejectedSourceRoot = null;
         }
 
         StampFolderSelection(value);

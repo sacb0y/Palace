@@ -116,6 +116,26 @@ public sealed class DeleteRejectedTests : IAsyncLifetime
     }
 
     [Fact]
+    public void InScope_source_root_keeps_count_aligned_with_mosaic()
+    {
+        // Two watched roots: All-rejected for Art must not inflate to whole-project.
+        var artRoot = Path.Combine(_dir, "Art");
+        var photoRoot = Path.Combine(_dir, "Photos");
+        var artA = new Asset { Path = Path.Combine(artRoot, "_rejected", "a.jpg"), FileSize = 1 };
+        var artB = new Asset { Path = Path.Combine(artRoot, "sub", "_rejected", "b.jpg"), FileSize = 2 };
+        var photo = new Asset { Path = Path.Combine(photoRoot, "_rejected", "c.jpg"), FileSize = 4 };
+        var all = new[] { artA, artB, photo };
+
+        var mosaic = DeleteRejected.InScope(all, artRoot);
+        Assert.Equal(2, mosaic.Count);
+        Assert.Equal(3, DeleteRejected.TotalBytes(mosaic));
+        Assert.DoesNotContain(mosaic, a => a.Path == photo.Path);
+
+        // Whole-library is still available as a dialog scope, but This-view matches mosaic.
+        Assert.Equal(3, DeleteRejected.OnlyRejected(all).Count);
+    }
+
+    [Fact]
     public void Actionable_recycle_skips_network_permanent_includes()
     {
         var local = new Asset { Path = Path.Combine("C:", "lib", "_rejected", "a.jpg"), FileSize = 10 };
@@ -130,6 +150,57 @@ public sealed class DeleteRejectedTests : IAsyncLifetime
         var permanent = DeleteRejected.Actionable([local, net], DeleteRejectedDestination.Permanent, out var none, IsNet);
         Assert.Equal(2, permanent.Count);
         Assert.Empty(none);
+    }
+
+    [Fact]
+    public void DialogActionableTotals_this_view_recycles_only_local_in_scope()
+    {
+        // Whole library: 10 local + 75 network. This view (Art): 5 local + 2 network.
+        DeleteRejected.DialogActionableTotals(
+            count: 7,
+            bytes: 700,
+            networkInScope: 2,
+            networkBytesInScope: 200,
+            destination: DeleteRejectedDestination.RecycleBin,
+            out var viewActionable,
+            out var viewBytes,
+            out var viewNetworkShown);
+        Assert.Equal(5, viewActionable);
+        Assert.Equal(500, viewBytes);
+        Assert.Equal(2, viewNetworkShown);
+        Assert.Equal("Move 5 to Recycle Bin", DeleteRejected.ConfirmPrimaryLabel(DeleteRejectedDestination.RecycleBin, viewActionable));
+
+        DeleteRejected.DialogActionableTotals(
+            count: 85,
+            bytes: 8500,
+            networkInScope: 75,
+            networkBytesInScope: 7500,
+            destination: DeleteRejectedDestination.RecycleBin,
+            out var libActionable,
+            out _,
+            out var libNetworkShown);
+        Assert.Equal(10, libActionable);
+        Assert.Equal(75, libNetworkShown);
+
+        // Permanent ignores network skip for both scopes.
+        DeleteRejected.DialogActionableTotals(
+            7, 700, 2, 200, DeleteRejectedDestination.Permanent,
+            out var permanentCount, out var permanentBytes, out var permanentNetwork);
+        Assert.Equal(7, permanentCount);
+        Assert.Equal(700, permanentBytes);
+        Assert.Equal(0, permanentNetwork);
+    }
+
+    [Fact]
+    public void Retry_keeps_last_destination()
+    {
+        // Retry must not force Recycle Bin after a permanent partial failure.
+        Assert.Equal(
+            DeleteRejectedDestination.Permanent,
+            DeleteRejected.RetryDestination(DeleteRejectedDestination.Permanent));
+        Assert.Equal(
+            DeleteRejectedDestination.RecycleBin,
+            DeleteRejected.RetryDestination(DeleteRejectedDestination.RecycleBin));
     }
 
     [Fact]

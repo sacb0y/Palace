@@ -10,8 +10,12 @@ public sealed class DeleteRejectedPrompt
     public long ViewBytes { get; init; }
     public int LibraryCount { get; init; }
     public long LibraryBytes { get; init; }
-    public int NetworkCount { get; init; }
-    public long NetworkBytes { get; init; }
+    /// <summary>Network rejects in This-view scope (for Recycle skip chrome).</summary>
+    public int ViewNetworkCount { get; init; }
+    public long ViewNetworkBytes { get; init; }
+    /// <summary>Network rejects in Whole-library scope (for Recycle skip chrome).</summary>
+    public int LibraryNetworkCount { get; init; }
+    public long LibraryNetworkBytes { get; init; }
     public string ViewScopeLabel { get; init; } = "This view";
     public string NetworkFolderLabel { get; init; } = "";
     public int FolderCountView { get; init; }

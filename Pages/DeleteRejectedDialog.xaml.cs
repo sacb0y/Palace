@@ -20,12 +20,17 @@ public sealed partial class DeleteRejectedDialog : ContentDialog
         CloseButtonCommand = null;
 
         var viewSecondary = $"{prompt.ViewCount} files · {DeleteRejected.FormatSize(prompt.ViewBytes)}";
+        if (prompt.ViewNetworkCount > 0 && !string.IsNullOrWhiteSpace(prompt.NetworkFolderLabel))
+        {
+            viewSecondary += $" · {prompt.ViewNetworkCount} on network";
+        }
+
         RadDeleteRejectedScopeView.Content = $"{prompt.ViewScopeLabel}  ({viewSecondary})";
 
         var libSecondary = $"{prompt.LibraryCount} files · {DeleteRejected.FormatSize(prompt.LibraryBytes)}";
-        if (prompt.NetworkCount > 0 && !string.IsNullOrWhiteSpace(prompt.NetworkFolderLabel))
+        if (prompt.LibraryNetworkCount > 0 && !string.IsNullOrWhiteSpace(prompt.NetworkFolderLabel))
         {
-            libSecondary += $" · adds {prompt.NetworkCount} in {prompt.NetworkFolderLabel}";
+            libSecondary += $" · adds {prompt.LibraryNetworkCount} in {prompt.NetworkFolderLabel}";
         }
 
         RadDeleteRejectedScopeLibrary.Content = $"Whole library  ({libSecondary})";
@@ -78,14 +83,22 @@ public sealed partial class DeleteRejectedDialog : ContentDialog
         var count = scope == DeleteRejectedScope.WholeLibrary ? _prompt.LibraryCount : _prompt.ViewCount;
         var bytes = scope == DeleteRejectedScope.WholeLibrary ? _prompt.LibraryBytes : _prompt.ViewBytes;
         var folders = scope == DeleteRejectedScope.WholeLibrary ? _prompt.FolderCountLibrary : _prompt.FolderCountView;
-        var network = scope == DeleteRejectedScope.WholeLibrary ? _prompt.NetworkCount : 0;
+        var network = scope == DeleteRejectedScope.WholeLibrary
+            ? _prompt.LibraryNetworkCount
+            : _prompt.ViewNetworkCount;
+        var networkBytes = scope == DeleteRejectedScope.WholeLibrary
+            ? _prompt.LibraryNetworkBytes
+            : _prompt.ViewNetworkBytes;
 
-        var actionable = dest == DeleteRejectedDestination.RecycleBin
-            ? Math.Max(0, count - network)
-            : count;
-        var actionableBytes = dest == DeleteRejectedDestination.RecycleBin && network > 0 && count > 0
-            ? Math.Max(0, bytes - _prompt.NetworkBytes)
-            : bytes;
+        DeleteRejected.DialogActionableTotals(
+            count,
+            bytes,
+            network,
+            networkBytes,
+            dest,
+            out var actionable,
+            out _,
+            out var networkShown);
 
         var scopePhrase = scope == DeleteRejectedScope.WholeLibrary
             ? $"from {folders} _rejected folders in {_prompt.SourceCountLibrary} sources"
@@ -94,8 +107,8 @@ public sealed partial class DeleteRejectedDialog : ContentDialog
         TxtDeleteRejectedSubtitle.Text =
             $"{count} rejected files · {DeleteRejected.FormatSize(bytes)} {scopePhrase}";
 
-        var showNetwork = dest == DeleteRejectedDestination.RecycleBin && network > 0;
-        TxtDeleteRejectedNetworkSkip.Text = DeleteRejected.NetworkSkipNote(network);
+        var showNetwork = networkShown > 0;
+        TxtDeleteRejectedNetworkSkip.Text = DeleteRejected.NetworkSkipNote(networkShown);
         TxtDeleteRejectedNetworkSkip.Visibility = showNetwork ? Visibility.Visible : Visibility.Collapsed;
 
         var permanent = dest == DeleteRejectedDestination.Permanent;
@@ -108,6 +121,5 @@ public sealed partial class DeleteRejectedDialog : ContentDialog
 
         PrimaryButtonText = DeleteRejected.ConfirmPrimaryLabel(dest, actionable);
         // WinUI ContentDialog has no direct PrimaryButton style swap; danger is conveyed by copy.
-        _ = actionableBytes;
     }
 }
