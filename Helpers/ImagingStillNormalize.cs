@@ -5,15 +5,16 @@ namespace Palace.Helpers;
 /// <summary>
 /// P2 glue: map still-decode metadata → <see cref="NormalizeOptions"/> and run
 /// <see cref="Normalize"/> into BT.2020 linear working space (1.0 = 203 nits).
-/// WinUI-free so <c>Palace.Tests</c> can cover it. Does not replace the legacy
-/// scRGB present path (P3–P5); callers attach <see cref="NormalizedFrame"/>
-/// beside <c>HdrFrame.ScrgbRgba</c>.
+/// WinUI-free so <c>Palace.Tests</c> can cover it. Callers attach
+/// <see cref="NormalizedFrame"/> beside <c>HdrFrame.ScrgbRgba</c>. P3 thumbs
+/// consume Working lazily via <see cref="ImagingThumbToneMap"/>; full HDR
+/// present stays legacy until P5.
 /// </summary>
 public static class ImagingStillNormalize
 {
     /// <summary>
     /// Cap for eager Working builds (~256 MB float RGBA). Larger frames skip
-    /// Working (legacy present intact; P3 may rebuild lazily).
+    /// Working (legacy present intact; P3 rebuilds lazily from present scRGB).
     /// </summary>
     public const int MaxWorkingPixels = 16_000_000;
 

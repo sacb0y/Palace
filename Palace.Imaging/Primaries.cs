@@ -44,6 +44,34 @@ public static class Primaries
     }
 
     /// <summary>
+    /// Inverse of <see cref="ToBt2020"/> for BT.709 (D65). Used by P3 thumbs
+    /// when encoding tonemapped working RGB to sRGB JPEG (OOG clamped).
+    /// Non-709 destinations pass through (working already BT.2020).
+    /// </summary>
+    public static void FromBt2020(
+        float r,
+        float g,
+        float b,
+        ColorPrimaries dest,
+        out float or,
+        out float og,
+        out float ob)
+    {
+        if (dest != ColorPrimaries.Bt709)
+        {
+            or = r;
+            og = g;
+            ob = b;
+            return;
+        }
+
+        // Inverse of BT.709 → BT.2020 (D65) — same coeffs as FixtureMaster.
+        or = (1.6604910f * r) + (-0.5876411f * g) + (-0.0728499f * b);
+        og = (-0.1245505f * r) + (1.1328999f * g) + (-0.0083494f * b);
+        ob = (-0.0181508f * r) + (-0.1005789f * g) + (1.1187297f * b);
+    }
+
+    /// <summary>
     /// Apply a row-major 3×3 (from <see cref="TryFillBt2020Matrix"/>).
     /// </summary>
     public static void ApplyMatrix(

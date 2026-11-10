@@ -26,6 +26,7 @@ public sealed class ThumbnailService
     private DateTime _jxlWideGamutGenerationStartUtc;
     private DateTime _jxlActualTransferGenerationStartUtc;
     private DateTime _jxlNoShellWicGenerationStartUtc;
+    private DateTime _imagingP3ThumbGenerationStartUtc;
 
     public ThumbnailService(string thumbsRoot)
     {
@@ -39,6 +40,8 @@ public sealed class ThumbnailService
             _root, ThumbCacheVersion.JxlActualTransferGeneration);
         _jxlNoShellWicGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
             _root, ThumbCacheVersion.JxlNoShellWicGeneration);
+        _imagingP3ThumbGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.ImagingP3ThumbGeneration);
     }
 
     /// <summary>Active JPEG folder under the media cache root (<c>…/thumbs</c>).</summary>
@@ -56,6 +59,8 @@ public sealed class ThumbnailService
             _root, ThumbCacheVersion.JxlActualTransferGeneration);
         _jxlNoShellWicGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
             _root, ThumbCacheVersion.JxlNoShellWicGeneration);
+        _imagingP3ThumbGenerationStartUtc = ThumbCacheVersion.EnsureMarker(
+            _root, ThumbCacheVersion.ImagingP3ThumbGeneration);
     }
 
     /// <summary>
@@ -137,14 +142,23 @@ public sealed class ThumbnailService
                 return true;
             }
 
+            var ext = PathSafe.Extension(filePath);
+            var hdrCandidate = ext is ".png" or ".jxr" or ".wdp" or ".hdp" or ".avif" or ".heic" or ".heif"
+                && HdrFile.ProbePath(filePath) is { IsHdr: true, Kind: not HdrKind.UltraHdrJpeg };
+
+            if (ThumbCacheVersion.IsStale(
+                    written,
+                    _imagingP3ThumbGenerationStartUtc,
+                    ThumbCacheVersion.ImagingP3ThumbChanged(filePath, hdrCandidate)))
+            {
+                return true;
+            }
+
             if (written >= _generationStartUtc)
             {
                 return false;
             }
 
-            var ext = PathSafe.Extension(filePath);
-            var hdrCandidate = ext is ".png" or ".jxr" or ".wdp" or ".hdp" or ".avif" or ".heic" or ".heif"
-                && HdrFile.ProbePath(filePath) is { IsHdr: true, Kind: not HdrKind.UltraHdrJpeg };
             return ThumbCacheVersion.IsStale(written, _generationStartUtc,
                 ThumbCacheVersion.RenderingChanged(filePath, hdrCandidate));
         }
@@ -686,8 +700,17 @@ public sealed class ThumbnailService
                         HdrJxlPresent.BufferTransferLabel(jxl.BufferTransfer),
                         jxl.IntensityTarget,
                         jxl.ScaleApplied);
+                    // HdrJxl / IT-scaled → absolute scRGB; SDR/WideGamut ScaleApplied=1 → relative.
+                    var absoluteJxl = ImagingThumbToneMap.IsAbsoluteScrgbThumbBuffer(
+                        jxlProbe.Kind, jxl.ScaleApplied);
                     var lgJ = await Task.Run(
-                        () => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide, cancellationToken),
+                        () => StillDecode.FromScrgb(
+                            jxl.Rgba,
+                            jxl.Width,
+                            jxl.Height,
+                            LargePreviewMaxSide,
+                            cancellationToken,
+                            absoluteJxl),
                         cancellationToken).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(lgJ.Bgra!, lgJ.Width, lgJ.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
                     var (jw, jh) = StillDecode.Fit(lgJ.Width, lgJ.Height, MaxSide);
