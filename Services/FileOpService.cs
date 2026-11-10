@@ -1168,19 +1168,35 @@ public sealed partial class FileOpService
         var notes = new List<string>();
         var retryable = false;
         var done = 0;
+        var recycleSteps = 0;
+        var recycleDone = 0;
+        var recycleRetry = false;
         using (_suppressWatcher?.Invoke())
         {
             foreach (var item in batch.Items.OrderByDescending(i => i.Seq))
             {
                 var note = await UndoStepAsync(item, allSources, projectId, restored).ConfigureAwait(false);
+                if (item.Step == FileOpStep.RecycleFile)
+                {
+                    recycleSteps++;
+                }
+
                 if (note is null)
                 {
                     done++;
+                    if (item.Step == FileOpStep.RecycleFile)
+                    {
+                        recycleDone++;
+                    }
                 }
                 else
                 {
                     notes.Add(note.Text);
                     retryable |= note.Retryable;
+                    if (item.Step == FileOpStep.RecycleFile && note.Retryable)
+                    {
+                        recycleRetry = true;
+                    }
                 }
             }
         }
@@ -1190,6 +1206,20 @@ public sealed partial class FileOpService
         {
             // Nothing was reversed and the failure may clear (locked file, I/O error): keep the
             // batch on the undo stack so Ctrl+Z can try it again.
+            return new FileOpResult
+            {
+                Ok = false,
+                Message = $"Couldn't {label.Replace("Undo ", "undo ", StringComparison.Ordinal)}. {notes[0].TrimEnd('.')}. Try again.",
+                Summary = batch.Summary,
+                Moves = restored,
+                Skipped = notes
+            };
+        }
+
+        // DeleteRejected: recreating empty _rejected folders (DeleteDir) must not burn the
+        // journal when RecycleFile restore failed — files are still in the Recycle Bin.
+        if (recycleSteps > 0 && recycleDone == 0 && recycleRetry)
+        {
             return new FileOpResult
             {
                 Ok = false,

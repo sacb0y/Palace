@@ -379,6 +379,9 @@ public partial class LibraryViewModel
                 await ApplyFilterAsync();
             }
 
+            // Arm toolbar + status Undo from the journal (same as Move / Tag assign).
+            await RefreshUndoStateAsync();
+
             StatusText = result.Message;
             ShowStatusUndo = result.CanUndo && CanUndoFileOp;
             if (result.Failed > 0)
@@ -405,11 +408,6 @@ public partial class LibraryViewModel
                 {
                     Notify(result.Message, Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning);
                 }
-            }
-
-            if (result.CanUndo)
-            {
-                // Status-bar Undo (tagging pattern); no InfUndo toast required.
             }
         });
 }

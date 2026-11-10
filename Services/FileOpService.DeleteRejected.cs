@@ -123,6 +123,11 @@ public sealed partial class FileOpService
                     if (destination == DeleteRejectedDestination.RecycleBin)
                     {
                         token = _trash.Recycle(asset.Path);
+                        // Never journal OldPath as a fake token — restore needs a real trash key.
+                        if (string.IsNullOrWhiteSpace(token))
+                        {
+                            throw new IOException("Recycle Bin returned no restore token.");
+                        }
                     }
                     else
                     {
@@ -142,7 +147,7 @@ public sealed partial class FileOpService
                             OldPath = asset.Path,
                             NewPath = CatalogService.SerializeAssetSnapshot(snapshot),
                             OldSourceId = asset.SourceFolderId,
-                            NewSourceId = token ?? asset.Path
+                            NewSourceId = token
                         });
                     }
                 }
@@ -311,7 +316,12 @@ public sealed partial class FileOpService
             }
         }
 
-        var token = item.NewSourceId ?? item.OldPath;
+        if (string.IsNullOrWhiteSpace(item.NewSourceId))
+        {
+            return UndoNote.Retry($"{Path.GetFileName(item.OldPath)}: missing trash token");
+        }
+
+        var token = item.NewSourceId;
         try
         {
             if (!_trash.TryRestore(token, item.OldPath))

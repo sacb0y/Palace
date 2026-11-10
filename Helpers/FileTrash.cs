@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Palace.Helpers;
 
@@ -9,8 +10,9 @@ namespace Palace.Helpers;
 public interface IFileTrash
 {
     /// <summary>
-    /// Send <paramref name="path"/> to trash. Returns a token the same instance
-    /// can pass to <see cref="TryRestore"/> (often the original path).
+    /// Send <paramref name="path"/> to trash. Returns a non-empty token the same
+    /// instance can pass to <see cref="TryRestore"/> (Shell: original path;
+    /// Folder: trash file path). Never returns null/empty on success.
     /// </summary>
     string Recycle(string path);
 
@@ -58,6 +60,11 @@ public sealed class FolderFileTrash : IFileTrash
 
     public bool TryRestore(string token, string originalPath)
     {
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
         var dest = Path.GetFullPath(originalPath);
         if (File.Exists(dest))
         {
@@ -91,8 +98,8 @@ public sealed class FolderFileTrash : IFileTrash
 
 /// <summary>
 /// Windows Recycle Bin via <c>SHFileOperation</c> (FO_DELETE + FOF_ALLOWUNDO).
-/// Restore walks the shell Recycle Bin for a matching original path. Non-Windows
-/// falls back to <see cref="FolderFileTrash"/>.
+/// Restore uses Shell Namespace matching, then <c>$I</c>/<c>$R</c> metadata as a fallback.
+/// Non-Windows falls back to <see cref="FolderFileTrash"/>.
 /// </summary>
 public sealed class ShellFileTrash : IFileTrash
 {
@@ -147,6 +154,7 @@ public sealed class ShellFileTrash : IFileTrash
             throw new IOException($"Recycle Bin delete failed (code {result}).");
         }
 
+        // Token for Shell restore is the original full path (lookup key).
         return full;
     }
 
@@ -157,13 +165,19 @@ public sealed class ShellFileTrash : IFileTrash
             return _fallback.TryRestore(token, originalPath);
         }
 
-        var dest = Path.GetFullPath(originalPath);
+        var dest = Path.GetFullPath(
+            string.IsNullOrWhiteSpace(originalPath) ? token : originalPath);
         if (File.Exists(dest))
         {
             return true;
         }
 
-        return TryShellRestore(dest);
+        if (TryShellNamespaceRestore(dest))
+        {
+            return File.Exists(dest);
+        }
+
+        return TryRecycleBinSidecarRestore(dest) && File.Exists(dest);
     }
 
     public void PermanentDelete(string path)
@@ -181,7 +195,7 @@ public sealed class ShellFileTrash : IFileTrash
         }
     }
 
-    private static bool TryShellRestore(string originalPath)
+    private static bool TryShellNamespaceRestore(string originalPath)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -203,46 +217,31 @@ public sealed class ShellFileTrash : IFileTrash
                 return false;
             }
 
+            var originalFull = Path.GetFullPath(originalPath);
+            var originalDir = Path.GetDirectoryName(originalFull) ?? "";
+            var originalName = Path.GetFileName(originalFull);
+
             foreach (var item in bin.Items())
             {
-                string? location = null;
+                if (!IsRecycleItemMatch(item, bin, originalFull, originalDir, originalName))
+                {
+                    continue;
+                }
+
                 try
                 {
-                    location = item.ExtendedProperty("System.Recycle.DeletedFrom") as string
-                        ?? bin.GetDetailsOf(item, 1) as string;
+                    item.InvokeVerb("restore");
                 }
                 catch
                 {
-                    // ignore per-item probe failures
+                    try { item.InvokeVerb("undelete"); }
+                    catch { continue; }
                 }
 
-                if (string.IsNullOrWhiteSpace(location))
+                if (File.Exists(originalFull))
                 {
-                    continue;
+                    return true;
                 }
-
-                var loc = location.Trim();
-                string candidate;
-                try
-                {
-                    candidate = Directory.Exists(loc)
-                        ? Path.Combine(loc, (string)item.Name)
-                        : loc;
-                    candidate = Path.GetFullPath(candidate);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                if (!string.Equals(candidate, originalPath, StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(Path.GetFullPath(loc), originalPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                item.InvokeVerb("restore");
-                return File.Exists(originalPath);
             }
         }
         catch
@@ -251,6 +250,242 @@ public sealed class ShellFileTrash : IFileTrash
         }
 
         return File.Exists(originalPath);
+    }
+
+    private static bool IsRecycleItemMatch(
+        dynamic item,
+        dynamic bin,
+        string originalFull,
+        string originalDir,
+        string originalName)
+    {
+        string? itemName = null;
+        try { itemName = item.Name as string; } catch { /* ignore */ }
+
+        var nameMatch = !string.IsNullOrWhiteSpace(itemName)
+            && string.Equals(itemName, originalName, StringComparison.OrdinalIgnoreCase);
+
+        foreach (var location in EnumerateOriginalLocations(item, bin))
+        {
+            if (string.IsNullOrWhiteSpace(location))
+            {
+                continue;
+            }
+
+            string candidate;
+            try
+            {
+                var loc = location.Trim().TrimEnd('\\', '/');
+                // DeletedFrom is often the parent folder; sometimes the full original path.
+                if (string.Equals(Path.GetFullPath(loc), originalFull, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (Directory.Exists(loc) || !Path.HasExtension(loc))
+                {
+                    candidate = Path.GetFullPath(Path.Combine(loc, itemName ?? originalName));
+                }
+                else
+                {
+                    candidate = Path.GetFullPath(loc);
+                }
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (string.Equals(candidate, originalFull, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Same folder + same file name (Recycle display name can match original).
+            var candDir = Path.GetDirectoryName(candidate) ?? "";
+            if (nameMatch
+                && string.Equals(candDir, originalDir, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> EnumerateOriginalLocations(dynamic item, dynamic bin)
+    {
+        string? prop = null;
+        try { prop = item.ExtendedProperty("System.Recycle.DeletedFrom") as string; } catch { /* ignore */ }
+        if (!string.IsNullOrWhiteSpace(prop))
+        {
+            yield return prop;
+        }
+
+        // Detail columns vary by locale; probe a few common "Original Location" indexes.
+        foreach (var col in new[] { 1, 2, 3 })
+        {
+            string? detail = null;
+            try { detail = bin.GetDetailsOf(item, col) as string; } catch { /* ignore */ }
+            if (!string.IsNullOrWhiteSpace(detail)
+                && detail.Contains('\\', StringComparison.Ordinal))
+            {
+                yield return detail;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Walk <c>$Recycle.Bin</c> <c>$I*</c> metadata for a matching original path and move the
+    /// paired <c>$R*</c> file back. Used when Shell Namespace restore cannot find the item.
+    /// </summary>
+    private static bool TryRecycleBinSidecarRestore(string originalPath)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return false;
+        }
+
+        try
+        {
+            var originalFull = Path.GetFullPath(originalPath);
+            var driveRoot = Path.GetPathRoot(originalFull);
+            if (string.IsNullOrWhiteSpace(driveRoot))
+            {
+                return false;
+            }
+
+            var recycleRoot = Path.Combine(driveRoot, "$Recycle.Bin");
+            if (!Directory.Exists(recycleRoot))
+            {
+                return false;
+            }
+
+            foreach (var sidDir in Directory.EnumerateDirectories(recycleRoot))
+            {
+                string[] infoFiles;
+                try
+                {
+                    infoFiles = Directory.GetFiles(sidDir, "$I*");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+
+                foreach (var infoPath in infoFiles)
+                {
+                    if (!TryReadRecycleInfoOriginalPath(infoPath, out var deletedFrom)
+                        || string.IsNullOrWhiteSpace(deletedFrom))
+                    {
+                        continue;
+                    }
+
+                    string deletedFull;
+                    try { deletedFull = Path.GetFullPath(deletedFrom); }
+                    catch { continue; }
+
+                    if (!string.Equals(deletedFull, originalFull, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var name = Path.GetFileName(infoPath);
+                    if (name.Length < 2 || name[0] != '$' || name[1] is not ('I' or 'i'))
+                    {
+                        continue;
+                    }
+
+                    var dataName = "$R" + name[2..];
+                    var dataPath = Path.Combine(sidDir, dataName);
+                    if (!File.Exists(dataPath))
+                    {
+                        // Extension may differ; search $R + same suffix stem.
+                        var stem = Path.GetFileNameWithoutExtension(name)[2..];
+                        dataPath = Directory.EnumerateFiles(sidDir, "$R" + stem + "*")
+                            .FirstOrDefault() ?? "";
+                        if (string.IsNullOrWhiteSpace(dataPath) || !File.Exists(dataPath))
+                        {
+                            continue;
+                        }
+                    }
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(originalFull)!);
+                    File.Move(dataPath, originalFull);
+                    try { File.Delete(infoPath); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                    return File.Exists(originalFull);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Parse a Vista+ <c>$I</c> Recycle Bin info file for the original path.
+    /// </summary>
+    internal static bool TryReadRecycleInfoOriginalPath(string infoPath, out string originalPath)
+    {
+        originalPath = "";
+        try
+        {
+            var bytes = File.ReadAllBytes(infoPath);
+            if (bytes.Length < 28)
+            {
+                return false;
+            }
+
+            var version = BitConverter.ToInt64(bytes, 0);
+            int pathOffset;
+            if (version == 2)
+            {
+                // Win10+: header(8) + size(8) + deleted(8) + pathChars(4) + path
+                if (bytes.Length < 32)
+                {
+                    return false;
+                }
+
+                var charCount = BitConverter.ToInt32(bytes, 24);
+                pathOffset = 28;
+                if (charCount <= 0 || pathOffset + charCount * 2 > bytes.Length)
+                {
+                    return false;
+                }
+
+                originalPath = Encoding.Unicode.GetString(bytes, pathOffset, charCount * 2)
+                    .TrimEnd('\0');
+                return !string.IsNullOrWhiteSpace(originalPath);
+            }
+
+            // Win Vista/7/8: header(8) + size(8) + deleted(8) + null-terminated path
+            pathOffset = 24;
+            var end = pathOffset;
+            while (end + 1 < bytes.Length)
+            {
+                if (bytes[end] == 0 && bytes[end + 1] == 0)
+                {
+                    break;
+                }
+
+                end += 2;
+            }
+
+            if (end <= pathOffset)
+            {
+                return false;
+            }
+
+            originalPath = Encoding.Unicode.GetString(bytes, pathOffset, end - pathOffset);
+            return !string.IsNullOrWhiteSpace(originalPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]

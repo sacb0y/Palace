@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Palace.Data;
 using Palace.Helpers;
@@ -244,6 +245,15 @@ public sealed class DeleteRejectedTests : IAsyncLifetime
         Assert.True(result.Ok, result.Message);
         Assert.Null(await _catalog.GetAssetByIdAsync(a.Id));
 
+        // Folder trash journals a real token (trash path), not a null→OldPath fallback.
+        var peek = await _ops.PeekUndoAsync(_projectId);
+        Assert.NotNull(peek);
+        Assert.Equal(FileOpKind.DeleteRejected, peek!.Kind);
+        var recycleItem = peek.Items.Single(i => i.Step == FileOpStep.RecycleFile);
+        Assert.False(string.IsNullOrWhiteSpace(recycleItem.NewSourceId));
+        Assert.NotEqual(a.Path, recycleItem.NewSourceId);
+        Assert.True(File.Exists(recycleItem.NewSourceId!));
+
         var undo = await _ops.UndoLastAsync(_projectId);
         Assert.True(undo.Ok, undo.Message);
         Assert.True(File.Exists(a.Path));
@@ -253,6 +263,58 @@ public sealed class DeleteRejectedTests : IAsyncLifetime
         var tags = await _catalog.GetAssignedTagsAsync(a.Id);
         Assert.Contains(tags, t => t.TagId == tag.Id);
         Assert.True(Directory.Exists(Path.Combine(_root.Path, "shots", "_rejected")));
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
+
+    [Fact]
+    public async Task Recycle_undo_works_with_shell_style_original_path_token()
+    {
+        // ShellFileTrash uses the original path as the restore token (lookup key).
+        var a = await AddRejectedAsync(Path.Combine("shots", "_rejected", "shellish.jpg"), "px");
+        var shellish = new ShellStyleTrash();
+        var ops = new FileOpService(_catalog, () => new Nop(), shellish);
+
+        var result = await ops.DeleteRejectedAsync([a], _projectId, DeleteRejectedDestination.RecycleBin);
+        Assert.True(result.Ok, result.Message);
+        Assert.False(File.Exists(a.Path));
+
+        var peek = await ops.PeekUndoAsync(_projectId);
+        Assert.NotNull(peek);
+        var item = peek!.Items.Single(i => i.Step == FileOpStep.RecycleFile);
+        Assert.Equal(a.Path, item.NewSourceId);
+
+        var undo = await ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.True(File.Exists(a.Path));
+        Assert.NotNull(await _catalog.GetAssetByIdAsync(a.Id));
+        Assert.Equal("px", await File.ReadAllTextAsync(a.Path));
+    }
+
+    [Fact]
+    public async Task Recycle_restore_failure_keeps_batch_undoable()
+    {
+        var a = await AddRejectedAsync(Path.Combine("shots", "_rejected", "stuck.jpg"), "hold");
+        var sticky = new StickyRestoreTrash(_trash);
+        var ops = new FileOpService(_catalog, () => new Nop(), sticky);
+
+        var result = await ops.DeleteRejectedAsync([a], _projectId, DeleteRejectedDestination.RecycleBin);
+        Assert.True(result.Ok, result.Message);
+        Assert.NotNull(result.BatchId);
+        Assert.False(Directory.Exists(Path.Combine(_root.Path, "shots", "_rejected")));
+
+        sticky.FailRestore = true;
+        var undo = await ops.UndoLastAsync(_projectId);
+        Assert.False(undo.Ok, undo.Message);
+        // DeleteDir may recreate the empty folder, but RecycleFile failure must not burn the journal.
+        Assert.NotNull(await ops.PeekUndoAsync(_projectId));
+        Assert.Null(await _catalog.GetAssetByIdAsync(a.Id));
+
+        sticky.FailRestore = false;
+        var retry = await ops.UndoLastAsync(_projectId);
+        Assert.True(retry.Ok, retry.Message);
+        Assert.True(File.Exists(a.Path));
+        Assert.NotNull(await _catalog.GetAssetByIdAsync(a.Id));
+        Assert.Null(await ops.PeekUndoAsync(_projectId));
     }
 
     [Fact]
@@ -340,6 +402,94 @@ public sealed class DeleteRejectedTests : IAsyncLifetime
         public bool TryRestore(string token, string originalPath) => _inner.TryRestore(token, originalPath);
 
         public void PermanentDelete(string path) => _inner.PermanentDelete(path);
+    }
+
+    /// <summary>Mirrors ShellFileTrash token policy: recycle token == original full path.</summary>
+    private sealed class ShellStyleTrash : IFileTrash
+    {
+        private readonly Dictionary<string, string> _payload = new(StringComparer.OrdinalIgnoreCase);
+
+        public string Recycle(string path)
+        {
+            var full = Path.GetFullPath(path);
+            _payload[full] = File.ReadAllText(full);
+            File.Delete(full);
+            return full;
+        }
+
+        public bool TryRestore(string token, string originalPath)
+        {
+            var dest = Path.GetFullPath(originalPath);
+            if (File.Exists(dest))
+            {
+                return true;
+            }
+
+            var key = string.IsNullOrWhiteSpace(token) ? dest : Path.GetFullPath(token);
+            if (!_payload.TryGetValue(key, out var body)
+                && !_payload.TryGetValue(dest, out body))
+            {
+                return false;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.WriteAllText(dest, body);
+            _payload.Remove(key);
+            _payload.Remove(dest);
+            return true;
+        }
+
+        public void PermanentDelete(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
+
+    /// <summary>Folder trash whose restore can be toggled off to simulate Shell lookup miss.</summary>
+    private sealed class StickyRestoreTrash : IFileTrash
+    {
+        private readonly IFileTrash _inner;
+        public bool FailRestore { get; set; }
+
+        public StickyRestoreTrash(IFileTrash inner) => _inner = inner;
+
+        public string Recycle(string path) => _inner.Recycle(path);
+
+        public bool TryRestore(string token, string originalPath) =>
+            !FailRestore && _inner.TryRestore(token, originalPath);
+
+        public void PermanentDelete(string path) => _inner.PermanentDelete(path);
+    }
+
+    [Fact]
+    public void RecycleInfo_parser_reads_win10_path()
+    {
+        var path = Path.Combine(_dir, "info-$I.dat");
+        var original = Path.Combine(_dir, "Lib", "shots", "_rejected", "a.jpg");
+        // version=2, size=0, deleted=0, charCount, UTF-16 path (+ null)
+        var chars = original.ToCharArray();
+        using (var ms = new MemoryStream())
+        using (var bw = new BinaryWriter(ms, Encoding.Unicode, leaveOpen: true))
+        {
+            bw.Write((long)2);
+            bw.Write((long)0);
+            bw.Write((long)0);
+            bw.Write(chars.Length + 1);
+            foreach (var c in chars)
+            {
+                bw.Write(c);
+            }
+
+            bw.Write((ushort)0);
+            bw.Flush();
+            File.WriteAllBytes(path, ms.ToArray());
+        }
+
+        Assert.True(ShellFileTrash.TryReadRecycleInfoOriginalPath(path, out var read));
+        Assert.Equal(original, read);
     }
 
     [Fact]
