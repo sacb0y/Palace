@@ -107,6 +107,16 @@ public sealed class ScanNoticeTests : IDisposable
     }
 
     [Fact]
+    public void Summary_counts_metadata_refresh_as_updated_not_unchanged()
+    {
+        var report = new ScanReport();
+        report.NoteIndexed(ScanFastPath.MetadataRefreshOutcome);
+        report.NoteIndexed(ScanOutcome.Unchanged);
+        Assert.Equal(ScanOutcome.Updated, ScanFastPath.MetadataRefreshOutcome);
+        Assert.Equal("Indexed 0 new, 1 updated, 1 unchanged, 0 missing.", ScanNotice.Summary(report));
+    }
+
+    [Fact]
     public void Add_merges_unchanged()
     {
         var a = new ScanReport { Unchanged = 3 };
