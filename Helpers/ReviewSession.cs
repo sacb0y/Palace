@@ -46,11 +46,28 @@ public sealed class ReviewSession
 
     public int RejectedCount => _history.Count(e => e.Decision == ReviewDecision.Reject);
 
+    public int KeepCount => _history.Count(e => e.Decision == ReviewDecision.Keep);
+
     public int SkipCount => _skipped.Count;
 
     public bool IsActive => Count > 0 && !IsComplete;
 
     public bool IsComplete => Count == 0 || _index >= Count;
+
+    /// <summary>End-of-queue title, e.g. <c>All 48 reviewed</c>.</summary>
+    public string EndTitle =>
+        IsComplete && Count > 0 ? $"All {DecidedCount} reviewed" : "";
+
+    /// <summary>End-of-queue stats: <c>31 kept · 6 rejected · 11 skipped</c>.</summary>
+    public string EndStats =>
+        IsComplete
+            ? $"{KeepCount} kept · {RejectedCount} rejected · {SkipCount} skipped"
+            : "";
+
+    public string DeleteRejectedLabel =>
+        IsComplete && RejectedCount > 0 ? $"Delete rejected ({RejectedCount})…" : "";
+
+    public bool CanDeleteRejected => IsComplete && RejectedCount > 0;
 
     public string? CurrentId =>
         IsComplete || Count == 0 ? null : _queue[_index];

@@ -119,7 +119,12 @@ public enum FileOpKind
     /// <summary>Delete a tag row (assignments / memberships / implications snapshotted); Undo restores.</summary>
     TagDelete,
     /// <summary>Add a TagAlias edge (+ AssetTag rewrite); Undo restores alias assignments.</summary>
-    TagAliasAdd
+    TagAliasAdd,
+    /// <summary>
+    /// Recycle rejected files (+ emptied <c>_rejected</c> folders). Undo restores from
+    /// Recycle Bin / trash and reinserts catalog rows. Permanent delete is not journaled.
+    /// </summary>
+    DeleteRejected
 }
 
 /// <summary>One step inside a <see cref="FileOpKind"/> batch. Undo replays steps in reverse.</summary>
@@ -145,5 +150,10 @@ public enum FileOpStep
     /// </summary>
     CreateTag,
     /// <summary>OldPath=aliasId; NewPath=idealId; NewSourceId=JSON migrated AssetTag rows.</summary>
-    AddAlias
+    AddAlias,
+    /// <summary>
+    /// Recycled rejected file. AssetId set; OldPath=original path; NewPath=JSON
+    /// <c>AssetDeleteSnapshot</c>; OldSourceId=source folder id; NewSourceId=trash token.
+    /// </summary>
+    RecycleFile
 }

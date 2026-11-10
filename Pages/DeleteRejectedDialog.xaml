@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentDialog
+    x:Class="Palace.Pages.DeleteRejectedDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ic="using:FluentIcons.WinUI"
+    x:Name="DlgDeleteRejected"
+    Title="Delete rejected files"
+    AutomationProperties.AutomationId="DlgDeleteRejected"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="OnPrimaryClick"
+    PrimaryButtonText="Move to Recycle Bin"
+    Style="{StaticResource DefaultContentDialogStyle}">
+    <ScrollViewer MaxHeight="520" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12" Width="520">
+            <TextBlock
+                x:Name="TxtDeleteRejectedSubtitle"
+                AutomationProperties.AutomationId="TxtDeleteRejectedSubtitle"
+                TextWrapping="WrapWholeWords" />
+            <TextBlock
+                x:Name="TxtDeleteRejectedScopeLabel"
+                AutomationProperties.AutomationId="TxtDeleteRejectedScopeLabel"
+                FontWeight="SemiBold"
+                Opacity="0.8"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="SCOPE" />
+            <RadioButton
+                x:Name="RadDeleteRejectedScopeView"
+                AutomationProperties.AutomationId="RadDeleteRejectedScopeView"
+                Checked="OnOptionsChanged"
+                GroupName="DeleteRejectedScope" />
+            <RadioButton
+                x:Name="RadDeleteRejectedScopeLibrary"
+                AutomationProperties.AutomationId="RadDeleteRejectedScopeLibrary"
+                Checked="OnOptionsChanged"
+                GroupName="DeleteRejectedScope" />
+            <TextBlock
+                x:Name="TxtDeleteRejectedNetworkSkip"
+                AutomationProperties.AutomationId="TxtDeleteRejectedNetworkSkip"
+                Foreground="#FCE100"
+                TextWrapping="WrapWholeWords"
+                Visibility="Collapsed" />
+            <TextBlock
+                x:Name="TxtDeleteRejectedDestLabel"
+                AutomationProperties.AutomationId="TxtDeleteRejectedDestLabel"
+                FontWeight="SemiBold"
+                Opacity="0.8"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="WHAT HAPPENS TO THE FILES" />
+            <RadioButton
+                x:Name="RadDeleteRejectedRecycle"
+                AutomationProperties.AutomationId="RadDeleteRejectedRecycle"
+                Checked="OnOptionsChanged"
+                GroupName="DeleteRejectedDest"
+                Content="Move to Recycle Bin">
+                <RadioButton.Tag>
+                    <x:String>Restore with Undo (Ctrl+Z) or from the Recycle Bin.</x:String>
+                </RadioButton.Tag>
+            </RadioButton>
+            <TextBlock
+                Margin="32,0,0,0"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Restore with Undo (Ctrl+Z) or from the Recycle Bin."
+                TextWrapping="WrapWholeWords" />
+            <RadioButton
+                x:Name="RadDeleteRejectedPermanent"
+                AutomationProperties.AutomationId="RadDeleteRejectedPermanent"
+                Checked="OnOptionsChanged"
+                Foreground="#FF99A4"
+                GroupName="DeleteRejectedDest"
+                Content="Delete permanently" />
+            <TextBlock
+                Margin="32,0,0,0"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Erases them from disk. No Undo."
+                TextWrapping="WrapWholeWords" />
+            <Border
+                x:Name="BrdPermanentWarn"
+                Padding="12"
+                Background="#442726"
+                BorderBrush="#FF99A4"
+                BorderThickness="1"
+                CornerRadius="8"
+                Visibility="Collapsed">
+                <TextBlock
+                    x:Name="TxtDeleteRejectedPermanentWarn"
+                    AutomationProperties.AutomationId="TxtDeleteRejectedPermanentWarn"
+                    Foreground="#FF99A4"
+                    TextWrapping="WrapWholeWords" />
+            </Border>
+            <TextBlock
+                x:Name="TxtDeleteRejectedCatalogNote"
+                AutomationProperties.AutomationId="TxtDeleteRejectedCatalogNote"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="Files also leave the Palace catalog. Emptied _rejected folders are removed."
+                TextWrapping="WrapWholeWords" />
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

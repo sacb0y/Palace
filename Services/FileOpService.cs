@@ -46,11 +46,16 @@ public sealed partial class FileOpService
 {
     private readonly CatalogService _catalog;
     private readonly Func<IDisposable>? _suppressWatcher;
+    private readonly IFileTrash _trash;
 
-    public FileOpService(CatalogService catalog, Func<IDisposable>? suppressWatcher = null)
+    public FileOpService(
+        CatalogService catalog,
+        Func<IDisposable>? suppressWatcher = null,
+        IFileTrash? trash = null)
     {
         _catalog = catalog;
         _suppressWatcher = suppressWatcher;
+        _trash = trash ?? new ShellFileTrash();
     }
 
     /// <summary>Deepest local, existing watched source that contains <paramref name="path"/>.</summary>
@@ -175,6 +180,8 @@ public sealed partial class FileOpService
             FileOpKind.TagRemove => $"Undo remove tag from {Items(batch.Items.Count(i => i.Step == FileOpStep.RemoveTag))}",
             FileOpKind.TagDelete => $"Undo delete of “{TagDeleteName(batch)}”",
             FileOpKind.TagAliasAdd => "Undo tag alias",
+            FileOpKind.DeleteRejected =>
+                $"Undo Recycle of {Files(batch.Items.Count(i => i.Step == FileOpStep.RecycleFile))}",
             _ => "Undo"
         };
 
@@ -1394,6 +1401,10 @@ public sealed partial class FileOpService
             case FileOpStep.CreateTag:
             case FileOpStep.AddAlias:
                 return await UndoTagOpStepAsync(item).ConfigureAwait(false);
+
+            case FileOpStep.RecycleFile:
+                return await UndoRecycleFileStepAsync(item, allSources, projectId, restored)
+                    .ConfigureAwait(false);
 
             default:
                 return UndoNote.Skip("unknown step");

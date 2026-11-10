@@ -26,7 +26,7 @@ public sealed partial class LibraryPage
     /// </summary>
     private void LibraryRoot_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (TryHandleNewFolderKey(e) || TryHandleTreeFolderKey(e))
+        if (TryHandleDeleteRejectedKey(e) || TryHandleNewFolderKey(e) || TryHandleTreeFolderKey(e))
         {
             e.Handled = true;
             return;

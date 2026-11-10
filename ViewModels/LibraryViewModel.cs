@@ -426,12 +426,19 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnSelectedFolderChanged(FolderNode? value)
     {
+        if (value is not null && IsAllRejectedView)
+        {
+            IsAllRejectedView = false;
+        }
+
         StampFolderSelection(value);
         RebuildBreadcrumbs();
         if (!_suppressFilter)
         {
             _ = ApplyFilterAsync();
         }
+
+        _ = RefreshRejectedCountsAsync();
     }
 
     private void StampFolderSelection(FolderNode? selected)

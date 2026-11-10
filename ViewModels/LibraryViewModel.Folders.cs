@@ -199,6 +199,18 @@ public partial class LibraryViewModel
             return;
         }
 
+        if (IsAllRejectedView)
+        {
+            var root = FolderTree.FirstOrDefault();
+            if (root is not null)
+            {
+                Breadcrumbs.Add(new PathCrumb { Name = root.Name, Path = root.Path });
+            }
+
+            Breadcrumbs.Add(new PathCrumb { Name = "All rejected", Path = "__all_rejected__" });
+            return;
+        }
+
         var node = SelectedFolder;
         if (node is null)
         {

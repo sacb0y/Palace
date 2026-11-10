@@ -102,6 +102,7 @@ public sealed partial class LibraryPage : Page
         _suppressBrowseChrome = false;
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
+        ViewModel.RequestDeleteRejected = AskDeleteRejectedAsync;
         ViewModel.RequestPickRoom = AskRoomAsync;
         ViewModel.RequestPickMoveDestination = AskMoveDestinationAsync;
         ViewModel.RequestFocusAssignTag = () =>
@@ -3830,6 +3831,13 @@ public sealed partial class LibraryPage : Page
             FolderTemplate = string.IsNullOrWhiteSpace(folderTemplate.Text) ? "{Character}/{tags:2}" : folderTemplate.Text,
             FileTemplate = string.IsNullOrWhiteSpace(fileTemplate.Text) ? "{Character}-{tags}.{ext}" : fileTemplate.Text
         };
+    }
+
+    private async Task<DeleteRejectedChoice?> AskDeleteRejectedAsync(DeleteRejectedPrompt prompt)
+    {
+        var dialog = new DeleteRejectedDialog(prompt) { XamlRoot = XamlRoot };
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary ? dialog.Choice : null;
     }
 
     private async Task<bool> AskConfirmAsync(string title, string body, string primary)

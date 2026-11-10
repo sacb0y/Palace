@@ -361,3 +361,13 @@ public sealed class TagDeleteSnapshot
     public List<TagImplication> Implications { get; set; } = [];
     public List<TagAlias> Aliases { get; set; } = [];
 }
+
+/// <summary>
+/// Catalog snapshot so <see cref="FileOpKind.DeleteRejected"/> Undo can restore a
+/// recycled rejected file (row + tag assignments).
+/// </summary>
+public sealed class AssetDeleteSnapshot
+{
+    public Asset Asset { get; set; } = new();
+    public List<AssetTag> Assignments { get; set; } = [];
+}
