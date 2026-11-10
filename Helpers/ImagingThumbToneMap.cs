@@ -113,8 +113,9 @@ public static class ImagingThumbToneMap
 
     /// <summary>
     /// Scale buffer to <paramref name="maxSide"/>, build lazy Working, tonemap
-    /// with the thumb LUT, fall back to legacy <see cref="ToneMap"/> when Imaging
-    /// fails. <paramref name="absoluteScrgb"/> true = Windows/present scRGB
+    /// with the thumb LUT. Hard residual <see cref="ToneMap.ScrgbToBgra8"/>
+    /// (no Reinhard) only when Imaging fails.
+    /// <paramref name="absoluteScrgb"/> true = Windows/present scRGB
     /// (1.0 = 80 nits); false = relative SDR white → Working 1.0.
     /// </summary>
     public static (byte[] Bgra, int Width, int Height, bool UsedImaging) FromScrgb(

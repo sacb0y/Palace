@@ -278,35 +278,47 @@ public static class HdrJxlPresent
     }
 
     /// <summary>
-    /// Mean CIE Y after SDR Reinhard present map — for tests that PQ/HLG JXL
-    /// is readable (not crushed, not almost-white).
+    /// Mean CIE Y after Imaging Full Option A present — for tests that PQ/HLG
+    /// JXL is readable (not crushed, not almost-white). Treats the buffer as
+    /// a 1×N absolute scRGB strip.
     /// </summary>
     public static float ToneMappedMeanLuminance(
         ReadOnlySpan<float> scrgbRgba,
         int pixelCount,
         float sdrWhiteLevelNits = 0f)
     {
+        _ = sdrWhiteLevelNits;
         if (pixelCount <= 0 || scrgbRgba.Length < pixelCount * 4)
         {
             return 0f;
         }
 
-        var (exposure, white) = ToneMap.AnalyzeHdrPresent(
-            scrgbRgba, pixelCount, sdrWhiteLevelNits);
+        var mapped = ImagingFullToneMap.TryMapFrameToPresentScrgb(
+            working: null,
+            scrgbRgba,
+            width: pixelCount,
+            height: 1);
+        if (mapped is null)
+        {
+            return 0f;
+        }
+
+        var map = GalleryPresent.PresentMapImagingFull();
         double sum = 0;
         for (var i = 0; i < pixelCount; i++)
         {
             ToneMap.MapPresentRgb(
-                scrgbRgba[i * 4],
-                scrgbRgba[i * 4 + 1],
-                scrgbRgba[i * 4 + 2],
-                exposure,
-                1f,
-                white,
-                softNegatives: false,
+                mapped[i * 4],
+                mapped[i * 4 + 1],
+                mapped[i * 4 + 2],
+                map.Scale,
+                map.ClipScrgb,
+                map.ReinhardWhite,
+                map.SoftNegatives,
                 out var r,
                 out var g,
-                out var b);
+                out var b,
+                map.OutputScale);
             sum += ToneMap.Luminance(r, g, b);
         }
 

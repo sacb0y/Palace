@@ -358,10 +358,10 @@ public sealed class HdrFileTests
         // Opt-in helper only (not wired into PresentMap).
         Assert.Equal(80f / 250f, GalleryPresent.HdrCompositionScale(250f), 3);
         Assert.Equal(1f, GalleryPresent.HdrCompositionScale(0f));
-        var sdrReinhard = GalleryPresent.PresentMapSdrReinhard(0.5f, 4f);
-        Assert.Equal(0.5f, sdrReinhard.Scale);
-        Assert.Equal(4f, sdrReinhard.ReinhardWhite);
-        Assert.False(sdrReinhard.SoftNegatives);
+        var imagingFull = GalleryPresent.PresentMapImagingFull();
+        Assert.Equal(1f, imagingFull.Scale);
+        Assert.Equal(0f, imagingFull.ReinhardWhite);
+        Assert.False(imagingFull.SoftNegatives);
         Assert.Equal(34, GalleryPresent.DxgiSwapChain2SetMatrixTransformVtbl);
         Assert.Equal(200f, DisplayHdr.SdrWhiteLevelMultiplierToNits(2500), 3); // 2.5×80
         Assert.Equal(0f, DisplayHdr.SdrWhiteLevelMultiplierToNits(500)); // below 80 nits

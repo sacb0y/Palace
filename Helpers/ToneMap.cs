@@ -1,17 +1,20 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// Linear scRGB (1.0 = SDR white, 80 nits) → 8-bit sRGB for thumbnails and
-/// SDR previews of HDR stills. SDR-range content passes through unchanged;
-/// HDR content gets a log-average exposure plus extended Reinhard on
-/// luminance (hue-preserving), so highlights roll off instead of clipping
-/// or turning into a single saturated channel.
+/// Residual scRGB helpers after Imaging owns thumbs / full / HDR present (P6).
+/// <see cref="ScrgbToBgra8"/> is hard-clip + hue-preserving peak fold only —
+/// no Reinhard / MidGrey Analyze. Gallery present uses
+/// <see cref="MapPresentRgb"/> for scale / clip / SoftNegatives (ReinhardWhite
+/// ignored). Prefer <see cref="ImagingThumbToneMap"/> /
+/// <see cref="ImagingFullToneMap"/> / <see cref="ImagingHdrPresentToneMap"/>.
 /// </summary>
 public static class ToneMap
 {
-    public const float MiddleGrey = 0.18f;
-
-    /// <summary>Returns BGRA8 (straight alpha) for an RGBA float buffer.</summary>
+    /// <summary>
+    /// Returns BGRA8 (straight alpha) for an RGBA float buffer. Hard residual
+    /// when Imaging thumb encode fails: clamp via hue-preserving peak fold,
+    /// then sRGB OETF. No exposure or Reinhard shoulder.
+    /// </summary>
     public static byte[] ScrgbToBgra8(ReadOnlySpan<float> rgba, int width, int height, CancellationToken cancellationToken = default)
     {
         var count = checked(width * height);
@@ -20,7 +23,6 @@ public static class ToneMap
             throw new ArgumentException("Pixel buffer is smaller than width × height × 4.", nameof(rgba));
         }
 
-        var (exposure, white) = Analyze(rgba, count, cancellationToken);
         var output = new byte[count * 4];
         for (var i = 0; i < count; i++)
         {
@@ -28,24 +30,13 @@ public static class ToneMap
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
-            var r = Sanitize(rgba[i * 4]) * exposure;
-            var g = Sanitize(rgba[i * 4 + 1]) * exposure;
-            var b = Sanitize(rgba[i * 4 + 2]) * exposure;
-            var a = Math.Clamp(Sanitize(rgba[i * 4 + 3]), 0f, 1f);
-            if (white > 1f)
-            {
-                var l = Luminance(r, g, b);
-                if (l > 0f)
-                {
-                    var ld = l * (1f + l / (white * white)) / (1f + l);
-                    var k = ld / l;
-                    r *= k;
-                    g *= k;
-                    b *= k;
-                }
-            }
 
-            // Keep hue when a channel still exceeds 1 after the curve.
+            var r = Sanitize(rgba[i * 4]);
+            var g = Sanitize(rgba[i * 4 + 1]);
+            var b = Sanitize(rgba[i * 4 + 2]);
+            var a = Math.Clamp(Sanitize(rgba[i * 4 + 3]), 0f, 1f);
+
+            // Keep hue when a channel exceeds 1 (no Reinhard).
             var peak = Math.Max(r, Math.Max(g, b));
             if (peak > 1f)
             {
@@ -63,91 +54,6 @@ public static class ToneMap
         return output;
     }
 
-    /// <summary>
-    /// Exposure scale and white point (in scaled units). Content whose
-    /// luminance stays within SDR range gets (1, 1): no tone mapping.
-    /// Thumbs / SDR previews use this. Gallery HDR→SDR present uses
-    /// <see cref="AnalyzeHdrPresent"/> so relative EXR / soft PQ cannot
-    /// skip the curve when p995 ≤ 1.
-    /// </summary>
-    public static (float Exposure, float White) Analyze(ReadOnlySpan<float> rgba, int count, CancellationToken cancellationToken = default)
-    {
-        var (logAvg, p995, ok) = SampleLuminance(rgba, count, cancellationToken);
-        if (!ok)
-        {
-            return (1f, 1f);
-        }
-
-        if (p995 <= 1.0f)
-        {
-            return (1f, 1f);
-        }
-
-        var exposure = Math.Clamp(MiddleGrey / Math.Max(logAvg, 1e-4f), 0.05f, 4f);
-        var white = Math.Max(1f, p995 * exposure);
-        return (exposure, white);
-    }
-
-    /// <summary>
-    /// Gallery HDR→SDR present (Isiac): exposure defaults to <b>1.0</b> so
-    /// scene-referred 1.0 (and PQ paper after absolute decode) maps toward
-    /// SDR white — never the thumb auto-boost
-    /// <c>clamp(0.18/logAvg, 0.05, 4)</c>. At most attenuate via
-    /// <see cref="GalleryPresent.PresentSdrExposure"/> (cap ≤ 1) using
-    /// <c>AdvancedColorInfo.SdrWhiteLevelInNits</c> / CCD, else 80.
-    /// Always applies extended Reinhard with <c>w</c> from content p995
-    /// (no <c>p995 ≤ 1</c> skip — that left soft EXR/JXL Fit unmapped).
-    /// </summary>
-    public static (float Exposure, float White) AnalyzeHdrPresent(
-        ReadOnlySpan<float> rgba,
-        int count,
-        float sdrWhiteLevelNits = 0f,
-        CancellationToken cancellationToken = default)
-    {
-        var exposure = GalleryPresent.PresentSdrExposure(sdrWhiteLevelNits);
-        var (logAvg, p995, ok) = SampleLuminance(rgba, count, cancellationToken);
-        _ = logAvg;
-        if (!ok)
-        {
-            return (exposure, 1.01f);
-        }
-
-        // Always engage Reinhard (white > 1); w = content peak after exposure.
-        var white = Math.Max(1.01f, Math.Max(p995, 1e-4f) * exposure);
-        return (exposure, white);
-    }
-
-    private static (float LogAvg, float P995, bool Ok) SampleLuminance(
-        ReadOnlySpan<float> rgba,
-        int count,
-        CancellationToken cancellationToken)
-    {
-        var step = Math.Max(1, count / 65536);
-        var samples = new List<float>(Math.Min(count, 65536) + 1);
-        var logSum = 0.0;
-        for (var i = 0; i < count; i += step)
-        {
-            if ((samples.Count & 1023) == 0)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-            }
-
-            var l = Luminance(Sanitize(rgba[i * 4]), Sanitize(rgba[i * 4 + 1]), Sanitize(rgba[i * 4 + 2]));
-            samples.Add(l);
-            logSum += Math.Log(1e-4 + l);
-        }
-
-        if (samples.Count == 0)
-        {
-            return (0f, 0f, false);
-        }
-
-        samples.Sort();
-        var p995 = samples[Math.Min(samples.Count - 1, (int)(samples.Count * 0.995))];
-        var logAvg = (float)Math.Exp(logSum / samples.Count);
-        return (logAvg, p995, true);
-    }
-
     public static float Luminance(float r, float g, float b) =>
         0.2126f * r + 0.7152f * g + 0.0722f * b;
 
@@ -159,12 +65,10 @@ public static class ToneMap
     }
 
     /// <summary>
-    /// Gallery swapchain present map (same curve as <see cref="ScrgbToBgra8"/>
-    /// when <paramref name="reinhardWhite"/> &gt; 1). HDR passthrough: scale 1,
-    /// clip peak/80, <paramref name="softNegatives"/> passes OOG through.
+    /// Gallery swapchain present map. Scale → optional OutputScale lift → clip.
+    /// <paramref name="reinhardWhite"/> is ignored (P6; Imaging owns the curve).
+    /// HDR passthrough: scale 1, clip peak/80, SoftNegatives passes OOG through.
     /// SDR: plain-clamp negatives (no SoftNegChannel — that darkened luma).
-    /// <paramref name="outputScale"/> (M1) lifts the finished curve into HDR
-    /// composition white (<c>SdrWhite/80</c>) — leave exposure/white alone.
     /// </summary>
     public static void MapPresentRgb(
         float r,
@@ -179,12 +83,13 @@ public static class ToneMap
         out float ob,
         float outputScale = 1f)
     {
+        _ = reinhardWhite;
         r = FiniteOrZero(r);
         g = FiniteOrZero(g);
         b = FiniteOrZero(b);
         if (!softNegatives)
         {
-            // SDR: plain clamp before tonemap (no SoftNegChannel luma darken).
+            // SDR: plain clamp before scale (no SoftNegChannel luma darken).
             r = Math.Max(0f, r);
             g = Math.Max(0f, g);
             b = Math.Max(0f, b);
@@ -194,29 +99,7 @@ public static class ToneMap
         g *= scale;
         b *= scale;
 
-        if (reinhardWhite > 1f)
-        {
-            var l = Luminance(r, g, b);
-            if (l > 0f)
-            {
-                var ld = l * (1f + l / (reinhardWhite * reinhardWhite)) / (1f + l);
-                var k = ld / l;
-                r *= k;
-                g *= k;
-                b *= k;
-            }
-
-            // Hue-preserving peak fold into thumb composition white (scRGB 1.0).
-            var peak = Math.Max(r, Math.Max(g, b));
-            if (peak > 1f)
-            {
-                r /= peak;
-                g /= peak;
-                b /= peak;
-            }
-        }
-
-        // M1: thumb curve → ×SdrWhite/80; fold/clip target is ClipScrgb (= k).
+        // M1: Imaging / absolute map → ×SdrWhite/80; fold/clip target is ClipScrgb.
         if (outputScale > 0f && float.IsFinite(outputScale) && outputScale != 1f)
         {
             r *= outputScale;

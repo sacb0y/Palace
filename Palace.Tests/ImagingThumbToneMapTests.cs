@@ -52,7 +52,7 @@ public class ImagingThumbToneMapTests
     public void RelativeWhite_MatchesLegacy255()
     {
         // Doktor B1: relative SDR/WideGamut white must not take absolute Scrgb
-        // (that yielded ~168). Legacy Reinhard passthrough → 255.
+        // (that yielded ~168). Hard residual of relative 1.0 → 255.
         float[] relative = [1f, 1f, 1f, 1f];
         var legacy = ToneMap.ScrgbToBgra8(relative, 1, 1);
         var (imaging, _, _, used) = ImagingThumbToneMap.FromScrgb(

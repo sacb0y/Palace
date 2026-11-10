@@ -147,8 +147,8 @@ public static class StillDecode
 
     /// <summary>
     /// Scale linear RGB to fit <paramref name="maxSide"/>, then tone map to
-    /// BGRA8. P3 prefers <see cref="ImagingThumbToneMap"/> (lazy Working + LUT);
-    /// falls back to legacy <see cref="ToneMap.ScrgbToBgra8"/>.
+    /// BGRA8 via <see cref="ImagingThumbToneMap"/> (lazy Working + LUT). Hard
+    /// residual clip when Imaging fails (no Reinhard).
     /// <paramref name="absoluteScrgb"/> defaults true (EXR / Radiance / HDR present);
     /// pass false for relative SDR / WideGamut JXL (1.0 = display white).
     /// </summary>
