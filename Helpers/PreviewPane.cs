@@ -241,7 +241,9 @@ public static class PreviewPane
 
     /// <summary>
     /// Column + chrome flags the Library page must apply for one Effective result.
-    /// Hide→show docked must restore a positive Preview width (not leave the column at 0).
+    /// Docked Preview uses a right-aligned host sized to <see cref="PreviewPaneLayoutState.DockHostWidth"/>;
+    /// the Grid's third column stays 0 so hide→show never cycles ColumnDefinition Width 0↔N
+    /// (that left the dock child arranged over the folder tree — FENRIR #177).
     /// </summary>
     public static PreviewPaneLayoutState Layout(PreviewPaneEffective effective) =>
         new(
@@ -253,14 +255,25 @@ public static class PreviewPane
             OverlayVisible: effective.Mode == PaneMode.Overlay);
 
     /// <summary>
-    /// True when docked column space appears or disappears — Grid must remeasure;
-    /// equal total width (mosaic ± preview) alone does not always rearrange children.
+    /// Pixel width for <c>ColPreview</c> — always 0. Dock chrome is right-aligned, not column 2.
+    /// </summary>
+    public static double GridPreviewColumnWidth(PreviewPaneLayoutState layout) => 0;
+
+    /// <summary>
+    /// Width for the right-aligned dock host when Docked; 0 otherwise.
+    /// </summary>
+    public static double DockHostWidth(PreviewPaneLayoutState layout) =>
+        layout.Mode == PaneMode.Docked ? layout.Preview : 0;
+
+    /// <summary>
+    /// True when docked mosaic reservation appears or disappears — Grid must remeasure.
     /// </summary>
     public static bool NeedsDockColumnRelayout(PaneMode from, PaneMode to) =>
         (from == PaneMode.Docked) != (to == PaneMode.Docked);
 }
 
 /// <summary>Applied Library Preview column + chrome visibility for one layout pass.</summary>
+/// <param name="Preview">Logical dock width from Allocate (UserWidth clamped) when Docked; else 0.</param>
 public readonly record struct PreviewPaneLayoutState(
     PaneMode Mode,
     double Tree,

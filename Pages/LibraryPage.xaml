@@ -63,9 +63,10 @@
                 x:Name="ColMosaic"
                 Width="560"
                 MinWidth="0" />
+            <!-- Width always 0 at runtime — dock host is right-aligned (GrdPreviewDockHost). -->
             <ColumnDefinition
                 x:Name="ColPreview"
-                Width="340"
+                Width="0"
                 MinWidth="0" />
         </Grid.ColumnDefinitions>
 
@@ -1954,10 +1955,16 @@
             </Grid>
         </Grid>
 
+        <!-- Right-aligned over tree+mosaic: ColPreview stays Width=0 so hide→show never
+             cycles a ColumnDefinition 0↔N (that arranged this host over the folder tree). -->
         <Grid
             x:Name="GrdPreviewDockHost"
             Grid.Row="1"
-            Grid.Column="2">
+            Grid.Column="0"
+            Grid.ColumnSpan="3"
+            Width="340"
+            HorizontalAlignment="Right"
+            Visibility="Collapsed">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />

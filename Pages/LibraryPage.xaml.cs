@@ -787,12 +787,18 @@ public sealed partial class LibraryPage : Page
 
         // Fixed widths from Effective — MinWidths always 0 so column mins never sum
         // above available width (that floored DesiredSize and froze resize).
+        // ColPreview stays 0: dock host is right-aligned (see GrdPreviewDockHost).
         ColFolderTree.Width = new GridLength(layout.Tree);
         ColFolderTree.MinWidth = 0;
         ColMosaic.Width = new GridLength(layout.Mosaic);
         ColMosaic.MinWidth = 0;
-        ColPreview.Width = new GridLength(layout.Preview);
+        ColPreview.Width = new GridLength(PreviewPane.GridPreviewColumnWidth(layout));
         ColPreview.MinWidth = 0;
+        var dockWidth = PreviewPane.DockHostWidth(layout);
+        if (dockWidth > 0)
+        {
+            GrdPreviewDockHost.Width = dockWidth;
+        }
 
         if (!showing)
         {
@@ -809,9 +815,7 @@ public sealed partial class LibraryPage : Page
 
         SyncPreviewChrome(effective);
 
-        // Docked hide/show keeps the same total fixed width (mosaic ± preview). WinUI
-        // may not rearrange Collapsed→Visible column children until a parent size
-        // change — force measure when the dock column appears or disappears.
+        // Mosaic width changes when dock reservation appears/disappears.
         if (needsDockRelayout)
         {
             GrdLibraryColumns.InvalidateMeasure();

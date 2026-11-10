@@ -221,7 +221,7 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void Layout_DockedHideShowRestoresPreviewColumnAndChrome()
+    public void Layout_DockedHideShowRestoresDockHostWidth_GridPreviewColumnStaysZero()
     {
         var wide = PreviewPane.AutoShowAboveContentDip + 200;
         var userWidth = 400d;
@@ -233,9 +233,12 @@ public sealed class PreviewPaneTests
         Assert.True(docked.DockHostVisible);
         Assert.False(docked.OverlayVisible);
         Assert.Equal(userWidth, docked.Preview, 0.01);
+        Assert.Equal(userWidth, PreviewPane.DockHostWidth(docked), 0.01);
+        Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(docked));
         Assert.True(docked.Mosaic >= LibraryColumnLayout.MosaicMinWidth - 0.01);
 
-        // Hide → show three times: column width and dock chrome must return each time.
+        // Hide → show three times: dock host width + mosaic reservation restore;
+        // Grid ColPreview stays 0 (right-aligned host — no Width 0↔N cycle).
         for (var i = 0; i < 3; i++)
         {
             s = PreviewPane.ApplyToggle(s);
@@ -244,6 +247,8 @@ public sealed class PreviewPaneTests
             Assert.False(hidden.DockHostVisible);
             Assert.False(hidden.OverlayVisible);
             Assert.Equal(0, hidden.Preview);
+            Assert.Equal(0, PreviewPane.DockHostWidth(hidden));
+            Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(hidden));
             Assert.True(hidden.Mosaic > docked.Mosaic);
 
             s = PreviewPane.ApplyToggle(s);
@@ -252,6 +257,8 @@ public sealed class PreviewPaneTests
             Assert.True(shown.DockHostVisible);
             Assert.False(shown.OverlayVisible);
             Assert.Equal(userWidth, shown.Preview, 0.01);
+            Assert.Equal(userWidth, PreviewPane.DockHostWidth(shown), 0.01);
+            Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(shown));
             Assert.Equal(docked.Mosaic, shown.Mosaic, 0.01);
             Assert.Equal(docked.Tree, shown.Tree, 0.01);
             Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, shown.Mode));
@@ -271,6 +278,8 @@ public sealed class PreviewPaneTests
         Assert.False(overlay.DockHostVisible);
         Assert.True(overlay.OverlayVisible);
         Assert.Equal(0, overlay.Preview);
+        Assert.Equal(0, PreviewPane.DockHostWidth(overlay));
+        Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(overlay));
         Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Overlay));
     }
 }
