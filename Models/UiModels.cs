@@ -43,10 +43,10 @@ public sealed partial class FolderNode : ObservableObject
     public bool IsPending { get; set; }
 
     /// <summary>Always shows a count, including <c>0</c> for empty folders.</summary>
-    public string CountText => AssetCount.ToString("N0");
+    public string CountText => FolderTreeVm.CountText(AssetCount);
 
     /// <summary>UIA name: includes count or "empty" so Narrator is not name-only.</summary>
-    public string AutomationName => AssetCount > 0 ? $"{Name}, {AssetCount} items" : $"{Name}, empty";
+    public string AutomationName => FolderTreeVm.AutomationName(Name, AssetCount);
 
     public ObservableCollection<FolderNode> Children { get; } = [];
 

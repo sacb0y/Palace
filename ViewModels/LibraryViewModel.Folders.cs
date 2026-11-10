@@ -155,16 +155,8 @@ public partial class LibraryViewModel
     /// Folder tree from catalog asset folders plus real (possibly empty) directories under local
     /// sources. Lists disk, so call off the UI thread.
     /// </summary>
-    private static List<FolderNode> BuildFolderNodes(IReadOnlyList<SourceFolder> sources, IReadOnlyList<Asset> assets, FolderTreeSort sort)
-    {
-        var entries = FolderTreeBuilder.Build(
-            sources.Select(s => new FolderTreeSource(s.Id, s.Path, s.Kind == SourceKind.Local)).ToList(),
-            assets.Select(a => (a.SourceFolderId, a.Path)),
-            FolderTreeBuilder.ListDiskChildren,
-            sort,
-            FolderTreeBuilder.IsHiddenOnDisk);
-        return entries.Select(ToNode).ToList();
-    }
+    private static List<FolderNode> BuildFolderNodes(IReadOnlyList<SourceFolder> sources, IReadOnlyList<Asset> assets, FolderTreeSort sort) =>
+        FolderTreeVm.BuildFromCatalog(sources, assets, sort).Select(ToNode).ToList();
 
     private static FolderNode ToNode(FolderTreeEntry entry)
     {
