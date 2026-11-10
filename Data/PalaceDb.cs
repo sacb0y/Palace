@@ -22,9 +22,11 @@ public sealed class PalaceDb : IDisposable
     private const int ImpliedPurgeBackupKeep = 3;
     private const int TagImportBackupKeep = 3;
     private const int DeleteRejectedBackupKeep = 3;
+    private const int TagNameMergeBackupKeep = 3;
     private const string ImpliedPurgeBackoffFileName = "implied-purge-backoff.txt";
     private const string TagImportBackupPrefix = "pre-tag-import-";
     private const string DeleteRejectedBackupPrefix = "pre-delete-rejected-";
+    private const string TagNameMergeBackupPrefix = "pre-tag-name-merge-";
     private static readonly TimeSpan ImpliedPurgeBackoff = TimeSpan.FromDays(1);
 
     /// <summary>Folder of the last pre-import catalog backup, when <see cref="BackupBeforeTagImport"/> ran.</summary>
@@ -32,6 +34,12 @@ public sealed class PalaceDb : IDisposable
 
     /// <summary>Folder of the last pre–Delete rejected catalog backup.</summary>
     public string? LastDeleteRejectedBackupDir { get; private set; }
+
+    /// <summary>Folder of the pre–tag-name-merge backup, when one ran on open.</summary>
+    public string? TagNameMergeBackupDir { get; private set; }
+
+    /// <summary>Set when backup/verify failed and the near-dupe merge was skipped (retry next launch).</summary>
+    public string? TagNameMergeSkipReason { get; private set; }
 
     /// <summary>Clear before each import so a no-op cannot surface a prior backup path.</summary>
     public void ClearLastTagImportBackup() => LastTagImportBackupDir = null;
@@ -774,12 +782,51 @@ public sealed class PalaceDb : IDisposable
     {
         try
         {
+            if (TagNames.NeedsNormalizePass(_connection))
+            {
+                try
+                {
+                    BackupBeforeTagNameMerge();
+                }
+                catch (Exception ex)
+                {
+                    // Disk full / verify mismatch — skip merge/rewrite; C# Same/FindId guards still apply.
+                    TagNameMergeSkipReason = ex.Message;
+                    TagNameMergeBackupDir = null;
+                    TagNameMergeError = ex;
+                    ErrorReporter.LogOnly("Tag-name merge skipped (backup/verify)", ex);
+                    return;
+                }
+            }
+
             TagNameMerge = TagNames.EnsureUnique(_connection);
         }
         catch (SqliteException ex)
         {
             TagNameMergeError = ex;
         }
+    }
+
+    private void BackupBeforeTagNameMerge()
+    {
+        long assetTagCount;
+        using (var probe = _connection.CreateCommand())
+        {
+            probe.CommandText = "SELECT COUNT(*) FROM AssetTag";
+            assetTagCount = Convert.ToInt64(probe.ExecuteScalar());
+        }
+
+        var root = Path.GetDirectoryName(_dbPath) ?? ".";
+        var backupsRoot = Path.Combine(root, "backups");
+        Directory.CreateDirectory(backupsRoot);
+        var backupDir = Path.Combine(backupsRoot, $"{TagNameMergeBackupPrefix}{DateTime.UtcNow.Ticks}");
+        Directory.CreateDirectory(backupDir);
+        var backupDb = Path.Combine(backupDir, "palace.db");
+        BackupCatalogCopy(backupDb);
+        VerifyCatalogBackup(backupDb, assetTagCount);
+        TagNameMergeBackupDir = backupDir;
+        TagNameMergeSkipReason = null;
+        PrunePrefixedBackups(backupsRoot, TagNameMergeBackupPrefix, TagNameMergeBackupKeep);
     }
 
     private void EnsureCloudColumns()

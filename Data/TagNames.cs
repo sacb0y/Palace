@@ -1,24 +1,190 @@
+using System.Text;
 using Microsoft.Data.Sqlite;
+using Palace.Helpers;
 
 namespace Palace.Data;
 
 /// <summary>
-/// Tag names are global (shared by every project) and unique ignoring case and surrounding
-/// whitespace. Lookups, the create / rename guards, and the startup merge of legacy duplicates
+/// Tag names are global (shared by every project) and unique ignoring case, surrounding
+/// whitespace, and <c>_</c> / <c>-</c> / internal whitespace runs (all fold to a single space).
+/// Lookups, the create / rename guards, and the startup merge of legacy duplicates
 /// all use <see cref="Same"/>. The <see cref="UniqueIndexName"/> index (NOCASE, ASCII folding) is a
-/// backstop; the C# comparison is stricter, so the merge always leaves the index creatable.
+/// backstop for case-only clashes; the C# comparison is stricter, so the merge always leaves the
+/// index creatable after names are stored in normalized form.
 /// </summary>
 public static class TagNames
 {
     public const string UniqueIndexName = "UX_Tag_Name_NoCase";
 
-    public static string Normalize(string? name) => (name ?? "").Trim();
+    /// <summary>
+    /// Trim; replace <c>_</c>, <c>-</c>, and runs of whitespace with a single space.
+    /// Case is preserved for storage; equality uses <see cref="Same"/>.
+    /// </summary>
+    public static string Normalize(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return "";
+        }
+
+        var sb = new StringBuilder(name.Length);
+        var pendingSpace = false;
+        var started = false;
+        foreach (var c in name)
+        {
+            if (c is '_' or '-' || char.IsWhiteSpace(c))
+            {
+                if (started)
+                {
+                    pendingSpace = true;
+                }
+
+                continue;
+            }
+
+            if (pendingSpace)
+            {
+                sb.Append(' ');
+                pendingSpace = false;
+            }
+
+            sb.Append(c);
+            started = true;
+        }
+
+        return sb.ToString();
+    }
 
     public static bool Same(string? a, string? b) =>
         string.Equals(Normalize(a), Normalize(b), StringComparison.OrdinalIgnoreCase);
 
     public static string DuplicateMessage(string name) =>
         $"A tag named \"{Normalize(name)}\" already exists. Tag names are shared across all projects and ignore case.";
+
+    /// <summary>
+    /// Strip A1111 attention / alternate-weight wrappers from one prompt token, then
+    /// <see cref="Normalize"/>. Does not resolve aliases — see <see cref="ResolvePromptToken"/>.
+    /// </summary>
+    public static string FromPromptToken(string? raw) => Normalize(StripPromptWeights(raw));
+
+    /// <summary>
+    /// Strip <c>(name:1.2)</c> / <c>[x]</c> / <c>{x}</c> (and nested forms), then normalize,
+    /// then map through <paramref name="aliasNameToIdealName"/> keyed by normalized names.
+    /// </summary>
+    public static string ResolvePromptToken(
+        string? raw,
+        IReadOnlyDictionary<string, string>? aliasNameToIdealName)
+    {
+        var key = FromPromptToken(raw);
+        if (key.Length == 0 || aliasNameToIdealName is null || aliasNameToIdealName.Count == 0)
+        {
+            return key;
+        }
+
+        if (aliasNameToIdealName.TryGetValue(key, out var ideal)
+            || aliasNameToIdealName.TryGetValue(key.ToLowerInvariant(), out ideal))
+        {
+            return Normalize(ideal);
+        }
+
+        foreach (var (alias, mapped) in aliasNameToIdealName)
+        {
+            if (Same(alias, key))
+            {
+                return Normalize(mapped);
+            }
+        }
+
+        return key;
+    }
+
+    /// <summary>
+    /// Peel A1111 weight / attention syntax: <c>(black hair:1.2)</c>, nested parens,
+    /// <c>[x]</c>, <c>{x}</c>, and a trailing <c>:1.2</c> without brackets.
+    /// </summary>
+    public static string StripPromptWeights(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return "";
+        }
+
+        var s = raw.Trim().Trim('"', '\'', ' ');
+        var guard = 0;
+        while (guard++ < 32)
+        {
+            s = s.Trim();
+            if (s.Length < 2)
+            {
+                break;
+            }
+
+            var open = s[0];
+            var close = open switch
+            {
+                '(' => ')',
+                '[' => ']',
+                '{' => '}',
+                _ => '\0'
+            };
+            if (close != '\0' && s[^1] == close)
+            {
+                var inner = s[1..^1].Trim();
+                var colon = inner.LastIndexOf(':');
+                if (colon > 0 && IsPromptWeight(inner[(colon + 1)..]))
+                {
+                    inner = inner[..colon].Trim();
+                }
+
+                s = inner;
+                continue;
+            }
+
+            var weightColon = s.LastIndexOf(':');
+            if (weightColon > 0 && IsPromptWeight(s[(weightColon + 1)..]))
+            {
+                s = s[..weightColon].Trim();
+                continue;
+            }
+
+            break;
+        }
+
+        return s;
+    }
+
+    private static bool IsPromptWeight(string text)
+    {
+        var t = text.Trim();
+        if (t.Length == 0)
+        {
+            return false;
+        }
+
+        // "1.2", ".5", "1", "1.2.3" refuse — require a simple decimal.
+        var dot = 0;
+        for (var i = 0; i < t.Length; i++)
+        {
+            var c = t[i];
+            if (c == '.')
+            {
+                dot++;
+                if (dot > 1)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (!char.IsAsciiDigit(c))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>Id of a tag whose name matches <paramref name="name"/>, other than <paramref name="excludeId"/>.</summary>
     public static string? FindId(SqliteConnection conn, string name, string? excludeId = null, SqliteTransaction? tx = null)
@@ -31,11 +197,8 @@ public static class TagNames
 
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
-        // NOCASE only folds ASCII, so non-ASCII names fall back to a full in-process compare.
-        cmd.CommandText = IsAscii(key)
-            ? "SELECT Id, Name FROM Tag WHERE trim(Name) = $key COLLATE NOCASE"
-            : "SELECT Id, Name FROM Tag";
-        cmd.Parameters.AddWithValue("$key", key);
+        // Full scan: underscore / hyphen folding is stricter than SQL trim+NOCASE.
+        cmd.CommandText = "SELECT Id, Name FROM Tag";
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
         {
@@ -49,11 +212,33 @@ public static class TagNames
         return null;
     }
 
-    /// <summary>Merge legacy duplicates, trim padded names, then add the unique index. Safe to run on every open.</summary>
+    /// <summary>True when at least one normalized-name group has more than one Tag row.</summary>
+    public static bool HasDuplicateGroups(SqliteConnection conn) =>
+        LoadTags(conn)
+            .GroupBy(t => Normalize(t.Name), StringComparer.OrdinalIgnoreCase)
+            .Any(g => g.Count() > 1);
+
+    /// <summary>True when any stored name differs from <see cref="Normalize"/> (merge or rewrite needed).</summary>
+    public static bool NeedsNormalizePass(SqliteConnection conn)
+    {
+        foreach (var tag in LoadTags(conn))
+        {
+            var normalized = Normalize(tag.Name);
+            if (normalized.Length > 0 && !string.Equals(normalized, tag.Name, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return HasDuplicateGroups(conn);
+    }
+
+    /// <summary>Merge legacy duplicates, rewrite stored names to <see cref="Normalize"/>, then add the unique index. Safe to run on every open.</summary>
     public static TagNameMergeResult EnsureUnique(SqliteConnection conn)
     {
         var result = MergeDuplicates(conn);
-        TrimPaddedNames(conn);
+        NormalizeStoredNames(conn);
+        FlattenAliasChains(conn);
         using var index = conn.CreateCommand();
         index.CommandText = $"CREATE UNIQUE INDEX IF NOT EXISTS {UniqueIndexName} ON Tag(Name COLLATE NOCASE)";
         index.ExecuteNonQuery();
@@ -104,11 +289,12 @@ public static class TagNames
     }
 
     /// <summary>
-    /// Store every tag name trimmed. A padded legacy name (" Cat ") can be the merge survivor, and
-    /// name lookups such as tag import key on the trimmed form. Runs after the merge, so no two
-    /// trimmed names can collide. Whitespace-only names are left alone. Returns how many changed.
+    /// Store every tag name in <see cref="Normalize"/> form. A padded / underscored legacy name can
+    /// be the merge survivor; lookups and import key on the normalized form. Runs after the merge,
+    /// so no two normalized names can collide. Whitespace-only names are left alone. Returns how
+    /// many changed.
     /// </summary>
-    public static int TrimPaddedNames(SqliteConnection conn)
+    public static int NormalizeStoredNames(SqliteConnection conn)
     {
         var padded = new List<(string Id, string Name)>();
         using (var read = conn.CreateCommand())
@@ -118,10 +304,10 @@ public static class TagNames
             while (reader.Read())
             {
                 var name = reader.GetString(1);
-                var trimmed = Normalize(name);
-                if (trimmed.Length > 0 && !string.Equals(trimmed, name, StringComparison.Ordinal))
+                var normalized = Normalize(name);
+                if (normalized.Length > 0 && !string.Equals(normalized, name, StringComparison.Ordinal))
                 {
-                    padded.Add((reader.GetString(0), trimmed));
+                    padded.Add((reader.GetString(0), normalized));
                 }
             }
         }
@@ -144,6 +330,63 @@ public static class TagNames
 
         tx.Commit();
         return padded.Count;
+    }
+
+    /// <summary>Legacy name for <see cref="NormalizeStoredNames"/>.</summary>
+    public static int TrimPaddedNames(SqliteConnection conn) => NormalizeStoredNames(conn);
+
+    /// <summary>
+    /// Re-point every alias edge at its ultimate ideal so the map stores no chains.
+    /// Loops are left alone (resolve stops); <see cref="TagAliasResolve.CanAdd"/> refuses new ones.
+    /// Returns how many edges were rewritten.
+    /// </summary>
+    public static int FlattenAliasChains(SqliteConnection conn)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        using (var read = conn.CreateCommand())
+        {
+            read.CommandText = "SELECT AliasTagId, IdealTagId FROM TagAlias";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                map[reader.GetString(0)] = reader.GetString(1);
+            }
+        }
+
+        if (map.Count == 0)
+        {
+            return 0;
+        }
+
+        var updates = new List<(string AliasId, string UltimateIdealId)>();
+        foreach (var (aliasId, idealId) in map)
+        {
+            var ultimate = TagAliasResolve.Ideal(aliasId, map);
+            if (!string.Equals(ultimate, idealId, StringComparison.Ordinal)
+                && !string.Equals(ultimate, aliasId, StringComparison.Ordinal))
+            {
+                updates.Add((aliasId, ultimate));
+            }
+        }
+
+        if (updates.Count == 0)
+        {
+            return 0;
+        }
+
+        using var tx = conn.BeginTransaction();
+        foreach (var (aliasId, ultimate) in updates)
+        {
+            using var update = conn.CreateCommand();
+            update.Transaction = tx;
+            update.CommandText = "UPDATE TagAlias SET IdealTagId = $i WHERE AliasTagId = $a";
+            update.Parameters.AddWithValue("$i", ultimate);
+            update.Parameters.AddWithValue("$a", aliasId);
+            update.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        return updates.Count;
     }
 
     private static int MergeInto(SqliteConnection conn, SqliteTransaction tx, TagRow loser, TagRow survivor)
@@ -322,19 +565,6 @@ public static class TagNames
         }
 
         return list;
-    }
-
-    private static bool IsAscii(string value)
-    {
-        foreach (var c in value)
-        {
-            if (c > 127)
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private sealed record TagRow(string Id, string Name, int Priority, string? Color, bool IsStarred, long Assignments);
