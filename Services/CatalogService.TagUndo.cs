@@ -260,11 +260,15 @@ public sealed partial class CatalogService
         return Convert.ToInt32(cmd.ExecuteScalar() ?? 0);
     }
 
-    private static TagDeleteSnapshot? ReadTagSnapshot(SqliteConnection conn, string tagId)
+    private static TagDeleteSnapshot? ReadTagSnapshot(
+        SqliteConnection conn,
+        string tagId,
+        SqliteTransaction? tx = null)
     {
         Tag? tag = null;
         using (var cmd = conn.CreateCommand())
         {
+            cmd.Transaction = tx;
             cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag WHERE Id = $id";
             cmd.Parameters.AddWithValue("$id", tagId);
             using var reader = cmd.ExecuteReader();
@@ -287,6 +291,7 @@ public sealed partial class CatalogService
         var snapshot = new TagDeleteSnapshot { Tag = tag };
         using (var cmd = conn.CreateCommand())
         {
+            cmd.Transaction = tx;
             cmd.CommandText = "SELECT AssetId, TagId, Source FROM AssetTag WHERE TagId = $id";
             cmd.Parameters.AddWithValue("$id", tagId);
             using var reader = cmd.ExecuteReader();
@@ -303,6 +308,7 @@ public sealed partial class CatalogService
 
         using (var cmd = conn.CreateCommand())
         {
+            cmd.Transaction = tx;
             cmd.CommandText = "SELECT ParentId, ChildId FROM TagMembership WHERE ParentId = $id OR ChildId = $id";
             cmd.Parameters.AddWithValue("$id", tagId);
             using var reader = cmd.ExecuteReader();
@@ -318,6 +324,7 @@ public sealed partial class CatalogService
 
         using (var cmd = conn.CreateCommand())
         {
+            cmd.Transaction = tx;
             cmd.CommandText = "SELECT TagId, ImpliedTagId FROM TagImplication WHERE TagId = $id OR ImpliedTagId = $id";
             cmd.Parameters.AddWithValue("$id", tagId);
             using var reader = cmd.ExecuteReader();
@@ -333,6 +340,7 @@ public sealed partial class CatalogService
 
         using (var cmd = conn.CreateCommand())
         {
+            cmd.Transaction = tx;
             cmd.CommandText = "SELECT AliasTagId, IdealTagId FROM TagAlias WHERE AliasTagId = $id OR IdealTagId = $id";
             cmd.Parameters.AddWithValue("$id", tagId);
             using var reader = cmd.ExecuteReader();
