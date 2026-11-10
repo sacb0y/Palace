@@ -95,6 +95,11 @@
     <Compile Include="..\Helpers\ReviewSession.cs" Link="ReviewSession.cs" />
     <Compile Include="..\Helpers\ReviewApplyGate.cs" Link="ReviewApplyGate.cs" />
     <Compile Include="..\Helpers\ReviewUndoFlow.cs" Link="ReviewUndoFlow.cs" />
+    <Compile Include="..\Helpers\NetworkPaths.cs" Link="NetworkPaths.cs" />
+    <Compile Include="..\Helpers\DeleteRejected.cs" Link="DeleteRejected.cs" />
+    <Compile Include="..\Helpers\FileTrash.cs" Link="FileTrash.cs" />
+    <Compile Include="..\Services\CatalogService.AssetUndo.cs" Link="CatalogService.AssetUndo.cs" />
+    <Compile Include="..\Services\FileOpService.DeleteRejected.cs" Link="FileOpService.DeleteRejected.cs" />
     <Compile Include="..\Helpers\ShortcutCheatsheet.cs" Link="ShortcutCheatsheet.cs" />
     <Compile Include="..\Helpers\RangeSelect.cs" Link="RangeSelect.cs" />
     <Compile Include="..\Helpers\ShellBackground.cs" Link="ShellBackground.cs" />

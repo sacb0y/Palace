@@ -118,6 +118,17 @@ public partial class LibraryViewModel
                         }
                     }
                 }
+                else if (peek?.Kind == FileOpKind.DeleteRejected)
+                {
+                    await RefreshQuietAsync();
+                    await RefreshRejectedCountsAsync();
+                    if (IsAllRejectedView)
+                    {
+                        await ApplyFilterAsync();
+                    }
+
+                    ShowStatusUndo = false;
+                }
                 else if (result.BatchId is not null)
                 {
                     await RefreshQuietAsync();

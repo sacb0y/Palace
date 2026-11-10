@@ -19,6 +19,22 @@ public sealed class ReviewSessionTests
         Assert.Equal("Done · 3 reviewed · 2 skipped", session.ProgressText);
         Assert.Equal("Review 2 skipped", session.ReviewSkippedLabel);
         Assert.True(session.CanReviewSkipped);
+        Assert.Equal("All 3 reviewed", session.EndTitle);
+        Assert.Equal("1 kept · 0 rejected · 2 skipped", session.EndStats);
+        Assert.Equal("", session.DeleteRejectedLabel);
+        Assert.False(session.CanDeleteRejected);
+    }
+
+    [Fact]
+    public void EndCard_OffersDeleteRejectedWhenSessionRejected()
+    {
+        var session = new ReviewSession(["a", "b"]);
+        Assert.True(session.TryDecide(ReviewDecision.Reject, "b1"));
+        Assert.True(session.TryDecide(ReviewDecision.Keep));
+        Assert.Equal("All 2 reviewed", session.EndTitle);
+        Assert.Equal("1 kept · 1 rejected · 0 skipped", session.EndStats);
+        Assert.Equal("Delete rejected (1)…", session.DeleteRejectedLabel);
+        Assert.True(session.CanDeleteRejected);
     }
 
     [Fact]

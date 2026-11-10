@@ -29,6 +29,28 @@ public sealed partial class LibraryPage
 
     public static IRelayCommand<FolderNode?> GetShowFolderInExplorerCommand() => AppServices.Library.ShowFolderInExplorerCommand;
 
+    /// <summary>Ctrl+Shift+Del: Delete rejected (outside text boxes).</summary>
+    private bool TryHandleDeleteRejectedKey(KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Delete
+            || !IsKeyDown(VirtualKey.Control)
+            || !IsKeyDown(VirtualKey.Shift)
+            || IsKeyDown(VirtualKey.Menu)
+            || FocusIsTextInput(e.OriginalSource))
+        {
+            return false;
+        }
+
+        if (!ViewModel.ShowDeleteRejectedToolbar
+            || !ViewModel.DeleteRejectedFromToolbarCommand.CanExecute(null))
+        {
+            return false;
+        }
+
+        ViewModel.DeleteRejectedFromToolbarCommand.Execute(null);
+        return true;
+    }
+
     /// <summary>Ctrl+Shift+N: new folder in the selected folder (outside text boxes).</summary>
     private bool TryHandleNewFolderKey(KeyRoutedEventArgs e)
     {

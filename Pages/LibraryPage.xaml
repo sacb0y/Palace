@@ -125,6 +125,22 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnDeleteRejected"
+                    AutomationProperties.AutomationId="BtnDeleteRejected"
+                    AutomationProperties.Name="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.DeleteRejectedFromToolbarCommand}"
+                    Foreground="#FF99A4"
+                    ToolTipService.ToolTip="Delete rejected"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDeleteRejectedToolbar), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="#FF99A4"
+                            Text="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}" />
+                    </StackPanel>
+                </Button>
+                <Button
                     x:Name="BtnNewFolder"
                     AutomationProperties.AcceleratorKey="Control+Shift+N"
                     AutomationProperties.AutomationId="BtnNewFolder"
@@ -189,6 +205,13 @@
                                 Text="Review"
                                 ToolTipService.ToolTip="Review selection or this folder (swipe left reject, right keep, up skip)"
                                 Visibility="Collapsed" />
+                            <MenuFlyoutItem
+                                x:Name="MnuToolbarDeleteRejected"
+                                AutomationProperties.AutomationId="MnuToolbarDeleteRejected"
+                                Command="{x:Bind ViewModel.DeleteRejectedFromToolbarCommand}"
+                                KeyboardAcceleratorTextOverride="Ctrl+Shift+Del"
+                                Text="Delete rejected…"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDeleteRejectedToolbar), Mode=OneWay}" />
                             <MenuFlyoutSeparator
                                 x:Name="SepToolbarTight"
                                 Visibility="Collapsed" />
@@ -410,9 +433,51 @@
                     <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
                 </Button>
             </Grid>
+            <StackPanel
+                Grid.Row="3"
+                Spacing="4"
+                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
+                <Button
+                    x:Name="BtnAllRejected"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    AutomationProperties.AutomationId="BtnAllRejected"
+                    AutomationProperties.Name="All rejected"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Command="{x:Bind ViewModel.OpenAllRejectedCommand}"
+                    Padding="8,6">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ic:FluentIcon
+                            Grid.Column="0"
+                            Foreground="#FF99A4"
+                            Icon="DismissCircle"
+                            IconSize="Size16"
+                            IconVariant="Regular" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Text="All rejected" />
+                        <TextBlock
+                            x:Name="TxtAllRejectedCount"
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="TxtAllRejectedCount"
+                            Foreground="#FF99A4"
+                            Text="{x:Bind ViewModel.AllRejectedCountText, Mode=OneWay}" />
+                    </Grid>
+                </Button>
+                <Border
+                    Height="1"
+                    Margin="8,0"
+                    Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
             <TreeView
                 x:Name="TreFolders"
-                Grid.Row="3"
                 AllowDrop="False"
                 AutomationProperties.AutomationId="TreFolders"
                 AutomationProperties.Name="Source folders"
@@ -421,8 +486,7 @@
                 Collapsed="TreFolders_Collapsed"
                 Expanding="TreFolders_Expanding"
                 ItemInvoked="TreFolders_ItemInvoked"
-                ItemsSource="{x:Bind ViewModel.FolderTree, Mode=OneWay}"
-                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
+                ItemsSource="{x:Bind ViewModel.FolderTree, Mode=OneWay}">
                 <TreeView.Resources>
                     <ResourceDictionary>
                         <ResourceDictionary.ThemeDictionaries>
@@ -556,6 +620,7 @@
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
+            </StackPanel>
             <ScrollViewer
                 x:Name="TreTagsBrowse"
                 Grid.Row="3"
@@ -1229,6 +1294,87 @@
                     </DataTemplate>
                 </BreadcrumbBar.ItemTemplate>
             </BreadcrumbBar>
+            <Border
+                x:Name="BrdRejectedActionBar"
+                Grid.Row="1"
+                Margin="0,36,0,0"
+                Padding="12,8"
+                Background="#1FC42B1C"
+                BorderBrush="#40FF99A4"
+                BorderThickness="1"
+                CornerRadius="8"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRejectedActionBar), Mode=OneWay}">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock
+                        x:Name="TxtRejectedSummary"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="TxtRejectedSummary"
+                        Text="{x:Bind ViewModel.RejectedActionSummary, Mode=OneWay}"
+                        TextWrapping="WrapWholeWords" />
+                    <Button
+                        x:Name="BtnRejectedReviewAgain"
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="BtnRejectedReviewAgain"
+                        AutomationProperties.Name="Review again"
+                        Command="{x:Bind ViewModel.StartReviewCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ic:FluentIcon Icon="CheckmarkCircle" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Review again" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="BtnDeleteAllRejected"
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="BtnDeleteAllRejected"
+                        AutomationProperties.Name="{x:Bind ViewModel.DeleteAllRejectedLabel, Mode=OneWay}"
+                        Background="#C42B1C"
+                        Command="{x:Bind ViewModel.DeleteAllRejectedCommand}"
+                        Foreground="White">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Foreground="White"
+                                Text="{x:Bind ViewModel.DeleteAllRejectedLabel, Mode=OneWay}" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+            <StackPanel
+                Grid.Row="3"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRejectedEmpty), Mode=OneWay}">
+                <TextBlock
+                    x:Name="TxtRejectedEmptyTitle"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtRejectedEmptyTitle"
+                    FontSize="20"
+                    FontWeight="SemiBold"
+                    Text="No rejected files" />
+                <TextBlock
+                    x:Name="TxtRejectedEmptyBody"
+                    MaxWidth="360"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtRejectedEmptyBody"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Files you reject in Review land in _rejected folders and show up here."
+                    TextAlignment="Center"
+                    TextWrapping="WrapWholeWords" />
+                <Button
+                    x:Name="BtnRejectedStartReview"
+                    HorizontalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnRejectedStartReview"
+                    AutomationProperties.Name="Start Review"
+                    Command="{x:Bind ViewModel.StartReviewCommand}"
+                    Content="Start Review" />
+            </StackPanel>
             <!-- Right inset matches MosaicLayoutWidth.ViewportGutterDip (overlay scrollbar). -->
             <AutoSuggestBox
                 x:Name="AsbSearch"
@@ -1253,7 +1399,8 @@
                     PreviewKeyDown="GrdAssets_PreviewKeyDown"
                     SelectionChanged="GrdAssets_SelectionChanged"
                     SelectionMode="Single"
-                    SizeChanged="GrdAssets_SizeChanged">
+                    SizeChanged="GrdAssets_SizeChanged"
+                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.ShowRejectedEmpty), Mode=OneWay}">
                     <ItemsView.Layout>
                         <helpers:JustifiedMosaicLayout
                             x:Name="MosaicLayout"
@@ -2494,11 +2641,20 @@
                     Padding="4,0"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="BtnStatusDetails"
-                    AutomationProperties.Name="Details"
+                    AutomationProperties.Name="{x:Bind ViewModel.StatusDetailsLinkLabel, Mode=OneWay}"
                     Command="{x:Bind ViewModel.ShowStatusDetailsCommand}"
-                    Content="Details"
+                    Content="{x:Bind ViewModel.StatusDetailsLinkLabel, Mode=OneWay}"
                     FontSize="12"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasStatusDetails), Mode=OneWay}" />
+                <Button
+                    x:Name="BtnStatusShowFailures"
+                    Padding="10,2"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnStatusShowFailures"
+                    AutomationProperties.Name="Retry failed deletes"
+                    Command="{x:Bind ViewModel.RetryDeleteRejectedFailuresCommand}"
+                    Content="Retry"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRetryDeleteRejected), Mode=OneWay}" />
             </StackPanel>
             <StackPanel
                 Grid.Column="1"
@@ -3054,14 +3210,54 @@
                                 </StackPanel>
                             </Button>
                         </StackPanel>
-                        <Button
-                            x:Name="BtnReviewSkipped"
-                            HorizontalAlignment="Center"
-                            AutomationProperties.AutomationId="BtnReviewSkipped"
-                            AutomationProperties.Name="{x:Bind ViewModel.ReviewSkippedLabel, Mode=OneWay}"
-                            Command="{x:Bind ViewModel.ReviewSkippedCommand}"
-                            Content="{x:Bind ViewModel.ReviewSkippedLabel, Mode=OneWay}"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewSkipped), Mode=OneWay}" />
+                        <StackPanel
+                            HorizontalAlignment="Stretch"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewEndCard), Mode=OneWay}">
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    x:Name="TxtReviewEndTitle"
+                                    AutomationProperties.AutomationId="TxtReviewEndTitle"
+                                    FontWeight="SemiBold"
+                                    Text="{x:Bind ViewModel.ReviewEndTitle, Mode=OneWay}" />
+                                <TextBlock
+                                    x:Name="TxtReviewEndStats"
+                                    AutomationProperties.AutomationId="TxtReviewEndStats"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.ReviewEndStats, Mode=OneWay}" />
+                            </StackPanel>
+                            <Button
+                                x:Name="BtnReviewSkipped"
+                                AutomationProperties.AutomationId="BtnReviewSkipped"
+                                AutomationProperties.Name="{x:Bind ViewModel.ReviewSkippedLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.ReviewSkippedCommand}"
+                                Content="{x:Bind ViewModel.ReviewSkippedLabel, Mode=OneWay}"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewSkipped), Mode=OneWay}" />
+                            <Button
+                                x:Name="BtnReviewDeleteRejected"
+                                AutomationProperties.AutomationId="BtnReviewDeleteRejected"
+                                AutomationProperties.Name="{x:Bind ViewModel.ReviewDeleteRejectedLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.DeleteRejectedFromReviewCommand}"
+                                Foreground="#FF99A4"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowReviewDeleteRejected), Mode=OneWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Foreground="#FF99A4"
+                                        Text="{x:Bind ViewModel.ReviewDeleteRejectedLabel, Mode=OneWay}" />
+                                </StackPanel>
+                            </Button>
+                            <Button
+                                x:Name="BtnReviewDone"
+                                AutomationProperties.AutomationId="BtnReviewDone"
+                                AutomationProperties.Name="Done"
+                                Command="{x:Bind ViewModel.EndReviewCommand}"
+                                Content="Done"
+                                Style="{StaticResource AccentButtonStyle}" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
                 <Border

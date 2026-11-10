@@ -21,12 +21,17 @@ public sealed class PalaceDb : IDisposable
 
     private const int ImpliedPurgeBackupKeep = 3;
     private const int TagImportBackupKeep = 3;
+    private const int DeleteRejectedBackupKeep = 3;
     private const string ImpliedPurgeBackoffFileName = "implied-purge-backoff.txt";
     private const string TagImportBackupPrefix = "pre-tag-import-";
+    private const string DeleteRejectedBackupPrefix = "pre-delete-rejected-";
     private static readonly TimeSpan ImpliedPurgeBackoff = TimeSpan.FromDays(1);
 
     /// <summary>Folder of the last pre-import catalog backup, when <see cref="BackupBeforeTagImport"/> ran.</summary>
     public string? LastTagImportBackupDir { get; private set; }
+
+    /// <summary>Folder of the last pre–Delete rejected catalog backup.</summary>
+    public string? LastDeleteRejectedBackupDir { get; private set; }
 
     /// <summary>Clear before each import so a no-op cannot surface a prior backup path.</summary>
     public void ClearLastTagImportBackup() => LastTagImportBackupDir = null;
@@ -499,6 +504,33 @@ public sealed class PalaceDb : IDisposable
         VerifyCatalogBackup(backupDb, assetTagCount);
         LastTagImportBackupDir = backupDir;
         PrunePrefixedBackups(backupsRoot, TagImportBackupPrefix, TagImportBackupKeep);
+        return backupDir;
+    }
+
+    /// <summary>
+    /// Snapshot <c>palace.db</c> under <c>backups/pre-delete-rejected-*</c> before a large
+    /// Delete rejected run mutates the catalog. Same backup/verify pattern as tag import.
+    /// Caller must hold the write gate.
+    /// </summary>
+    public string BackupBeforeDeleteRejected()
+    {
+        long assetTagCount;
+        using (var probe = _connection.CreateCommand())
+        {
+            probe.CommandText = "SELECT COUNT(*) FROM AssetTag";
+            assetTagCount = Convert.ToInt64(probe.ExecuteScalar());
+        }
+
+        var root = Path.GetDirectoryName(_dbPath) ?? ".";
+        var backupsRoot = Path.Combine(root, "backups");
+        Directory.CreateDirectory(backupsRoot);
+        var backupDir = Path.Combine(backupsRoot, $"{DeleteRejectedBackupPrefix}{DateTime.UtcNow.Ticks}");
+        Directory.CreateDirectory(backupDir);
+        var backupDb = Path.Combine(backupDir, "palace.db");
+        BackupCatalogCopy(backupDb);
+        VerifyCatalogBackup(backupDb, assetTagCount);
+        LastDeleteRejectedBackupDir = backupDir;
+        PrunePrefixedBackups(backupsRoot, DeleteRejectedBackupPrefix, DeleteRejectedBackupKeep);
         return backupDir;
     }
 

@@ -483,6 +483,11 @@ public partial class LibraryViewModel
         OnPropertyChanged(nameof(ShowReviewUndoButton));
         OnPropertyChanged(nameof(CanReviewDecide));
         OnPropertyChanged(nameof(CanReviewUndo));
+        OnPropertyChanged(nameof(ReviewEndTitle));
+        OnPropertyChanged(nameof(ReviewEndStats));
+        OnPropertyChanged(nameof(ReviewDeleteRejectedLabel));
+        OnPropertyChanged(nameof(ShowReviewDeleteRejected));
+        OnPropertyChanged(nameof(ShowReviewEndCard));
     }
 
     partial void OnIsGalleryOverlayOpenChanged(bool value)

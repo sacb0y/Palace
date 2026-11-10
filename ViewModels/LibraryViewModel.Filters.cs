@@ -150,7 +150,7 @@ public partial class LibraryViewModel
             var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
             var filterNames = SelectedFilterTags.Select(t => t.Name).ToList();
             var tagBrowse = IsTagBrowse && filterIds.Count > 0;
-            var folderPath = !IsTagBrowse ? SelectedFolder?.Path : null;
+            var folderPath = !IsTagBrowse && !IsAllRejectedView ? SelectedFolder?.Path : null;
             var matchMode = TagFilterMode;
             var hasFolderPath = !string.IsNullOrWhiteSpace(folderPath);
 
@@ -163,6 +163,15 @@ public partial class LibraryViewModel
                 // Alias→ideal then membership of ideal; no implication closure (vs search/FTS).
                 var sets = TagFilter.ExpandEach(filterIds, memberships, aliasMap);
                 assets = await _catalog.GetAssetsForTagFilterAsync(sets, matchMode, projectId, MosaicSort);
+            }
+            else if (IsAllRejectedView && !IsTagBrowse)
+            {
+                var all = await _catalog.GetAssetsAsync(projectId: projectId, sort: MosaicSort);
+                var sourceRoot = AllRejectedSourceRoot;
+                var rejected = DeleteRejected.OnlyRejected(all);
+                assets = string.IsNullOrWhiteSpace(sourceRoot)
+                    ? rejected
+                    : DeleteRejected.InScope(rejected, sourceRoot);
             }
             else if (folderPath is not null)
             {
@@ -218,13 +227,18 @@ public partial class LibraryViewModel
                 ? $"{assetCount} search results"
                 : tagBrowse
                     ? $"{assetCount} tagged {string.Join(joiner, filterNames)}"
-                    : folderPath is not null
-                        ? $"{assetCount} in {folderName}"
-                        : assetCount == 0
-                            ? "Add a folder to start your library."
-                            : $"{assetCount} assets";
+                    : IsAllRejectedView
+                        ? assetCount == 0
+                            ? "No rejected files"
+                            : $"{assetCount} rejected"
+                        : folderPath is not null
+                            ? $"{assetCount} in {folderName}"
+                            : assetCount == 0
+                                ? "Add a folder to start your library."
+                                : $"{assetCount} assets";
 
             await PopulateMosaicAsync(items, epoch, doneStatus);
+            _ = RefreshRejectedCountsAsync();
         }
         finally
         {

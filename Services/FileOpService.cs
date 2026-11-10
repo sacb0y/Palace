@@ -46,11 +46,16 @@ public sealed partial class FileOpService
 {
     private readonly CatalogService _catalog;
     private readonly Func<IDisposable>? _suppressWatcher;
+    private readonly IFileTrash _trash;
 
-    public FileOpService(CatalogService catalog, Func<IDisposable>? suppressWatcher = null)
+    public FileOpService(
+        CatalogService catalog,
+        Func<IDisposable>? suppressWatcher = null,
+        IFileTrash? trash = null)
     {
         _catalog = catalog;
         _suppressWatcher = suppressWatcher;
+        _trash = trash ?? new ShellFileTrash();
     }
 
     /// <summary>Deepest local, existing watched source that contains <paramref name="path"/>.</summary>
@@ -175,6 +180,8 @@ public sealed partial class FileOpService
             FileOpKind.TagRemove => $"Undo remove tag from {Items(batch.Items.Count(i => i.Step == FileOpStep.RemoveTag))}",
             FileOpKind.TagDelete => $"Undo delete of “{TagDeleteName(batch)}”",
             FileOpKind.TagAliasAdd => "Undo tag alias",
+            FileOpKind.DeleteRejected =>
+                $"Undo Recycle of {Files(batch.Items.Count(i => i.Step == FileOpStep.RecycleFile))}",
             _ => "Undo"
         };
 
@@ -1161,19 +1168,35 @@ public sealed partial class FileOpService
         var notes = new List<string>();
         var retryable = false;
         var done = 0;
+        var recycleSteps = 0;
+        var recycleDone = 0;
+        var recycleRetry = false;
         using (_suppressWatcher?.Invoke())
         {
             foreach (var item in batch.Items.OrderByDescending(i => i.Seq))
             {
                 var note = await UndoStepAsync(item, allSources, projectId, restored).ConfigureAwait(false);
+                if (item.Step == FileOpStep.RecycleFile)
+                {
+                    recycleSteps++;
+                }
+
                 if (note is null)
                 {
                     done++;
+                    if (item.Step == FileOpStep.RecycleFile)
+                    {
+                        recycleDone++;
+                    }
                 }
                 else
                 {
                     notes.Add(note.Text);
                     retryable |= note.Retryable;
+                    if (item.Step == FileOpStep.RecycleFile && note.Retryable)
+                    {
+                        recycleRetry = true;
+                    }
                 }
             }
         }
@@ -1183,6 +1206,20 @@ public sealed partial class FileOpService
         {
             // Nothing was reversed and the failure may clear (locked file, I/O error): keep the
             // batch on the undo stack so Ctrl+Z can try it again.
+            return new FileOpResult
+            {
+                Ok = false,
+                Message = $"Couldn't {label.Replace("Undo ", "undo ", StringComparison.Ordinal)}. {notes[0].TrimEnd('.')}. Try again.",
+                Summary = batch.Summary,
+                Moves = restored,
+                Skipped = notes
+            };
+        }
+
+        // DeleteRejected: recreating empty _rejected folders (DeleteDir) must not burn the
+        // journal when RecycleFile restore failed — files are still in the Recycle Bin.
+        if (recycleSteps > 0 && recycleDone == 0 && recycleRetry)
+        {
             return new FileOpResult
             {
                 Ok = false,
@@ -1394,6 +1431,10 @@ public sealed partial class FileOpService
             case FileOpStep.CreateTag:
             case FileOpStep.AddAlias:
                 return await UndoTagOpStepAsync(item).ConfigureAwait(false);
+
+            case FileOpStep.RecycleFile:
+                return await UndoRecycleFileStepAsync(item, allSources, projectId, restored)
+                    .ConfigureAwait(false);
 
             default:
                 return UndoNote.Skip("unknown step");
