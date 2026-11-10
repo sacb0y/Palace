@@ -7,7 +7,8 @@ namespace Palace.Helpers;
 /// <see cref="Normalize"/> into BT.2020 linear working space (1.0 = 203 nits).
 /// WinUI-free so <c>Palace.Tests</c> can cover it. Callers attach
 /// <see cref="NormalizedFrame"/> beside <c>HdrFrame.ScrgbRgba</c>. P3 thumbs
-/// consume Working lazily via <see cref="ImagingThumbToneMap"/>; full HDR
+/// consume Working lazily via <see cref="ImagingThumbToneMap"/> /
+/// <see cref="ImagingFullToneMap"/>; full HDR
 /// present stays legacy until P5.
 /// </summary>
 public static class ImagingStillNormalize

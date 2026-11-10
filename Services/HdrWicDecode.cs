@@ -37,9 +37,10 @@ internal sealed class HdrFrame
 
     /// <summary>
     /// P2: BT.2020 linear working frame (1.0 = 203 nits) from
-    /// <see cref="ImagingStillNormalize"/>. P3 thumbs may rebuild Working
-    /// lazily from <see cref="ScrgbRgba"/> when this is null; HDR present
-    /// still uses <see cref="ScrgbRgba"/> until P5.
+    /// <see cref="ImagingStillNormalize"/>. P3 thumbs / P4 SDR full may
+    /// rebuild Working lazily from <see cref="ScrgbRgba"/> when this is
+    /// null or size-mismatched; HDR PQ/HLG present still uses
+    /// <see cref="ScrgbRgba"/> until P5.
     /// </summary>
     public NormalizedFrame? Working { get; init; }
 
