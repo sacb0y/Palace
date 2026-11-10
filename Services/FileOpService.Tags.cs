@@ -1,13 +1,15 @@
-using Palace.Helpers;
 using Palace.Models;
 
 namespace Palace.Services;
 
 /// <summary>
-/// Forward tag assign / remove / delete through the shared undo journal.
-/// Bulk assign/remove/paste mutate AssetTag + journal in one SQLite transaction
+/// Forward tag assign / remove / delete / alias through the shared undo journal.
+/// Assign/remove/paste, delete-tag, and add-alias mutate catalog rows + journal in
+/// one SQLite transaction
 /// (<see cref="CatalogService.ApplyBulkAssignJournaledAsync"/> /
-/// <see cref="CatalogService.ApplyBulkRemoveJournaledAsync"/>) so a mid-loop or
+/// <see cref="CatalogService.ApplyBulkRemoveJournaledAsync"/> /
+/// <see cref="CatalogService.ApplyDeleteTagJournaledAsync"/> /
+/// <see cref="CatalogService.ApplyAddAliasJournaledAsync"/>) so a mid-loop or
 /// journal failure cannot leave an unjournaled partial.
 /// </summary>
 public sealed partial class FileOpService
@@ -214,100 +216,14 @@ public sealed partial class FileOpService
 
     private async Task<FileOpResult> AddAliasCoreAsync(string aliasTagId, string idealTagId, string projectId)
     {
-        if (string.IsNullOrEmpty(aliasTagId) || string.IsNullOrEmpty(idealTagId))
-        {
-            return FileOpResult.Fail("Pick two tags.");
-        }
-
-        var result = await _catalog.AddAliasAsync(aliasTagId, idealTagId).ConfigureAwait(false);
-        if (!result.Ok)
-        {
-            return FileOpResult.Fail("That alias is not allowed.");
-        }
-
-        if (result.Migrated.Count == 0)
-        {
-            return new FileOpResult
-            {
-                Ok = true,
-                Message = "Alias added.",
-                Summary = "Alias added"
-            };
-        }
-
-        var payload = CatalogService.SerializeAliasMigration(result.Migrated);
-        var items = new List<FileOpItem>
-        {
-            new()
-            {
-                Step = FileOpStep.AddAlias,
-                OldPath = result.AliasTagId,
-                NewPath = result.IdealTagId,
-                NewSourceId = payload
-            }
-        };
-        var summary = $"Aliased tag ({AssetNouns.Count(result.Migrated.Count)} updated)";
-        var batchId = await LogAsync(projectId, FileOpKind.TagAliasAdd, summary, items).ConfigureAwait(false);
-        if (batchId is null)
-        {
-            try
-            {
-                await _catalog.UndoAliasAddAsync(result.AliasTagId, result.IdealTagId, result.Migrated)
-                    .ConfigureAwait(false);
-            }
-            catch
-            {
-                return FileOpResult.Fail(JournalFailedPartialMessage);
-            }
-
-            return FileOpResult.Fail(JournalFailedMessage);
-        }
-
-        return new FileOpResult { Ok = true, Message = summary + ".", BatchId = batchId, Summary = summary };
+        var batch = await _catalog.ApplyAddAliasJournaledAsync(projectId, aliasTagId, idealTagId)
+            .ConfigureAwait(false);
+        return ToFileOpResult(batch);
     }
 
     private async Task<FileOpResult> DeleteTagCoreAsync(string tagId, string projectId)
     {
-        var snapshot = await _catalog.SnapshotTagAsync(tagId).ConfigureAwait(false);
-        if (snapshot is null)
-        {
-            return FileOpResult.Fail("That tag is gone.");
-        }
-
-        var name = snapshot.Tag.Name;
-        await _catalog.DeleteTagAsync(tagId).ConfigureAwait(false);
-        var items = new List<FileOpItem>
-        {
-            new()
-            {
-                Step = FileOpStep.DeleteTag,
-                OldPath = tagId,
-                NewPath = CatalogService.SerializeTagSnapshot(snapshot)
-            }
-        };
-        var summary = $"Deleted {name}";
-        var batchId = await LogAsync(projectId, FileOpKind.TagDelete, summary, items).ConfigureAwait(false);
-        if (batchId is null)
-        {
-            try
-            {
-                await _catalog.RestoreTagSnapshotAsync(snapshot).ConfigureAwait(false);
-            }
-            catch
-            {
-                return FileOpResult.Fail(JournalFailedPartialMessage);
-            }
-
-            return FileOpResult.Fail(JournalFailedMessage);
-        }
-
-        var impact = AssetNouns.Count(snapshot.Assignments.Select(a => a.AssetId).Distinct().Count());
-        return new FileOpResult
-        {
-            Ok = true,
-            Message = $"Deleted “{name}” ({impact}).",
-            BatchId = batchId,
-            Summary = summary
-        };
+        var batch = await _catalog.ApplyDeleteTagJournaledAsync(projectId, tagId).ConfigureAwait(false);
+        return ToFileOpResult(batch);
     }
 }

@@ -254,6 +254,154 @@ public sealed partial class CatalogService
             }
         });
 
+    /// <summary>
+    /// Snapshot + delete a tag and journal <see cref="FileOpKind.TagDelete"/> in
+    /// <b>one</b> SQLite transaction. Journal failure rolls the delete back (no compensate).
+    /// </summary>
+    public Task<BulkTagBatchResult> ApplyDeleteTagJournaledAsync(string projectId, string tagId) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrEmpty(tagId))
+            {
+                return BulkTagBatchResult.Fail("That tag is gone.");
+            }
+
+            var probe = TakeBulkTagFault();
+            InvalidateGraphCaches();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var snapshot = ReadTagSnapshot(conn, tagId, tx);
+                if (snapshot is null)
+                {
+                    return BulkTagBatchResult.Fail("That tag is gone.");
+                }
+
+                var name = snapshot.Tag.Name;
+                var assetIds = AssetsHavingAnyTag(conn, [tagId], tx);
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tx;
+                    cmd.CommandText = "DELETE FROM Tag WHERE Id = $id";
+                    cmd.Parameters.AddWithValue("$id", tagId);
+                    cmd.ExecuteNonQuery();
+                }
+
+                ThrowIfMutationFault(probe, mutations: 1);
+                foreach (var assetId in assetIds)
+                {
+                    RefreshFts(conn, assetId, tx);
+                }
+
+                ThrowIfBeforeJournalFault(probe);
+                var items = new List<FileOpItem>
+                {
+                    new()
+                    {
+                        Step = FileOpStep.DeleteTag,
+                        OldPath = tagId,
+                        NewPath = SerializeTagSnapshot(snapshot)
+                    }
+                };
+                var summary = $"Deleted {name}";
+                var batchId = InsertJournaledBatch(
+                    conn, tx, projectId, FileOpKind.TagDelete, summary, items, probe);
+                tx.Commit();
+
+                var impact = AssetNouns.Count(snapshot.Assignments.Select(a => a.AssetId).Distinct().Count());
+                return new BulkTagBatchResult
+                {
+                    Ok = true,
+                    Message = $"Deleted “{name}” ({impact}).",
+                    BatchId = batchId,
+                    Summary = summary
+                };
+            }
+            catch (BulkTagFaultException)
+            {
+                return BulkTagBatchResult.Fail(BulkTagAbortedMessage);
+            }
+        });
+
+    /// <summary>
+    /// Add alias→ideal (with AssetTag migrate) and journal <see cref="FileOpKind.TagAliasAdd"/>
+    /// in <b>one</b> SQLite transaction when migration rows exist. No migration → commit the
+    /// edge without a journal row (same as prior FileOp path). Journal failure rolls back.
+    /// </summary>
+    public Task<BulkTagBatchResult> ApplyAddAliasJournaledAsync(
+        string projectId,
+        string aliasTagId,
+        string idealTagId) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrEmpty(aliasTagId) || string.IsNullOrEmpty(idealTagId))
+            {
+                return BulkTagBatchResult.Fail("Pick two tags.");
+            }
+
+            var probe = TakeBulkTagFault();
+            InvalidateGraphCaches();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var resolvedIdeal = ResolveIdealTagId(conn, idealTagId, tx);
+                if (!TryAddAlias(conn, aliasTagId, resolvedIdeal, tx, out var inserted))
+                {
+                    return BulkTagBatchResult.Fail("That alias is not allowed.");
+                }
+
+                IReadOnlyList<AssetTag> migrated = [];
+                if (inserted)
+                {
+                    migrated = MigrateAssetTagsAliasToIdeal(conn, aliasTagId, resolvedIdeal, tx);
+                    ThrowIfMutationFault(probe, mutations: 1);
+                    foreach (var assetId in migrated.Select(m => m.AssetId).Distinct(StringComparer.Ordinal))
+                    {
+                        RefreshFts(conn, assetId, tx);
+                    }
+                }
+
+                if (migrated.Count == 0)
+                {
+                    tx.Commit();
+                    return new BulkTagBatchResult
+                    {
+                        Ok = true,
+                        Message = "Alias added.",
+                        Summary = "Alias added"
+                    };
+                }
+
+                ThrowIfBeforeJournalFault(probe);
+                var payload = SerializeAliasMigration(migrated);
+                var items = new List<FileOpItem>
+                {
+                    new()
+                    {
+                        Step = FileOpStep.AddAlias,
+                        OldPath = aliasTagId,
+                        NewPath = resolvedIdeal,
+                        NewSourceId = payload
+                    }
+                };
+                var summary = $"Aliased tag ({AssetNouns.Count(migrated.Count)} updated)";
+                var batchId = InsertJournaledBatch(
+                    conn, tx, projectId, FileOpKind.TagAliasAdd, summary, items, probe);
+                tx.Commit();
+                return new BulkTagBatchResult
+                {
+                    Ok = true,
+                    Message = summary + ".",
+                    BatchId = batchId,
+                    Summary = summary
+                };
+            }
+            catch (BulkTagFaultException)
+            {
+                return BulkTagBatchResult.Fail(BulkTagAbortedMessage);
+            }
+        });
+
     private BulkTagFaultProbe? TakeBulkTagFault()
     {
         var probe = TestBulkTagFault;
