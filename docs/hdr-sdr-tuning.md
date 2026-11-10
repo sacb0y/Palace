@@ -59,11 +59,15 @@ for regenerate commands.
 
 ## Out of scope (P1)
 
-Thumbs/full flags (P3–P4), HLSL / CPU–GPU agreement (P5), deleting legacy
-(P6), gain maps / desat tuning (P7). No FenrirDesktop.
+HLSL / CPU–GPU agreement (P5), deleting legacy (P6), gain maps / desat tuning
+(P7). No FenrirDesktop.
 
 **P2 (decoders):** [#138](https://github.com/sacb0y/Palace/pull/138) —
 `ImagingStillNormalize` + `HdrFrame.Working` beside scRGB present.
+
+**P3 (thumbs):** `ImagingPathKind` Thumb/Full + `ImagingThumbToneMap` —
+lazy Working from present scRGB, Option A LUT → BGRA8; mosaic cache gen 8.
+Full SDR (P4) and HDR present (P5) still legacy.
 
 ## P2 Working contract (accuracy / docs)
 
@@ -85,7 +89,9 @@ Thumbs/full flags (P3–P4), HLSL / CPU–GPU agreement (P5), deleting legacy
     from that packed frame when not further scaled away.
   - **AVIF:** libavif may scale before `ToScrgb`; Working is un-oriented while
     `ScrgbRgba` is EXIF-oriented (`Width`/`Height` can disagree after rotate).
-  Full native+oriented Working contract is deferred to before P3 consumes it.
+  P3 thumbs rebuild Working lazily from present-sized scRGB (TransferKind.Scrgb),
+  so they inherit that geometry; native+oriented Working for present stays P5.
 - **SDR linear JXL white (A3, deferred):** libjxl default
   `intensity_target` 255 → Working white ≈ 1.256 vs legacy relative 0.394 /
-  sRGB path 1.0 — decide convention before P3.
+  sRGB path 1.0 — P3 thumbs avoid encoded LinearScene Working (lazy Scrgb)
+  so A3 does not block mosaic thumbs.

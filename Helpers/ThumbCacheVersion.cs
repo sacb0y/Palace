@@ -11,7 +11,7 @@ namespace Palace.Helpers;
 public static class ThumbCacheVersion
 {
     /// <summary>Bump when thumbnail rendering changes for existing files.</summary>
-    public const int Current = 7;
+    public const int Current = 8;
 
     /// <summary>Generation 2: HDR stills, PSD, JXL, EXR, Radiance, TGA, Clip, ICO.</summary>
     public const int DecodersGeneration = 2;
@@ -42,6 +42,12 @@ public static class ThumbCacheVersion
     /// libjxl fails (those washed PQ became the SDR full view via ThumbPath).
     /// </summary>
     public const int JxlNoShellWicGeneration = 7;
+
+    /// <summary>
+    /// Generation 8: HDR / float still thumbs use Palace.Imaging Option A LUT
+    /// (P3) instead of legacy Reinhard <c>ToneMap.ScrgbToBgra8</c>.
+    /// </summary>
+    public const int ImagingP3ThumbGeneration = 8;
 
     public static string MarkerName => MarkerNameFor(Current);
 
@@ -97,6 +103,15 @@ public static class ThumbCacheVersion
 
     /// <summary>Formats whose thumbnails changed in generation 7 (no JXL shell/WIC thumb).</summary>
     public static bool JxlNoShellWicChanged(string path) => PathSafe.IsJxl(path);
+
+    /// <summary>
+    /// Formats whose thumbnails changed in generation 8 (Imaging P3 tonemap):
+    /// HDR stills, Radiance, EXR, JXL, and other float paths that go through
+    /// <see cref="StillDecode.FromScrgb"/>.
+    /// </summary>
+    public static bool ImagingP3ThumbChanged(string path, bool isHdr) =>
+        isHdr || PathSafe.IsJxl(path) || PathSafe.IsExr(path) || PathSafe.IsRadiance(path)
+        || PathSafe.IsJxr(path) || PathSafe.IsAvif(path) || PathSafe.IsHeif(path);
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;

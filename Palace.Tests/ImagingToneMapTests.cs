@@ -397,6 +397,7 @@ public class ImagingToneMapTests
         var a = LutCacheKey.Create("file", DisplayTarget.Sdr203, stats);
         Assert.Contains(stats.StatsHash, a.Token, StringComparison.Ordinal);
         Assert.DoesNotContain("ev", a.Token, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("|p0", a.Token, StringComparison.Ordinal);
     }
 
     [Fact]

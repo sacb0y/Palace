@@ -107,7 +107,7 @@ public static class StillDecode
         return rgba is null ? null : FromScrgb(rgba, sw, sh, maxSide, cancellationToken);
     }
 
-    /// <summary>Radiance at thumb size: streamed box filter, then tone map.</summary>
+    /// <summary>Radiance at thumb size: streamed box filter, then P3 Imaging tonemap.</summary>
     private static Result? TryDecodeRadiance(Stream stream, int maxSide, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -120,9 +120,15 @@ public static class StillDecode
         var (w, h) = Fit(size.Value.Width, size.Value.Height, maxSide);
         stream.Position = 0;
         var hdr = RadianceFile.TryDecode(stream, w, h, cancellationToken);
-        return hdr is null
-            ? null
-            : new Result(ToneMap.ScrgbToBgra8(hdr.ScrgbRgba, hdr.Width, hdr.Height, cancellationToken), hdr.Width, hdr.Height, null, true);
+        if (hdr is null)
+        {
+            return null;
+        }
+
+        var (bgra, rw, rh, _) = ImagingThumbToneMap.FromScrgb(
+            hdr.ScrgbRgba, hdr.Width, hdr.Height, maxSide: Math.Max(hdr.Width, hdr.Height),
+            metadataPeakNits: null, cancellationToken);
+        return new Result(bgra, rw, rh, null, true);
     }
 
     private static bool IsUniform(byte[] bgra)
@@ -139,13 +145,17 @@ public static class StillDecode
         return true;
     }
 
-    /// <summary>Scale linear scRGB to fit <paramref name="maxSide"/>, then tone map to BGRA8.</summary>
+    /// <summary>
+    /// Scale linear scRGB to fit <paramref name="maxSide"/>, then tone map to
+    /// BGRA8. P3 prefers <see cref="ImagingThumbToneMap"/> (lazy Working + LUT);
+    /// falls back to legacy <see cref="ToneMap.ScrgbToBgra8"/>.
+    /// </summary>
     public static Result FromScrgb(float[] rgba, int width, int height, int maxSide, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var (w, h) = Fit(width, height, maxSide);
-        var scaled = w == width && h == height ? rgba : HdrPixels.BoxScaleScrgb(rgba, width, height, w, h, cancellationToken);
-        return new Result(ToneMap.ScrgbToBgra8(scaled, w, h, cancellationToken), w, h, null, true);
+        var (bgra, w, h, _) = ImagingThumbToneMap.FromScrgb(
+            rgba, width, height, maxSide, metadataPeakNits: null, cancellationToken);
+        return new Result(bgra, w, h, null, true);
     }
 
     public static (int Width, int Height) Fit(int width, int height, int maxSide)
