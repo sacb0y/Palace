@@ -66,8 +66,9 @@ HLSL / CPU–GPU agreement (P5), deleting legacy (P6), gain maps / desat tuning
 `ImagingStillNormalize` + `HdrFrame.Working` beside scRGB present.
 
 **P3 (thumbs):** `ImagingPathKind` Thumb/Full + `ImagingThumbToneMap` —
-lazy Working from present scRGB, Option A LUT → BGRA8; mosaic cache gen 8.
-Full SDR (P4) and HDR present (P5) still legacy.
+lazy Working from present scRGB (absolute 80-nit) **or** relative linear
+(1.0 → Working 1.0 for SDR/WideGamut JXL), Option A LUT → BGRA8; mosaic
+cache gen 8. Full SDR (P4) and HDR present (P5) still legacy.
 
 ## P2 Working contract (accuracy / docs)
 

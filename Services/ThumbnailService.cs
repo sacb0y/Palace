@@ -700,8 +700,17 @@ public sealed class ThumbnailService
                         HdrJxlPresent.BufferTransferLabel(jxl.BufferTransfer),
                         jxl.IntensityTarget,
                         jxl.ScaleApplied);
+                    // HdrJxl / IT-scaled → absolute scRGB; SDR/WideGamut ScaleApplied=1 → relative.
+                    var absoluteJxl = ImagingThumbToneMap.IsAbsoluteScrgbThumbBuffer(
+                        jxlProbe.Kind, jxl.ScaleApplied);
                     var lgJ = await Task.Run(
-                        () => StillDecode.FromScrgb(jxl.Rgba, jxl.Width, jxl.Height, LargePreviewMaxSide, cancellationToken),
+                        () => StillDecode.FromScrgb(
+                            jxl.Rgba,
+                            jxl.Width,
+                            jxl.Height,
+                            LargePreviewMaxSide,
+                            cancellationToken,
+                            absoluteJxl),
                         cancellationToken).ConfigureAwait(false);
                     await EncodeBgraJpegAsync(lgJ.Bgra!, lgJ.Width, lgJ.Height, LargePreviewPathFor(filePath)).ConfigureAwait(false);
                     var (jw, jh) = StillDecode.Fit(lgJ.Width, lgJ.Height, MaxSide);

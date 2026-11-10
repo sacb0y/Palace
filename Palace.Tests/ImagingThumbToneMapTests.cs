@@ -30,12 +30,56 @@ public class ImagingThumbToneMapTests
     [Fact]
     public void TryWorkingFromScrgb_ScrgbWhite_BecomesWorkingPaper()
     {
-        // scRGB 1.0 = 80 nits → Working 80/203.
+        // Absolute scRGB 1.0 = 80 nits → Working 80/203.
         float[] scrgb = [1f, 1f, 1f, 1f];
         var working = ImagingThumbToneMap.TryWorkingFromScrgb(scrgb, 1, 1);
         Assert.NotNull(working);
         var y = ImagingConstants.Bt2020Y(working!.Rgba[0], working.Rgba[1], working.Rgba[2]);
         Assert.InRange(y, 80f / 203f - 0.02f, 80f / 203f + 0.02f);
+    }
+
+    [Fact]
+    public void TryWorkingFromRelative_White_IsWorkingUnity()
+    {
+        float[] relative = [1f, 1f, 1f, 1f];
+        var working = ImagingThumbToneMap.TryWorkingFromBuffer(relative, 1, 1, absoluteScrgb: false);
+        Assert.NotNull(working);
+        var y = ImagingConstants.Bt2020Y(working!.Rgba[0], working.Rgba[1], working.Rgba[2]);
+        Assert.InRange(y, 0.98f, 1.02f);
+    }
+
+    [Fact]
+    public void RelativeWhite_MatchesLegacy255()
+    {
+        // Doktor B1: relative SDR/WideGamut white must not take absolute Scrgb
+        // (that yielded ~168). Legacy Reinhard passthrough → 255.
+        float[] relative = [1f, 1f, 1f, 1f];
+        var legacy = ToneMap.ScrgbToBgra8(relative, 1, 1);
+        var (imaging, _, _, used) = ImagingThumbToneMap.FromScrgb(
+            relative, 1, 1, maxSide: 64, absoluteScrgb: false);
+        Assert.True(used);
+        Assert.Equal(255, legacy[2]); // R
+        Assert.Equal(255, legacy[1]); // G
+        Assert.Equal(255, legacy[0]); // B
+        Assert.InRange(imaging[2], 250, 255);
+        Assert.InRange(imaging[1], 250, 255);
+        Assert.InRange(imaging[0], 250, 255);
+        // Absolute Scrgb path intentionally darker for paper white (~168).
+        var (absBgra, _, _, absUsed) = ImagingThumbToneMap.FromScrgb(
+            relative, 1, 1, maxSide: 64, absoluteScrgb: true);
+        Assert.True(absUsed);
+        Assert.True(absBgra[2] < 200, $"absolute paper white unexpectedly bright {absBgra[2]}");
+    }
+
+    [Theory]
+    [InlineData(HdrKind.HdrJxl, 1f, true)]
+    [InlineData(HdrKind.HdrJxl, 0f, true)]
+    [InlineData(HdrKind.WideGamutJxl, 1f, false)]
+    [InlineData(HdrKind.None, 1f, false)]
+    [InlineData(HdrKind.None, 3.1875f, true)]
+    public void IsAbsoluteScrgbThumbBuffer_RoutesJxl(HdrKind kind, float scale, bool absolute)
+    {
+        Assert.Equal(absolute, ImagingThumbToneMap.IsAbsoluteScrgbThumbBuffer(kind, scale));
     }
 
     [Fact]
@@ -103,8 +147,14 @@ public class ImagingThumbToneMapTests
         Assert.Equal(8, ThumbCacheVersion.ImagingP3ThumbGeneration);
         Assert.True(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.exr", isHdr: false));
         Assert.True(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.jxl", isHdr: false));
+        Assert.True(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.hdr", isHdr: false));
         Assert.True(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.png", isHdr: true));
         Assert.False(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.jpg", isHdr: false));
+        // SDR AVIF/HEIF/JXR stay shell/WIC — no wasteful gen-8 regen.
+        Assert.False(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.avif", isHdr: false));
+        Assert.False(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.heic", isHdr: false));
+        Assert.False(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.jxr", isHdr: false));
+        Assert.True(ThumbCacheVersion.ImagingP3ThumbChanged(@"D:\a.avif", isHdr: true));
     }
 
     [Fact]

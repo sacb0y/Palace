@@ -146,15 +146,29 @@ public static class StillDecode
     }
 
     /// <summary>
-    /// Scale linear scRGB to fit <paramref name="maxSide"/>, then tone map to
+    /// Scale linear RGB to fit <paramref name="maxSide"/>, then tone map to
     /// BGRA8. P3 prefers <see cref="ImagingThumbToneMap"/> (lazy Working + LUT);
     /// falls back to legacy <see cref="ToneMap.ScrgbToBgra8"/>.
+    /// <paramref name="absoluteScrgb"/> defaults true (EXR / Radiance / HDR present);
+    /// pass false for relative SDR / WideGamut JXL (1.0 = display white).
     /// </summary>
-    public static Result FromScrgb(float[] rgba, int width, int height, int maxSide, CancellationToken cancellationToken = default)
+    public static Result FromScrgb(
+        float[] rgba,
+        int width,
+        int height,
+        int maxSide,
+        CancellationToken cancellationToken = default,
+        bool absoluteScrgb = true)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var (bgra, w, h, _) = ImagingThumbToneMap.FromScrgb(
-            rgba, width, height, maxSide, metadataPeakNits: null, cancellationToken);
+            rgba,
+            width,
+            height,
+            maxSide,
+            metadataPeakNits: null,
+            cancellationToken,
+            absoluteScrgb);
         return new Result(bgra, w, h, null, true);
     }
 

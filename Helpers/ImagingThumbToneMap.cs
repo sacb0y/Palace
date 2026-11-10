@@ -13,11 +13,39 @@ public static class ImagingThumbToneMap
     public const int ThumbLutSize = 256;
 
     /// <summary>
-    /// Lazy Working from a present-sized scRGB buffer (1.0 = 80 nits, BT.709).
+    /// Lazy Working from absolute present scRGB (1.0 = 80 nits, BT.709).
     /// Used when decode skipped native Working (Fit/thumb box-scale — B2 / S2).
     /// </summary>
     public static NormalizeOptions OptionsForLazyScrgb(float? metadataPeakNits = null) =>
         ImagingStillNormalize.OptionsForJxr(metadataPeakNits);
+
+    /// <summary>
+    /// Lazy Working from relative linear RGB (SDR / WideGamut JXL): 1.0 = display
+    /// white → Working 1.0 via <see cref="TransferKind.LinearScene"/> @ 203 nits.
+    /// Do not use <see cref="OptionsForLazyScrgb"/> here — that maps relative
+    /// white to ~80/203 and Option A JPEG ~168 instead of legacy 255.
+    /// </summary>
+    public static NormalizeOptions OptionsForLazyRelative(float? metadataPeakNits = null) =>
+        new(
+            TransferKind.LinearScene,
+            ColorPrimaries.Bt709,
+            WhiteLuminance: ImagingConstants.RefWhiteNits,
+            MetadataPeakNits: metadataPeakNits);
+
+    public static NormalizeOptions OptionsForLazyBuffer(
+        bool absoluteScrgb,
+        float? metadataPeakNits = null) =>
+        absoluteScrgb
+            ? OptionsForLazyScrgb(metadataPeakNits)
+            : OptionsForLazyRelative(metadataPeakNits);
+
+    /// <summary>
+    /// Absolute present-scRGB when HDR JXL (PQ/HLG / IT-scaled) or any buffer
+    /// whose libjxl <c>ScaleApplied</c> is not 1. Relative SDR / WideGamut keep
+    /// <c>ScaleApplied == 1</c>.
+    /// </summary>
+    public static bool IsAbsoluteScrgbThumbBuffer(HdrKind kind, float scaleApplied) =>
+        kind == HdrKind.HdrJxl || Math.Abs(scaleApplied - 1f) > 1e-5f;
 
     public static ToneMapParams ParamsFor(ImageStats stats, ImagingPathKind pathKind)
     {
@@ -32,11 +60,19 @@ public static class ImagingThumbToneMap
         int width,
         int height,
         float? metadataPeakNits = null) =>
+        TryWorkingFromBuffer(scrgbRgba, width, height, absoluteScrgb: true, metadataPeakNits);
+
+    public static NormalizedFrame? TryWorkingFromBuffer(
+        ReadOnlySpan<float> rgba,
+        int width,
+        int height,
+        bool absoluteScrgb,
+        float? metadataPeakNits = null) =>
         ImagingStillNormalize.TryRun(
-            scrgbRgba,
+            rgba,
             width,
             height,
-            OptionsForLazyScrgb(metadataPeakNits));
+            OptionsForLazyBuffer(absoluteScrgb, metadataPeakNits));
 
     /// <summary>
     /// Tonemap <paramref name="frame"/> for <paramref name="pathKind"/> and
@@ -76,9 +112,10 @@ public static class ImagingThumbToneMap
     }
 
     /// <summary>
-    /// Scale present scRGB to <paramref name="maxSide"/>, build lazy Working,
-    /// tonemap with the thumb LUT, fall back to legacy <see cref="ToneMap"/> when
-    /// Imaging fails (A3 / budget / sanitize).
+    /// Scale buffer to <paramref name="maxSide"/>, build lazy Working, tonemap
+    /// with the thumb LUT, fall back to legacy <see cref="ToneMap"/> when Imaging
+    /// fails. <paramref name="absoluteScrgb"/> true = Windows/present scRGB
+    /// (1.0 = 80 nits); false = relative SDR white → Working 1.0.
     /// </summary>
     public static (byte[] Bgra, int Width, int Height, bool UsedImaging) FromScrgb(
         float[] rgba,
@@ -86,14 +123,15 @@ public static class ImagingThumbToneMap
         int height,
         int maxSide,
         float? metadataPeakNits = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool absoluteScrgb = true)
     {
         var (w, h) = StillDecode.Fit(width, height, maxSide);
         var scaled = w == width && h == height
             ? rgba
             : HdrPixels.BoxScaleScrgb(rgba, width, height, w, h, cancellationToken);
 
-        var working = TryWorkingFromScrgb(scaled, w, h, metadataPeakNits);
+        var working = TryWorkingFromBuffer(scaled, w, h, absoluteScrgb, metadataPeakNits);
         if (working is not null)
         {
             var bgra = TryEncodeBgra(working, ImagingPathKind.Thumb, cancellationToken);

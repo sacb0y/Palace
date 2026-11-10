@@ -106,12 +106,11 @@ public static class ThumbCacheVersion
 
     /// <summary>
     /// Formats whose thumbnails changed in generation 8 (Imaging P3 tonemap):
-    /// HDR stills, Radiance, EXR, JXL, and other float paths that go through
-    /// <see cref="StillDecode.FromScrgb"/>.
+    /// float paths that actually rebuild via <see cref="StillDecode.FromScrgb"/>
+    /// (HDR probe, JXL, EXR, Radiance). SDR AVIF/HEIF/JXR stay shell/WIC.
     /// </summary>
     public static bool ImagingP3ThumbChanged(string path, bool isHdr) =>
-        isHdr || PathSafe.IsJxl(path) || PathSafe.IsExr(path) || PathSafe.IsRadiance(path)
-        || PathSafe.IsJxr(path) || PathSafe.IsAvif(path) || PathSafe.IsHeif(path);
+        isHdr || PathSafe.IsJxl(path) || PathSafe.IsExr(path) || PathSafe.IsRadiance(path);
 
     public static bool IsStale(DateTime cachedThumbUtc, DateTime generationStartUtc, bool renderingChanged) =>
         renderingChanged && generationStartUtc > DateTime.MinValue && cachedThumbUtc < generationStartUtc;
