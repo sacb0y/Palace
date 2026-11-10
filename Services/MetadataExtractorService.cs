@@ -1,10 +1,10 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using MetadataExtractor;
 using MetadataExtractor.Formats.Exif;
 using MetadataExtractor.Formats.Iptc;
+using Palace.Helpers;
 
 namespace Palace.Services;
 
@@ -292,7 +292,7 @@ public sealed class MetadataExtractorService
 
         if (keyword.Equals("parameters", StringComparison.OrdinalIgnoreCase))
         {
-            ParseA1111(text, meta);
+            ApplyA1111(text, meta);
         }
         else if (keyword.Equals("prompt", StringComparison.OrdinalIgnoreCase))
         {
@@ -305,9 +305,9 @@ public sealed class MetadataExtractorService
         else if (keyword.Equals("Comment", StringComparison.OrdinalIgnoreCase) ||
                  keyword.Equals("Software", StringComparison.OrdinalIgnoreCase))
         {
-            if (string.IsNullOrEmpty(meta.Prompt) && text.Contains("Negative prompt", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(meta.Prompt) && A1111Parameters.LooksLike(text))
             {
-                ParseA1111(text, meta);
+                ApplyA1111(text, meta);
             }
             else if (string.IsNullOrEmpty(meta.Prompt) && text.Length < 4000)
             {
@@ -322,42 +322,21 @@ public sealed class MetadataExtractorService
         return zero < 0 ? -1 : zero + 1;
     }
 
-    private static void ParseA1111(string text, GenerationMetadata meta)
+    private static void ApplyA1111(string text, GenerationMetadata meta)
     {
-        meta.Prompt ??= "";
-        var negIdx = text.IndexOf("Negative prompt:", StringComparison.OrdinalIgnoreCase);
-        var stepsIdx = text.IndexOf("\nSteps:", StringComparison.OrdinalIgnoreCase);
-        if (stepsIdx < 0)
+        var parsed = A1111Parameters.Parse(text);
+        // Prompt may be empty (A1111 text starting at Negative/Steps). Always
+        // assign so a bad prior GetString decimal dump cannot stick.
+        meta.Prompt = parsed.Prompt;
+        if (parsed.NegativePrompt is not null)
         {
-            stepsIdx = text.IndexOf("\nsteps:", StringComparison.OrdinalIgnoreCase);
+            meta.NegativePrompt = parsed.NegativePrompt;
         }
 
-        if (negIdx >= 0)
-        {
-            meta.Prompt = text[..negIdx].Trim();
-            var negEnd = stepsIdx > negIdx ? stepsIdx : text.Length;
-            meta.NegativePrompt = text[(negIdx + "Negative prompt:".Length)..negEnd].Trim();
-        }
-        else if (stepsIdx >= 0)
-        {
-            meta.Prompt = text[..stepsIdx].Trim();
-        }
-        else
-        {
-            meta.Prompt = text.Trim();
-        }
-
-        var footer = stepsIdx >= 0 ? text[stepsIdx..] : text;
-        meta.Seed ??= MatchField(footer, "Seed");
-        meta.Model ??= MatchField(footer, "Model");
-        meta.Sampler ??= MatchField(footer, "Sampler");
-        meta.Steps ??= MatchField(footer, "Steps");
-    }
-
-    private static string? MatchField(string text, string name)
-    {
-        var match = Regex.Match(text, $@"\b{Regex.Escape(name)}:\s*([^,\n]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value.Trim() : null;
+        meta.Seed ??= parsed.Seed;
+        meta.Model ??= parsed.Model;
+        meta.Sampler ??= parsed.Sampler;
+        meta.Steps ??= parsed.Steps;
     }
 
     private static void ParseComfyPrompt(string json, GenerationMetadata meta)
@@ -488,13 +467,15 @@ public sealed class MetadataExtractorService
                 {
                     if (dir.ContainsTag(ExifDirectoryBase.TagUserComment))
                     {
-                        var comment = dir.GetString(ExifDirectoryBase.TagUserComment);
+                        // GetString returns "85 78 73…" for UNICODE bytes — decode
+                        // the raw UNDEFINEDINED payload per the EXIF character code.
+                        var raw = dir.GetByteArray(ExifDirectoryBase.TagUserComment);
+                        var comment = ExifUserComment.Decode(raw, tiffLittleEndian: true);
                         if (!string.IsNullOrWhiteSpace(comment))
                         {
-                            if (comment.Contains("Negative prompt", StringComparison.OrdinalIgnoreCase) ||
-                                comment.Contains("Steps:", StringComparison.OrdinalIgnoreCase))
+                            if (A1111Parameters.LooksLike(comment))
                             {
-                                ParseA1111(comment, meta);
+                                ApplyA1111(comment, meta);
                             }
                             else
                             {
