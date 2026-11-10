@@ -37,11 +37,13 @@ BT.2020 linear, **1.0 = 203 nits**.
    Lc=1 (C¹, no kink), dip ≤ ~10% (`MaxPaperDip`); shoulder reaches **display
    white at Lc**; **SDR output ≤ display white**. HDR: BT.2390-8 §5.4.1 clamps
    at **Ld** (no headroom above white); **P5 owns wiring Ld**. Desat =
-   `smoothstep(Ld, 1.25·Ld, peak)` — with the curve ending at white / Ld, peak
-   rarely exceeds Ld, so desat **currently never engages (P7)**.
+   `smoothstep(Ld, 1.25·Ld, peak)` — **structurally dead under Option A /
+   BT.2390** (maxRGB scale → post-map peak = `MapScalar` ≤ Ld; **P7 B0**).
+   Engagement (A1–A4) deferred pending Isiac A/B. Gain maps stay detect +
+   SDR base (hdr-skiv), not reconstruct.
 4. **LUT** — PQ-spaced; EV at sample time (not in cache key). **Non-zero EV
    bypasses the baked LUT** and re-evaluates `MapScalar` with Lc·2^EV (**P5**).
-   Default size **256**. `PipelineVersion` = **6**.
+   Default size **256**. `PipelineVersion` = **6** (unchanged by P7 B0).
 
 ## ExrRefWhite / Pregmata_SteamAVIF (M4)
 
@@ -59,7 +61,9 @@ for regenerate commands.
 
 ## Out of scope (P1 era)
 
-P6 delete legacy Reinhard landed later; gain maps / desat tuning (P7) still open.
+P6 delete legacy Reinhard landed later. **P7 B0** (docs): desat structurally
+dead under Option A; Ultra HDR / gain maps stay detect + SDR base. Desat
+engagement A1–A4 deferred. See `docs/imaging-p7-scope.md`.
 
 **P2 (decoders):** [#138](https://github.com/sacb0y/Palace/pull/138) —
 `ImagingStillNormalize` + `HdrFrame.Working` beside scRGB present.
@@ -85,7 +89,10 @@ CPU-rasters FP16).
 no longer runs `ToneMap.Analyze` + Reinhard thumb-match.
 `ToneMap.ScrgbToBgra8` / Imaging-miss present keep a **hard residual**
 (hue-preserving peak fold + clip; no MidGrey / Reinhard). `HdrPresentMap.ReinhardWhite`
-unused (always 0). Gain maps / desat engagement remain **P7**.
+unused (always 0).
+
+**P7 B0 (docs):** highlight desat remains a no-op under Option A (no behaviour
+change, no `PipelineVersion` bump). Gain maps stay detect + SDR base.
 
 ## P2 Working contract (accuracy / docs)
 

@@ -88,7 +88,7 @@ Palace is migrating still decode and present onto a pure `Palace.Imaging` librar
 | **P4** | Landed — SDR full-view Option A (`ImagingPathKind.Full`) |
 | **P5** | Landed — HDR present + Ld + reference HLSL |
 | **P6** | Landed — delete legacy Reinhard (Imaging-only + hard residual) |
-| **P7** | Later — gain maps / desat engagement |
+| **P7** | Docs — desat structurally dead under Option A; gain maps stay detect + SDR base |
 
 See [`docs/hdr-sdr-tuning.md`](docs/hdr-sdr-tuning.md). Agent surface: `AGENTS.md` and `.cursor/rules/gallery-hdr.mdc`.
 
