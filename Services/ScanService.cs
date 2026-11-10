@@ -198,7 +198,7 @@ public sealed class ScanService
             return (ScanOutcome.Unchanged, !existing!.Undecodable);
         }
 
-        if (ScanFastPath.NeedsDateTakenOnly(existing, info.Length, info.LastWriteTimeUtc, onlineOnly)
+        if (ScanFastPath.NeedsMetadataRefreshOnly(existing, info.Length, info.LastWriteTimeUtc, onlineOnly)
             && existing!.Kind == kind
             && ScanContent.MayReadOriginal(attrs)
             && (!LibrarySettings.GenerateThumbsOnScan
@@ -206,10 +206,18 @@ public sealed class ScanService
                 || !ScanFastPath.NeedsCurrentThumb(existing)
                 || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
         {
-            // Indexed by version 2, before Date taken: read only the EXIF date (no hash / thumb).
-            // Same thumb rule as the fast path: an undecodable row needs no cached thumb.
-            var taken = _metadata.ReadDateTaken(file);
-            await _catalog.SetDateTakenAsync(existing.Id, taken, ScanFastPath.IndexVersion);
+            // Version 2–3 unchanged: refresh generation (+ DateTaken) only — no re-hash / thumb.
+            // Upsert path is not used, so Rating / Notes / tags stay untouched.
+            var meta = _metadata.Extract(file);
+            await _catalog.SetGenerationMetadataAsync(
+                existing.Id,
+                meta.Model,
+                meta.Seed,
+                meta.Prompt,
+                meta.NegativePrompt,
+                meta.RawJson,
+                meta.DateTaken,
+                ScanFastPath.IndexVersion);
             return (ScanOutcome.Unchanged, !existing.Undecodable);
         }
 

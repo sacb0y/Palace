@@ -200,6 +200,45 @@ public sealed partial class CatalogService
             cmd.ExecuteNonQuery();
         });
 
+    /// <summary>
+    /// Light IndexVersion bump: rewrite generation fields (+ optional DateTaken) and FTS.
+    /// Does not touch Rating, Notes, tags, hash, dimensions, or path.
+    /// </summary>
+    public Task SetGenerationMetadataAsync(
+        string assetId,
+        string? model,
+        string? seed,
+        string? prompt,
+        string? negativePrompt,
+        string? metadataJson,
+        string? dateTaken,
+        int indexVersion) =>
+        _db.WriteAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                UPDATE Asset SET
+                    Model = $model,
+                    Seed = $seed,
+                    Prompt = $prompt,
+                    NegativePrompt = $neg,
+                    MetadataJson = $json,
+                    DateTaken = COALESCE($taken, DateTaken),
+                    IndexVersion = $iv
+                WHERE Id = $id
+                """;
+            cmd.Parameters.AddWithValue("$model", (object?)model ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$seed", (object?)seed ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$prompt", (object?)prompt ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$neg", (object?)negativePrompt ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$json", (object?)metadataJson ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$taken", (object?)dateTaken ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$iv", indexVersion);
+            cmd.Parameters.AddWithValue("$id", assetId);
+            cmd.ExecuteNonQuery();
+            RefreshFts(conn, assetId);
+        });
+
     public Task MarkOrphanAsync(string assetId, bool orphan) =>
         _db.WriteAsync(conn =>
         {

@@ -43,6 +43,10 @@
     <Compile Include="..\Helpers\VideoBrowseSwipe.cs" Link="VideoBrowseSwipe.cs" />
     <Compile Include="..\Helpers\GifFrames.cs" Link="GifFrames.cs" />
     <Compile Include="..\Helpers\GenerationFields.cs" Link="GenerationFields.cs" />
+    <Compile Include="..\Helpers\ExifUserComment.cs" Link="ExifUserComment.cs" />
+    <Compile Include="..\Helpers\A1111Parameters.cs" Link="A1111Parameters.cs" />
+    <Compile Include="..\Helpers\ComfyParameters.cs" Link="ComfyParameters.cs" />
+    <Compile Include="..\Helpers\ExifTiffEndian.cs" Link="ExifTiffEndian.cs" />
     <Compile Include="..\Helpers\LoadGate.cs" Link="LoadGate.cs" />
     <Compile Include="..\Helpers\MosaicSortOrder.cs" Link="MosaicSortOrder.cs" />
     <Compile Include="..\Helpers\DateTakenFormat.cs" Link="DateTakenFormat.cs" />
