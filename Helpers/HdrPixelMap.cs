@@ -4,11 +4,12 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Per-pixel scRGB → output mapping shared by the HDR swapchain present
-/// (<see cref="HdrRasterize"/>) and, later, export / conversion: tonemap
-/// scale + clip (<see cref="GalleryPresent.PresentMap"/>) or an analysis
-/// visualization (<see cref="HdrVizMode"/>). Visualizations measure the
-/// <em>source</em> pixel (before tonemap) with <see cref="HdrAnalysis.PixelNits"/>,
-/// so heatmap colours match the histogram's HDR section and Info.
+/// (<see cref="HdrRasterize"/>) and, later, export / conversion: present
+/// scale + clip (<see cref="GalleryPresent.PresentMap"/> / Imaging maps)
+/// or an analysis visualization (<see cref="HdrVizMode"/>). Visualizations
+/// measure the <em>source</em> pixel (before map) with
+/// <see cref="HdrAnalysis.PixelNits"/>, so heatmap colours match the
+/// histogram's HDR section and Info.
 /// </summary>
 public readonly record struct HdrPixelMap(
     float Scale,

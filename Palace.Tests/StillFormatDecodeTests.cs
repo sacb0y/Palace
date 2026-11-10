@@ -20,9 +20,10 @@ public sealed class StillFormatDecodeTests
     }
 
     [Fact]
-    public void ToneMap_BrightHdrWhiteStaysNeutralAndBelowClip()
+    public void ToneMap_HardResidual_BrightHdrWhiteStaysNeutral()
     {
-        // Mid-grey scene with a 40x-bright white highlight.
+        // P6 residual: hard clip + hue fold (no Reinhard). Mid stays mid;
+        // highlight folds to white.
         var count = 64;
         var px = new float[count * 4];
         for (var i = 0; i < count; i++)
@@ -35,14 +36,14 @@ public sealed class StillFormatDecodeTests
         var bgra = ToneMap.ScrgbToBgra8(px, 8, 8);
         Assert.Equal(bgra[0], bgra[1]);
         Assert.Equal(bgra[1], bgra[2]);
-        Assert.True(bgra[0] > 200, $"highlight {bgra[0]}");
+        Assert.Equal(255, bgra[0]);
         Assert.True(bgra[4] is > 40 and < 200, $"mid-grey {bgra[4]}");
     }
 
     [Fact]
-    public void ToneMap_SaturatedHdrRedKeepsHueInsteadOfFlatRed()
+    public void ToneMap_HardResidual_SaturatedHdrRedKeepsHue()
     {
-        // Skin-like HDR colour, 6x over SDR white: must not collapse to (255,0,0).
+        // Skin-like HDR colour, 6x over SDR white: peak fold keeps hue.
         var px = new float[] { 6f, 3f, 1.8f, 1f, 0.1f, 0.1f, 0.1f, 1f };
         var bgra = ToneMap.ScrgbToBgra8(px, 2, 1);
         Assert.True(bgra[1] > 60, $"green {bgra[1]}");

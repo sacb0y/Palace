@@ -192,8 +192,8 @@ public static class GalleryPresent
     /// true is DisplayConfig HDR (<c>AdvancedColorEnabled</c> / INFO_2).
     /// DXGI ColorSpace often stays G22 with dummy 270 while that toggle is
     /// on — that is HDR, not SDR tonemap. Explicit Windows HDR <b>off</b>:
-    /// dummy 270 alone is SDR (Reinhard shoulder) — otherwise SDR laptops
-    /// skip the shoulder and HDR JXL looks washed. When CCD is unknown
+    /// dummy 270 alone is SDR (Imaging Full tonemap) — otherwise SDR laptops
+    /// skip Option A and HDR JXL looks washed. When CCD is unknown
     /// (<c>null</c>), peak &gt;220 including dummy 270 stays HDR so Fenrir-
     /// class panels are not false-tonemapped. 203 paper white and 80–220
     /// stay SDR.
@@ -217,7 +217,7 @@ public static class GalleryPresent
         }
 
         var raw = Math.Max(maxLuminance, maxFullFrameLuminance);
-        // Explicit ACE=0: DXGI dummy 270 is an SDR EDID lie — apply Reinhard.
+        // Explicit ACE=0: DXGI dummy 270 is an SDR EDID lie — Imaging Full.
         if (windowsHdrEnabled == false && IsDummySdrLuminance(raw))
         {
             return false;
@@ -612,7 +612,8 @@ public static class GalleryPresent
     /// Opt-in paper-white factor only (<c>80 / SdrWhiteLevel</c>). The FP16
     /// G10_P709 swapchain is absolute (1.0 = 80 nits) and decoders already
     /// emit nits/80 — default <b>HDR</b> present must <b>not</b> apply this.
-    /// SDR Reinhard present uses <see cref="PresentSdrExposure"/> instead.
+    /// Imaging Full on HDR panels uses <see cref="ThumbMatchOutputScale"/> /
+    /// <see cref="PresentSdrExposure"/> for the ×SdrWhite/80 lift.
     /// </summary>
     public static float HdrCompositionScale(float sdrWhiteLevelNits)
     {
@@ -642,7 +643,7 @@ public static class GalleryPresent
     /// <summary>
     /// HDR still present: absolute scRGB passthrough (scale 1) + clip at
     /// peak/80 (<see cref="RasterizeClipScrgb"/>). Negatives pass through for
-    /// OOG. SDR stills use <see cref="PresentMapSdrReinhard"/> in the gallery
+    /// OOG. SDR stills use <see cref="PresentMapImagingFull"/> in the gallery
     /// (legacy linear MaxCLL map kept for callers / tests).
     /// <paramref name="sdrWhiteLevelNits"/> is ignored for the default map —
     /// see <see cref="HdrCompositionScale"/>.
@@ -664,51 +665,15 @@ public static class GalleryPresent
         }
 
         _ = displayPeakNits;
-        // Legacy linear MaxCLL→80 for callers that have not run ToneMap.Analyze.
-        // Gallery present uses PresentMapSdrReinhard so midtones are not crushed.
+        // Legacy linear MaxCLL→80 for callers / tests. Gallery SDR present
+        // uses PresentMapImagingFull (Imaging Option A owns the curve).
         return new HdrPresentMap(TonemapScale(contentMaxNits, ScrgbNits), 1f, SoftNegatives: false);
     }
 
     /// <summary>
-    /// SDR / HDR-off present: extended Reinhard from
-    /// <see cref="ToneMap.AnalyzeHdrPresent"/> (exposure ≤ 1 from SdrWhiteLevel,
-    /// white from content peak; always shoulder). OOG negatives are
-    /// plain-clamped (no SoftNegChannel luminance darkening). Clip is scRGB 1.0.
-    /// </summary>
-    public static HdrPresentMap PresentMapSdrReinhard(float exposure, float reinhardWhite) =>
-        new(
-            exposure > 0 && float.IsFinite(exposure) ? Math.Min(exposure, 1f) : 1f,
-            1f,
-            ReinhardWhite: reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f,
-            SoftNegatives: false);
-
-    /// <summary>
-    /// Same stats as mosaic thumbs (<see cref="ToneMap.Analyze"/> + Reinhard):
-    /// exposure may exceed 1 (MidGrey boost). Use for full-view ↔ thumb match
-    /// (room.jxl <c>hdr-display</c>+linear). Curve inputs match the thumb;
-    /// on an HDR panel <see cref="HdrPresentMap.OutputScale"/> /
-    /// <see cref="HdrPresentMap.ClipScrgb"/> are <c>SdrWhiteLevel/80</c> so
-    /// <see cref="ToneMap.MapPresentRgb"/> lifts the curve <em>output</em>
-    /// into composition white (absolute scRGB 1.0 = 80 nits).
-    /// </summary>
-    public static HdrPresentMap PresentMapThumbMatch(
-        float exposure,
-        float reinhardWhite,
-        bool displayIsHdr = false,
-        float sdrWhiteLevelNits = 0f)
-    {
-        var scale = exposure > 0 && float.IsFinite(exposure) ? exposure : 1f;
-        var white = reinhardWhite > 1f && float.IsFinite(reinhardWhite) ? reinhardWhite : 0f;
-        // M1: leave exposure/white alone (Reinhard is not linear). OutputScale
-        // and ClipScrgb = k → multiply curve output by k and fold/clip to k.
-        var k = ThumbMatchOutputScale(displayIsHdr, sdrWhiteLevelNits);
-        return new(scale, k, ReinhardWhite: white, SoftNegatives: false, OutputScale: k);
-    }
-
-    /// <summary>
     /// P4 Imaging full path: source is already Option A display-referred
-    /// BT.709 linear (no Reinhard). Same HDR-panel ×SdrWhite/80 lift as
-    /// <see cref="PresentMapThumbMatch"/>.
+    /// BT.709 linear. On an HDR panel <see cref="HdrPresentMap.OutputScale"/> /
+    /// <see cref="HdrPresentMap.ClipScrgb"/> are <c>SdrWhiteLevel/80</c>.
     /// </summary>
     public static HdrPresentMap PresentMapImagingFull(
         bool displayIsHdr = false,
@@ -1611,12 +1576,12 @@ public readonly record struct GalleryImageInfo(
     string? Gamut = null);
 
 /// <summary>
-/// Present raster map. <see cref="Scale"/> is exposure (SDR Reinhard) or 1
-/// for absolute HDR scRGB. When <see cref="ReinhardWhite"/> &gt; 1, extended
-/// Reinhard rolls highlights (same curve as <see cref="ToneMap"/> thumbs).
-/// <see cref="SoftNegatives"/> true = pass OOG negatives through (HDR);
+/// Present raster map. <see cref="Scale"/> is 1 for Imaging / absolute HDR
+/// scRGB (legacy MaxCLL linear map may use a content scale).
+/// <see cref="ReinhardWhite"/> is unused after P6 (always 0; Imaging owns the
+/// curve). <see cref="SoftNegatives"/> true = pass OOG negatives through (HDR);
 /// false = plain clamp to 0 (SDR). <see cref="OutputScale"/> lifts the
-/// finished curve (M1 HDR thumb-match ×SdrWhite/80); leave Scale/White alone.
+/// finished map (M1 HDR Imaging Full ×SdrWhite/80).
 /// </summary>
 public readonly record struct HdrPresentMap(
     float Scale,

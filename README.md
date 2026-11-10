@@ -86,8 +86,9 @@ Palace is migrating still decode and present onto a pure `Palace.Imaging` librar
 | **P2** | Landed — still decoders → `NormalizedFrame` (+ small follow-ups) |
 | **P3** | Landed — mosaic thumbs Option A LUT (`ImagingPathKind.Thumb`) |
 | **P4** | Landed — SDR full-view Option A (`ImagingPathKind.Full`) |
-| **P5** | In flight — HDR present + Ld + reference HLSL |
-| **P6–P7** | Later — delete legacy path; gain maps / desat engagement |
+| **P5** | Landed — HDR present + Ld + reference HLSL |
+| **P6** | Landed — delete legacy Reinhard (Imaging-only + hard residual) |
+| **P7** | Later — gain maps / desat engagement |
 
 See [`docs/hdr-sdr-tuning.md`](docs/hdr-sdr-tuning.md). Agent surface: `AGENTS.md` and `.cursor/rules/gallery-hdr.mdc`.
 

@@ -7,7 +7,7 @@ namespace Palace.Helpers;
 /// <see cref="ImagingPathKind.Full"/> (direct <see cref="ToneMapper.MapFrame"/>)
 /// → BT.709 linear for the scRGB swapchain. WinUI-free for <c>Palace.Tests</c>.
 /// HDR-display PQ/HLG present is <see cref="ImagingHdrPresentToneMap"/> (P5).
-/// Does not delete legacy Reinhard (P6) or invent deferred Doktor A3 / R1/R3/R4.
+/// Does not invent deferred Doktor A3 / R1/R3/R4.
 /// </summary>
 public static class ImagingFullToneMap
 {
@@ -69,7 +69,7 @@ public static class ImagingFullToneMap
 
     /// <summary>
     /// Resolve Working then Option A Full → present scRGB. Null → caller
-    /// keeps legacy Reinhard.
+    /// uses Imaging Full map + source scRGB hard residual (no Reinhard).
     /// </summary>
     public static float[]? TryMapFrameToPresentScrgb(
         NormalizedFrame? working,

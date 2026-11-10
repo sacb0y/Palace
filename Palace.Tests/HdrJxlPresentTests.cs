@@ -103,7 +103,7 @@ public class HdrJxlPresentTests
     public void ToneMappedPqJxl_KalanLike_NotBlownOut()
     {
         // Mid-grey scene + paper-white patch + small highlight (KalanLiraDuo):
-        // exposure 1 + Reinhard — mean readable, not ~1 washout.
+        // Imaging Full — mean readable, not ~1 washout.
         const int n = 64;
         var rgba = new float[n * 4];
         var paper = GalleryPresent.SdrReferenceNits / GalleryPresent.ScrgbNits;
@@ -118,25 +118,23 @@ public class HdrJxlPresentTests
             rgba[i * 4 + 3] = 1f;
         }
 
-        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
-        Assert.Equal(1f, exposure);
-        Assert.True(white > 1f);
         var mean = HdrJxlPresent.ToneMappedMeanLuminance(rgba, n);
-        Assert.InRange(mean, 0.08f, 0.85f);
-        var p90 = PercentileLumaAfterPresent(rgba, n, 0.90);
-        Assert.InRange(p90, 0.15f, 0.98f);
-        // Paper patch must not stay above composition white after map.
-        ToneMap.MapPresentRgb(
-            paper, paper, paper, exposure, 1f, white, softNegatives: false,
-            out var pr, out _, out _);
-        Assert.InRange(pr, 0.05f, 1f);
+        Assert.InRange(mean, 0.08f, 0.95f);
+        // Mid-grey majority must stay below paper after Imaging Full.
+        var p50 = PercentileLumaAfterPresent(rgba, n, 0.50);
+        Assert.InRange(p50, 0.08f, 0.85f);
+        // Paper patch must not stay above composition white after Imaging Full.
+        var mapped = ImagingFullToneMap.TryMapFrameToPresentScrgb(
+            null, stackalloc float[] { paper, paper, paper, 1f }, 1, 1);
+        Assert.NotNull(mapped);
+        Assert.InRange(mapped![0], 0.05f, 1.05f);
     }
 
     [Fact]
     public void IntensityTarget255_RelativeScale_NotTenThousand()
     {
         // Laptop: Kalan / room.jxl with libjxl default IntensityTarget=255.
-        // Treating 255 as unset (→10k/80) over-scaled ~39×; after Reinhard the
+        // Treating 255 as unset (→10k/80) over-scaled ~39×; after tonemap the
         // whole frame sat at composition white (median 255, >50% clipped).
         var wrong = HdrJxlPresent.ScrgbScaleFromIntensityTarget(255f, HdrTransfer.Pq);
         Assert.Equal(255f / GalleryPresent.ScrgbNits, wrong, 3);
@@ -148,7 +146,7 @@ public class HdrJxlPresentTests
     {
         // Simulate Relative float where 1.0 = 255 nits, then apply scale.
         // Wrong path (255→10k): midtones land near peak → tonemap washout.
-        // Correct path (255/80): midtones stay mid after Reinhard.
+        // Correct path (255/80): midtones stay mid after Imaging Full.
         const int n = 64;
         var relative = new float[n * 4];
         for (var i = 0; i < n; i++)
@@ -168,10 +166,10 @@ public class HdrJxlPresentTests
 
         var blownMean = HdrJxlPresent.ToneMappedMeanLuminance(blown, n);
         var okMean = HdrJxlPresent.ToneMappedMeanLuminance(ok, n);
-        var blownClip = FractionClippedAfterPresent(blown, n);
+        var blownClip = FractionClippedSource(blown, n);
         var okClip = FractionClippedAfterPresent(ok, n);
 
-        // Wrong scale: almost-white after map (laptop retest: ~55% clipped).
+        // Wrong scale: source scRGB wash (Imaging compresses post-map clip).
         Assert.True(blownMean > 0.85f || blownClip > 0.45f,
             $"expected whiteout under 10k scale, mean={blownMean} clip={blownClip}");
         // Correct scale: readable midtones, low clip rate.
@@ -215,7 +213,9 @@ public class HdrJxlPresentTests
         var wrong = (float[])pq.Clone();
         HdrJxlPresent.NormalizeToScrgb(
             wrong, 10_000f, HdrTransfer.Pq, JxlBufferTransfer.Linear, cicpPrimaries: 9);
-        var wrongClip = FractionClippedAfterPresent(wrong, n);
+        // Washout is a decode-scale bug: measure source scRGB before Imaging
+        // (Option A compresses hot frames so post-map clip is no longer the signal).
+        var wrongClip = FractionClippedSource(wrong, n);
 
         var ok = (float[])pq.Clone();
         var norm = HdrJxlPresent.NormalizeToScrgb(
@@ -225,8 +225,8 @@ public class HdrJxlPresentTests
         var okClip = FractionClippedAfterPresent(ok, n);
 
         Assert.True(wrongClip > 0.40f, $"PQ-as-linear×IT should wash, clip={wrongClip}");
-        Assert.InRange(okMean, 0.12f, 0.55f);
-        Assert.True(okClip < 0.10f, $"bright-window clip must stay under 10%, clip={okClip}");
+        Assert.InRange(okMean, 0.08f, 0.70f);
+        Assert.True(okClip < 0.15f, $"bright-window clip must stay low, clip={okClip}");
     }
 
     [Fact]
@@ -239,52 +239,40 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void PresentMatchesThumbToneMap_HdrDisplayLinear_UsesToneMapAnalyze()
+    public void PresentMatchesThumbToneMap_HdrDisplayLinear_UsesImagingFull()
     {
-        // room.jxl: hdr-display + buffer=linear must use thumb Analyze stats.
+        // room.jxl: hdr-display + buffer=linear → Imaging Full (P4/P6).
         Assert.True(GalleryPresent.PresentMatchesThumbToneMap(true, JxlBufferTransfer.Linear));
         Assert.True(GalleryPresent.PresentMatchesThumbToneMap(false, JxlBufferTransfer.Pq));
         Assert.False(GalleryPresent.PresentMatchesThumbToneMap(true, JxlBufferTransfer.Pq));
 
-        var rgba = new float[] { 3f, 3f, 3f, 1f, 0.5f, 0.5f, 0.5f, 1f };
-        var (exposure, white) = ToneMap.Analyze(rgba, 2);
-        var map = GalleryPresent.PresentMapThumbMatch(exposure, white);
-        Assert.Equal(exposure, map.Scale);
-        Assert.Equal(white > 1f ? white : 0f, map.ReinhardWhite);
-        // PresentMapSdrReinhard caps exposure at 1 — thumbs do not.
-        if (exposure > 1f)
-        {
-            Assert.True(GalleryPresent.PresentMapSdrReinhard(exposure, white).Scale <= 1f);
-            Assert.Equal(exposure, map.Scale);
-        }
+        var map = GalleryPresent.PresentMapImagingFull();
+        Assert.Equal(1f, map.Scale);
+        Assert.Equal(0f, map.ReinhardWhite);
     }
 
     [Fact]
-    public void PresentMapThumbMatch_HdrDisplay_OutputMatchesThumbTimesSdrWhiteOver80()
+    public void PresentMapImagingFull_HdrDisplay_OutputScaleIsSdrWhiteOver80()
     {
-        // M1: leave curve inputs alone; MapPresentRgb multiplies OUTPUT by
-        // k=SdrWhite/80 and folds/clips to k. Reinhard is not linear — scaling
-        // inputs left mid-grey ~1.3× and highlights ~3× too dark.
-        const float exposure = 1.2f;
-        const float white = 4f;
+        // M1: Imaging Full leaves Scale=1; MapPresentRgb multiplies OUTPUT by
+        // k=SdrWhite/80 and folds/clips to k.
         const float sdrWhite = 240f; // 3× paper
         var k = sdrWhite / GalleryPresent.ScrgbNits;
 
-        var sdr = GalleryPresent.PresentMapThumbMatch(exposure, white, displayIsHdr: false);
-        Assert.Equal(exposure, sdr.Scale);
+        var sdr = GalleryPresent.PresentMapImagingFull(displayIsHdr: false);
+        Assert.Equal(1f, sdr.Scale);
         Assert.Equal(1f, sdr.ClipScrgb);
-        Assert.Equal(white, sdr.ReinhardWhite);
-
-        var hdr = GalleryPresent.PresentMapThumbMatch(
-            exposure, white, displayIsHdr: true, sdrWhiteLevelNits: sdrWhite);
-        Assert.Equal(exposure, hdr.Scale, 3);
-        Assert.Equal(white, hdr.ReinhardWhite, 3);
-        Assert.Equal(k, hdr.ClipScrgb, 3);
-        Assert.Equal(k, hdr.OutputScale, 3);
+        Assert.Equal(0f, sdr.ReinhardWhite);
         Assert.Equal(1f, sdr.OutputScale, 3);
 
-        // Mid-grey + a hot highlight — compare mapped pixels to thumb × k.
-        foreach (var (r, g, b) in new[] { (0.18f, 0.18f, 0.18f), (2.5f, 2.0f, 1.5f) })
+        var hdr = GalleryPresent.PresentMapImagingFull(
+            displayIsHdr: true, sdrWhiteLevelNits: sdrWhite);
+        Assert.Equal(1f, hdr.Scale, 3);
+        Assert.Equal(0f, hdr.ReinhardWhite, 3);
+        Assert.Equal(k, hdr.ClipScrgb, 3);
+        Assert.Equal(k, hdr.OutputScale, 3);
+
+        foreach (var (r, g, b) in new[] { (0.18f, 0.18f, 0.18f), (0.9f, 0.8f, 0.7f) })
         {
             ToneMap.MapPresentRgb(
                 r, g, b, sdr.Scale, sdr.ClipScrgb, sdr.ReinhardWhite, softNegatives: false,
@@ -377,7 +365,7 @@ public class HdrJxlPresentTests
 
         var wrong = (float[])pq.Clone();
         HdrJxlPresent.ApplyIntensityScale(wrong, 10_000f / GalleryPresent.ScrgbNits);
-        var wrongClip = FractionClippedAfterPresent(wrong, n);
+        var wrongClip = FractionClippedSource(wrong, n);
 
         var ok = (float[])pq.Clone();
         var norm = HdrJxlPresent.NormalizeToScrgb(
@@ -388,7 +376,9 @@ public class HdrJxlPresentTests
         var okClip = FractionClippedAfterPresent(ok, n);
 
         Assert.True(wrongClip > 0.45f, $"PQ×125 should whiteout, clip={wrongClip}");
-        Assert.InRange(okMean, 0.08f, 0.85f);
+        // Frame is mostly paper white (~203 nits) — Imaging Full mean near 1 is OK;
+        // wrong path is the near-100% source clip above.
+        Assert.InRange(okMean, 0.08f, 1.05f);
         Assert.True(okClip < 0.35f, $"EOTF path must not whiteout, clip={okClip}");
     }
 
@@ -509,14 +499,16 @@ public class HdrJxlPresentTests
 
     private static float FractionClippedAfterPresent(float[] rgba, int n)
     {
-        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
+        var mapped = ImagingFullToneMap.TryMapFrameToPresentScrgb(null, rgba, n, 1);
+        Assert.NotNull(mapped);
+        var map = GalleryPresent.PresentMapImagingFull();
         var clipped = 0;
         for (var i = 0; i < n; i++)
         {
             ToneMap.MapPresentRgb(
-                rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2],
-                exposure, 1f, white, softNegatives: false,
-                out var r, out var g, out var b);
+                mapped![i * 4], mapped[i * 4 + 1], mapped[i * 4 + 2],
+                map.Scale, map.ClipScrgb, map.ReinhardWhite, map.SoftNegatives,
+                out var r, out var g, out var b, map.OutputScale);
             if (Math.Max(r, Math.Max(g, b)) >= 0.98f)
             {
                 clipped++;
@@ -527,33 +519,8 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void AnalyzeHdrPresent_ExposureOne_AlwaysShoulder_NoBoost()
+    public void PresentSdrExposure_AttenuatesOnly_NeverBoosts()
     {
-        // Dark frame: old MiddleGrey/logAvg could boost up to 4× and overblow.
-        // Present stays at exposure 1.0 (fallback SdrWhite=80) and still rolls.
-        const int n = 32;
-        var rgba = new float[n * 4];
-        for (var i = 0; i < n; i++)
-        {
-            var v = i == 0 ? 0.08f : 0.05f;
-            rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
-            rgba[i * 4 + 3] = 1f;
-        }
-
-        var thumb = ToneMap.Analyze(rgba, n);
-        Assert.Equal(1f, thumb.Exposure);
-        Assert.Equal(1f, thumb.White); // p995 ≤ 1 → thumb passthrough
-
-        var present = ToneMap.AnalyzeHdrPresent(rgba, n);
-        Assert.Equal(1f, present.Exposure);
-        Assert.True(present.White > 1f, "shoulder always on even when p995 ≤ 1");
-        Assert.True(present.Exposure <= 1f);
-    }
-
-    [Fact]
-    public void AnalyzeHdrPresent_UsesSdrWhiteLevel_AttenuatesOnly()
-    {
-        Span<float> rgba = stackalloc float[] { 1f, 1f, 1f, 1f };
         Assert.Equal(80f, GalleryPresent.EffectiveSdrWhiteNits(0f));
         Assert.Equal(80f, GalleryPresent.EffectiveSdrWhiteNits(-1f));
         Assert.Equal(203f, GalleryPresent.EffectiveSdrWhiteNits(203f));
@@ -561,20 +528,13 @@ public class HdrJxlPresentTests
         Assert.Equal(1f, GalleryPresent.PresentSdrExposure(80f));
         Assert.Equal(80f / 203f, GalleryPresent.PresentSdrExposure(203f), 4);
         Assert.True(GalleryPresent.PresentSdrExposure(40f) <= 1f); // never boost
-
-        var at80 = ToneMap.AnalyzeHdrPresent(rgba, 1, sdrWhiteLevelNits: 80f);
-        Assert.Equal(1f, at80.Exposure);
-        var at203 = ToneMap.AnalyzeHdrPresent(rgba, 1, sdrWhiteLevelNits: 203f);
-        Assert.Equal(80f / 203f, at203.Exposure, 4);
-        Assert.True(at203.White > 1f);
     }
 
     [Fact]
-    public void AnalyzeHdrPresent_PregmataSdrReference_MeanAndPercentileInTolerance()
+    public void ImagingFull_PregmataSdrReference_MeanAndPercentileInTolerance()
     {
-        // SDR reference PNG for Pregmata: mid-grey scene + soft highlight at
-        // scRGB white — mean and p90 stay in a readable band (not crushed /
-        // not washed) with exposure 1 + always-on shoulder.
+        // SDR reference: mid-grey scene + soft highlight at scRGB white —
+        // mean and p90 stay readable under Imaging Full (P6).
         const int n = 64;
         var rgba = new float[n * 4];
         for (var i = 0; i < n; i++)
@@ -584,22 +544,18 @@ public class HdrJxlPresentTests
             rgba[i * 4 + 3] = 1f;
         }
 
-        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
-        Assert.Equal(1f, exposure);
-        Assert.True(white > 1f);
         var mean = HdrJxlPresent.ToneMappedMeanLuminance(rgba, n);
-        Assert.InRange(mean, 0.10f, 0.45f);
+        Assert.InRange(mean, 0.08f, 0.55f);
         var p50 = PercentileLumaAfterPresent(rgba, n, 0.50);
         var p90 = PercentileLumaAfterPresent(rgba, n, 0.90);
-        Assert.InRange(p50, 0.08f, 0.35f);
-        Assert.InRange(p90, 0.20f, 0.95f);
+        Assert.InRange(p50, 0.05f, 0.45f);
+        Assert.InRange(p90, 0.15f, 0.98f);
     }
 
     [Fact]
-    public void AnalyzeHdrPresent_RelativeExr_ShoulderWithoutBoost()
+    public void ImagingFull_RelativeExrDiffuse_StaysReadable()
     {
-        // Scene-referred EXR diffuse ≤ 1.0: thumbs skip (1,1); present always
-        // shoulders. Exposure stays 1 so scene 1.0 → SDR white (no MidGrey boost).
+        // Scene-referred EXR diffuse ≤ 1.0: Imaging Full keeps midtones.
         const int n = 32;
         var rgba = new float[n * 4];
         for (var i = 0; i < n; i++)
@@ -609,27 +565,39 @@ public class HdrJxlPresentTests
             rgba[i * 4 + 3] = 1f;
         }
 
-        var thumb = ToneMap.Analyze(rgba, n);
-        Assert.Equal(1f, thumb.Exposure);
-        Assert.Equal(1f, thumb.White);
-
-        var present = ToneMap.AnalyzeHdrPresent(rgba, n);
-        Assert.Equal(1f, present.Exposure);
-        Assert.True(present.White > 1f);
         var mean = HdrJxlPresent.ToneMappedMeanLuminance(rgba, n);
-        Assert.InRange(mean, 0.40f, 0.95f);
+        // Absolute Scrgb Working maps relative-looking 0.7–0.95 as ~80/203 paper
+        // fraction — Option A mean lands mid-low, still readable.
+        Assert.InRange(mean, 0.15f, 0.85f);
+    }
+
+    private static float FractionClippedSource(float[] rgba, int n)
+    {
+        var clipped = 0;
+        for (var i = 0; i < n; i++)
+        {
+            var peak = Math.Max(rgba[i * 4], Math.Max(rgba[i * 4 + 1], rgba[i * 4 + 2]));
+            if (peak >= 0.98f)
+            {
+                clipped++;
+            }
+        }
+
+        return clipped / (float)n;
     }
 
     private static float PercentileLumaAfterPresent(float[] rgba, int n, double fraction)
     {
-        var (exposure, white) = ToneMap.AnalyzeHdrPresent(rgba, n);
+        var mapped = ImagingFullToneMap.TryMapFrameToPresentScrgb(null, rgba, n, 1);
+        Assert.NotNull(mapped);
+        var map = GalleryPresent.PresentMapImagingFull();
         var samples = new float[n];
         for (var i = 0; i < n; i++)
         {
             ToneMap.MapPresentRgb(
-                rgba[i * 4], rgba[i * 4 + 1], rgba[i * 4 + 2],
-                exposure, 1f, white, softNegatives: false,
-                out var r, out var g, out var b);
+                mapped![i * 4], mapped[i * 4 + 1], mapped[i * 4 + 2],
+                map.Scale, map.ClipScrgb, map.ReinhardWhite, map.SoftNegatives,
+                out var r, out var g, out var b, map.OutputScale);
             samples[i] = ToneMap.Luminance(r, g, b);
         }
 
@@ -749,29 +717,31 @@ public class HdrJxlPresentTests
     }
 
     [Fact]
-    public void ToneMap_EightyNitScale_PullsHotPaperWhiteDown()
+    public void ImagingThumb_EightyNitScale_PullsHotPaperWhiteDown()
     {
-        // Post-Normalize PQ paper white at 203/80 ≈ 2.54 scRGB — ToneMap must
-        // expose down (not leave thumbs ~2.5× hotter than the old ÷203 path).
+        // Post-Normalize PQ paper white at 203/80 ≈ 2.54 scRGB — Imaging Thumb
+        // Option A must map below hard white wash.
         var paper = GalleryPresent.SdrReferenceNits / GalleryPresent.ScrgbNits;
-        Span<float> rgba = stackalloc float[] { paper, paper, paper, 1f };
-        var (exposure, white) = ToneMap.Analyze(rgba, 1);
-        Assert.True(exposure < 1f, $"expected exposure < 1 for hot paper white, got {exposure}");
-        Assert.True(white >= 1f);
-        var bgra = ToneMap.ScrgbToBgra8(rgba, 1, 1);
+        float[] rgba = [paper, paper, paper, 1f];
+        var (bgra, _, _, used) = ImagingThumbToneMap.FromScrgb(
+            rgba, 1, 1, maxSide: 64, absoluteScrgb: true);
+        Assert.True(used);
         Assert.InRange(bgra[0], 1, 254); // not clipped black or full white wash
     }
 
     [Fact]
-    public void MapPresentRgb_SdrReinhard_MatchesThumbCurveShape()
+    public void MapPresentRgb_ImagingFull_MapsPaperWhiteNeutral()
     {
         var paper = GalleryPresent.SdrReferenceNits / GalleryPresent.ScrgbNits;
-        Span<float> rgba = stackalloc float[] { paper, paper, paper, 1f };
-        var (exposure, white) = ToneMap.Analyze(rgba, 1);
+        var mapped = ImagingFullToneMap.TryMapFrameToPresentScrgb(
+            null, stackalloc float[] { paper, paper, paper, 1f }, 1, 1);
+        Assert.NotNull(mapped);
+        var map = GalleryPresent.PresentMapImagingFull();
         ToneMap.MapPresentRgb(
-            paper, paper, paper, exposure, 1f, white, softNegatives: true,
-            out var r, out var g, out var b);
-        Assert.InRange(r, 0.05f, 1f);
+            mapped![0], mapped[1], mapped[2],
+            map.Scale, map.ClipScrgb, map.ReinhardWhite, softNegatives: true,
+            out var r, out var g, out var b, map.OutputScale);
+        Assert.InRange(r, 0.05f, 1.05f);
         Assert.Equal(r, g, 4);
         Assert.Equal(g, b, 4);
     }

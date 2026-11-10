@@ -6,9 +6,9 @@ namespace Palace.Helpers;
 /// P5: HDR-display PQ/HLG present via <see cref="Palace.Imaging"/> —
 /// BT.2390 EETF with display <see cref="DisplayTarget.Ld"/> → BT.709 linear
 /// for the scRGB swapchain. WinUI-free for <c>Palace.Tests</c>. Does not
-/// delete legacy Reinhard (P6), engage desat (P7), or invent deferred Doktor
-/// A3 / R1/R3/R4 wording. GPU present still uploads CPU FP16; reference HLSL
-/// lives under <c>Palace.Imaging/Shaders</c> for CPU–GPU agreement.
+/// engage desat (P7) or invent deferred Doktor A3 / R1/R3/R4 wording. GPU
+/// present still uploads CPU FP16; reference HLSL lives under
+/// <c>Palace.Imaging/Shaders</c> for CPU–GPU agreement.
 /// </summary>
 public static class ImagingHdrPresentToneMap
 {

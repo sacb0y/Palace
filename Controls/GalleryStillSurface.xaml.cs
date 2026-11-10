@@ -998,7 +998,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         using var cts = new CancellationTokenSource();
         await UiDispatch.RunAsync(() => _presentCts = cts);
-        // Sticky thumb ToneMap.Analyze stats per path: first Fit; 1:1 / resize reuse.
+        // Sticky Reinhard Analyze removed (P6); LastSdr* stays 0 under Imaging.
         // S5: presenter also drops sticky when DisplayIsHdr flips vs last present.
         float? stickyExposure = null;
         float? stickyWhite = null;

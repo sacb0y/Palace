@@ -57,9 +57,9 @@ scRGB (~804 nits).
 JXR, EXR, HDR** plus float / `*.decoded.f32` dumps. See that folder’s README
 for regenerate commands.
 
-## Out of scope (P1)
+## Out of scope (P1 era)
 
-Deleting legacy (P6), gain maps / desat tuning (P7). No FenrirDesktop.
+P6 delete legacy Reinhard landed later; gain maps / desat tuning (P7) still open.
 
 **P2 (decoders):** [#138](https://github.com/sacb0y/Palace/pull/138) —
 `ImagingStillNormalize` + `HdrFrame.Working` beside scRGB present.
@@ -72,15 +72,20 @@ cache gen 8.
 **P4 (SDR full):** `ImagingFullToneMap` — Option A
 `ImagingPathKind.Full` (direct `MapFrame`) → BT.709 linear for the gallery
 swapchain when `PresentMatchesThumbToneMap` (SDR panel, or linear JXL on
-HDR). Legacy Reinhard remains fallback; heatmap still measures source
-scRGB.
+HDR). Heatmap still measures source scRGB.
 
 **P5 (HDR present + HLSL):** `ImagingHdrPresentToneMap` — BT.2390 with
 display **Ld** (probed peak / 203) for PQ/HLG on HDR panels → BT.709 linear;
 `PresentMapImagingHdr` lifts ×203/80 and clips at peak/80. Nonzero EV
 bypasses the baked LUT (`ToneMapLut.MapPixel`). Reference HLSL:
 `Palace.Imaging/Shaders/ToneMap.hlsl` (CPU–GPU agreement; present still
-CPU-rasters FP16). Legacy Reinhard / passthrough remain fallback.
+CPU-rasters FP16).
+
+**P6 (delete legacy Reinhard):** Product paths are Imaging-only. Presenter
+no longer runs `ToneMap.Analyze` + Reinhard thumb-match.
+`ToneMap.ScrgbToBgra8` / Imaging-miss present keep a **hard residual**
+(hue-preserving peak fold + clip; no MidGrey / Reinhard). `HdrPresentMap.ReinhardWhite`
+unused (always 0). Gain maps / desat engagement remain **P7**.
 
 ## P2 Working contract (accuracy / docs)
 

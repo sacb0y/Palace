@@ -45,7 +45,7 @@ public static class ThumbCacheVersion
 
     /// <summary>
     /// Generation 8: HDR / float still thumbs use Palace.Imaging Option A LUT
-    /// (P3) instead of legacy Reinhard <c>ToneMap.ScrgbToBgra8</c>.
+    /// (P3). Hard residual <c>ToneMap.ScrgbToBgra8</c> is clip-only (P6).
     /// </summary>
     public const int ImagingP3ThumbGeneration = 8;
 
