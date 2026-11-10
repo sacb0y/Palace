@@ -455,7 +455,7 @@
                         </Grid.ColumnDefinitions>
                         <ic:FluentIcon
                             Grid.Column="0"
-                            Foreground="#FF99A4"
+                            Foreground="{ThemeResource FolderTreeRejectedBrush}"
                             Icon="DismissCircle"
                             IconSize="Size16"
                             IconVariant="Regular" />
@@ -468,7 +468,7 @@
                             Grid.Column="2"
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="TxtAllRejectedCount"
-                            Foreground="#FF99A4"
+                            Foreground="{ThemeResource FolderTreeRejectedBrush}"
                             Text="{x:Bind ViewModel.AllRejectedCountText, Mode=OneWay}" />
                     </Grid>
                 </Button>
@@ -572,12 +572,21 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <!-- Warm yellow folders; pink/red when leaf is _rejected (mockup fold / RED). -->
                                 <ic:FluentIcon
                                     VerticalAlignment="Center"
-                                    Foreground="{ThemeResource AccentTextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource FolderTreeFolderBrush}"
                                     Icon="{x:Bind helpers:FluentGlyph.FolderTreeIcon(IsRoot, IsExpanded), Mode=OneWay}"
                                     IconSize="Size16"
-                                    IconVariant="Regular" />
+                                    IconVariant="Regular"
+                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsRejectedFolder), Mode=OneWay}" />
+                                <ic:FluentIcon
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource FolderTreeRejectedBrush}"
+                                    Icon="{x:Bind helpers:FluentGlyph.FolderTreeIcon(IsRoot, IsExpanded), Mode=OneWay}"
+                                    IconSize="Size16"
+                                    IconVariant="Regular"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsRejectedFolder), Mode=OneWay}" />
                                 <TextBlock
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
@@ -614,7 +623,14 @@
                                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind CountText, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsSelected), Mode=OneWay}" />
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowNeutralCount), Mode=OneWay}" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource FolderTreeRejectedBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind CountText, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowRejectedCount), Mode=OneWay}" />
                             </Grid>
                         </TreeViewItem>
                     </DataTemplate>

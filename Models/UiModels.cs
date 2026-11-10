@@ -9,6 +9,9 @@ public sealed partial class FolderNode : ObservableObject
 {
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AutomationName))]
+    [NotifyPropertyChangedFor(nameof(IsRejectedFolder))]
+    [NotifyPropertyChangedFor(nameof(ShowNeutralCount))]
+    [NotifyPropertyChangedFor(nameof(ShowRejectedCount))]
     public partial string Name { get; set; } = "";
 
     public string Path { get; set; } = "";
@@ -30,6 +33,8 @@ public sealed partial class FolderNode : ObservableObject
 
     /// <summary>True when this node is the Library folder selection (count pill).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNeutralCount))]
+    [NotifyPropertyChangedFor(nameof(ShowRejectedCount))]
     public partial bool IsSelected { get; set; }
 
     /// <summary>Inline name editor shown (new folder or rename).</summary>
@@ -44,6 +49,15 @@ public sealed partial class FolderNode : ObservableObject
 
     /// <summary>Always shows a count, including <c>0</c> for empty folders.</summary>
     public string CountText => FolderTreeVm.CountText(AssetCount);
+
+    /// <summary>Leaf name is <c>_rejected</c> — pink/red folder glyph + count.</summary>
+    public bool IsRejectedFolder => FolderTreeVm.IsRejectedFolderName(Name);
+
+    /// <summary>Unselected normal folder: tertiary ThemeResource count.</summary>
+    public bool ShowNeutralCount => !IsSelected && !IsRejectedFolder;
+
+    /// <summary>Unselected <c>_rejected</c> folder: pink/red count.</summary>
+    public bool ShowRejectedCount => !IsSelected && IsRejectedFolder;
 
     /// <summary>UIA name: includes count or "empty" so Narrator is not name-only.</summary>
     public string AutomationName => FolderTreeVm.AutomationName(Name, AssetCount);

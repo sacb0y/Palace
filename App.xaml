@@ -87,6 +87,7 @@
                         </ResourceDictionary>
                         <res:RoomTemplates />
                         <res:ViewerOverlayStyles />
+                        <res:FolderTreeStyles />
                         <res:SettingsStyles />
                     </controls:XamlControlsResources.MergedDictionaries>
                 </controls:XamlControlsResources>
