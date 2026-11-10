@@ -118,6 +118,7 @@ public sealed class ScanFastPathTests
         Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(3), 999, Written, onlineOnly: false));
         Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(ScanFastPath.IndexVersion), 1234, Written, onlineOnly: false));
         Assert.Equal(4, ScanFastPath.IndexVersion);
+        Assert.Equal(ScanOutcome.Updated, ScanFastPath.MetadataRefreshOutcome);
     }
 
     [Fact]

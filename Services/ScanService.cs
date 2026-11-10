@@ -207,7 +207,8 @@ public sealed class ScanService
                 || _thumbs.IsCachedThumbCurrent(file, existing.ContentHash!, kind)))
         {
             // Version 2–3 unchanged: refresh generation (+ DateTaken) only — no re-hash / thumb.
-            // Upsert path is not used, so Rating / Notes / tags stay untouched.
+            // Upsert path is not used, so Rating / Notes / tags stay untouched. Count Updated so
+            // the scan notice does not put refreshed rows in the Unchanged bucket.
             var meta = _metadata.Extract(file);
             await _catalog.SetGenerationMetadataAsync(
                 existing.Id,
@@ -218,7 +219,7 @@ public sealed class ScanService
                 meta.RawJson,
                 meta.DateTaken,
                 ScanFastPath.IndexVersion);
-            return (ScanOutcome.Unchanged, !existing.Undecodable);
+            return (ScanFastPath.MetadataRefreshOutcome, !existing.Undecodable);
         }
 
         var asset = existing ?? new Asset

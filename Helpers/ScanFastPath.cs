@@ -56,6 +56,13 @@ public static class ScanFastPath
         && existing.IndexVersion < IndexVersion
         && SameContent(existing, length, lastWriteUtc, onlineOnly);
 
+    /// <summary>
+    /// Scan-notice bucket after a successful <see cref="NeedsMetadataRefreshOnly"/> write.
+    /// The catalog write is light (generation + IndexVersion only), but the status line must
+    /// count these as <see cref="ScanOutcome.Updated"/> so they do not inflate Unchanged.
+    /// </summary>
+    public static ScanOutcome MetadataRefreshOutcome => ScanOutcome.Updated;
+
     private static bool SameContent(Asset existing, long length, DateTime lastWriteUtc, bool onlineOnly) =>
         !onlineOnly
         && !existing.IsOnlineOnly
