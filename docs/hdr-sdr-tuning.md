@@ -59,8 +59,7 @@ for regenerate commands.
 
 ## Out of scope (P1)
 
-HLSL / CPU–GPU agreement (P5), deleting legacy (P6), gain maps / desat tuning
-(P7). No FenrirDesktop.
+Deleting legacy (P6), gain maps / desat tuning (P7). No FenrirDesktop.
 
 **P2 (decoders):** [#138](https://github.com/sacb0y/Palace/pull/138) —
 `ImagingStillNormalize` + `HdrFrame.Working` beside scRGB present.
@@ -74,7 +73,14 @@ cache gen 8.
 `ImagingPathKind.Full` (direct `MapFrame`) → BT.709 linear for the gallery
 swapchain when `PresentMatchesThumbToneMap` (SDR panel, or linear JXL on
 HDR). Legacy Reinhard remains fallback; heatmap still measures source
-scRGB. HDR PQ/HLG present stays legacy until **P5**.
+scRGB.
+
+**P5 (HDR present + HLSL):** `ImagingHdrPresentToneMap` — BT.2390 with
+display **Ld** (probed peak / 203) for PQ/HLG on HDR panels → BT.709 linear;
+`PresentMapImagingHdr` lifts ×203/80 and clips at peak/80. Nonzero EV
+bypasses the baked LUT (`ToneMapLut.MapPixel`). Reference HLSL:
+`Palace.Imaging/Shaders/ToneMap.hlsl` (CPU–GPU agreement; present still
+CPU-rasters FP16). Legacy Reinhard / passthrough remain fallback.
 
 ## P2 Working contract (accuracy / docs)
 

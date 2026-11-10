@@ -6,7 +6,7 @@ namespace Palace.Helpers;
 /// P3: mosaic / preview thumbs tonemap via <see cref="Palace.Imaging"/> —
 /// lazy <see cref="NormalizedFrame"/> from present scRGB, then thumb LUT →
 /// BGRA8 sRGB JPEG. WinUI-free for <c>Palace.Tests</c>. Does not wire HDR
-/// present (P5) or invent deferred Doktor R1/R3/R4 wording.
+/// invent deferred Doktor R1/R3/R4 wording. HDR present is P5.
 /// </summary>
 public static class ImagingThumbToneMap
 {

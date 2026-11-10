@@ -1,10 +1,11 @@
 namespace Palace.Imaging;
 
 /// <summary>
-/// Display peak / SDR white for tonemap. Pure value — UI providers land in P5.
+/// Display peak / SDR white for tonemap. Pure value — gallery present wires
+/// probed peak via <c>ImagingHdrPresentToneMap.DisplayForPresent</c> (P5).
 /// <para>
-/// <b>P5 owns</b> probing/wiring Ld on the HDR present path; this type only
-/// carries the numbers the library needs.
+/// This type only carries the numbers the library needs (<see cref="Ld"/> =
+/// peak / 203).
 /// </para>
 /// </summary>
 public readonly record struct DisplayTarget(

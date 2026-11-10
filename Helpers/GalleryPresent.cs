@@ -719,6 +719,23 @@ public static class GalleryPresent
     }
 
     /// <summary>
+    /// P5 Imaging HDR present: Working-referred BT.709 (1.0 = 203 nits paper)
+    /// after BT.2390. Lift ×203/80 into absolute scRGB; clip at peak/80;
+    /// keep OOG negatives (<see cref="SoftNegatives"/>).
+    /// </summary>
+    public static HdrPresentMap PresentMapImagingHdr(float displayPeakNits)
+    {
+        var paper = SdrReferenceNits / ScrgbNits;
+        var clip = RasterizeClipScrgb(displayPeakNits);
+        return new(
+            1f,
+            clip,
+            ReinhardWhite: 0f,
+            SoftNegatives: true,
+            OutputScale: paper);
+    }
+
+    /// <summary>
     /// Composition lift for thumb-match / Imaging full on an HDR panel
     /// (<c>SdrWhite/80</c>); 1 on SDR.
     /// </summary>
@@ -738,7 +755,7 @@ public static class GalleryPresent
     /// <summary>
     /// Full view must share thumb ToneMap when the panel is SDR, or when
     /// libjxl left <see cref="JxlBufferTransfer.Linear"/> (room.jxl blowout
-    /// on clip-only <c>hdr-display</c>). PQ/HLG on HDR stays passthrough.
+    /// on clip-only <c>hdr-display</c>). PQ/HLG on HDR uses Imaging HDR (P5).
     /// </summary>
     public static bool PresentMatchesThumbToneMap(
         bool displayIsHdr,

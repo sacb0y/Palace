@@ -3,7 +3,7 @@ namespace Palace.Imaging;
 /// <summary>
 /// P3 / P4 tonemap path flag. Mosaic thumbs bake a PQ-spaced LUT; full SDR
 /// (P4) may use direct <see cref="ToneMapper.MapFrame"/>. HDR present (P5)
-/// is a separate surface and does not use this enum yet.
+/// uses <see cref="DisplayTarget.IsHdrOutput"/> + BT.2390 (not this enum).
 /// </summary>
 public enum ImagingPathKind
 {
