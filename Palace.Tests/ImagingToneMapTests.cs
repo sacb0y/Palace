@@ -265,6 +265,33 @@ public class ImagingToneMapTests
     }
 
     /// <summary>
+    /// P5: nonzero EV bypasses the baked EV=0 LUT and re-evaluates MapScalar
+    /// with Lc·2^EV (same result as direct MapPixel).
+    /// </summary>
+    [Fact]
+    public void P5_NonzeroEv_LutBypassesBake_MatchesMapPixel()
+    {
+        var stats = StatsLc(4f, p50: 0.5f);
+        var p = new ToneMapParams(stats, DisplayTarget.Sdr203, 2f);
+        var lut = ToneMapLut.Bake(p, size: 256);
+        // Samples are EV=0; Params keep the live EV for MapPixel bypass.
+        Assert.Equal(2f, lut.Params.ExposureEv);
+
+        foreach (var x in new[] { 0.15f, 0.35f, 0.8f, 1.5f })
+        {
+            ToneMapper.MapPixel(x, x, x, p, out var dr, out _, out _);
+            lut.MapPixel(x, x, x, out var lr, out _, out _);
+            Assert.InRange(lr, dr - 1e-5f, dr + 1e-5f);
+        }
+
+        // Contrast: an EV=0 lut.MapPixel at the same pre-gain x diverges.
+        var lut0 = ToneMapLut.Bake(p with { ExposureEv = 0f }, size: 256);
+        lut0.MapPixel(0.35f, 0.35f, 0.35f, out var baked, out _, out _);
+        ToneMapper.MapPixel(0.35f, 0.35f, 0.35f, p, out var live, out _, out _);
+        Assert.True(Math.Abs(baked - live) > 1e-3f, "EV bypass should differ from EV=0 sample");
+    }
+
+    /// <summary>
     /// P2 SDR: +3 EV grades through the Option A shoulder; output ≤ display white.
     /// </summary>
     [Fact]

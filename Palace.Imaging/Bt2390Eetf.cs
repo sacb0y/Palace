@@ -6,8 +6,8 @@ namespace Palace.Imaging;
 /// KS = 1.5·maxLum − 0.5; Hermite P[B] for E₁ ≥ KS; E₃ = E₂ + b·(1−E₂)⁴.
 /// BT.2408 paper white 203 cd/m² cited from Report ITU-R BT.2408.
 /// <para>
-/// P5 owns wiring the HDR-path display Ld into the app present stack; this
-/// library takes <paramref name="ld"/> as a pure input.
+/// Gallery present supplies <paramref name="ld"/> from the probed display
+/// peak (P5). This library takes it as a pure input.
 /// </para>
 /// </summary>
 public static class Bt2390Eetf

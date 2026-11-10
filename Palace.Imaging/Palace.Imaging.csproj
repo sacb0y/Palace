@@ -8,4 +8,8 @@
     <IsPackable>false</IsPackable>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- P5 reference HLSL for CPU–GPU agreement; not compiled into the app yet. -->
+    <None Include="Shaders\ToneMap.hlsl" />
+  </ItemGroup>
 </Project>

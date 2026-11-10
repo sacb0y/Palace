@@ -9,7 +9,7 @@ namespace Palace.Helpers;
 /// <see cref="NormalizedFrame"/> beside <c>HdrFrame.ScrgbRgba</c>. P3 thumbs
 /// consume Working lazily via <see cref="ImagingThumbToneMap"/> /
 /// <see cref="ImagingFullToneMap"/>; full HDR
-/// present stays legacy until P5.
+/// present uses Working via <c>ImagingHdrPresentToneMap</c> (P5).
 /// </summary>
 public static class ImagingStillNormalize
 {

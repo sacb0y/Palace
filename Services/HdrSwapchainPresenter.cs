@@ -180,9 +180,11 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             }
 
             float[]? imagingScrgb = null;
-            var usedImaging = false;
-            if (matchThumb && viz == HdrVizMode.None)
+            var usedImagingFull = false;
+            var usedImagingHdr = false;
+            if (viz == HdrVizMode.None && matchThumb)
             {
+                // P4: SDR panel / linear JXL on HDR → Option A Full.
                 imagingScrgb = await Task.Run(
                     () => ImagingFullToneMap.TryMapFrameToPresentScrgb(
                         frame.Working,
@@ -191,15 +193,36 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                         frame.Height,
                         cancellationToken: cancellation),
                     cancellation).ConfigureAwait(false);
-                usedImaging = imagingScrgb is not null;
+                usedImagingFull = imagingScrgb is not null;
+            }
+            else if (viz == HdrVizMode.None && displayHdr)
+            {
+                // P5: PQ/HLG on HDR → BT.2390 with display Ld.
+                imagingScrgb = await Task.Run(
+                    () => ImagingHdrPresentToneMap.TryMapFrameToPresentScrgb(
+                        frame.Working,
+                        frame.ScrgbRgba,
+                        frame.Width,
+                        frame.Height,
+                        DisplayPeakNits,
+                        cancellationToken: cancellation),
+                    cancellation).ConfigureAwait(false);
+                usedImagingHdr = imagingScrgb is not null;
             }
 
-            if (usedImaging)
+            var usedImaging = usedImagingFull || usedImagingHdr;
+            if (usedImagingFull)
             {
                 map = GalleryPresent.PresentMapImagingFull(
                     displayIsHdr: displayHdr,
                     sdrWhiteLevelNits: sdrWhite);
                 // Imaging owns Analyze; do not stick Reinhard exposure/white.
+                outcomeExposure = 0f;
+                outcomeWhite = 0f;
+            }
+            else if (usedImagingHdr)
+            {
+                map = GalleryPresent.PresentMapImagingHdr(DisplayPeakNits);
                 outcomeExposure = 0f;
                 outcomeWhite = 0f;
             }
@@ -227,7 +250,7 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             }
             else
             {
-                // HDR passthrough (PQ/HLG): still Analyze for log fields only.
+                // HDR passthrough fallback (Imaging HDR failed): Analyze for log.
                 var pixelCount = checked(frame.Width * frame.Height);
                 var analyzed = await Task.Run(
                     () => ToneMap.Analyze(
@@ -247,18 +270,23 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             }
 
             var shoulder = !usedImaging && matchThumb && map.ReinhardWhite > 1f ? 1 : 0;
+            var imagingTag = usedImagingHdr
+                ? " imaging-hdr"
+                : usedImagingFull ? " imaging-full" : "";
             DisplayHdr.WriteDebug(
                 $"SdrTonemap {frame.Width}x{frame.Height} exposure={outcomeExposure:0.####} "
                 + $"white={outcomeWhite:0.####} sdrWhite={(sdrWhite > 0 ? sdrWhite : GalleryPresent.ScrgbNits):0.#} "
                 + $"peakScrgb={frame.MaxScrgb:0.####} maxNits={frame.MaxNits:0.#} "
                 + $"shoulder={shoulder}"
-                + (usedImaging ? " imaging-full" : "")
+                + imagingTag
                 + (displayHdr ? (matchThumb ? " hdr-display+thumb" : " hdr-display") : ""));
             SdrTonemapLog.TryAppendPresent(
                 path: frame.SourcePath,
-                decoder: usedImaging
-                    ? "imaging-full"
-                    : displayHdr ? "hdr-display" : frame.PresentDecoder,
+                decoder: usedImagingHdr
+                    ? "imaging-hdr"
+                    : usedImagingFull
+                        ? "imaging-full"
+                        : displayHdr ? "hdr-display" : frame.PresentDecoder,
                 intensityTarget: frame.IntensityTarget,
                 scale: frame.IntensityScale,
                 bufferTransfer: HdrJxlPresent.BufferTransferLabel(frame.BufferTransfer),
@@ -315,8 +343,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 Present();
                 AppendCompositionScaleLog();
                 // Sticky Reinhard Analyze only when legacy thumb-match ran.
-                LastSdrExposure = matchThumb && !usedImaging ? outcomeExposure : 0f;
-                LastSdrReinhardWhite = matchThumb && !usedImaging ? outcomeWhite : 0f;
+                LastSdrExposure = matchThumb && !usedImagingFull ? outcomeExposure : 0f;
+                LastSdrReinhardWhite = matchThumb && !usedImagingFull ? outcomeWhite : 0f;
                 _stickyDisplayHdr = matchThumb ? displayHdr : null;
                 outcome = HdrPresentOutcome.Presented;
             });
