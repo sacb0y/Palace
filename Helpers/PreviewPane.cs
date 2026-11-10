@@ -238,4 +238,33 @@ public static class PreviewPane
             PaneMode.Docked,
             LibraryColumnLayout.AllocateWithPreview(contentWidth, width));
     }
+
+    /// <summary>
+    /// Column + chrome flags the Library page must apply for one Effective result.
+    /// Hide→show docked must restore a positive Preview width (not leave the column at 0).
+    /// </summary>
+    public static PreviewPaneLayoutState Layout(PreviewPaneEffective effective) =>
+        new(
+            effective.Mode,
+            effective.Widths.Tree,
+            effective.Widths.Mosaic,
+            effective.Widths.Preview,
+            DockHostVisible: effective.Mode == PaneMode.Docked,
+            OverlayVisible: effective.Mode == PaneMode.Overlay);
+
+    /// <summary>
+    /// True when docked column space appears or disappears — Grid must remeasure;
+    /// equal total width (mosaic ± preview) alone does not always rearrange children.
+    /// </summary>
+    public static bool NeedsDockColumnRelayout(PaneMode from, PaneMode to) =>
+        (from == PaneMode.Docked) != (to == PaneMode.Docked);
 }
+
+/// <summary>Applied Library Preview column + chrome visibility for one layout pass.</summary>
+public readonly record struct PreviewPaneLayoutState(
+    PaneMode Mode,
+    double Tree,
+    double Mosaic,
+    double Preview,
+    bool DockHostVisible,
+    bool OverlayVisible);

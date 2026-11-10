@@ -776,21 +776,22 @@ public sealed partial class LibraryPage : Page
 
     private void ApplyLibraryColumnLayout(PreviewPaneEffective effective)
     {
-        var widths = effective.Widths;
-        var mode = effective.Mode;
+        var layout = PreviewPane.Layout(effective);
+        var mode = layout.Mode;
         var wasShowing = _previewPaneMode is PaneMode.Docked or PaneMode.Overlay;
         var showing = mode is PaneMode.Docked or PaneMode.Overlay;
         var wasDocked = _previewPaneMode == PaneMode.Docked;
+        var needsDockRelayout = PreviewPane.NeedsDockColumnRelayout(_previewPaneMode, mode);
         _previewPaneMode = mode;
-        _allocatedMosaicWidth = widths.Mosaic;
+        _allocatedMosaicWidth = layout.Mosaic;
 
         // Fixed widths from Effective — MinWidths always 0 so column mins never sum
         // above available width (that floored DesiredSize and froze resize).
-        ColFolderTree.Width = new GridLength(widths.Tree);
+        ColFolderTree.Width = new GridLength(layout.Tree);
         ColFolderTree.MinWidth = 0;
-        ColMosaic.Width = new GridLength(widths.Mosaic);
+        ColMosaic.Width = new GridLength(layout.Mosaic);
         ColMosaic.MinWidth = 0;
-        ColPreview.Width = new GridLength(widths.Preview);
+        ColPreview.Width = new GridLength(layout.Preview);
         ColPreview.MinWidth = 0;
 
         if (!showing)
@@ -807,6 +808,16 @@ public sealed partial class LibraryPage : Page
         }
 
         SyncPreviewChrome(effective);
+
+        // Docked hide/show keeps the same total fixed width (mosaic ± preview). WinUI
+        // may not rearrange Collapsed→Visible column children until a parent size
+        // change — force measure when the dock column appears or disappears.
+        if (needsDockRelayout)
+        {
+            GrdLibraryColumns.InvalidateMeasure();
+            GrdLibraryColumns.InvalidateArrange();
+        }
+
         if (showing && !wasShowing)
         {
             // Pane just shown (docked or overlay) — refresh decode.
@@ -820,8 +831,8 @@ public sealed partial class LibraryPage : Page
         AnchorMosaicOnFirstVisibleTile();
 
         // HostWidth from Allocate mosaic (Overlay also uses preview=0 widths).
-        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic));
-        UpdateMosaicToolbarOverflow(widths.Mosaic);
+        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(layout.Mosaic));
+        UpdateMosaicToolbarOverflow(layout.Mosaic);
     }
 
     private void PausePreviewPaneMedia()
