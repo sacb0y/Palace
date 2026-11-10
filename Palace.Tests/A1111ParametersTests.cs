@@ -77,4 +77,19 @@ public sealed class A1111ParametersTests
         Assert.False(A1111Parameters.LooksLike("just a caption"));
         Assert.False(A1111Parameters.LooksLike(null));
     }
+
+    [Fact]
+    public void NegativePrompt_MustBeStartOfLine_NotMidString()
+    {
+        var text =
+            "photo of Negative prompt: as words in the prompt\n" +
+            "Negative prompt: real_negative\n" +
+            "Steps: 10, Seed: 3";
+
+        var parsed = A1111Parameters.Parse(text);
+        Assert.Equal("photo of Negative prompt: as words in the prompt", parsed.Prompt);
+        Assert.Equal("real_negative", parsed.NegativePrompt);
+        Assert.True(A1111Parameters.IndexOfLineKey(text, "Negative prompt:") > 0);
+        Assert.False(A1111Parameters.LooksLike("mentions Negative prompt: mid-line only"));
+    }
 }

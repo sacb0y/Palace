@@ -14,13 +14,19 @@ namespace Palace.Helpers;
 /// size and cached-thumbnail checks (<see cref="NeedsCurrentThumb"/>).
 /// Version 3 adds <see cref="Asset.DateTaken"/>; a version 2 row that is otherwise unchanged only
 /// gets its EXIF date read (<see cref="NeedsDateTakenOnly"/>), not a full re-index.
+/// Version 4 fixes EXIF UserComment UNICODE decode. Unchanged version 2–3 rows refresh generation
+/// metadata (and DateTaken when still on version 2) via <see cref="NeedsMetadataRefreshOnly"/> —
+/// no re-hash, and Rating / Notes / tags are not written.
 /// </summary>
 public static class ScanFastPath
 {
-    public const int IndexVersion = 3;
+    public const int IndexVersion = 4;
 
     /// <summary>Last version before Date taken; such rows take the light backfill.</summary>
     public const int DateTakenBackfillFrom = 2;
+
+    /// <summary>Inclusive lower bound for the light metadata refresh into <see cref="IndexVersion"/>.</summary>
+    public const int MetadataRefreshFrom = 2;
 
     /// <summary>Same format the scan stores in <see cref="Asset.DateModified"/>.</summary>
     public static string Stamp(DateTime lastWriteUtc) =>
@@ -31,10 +37,23 @@ public static class ScanFastPath
         && existing.IndexVersion == IndexVersion
         && SameContent(existing, length, lastWriteUtc, onlineOnly);
 
-    /// <summary>Unchanged version 2 row: only Date taken is missing.</summary>
+    /// <summary>
+    /// Unchanged version 2 row: only Date taken is missing.
+    /// Prefer <see cref="NeedsMetadataRefreshOnly"/> on current scans (also refreshes generation).
+    /// </summary>
     public static bool NeedsDateTakenOnly(Asset? existing, long length, DateTime lastWriteUtc, bool onlineOnly) =>
         existing is not null
         && existing.IndexVersion == DateTakenBackfillFrom
+        && SameContent(existing, length, lastWriteUtc, onlineOnly);
+
+    /// <summary>
+    /// Unchanged row below <see cref="IndexVersion"/> (from version 2 up): re-extract generation
+    /// fields (+ DateTaken when absent) without re-hashing or touching Rating / Notes / tags.
+    /// </summary>
+    public static bool NeedsMetadataRefreshOnly(Asset? existing, long length, DateTime lastWriteUtc, bool onlineOnly) =>
+        existing is not null
+        && existing.IndexVersion >= MetadataRefreshFrom
+        && existing.IndexVersion < IndexVersion
         && SameContent(existing, length, lastWriteUtc, onlineOnly);
 
     private static bool SameContent(Asset existing, long length, DateTime lastWriteUtc, bool onlineOnly) =>
@@ -80,5 +99,35 @@ public static class ScanFastPath
 
         lastReportTicks = nowTicks;
         return true;
+    }
+
+    /// <summary>
+    /// Catalog Prompt that looks like MetadataExtractor's raw UserComment dump
+    /// (<c>85 78 73 67 …</c>) — used by tests / diagnostics; scan fixes these via IndexVersion 4.
+    /// </summary>
+    public static bool LooksLikeDecimalByteDump(string? prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return false;
+        }
+
+        var parts = prompt.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length < 8)
+        {
+            return false;
+        }
+
+        var limit = Math.Min(parts.Length, 40);
+        var numeric = 0;
+        for (var i = 0; i < limit; i++)
+        {
+            if (byte.TryParse(parts[i], out _))
+            {
+                numeric++;
+            }
+        }
+
+        return numeric >= 8 && numeric * 2 >= limit;
     }
 }

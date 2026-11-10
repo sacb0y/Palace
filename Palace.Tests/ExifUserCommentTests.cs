@@ -106,6 +106,34 @@ public sealed class ExifUserCommentTests
         Assert.Equal("5", A1111Parameters.Parse(decoded).Seed);
     }
 
+    [Fact]
+    public void Decode_EmptyPayload_AndShortHeader()
+    {
+        Assert.Equal("", ExifUserComment.Decode(ReadOnlySpan<byte>.Empty));
+        Assert.Equal("", ExifUserComment.Decode((byte[]?)null));
+        Assert.Equal("hi", ExifUserComment.Decode(Encoding.UTF8.GetBytes("hi")));
+        Assert.Equal("", ExifUserComment.Decode(BuildHeader("UNICODE\0", [])));
+    }
+
+    [Fact]
+    public void Decode_OddLengthUnicode_DoesNotThrow()
+    {
+        // 8-byte header + 3 data bytes (truncated UTF-16 code unit).
+        var payload = BuildHeader("UNICODE\0", [0x61, 0x00, 0x62]);
+        var decoded = ExifUserComment.Decode(payload, tiffLittleEndian: true);
+        Assert.StartsWith("a", decoded, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Decode_JisHeader_BestEffort()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var jis = Encoding.GetEncoding(50222);
+        var payload = BuildHeader("JIS\0\0\0\0\0", jis.GetBytes("test"));
+        var decoded = ExifUserComment.Decode(payload);
+        Assert.Contains("test", decoded, StringComparison.Ordinal);
+    }
+
     private static byte[] BuildUnicode(string text, bool littleEndian, bool bom)
     {
         var encoding = littleEndian ? Encoding.Unicode : Encoding.BigEndianUnicode;

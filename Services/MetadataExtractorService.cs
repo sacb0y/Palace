@@ -296,11 +296,11 @@ public sealed class MetadataExtractorService
         }
         else if (keyword.Equals("prompt", StringComparison.OrdinalIgnoreCase))
         {
-            ParseComfyPrompt(text, meta);
+            ApplyComfyPrompt(text, meta);
         }
         else if (keyword.Equals("workflow", StringComparison.OrdinalIgnoreCase))
         {
-            ParseComfyWorkflow(text, meta);
+            ApplyComfyWorkflow(text, meta);
         }
         else if (keyword.Equals("Comment", StringComparison.OrdinalIgnoreCase) ||
                  keyword.Equals("Software", StringComparison.OrdinalIgnoreCase))
@@ -339,127 +339,33 @@ public sealed class MetadataExtractorService
         meta.Steps ??= parsed.Steps;
     }
 
-    private static void ParseComfyPrompt(string json, GenerationMetadata meta)
+    private static void ApplyComfyPrompt(string json, GenerationMetadata meta)
     {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var prompts = new List<string>();
-            foreach (var node in doc.RootElement.EnumerateObject())
-            {
-                if (node.Value.ValueKind != JsonValueKind.Object)
-                {
-                    continue;
-                }
-
-                var classType = node.Value.TryGetProperty("class_type", out var ct) ? ct.GetString() : "";
-                if (!node.Value.TryGetProperty("inputs", out var inputs))
-                {
-                    continue;
-                }
-
-                if (classType is "CLIPTextEncode" or "CLIPTextEncodeSDXL" or "CLIPTextEncodeFlux")
-                {
-                    if (inputs.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String)
-                    {
-                        var value = text.GetString();
-                        if (!string.IsNullOrWhiteSpace(value))
-                        {
-                            prompts.Add(value);
-                        }
-                    }
-                }
-
-                if (classType is "CheckpointLoaderSimple" or "CheckpointLoader")
-                {
-                    if (inputs.TryGetProperty("ckpt_name", out var ckpt) && ckpt.ValueKind == JsonValueKind.String)
-                    {
-                        meta.Model ??= Path.GetFileNameWithoutExtension(ckpt.GetString());
-                    }
-                }
-
-                if (classType is "UNETLoader")
-                {
-                    if (inputs.TryGetProperty("unet_name", out var unet) && unet.ValueKind == JsonValueKind.String)
-                    {
-                        meta.Model ??= Path.GetFileNameWithoutExtension(unet.GetString());
-                    }
-                }
-
-                if (classType is "KSampler" or "KSamplerAdvanced")
-                {
-                    if (inputs.TryGetProperty("seed", out var seed))
-                    {
-                        meta.Seed ??= seed.ToString();
-                    }
-
-                    if (inputs.TryGetProperty("steps", out var steps))
-                    {
-                        meta.Steps ??= steps.ToString();
-                    }
-                }
-            }
-
-            if (prompts.Count > 0)
-            {
-                meta.Prompt ??= prompts[0];
-                if (prompts.Count > 1)
-                {
-                    meta.NegativePrompt ??= prompts[^1];
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // ignore
-        }
+        var parsed = ComfyParameters.ParsePromptJson(json);
+        meta.Prompt ??= parsed.Prompt;
+        meta.NegativePrompt ??= parsed.NegativePrompt;
+        meta.Model ??= parsed.Model;
+        meta.Seed ??= parsed.Seed;
+        meta.Steps ??= parsed.Steps;
     }
 
-    private static void ParseComfyWorkflow(string json, GenerationMetadata meta)
+    private static void ApplyComfyWorkflow(string json, GenerationMetadata meta)
     {
         if (!string.IsNullOrEmpty(meta.Model) && !string.IsNullOrEmpty(meta.Prompt))
         {
             return;
         }
 
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
-            {
-                return;
-            }
-
-            foreach (var node in nodes.EnumerateArray())
-            {
-                var type = node.TryGetProperty("type", out var t) ? t.GetString() : "";
-                if (type is "CheckpointLoaderSimple" && node.TryGetProperty("widgets_values", out var widgets)
-                    && widgets.ValueKind == JsonValueKind.Array && widgets.GetArrayLength() > 0)
-                {
-                    meta.Model ??= Path.GetFileNameWithoutExtension(widgets[0].GetString());
-                }
-
-                if (type is "CLIPTextEncode" && node.TryGetProperty("widgets_values", out var texts)
-                    && texts.ValueKind == JsonValueKind.Array && texts.GetArrayLength() > 0)
-                {
-                    var value = texts[0].GetString();
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        meta.Prompt ??= value;
-                    }
-                }
-            }
-        }
-        catch (JsonException)
-        {
-            // ignore
-        }
+        var parsed = ComfyParameters.ParseWorkflowJson(json);
+        meta.Prompt ??= parsed.Prompt;
+        meta.Model ??= parsed.Model;
     }
 
     private static void ReadExif(string path, GenerationMetadata meta)
     {
         try
         {
+            var tiffLe = !ExifTiffEndian.TryReadLittleEndian(path, out var le) || le;
             IReadOnlyList<MetadataExtractor.Directory> dirs = ImageMetadataReader.ReadMetadata(path);
             foreach (var dir in dirs)
             {
@@ -470,7 +376,7 @@ public sealed class MetadataExtractorService
                         // GetString returns "85 78 73…" for UNICODE bytes — decode
                         // the raw UNDEFINEDINED payload per the EXIF character code.
                         var raw = dir.GetByteArray(ExifDirectoryBase.TagUserComment);
-                        var comment = ExifUserComment.Decode(raw, tiffLittleEndian: true);
+                        var comment = ExifUserComment.Decode(raw, tiffLittleEndian: tiffLe);
                         if (!string.IsNullOrWhiteSpace(comment))
                         {
                             if (A1111Parameters.LooksLike(comment))

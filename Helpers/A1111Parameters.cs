@@ -75,34 +75,17 @@ public static class A1111Parameters
     /// <summary>True when the text looks like A1111 parameters (not a free caption).</summary>
     public static bool LooksLike(string? text) =>
         !string.IsNullOrWhiteSpace(text)
-        && (text.Contains("Negative prompt:", StringComparison.OrdinalIgnoreCase)
-            || ContainsStepsKey(text));
+        && (IndexOfLineKey(text, "Negative prompt:") >= 0
+            || IndexOfLineKey(text, "Steps:") >= 0);
 
-    private static bool ContainsStepsKey(string text)
+    /// <summary>Index of <paramref name="key"/> at start-of-line only (not mid-string).</summary>
+    public static int IndexOfLineKey(string text, string key)
     {
-        if (text.StartsWith("Steps:", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return text.Contains("\nSteps:", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("\rSteps:", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int IndexOfLineKey(string text, string key)
-    {
-        var idx = text.IndexOf(key, StringComparison.OrdinalIgnoreCase);
-        return idx;
-    }
-
-    private static int IndexOfStepsLine(string text)
-    {
-        if (text.StartsWith("Steps:", StringComparison.OrdinalIgnoreCase))
+        if (text.StartsWith(key, StringComparison.OrdinalIgnoreCase))
         {
             return 0;
         }
 
-        // Prefer a line start: \nSteps: or \r\nSteps:
         for (var i = 0; i < text.Length; i++)
         {
             if (text[i] is not ('\n' or '\r'))
@@ -117,7 +100,7 @@ public static class A1111Parameters
             }
 
             if (next < text.Length
-                && text.AsSpan(next).StartsWith("Steps:", StringComparison.OrdinalIgnoreCase))
+                && text.AsSpan(next).StartsWith(key, StringComparison.OrdinalIgnoreCase))
             {
                 return next;
             }
@@ -125,6 +108,8 @@ public static class A1111Parameters
 
         return -1;
     }
+
+    private static int IndexOfStepsLine(string text) => IndexOfLineKey(text, "Steps:");
 
     private static Dictionary<string, string> ParseFooterFields(string footer)
     {

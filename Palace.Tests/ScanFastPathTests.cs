@@ -108,6 +108,27 @@ public sealed class ScanFastPathTests
         Assert.True(ScanFastPath.IsUnchanged(WithVersion(ScanFastPath.IndexVersion), 1234, Written, onlineOnly: false));
     }
 
+    [Fact]
+    public void Version_3_rows_refresh_generation_metadata_without_full_reindex()
+    {
+        Assert.False(ScanFastPath.IsUnchanged(WithVersion(3), 1234, Written, onlineOnly: false));
+        Assert.True(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(3), 1234, Written, onlineOnly: false));
+        Assert.True(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(2), 1234, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(1), 1234, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(3), 999, Written, onlineOnly: false));
+        Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(ScanFastPath.IndexVersion), 1234, Written, onlineOnly: false));
+        Assert.Equal(4, ScanFastPath.IndexVersion);
+    }
+
+    [Fact]
+    public void LooksLikeDecimalByteDump_matches_usercomment_getstring()
+    {
+        Assert.True(ScanFastPath.LooksLikeDecimalByteDump(
+            "85 78 73 67 79 68 69 0 10 0 83 0 116 0 101 0 112 0 115 0 58 0"));
+        Assert.False(ScanFastPath.LooksLikeDecimalByteDump("a cat, detailed"));
+        Assert.False(ScanFastPath.LooksLikeDecimalByteDump(null));
+    }
+
     private static Asset WithVersion(int version)
     {
         var asset = Indexed();
