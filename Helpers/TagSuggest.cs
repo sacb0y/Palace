@@ -3,10 +3,14 @@ namespace Palace.Helpers;
 /// <summary>
 /// Autosuggest ranking for assign / find-or-create. Prefix matches beat substring;
 /// already-assigned tags are omitted so Down+Enter never re-picks a chip on the image.
+/// t2-02 row chrome: bold match span, create-last row, alias pill.
 /// </summary>
 public static class TagSuggest
 {
     public readonly record struct Candidate(string TagId, string Name, string Display);
+
+    /// <summary>Matched substring split for bold highlight in the suggestion row.</summary>
+    public readonly record struct MatchSpan(string Before, string Match, string After);
 
     /// <summary>
     /// Lower score is better: 1 = name prefix, 2 = name contains, 3 = display contains, 0 = no match.
@@ -57,5 +61,30 @@ public static class TagSuggest
             .Select(x => x.Item)
             .Take(take)
             .ToList();
+    }
+
+    /// <summary>
+    /// First case-insensitive occurrence of <paramref name="query"/> in <paramref name="name"/>.
+    /// When missing, the whole name is <see cref="MatchSpan.Match"/> (no bold split).
+    /// </summary>
+    public static MatchSpan SplitMatch(string? name, string? query)
+    {
+        var text = name ?? "";
+        var q = (query ?? "").Trim();
+        if (q.Length == 0 || text.Length == 0)
+        {
+            return new MatchSpan("", text, "");
+        }
+
+        var idx = text.IndexOf(q, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+        {
+            return new MatchSpan("", text, "");
+        }
+
+        return new MatchSpan(
+            text[..idx],
+            text.Substring(idx, q.Length),
+            text[(idx + q.Length)..]);
     }
 }

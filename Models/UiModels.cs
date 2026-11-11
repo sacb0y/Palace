@@ -714,6 +714,32 @@ public sealed class TagPickItem
     public string Display { get; set; } = "";
     public string? EffectiveColor { get; set; }
 
+    /// <summary>Group (parent) name shown on the right of a t2-02 suggestion row.</summary>
+    public string GroupName { get; set; } = "";
+
+    /// <summary>Catalog AssetTag use count for the suggestion row (ideal when alias).</summary>
+    public int UseCount { get; set; }
+
+    /// <summary>Text before the bold match span (t2-02).</summary>
+    public string MatchBefore { get; set; } = "";
+
+    /// <summary>Bold matched substring (t2-02).</summary>
+    public string MatchText { get; set; } = "";
+
+    /// <summary>Text after the bold match span (t2-02).</summary>
+    public string MatchAfter { get; set; } = "";
+
+    /// <summary>True when this hit is an alias of another tag.</summary>
+    public bool IsAliasHit { get; set; }
+
+    /// <summary>Canonical name after › when <see cref="IsAliasHit"/>.</summary>
+    public string AliasCanonicalName { get; set; } = "";
+
+    /// <summary>Last-row "+ Create tag …" suggestion (t2-02).</summary>
+    public bool IsCreateRow { get; set; }
+
+    public string UseCountText => UseCount > 0 ? UseCount.ToString(System.Globalization.CultureInfo.InvariantCulture) : "";
+
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => string.IsNullOrEmpty(Display) ? Name : Display;
 }

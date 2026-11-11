@@ -94,12 +94,25 @@ public static class TagAddInput
     /// <summary>Hint under Apply/Clear while pending chips exist (t2-01).</summary>
     public const string ApplyHint = "Enter applies · Esc clears · one Undo for the whole batch";
 
+    /// <summary>t2-02 suggestion footer: ↑↓ / Enter / ,</summary>
+    public const string SuggestionHints = "↑ ↓ choose · Enter add · , add and keep typing";
+
+    /// <summary>Face text on the alias pill in the suggestion row.</summary>
+    public const string AliasPillLabel = "alias";
+
     /// <summary>Secondary Tags header clause for multi-select (bold "Tags" + this).</summary>
     public static string AssignedTagsHeaderSuffix(int selectedCount) =>
         selectedCount <= 1 ? "" : $"on {selectedCount} selected";
 
     public static string AliasFace(string aliasName, string idealName) =>
         $"{aliasName} › {idealName}";
+
+    /// <summary>Last suggestion row label (t2-02); curly quotes match shipped summary copy.</summary>
+    public static string CreateSuggestionLabel(string? query)
+    {
+        var q = (query ?? "").Trim();
+        return q.Length == 0 ? "Create tag" : $"Create tag “{q}”";
+    }
 
     public static string DotColor(string? effectiveColor, bool isNew) =>
         !string.IsNullOrWhiteSpace(effectiveColor)

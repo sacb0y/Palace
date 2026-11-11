@@ -81,6 +81,20 @@ public sealed class TagAddInputTests
         Assert.Equal("scenery › landscape", TagAddInput.AliasFace("scenery", "landscape"));
 
     [Fact]
+    public void CreateSuggestionLabel_CurlyQuotes() =>
+        Assert.Equal("Create tag “vis”", TagAddInput.CreateSuggestionLabel("vis"));
+
+    [Fact]
+    public void SuggestionHints_MatchT2() =>
+        Assert.Equal(
+            "↑ ↓ choose · Enter add · , add and keep typing",
+            TagAddInput.SuggestionHints);
+
+    [Fact]
+    public void AliasPillLabel_IsAlias() =>
+        Assert.Equal("alias", TagAddInput.AliasPillLabel);
+
+    [Fact]
     public void DotColor_NewOrUngrouped_Slate()
     {
         Assert.Equal(TagAddInput.SlateHex, TagAddInput.DotColor(null, isNew: true));

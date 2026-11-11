@@ -443,6 +443,22 @@ public sealed partial class CatalogService
     public Task<int> CountAssetTagsAsync(string tagId) =>
         _db.ReadAsync(conn => CountAssetTags(conn, tagId));
 
+    /// <summary>Catalog-wide AssetTag counts keyed by TagId (t2-02 suggestion use counts).</summary>
+    public Task<IReadOnlyDictionary<string, int>> GetAssetTagCountsAsync() =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT TagId, COUNT(*) FROM AssetTag GROUP BY TagId";
+            var map = new Dictionary<string, int>(StringComparer.Ordinal);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                map[reader.GetString(0)] = reader.GetInt32(1);
+            }
+
+            return (IReadOnlyDictionary<string, int>)map;
+        });
+
     public Task<Tag> CreateChildTagAsync(string parentId, string name, int priority = 0) =>
         _db.WriteAsync(conn =>
         {

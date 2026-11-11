@@ -1534,7 +1534,8 @@ public sealed partial class LibraryPage : Page
     {
         if (args.SelectedItem is TagPickItem pick)
         {
-            ViewModel.SelectedPickTag = pick;
+            // Create row Name is the typed token; TextMemberPath=Name keeps the box on that token.
+            ViewModel.SelectedPickTag = pick.IsCreateRow ? null : pick;
             ViewModel.TagQuery = pick.Name;
         }
     }
@@ -1553,7 +1554,7 @@ public sealed partial class LibraryPage : Page
     {
         if (args.ChosenSuggestion is TagPickItem pick)
         {
-            ViewModel.SelectedPickTag = pick;
+            ViewModel.SelectedPickTag = pick.IsCreateRow ? null : pick;
             ViewModel.TagQuery = pick.Name;
         }
         else if (!string.Equals(ViewModel.TagQuery, sender.Text ?? "", StringComparison.Ordinal))

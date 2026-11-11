@@ -2384,30 +2384,122 @@
                                 SuggestionChosen="AsbAssignTag_SuggestionChosen"
                                 TextChanged="AsbAssignTag_TextChanged"
                                 Text="{x:Bind ViewModel.TagQuery, Mode=OneWay}"
-                                TextMemberPath="Display"
+                                TextMemberPath="Name"
                                 UpdateTextOnSelect="True">
                                 <AutoSuggestBox.ItemTemplate>
                                     <DataTemplate x:DataType="models:TagPickItem">
-                                        <Grid ColumnSpacing="8">
+                                        <!-- t2-02: match bold + group/count; alias pill; Create last. -->
+                                        <Grid MinHeight="36" ColumnSpacing="8">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="34" />
                                             </Grid.ColumnDefinitions>
-                                            <Ellipse
-                                                Width="10"
-                                                Height="10"
-                                                VerticalAlignment="Center"
-                                                Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneTime}"
-                                                Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                                StrokeThickness="1" />
-                                            <TextBlock
-                                                Grid.Column="1"
-                                                VerticalAlignment="Center"
-                                                Text="{x:Bind Display, Mode=OneTime}" />
+                                            <!-- Existing / alias hit -->
+                                            <Grid
+                                                Grid.ColumnSpan="4"
+                                                ColumnSpacing="8"
+                                                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsCreateRow), Mode=OneTime}">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="34" />
+                                                </Grid.ColumnDefinitions>
+                                                <Ellipse
+                                                    Width="8"
+                                                    Height="8"
+                                                    VerticalAlignment="Center"
+                                                    Fill="{x:Bind helpers:TagColor.ChipFill(EffectiveColor), Mode=OneTime}"
+                                                    Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                    StrokeThickness="1" />
+                                                <StackPanel
+                                                    Grid.Column="1"
+                                                    Orientation="Horizontal"
+                                                    Spacing="6"
+                                                    VerticalAlignment="Center">
+                                                    <TextBlock VerticalAlignment="Center">
+                                                        <Run Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind MatchBefore, Mode=OneTime}" />
+                                                        <Run FontWeight="SemiBold" Text="{x:Bind MatchText, Mode=OneTime}" />
+                                                        <Run Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind MatchAfter, Mode=OneTime}" />
+                                                    </TextBlock>
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="›"
+                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAliasHit), Mode=OneTime}" />
+                                                    <TextBlock
+                                                        VerticalAlignment="Center"
+                                                        Text="{x:Bind AliasCanonicalName, Mode=OneTime}"
+                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAliasHit), Mode=OneTime}" />
+                                                    <Border
+                                                        Padding="4,0"
+                                                        VerticalAlignment="Center"
+                                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="3"
+                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAliasHit), Mode=OneTime}">
+                                                        <TextBlock
+                                                            FontSize="11"
+                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Text="{x:Bind helpers:TagAddInput.AliasPillLabel}" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock
+                                                    Grid.Column="2"
+                                                    VerticalAlignment="Center"
+                                                    FontSize="12"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind GroupName, Mode=OneTime}" />
+                                                <TextBlock
+                                                    Grid.Column="3"
+                                                    VerticalAlignment="Center"
+                                                    FontSize="12"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind UseCountText, Mode=OneTime}"
+                                                    TextAlignment="Right" />
+                                            </Grid>
+                                            <!-- + Create tag "q" -->
+                                            <StackPanel
+                                                Grid.ColumnSpan="4"
+                                                Orientation="Horizontal"
+                                                Spacing="8"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsCreateRow), Mode=OneTime}">
+                                                <ic:FluentIcon
+                                                    VerticalAlignment="Center"
+                                                    Icon="Add"
+                                                    IconSize="Size16"
+                                                    IconVariant="Regular" />
+                                                <TextBlock
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                    Text="{x:Bind Display, Mode=OneTime}" />
+                                            </StackPanel>
                                         </Grid>
                                     </DataTemplate>
                                 </AutoSuggestBox.ItemTemplate>
                             </AutoSuggestBox>
+                            <!-- Bound summary (ui-tests TxtTagSuggestions) + key-hint footer. -->
+                            <StackPanel
+                                Spacing="2"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowTagSuggestions), Mode=OneWay}">
+                                <TextBlock
+                                    x:Name="TxtTagSuggestions"
+                                    AutomationProperties.AutomationId="TxtTagSuggestions"
+                                    AutomationProperties.LiveSetting="Polite"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind ViewModel.TagSuggestionsSummary, Mode=OneWay}"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="TxtTagSuggestionHints"
+                                    AutomationProperties.AutomationId="TxtTagSuggestionHints"
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    FontSize="11"
+                                    Text="{x:Bind helpers:TagAddInput.SuggestionHints}"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                     <TextBlock

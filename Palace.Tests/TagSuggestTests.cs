@@ -36,4 +36,27 @@ public sealed class TagSuggestTests
     [Fact]
     public void Rank_EmptyQuery_ReturnsNone() =>
         Assert.Empty(TagSuggest.Rank([new("a", "Scarf", "Scarf")], "  "));
+
+    [Fact]
+    public void SplitMatch_PrefixAndMid()
+    {
+        var prefix = TagSuggest.SplitMatch("visual development", "vis");
+        Assert.Equal("", prefix.Before);
+        Assert.Equal("vis", prefix.Match);
+        Assert.Equal("ual development", prefix.After);
+
+        var mid = TagSuggest.SplitMatch("revision needed", "vis");
+        Assert.Equal("re", mid.Before);
+        Assert.Equal("vis", mid.Match);
+        Assert.Equal("ion needed", mid.After);
+    }
+
+    [Fact]
+    public void SplitMatch_Missing_KeepsWholeName()
+    {
+        var span = TagSuggest.SplitMatch("landscape", "zzz");
+        Assert.Equal("", span.Before);
+        Assert.Equal("landscape", span.Match);
+        Assert.Equal("", span.After);
+    }
 }
