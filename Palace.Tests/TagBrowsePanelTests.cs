@@ -63,8 +63,37 @@ public sealed class TagBrowsePanelTests
         Assert.Equal(4, TagBrowsePanel.VisibleChipCount(10, showAll: false));
         Assert.Equal(10, TagBrowsePanel.VisibleChipCount(10, showAll: true));
         Assert.Equal(3, TagBrowsePanel.VisibleChipCount(3, showAll: false));
+        Assert.Equal(6, TagBrowsePanel.HiddenChipCount(10, showAll: false));
+        Assert.Equal(0, TagBrowsePanel.HiddenChipCount(10, showAll: true));
+        Assert.Equal(0, TagBrowsePanel.HiddenChipCount(3, showAll: false));
         Assert.Equal("Show 6 more", TagBrowsePanel.ShowMoreLabel(6));
         Assert.Equal("", TagBrowsePanel.ShowMoreLabel(0));
+    }
+
+    [Fact]
+    public void Build_GroupCount_IsFullSize_NotVisibleChipLimit()
+    {
+        var tags = new List<Tag>
+        {
+            new() { Id = "subject", Name = "Subject", Color = "#14B8A6" },
+            new() { Id = "a", Name = "alpha" },
+            new() { Id = "b", Name = "bravo" },
+            new() { Id = "c", Name = "charlie" },
+            new() { Id = "d", Name = "delta" },
+            new() { Id = "e", Name = "echo" },
+            new() { Id = "f", Name = "foxtrot" }
+        };
+        var edges = tags.Skip(1)
+            .Select(t => new TagMembership { ParentId = "subject", ChildId = t.Id })
+            .ToList();
+
+        var subject = TagBrowsePanel.Build(tags, edges).Single(s => s.Key == "subject");
+        Assert.Equal(6, subject.Count);
+        Assert.Equal(6, subject.Chips.Count);
+        Assert.Equal(4, TagBrowsePanel.VisibleChipCount(subject.Count, showAll: false));
+        Assert.Equal(2, TagBrowsePanel.HiddenChipCount(subject.Count, showAll: false));
+        Assert.Equal("Show 2 more", TagBrowsePanel.ShowMoreLabel(
+            TagBrowsePanel.HiddenChipCount(subject.Count, showAll: false)));
     }
 
     [Fact]

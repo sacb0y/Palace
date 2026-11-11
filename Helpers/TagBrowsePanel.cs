@@ -98,6 +98,10 @@ public static class TagBrowsePanel
     public static int VisibleChipCount(int total, bool showAll, int limit = DefaultVisiblePerGroup) =>
         showAll || total <= limit ? Math.Max(0, total) : Math.Max(0, limit);
 
+    /// <summary>Tags hidden while a browse group is truncated (group count stays <paramref name="total"/>).</summary>
+    public static int HiddenChipCount(int total, bool showAll, int limit = DefaultVisiblePerGroup) =>
+        Math.Max(0, total - VisibleChipCount(total, showAll, limit));
+
     public static string ShowMoreLabel(int hidden) =>
         hidden <= 0 ? "" : $"Show {hidden} more";
 }

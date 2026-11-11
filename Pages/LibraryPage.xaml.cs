@@ -373,6 +373,9 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand<TagBoardGroup> GetToggleBrowseTagGroupCommand() =>
         AppServices.Library.ToggleBrowseTagGroupCommand;
 
+    public static IRelayCommand<TagBoardGroup> GetShowMoreBrowseTagGroupCommand() =>
+        AppServices.Library.ShowMoreBrowseTagGroupCommand;
+
     public static IRelayCommand GetDeleteFilesCommand() => AppServices.Library.DeleteFilesCommand;
 
     public static BitmapImage? FileToImage(string? path)

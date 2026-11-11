@@ -822,10 +822,52 @@ public partial class TagBoardGroup : ObservableObject
             ? "BtnTagGroup_Ungrouped"
             : "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit)));
 
-    public string CountLabel => $"{Name} ({Chips.Count})";
+    /// <summary>
+    /// Full tag count for the group face (Library Tags may truncate <see cref="Chips"/>).
+    /// Null = use <see cref="Chips"/>.Count (Tags board loads every chip).
+    /// </summary>
+    public int? TotalChipCount
+    {
+        get => _totalChipCount;
+        set
+        {
+            if (_totalChipCount == value)
+            {
+                return;
+            }
 
-    /// <summary>Chip count alone for T8 group-row trailing label.</summary>
-    public string ChipCountText => Chips.Count.ToString();
+            _totalChipCount = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(EffectiveChipCount));
+            OnPropertyChanged(nameof(CountLabel));
+            OnPropertyChanged(nameof(ChipCountText));
+            OnPropertyChanged(nameof(ShowMoreLabel));
+            OnPropertyChanged(nameof(ShowShowMore));
+            OnPropertyChanged(nameof(ShowMoreAutomationId));
+        }
+    }
+
+    private int? _totalChipCount;
+
+    public int EffectiveChipCount => TotalChipCount ?? Chips.Count;
+
+    public string CountLabel => $"{Name} ({EffectiveChipCount})";
+
+    /// <summary>Chip count alone for T8 group-row trailing label (full group size).</summary>
+    public string ChipCountText => EffectiveChipCount.ToString();
+
+    /// <summary>Hidden chips under a truncated Library Tags group ("Show N more").</summary>
+    public int HiddenChipCount => Math.Max(0, EffectiveChipCount - Chips.Count);
+
+    public string ShowMoreLabel => TagBrowsePanel.ShowMoreLabel(HiddenChipCount);
+
+    public bool ShowShowMore => HiddenChipCount > 0;
+
+    public string ShowMoreAutomationId =>
+        "BtnShowMoreBrowseTagGroup_"
+        + (IsUngrouped
+            ? "Ungrouped"
+            : string.Concat((Name ?? "").Where(char.IsLetterOrDigit)));
 
     public ObservableCollection<TagChipItem> Chips { get; } = [];
 
