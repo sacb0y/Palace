@@ -748,7 +748,7 @@
                     AutomationProperties.AutomationId="TxtTagColorSource"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.SelectedColorLabel, Mode=OneWay}" />
-                <Grid IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                <ContentControl IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
                     <ItemsRepeater
                         x:Name="RepTagColorPresets"
                         AutomationProperties.AutomationId="RepTagColorPresets"
@@ -778,7 +778,7 @@
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
-                </Grid>
+                </ContentControl>
                 <Button
                     x:Name="BtnTagColor"
                     AutomationProperties.AutomationId="BtnTagColor"
