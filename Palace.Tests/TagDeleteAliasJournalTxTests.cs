@@ -146,7 +146,7 @@ public sealed class TagDeleteAliasJournalTxTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddAlias_NoMigration_CommitsWithoutJournal()
+    public async Task AddAlias_NoMigration_StillJournalsSoUndoDropsTheEdge()
     {
         var a = await _catalog.CreateTagAsync("lonely-a");
         var b = await _catalog.CreateTagAsync("lonely-b");
@@ -154,8 +154,12 @@ public sealed class TagDeleteAliasJournalTxTests : IAsyncLifetime
         var result = await _ops.AddAliasAsync(a.Id, b.Id, _projectId);
         Assert.True(result.Ok, result.Message);
         Assert.Equal(b.Id, await _catalog.ResolveIdealTagIdAsync(a.Id));
-        Assert.Null(await _ops.PeekUndoAsync(_projectId));
-        Assert.Equal(0, await CountFileOpBatchesAsync());
+        Assert.NotNull(await _ops.PeekUndoAsync(_projectId));
+        Assert.Equal(1, await CountFileOpBatchesAsync());
+
+        var undo = await _ops.UndoLastAsync(_projectId);
+        Assert.True(undo.Ok, undo.Message);
+        Assert.Equal(a.Id, await _catalog.ResolveIdealTagIdAsync(a.Id));
     }
 
     [Fact]

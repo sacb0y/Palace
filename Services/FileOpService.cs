@@ -181,6 +181,8 @@ public sealed partial class FileOpService
             FileOpKind.TagDelete => $"Undo delete of “{TagDeleteName(batch)}”",
             FileOpKind.TagCreate => $"Undo create of {Items(batch.Items.Count(i => i.Step == FileOpStep.CreateTag))}",
             FileOpKind.TagAliasAdd => "Undo tag alias",
+            FileOpKind.TagAliasRemove => "Undo remove alias",
+            FileOpKind.TagAliasRepoint => "Undo move alias",
             FileOpKind.DeleteRejected =>
                 $"Undo Recycle of {Files(batch.Items.Count(i => i.Step == FileOpStep.RecycleFile))}",
             _ => "Undo"
@@ -1450,6 +1452,8 @@ public sealed partial class FileOpService
             case FileOpStep.CreateTag:
             case FileOpStep.AddMembership:
             case FileOpStep.AddAlias:
+            case FileOpStep.RemoveAlias:
+            case FileOpStep.RepointAlias:
                 return await UndoTagOpStepAsync(item).ConfigureAwait(false);
 
             case FileOpStep.RecycleFile:
@@ -1616,6 +1620,48 @@ public sealed partial class FileOpService
                 {
                     await _catalog.UndoAliasAddAsync(item.OldPath, item.NewPath, migrated).ConfigureAwait(false);
                     return null;
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"alias undo: {ex.Message}");
+                }
+            }
+
+            case FileOpStep.RemoveAlias:
+            {
+                if (string.IsNullOrEmpty(item.OldPath) || string.IsNullOrEmpty(item.NewPath))
+                {
+                    return UndoNote.Skip("tag alias: incomplete journal row");
+                }
+
+                try
+                {
+                    return await _catalog.RestoreAliasEdgeAsync(item.OldPath, item.NewPath).ConfigureAwait(false)
+                        ? null
+                        : UndoNote.Skip("kept alias removed: it can no longer point there");
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"alias undo: {ex.Message}");
+                }
+            }
+
+            case FileOpStep.RepointAlias:
+            {
+                if (string.IsNullOrEmpty(item.OldPath)
+                    || string.IsNullOrEmpty(item.NewPath)
+                    || string.IsNullOrEmpty(item.OldSourceId))
+                {
+                    return UndoNote.Skip("tag alias: incomplete journal row");
+                }
+
+                var migrated = CatalogService.DeserializeAliasMigration(item.NewSourceId);
+                try
+                {
+                    return await _catalog.UndoAliasRepointAsync(
+                            item.OldPath, item.NewPath, item.OldSourceId, migrated).ConfigureAwait(false)
+                        ? null
+                        : UndoNote.Skip("alias moved back, but its old tag can no longer take it");
                 }
                 catch (Exception ex)
                 {

@@ -92,32 +92,7 @@ public sealed partial class CatalogService
             InvalidateGraphCaches();
             using (var tx = conn.BeginTransaction())
             {
-                using (var del = conn.CreateCommand())
-                {
-                    del.Transaction = tx;
-                    del.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a AND IdealTagId = $i";
-                    del.Parameters.AddWithValue("$a", aliasTagId);
-                    del.Parameters.AddWithValue("$i", idealTagId);
-                    del.ExecuteNonQuery();
-                }
-
-                foreach (var row in migrated)
-                {
-                    // Put the assignment back on the alias.
-                    UpsertAssetTag(conn, row.AssetId, aliasTagId, row.Source, tx);
-                    // Drop the ideal copy when it still matches the migrated source (no other applied).
-                    using var check = conn.CreateCommand();
-                    check.Transaction = tx;
-                    check.CommandText = "SELECT Source FROM AssetTag WHERE AssetId = $a AND TagId = $t";
-                    check.Parameters.AddWithValue("$a", row.AssetId);
-                    check.Parameters.AddWithValue("$t", idealTagId);
-                    var idealSource = check.ExecuteScalar() as string;
-                    if (string.Equals(idealSource, row.Source.ToString(), StringComparison.Ordinal))
-                    {
-                        DeleteAssetTag(conn, row.AssetId, idealTagId, tx);
-                    }
-                }
-
+                UndoAliasAdd(conn, tx, aliasTagId, idealTagId, migrated);
                 tx.Commit();
             }
 
@@ -126,6 +101,139 @@ public sealed partial class CatalogService
                 RefreshFts(conn, assetId);
             }
         });
+
+    /// <summary>
+    /// Undo "Move it here": drop <paramref name="newIdealId"/>'s edge (restoring migrated rows) and
+    /// put <paramref name="oldIdealId"/>'s edge back in the same transaction. False when the old edge
+    /// cannot return (old ideal deleted, or it would now cycle); the move is still undone.
+    /// </summary>
+    public Task<bool> UndoAliasRepointAsync(
+        string aliasTagId,
+        string newIdealId,
+        string oldIdealId,
+        IReadOnlyList<AssetTag> migrated) =>
+        _db.WriteAsync(conn =>
+        {
+            InvalidateGraphCaches();
+            var restored = false;
+            var refresh = new List<string>(migrated.Select(m => m.AssetId));
+            using (var tx = conn.BeginTransaction())
+            {
+                UndoAliasAdd(conn, tx, aliasTagId, newIdealId, migrated);
+                restored = TryRestoreAliasEdge(conn, tx, aliasTagId, oldIdealId, refresh);
+                tx.Commit();
+            }
+
+            foreach (var assetId in refresh.Distinct(StringComparer.Ordinal))
+            {
+                RefreshFts(conn, assetId);
+            }
+
+            return restored;
+        });
+
+    /// <summary>Undo of a journaled alias remove: put the edge back (false when it is no longer allowed).</summary>
+    public Task<bool> RestoreAliasEdgeAsync(string aliasTagId, string idealTagId) =>
+        _db.WriteAsync(conn =>
+        {
+            InvalidateGraphCaches();
+            var refresh = new List<string>();
+            bool restored;
+            using (var tx = conn.BeginTransaction())
+            {
+                restored = TryRestoreAliasEdge(conn, tx, aliasTagId, idealTagId, refresh);
+                tx.Commit();
+            }
+
+            foreach (var assetId in refresh.Distinct(StringComparer.Ordinal))
+            {
+                RefreshFts(conn, assetId);
+            }
+
+            return restored;
+        });
+
+    private static void UndoAliasAdd(
+        SqliteConnection conn,
+        SqliteTransaction tx,
+        string aliasTagId,
+        string idealTagId,
+        IReadOnlyList<AssetTag> migrated)
+    {
+        using (var del = conn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a AND IdealTagId = $i";
+            del.Parameters.AddWithValue("$a", aliasTagId);
+            del.Parameters.AddWithValue("$i", idealTagId);
+            del.ExecuteNonQuery();
+        }
+
+        foreach (var row in migrated)
+        {
+            // Put the assignment back on the alias.
+            UpsertAssetTag(conn, row.AssetId, aliasTagId, row.Source, tx);
+            // Drop the ideal copy when it still matches the migrated source (no other applied).
+            using var check = conn.CreateCommand();
+            check.Transaction = tx;
+            check.CommandText = "SELECT Source FROM AssetTag WHERE AssetId = $a AND TagId = $t";
+            check.Parameters.AddWithValue("$a", row.AssetId);
+            check.Parameters.AddWithValue("$t", idealTagId);
+            var idealSource = check.ExecuteScalar() as string;
+            if (string.Equals(idealSource, row.Source.ToString(), StringComparison.Ordinal))
+            {
+                DeleteAssetTag(conn, row.AssetId, idealTagId, tx);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Re-insert alias→ideal when both tags still exist and <see cref="TagAliasResolve.CanAdd"/> allows it;
+    /// assignments the alias row gained while the edge was gone move to the ideal.
+    /// </summary>
+    private static bool TryRestoreAliasEdge(
+        SqliteConnection conn,
+        SqliteTransaction tx,
+        string aliasTagId,
+        string idealTagId,
+        List<string> refreshAssetIds)
+    {
+        if (!TagExists(conn, aliasTagId, tx) || !TagExists(conn, idealTagId, tx))
+        {
+            return false;
+        }
+
+        if (!TryAddAlias(conn, aliasTagId, idealTagId, tx, out var inserted))
+        {
+            return false;
+        }
+
+        if (inserted)
+        {
+            refreshAssetIds.AddRange(
+                MigrateAssetTagsAliasToIdeal(conn, aliasTagId, idealTagId, tx).Select(m => m.AssetId));
+        }
+
+        return true;
+    }
+
+    private static bool TagExists(SqliteConnection conn, string tagId, SqliteTransaction? tx)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT 1 FROM Tag WHERE Id = $id LIMIT 1";
+        cmd.Parameters.AddWithValue("$id", tagId);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private static string TagNameOf(SqliteConnection conn, string tagId, SqliteTransaction? tx)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT Name FROM Tag WHERE Id = $id";
+        cmd.Parameters.AddWithValue("$id", tagId);
+        return cmd.ExecuteScalar() as string ?? "tag";
+    }
 
     public Task RemoveAliasAsync(string aliasTagId) =>
         _db.WriteAsync(conn =>
