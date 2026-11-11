@@ -339,6 +339,12 @@ public sealed partial class LibraryPage : Page
 
     public static IRelayCommand<PendingTagChip> GetRemovePendingTagCommand() => AppServices.Library.RemovePendingTagCommand;
 
+    public static IRelayCommand<PromptSuggestion> GetAcceptPromptSuggestionCommand() =>
+        AppServices.Library.AcceptSuggestionCommand;
+
+    public static IRelayCommand<PromptSuggestion> GetDismissPromptSuggestionCommand() =>
+        AppServices.Library.DismissPromptSuggestionCommand;
+
 
     public static IRelayCommand<AssetItem?> GetActivateFolderHeaderCommand() => AppServices.Library.ActivateFolderHeaderCommand;
 

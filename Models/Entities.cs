@@ -1,3 +1,5 @@
+using Palace.Helpers;
+
 namespace Palace.Models;
 
 public sealed class SourceFolder
@@ -246,10 +248,68 @@ public sealed class Project
 
 public sealed class PromptSuggestion
 {
+    /// <summary>Raw prompt fragment (weights kept) for the hover tooltip.</summary>
+    public string RawToken { get; set; } = "";
+
+    /// <summary>Normalized stripped token (display for + new; alias source when remapped).</summary>
     public string Token { get; set; } = "";
+
+    /// <summary>When set, chip face is <c>AliasSource › ExistingTagName</c>.</summary>
+    public string? AliasSourceName { get; set; }
+
     public string? ExistingTagId { get; set; }
     public string? ExistingTagName { get; set; }
+    public string? TagColor { get; set; }
+
+    /// <summary>Files in the selection whose prompt carries this token (k in k/n).</summary>
+    public int MatchCount { get; set; } = 1;
+
+    public int SelectionTotal { get; set; } = 1;
+
+    /// <summary>Asset ids to tag on accept (prompt match only — not the whole selection).</summary>
+    public IReadOnlyList<string> AssetIds { get; set; } = [];
+
     public bool IsKnown => ExistingTagId is not null;
+    public bool IsNew => !IsKnown;
+    public bool ShowMatchCount => SelectionTotal > 1 && MatchCount > 0;
+
+    public string FaceLabel =>
+        AliasSourceName is { Length: > 0 } && ExistingTagName is { Length: > 0 }
+            ? AliasSourceName + " › " + ExistingTagName
+            : ExistingTagName ?? Token;
+
+    public string DotColor => Helpers.TagAddInput.DotColor(TagColor, IsNew);
+
+    public string ChipTooltip
+    {
+        get
+        {
+            var resolved = ExistingTagName ?? Token;
+            var raw = string.IsNullOrWhiteSpace(RawToken) ? Token : RawToken;
+            var head = string.Equals(raw, resolved, StringComparison.OrdinalIgnoreCase)
+                ? resolved
+                : $"{raw} → {resolved}";
+            if (ShowMatchCount)
+            {
+                return $"{head}\nIn {MatchCount} of {SelectionTotal} prompts · click adds to those {MatchCount} files · × to dismiss";
+            }
+
+            return $"{head}\nClick to add · × to dismiss";
+        }
+    }
+
+    public string AutomationId =>
+        "BtnPromptChip_" + string.Concat((FaceLabel ?? "").Where(char.IsLetterOrDigit));
+
+    public string RemoveAutomationId =>
+        "BtnDismissPrompt_" + string.Concat((FaceLabel ?? "").Where(char.IsLetterOrDigit));
+
+    public string ChipAutomationName =>
+        IsNew
+            ? $"Create tag {Token} from prompt"
+            : $"Add {FaceLabel} from prompt";
+
+    public string RemoveAutomationName => $"Dismiss {FaceLabel}";
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => ExistingTagName ?? Token;

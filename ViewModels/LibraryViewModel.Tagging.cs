@@ -221,43 +221,6 @@ public partial class LibraryViewModel
         });
 
     [RelayCommand]
-    private Task AcceptSuggestionAsync(PromptSuggestion? suggestion) =>
-        ErrorReporter.RunAsync("Accept suggestion", Notify, async () =>
-        {
-            var targets = TagTargets();
-            if (targets.Count == 0 || suggestion is null)
-            {
-                return;
-            }
-
-            string tagId;
-            string tagName = suggestion.Token;
-            List<(string TagId, string TagName)>? createdTags = null;
-            var createdCount = 0;
-            if (suggestion.ExistingTagId is not null)
-            {
-                tagId = suggestion.ExistingTagId;
-                tagName = suggestion.ExistingTagName ?? suggestion.Token;
-            }
-            else
-            {
-                var (created, wasCreated) = await _catalog.GetOrCreateTagResultAsync(suggestion.Token);
-                tagId = created.Id;
-                tagName = created.Name;
-                if (wasCreated)
-                {
-                    createdCount = 1;
-                    createdTags = [(tagId, tagName)];
-                }
-            }
-
-            await AssignManyToSelectionAsync(
-                targets, [(tagId, tagName, TagSource.Prompt)], createdCount, createdTags);
-            await LoadPreviewAsync(SelectedAsset);
-            await ReloadTagCatalogAsync();
-        });
-
-    [RelayCommand]
     private void FocusAssignTag()
     {
         RefreshPendingChrome();
