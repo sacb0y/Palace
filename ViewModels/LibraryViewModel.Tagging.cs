@@ -450,15 +450,16 @@ public partial class LibraryViewModel
             : "";
         var targets = TagTargets().Count;
         ApplyPendingLabel = TagAddInput.ApplyButtonLabel(PendingTags.Count, targets);
-        CanApplyPendingTags = targets > 0
-            && (PendingTags.Count > 0 || !string.IsNullOrWhiteSpace(TagQuery));
+        ApplyPendingHint = TagAddInput.ApplyHint;
+        CanApplyPendingTags = targets > 0 && PendingTags.Count > 0;
         RefreshAssignedTagsHeader();
     }
 
     private void RefreshAssignedTagsHeader()
     {
         var n = TagTargets().Count;
-        AssignedTagsHeader = n <= 1 ? "Tags" : $"Tags on {n} selected";
+        AssignedTagsHeader = "Tags";
+        AssignedTagsHeaderSuffix = TagAddInput.AssignedTagsHeaderSuffix(n);
     }
 
     private void RefreshRemoveFromAllBar()

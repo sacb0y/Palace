@@ -1,17 +1,16 @@
-using Palace.Models;
-
 namespace Palace.Helpers;
 
 /// <summary>
 /// Select-mode command bar + multi-select preview rules (WinUI-free).
 /// Spec: selection-mockups-v2 — 44 px bar, overflow fold order, Rooms disabled.
+/// Multi-select header: T2 fan stack of 3 + extension breakdown (audit b).
 /// </summary>
 public static class SelectCommandBar
 {
     public const double TargetHeightDip = 44;
 
-    /// <summary>Max stacked thumbs in the multi-select preview.</summary>
-    public const int MaxStackedThumbs = 5;
+    /// <summary>Max fanned thumbs in the multi-select preview (T2 mockup).</summary>
+    public const int MaxStackedThumbs = 3;
 
     /// <summary>Rooms pin UI exists, but batch Add-to-room stays disabled until Rooms is finished.</summary>
     public const bool RoomsBatchEnabled = false;
@@ -36,6 +35,22 @@ public static class SelectCommandBar
         selectedCount <= 0 ? 0 : Math.Min(selectedCount, MaxStackedThumbs);
 
     /// <summary>
+    /// Fan-stack layout for up to 3 thumbs (angle deg, Canvas left/top) from t2-01.
+    /// Index 0 is the back card; the last index is front-most.
+    /// </summary>
+    public static IReadOnlyList<(double Angle, double Left, double Top)> FanLayout(int thumbCount)
+    {
+        var n = Math.Clamp(thumbCount, 0, MaxStackedThumbs);
+        return n switch
+        {
+            0 => [],
+            1 => [(0, 40, 10)],
+            2 => [(-4, 22, 14), (4, 58, 8)],
+            _ => [(-4, 18, 14), (0, 44, 10), (4, 70, 6)]
+        };
+    }
+
+    /// <summary>
     /// Narrow fold from the right: Move → Add to room → Tag selected….
     /// Width is the command-bar row's available DIP width.
     /// </summary>
@@ -52,34 +67,30 @@ public static class SelectCommandBar
         !overflow.ShowMove || !overflow.ShowAddToRoom || !overflow.ShowTagSelected;
 
     /// <summary>
-    /// Preview detail under "N selected": type counts + total size.
-    /// Example: <c>3 images · 1 video · 12.4 MB</c>.
+    /// Extension label for the multi-select breakdown (e.g. <c>PNG</c>, <c>JPG</c>).
+    /// </summary>
+    public static string ExtensionLabel(string? fileName)
+    {
+        var ext = Path.GetExtension(fileName ?? "").TrimStart('.');
+        return ext.Length == 0 ? "OTHER" : ext.ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Preview detail under "N selected": by-extension counts + total size.
+    /// Example: <c>19 PNG · 5 JPG · 186 MB</c> (never "images" / "videos").
     /// </summary>
     public static string MultiSelectDetail(
-        IReadOnlyList<AssetKind> kinds,
+        IReadOnlyList<string> fileNames,
         IReadOnlyList<long?> sizes)
     {
-        var images = 0;
-        var videos = 0;
-        var other = 0;
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         long total = 0;
         var sizeKnown = false;
-        var n = Math.Min(kinds.Count, sizes.Count);
+        var n = Math.Min(fileNames.Count, sizes.Count);
         for (var i = 0; i < n; i++)
         {
-            switch (kinds[i])
-            {
-                case AssetKind.Image:
-                case AssetKind.Gif:
-                    images++;
-                    break;
-                case AssetKind.Video:
-                    videos++;
-                    break;
-                default:
-                    other++;
-                    break;
-            }
+            var label = ExtensionLabel(fileNames[i]);
+            counts[label] = counts.TryGetValue(label, out var c) ? c + 1 : 1;
 
             if (sizes[i] is long bytes and >= 0)
             {
@@ -88,21 +99,18 @@ public static class SelectCommandBar
             }
         }
 
-        var parts = new List<string>();
-        if (images > 0)
+        // Also count any leftover names when sizes are shorter (size still optional).
+        for (var i = n; i < fileNames.Count; i++)
         {
-            parts.Add(images == 1 ? "1 image" : $"{images} images");
+            var label = ExtensionLabel(fileNames[i]);
+            counts[label] = counts.TryGetValue(label, out var c) ? c + 1 : 1;
         }
 
-        if (videos > 0)
-        {
-            parts.Add(videos == 1 ? "1 video" : $"{videos} videos");
-        }
-
-        if (other > 0)
-        {
-            parts.Add(other == 1 ? "1 other" : $"{other} other");
-        }
+        var parts = counts
+            .OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => $"{kv.Value} {kv.Key}")
+            .ToList();
 
         if (sizeKnown)
         {

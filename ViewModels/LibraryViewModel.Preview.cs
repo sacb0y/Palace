@@ -110,7 +110,7 @@ public partial class LibraryViewModel
         var ratingValue = SelectCommandBar.RatingDisplayValue(ratings);
         var multiDetail = multi
             ? SelectCommandBar.MultiSelectDetail(
-                targets.Select(t => t.Kind).ToList(),
+                targets.Select(t => t.FileName).ToList(),
                 targets.Select(t => t.FileSize).ToList())
             : "";
         var generation = multi
@@ -126,6 +126,7 @@ public partial class LibraryViewModel
 
             CanEditNotes = canEditNotes;
             IsMultiSelectPreview = multi;
+            ShowSinglePreviewFileName = total == 1;
             AddTagButtonLabel = multi ? "Add tags to all" : "Add tags";
             MultiSelectDetail = multiDetail;
             PreviewRatingMixed = ratingMixed;
@@ -239,7 +240,9 @@ public partial class LibraryViewModel
                 ? "No tags assigned"
                 : string.Join(", ", AssignedTags.Concat(ImpliedAssignedTags).Select(t => t.TagName));
             ShowAssignedTagsSummary = AssignedTags.Count == 0 && ImpliedAssignedTags.Count == 0;
+            ShowRemoveTags = AssignedTags.Count > 0;
 
+            // Prompt suggestion chips land in audit (k); keep Suggest engine warm only.
             Suggestions.Clear();
             if (!multi)
             {
@@ -298,7 +301,9 @@ public partial class LibraryViewModel
         IsVideoPreview = false;
         ShowPreviewPlaceholder = false;
         IsMultiSelectPreview = false;
+        ShowSinglePreviewFileName = false;
         MultiSelectDetail = "";
+        ShowRemoveTags = false;
         PreviewRatingMixed = false;
         RatingCaption = SelectCommandBar.RatingCaption(false);
         CanEditRating = false;

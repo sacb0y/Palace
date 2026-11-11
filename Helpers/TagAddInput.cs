@@ -91,6 +91,13 @@ public static class TagAddInput
         return $"Apply {tagCount} tags to {fileCount} files";
     }
 
+    /// <summary>Hint under Apply/Clear while pending chips exist (t2-01).</summary>
+    public const string ApplyHint = "Enter applies · Esc clears · one Undo for the whole batch";
+
+    /// <summary>Secondary Tags header clause for multi-select (bold "Tags" + this).</summary>
+    public static string AssignedTagsHeaderSuffix(int selectedCount) =>
+        selectedCount <= 1 ? "" : $"on {selectedCount} selected";
+
     public static string AliasFace(string aliasName, string idealName) =>
         $"{aliasName} › {idealName}";
 

@@ -64,6 +64,19 @@ public sealed class TagAddInputTests
     }
 
     [Fact]
+    public void ApplyHint_MatchesT2() =>
+        Assert.Equal(
+            "Enter applies · Esc clears · one Undo for the whole batch",
+            TagAddInput.ApplyHint);
+
+    [Theory]
+    [InlineData(0, "")]
+    [InlineData(1, "")]
+    [InlineData(24, "on 24 selected")]
+    public void AssignedTagsHeaderSuffix_MultiOnly(int n, string expected) =>
+        Assert.Equal(expected, TagAddInput.AssignedTagsHeaderSuffix(n));
+
+    [Fact]
     public void AliasFace_JoinsWithChevron() =>
         Assert.Equal("scenery › landscape", TagAddInput.AliasFace("scenery", "landscape"));
 

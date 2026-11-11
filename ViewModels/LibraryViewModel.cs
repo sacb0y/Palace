@@ -278,9 +278,13 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanToolbarAddToRoom { get; set; }
 
-    /// <summary>2+ selected: preview pane shows stacked thumbs + summary instead of one still.</summary>
+    /// <summary>2+ selected: preview pane shows fanned thumbs + summary instead of one still.</summary>
     [ObservableProperty]
     public partial bool IsMultiSelectPreview { get; set; }
+
+    /// <summary>Filename under the still — hidden when multi-select owns the header card.</summary>
+    [ObservableProperty]
+    public partial bool ShowSinglePreviewFileName { get; set; }
 
     [ObservableProperty]
     public partial string MultiSelectDetail { get; set; } = "";
@@ -299,8 +303,53 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial string AddTagButtonLabel { get; set; } = "Add tags";
 
-    /// <summary>First 4–5 selected tiles for the multi-select preview stack.</summary>
+    /// <summary>First up to 3 selected tiles for the multi-select fan stack (back→front).</summary>
     public ObservableCollection<AssetItem> MultiSelectThumbs { get; } = [];
+
+    [ObservableProperty]
+    public partial AssetItem? MultiSelectThumb0 { get; set; }
+
+    [ObservableProperty]
+    public partial AssetItem? MultiSelectThumb1 { get; set; }
+
+    [ObservableProperty]
+    public partial AssetItem? MultiSelectThumb2 { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasMultiSelectThumb0 { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasMultiSelectThumb1 { get; set; }
+
+    [ObservableProperty]
+    public partial bool HasMultiSelectThumb2 { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb0Angle { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb1Angle { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb2Angle { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb0Left { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb1Left { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb2Left { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb0Top { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb1Top { get; set; }
+
+    [ObservableProperty]
+    public partial double MultiSelectThumb2Top { get; set; }
 
     [ObservableProperty]
     public partial bool ShowPreviewPlaceholder { get; set; }
@@ -371,13 +420,17 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial string ApplyPendingLabel { get; set; } = "Apply tags";
 
+    /// <summary>t2-01 hint under Apply/Clear while pending.</summary>
+    [ObservableProperty]
+    public partial string ApplyPendingHint { get; set; } = TagAddInput.ApplyHint;
+
     [ObservableProperty]
     public partial bool ShowTagSuggestions { get; set; }
 
     [ObservableProperty]
     public partial bool HasPendingTags { get; set; }
 
-    /// <summary>True when Apply can commit pending chips and/or the typed remnant.</summary>
+    /// <summary>True when Apply can commit pending chips (button only while pending).</summary>
     [ObservableProperty]
     public partial bool CanApplyPendingTags { get; set; }
 
@@ -387,8 +440,17 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial string RemoveFromAllSummary { get; set; } = "";
 
+    /// <summary>Bold face: always "Tags".</summary>
     [ObservableProperty]
     public partial string AssignedTagsHeader { get; set; } = "Tags";
+
+    /// <summary>Secondary "on N selected" (empty for single).</summary>
+    [ObservableProperty]
+    public partial string AssignedTagsHeaderSuffix { get; set; } = "";
+
+    /// <summary>Hide Remove tags… when the selection has nothing to remove.</summary>
+    [ObservableProperty]
+    public partial bool ShowRemoveTags { get; set; }
 
     /// <summary>T8 inspector: show the Implied by tag rules subsection.</summary>
     [ObservableProperty]

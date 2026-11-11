@@ -12,6 +12,9 @@ public static class BindHelpers
     public static Visibility InvertBoolToVisibility(bool value) =>
         value ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>Null-safe thumb for multi-select fan slots (avoids x:Bind NRE on null AssetItem).</summary>
+    public static ImageSource? AssetThumb(AssetItem? item) => item?.ThumbImage;
+
     /// <summary>Broken Custom tiles dim to 55% (avoid x:Bind bool-literal helpers).</summary>
     public static double BrokenTileOpacity(bool isBroken) => isBroken ? 0.55 : 1.0;
 

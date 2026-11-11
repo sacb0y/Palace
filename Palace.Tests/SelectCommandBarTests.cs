@@ -1,5 +1,4 @@
 using Palace.Helpers;
-using Palace.Models;
 using Xunit;
 
 namespace Palace.Tests;
@@ -39,10 +38,22 @@ public sealed class SelectCommandBarTests
     [Theory]
     [InlineData(0, 0)]
     [InlineData(3, 3)]
-    [InlineData(5, 5)]
-    [InlineData(9, 5)]
-    public void StackedThumbs_CapsAtFive(int count, int expected) =>
+    [InlineData(5, 3)]
+    [InlineData(9, 3)]
+    public void StackedThumbs_CapsAtThree(int count, int expected) =>
         Assert.Equal(expected, SelectCommandBar.StackedThumbCount(count));
+
+    [Fact]
+    public void FanLayout_ThreeMatchesT2()
+    {
+        var slots = SelectCommandBar.FanLayout(3);
+        Assert.Equal(3, slots.Count);
+        Assert.Equal((-4, 18, 14), slots[0]);
+        Assert.Equal((0, 44, 10), slots[1]);
+        Assert.Equal((4, 70, 6), slots[2]);
+        Assert.Empty(SelectCommandBar.FanLayout(0));
+        Assert.Single(SelectCommandBar.FanLayout(1));
+    }
 
     [Fact]
     public void Overflow_FoldsFromRight()
@@ -66,13 +77,37 @@ public sealed class SelectCommandBarTests
     }
 
     [Fact]
-    public void MultiSelectDetail_TypeCountsAndSize()
+    public void MultiSelectDetail_ExtensionCountsAndSize()
     {
-        var kinds = new[] { AssetKind.Image, AssetKind.Image, AssetKind.Gif, AssetKind.Video };
-        var sizes = new long?[] { 1024, 2048, 512, 1024 * 1024 };
-        var detail = SelectCommandBar.MultiSelectDetail(kinds, sizes);
-        Assert.Equal("3 images · 1 video · 1 MB", detail);
+        var names = new[]
+        {
+            "a.png", "b.png", "c.PNG", "d.jpg", "e.jpg", "f.JPG", "g.jpg", "h.jpg", "i.mp4"
+        };
+        // 3 PNG + 5 JPG + 1 MP4 — pad sizes for first 8 only so leftover name still counts.
+        var sizes = new long?[]
+        {
+            10 * 1024 * 1024,
+            10 * 1024 * 1024,
+            10 * 1024 * 1024,
+            20 * 1024 * 1024,
+            20 * 1024 * 1024,
+            20 * 1024 * 1024,
+            20 * 1024 * 1024,
+            20 * 1024 * 1024,
+            56 * 1024 * 1024
+        };
+        var detail = SelectCommandBar.MultiSelectDetail(names, sizes);
+        Assert.Equal("5 JPG · 3 PNG · 1 MP4 · 186 MB", detail);
+        Assert.DoesNotContain("image", detail, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("video", detail, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Theory]
+    [InlineData("shot.png", "PNG")]
+    [InlineData("shot.JPG", "JPG")]
+    [InlineData("noext", "OTHER")]
+    public void ExtensionLabel_UpperWithoutDot(string name, string expected) =>
+        Assert.Equal(expected, SelectCommandBar.ExtensionLabel(name));
 
     [Fact]
     public void Rating_MixedWhenValuesDiffer()

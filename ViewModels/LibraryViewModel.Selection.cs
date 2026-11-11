@@ -25,6 +25,7 @@ public partial class LibraryViewModel
             _selection.Count,
             PreviewTargetsMatchSelection());
         IsMultiSelectPreview = SelectCommandBar.ShowMultiSelectPreview(_selection.Count);
+        ShowSinglePreviewFileName = _selection.Count == 1;
         AddTagButtonLabel = IsMultiSelectPreview ? "Add tags to all" : "Add tags";
         RebuildMultiSelectThumbs();
     }
@@ -37,6 +38,15 @@ public partial class LibraryViewModel
     private void RebuildMultiSelectThumbs()
     {
         MultiSelectThumbs.Clear();
+        MultiSelectThumb0 = null;
+        MultiSelectThumb1 = null;
+        MultiSelectThumb2 = null;
+        HasMultiSelectThumb0 = false;
+        HasMultiSelectThumb1 = false;
+        HasMultiSelectThumb2 = false;
+        MultiSelectThumb0Angle = MultiSelectThumb1Angle = MultiSelectThumb2Angle = 0;
+        MultiSelectThumb0Left = MultiSelectThumb1Left = MultiSelectThumb2Left = 0;
+        MultiSelectThumb0Top = MultiSelectThumb1Top = MultiSelectThumb2Top = 0;
         if (!IsMultiSelectPreview)
         {
             MultiSelectDetail = "";
@@ -47,6 +57,34 @@ public partial class LibraryViewModel
         for (var i = 0; i < take; i++)
         {
             MultiSelectThumbs.Add(_selection[i]);
+        }
+
+        var layout = SelectCommandBar.FanLayout(take);
+        if (take >= 1)
+        {
+            MultiSelectThumb0 = _selection[0];
+            HasMultiSelectThumb0 = true;
+            MultiSelectThumb0Angle = layout[0].Angle;
+            MultiSelectThumb0Left = layout[0].Left;
+            MultiSelectThumb0Top = layout[0].Top;
+        }
+
+        if (take >= 2)
+        {
+            MultiSelectThumb1 = _selection[1];
+            HasMultiSelectThumb1 = true;
+            MultiSelectThumb1Angle = layout[1].Angle;
+            MultiSelectThumb1Left = layout[1].Left;
+            MultiSelectThumb1Top = layout[1].Top;
+        }
+
+        if (take >= 3)
+        {
+            MultiSelectThumb2 = _selection[2];
+            HasMultiSelectThumb2 = true;
+            MultiSelectThumb2Angle = layout[2].Angle;
+            MultiSelectThumb2Left = layout[2].Left;
+            MultiSelectThumb2Top = layout[2].Top;
         }
     }
 
