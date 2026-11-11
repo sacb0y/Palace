@@ -115,6 +115,8 @@ public sealed partial class TagsPage : Page
 
     public static IRelayCommand<TagChipItem?> GetDeleteChipCommand() => AppServices.Tags.DeleteChipCommand;
 
+    public static IRelayCommand<string?> GetApplyPresetColorCommand() => AppServices.Tags.ApplyPresetColorCommand;
+
     private void TagColorFlyout_Opening(object sender, object e)
     {
         _ignoreColorChanges = true;
@@ -259,6 +261,29 @@ public sealed partial class TagsPage : Page
         {
             Library.UndoFileOpCommand.Execute(null);
             e.Handled = true;
+        }
+    }
+
+    private void TxtNewTagName_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter
+            || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(CoreVirtualKeyStates.Down))
+        {
+            return;
+        }
+
+        if (ViewModel.CreateNewTagsCommand.CanExecute(null))
+        {
+            ViewModel.CreateNewTagsCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void TxtTagDescription_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.SaveDescriptionCommand.CanExecute(null))
+        {
+            ViewModel.SaveDescriptionCommand.Execute(null);
         }
     }
 

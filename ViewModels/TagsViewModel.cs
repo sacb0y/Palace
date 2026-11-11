@@ -40,6 +40,10 @@ public partial class TagsViewModel : ObservableObject
         _access = access;
         _thumbs = thumbs;
         _fileOps = fileOps;
+        foreach (var hex in TagInk.Presets)
+        {
+            ColorPresets.Add(new TagColorPreset { Hex = hex });
+        }
     }
 
     public ObservableCollection<TagTreeNode> TagTree { get; } = [];
@@ -63,8 +67,32 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial string NewTagName { get; set; } = "";
 
+    /// <summary>Create-target group for "New tags in [Group ▾]" (null = Ungrouped).</summary>
+    [ObservableProperty]
+    public partial TagGroupPick? CreateTargetGroup { get; set; }
+
+    public ObservableCollection<TagGroupPick> CreateTargetGroups { get; } = [];
+
+    public ObservableCollection<TagChipItem> RecentlyCreated { get; } = [];
+
+    public ObservableCollection<TagColorPreset> ColorPresets { get; } = [];
+
+    [ObservableProperty]
+    public partial bool ShowStatusUndo { get; set; }
+
+    [ObservableProperty]
+    public partial string SelectedDescription { get; set; } = "";
+
+    [ObservableProperty]
+    public partial string BoardSortLabel { get; set; } = "Name";
+
     [ObservableProperty]
     public partial string SelectedName { get; set; } = "";
+
+    private readonly HashSet<string> _recentlyCreatedIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingEmptyGroupIds = new(StringComparer.Ordinal);
+    private IReadOnlyList<string> _recentTagIds = [];
+    private bool _clearRecentlyCreatedOnNextRebuild;
 
     [ObservableProperty]
     public partial double SelectedPriority { get; set; }
@@ -364,47 +392,171 @@ public partial class TagsViewModel : ObservableObject
     partial void OnScopeChanged(TagScope value) => RebuildBoard();
 
     [RelayCommand]
-    private Task CreateUngroupedAsync() =>
-        ErrorReporter.RunAsync("Create ungrouped", Notify, async () =>
+    private Task CreateNewTagsAsync() =>
+        ErrorReporter.RunAsync("Create tags", Notify, async () =>
         {
             if (string.IsNullOrWhiteSpace(NewTagName))
             {
                 return;
             }
 
-            var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName));
-            NewTagName = "";
-            _reorderParentId = null;
-            await RefreshAsync();
-            if (result.Tags.Count > 0)
-            {
-                SelectCreated(result.Tags[^1].Id);
-            }
-
-            StatusText = TagCreateCopy.Describe(result);
-        });
-
-    [RelayCommand]
-    private Task CreateChildAsync() =>
-        ErrorReporter.RunAsync("Create child", Notify, async () =>
-        {
-            if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(NewTagName))
+            var names = TagNameList.Split(NewTagName);
+            if (names.Count == 0)
             {
                 return;
             }
 
-            var parentId = SelectedNode.TagId;
-            var result = await _catalog.CreateTagsAsync(TagNameList.Split(NewTagName), parentId);
+            var parentId = string.IsNullOrEmpty(CreateTargetGroup?.TagId)
+                ? null
+                : CreateTargetGroup!.TagId;
+            var projectId = AppServices.CurrentProject?.Id;
+            TagCreateBatchResult result;
+            if (!string.IsNullOrEmpty(projectId))
+            {
+                result = await _fileOps.CreateTagsAsync(names, parentId, projectId);
+                await AppServices.Library.RefreshUndoStateAsync();
+            }
+            else
+            {
+                result = await _catalog.CreateTagsAsync(names, parentId);
+                result = new TagCreateBatchResult
+                {
+                    Created = result.Created,
+                    Existed = result.Existed,
+                    MembershipRejected = result.MembershipRejected,
+                    Tags = result.Tags,
+                    CreatedTagIds = result.CreatedTagIds,
+                    GroupName = result.GroupName ?? CreateTargetGroup?.Name,
+                    Ok = true,
+                    Message = result.Created > 0
+                        ? TagStatusBar.CreatedInGroup(
+                            result.Created,
+                            result.GroupName ?? CreateTargetGroup?.Name,
+                            result.Tags.Where(t => result.CreatedTagIds.Contains(t.Id))
+                                .Select(t => t.Name)
+                                .DefaultIfEmpty()
+                                .ToList())
+                        : TagCreateCopy.Describe(result, parentId is null ? null : " in the group")
+                };
+            }
+
             NewTagName = "";
             _reorderParentId = parentId;
+            if (parentId is not null)
+            {
+                _pendingEmptyGroupIds.Remove(parentId);
+            }
+
+            StampRecentlyCreated(result.CreatedTagIds);
             await RefreshAsync();
             if (result.Tags.Count > 0)
             {
                 SelectCreated(result.Tags[^1].Id);
             }
 
-            StatusText = TagCreateCopy.Describe(result, " under the selected group");
+            StatusText = string.IsNullOrWhiteSpace(result.Message)
+                ? TagCreateCopy.Describe(result, parentId is null ? null : " in the group")
+                : result.Message;
+            ShowStatusUndo = result.Ok && result.BatchId is not null && AppServices.Library.CanUndoFileOp;
+            AppServices.Library.ShowUndoToast = false;
         });
+
+    /// <summary>Legacy AutomationId path — same as <see cref="CreateNewTagsAsync"/>.</summary>
+    [RelayCommand]
+    private Task CreateUngroupedAsync() => CreateNewTagsAsync();
+
+    /// <summary>Legacy AutomationId path — sets create target from selection then creates.</summary>
+    [RelayCommand]
+    private Task CreateChildAsync() =>
+        ErrorReporter.RunAsync("Create child", Notify, async () =>
+        {
+            if (SelectedNode?.TagId is not null)
+            {
+                CreateTargetGroup = new TagGroupPick
+                {
+                    TagId = SelectedNode.TagId,
+                    Name = SelectedNode.Name
+                };
+            }
+
+            await CreateNewTagsAsync();
+        });
+
+    [RelayCommand]
+    private void ExpandAllBoardGroups()
+    {
+        foreach (var group in Board.Where(g => g.ScopeKind is null && !g.IsUngrouped))
+        {
+            group.IsExpanded = true;
+        }
+    }
+
+    [RelayCommand]
+    private void CollapseAllBoardGroups()
+    {
+        foreach (var group in Board.Where(g => g.ScopeKind is null && !g.IsUngrouped))
+        {
+            group.IsExpanded = false;
+        }
+    }
+
+    [RelayCommand]
+    private Task CreateGroupAsync() =>
+        ErrorReporter.RunAsync("Create group", Notify, async () =>
+        {
+            var name = "New group";
+            var n = 2;
+            while (_tags.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                name = $"New group ({n++})";
+            }
+
+            var tag = await _catalog.CreateTagAsync(name);
+            _pendingEmptyGroupIds.Add(tag.Id);
+            await RefreshAsync();
+            CreateTargetGroup = new TagGroupPick { TagId = tag.Id, Name = tag.Name };
+            SelectCreated(tag.Id);
+            StatusText = $"Created group “{tag.Name}”. Add tags below.";
+            ShowStatusUndo = false;
+        });
+
+    [RelayCommand]
+    private Task ApplyPresetColorAsync(string? hex) =>
+        ErrorReporter.RunAsync("Apply preset color", Notify, async () =>
+        {
+            if (SelectedNode?.TagId is null || string.IsNullOrWhiteSpace(hex))
+            {
+                return;
+            }
+
+            await ApplyColorAsync(TagColor.Normalize(hex) ?? hex);
+        });
+
+    private void StampRecentlyCreated(IReadOnlyList<string> createdIds)
+    {
+        _clearRecentlyCreatedOnNextRebuild = false;
+        _recentlyCreatedIds.Clear();
+        foreach (var id in createdIds)
+        {
+            if (!string.IsNullOrEmpty(id))
+            {
+                _recentlyCreatedIds.Add(id);
+            }
+        }
+    }
+
+    private void LoadRecentTagIds()
+    {
+        try
+        {
+            _recentTagIds = RecentTags.Parse(
+                ApplicationData.Current.LocalSettings.Values[RecentTags.SettingsKey] as string);
+        }
+        catch
+        {
+            _recentTagIds = [];
+        }
+    }
 
     [RelayCommand]
     private Task ToggleStarAsync() =>
@@ -800,6 +952,27 @@ public partial class TagsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private Task SaveDescriptionAsync() =>
+        ErrorReporter.RunAsync("Save description", Notify, async () =>
+        {
+            if (SelectedNode?.TagId is null)
+            {
+                return;
+            }
+
+            await _catalog.SetTagDescriptionAsync(SelectedNode.TagId, SelectedDescription);
+            var tag = _tags.FirstOrDefault(t => t.Id == SelectedNode.TagId);
+            if (tag is not null)
+            {
+                tag.Description = string.IsNullOrWhiteSpace(SelectedDescription)
+                    ? null
+                    : SelectedDescription.Trim();
+            }
+
+            StatusText = "Description saved.";
+        });
+
+    [RelayCommand]
     private Task ClearColorAsync() =>
         ErrorReporter.RunAsync("Clear color", Notify, async () =>
         {
@@ -985,22 +1158,40 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
-        _boardSelectionKey = BoardKey(group);
-        if (group.ScopeKind is { } scope && Scope != scope)
+        if (group.ScopeKind == TagScope.GroupsHeader)
         {
-            Scope = scope;
-        }
-        else
-        {
-            ApplyBoardExpansion();
+            _ = CreateGroupCommand.ExecuteAsync(null);
+            return;
         }
 
+        _boardSelectionKey = BoardKey(group);
+        if (group.ScopeKind is TagScope.All or TagScope.Ungrouped or TagScope.Starred or TagScope.Recent)
+        {
+            if (Scope != group.ScopeKind.Value)
+            {
+                Scope = group.ScopeKind.Value;
+            }
+            else
+            {
+                ApplyBoardExpansion();
+            }
+
+            if (group.ScopeKind == TagScope.Ungrouped)
+            {
+                CreateTargetGroup = null;
+            }
+
+            return;
+        }
+
+        ApplyBoardExpansion();
         if (group.GroupId is null)
         {
             return;
         }
 
         _reorderParentId = null;
+        CreateTargetGroup = new TagGroupPick { TagId = group.GroupId, Name = group.Name };
         var node = TagTreeBuilder.Find(TagTree, group.GroupId)
             ?? new TagTreeNode { TagId = group.GroupId, Name = group.Name, EffectiveColor = group.Color };
         SelectNode(node);
@@ -1055,6 +1246,8 @@ public partial class TagsViewModel : ObservableObject
                 SelectedEffectiveColor = null;
                 SelectedColorLabel = "No color";
                 HasCustomColor = false;
+                SelectedDescription = "";
+                RecentlyCreated.Clear();
                 ParentGroups.Clear();
                 AvailableGroups.Clear();
                 ImpliedTags.Clear();
@@ -1121,6 +1314,7 @@ public partial class TagsViewModel : ObservableObject
             SelectedEffectiveColor = colors.GetValueOrDefault(tag.Id);
             HasCustomColor = TagColor.Normalize(tag.Color) is not null;
             SelectedColorLabel = CatalogService.DescribeTagColor(tag, _tags, _memberships);
+            SelectedDescription = tag.Description ?? "";
             AssetCount = count;
             AssetCountLabel = AssetNouns.WithThisTag(count);
             ParentGroups.Clear();
@@ -1192,8 +1386,26 @@ public partial class TagsViewModel : ObservableObject
 
     private void RebuildBoard()
     {
+        if (_clearRecentlyCreatedOnNextRebuild)
+        {
+            _recentlyCreatedIds.Clear();
+            _clearRecentlyCreatedOnNextRebuild = false;
+        }
+        else if (_recentlyCreatedIds.Count > 0)
+        {
+            // Keep outline for this rebuild; clear on the next one (t2-03b fade).
+            _clearRecentlyCreatedOnNextRebuild = true;
+        }
+
+        LoadRecentTagIds();
         var colors = _tags.Count == 0 ? null : CatalogService.MapEffectiveColors(_tags, _memberships);
-        var groups = TagPanelBuilder.BuildBoard(_tags, _memberships, query: SearchQuery, colors: colors);
+        var groups = TagPanelBuilder.BuildBoard(
+            _tags,
+            _memberships,
+            query: SearchQuery,
+            colors: colors,
+            recentIds: _recentTagIds,
+            extraRootGroupIds: _pendingEmptyGroupIds.ToList());
         Board.Clear();
         foreach (var group in groups)
         {
@@ -1217,6 +1429,7 @@ public partial class TagsViewModel : ObservableObject
                     EffectiveColor = chip.EffectiveColor,
                     IsStarred = chip.IsStarred,
                     IsFilterSelected = chip.TagId == SelectedNode?.TagId,
+                    IsRecentlyCreated = _recentlyCreatedIds.Contains(chip.TagId),
                     ParentGroupId = group.GroupId,
                     ImmediateParentId = chip.ParentId,
                     BoardKey = key
@@ -1237,7 +1450,66 @@ public partial class TagsViewModel : ObservableObject
             Board.Add(item);
         }
 
+        RebuildCreateTargets();
+        RebuildRecentlyCreatedList();
         ApplyBoardExpansion();
+    }
+
+    private void RebuildCreateTargets()
+    {
+        var keepId = CreateTargetGroup?.TagId;
+        CreateTargetGroups.Clear();
+        CreateTargetGroups.Add(new TagGroupPick { TagId = "", Name = "Ungrouped" });
+        foreach (var group in Board.Where(g => g.ScopeKind is null && !string.IsNullOrEmpty(g.GroupId)))
+        {
+            CreateTargetGroups.Add(new TagGroupPick { TagId = group.GroupId!, Name = group.Name });
+        }
+
+        CreateTargetGroup = string.IsNullOrEmpty(keepId)
+            ? null
+            : CreateTargetGroups.FirstOrDefault(g => g.TagId == keepId);
+        OnPropertyChanged(nameof(NewTagsInHeader));
+        OnPropertyChanged(nameof(CreateTargetIsUngrouped));
+    }
+
+    private void RebuildRecentlyCreatedList()
+    {
+        RecentlyCreated.Clear();
+        foreach (var id in _recentlyCreatedIds)
+        {
+            var tag = _tags.FirstOrDefault(t => t.Id == id);
+            if (tag is null)
+            {
+                continue;
+            }
+
+            var colors = CatalogService.MapEffectiveColors(_tags, _memberships);
+            RecentlyCreated.Add(new TagChipItem
+            {
+                TagId = tag.Id,
+                Name = tag.Name,
+                EffectiveColor = colors.GetValueOrDefault(tag.Id) ?? tag.Color,
+                IsStarred = tag.IsStarred,
+                IsRecentlyCreated = true,
+                CountBadge = "0"
+            });
+        }
+
+        OnPropertyChanged(nameof(HasRecentlyCreated));
+    }
+
+    public bool HasRecentlyCreated => RecentlyCreated.Count > 0;
+
+    public string NewTagsInHeader =>
+        TagBoardShell.NewTagsHeader(CreateTargetGroup?.Name, CreateTargetIsUngrouped);
+
+    public bool CreateTargetIsUngrouped =>
+        CreateTargetGroup is null || string.IsNullOrEmpty(CreateTargetGroup.TagId);
+
+    partial void OnCreateTargetGroupChanged(TagGroupPick? value)
+    {
+        OnPropertyChanged(nameof(NewTagsInHeader));
+        OnPropertyChanged(nameof(CreateTargetIsUngrouped));
     }
 
     private void RevealSelectedBoardRow()
@@ -1290,6 +1562,8 @@ public partial class TagsViewModel : ObservableObject
             TagScope.All => "all",
             TagScope.Ungrouped => "ungrouped",
             TagScope.Starred => "starred",
+            TagScope.Recent => "recent",
+            TagScope.GroupsHeader => "groups-header",
             _ => group.GroupId ?? "ungrouped"
         };
 

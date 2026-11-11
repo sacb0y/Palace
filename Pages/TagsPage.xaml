@@ -83,18 +83,32 @@
                                 BorderThickness="{x:Bind helpers:BindHelpers.SelectedBorder(IsExpanded), Mode=OneWay}"
                                 Click="TagGroupHeader_Click"
                                 Tag="{x:Bind}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Border
-                                        Width="12"
-                                        Height="12"
-                                        Background="{x:Bind helpers:TagColor.ChipFill(Color), Mode=OneWay}"
-                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                        BorderThickness="1"
-                                        CornerRadius="2" />
-                                    <TextBlock
-                                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                                        Text="{x:Bind CountLabel, Mode=OneWay}" />
-                                </StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border
+                                            Width="12"
+                                            Height="12"
+                                            Background="{x:Bind helpers:TagColor.ChipFill(Color), Mode=OneWay}"
+                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="2"
+                                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsGroupsHeader), Mode=OneWay}" />
+                                        <TextBlock
+                                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                                            Text="{x:Bind CountLabel, Mode=OneWay}" />
+                                    </StackPanel>
+                                    <ic:FluentIcon
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Icon="Add"
+                                        IconSize="Size16"
+                                        IconVariant="Regular"
+                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsGroupsHeader), Mode=OneWay}" />
+                                </Grid>
                             </Button>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -107,13 +121,57 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <TextBlock
-                x:Name="TxtTagChildrenHeader"
-                AutomationProperties.AutomationId="TxtTagChildrenHeader"
-                Style="{StaticResource BodyStrongTextBlockStyle}"
-                Text="{x:Bind ViewModel.ChildrenHeader, Mode=OneWay}" />
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    x:Name="TxtTagChildrenHeader"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtTagChildrenHeader"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="{x:Bind ViewModel.ChildrenHeader, Mode=OneWay}" />
+                <StackPanel
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="4">
+                    <Button
+                        x:Name="BtnExpandAllTagBoard"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnExpandAllTagBoard"
+                        AutomationProperties.Name="Expand all"
+                        Command="{x:Bind ViewModel.ExpandAllBoardGroupsCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Expand all" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="BtnCollapseAllTagBoard"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnCollapseAllTagBoard"
+                        AutomationProperties.Name="Collapse all"
+                        Command="{x:Bind ViewModel.CollapseAllBoardGroupsCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ic:FluentIcon Icon="ChevronUp" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="Collapse all" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        x:Name="BtnTagBoardSortName"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnTagBoardSortName"
+                        AutomationProperties.Name="Name"
+                        IsEnabled="False">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.BoardSortLabel, Mode=OneWay}" />
+                            <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
             <ScrollViewer
                 Grid.Row="1"
                 AutomationProperties.AutomationId="RepTagChildren"
@@ -146,6 +204,7 @@
                                                 ApplyState="{x:Bind ApplyState, Mode=OneWay}"
                                                 ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                 ChipClick="TagChip_Click"
+                                                IsRecentlyCreated="{x:Bind IsRecentlyCreated, Mode=OneWay}"
                                                 IsStarred="{x:Bind IsStarred, Mode=OneWay}"
                                                 Label="{x:Bind Name, Mode=OneWay}"
                                                 ShowStar="True"
@@ -236,37 +295,45 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
-            <TextBox
-                x:Name="TxtNewTagName"
-                Grid.Row="2"
-                AcceptsReturn="True"
-                AutomationProperties.AutomationId="TxtNewTagName"
-                Header="New tag"
-                PlaceholderText="character, clothing, shot"
-                Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                TextWrapping="Wrap" />
-            <StackPanel Grid.Row="3" Spacing="8">
+            <StackPanel Grid.Row="2" Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="New tags in" />
+                    <ComboBox
+                        x:Name="CmbNewTagsGroup"
+                        MinWidth="140"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="CmbNewTagsGroup"
+                        AutomationProperties.Name="New tags group"
+                        DisplayMemberPath="Name"
+                        ItemsSource="{x:Bind ViewModel.CreateTargetGroups, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.CreateTargetGroup, Mode=TwoWay}" />
+                </StackPanel>
+                <TextBox
+                    x:Name="TxtNewTagName"
+                    AcceptsReturn="True"
+                    AutomationProperties.AutomationId="TxtNewTagName"
+                    AutomationProperties.Name="{x:Bind ViewModel.NewTagsInHeader, Mode=OneWay}"
+                    KeyDown="TxtNewTagName_KeyDown"
+                    PlaceholderText="Type or paste names — comma, semicolon or one per line"
+                    Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Enter creates all · names that already exist are added to the group instead"
+                    TextWrapping="Wrap" />
                 <Button
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left"
-                    AutomationProperties.AutomationId="BtnCreateUngroupedTag"
-                    AutomationProperties.Name="Create ungrouped"
-                    Command="{x:Bind ViewModel.CreateUngroupedCommand}">
+                    HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="BtnCreateNewTags"
+                    AutomationProperties.Name="Create tags"
+                    Command="{x:Bind ViewModel.CreateNewTagsCommand}"
+                    Style="{StaticResource AccentButtonStyle}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Create ungrouped" />
-                    </StackPanel>
-                </Button>
-                <Button
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left"
-                    AutomationProperties.AutomationId="BtnCreateChildTag"
-                    AutomationProperties.Name="Nest under selected"
-                    Command="{x:Bind ViewModel.CreateChildCommand}"
-                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="Organization" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Nest under selected" />
+                        <TextBlock VerticalAlignment="Center" Text="Create" />
                     </StackPanel>
                 </Button>
             </StackPanel>
@@ -681,6 +748,37 @@
                     AutomationProperties.AutomationId="TxtTagColorSource"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.SelectedColorLabel, Mode=OneWay}" />
+                <ContentControl IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <ItemsRepeater
+                        x:Name="RepTagColorPresets"
+                        AutomationProperties.AutomationId="RepTagColorPresets"
+                        AutomationProperties.Name="Color presets"
+                        ItemsSource="{x:Bind ViewModel.ColorPresets, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="models:TagColorPreset">
+                                <Button
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    AutomationProperties.Name="{x:Bind Hex, Mode=OneWay}"
+                                    Command="{x:Bind pages:TagsPage.GetApplyPresetColorCommand()}"
+                                    CommandParameter="{x:Bind Hex, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind Hex, Mode=OneWay}">
+                                    <Border
+                                        Width="22"
+                                        Height="22"
+                                        Background="{x:Bind helpers:TagColor.ChipFill(Hex), Mode=OneWay}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="5" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </ContentControl>
                 <Button
                     x:Name="BtnTagColor"
                     AutomationProperties.AutomationId="BtnTagColor"
@@ -703,7 +801,7 @@
                                     x:Name="PkrTagColor"
                                     AutomationProperties.AutomationId="PkrTagColor"
                                     AutomationProperties.Name="Tag color picker"
-                                    IsAlphaEnabled="True"
+                                    IsAlphaEnabled="False"
                                     IsHexInputVisible="True"
                                     ColorChanged="PkrTagColor_ColorChanged" />
                                 <Button
@@ -716,6 +814,44 @@
                         </Flyout>
                     </Button.Flyout>
                 </Button>
+
+                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Description" />
+                <TextBox
+                    x:Name="TxtTagDescription"
+                    AcceptsReturn="True"
+                    AutomationProperties.AutomationId="TxtTagDescription"
+                    Header="Description"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                    LostFocus="TxtTagDescription_LostFocus"
+                    PlaceholderText="Optional notes for this tag or group"
+                    Text="{x:Bind ViewModel.SelectedDescription, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="Wrap" />
+
+                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Recently created" />
+                <ItemsRepeater
+                    x:Name="RepRecentlyCreated"
+                    AutomationProperties.AutomationId="RepRecentlyCreated"
+                    ItemsSource="{x:Bind ViewModel.RecentlyCreated, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagChipItem">
+                            <controls:TagChip
+                                ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                ChipClick="TagChip_Click"
+                                IsRecentlyCreated="True"
+                                Label="{x:Bind Name, Mode=OneWay}"
+                                Tag="{x:Bind}"
+                                TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Green outline fades after the next refresh."
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasRecentlyCreated), Mode=OneWay}" />
 
                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Groups this tag belongs to" />
                 <ListView
@@ -863,11 +999,29 @@
                 AutomationProperties.AutomationId="TxtBackfillStatus"
                 Style="{StaticResource CaptionTextBlockStyle}"
                 Text="{x:Bind ViewModel.BackfillStatus, Mode=OneWay}" />
-            <TextBlock
-                x:Name="TxtTagsStatus"
-                AutomationProperties.AutomationId="TxtTagsStatus"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock
+                    x:Name="TxtTagsStatus"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtTagsStatus"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+                <Button
+                    x:Name="BtnTagsStatusUndo"
+                    Padding="10,2"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnTagsStatusUndo"
+                    AutomationProperties.Name="Undo"
+                    Command="{x:Bind Library.UndoFileOpCommand}"
+                    Content="Undo"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowStatusUndo), Mode=OneWay}" />
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Ctrl+Z"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowStatusUndo), Mode=OneWay}" />
+            </StackPanel>
         </StackPanel>
     </Grid>
     </ScrollViewer>

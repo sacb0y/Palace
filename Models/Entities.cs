@@ -76,6 +76,8 @@ public sealed class Tag
     public string Slug { get; set; } = "";
     public string? Color { get; set; }
     public bool IsStarred { get; set; }
+    /// <summary>Optional group / tag blurb (Tags details Description).</summary>
+    public string? Description { get; set; }
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Name;
@@ -87,6 +89,12 @@ public sealed class TagCreateBatchResult
     public int Existed { get; init; }
     public int MembershipRejected { get; init; }
     public IReadOnlyList<Tag> Tags { get; init; } = [];
+    /// <summary>Ids inserted this batch (for green outline / Recently created).</summary>
+    public IReadOnlyList<string> CreatedTagIds { get; init; } = [];
+    public string? BatchId { get; init; }
+    public string? GroupName { get; init; }
+    public bool Ok { get; init; } = true;
+    public string Message { get; init; } = "";
 }
 
 public sealed class TagMembership

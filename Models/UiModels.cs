@@ -773,6 +773,14 @@ public partial class TagChipItem : ObservableObject
     [ObservableProperty]
     public partial bool IsFilterSelected { get; set; }
 
+    /// <summary>t2-03b green outline until the next Tags refresh.</summary>
+    [ObservableProperty]
+    public partial bool IsRecentlyCreated { get; set; }
+
+    /// <summary>Optional trailing use count on board chips (t2-03b).</summary>
+    [ObservableProperty]
+    public partial string? CountBadge { get; set; }
+
     /// <summary>Multi-select assign flyout: how many of the selection already have this tag.</summary>
     [ObservableProperty]
     public partial int PartialCount { get; set; }
@@ -875,6 +883,8 @@ public partial class TagBoardGroup : ObservableObject
             ? "BtnTagGroup_Ungrouped"
             : "BtnTagGroup_" + string.Concat((Name ?? "").Where(char.IsLetterOrDigit)));
 
+    public bool IsGroupsHeader => ScopeKind == TagScope.GroupsHeader;
+
     /// <summary>
     /// Full tag count for the group face (Library Tags may truncate <see cref="Chips"/>).
     /// Null = use <see cref="Chips"/>.Count (Tags board loads every chip).
@@ -904,7 +914,8 @@ public partial class TagBoardGroup : ObservableObject
 
     public int EffectiveChipCount => TotalChipCount ?? Chips.Count;
 
-    public string CountLabel => $"{Name} ({EffectiveChipCount})";
+    public string CountLabel =>
+        IsGroupsHeader ? Name : $"{Name} ({EffectiveChipCount})";
 
     /// <summary>Chip count alone for T8 group-row trailing label (full group size).</summary>
     public string ChipCountText => EffectiveChipCount.ToString();
@@ -995,6 +1006,14 @@ public sealed class TagGroupPick
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Name;
+}
+
+/// <summary>Preset swatch on the Tags color flyout (t2-03b / review F3).</summary>
+public sealed class TagColorPreset
+{
+    public string Hex { get; set; } = "";
+
+    public override string ToString() => Hex;
 }
 
 public sealed class TagChipGroupMove

@@ -121,6 +121,7 @@
     <Compile Include="..\Helpers\BrandAccent.cs" Link="BrandAccent.cs" />
     <Compile Include="..\Helpers\AccentResourceScope.cs" Link="AccentResourceScope.cs" />
     <Compile Include="..\Helpers\TagBoardExpand.cs" Link="TagBoardExpand.cs" />
+    <Compile Include="..\Helpers\TagBoardShell.cs" Link="TagBoardShell.cs" />
     <Compile Include="..\Helpers\TagBrowseMosaic.cs" Link="TagBrowseMosaic.cs" />
     <Compile Include="..\Helpers\AssignedTagChrome.cs" Link="AssignedTagChrome.cs" />
     <Compile Include="..\Helpers\AssignedTagPartition.cs" Link="AssignedTagPartition.cs" />

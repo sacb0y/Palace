@@ -137,7 +137,9 @@ public sealed class TagPanelBuilderTests
         var (tags, edges) = Sample();
         var board = TagPanelBuilder.BuildBoard(tags, edges);
 
-        Assert.Equal(["All", "Uncategorized", "Starred", "Character", "Shot"], board.Select(g => g.Name).ToArray());
+        Assert.Equal(
+            ["All", "Uncategorized", "Starred", "Recent", "GROUPS", "Character", "Shot"],
+            board.Select(g => g.Name).ToArray());
         Assert.Equal(TagScope.All, board[0].ScopeKind);
         Assert.Equal(["Character", "Closeup", "Loose", "Shot", "Sonic", "Tails"], board[0].Chips.Select(c => c.Name).ToArray());
         Assert.All(board[0].Chips, chip => Assert.Null(chip.ParentId));
@@ -145,19 +147,25 @@ public sealed class TagPanelBuilderTests
         Assert.Equal("BtnTagGroup_Ungrouped", board[1].AutomationIdOverride);
         Assert.Equal(["Loose"], board[1].Chips.Select(c => c.Name).ToArray());
         Assert.Equal(["Sonic"], board[2].Chips.Select(c => c.Name).ToArray());
+        Assert.Equal(TagScope.Recent, board[3].ScopeKind);
+        Assert.Equal(TagScope.GroupsHeader, board[4].ScopeKind);
         Assert.Equal(["Sonic", "Tails"], board.Single(g => g.Name == "Character").Chips.Select(c => c.Name).ToArray());
     }
 
     [Fact]
-    public void BuildBoard_PinsAllUncategorizedStarred_ThenUserGroups()
+    public void BuildBoard_PinsAllUncategorizedStarredRecentGroups_ThenUserGroups()
     {
         var (tags, edges) = Sample();
         var board = TagPanelBuilder.BuildBoard(tags, edges);
 
-        Assert.Equal(["All", "Uncategorized", "Starred"], board.Take(3).Select(g => g.Name).ToArray());
-        Assert.Equal(["all", "ungrouped", "starred"], board.Take(3).Select(TagPanelBuilder.Key).ToArray());
-        Assert.All(board.Skip(3), group => Assert.Null(group.ScopeKind));
-        Assert.Equal(["Character", "Shot"], board.Skip(3).Select(g => g.Name).ToArray());
+        Assert.Equal(
+            ["All", "Uncategorized", "Starred", "Recent", "GROUPS"],
+            board.Take(5).Select(g => g.Name).ToArray());
+        Assert.Equal(
+            ["all", "ungrouped", "starred", "recent", "groups-header"],
+            board.Take(5).Select(TagPanelBuilder.Key).ToArray());
+        Assert.All(board.Skip(5), group => Assert.Null(group.ScopeKind));
+        Assert.Equal(["Character", "Shot"], board.Skip(5).Select(g => g.Name).ToArray());
     }
 
     [Fact]
@@ -178,8 +186,10 @@ public sealed class TagPanelBuilderTests
         var (tags, edges) = Sample();
         var board = TagPanelBuilder.BuildBoard(tags, edges, query: "sonic");
 
-        Assert.Equal(["All", "Uncategorized", "Starred"], board.Take(3).Select(g => g.Name).ToArray());
-        Assert.Equal("Character", Assert.Single(board.Skip(3)).Name);
+        Assert.Equal(
+            ["All", "Uncategorized", "Starred", "Recent", "GROUPS"],
+            board.Take(5).Select(g => g.Name).ToArray());
+        Assert.Equal("Character", Assert.Single(board.Skip(5)).Name);
     }
 
     [Fact]

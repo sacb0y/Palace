@@ -105,16 +105,18 @@ public partial class LibraryViewModel
                 {
                     await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
                 }
-                else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
+                else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete
+                    or FileOpKind.TagCreate)
                 {
                     await ReloadTagCatalogAsync();
                     await LoadPreviewAsync(SelectedAsset);
                     if (AppServices.Tags is not null)
                     {
                         await AppServices.Tags.RefreshAsync();
-                        if (result.Ok && peek.Kind == FileOpKind.TagDelete)
+                        if (result.Ok && peek.Kind is FileOpKind.TagDelete or FileOpKind.TagCreate)
                         {
                             AppServices.Tags.StatusText = result.Message;
+                            AppServices.Tags.ShowStatusUndo = false;
                         }
                     }
                 }
@@ -138,7 +140,8 @@ public partial class LibraryViewModel
                 if (result.Ok)
                 {
                     // Tag undos confirm in the status bar (T2); file-op undos keep InfUndo.
-                    if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete)
+                    if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete
+                        or FileOpKind.TagCreate)
                     {
                         StatusText = result.Message;
                     }

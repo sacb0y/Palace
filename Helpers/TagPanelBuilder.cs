@@ -199,9 +199,17 @@ public static class TagPanelBuilder
         IReadOnlyList<Tag> tags,
         IReadOnlyList<TagMembership> memberships,
         string? query = null,
-        IReadOnlyDictionary<string, string?>? colors = null)
+        IReadOnlyDictionary<string, string?>? colors = null,
+        IReadOnlyList<string>? recentIds = null,
+        IReadOnlyList<string>? extraRootGroupIds = null)
     {
-        var model = Build(tags, memberships, query: query, colors: colors, scope: TagScope.All);
+        var model = Build(
+            tags,
+            memberships,
+            recentIds: recentIds,
+            query: query,
+            colors: colors,
+            scope: TagScope.All);
         var q = (query ?? "").Trim();
         bool NameMatches(string name) =>
             q.Length == 0 || name.Contains(q, StringComparison.OrdinalIgnoreCase);
@@ -263,7 +271,7 @@ public static class TagPanelBuilder
         }
 
         var uncategorized = model.Groups.FirstOrDefault(g => g.IsUngrouped);
-        // All / Uncategorized / Starred stay pinned at the top of the group column.
+        // All / Uncategorized / Starred / Recent / GROUPS+ then user groups (t2-03b board shell).
         var sections = new List<TagPanelGroup>
         {
             new()
@@ -287,9 +295,54 @@ public static class TagPanelBuilder
                 ScopeKind = TagScope.Starred,
                 AutomationIdOverride = "SelTagScopeStarred",
                 Chips = model.Starred
+            },
+            new()
+            {
+                Name = "Recent",
+                ScopeKind = TagScope.Recent,
+                AutomationIdOverride = "SelTagScopeRecent",
+                Chips = model.Recent
+            },
+            new()
+            {
+                Name = "GROUPS",
+                ScopeKind = TagScope.GroupsHeader,
+                AutomationIdOverride = "BtnTagGroupsHeader",
+                Chips = []
             }
         };
-        sections.AddRange(model.Groups.Where(g => !g.IsUngrouped));
+
+        var userGroups = model.Groups.Where(g => !g.IsUngrouped).ToList();
+        if (extraRootGroupIds is { Count: > 0 })
+        {
+            var knownGroupIds = new HashSet<string>(
+                userGroups.Select(g => g.GroupId).Where(id => id is not null)!,
+                StringComparer.Ordinal);
+            foreach (var id in extraRootGroupIds)
+            {
+                if (string.IsNullOrEmpty(id) || !knownGroupIds.Add(id) || !byId.TryGetValue(id, out var root))
+                {
+                    continue;
+                }
+
+                userGroups.Add(new TagPanelGroup
+                {
+                    GroupId = root.Id,
+                    Name = root.Name,
+                    Color = colors is not null && colors.TryGetValue(root.Id, out var groupColor)
+                        ? groupColor
+                        : string.IsNullOrWhiteSpace(root.Color) ? null : root.Color,
+                    Chips = []
+                });
+            }
+
+            userGroups = userGroups
+                .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(g => g.Name, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        sections.AddRange(userGroups);
         return sections;
     }
 
@@ -299,6 +352,8 @@ public static class TagPanelBuilder
             TagScope.All => "all",
             TagScope.Ungrouped => "ungrouped",
             TagScope.Starred => "starred",
+            TagScope.Recent => "recent",
+            TagScope.GroupsHeader => "groups-header",
             _ => group.GroupId ?? "ungrouped"
         };
 
