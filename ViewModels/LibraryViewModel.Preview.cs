@@ -237,6 +237,7 @@ public partial class LibraryViewModel
                     IsRecentlyCreated = _promptJustAddedIds.Contains(tag.TagId),
                     CountLabel = isPartial ? TagChipVisual.PartialBadge(appliedCount, total) : "",
                     NearestImpliedByName = nearestName,
+                    NearestImpliedById = nearestId,
                     IsAlsoImplied = alsoImplied,
                     AliasNames = aliasesByIdeal.GetValueOrDefault(tag.TagId) ?? []
                 };

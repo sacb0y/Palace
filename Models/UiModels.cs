@@ -374,9 +374,12 @@ public partial class AssignedTagItem : ObservableObject
     [ObservableProperty]
     public partial bool IsChipSelected { get; set; }
 
-    /// <summary>T8: nearest applied tag that implies this (tooltip only).</summary>
+    /// <summary>T8: nearest applied tag that implies this (tooltip + it-01 menu header).</summary>
     [ObservableProperty]
     public partial string? NearestImpliedByName { get; set; }
+
+    /// <summary>T8 / it-01: nearest source tag id for Edit implication rule…</summary>
+    public string? NearestImpliedById { get; set; }
 
     /// <summary>T8: applied chip that is also reached by implication.</summary>
     [ObservableProperty]

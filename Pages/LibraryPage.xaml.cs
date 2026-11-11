@@ -337,6 +337,18 @@ public sealed partial class LibraryPage : Page
     public static IRelayCommand<AssignedTagItem> GetToggleAssignedChipCommand() =>
         AppServices.Library.ToggleAssignedChipSelectionCommand;
 
+    public static IRelayCommand<AssignedTagItem?> GetEditImpliedRuleCommand() =>
+        AppServices.Library.EditImpliedRuleCommand;
+
+    public static IRelayCommand<AssignedTagItem?> GetFilterByImpliedTagCommand() =>
+        AppServices.Library.FilterByImpliedTagCommand;
+
+    public static IRelayCommand<AssignedTagItem?> GetAddImpliedAsManualCommand() =>
+        AppServices.Library.AddImpliedAsManualCommand;
+
+    public static IRelayCommand<AssignedTagItem?> GetGoToImpliedTagCommand() =>
+        AppServices.Library.GoToImpliedTagCommand;
+
     public static IRelayCommand<PendingTagChip> GetRemovePendingTagCommand() => AppServices.Library.RemovePendingTagCommand;
 
     public static IRelayCommand<PromptSuggestion> GetAcceptPromptSuggestionCommand() =>
@@ -1837,6 +1849,46 @@ public sealed partial class LibraryPage : Page
         }
 
         EnsureSelectedForContext(item);
+    }
+
+    /// <summary>it-01: stamp Implied by… header + Filter by {name}; disable Edit without a source.</summary>
+    private void ImpliedChipMenu_Opening(object sender, object e)
+    {
+        if (sender is not MenuFlyout flyout)
+        {
+            return;
+        }
+
+        var chip = flyout.Target is FrameworkElement { Tag: AssignedTagItem bound }
+            ? bound
+            : flyout.Target is FrameworkElement fe
+                ? fe.DataContext as AssignedTagItem
+                : null;
+        if (chip is null)
+        {
+            return;
+        }
+
+        foreach (var entry in flyout.Items)
+        {
+            if (entry is not MenuFlyoutItem item || item.Tag is not string kind)
+            {
+                continue;
+            }
+
+            switch (kind)
+            {
+                case "header":
+                    item.Text = ImpliedChipMenu.HeaderText(chip.NearestImpliedByName);
+                    break;
+                case "filter":
+                    item.Text = ImpliedChipMenu.FilterByLabel(chip.TagName);
+                    break;
+                case "edit":
+                    item.IsEnabled = ImpliedChipMenu.CanEditRule(chip.NearestImpliedById);
+                    break;
+            }
+        }
     }
 
     private void AssetMenu_Opening(object sender, object e)

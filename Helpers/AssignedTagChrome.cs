@@ -41,7 +41,7 @@ public static class AssignedTagChrome
     {
         if (source == TagSource.Implied)
         {
-            // No context menu yet — do not promise right-click edit.
+            // it-01 menu is separate (right-click); tooltip stays nearest-source only.
             return ImpliedNearest.ImpliedTooltip(nearestImpliedByName);
         }
 

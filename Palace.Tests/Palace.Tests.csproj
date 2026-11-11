@@ -128,6 +128,7 @@
     <Compile Include="..\Helpers\AssignedTagChrome.cs" Link="AssignedTagChrome.cs" />
     <Compile Include="..\Helpers\AssignedTagPartition.cs" Link="AssignedTagPartition.cs" />
     <Compile Include="..\Helpers\ImpliedNearest.cs" Link="ImpliedNearest.cs" />
+    <Compile Include="..\Helpers\ImpliedChipMenu.cs" Link="ImpliedChipMenu.cs" />
     <Compile Include="..\Helpers\TagBrowsePanel.cs" Link="TagBrowsePanel.cs" />
     <Compile Include="..\Helpers\TagBrowseCounts.cs" Link="TagBrowseCounts.cs" />
     <Compile Include="..\Helpers\TagFilterStrip.cs" Link="TagFilterStrip.cs" />
