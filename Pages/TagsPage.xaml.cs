@@ -52,6 +52,7 @@ public sealed partial class TagsPage : Page
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestOpenGallery = GalleryWindow.Show;
         ViewModel.RequestFocusRename = FocusRenameBox;
+        ViewModel.RequestFocusAliasAdd = FocusAliasAddBox;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
         ViewModel.PropertyChanged += (_, e) =>
@@ -197,6 +198,8 @@ public sealed partial class TagsPage : Page
     public static IRelayCommand<TagGroupPick> GetRemoveGroupCommand() => AppServices.Tags.RemoveFromGroupCommand;
 
     public static IRelayCommand<TagGroupPick> GetRemoveImpliedCommand() => AppServices.Tags.RemoveImpliedCommand;
+
+    public static IRelayCommand<TagAliasRow?> GetRemoveAliasCommand() => AppServices.Tags.RemoveAliasRowCommand;
 
     private void TagChip_Click(object sender, RoutedEventArgs e)
     {
@@ -1081,6 +1084,36 @@ public sealed partial class TagsPage : Page
         };
         dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+
+    private void FocusAliasAddBox()
+    {
+        AsbAddAlias.Focus(FocusState.Programmatic);
+    }
+
+    private void LstAliases_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is TagAliasRow row)
+        {
+            ViewModel.SelectAliasRowCommand.Execute(row);
+        }
+    }
+
+    private void LstAliases_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LstAliases.SelectedItem is TagAliasRow row)
+        {
+            ViewModel.SelectAliasRowCommand.Execute(row);
+        }
+    }
+
+    private void AsbAddAlias_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            e.Handled = true;
+            ViewModel.AddAliasNamesCommand.Execute(null);
+        }
     }
 
     private void AsbAddImplied_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)
