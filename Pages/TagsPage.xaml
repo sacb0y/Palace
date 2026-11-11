@@ -748,36 +748,37 @@
                     AutomationProperties.AutomationId="TxtTagColorSource"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Text="{x:Bind ViewModel.SelectedColorLabel, Mode=OneWay}" />
-                <ItemsRepeater
-                    x:Name="RepTagColorPresets"
-                    AutomationProperties.AutomationId="RepTagColorPresets"
-                    AutomationProperties.Name="Color presets"
-                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
-                    ItemsSource="{x:Bind ViewModel.ColorPresets, Mode=OneWay}">
-                    <ItemsRepeater.Layout>
-                        <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
-                    </ItemsRepeater.Layout>
-                    <ItemsRepeater.ItemTemplate>
-                        <DataTemplate x:DataType="models:TagColorPreset">
-                            <Button
-                                Width="28"
-                                Height="28"
-                                Padding="0"
-                                AutomationProperties.Name="{x:Bind Hex, Mode=OneWay}"
-                                Command="{x:Bind pages:TagsPage.GetApplyPresetColorCommand()}"
-                                CommandParameter="{x:Bind Hex, Mode=OneWay}"
-                                ToolTipService.ToolTip="{x:Bind Hex, Mode=OneWay}">
-                                <Border
-                                    Width="22"
-                                    Height="22"
-                                    Background="{x:Bind helpers:TagColor.ChipFill(Hex), Mode=OneWay}"
-                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="5" />
-                            </Button>
-                        </DataTemplate>
-                    </ItemsRepeater.ItemTemplate>
-                </ItemsRepeater>
+                <Grid IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
+                    <ItemsRepeater
+                        x:Name="RepTagColorPresets"
+                        AutomationProperties.AutomationId="RepTagColorPresets"
+                        AutomationProperties.Name="Color presets"
+                        ItemsSource="{x:Bind ViewModel.ColorPresets, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="models:TagColorPreset">
+                                <Button
+                                    Width="28"
+                                    Height="28"
+                                    Padding="0"
+                                    AutomationProperties.Name="{x:Bind Hex, Mode=OneWay}"
+                                    Command="{x:Bind pages:TagsPage.GetApplyPresetColorCommand()}"
+                                    CommandParameter="{x:Bind Hex, Mode=OneWay}"
+                                    ToolTipService.ToolTip="{x:Bind Hex, Mode=OneWay}">
+                                    <Border
+                                        Width="22"
+                                        Height="22"
+                                        Background="{x:Bind helpers:TagColor.ChipFill(Hex), Mode=OneWay}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="5" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                </Grid>
                 <Button
                     x:Name="BtnTagColor"
                     AutomationProperties.AutomationId="BtnTagColor"
