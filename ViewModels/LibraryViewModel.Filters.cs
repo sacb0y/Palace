@@ -213,9 +213,10 @@ public partial class LibraryViewModel
                 name = $"New group ({n++})";
             }
 
-            await _catalog.CreateTagAsync(name);
+            var tag = await _catalog.CreateTagAsync(name);
+            _pendingEmptyGroupIds.Add(tag.Id);
             await RefreshQuietAsync();
-            StatusText = $"Created group “{name}”. Add tags on the Tags page.";
+            StatusText = $"Created group “{tag.Name}”. Add tags on the Tags page.";
         });
 
     private async Task ApplyFilterAsync()
@@ -349,6 +350,7 @@ public partial class LibraryViewModel
 
     private void RebuildBrowseTags()
     {
+        PrunePendingEmptyBrowseGroups();
         var selected = SelectedFilterTags.Select(t => t.TagId).ToHashSet(StringComparer.Ordinal);
         var colors = _tags.Count == 0
             ? null
@@ -359,7 +361,10 @@ public partial class LibraryViewModel
             recentIds: _recentTagIds,
             query: TagPanelFilter,
             colors: colors,
-            collapsedKeys: _browseCollapsedKeys);
+            collapsedKeys: _browseCollapsedKeys,
+            extraRootGroupIds: _pendingEmptyGroupIds.Count == 0
+                ? null
+                : _pendingEmptyGroupIds.ToList());
 
         BrowseStarredTags.Clear();
         BrowseRecentTags.Clear();
@@ -434,6 +439,19 @@ public partial class LibraryViewModel
         }
 
         _ = RefreshBrowseFileCountsAsync();
+    }
+
+    private void PrunePendingEmptyBrowseGroups()
+    {
+        if (_pendingEmptyGroupIds.Count == 0)
+        {
+            return;
+        }
+
+        var parents = _memberships
+            .Select(m => m.ParentId)
+            .ToHashSet(StringComparer.Ordinal);
+        _pendingEmptyGroupIds.RemoveWhere(id => parents.Contains(id));
     }
 
     private async Task RefreshBrowseFileCountsAsync()

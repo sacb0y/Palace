@@ -27,6 +27,7 @@ public partial class LibraryViewModel : ObservableObject
     private List<TagPickItem> _tagPicks = [];
     private List<string> _recentTagIds = [];
     private HashSet<string> _browseCollapsedKeys = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pendingEmptyGroupIds = new(StringComparer.Ordinal);
     private IReadOnlyDictionary<string, int> _browseFileCounts =
         new Dictionary<string, int>(StringComparer.Ordinal);
     private int _browseCountsEpoch;
