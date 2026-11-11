@@ -161,8 +161,14 @@ public partial class LibraryViewModel
                 return;
             }
 
-            var affected = selected.Max(t =>
-                TagRemoveConfirm.AffectedFileCount(t.IsPartial, t.AppliedCount, Math.Max(targets.Count, t.SelectionTotal)));
+            var affected = TagRemoveConfirm.UnionFileCount(selected.Select(t => t.AssetIds));
+            if (affected <= 0)
+            {
+                affected = selected.Sum(t =>
+                    TagRemoveConfirm.AffectedFileCount(
+                        t.IsPartial, t.AppliedCount, Math.Max(targets.Count, t.SelectionTotal)));
+            }
+
             if (TagRemoveConfirm.NeedsConfirm(affected))
             {
                 var names = string.Join(", ", selected.Select(t => t.TagName));
@@ -177,7 +183,7 @@ public partial class LibraryViewModel
             await RemoveTagsFromSelectionAsync(
                 targets,
                 selected.Select(t => (t.TagId, t.TagName)).ToList(),
-                affectedFileCount: targets.Count);
+                affectedFileCount: affected);
         });
 
     [RelayCommand]
@@ -472,8 +478,13 @@ public partial class LibraryViewModel
             return;
         }
 
-        var files = selected.Sum(t =>
-            TagRemoveConfirm.AffectedFileCount(t.IsPartial, t.AppliedCount, t.SelectionTotal));
+        var files = TagRemoveConfirm.UnionFileCount(selected.Select(t => t.AssetIds));
+        if (files <= 0)
+        {
+            files = selected.Sum(t =>
+                TagRemoveConfirm.AffectedFileCount(t.IsPartial, t.AppliedCount, t.SelectionTotal));
+        }
+
         RemoveFromAllSummary = TagRemoveConfirm.SelectedBarLabel(selected.Count, files);
     }
 

@@ -45,6 +45,9 @@ public static class TagRemoveConfirm
 
     public static string RemoveFromAllLabel { get; } = "Remove from all";
 
+    /// <summary>Keyboard badge on the Remove from all button (t2-04a).</summary>
+    public static string DelBadge { get; } = "Del";
+
     /// <summary>
     /// Affected file count for a chip ×: partial uses the k in k/n; otherwise the selection size.
     /// </summary>
@@ -56,6 +59,37 @@ public static class TagRemoveConfirm
         }
 
         return Math.Max(0, selectionTotal);
+    }
+
+    /// <summary>
+    /// Files touched by any of the selected tags (union). Used for both the Remove from
+    /// all bar label and the &gt;10 confirm — not max-of-one-tag, not a sum that double-counts.
+    /// </summary>
+    public static int UnionFileCount(IEnumerable<IEnumerable<string>>? assetIdSets)
+    {
+        if (assetIdSets is null)
+        {
+            return 0;
+        }
+
+        var union = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var set in assetIdSets)
+        {
+            if (set is null)
+            {
+                continue;
+            }
+
+            foreach (var id in set)
+            {
+                if (!string.IsNullOrEmpty(id))
+                {
+                    union.Add(id);
+                }
+            }
+        }
+
+        return union.Count;
     }
 
     private static string Trim(string? name) =>

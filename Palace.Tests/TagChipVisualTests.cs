@@ -29,10 +29,11 @@ public sealed class TagChipVisualTests
     }
 
     [Fact]
-    public void PartialTooltip_MatchesGooeyCopy() =>
-        Assert.Equal(
-            "On 2 of 5 selected. Click to add to all.",
-            TagChipVisual.PartialTooltip(2, 5));
+    public void PartialTooltip_SelectsNotAddToAll()
+    {
+        Assert.Equal("On 2 of 5 selected.", TagChipVisual.PartialTooltip(2, 5));
+        Assert.DoesNotContain("Click to add", TagChipVisual.PartialTooltip(2, 5), StringComparison.OrdinalIgnoreCase);
+    }
 
     [Fact]
     public void PartialBadge_IsSlashForm() =>
@@ -54,7 +55,7 @@ public sealed class TagChipVisualTests
     public void AssignTooltip_PartialAndOnOff()
     {
         Assert.Equal(
-            "On 2 of 5 selected. Click to add to all.",
+            "On 2 of 5 selected.",
             TagChipVisual.AssignTooltip(TagChipApplyState.Partial, "Cream", 2, 5));
         Assert.Equal("Remove Cream", TagChipVisual.AssignTooltip(TagChipApplyState.On, "Cream", 0, 1));
         Assert.Equal("Add Cream", TagChipVisual.AssignTooltip(TagChipApplyState.Off, "Cream", 0, 1));

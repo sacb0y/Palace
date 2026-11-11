@@ -50,6 +50,12 @@ public sealed partial class LibraryPage
             return;
         }
 
+        if (TryHandleRemoveSelectedTagsKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == VirtualKey.Escape
             && !FocusIsTextInput(e.OriginalSource)
             && TryDismissPreviewOverlayOnEscape())
@@ -127,6 +133,32 @@ public sealed partial class LibraryPage
 
         ViewModel.FocusAssignTagCommand.Execute(null);
         return true;
+    }
+
+    /// <summary>
+    /// Del removes all selected assigned chips (t2-04a Remove from all), when the
+    /// bar is showing and focus is not in a text box.
+    /// </summary>
+    private bool TryHandleRemoveSelectedTagsKey(KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Delete
+            || ViewModel.IsGalleryOverlayOpen
+            || IsKeyDown(VirtualKey.Control)
+            || IsKeyDown(VirtualKey.Menu)
+            || IsKeyDown(VirtualKey.Shift)
+            || FocusIsTextInput(e.OriginalSource)
+            || !ViewModel.ShowRemoveFromAllBar)
+        {
+            return false;
+        }
+
+        if (ViewModel.RemoveSelectedAssignedTagsCommand.CanExecute(null))
+        {
+            ViewModel.RemoveSelectedAssignedTagsCommand.Execute(null);
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

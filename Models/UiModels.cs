@@ -351,6 +351,11 @@ public partial class AssignedTagItem : ObservableObject
     [ObservableProperty]
     public partial int SelectionTotal { get; set; }
 
+    /// <summary>
+    /// Asset ids in the current selection that carry this tag — for Remove-from-all union count.
+    /// </summary>
+    public IReadOnlyList<string> AssetIds { get; set; } = [];
+
     /// <summary>T2: chip selected for Remove from all (accent fill).</summary>
     [ObservableProperty]
     public partial bool IsChipSelected { get; set; }
@@ -382,6 +387,13 @@ public partial class AssignedTagItem : ObservableObject
     /// <summary>Leading ✓ when the tag is on every selected file (multi-select).</summary>
     public bool ShowOnAllCheck =>
         ShowRemove && !IsPartial && SelectionTotal > 1;
+
+    /// <summary>
+    /// Preview assigned chips: Partial when k/n; Off when fully applied (Manual fill via
+    /// ShowRemove — not filter On accent). Chip select uses <see cref="IsChipSelected"/>.
+    /// </summary>
+    public Helpers.TagChipApplyState ApplyState =>
+        Helpers.TagChipVisual.Resolve(IsPartial, isOn: false);
 
     public string RemoveAutomationName => $"Remove {TagName}";
 
@@ -462,6 +474,7 @@ public partial class AssignedTagItem : ObservableObject
         OnPropertyChanged(nameof(ShowImpliedLink));
         OnPropertyChanged(nameof(ShowAlsoImpliedLink));
         OnPropertyChanged(nameof(ShowOnAllCheck));
+        OnPropertyChanged(nameof(ApplyState));
         OnPropertyChanged(nameof(ChipTooltip));
         OnPropertyChanged(nameof(ChipAutomationName));
     }
@@ -470,6 +483,7 @@ public partial class AssignedTagItem : ObservableObject
     {
         OnPropertyChanged(nameof(ChromeOpacity));
         OnPropertyChanged(nameof(ShowOnAllCheck));
+        OnPropertyChanged(nameof(ApplyState));
         OnPropertyChanged(nameof(ChipTooltip));
     }
 
