@@ -787,27 +787,46 @@
                                                 Text="{x:Bind ChipCountText, Mode=OneWay}" />
                                         </Grid>
                                     </Button>
-                                    <ItemsRepeater
-                                        Margin="18,0,0,0"
-                                        ItemsSource="{x:Bind Chips, Mode=OneWay}"
+                                    <StackPanel
+                                        Spacing="2"
                                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsExpanded), Mode=OneWay}">
-                                        <ItemsRepeater.Layout>
-                                            <helpers:ChipWrapLayout HorizontalSpacing="5" VerticalSpacing="5" />
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="models:TagChipItem">
-                                                <controls:TagChip
-                                                    HorizontalAlignment="Left"
-                                                    ApplyState="{x:Bind ApplyState, Mode=OneWay}"
-                                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    Command="{x:Bind pages:LibraryPage.GetToggleFilterChipCommand()}"
-                                                    CommandParameter="{x:Bind}"
-                                                    Compact="True"
-                                                    Label="{x:Bind Name, Mode=OneWay}"
-                                                    TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
+                                        <ItemsRepeater
+                                            Margin="18,0,0,0"
+                                            ItemsSource="{x:Bind Chips, Mode=OneWay}">
+                                            <ItemsRepeater.Layout>
+                                                <helpers:ChipWrapLayout HorizontalSpacing="5" VerticalSpacing="5" />
+                                            </ItemsRepeater.Layout>
+                                            <ItemsRepeater.ItemTemplate>
+                                                <DataTemplate x:DataType="models:TagChipItem">
+                                                    <controls:TagChip
+                                                        HorizontalAlignment="Left"
+                                                        ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                                        ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                                        Command="{x:Bind pages:LibraryPage.GetToggleFilterChipCommand()}"
+                                                        CommandParameter="{x:Bind}"
+                                                        Compact="True"
+                                                        Label="{x:Bind Name, Mode=OneWay}"
+                                                        TagColor="{x:Bind EffectiveColor, Mode=OneWay}" />
+                                                </DataTemplate>
+                                            </ItemsRepeater.ItemTemplate>
+                                        </ItemsRepeater>
+                                        <Button
+                                            Padding="4,2"
+                                            Margin="22,0,0,0"
+                                            HorizontalAlignment="Left"
+                                            AutomationProperties.AutomationId="{x:Bind ShowMoreAutomationId, Mode=OneWay}"
+                                            AutomationProperties.Name="{x:Bind ShowMoreLabel, Mode=OneWay}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Command="{x:Bind pages:LibraryPage.GetShowMoreBrowseTagGroupCommand()}"
+                                            CommandParameter="{x:Bind}"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowShowMore), Mode=OneWay}">
+                                            <TextBlock
+                                                FontSize="12"
+                                                Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                                Text="{x:Bind ShowMoreLabel, Mode=OneWay}" />
+                                        </Button>
+                                    </StackPanel>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>

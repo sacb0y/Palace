@@ -311,7 +311,8 @@ public partial class LibraryViewModel
             }
 
             var showAll = _browseShowAllGroups.Contains(section.Key);
-            var visible = TagBrowsePanel.VisibleChipCount(section.Chips.Count, showAll);
+            var total = section.Chips.Count;
+            var visible = TagBrowsePanel.VisibleChipCount(total, showAll);
             var group = new TagBoardGroup
             {
                 GroupId = section.Key,
@@ -319,7 +320,9 @@ public partial class LibraryViewModel
                 Color = section.Color,
                 IsUngrouped = section.IsUngrouped,
                 IsExpanded = section.IsExpanded,
-                AutomationIdOverride = section.IsUngrouped ? "BtnTagGroup_Ungrouped" : null
+                AutomationIdOverride = section.IsUngrouped ? "BtnTagGroup_Ungrouped" : null,
+                // Full group size — not the truncated visible Chip count (audit #34 / #1).
+                TotalChipCount = total
             };
             for (var i = 0; i < visible; i++)
             {
