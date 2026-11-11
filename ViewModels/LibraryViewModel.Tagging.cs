@@ -273,7 +273,8 @@ public partial class LibraryViewModel
         var memberships = await _catalog.GetMembershipsAsync();
         var aliases = await _catalog.GetAliasesAsync();
         var implications = await _catalog.GetImplicationsAsync();
-        var pickItems = BuildTagPicks(tags, memberships);
+        var useCounts = await _catalog.GetAssetTagCountsAsync();
+        var pickItems = BuildTagPicks(tags, memberships, useCounts);
         var selectedTagId = SelectedTag?.TagId;
         var filterIds = SelectedFilterTags.Select(t => t.TagId).ToList();
         await UiDispatch.RunAsync(() =>
@@ -542,33 +543,73 @@ public partial class LibraryViewModel
             _tagPicks.Select(t => new TagSuggest.Candidate(t.TagId, t.Name, t.Display)),
             q,
             excludeTagIds: assignedIds);
-        var items = ranked
-            .Select(c => byId.GetValueOrDefault(c.TagId))
-            .Where(t => t is not null)
-            .Cast<TagPickItem>()
-            .ToList();
 
-        // Annotate aliases in Display for the suggestion list (vista › landscape [alias]).
-        foreach (var item in items)
+        // Clone rows so match/alias chrome never mutates the shared AllTags picks.
+        var items = new List<TagPickItem>();
+        foreach (var c in ranked)
         {
-            var idealId = TagAliasResolve.Ideal(item.TagId, _aliasToIdeal);
-            if (!string.Equals(idealId, item.TagId, StringComparison.Ordinal)
-                && byId.TryGetValue(idealId, out var ideal))
+            if (!byId.TryGetValue(c.TagId, out var source))
             {
-                item.Display = $"{item.Name} › {ideal.Name} [alias]";
+                continue;
             }
+
+            var idealId = TagAliasResolve.Ideal(source.TagId, _aliasToIdeal);
+            var isAlias = !string.Equals(idealId, source.TagId, StringComparison.Ordinal)
+                && byId.TryGetValue(idealId, out _);
+            TagPickItem? ideal = isAlias ? byId.GetValueOrDefault(idealId) : null;
+            var span = TagSuggest.SplitMatch(source.Name, q);
+            var faceColor = ideal?.EffectiveColor ?? source.EffectiveColor;
+            var group = ideal is not null && !string.IsNullOrEmpty(ideal.GroupName)
+                ? ideal.GroupName
+                : source.GroupName;
+            var useCount = ideal?.UseCount ?? source.UseCount;
+            var display = isAlias && ideal is not null
+                ? TagAddInput.AliasFace(source.Name, ideal.Name)
+                : source.Name;
+            items.Add(new TagPickItem
+            {
+                TagId = source.TagId,
+                Name = source.Name,
+                Display = display,
+                SuggestText = source.Name,
+                EffectiveColor = faceColor,
+                GroupName = group,
+                UseCount = useCount,
+                MatchBefore = span.Before,
+                MatchText = span.Match,
+                MatchAfter = span.After,
+                IsAliasHit = isAlias,
+                AliasCanonicalName = ideal?.Name ?? "",
+            });
         }
 
+        // Create last in source; owned LstTagSuggestions paints this order (ASB popup reverses when above).
+        var createLabel = TagAddInput.CreateSuggestionLabel(q);
+        var ordered = TagSuggest.WithCreateLast(
+            items,
+            new TagPickItem
+            {
+                TagId = "",
+                Name = q,
+                Display = createLabel,
+                SuggestText = TagSuggest.CreateSuggestText(createLabel),
+                MatchText = createLabel,
+                IsCreateRow = true,
+                EffectiveColor = TagAddInput.SlateHex,
+            },
+            t => t.IsCreateRow);
+
         TagSuggestions.Clear();
-        foreach (var item in items)
+        foreach (var item in ordered)
         {
             TagSuggestions.Add(item);
         }
 
-        ShowTagSuggestions = items.Count > 0 || q.Length > 0;
-        TagSuggestionsSummary = items.Count == 0
-            ? $"Create tag “{q}”"
-            : string.Join(", ", items.Select(t => t.Name));
+        ShowTagSuggestions = true;
+        var matchNames = ordered.Where(t => !t.IsCreateRow).Select(t => t.Name).ToList();
+        TagSuggestionsSummary = matchNames.Count == 0
+            ? createLabel
+            : string.Join(", ", matchNames);
     }
 
     private TagPickItem? FindTagPick(string query)
@@ -584,7 +625,10 @@ public partial class LibraryViewModel
             ?? _tagPicks.FirstOrDefault(t => t.Display.Equals(query, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static List<TagPickItem> BuildTagPicks(IReadOnlyList<Tag> tags, IReadOnlyList<TagMembership> memberships)
+    private static List<TagPickItem> BuildTagPicks(
+        IReadOnlyList<Tag> tags,
+        IReadOnlyList<TagMembership> memberships,
+        IReadOnlyDictionary<string, int>? useCounts = null)
     {
         var byId = tags.ToDictionary(t => t.Id);
         var colors = CatalogService.MapEffectiveColors(tags, memberships);
@@ -595,12 +639,16 @@ public partial class LibraryViewModel
                 .Where(m => m.ChildId == tag.Id && byId.ContainsKey(m.ParentId))
                 .Select(m => byId[m.ParentId].Name)
                 .ToList();
-            var extra = parents.Count > 0 ? $" ({string.Join(", ", parents)})" : "";
+            var groupName = parents.Count > 0 ? string.Join(", ", parents) : "";
+            var extra = parents.Count > 0 ? $" ({groupName})" : "";
             picks.Add(new TagPickItem
             {
                 TagId = tag.Id,
                 Name = tag.Name,
                 Display = tag.Name + extra,
+                SuggestText = tag.Name,
+                GroupName = groupName,
+                UseCount = useCounts?.GetValueOrDefault(tag.Id) ?? 0,
                 EffectiveColor = colors.GetValueOrDefault(tag.Id)
             });
         }

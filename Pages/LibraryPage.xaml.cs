@@ -1530,13 +1530,48 @@ public sealed partial class LibraryPage : Page
         });
     }
 
-    private void AsbAssignTag_SuggestionChosen(AutoSuggestBox sender, AutoSuggestBoxSuggestionChosenEventArgs args)
+    private void AsbAssignTag_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
-        if (args.SelectedItem is TagPickItem pick)
+        // Owned list (not ASB popup): ↓ moves into the first suggestion row.
+        if (e.Key != VirtualKey.Down
+            || !ViewModel.ShowTagSuggestions
+            || LstTagSuggestions.Items.Count == 0)
         {
-            ViewModel.SelectedPickTag = pick;
-            ViewModel.TagQuery = pick.Name;
+            return;
         }
+
+        LstTagSuggestions.SelectedIndex = 0;
+        _ = LstTagSuggestions.Focus(FocusState.Keyboard);
+        e.Handled = true;
+    }
+
+    private void LstTagSuggestions_ItemClick(object sender, ItemClickEventArgs e)
+    {
+        if (e.ClickedItem is not TagPickItem pick)
+        {
+            return;
+        }
+
+        ApplyTagSuggestion(pick);
+    }
+
+    private void LstTagSuggestions_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.Enter || LstTagSuggestions.SelectedItem is not TagPickItem pick)
+        {
+            return;
+        }
+
+        ApplyTagSuggestion(pick);
+        e.Handled = true;
+    }
+
+    private void ApplyTagSuggestion(TagPickItem pick)
+    {
+        ViewModel.SelectedPickTag = pick.IsCreateRow ? null : pick;
+        ViewModel.TagQuery = pick.Name;
+        AsbAssignTag.Text = pick.Name;
+        ViewModel.ApplyPendingTagsCommand.Execute(null);
     }
 
     private void BtnAssignTag_Click(object sender, RoutedEventArgs e)
@@ -1551,12 +1586,22 @@ public sealed partial class LibraryPage : Page
 
     private void AsbAssignTag_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        if (args.ChosenSuggestion is TagPickItem pick)
+        // Prefer an explicit list selection (↑↓) when Enter is pressed from the box.
+        if (LstTagSuggestions.SelectedItem is TagPickItem selected)
         {
-            ViewModel.SelectedPickTag = pick;
-            ViewModel.TagQuery = pick.Name;
+            ApplyTagSuggestion(selected);
+            return;
         }
-        else if (!string.Equals(ViewModel.TagQuery, sender.Text ?? "", StringComparison.Ordinal))
+
+        // Else first match row (Create is last) so Enter never creates while a match exists.
+        var firstMatch = ViewModel.TagSuggestions.FirstOrDefault(t => !t.IsCreateRow);
+        if (firstMatch is not null)
+        {
+            ApplyTagSuggestion(firstMatch);
+            return;
+        }
+
+        if (!string.Equals(ViewModel.TagQuery, sender.Text ?? "", StringComparison.Ordinal))
         {
             ViewModel.TagQuery = sender.Text ?? "";
         }
