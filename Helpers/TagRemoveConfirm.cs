@@ -2,7 +2,8 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// T2 bulk remove: × / Remove from all act at once when ≤10 files are affected;
-/// above that, ask first (chip flyout or dialog). Primary is always Remove; Cancel is default.
+/// above that, ask first (chip flyout). Remove tags… uses an anchored flyout (t2-04b).
+/// Primary is always Remove; Cancel is default.
 /// </summary>
 public static class TagRemoveConfirm
 {
