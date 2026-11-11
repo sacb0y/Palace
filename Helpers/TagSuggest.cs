@@ -89,9 +89,9 @@ public static class TagSuggest
     }
 
     /// <summary>
-    /// AutoSuggestBox TextMemberPath for the Create row. Leading U+FFFF keeps Create
-    /// after name matches when WinUI reorders by TextMemberPath (exact Name==query
-    /// was promoting Create to the top — Fenrir #183).
+    /// Sort key for a Create row (leading U+FFFF). Not relied on for on-screen order —
+    /// WinUI AutoSuggestBox reverses ItemsSource when the popup opens above the box.
+    /// Assign tags uses an owned ListView + <see cref="WithCreateLast"/> instead.
     /// </summary>
     public static string CreateSuggestText(string? createLabel) =>
         "\uFFFF" + (createLabel ?? "");
@@ -116,5 +116,34 @@ public static class TagSuggest
 
         list.Add(create);
         return list;
+    }
+
+    /// <summary>
+    /// On-screen Create-last invariant for the owned suggestion list: exactly one
+    /// create row, and it is the last item. Empty lists pass.
+    /// </summary>
+    public static bool IsCreateLast<T>(IReadOnlyList<T>? rows, Func<T, bool> isCreate)
+    {
+        if (rows is null || rows.Count == 0)
+        {
+            return true;
+        }
+
+        var createCount = 0;
+        for (var i = 0; i < rows.Count; i++)
+        {
+            if (!isCreate(rows[i]))
+            {
+                continue;
+            }
+
+            createCount++;
+            if (i != rows.Count - 1)
+            {
+                return false;
+            }
+        }
+
+        return createCount <= 1;
     }
 }

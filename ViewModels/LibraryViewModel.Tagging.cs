@@ -583,7 +583,7 @@ public partial class LibraryViewModel
             });
         }
 
-        // Create is always last (list + SuggestText) so Enter prefers a match (t2-02).
+        // Create last in source; owned LstTagSuggestions paints this order (ASB popup reverses when above).
         var createLabel = TagAddInput.CreateSuggestionLabel(q);
         var ordered = TagSuggest.WithCreateLast(
             items,

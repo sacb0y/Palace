@@ -86,5 +86,35 @@ public sealed class TagSuggestTests
         Assert.Equal(["vista", "visor", "vis"], ordered.Select(r => r.Name).ToArray());
         Assert.True(ordered[^1].Create);
         Assert.DoesNotContain(ordered.Take(ordered.Count - 1), r => r.Create);
+        Assert.True(TagSuggest.IsCreateLast(ordered, r => r.Create));
+    }
+
+    [Fact]
+    public void IsCreateLast_RejectsCreateBeforeMatches()
+    {
+        Assert.False(TagSuggest.IsCreateLast(
+            [
+                (Name: "Create", Create: true),
+                (Name: "landscape", Create: false),
+            ],
+            r => r.Create));
+
+        // Simulated ASB "popup above" reverse of WithCreateLast — must fail the invariant.
+        var source = TagSuggest.WithCreateLast(
+            [(Name: "landscape", Create: false), (Name: "vista", Create: false)],
+            (Name: "land", Create: true),
+            r => r.Create);
+        var reversed = source.Reverse().ToList();
+        Assert.True(TagSuggest.IsCreateLast(source, r => r.Create));
+        Assert.False(TagSuggest.IsCreateLast(reversed, r => r.Create));
+    }
+
+    [Fact]
+    public void IsCreateLast_EmptyOrMatchesOnly_Passes()
+    {
+        Assert.True(TagSuggest.IsCreateLast(Array.Empty<(string Name, bool Create)>(), r => r.Create));
+        Assert.True(TagSuggest.IsCreateLast(
+            [(Name: "landscape", Create: false)],
+            r => r.Create));
     }
 }

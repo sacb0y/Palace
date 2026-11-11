@@ -739,8 +739,9 @@ public sealed class TagPickItem
     public bool IsCreateRow { get; set; }
 
     /// <summary>
-    /// AutoSuggestBox TextMemberPath. Matches use <see cref="Name"/>; Create uses a
-    /// trailing sort key so WinUI cannot promote Create above prefix matches (t2-02).
+    /// Stable sort key for Create (`TagSuggest.CreateSuggestText`). Assign tags paints
+    /// an owned ListView ordered by <see cref="Helpers.TagSuggest.WithCreateLast"/> —
+    /// ASB popup ItemsSource is unused (reverses when the popup opens above).
     /// </summary>
     public string SuggestText { get; set; } = "";
 
