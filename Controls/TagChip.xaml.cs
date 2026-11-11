@@ -56,6 +56,11 @@ public sealed partial class TagChip : UserControl
         nameof(ShowNewBadge), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
 
+    /// <summary>From-prompt dashed pending chip (audit k): leading +, muted dash, dim + new.</summary>
+    public static readonly DependencyProperty IsPromptSuggestionProperty = DependencyProperty.Register(
+        nameof(IsPromptSuggestion), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
     /// <summary>t2-03b briefly-created green outline on the Tags board.</summary>
     public static readonly DependencyProperty IsRecentlyCreatedProperty = DependencyProperty.Register(
         nameof(IsRecentlyCreated), typeof(bool), typeof(TagChip),
@@ -201,6 +206,12 @@ public sealed partial class TagChip : UserControl
     {
         get => (bool)GetValue(ShowNewBadgeProperty);
         set => SetValue(ShowNewBadgeProperty, value);
+    }
+
+    public bool IsPromptSuggestion
+    {
+        get => (bool)GetValue(IsPromptSuggestionProperty);
+        set => SetValue(IsPromptSuggestionProperty, value);
     }
 
     public bool IsRecentlyCreated
@@ -357,6 +368,7 @@ public sealed partial class TagChip : UserControl
         ApplyRemove(state, highContrast);
         ApplyTooltip(state);
         ApplyAutomation(state);
+        Opacity = IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
 
         if (!string.IsNullOrEmpty(ChipAutomationId))
         {
@@ -368,6 +380,32 @@ public sealed partial class TagChip : UserControl
     {
         RectPartialDash.Visibility = Visibility.Collapsed;
         BrdChip.BorderThickness = new Thickness(1);
+
+        if (IsPromptSuggestion && !highContrast)
+        {
+            // Dashed pending (pt-01a); hover → solid accent.
+            BrdChip.Background = _pressed || _pointerOver
+                ? SoftAccentFill()
+                : ThemeBrush("ControlFillColorTransparentBrush");
+            if (_pressed || _pointerOver)
+            {
+                BrdChip.BorderBrush = ThemeBrush("AccentFillColorDefaultBrush");
+                BrdChip.BorderThickness = new Thickness(1);
+                RectPartialDash.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                BrdChip.BorderThickness = new Thickness(0);
+                BrdChip.BorderBrush = null;
+                RectPartialDash.Stroke = ThemeBrush("ControlStrokeColorDefaultBrush");
+                RectPartialDash.StrokeThickness = 1;
+                RectPartialDash.StrokeDashArray = new DoubleCollection { 1.5, 1.5 };
+                RectPartialDash.Visibility = Visibility.Visible;
+            }
+
+            TxtLabel.Foreground = ThemeBrush("TextFillColorPrimaryBrush");
+            return;
+        }
 
         if (highContrast)
         {
@@ -511,6 +549,22 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        if (IsPromptSuggestion && !ShowNewBadge)
+        {
+            VbStateGlyph.Visibility = Visibility.Visible;
+            IcnState.Icon = FluentIcons.Common.Icon.Add;
+            IcnState.Foreground = highContrast
+                ? ThemeBrush("SystemColorHighlightColorBrush")
+                : ThemeBrush("AccentFillColorDefaultBrush");
+            return;
+        }
+
+        if (IsPromptSuggestion)
+        {
+            VbStateGlyph.Visibility = Visibility.Collapsed;
+            return;
+        }
+
         var showPartial = !IsSelected && state == TagChipApplyState.Partial;
         var showOn = IsSelected || ShowAppliedCheck || state == TagChipApplyState.On;
         if (!showPartial && !showOn)
@@ -572,7 +626,8 @@ public sealed partial class TagChip : UserControl
 
     private void ApplyPartialBadge(TagChipApplyState state)
     {
-        if (state != TagChipApplyState.Partial || IsSelected)
+        var showPromptCount = IsPromptSuggestion && SelectionTotal > 1;
+        if ((!showPromptCount && (state != TagChipApplyState.Partial || IsSelected)))
         {
             TxtPartialBadge.Visibility = Visibility.Collapsed;
             TxtPartialBadge.Text = "";

@@ -2474,6 +2474,7 @@
                                 ChipTooltip="{x:Bind ChipTooltip, Mode=OneWay}"
                                 Command="{x:Bind pages:LibraryPage.GetToggleAssignedChipCommand()}"
                                 CommandParameter="{x:Bind}"
+                                IsRecentlyCreated="{x:Bind IsRecentlyCreated, Mode=OneWay}"
                                 IsSelected="{x:Bind IsChipSelected, Mode=OneWay}"
                                 Label="{x:Bind TagName, Mode=OneWay}"
                                 PartialCount="{x:Bind AppliedCount, Mode=OneWay}"
@@ -2815,6 +2816,123 @@
                         Opacity="0"
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="{x:Bind ViewModel.AssignAnnouncement, Mode=OneWay}" />
+                </StackPanel>
+
+                <!-- Audit (k): From-prompt suggestion chips (replaces LstSuggestions ListView). -->
+                <StackPanel
+                    x:Name="PnlPromptSuggestions"
+                    Spacing="8"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowPromptSuggestions), Mode=OneWay}">
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <ic:FluentIcon
+                                VerticalAlignment="Center"
+                                Icon="Star"
+                                IconSize="Size16"
+                                IconVariant="Regular" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Style="{StaticResource BodyStrongTextBlockStyle}"
+                                Text="{x:Bind ViewModel.PromptSuggestionsHeader, Mode=OneWay}" />
+                            <TextBlock
+                                x:Name="TxtPromptSuggestionsCount"
+                                AutomationProperties.AutomationId="TxtPromptSuggestionsCount"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.PromptSuggestionsCountLabel, Mode=OneWay}" />
+                        </StackPanel>
+                        <StackPanel
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="4">
+                            <Button
+                                x:Name="BtnAcceptAllPrompt"
+                                AutomationProperties.AutomationId="BtnAcceptAllPrompt"
+                                AutomationProperties.Name="{x:Bind ViewModel.AcceptAllPromptLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.AcceptAllPromptSuggestionsCommand}"
+                                Content="{x:Bind ViewModel.AcceptAllPromptLabel, Mode=OneWay}"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Style="{StaticResource SubtleButtonStyle}"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowAcceptAllPrompt), Mode=OneWay}" />
+                            <Button
+                                x:Name="BtnDismissAllPrompt"
+                                AutomationProperties.AutomationId="BtnDismissAllPrompt"
+                                AutomationProperties.Name="Dismiss all prompt suggestions"
+                                Command="{x:Bind ViewModel.DismissAllPromptSuggestionsCommand}"
+                                Content="Dismiss all"
+                                Style="{StaticResource SubtleButtonStyle}" />
+                        </StackPanel>
+                    </Grid>
+                    <ItemsRepeater
+                        x:Name="RepPromptSuggestions"
+                        AutomationProperties.AutomationId="RepPromptSuggestions"
+                        AutomationProperties.Name="From prompt suggestions"
+                        ItemsSource="{x:Bind ViewModel.Suggestions, Mode=OneWay}">
+                        <ItemsRepeater.Layout>
+                            <helpers:ChipWrapLayout HorizontalSpacing="5" VerticalSpacing="5" />
+                        </ItemsRepeater.Layout>
+                        <ItemsRepeater.ItemTemplate>
+                            <DataTemplate x:DataType="models:PromptSuggestion">
+                                <controls:TagChip
+                                    HorizontalAlignment="Left"
+                                    ApplyState="Off"
+                                    ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                    ChipAutomationName="{x:Bind ChipAutomationName, Mode=OneWay}"
+                                    ChipTooltip="{x:Bind ChipTooltip, Mode=OneWay}"
+                                    Command="{x:Bind pages:LibraryPage.GetAcceptPromptSuggestionCommand()}"
+                                    CommandParameter="{x:Bind}"
+                                    Compact="True"
+                                    IsPromptSuggestion="True"
+                                    Label="{x:Bind FaceLabel, Mode=OneWay}"
+                                    PartialCount="{x:Bind MatchCount, Mode=OneWay}"
+                                    RemoveAutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
+                                    RemoveAutomationName="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                    RemoveCommand="{x:Bind pages:LibraryPage.GetDismissPromptSuggestionCommand()}"
+                                    RemoveCommandParameter="{x:Bind}"
+                                    SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
+                                    ShowNewBadge="{x:Bind IsNew, Mode=OneWay}"
+                                    ShowRemove="True"
+                                    TagColor="{x:Bind DotColor, Mode=OneWay}" />
+                            </DataTemplate>
+                        </ItemsRepeater.ItemTemplate>
+                    </ItemsRepeater>
+                    <TextBlock
+                        x:Name="TxtPromptIgnored"
+                        AutomationProperties.AutomationId="TxtPromptIgnored"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.PromptIgnoredCaption, Mode=OneWay}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowPromptIgnoredCaption), Mode=OneWay}" />
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="6"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowPromptAutoTaggerPlaceholder), Mode=OneWay}">
+                        <ic:FluentIcon
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Icon="ChevronRight"
+                            IconSize="Size12"
+                            IconVariant="Regular" />
+                        <TextBlock
+                            x:Name="TxtPromptAutoTaggerLater"
+                            AutomationProperties.AutomationId="TxtPromptAutoTaggerLater"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="From auto-tagger" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="later (T9)" />
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel

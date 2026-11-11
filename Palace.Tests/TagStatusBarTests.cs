@@ -40,4 +40,14 @@ public sealed class TagStatusBarTests
         Assert.Equal(
             "✓ Created 3 tags in Medium: charcoal, gouache, pastel",
             TagStatusBar.CreatedInGroup(3, "Medium", ["charcoal", "gouache", "pastel"]));
+
+    [Fact]
+    public void AddedFromPrompt_Wording()
+    {
+        Assert.Equal("✓ Added 6 tags from prompt", TagStatusBar.AddedFromPrompt(6));
+        Assert.Equal(
+            "✓ Added long hair to 15 files from prompts",
+            TagStatusBar.AddedFromPrompts("long hair", 15));
+        Assert.Equal("✓ Added smile from prompt", TagStatusBar.AddedFromPrompts("smile", 1));
+    }
 }

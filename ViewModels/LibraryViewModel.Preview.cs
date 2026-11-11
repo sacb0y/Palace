@@ -56,11 +56,14 @@ public partial class LibraryViewModel
         var targets = _selection.Count > 0 ? _selection.ToList() : [item];
         var perAsset = new List<IReadOnlyList<AssignedTag>>();
         var ratings = new List<int?>();
+        var promptRows = new List<(string AssetId, string? Prompt)>();
         foreach (var target in targets)
         {
             perAsset.Add(await _catalog.GetAssignedTagsAsync(target.Id));
             var row = await _catalog.GetAssetByIdAsync(target.Id);
             ratings.Add(row?.Rating);
+            // One catalog read per target — Prompt reused for From-prompt chips (no second N loop).
+            promptRows.Add((target.Id, row?.Prompt ?? target.Prompt));
         }
 
         if (epoch != _previewEpoch)
@@ -93,7 +96,16 @@ public partial class LibraryViewModel
         var existing = await _catalog.GetTagsAsync();
         var implications = await _catalog.GetImplicationsAsync();
         var aliases = await _catalog.GetAliasesAsync();
-        var suggestions = PromptTagSuggester.Suggest(asset.Prompt, existing);
+        if (_dismissedPromptTokens.Count == 0
+            && ApplicationData.Current.LocalSettings.Values[DismissedPromptTokens.SettingsKey] is string stored)
+        {
+            _dismissedPromptTokens = DismissedPromptTokens.Parse(stored).ToList();
+        }
+
+        var aliasNameMap = BuildAliasNameMap(existing, aliases);
+        var dismissedSet = _dismissedPromptTokens.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var suggestResult = PromptTagSuggester.SuggestMany(
+            promptRows, existing, aliasNameMap, dismissedSet);
         var hydrateOnOpen = AccessService.WouldHydrateOnOpen(asset.Path);
         var apiOnly = AssetItemMapper.IsApiOnly(asset);
         var originalOk = GalleryMedia.CanShowPreview(asset.Path);
@@ -222,6 +234,7 @@ public partial class LibraryViewModel
                     SelectionTotal = total,
                     AssetIds = entry.AssetIds.ToList(),
                     IsChipSelected = false,
+                    IsRecentlyCreated = _promptJustAddedIds.Contains(tag.TagId),
                     CountLabel = isPartial ? TagChipVisual.PartialBadge(appliedCount, total) : "",
                     NearestImpliedByName = nearestName,
                     IsAlsoImplied = alsoImplied,
@@ -247,21 +260,13 @@ public partial class LibraryViewModel
                 : string.Join(", ", AssignedTags.Concat(ImpliedAssignedTags).Select(t => t.TagName));
             ShowAssignedTagsSummary = AssignedTags.Count == 0 && ImpliedAssignedTags.Count == 0;
 
-            // Prompt suggestion chips land in audit (k); keep Suggest engine warm only.
-            Suggestions.Clear();
-            if (!multi)
-            {
-                foreach (var suggestion in suggestions)
-                {
-                    if (AssignedTags.Concat(ImpliedAssignedTags)
-                        .Any(t => t.TagName.Equals(suggestion.Token, StringComparison.OrdinalIgnoreCase)))
-                    {
-                        continue;
-                    }
-
-                    Suggestions.Add(suggestion);
-                }
-            }
+            var appliedTagToAssets = union.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.AssetIds,
+                StringComparer.Ordinal);
+            ApplyPromptSuggestions(suggestResult, appliedTagToAssets, total, multi);
+            // Green outline lasts one preview paint after Accept from prompt.
+            _promptJustAddedIds = [];
 
             RefreshPendingChrome();
         });
@@ -299,7 +304,7 @@ public partial class LibraryViewModel
         ImpliedAssignedTags.Clear();
         HasImpliedAssignedTags = false;
         ImpliedSectionTitle = TagAddInput.ImpliedSectionTitle(false);
-        Suggestions.Clear();
+        ClearPromptSuggestionsUi();
         _previewTargets = [];
         AssignedTagsSummary = "";
         ShowAssignedTagsSummary = true;

@@ -385,6 +385,10 @@ public partial class AssignedTagItem : ObservableObject
     /// <summary>T8: alias names for tooltip ("also: scenery, vista").</summary>
     public IReadOnlyList<string> AliasNames { get; set; } = [];
 
+    /// <summary>pt-01b green outline after Accept from prompt (fades on next preview).</summary>
+    [ObservableProperty]
+    public partial bool IsRecentlyCreated { get; set; }
+
     /// <summary>Dot color: group inherit, else slate for ungrouped.</summary>
     public string DotColor => Helpers.TagAddInput.DotColor(EffectiveColor, isNew: false);
 

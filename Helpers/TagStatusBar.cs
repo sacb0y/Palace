@@ -58,6 +58,31 @@ public static class TagStatusBar
             $"Created {createdCount} tag{(createdCount == 1 ? "" : "s")} in {group}: {names}");
     }
 
+    /// <summary>pt-01b: Accept all known prompt chips on one file.</summary>
+    public static string AddedFromPrompt(int tagCount) =>
+        WithCheck(
+            tagCount == 1
+                ? "Added 1 tag from prompt"
+                : $"Added {tagCount} tags from prompt");
+
+    /// <summary>pt-02: one chip (or Accept all) applied only to matching files.</summary>
+    public static string AddedFromPrompts(string? tagName, int fileCount, int tagCount = 1)
+    {
+        if (tagCount > 1)
+        {
+            return WithCheck(
+                $"Added {tagCount} tags from prompts");
+        }
+
+        var name = string.IsNullOrWhiteSpace(tagName) ? "tag" : tagName.Trim();
+        if (fileCount <= 1)
+        {
+            return WithCheck($"Added {name} from prompt");
+        }
+
+        return WithCheck($"Added {name} to {fileCount} files from prompts");
+    }
+
     private static string FormatNames(IReadOnlyList<string> tagNames)
     {
         if (tagNames is null || tagNames.Count == 0)

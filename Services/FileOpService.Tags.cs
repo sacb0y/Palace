@@ -35,6 +35,16 @@ public sealed partial class FileOpService
         IReadOnlyList<(string TagId, string TagName)>? createdTags = null) =>
         GatedAsync(projectId, () => AssignTagsCoreAsync(assetIds, tags, projectId, createdTags));
 
+    /// <summary>
+    /// Sparse From-prompt assign: each row is one (asset, tag). One
+    /// <see cref="FileOpKind.TagAssign"/> Undo batch.
+    /// </summary>
+    public Task<FileOpResult> AssignTagRowsAsync(
+        IReadOnlyList<(string AssetId, string TagId, string TagName, TagSource Source)> rows,
+        string projectId,
+        IReadOnlyList<(string TagId, string TagName)>? createdTags = null) =>
+        GatedAsync(projectId, () => AssignTagRowsCoreAsync(rows, projectId, createdTags));
+
     /// <summary>Remove <paramref name="tagId"/> from each asset; journals <see cref="FileOpKind.TagRemove"/>.</summary>
     public Task<FileOpResult> RemoveTagAsync(
         IReadOnlyList<(string AssetId, TagSource Source)> rows,
@@ -137,6 +147,68 @@ public sealed partial class FileOpService
         var batch = await _catalog.ApplyBulkAssignJournaledAsync(
             projectId,
             ids,
+            unique.Values.ToList(),
+            created).ConfigureAwait(false);
+        return ToFileOpResult(batch);
+    }
+
+    private async Task<FileOpResult> AssignTagRowsCoreAsync(
+        IReadOnlyList<(string AssetId, string TagId, string TagName, TagSource Source)> rows,
+        string projectId,
+        IReadOnlyList<(string TagId, string TagName)>? createdTags = null)
+    {
+        if (rows is null || rows.Count == 0)
+        {
+            return FileOpResult.Fail("Select items first.");
+        }
+
+        var resolved = new List<(string AssetId, string TagId, string TagName, TagSource Source)>();
+        foreach (var (assetId, tagId, _, source) in rows)
+        {
+            if (string.IsNullOrEmpty(assetId) || string.IsNullOrEmpty(tagId) || source == TagSource.Implied)
+            {
+                continue;
+            }
+
+            var ideal = await _catalog.GetIdealTagAsync(tagId).ConfigureAwait(false);
+            if (ideal is null)
+            {
+                continue;
+            }
+
+            resolved.Add((assetId, ideal.Id, ideal.Name, source));
+        }
+
+        // Deduplicate (asset, ideal) — last source wins.
+        var unique = new Dictionary<string, (string AssetId, string TagId, string TagName, TagSource Source)>(
+            StringComparer.Ordinal);
+        foreach (var row in resolved)
+        {
+            unique[row.AssetId + "\0" + row.TagId] = row;
+        }
+
+        if (unique.Count == 0)
+        {
+            return FileOpResult.Fail("No tags to assign.");
+        }
+
+        List<(string TagId, string TagName)>? created = null;
+        if (createdTags is { Count: > 0 })
+        {
+            var kept = unique.Values.Select(r => r.TagId).ToHashSet(StringComparer.Ordinal);
+            created = createdTags
+                .Where(c => !string.IsNullOrEmpty(c.TagId) && kept.Contains(c.TagId))
+                .GroupBy(c => c.TagId, StringComparer.Ordinal)
+                .Select(g => g.First())
+                .ToList();
+            if (created.Count == 0)
+            {
+                created = null;
+            }
+        }
+
+        var batch = await _catalog.ApplyBulkAssignRowsJournaledAsync(
+            projectId,
             unique.Values.ToList(),
             created).ConfigureAwait(false);
         return ToFileOpResult(batch);

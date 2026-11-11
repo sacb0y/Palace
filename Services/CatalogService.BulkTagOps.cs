@@ -57,6 +57,27 @@ public sealed partial class CatalogService
         string projectId,
         IReadOnlyList<string> assetIds,
         IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,
+        IReadOnlyList<(string TagId, string TagName)>? createdTags = null)
+    {
+        var rows = new List<(string AssetId, string TagId, string TagName, TagSource Source)>();
+        foreach (var (tagId, tagName, source) in tags ?? [])
+        {
+            foreach (var assetId in assetIds ?? [])
+            {
+                rows.Add((assetId, tagId, tagName, source));
+            }
+        }
+
+        return ApplyBulkAssignRowsJournaledAsync(projectId, rows, createdTags);
+    }
+
+    /// <summary>
+    /// Sparse assign: each row is one (asset, tag) pair. One
+    /// <see cref="FileOpKind.TagAssign"/> journal batch (From-prompt Accept all / multi).
+    /// </summary>
+    public Task<BulkTagBatchResult> ApplyBulkAssignRowsJournaledAsync(
+        string projectId,
+        IReadOnlyList<(string AssetId, string TagId, string TagName, TagSource Source)> rows,
         IReadOnlyList<(string TagId, string TagName)>? createdTags = null) =>
         _db.WriteAsync(conn =>
         {
@@ -84,38 +105,47 @@ public sealed partial class CatalogService
             var items = new List<FileOpItem>();
             var appliedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var mutations = 0;
+            var distinctTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                foreach (var (tagId, tagName, source) in tags)
+                foreach (var (assetId, tagId, tagName, source) in rows ?? [])
                 {
-                    foreach (var assetId in assetIds)
+                    if (string.IsNullOrEmpty(assetId) || string.IsNullOrEmpty(tagId))
                     {
-                        var before = LoadAssignedRefs(conn, assetId, tx);
-                        UpsertAssetTag(conn, assetId, tagId, source, tx);
-                        mutations++;
-                        ThrowIfMutationFault(probe, mutations);
-                        RefreshFts(conn, assetId, tx);
-
-                        var after = LoadAssignedRefs(conn, assetId, tx);
-                        var change = TagAssignUndo.PlanAssign(before, after, tagId);
-                        if (!change.Journal)
-                        {
-                            continue;
-                        }
-
-                        appliedNames.Add(tagName);
-                        items.Add(new FileOpItem
-                        {
-                            Step = FileOpStep.AssignTag,
-                            AssetId = assetId,
-                            OldPath = tagId,
-                            NewPath = tagName,
-                            // KeepAssigned: prior applied source for Undo restore.
-                            // TouchAssigned: applied source (unused on Undo delete).
-                            OldSourceId = change.PriorAssignedSource?.ToString() ?? source.ToString(),
-                            NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
-                        });
+                        continue;
                     }
+
+                    if (source == TagSource.Implied)
+                    {
+                        continue;
+                    }
+
+                    distinctTags.Add(tagName);
+                    var before = LoadAssignedRefs(conn, assetId, tx);
+                    UpsertAssetTag(conn, assetId, tagId, source, tx);
+                    mutations++;
+                    ThrowIfMutationFault(probe, mutations);
+                    RefreshFts(conn, assetId, tx);
+
+                    var after = LoadAssignedRefs(conn, assetId, tx);
+                    var change = TagAssignUndo.PlanAssign(before, after, tagId);
+                    if (!change.Journal)
+                    {
+                        continue;
+                    }
+
+                    appliedNames.Add(tagName);
+                    items.Add(new FileOpItem
+                    {
+                        Step = FileOpStep.AssignTag,
+                        AssetId = assetId,
+                        OldPath = tagId,
+                        NewPath = tagName,
+                        // KeepAssigned: prior applied source for Undo restore.
+                        // TouchAssigned: applied source (unused on Undo delete).
+                        OldSourceId = change.PriorAssignedSource?.ToString() ?? source.ToString(),
+                        NewSourceId = TagAssignUndo.Encode(change.ImpliedIds, change.TouchAssignedTag)
+                    });
                 }
 
                 // CreateTag first (lower Seq) so Undo (descending Seq) strips AssignTag, then Tag row.
@@ -126,8 +156,8 @@ public sealed partial class CatalogService
                 if (journalItems.Count == 0)
                 {
                     tx.Commit();
-                    var already = tags.Count == 1
-                        ? $"{tags[0].TagName} was already on the selection."
+                    var already = distinctTags.Count == 1
+                        ? $"{distinctTags.First()} was already on the selection."
                         : "Those tags were already on the selection.";
                     return new BulkTagBatchResult { Ok = true, Message = already, Summary = already };
                 }

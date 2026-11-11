@@ -709,6 +709,7 @@ public partial class LibraryViewModel : ObservableObject
             LoadRowHeight();
             LoadMosaicSort();
             LoadRecentTags();
+            LoadDismissedPromptTokens();
             LoadMoveRecents();
             LoadFolderSort();
             await RefreshQuietAsync();
