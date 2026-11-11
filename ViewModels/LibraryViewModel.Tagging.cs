@@ -491,8 +491,12 @@ public partial class LibraryViewModel
     private void RebuildRemovableTags(int selectionTotal)
     {
         RemovableTags.Clear();
-        foreach (var tag in AssignedTags.Where(t => t.ShowRemove)
-                     .OrderBy(t => t.TagName, StringComparer.OrdinalIgnoreCase))
+        // t2-04b: Sort: most used (then A–Z) — not alphabetical-only.
+        var ordered = TagRemoveFlyout.OrderMostUsed(
+            AssignedTags.Where(t => t.ShowRemove),
+            t => t.AppliedCount > 0 ? t.AppliedCount : selectionTotal,
+            t => t.TagName);
+        foreach (var tag in ordered)
         {
             RemovableTags.Add(new RemovableTagPick
             {

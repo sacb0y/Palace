@@ -3982,7 +3982,7 @@ public sealed partial class LibraryPage : Page
         return null;
     }
 
-    /// <summary>T2 Remove tags… dialog: tick tags, see counts, one Undo batch.</summary>
+    /// <summary>T2-04b Remove tags… anchored flyout: filter, select all, most-used, usage bars.</summary>
     private async Task<IReadOnlyList<string>?> AskRemoveTagsAsync()
     {
         var picks = ViewModel.RemovableTags;
@@ -3991,81 +3991,233 @@ public sealed partial class LibraryPage : Page
             return null;
         }
 
-        var fileCount = Math.Max(ViewModel.SelectionCount, picks.Max(p => p.SelectionTotal));
-        var list = new ListView
+        foreach (var pick in picks)
         {
-            SelectionMode = ListViewSelectionMode.None,
-            MaxHeight = 320,
-            ItemsSource = picks
-        };
-        AutomationProperties.SetAutomationId(list, "LstRemoveTags");
-        list.ItemTemplate = BuildRemovableTagTemplate();
+            pick.IsChecked = false;
+        }
 
-        var summary = new TextBlock
+        var fileCount = Math.Max(ViewModel.SelectionCount, picks.Max(p => p.SelectionTotal));
+        var tcs = new TaskCompletionSource<IReadOnlyList<string>?>();
+        var visible = new System.Collections.ObjectModel.ObservableCollection<RemovableTagPick>(picks);
+
+        var title = new TextBlock
         {
-            Margin = new Thickness(0, 8, 0, 0),
-            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
-            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
-            Text = TagRemoveConfirm.AssignmentSummary(picks.Sum(p => p.AppliedCount))
+            Text = TagRemoveConfirm.DialogTitle(fileCount),
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            FontSize = 16,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(16, 0, 16, 0)
         };
-        AutomationProperties.SetAutomationId(summary, "TxtRemoveTagsSummary");
+        AutomationProperties.SetAutomationId(title, "TxtRemoveTagsTitle");
 
         var hint = new TextBlock
         {
             Text = TagRemoveConfirm.DialogHint,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 8),
-            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style
-        };
-        var implied = new TextBlock
-        {
-            Text = TagRemoveConfirm.DialogImpliedNote,
-            TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 4, 0, 0),
+            Margin = new Thickness(16, 4, 16, 10),
             Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
             Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush
         };
 
-        var root = new StackPanel { Spacing = 4 };
-        root.Children.Add(hint);
-        root.Children.Add(list);
-        root.Children.Add(summary);
-        root.Children.Add(implied);
-
-        var dialog = new ContentDialog
+        var filter = new TextBox
         {
-            XamlRoot = XamlRoot,
-            Title = TagRemoveConfirm.DialogTitle(fileCount),
-            Content = root,
-            PrimaryButtonText = TagRemoveConfirm.RemoveButtonLabel(0),
-            CloseButtonText = TagRemoveConfirm.Cancel,
-            DefaultButton = ContentDialogButton.Close,
-            IsPrimaryButtonEnabled = false
+            PlaceholderText = TagRemoveFlyout.FilterPlaceholder,
+            Margin = new Thickness(16, 0, 16, 8)
         };
-        dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
-        AutomationProperties.SetAutomationId(dialog, "DlgRemoveTags");
+        AutomationProperties.SetAutomationId(filter, "TxtRemoveTagsFilter");
+        AutomationProperties.SetName(filter, TagRemoveFlyout.FilterPlaceholder);
 
-        void RefreshPrimary()
+        var selectAll = new CheckBox
         {
-            var checkedCount = picks.Count(p => p.IsChecked);
-            dialog.IsPrimaryButtonEnabled = checkedCount > 0;
-            dialog.PrimaryButtonText = TagRemoveConfirm.RemoveButtonLabel(checkedCount);
-            var assignments = picks.Where(p => p.IsChecked).Sum(p => p.AppliedCount);
-            summary.Text = TagRemoveConfirm.AssignmentSummary(assignments);
+            Content = TagRemoveFlyout.SelectAllLabel,
+            MinWidth = 0,
+            IsThreeState = true,
+            IsChecked = false,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        AutomationProperties.SetAutomationId(selectAll, "ChkRemoveTagsSelectAll");
+
+        var sortLabel = new TextBlock
+        {
+            Text = TagRemoveFlyout.SortMostUsedLabel,
+            VerticalAlignment = VerticalAlignment.Center,
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush
+        };
+        AutomationProperties.SetAutomationId(sortLabel, "TxtRemoveTagsSort");
+
+        var selectRow = new Grid { Margin = new Thickness(16, 0, 16, 6), ColumnSpacing = 10 };
+        selectRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        selectRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(selectAll, 0);
+        Grid.SetColumn(sortLabel, 1);
+        sortLabel.HorizontalAlignment = HorizontalAlignment.Right;
+        selectRow.Children.Add(selectAll);
+        selectRow.Children.Add(sortLabel);
+
+        var list = new ListView
+        {
+            SelectionMode = ListViewSelectionMode.None,
+            MaxHeight = 288,
+            ItemsSource = visible,
+            Margin = new Thickness(4, 0, 4, 0)
+        };
+        AutomationProperties.SetAutomationId(list, "LstRemoveTags");
+        list.ItemTemplate = BuildRemovableTagTemplate();
+        list.ContainerContentChanging += RemovableTag_ContainerContentChanging;
+
+        var impliedNames = ViewModel.ImpliedAssignedTags.Select(t => t.TagName).ToList();
+        var impliedNote = new Border
+        {
+            Margin = new Thickness(16, 8, 16, 0),
+            Padding = new Thickness(10, 8, 10, 8),
+            CornerRadius = new CornerRadius(4),
+            Background = Application.Current.Resources["ControlFillColorSecondaryBrush"] as Brush,
+            Visibility = impliedNames.Count > 0 ? Visibility.Visible : Visibility.Collapsed
+        };
+        var impliedText = new TextBlock
+        {
+            Text = TagRemoveFlyout.ImpliedNote(impliedNames),
+            TextWrapping = TextWrapping.Wrap,
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush
+        };
+        AutomationProperties.SetAutomationId(impliedText, "TxtRemoveTagsImplied");
+        impliedNote.Child = impliedText;
+
+        var summary = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Style = Application.Current.Resources["CaptionTextBlockStyle"] as Style,
+            Foreground = Application.Current.Resources["TextFillColorSecondaryBrush"] as Brush,
+            Text = TagRemoveConfirm.AssignmentSummary(0)
+        };
+        AutomationProperties.SetAutomationId(summary, "TxtRemoveTagsSummary");
+
+        var removeBtn = new Button
+        {
+            Content = TagRemoveConfirm.RemoveButtonLabel(0),
+            Style = Application.Current.Resources["AccentButtonStyle"] as Style,
+            IsEnabled = false,
+            MinWidth = 120
+        };
+        AutomationProperties.SetAutomationId(removeBtn, "BtnRemoveTagsConfirm");
+        var cancelBtn = new Button
+        {
+            Content = TagRemoveConfirm.Cancel,
+            MinWidth = 88
+        };
+        AutomationProperties.SetAutomationId(cancelBtn, "BtnRemoveTagsCancel");
+
+        var footer = new Grid { Margin = new Thickness(16, 12, 16, 0), ColumnSpacing = 8 };
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        footer.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(summary, 0);
+        Grid.SetColumn(removeBtn, 1);
+        Grid.SetColumn(cancelBtn, 2);
+        footer.Children.Add(summary);
+        footer.Children.Add(removeBtn);
+        footer.Children.Add(cancelBtn);
+
+        var root = new StackPanel { Spacing = 0, Width = 396, Padding = new Thickness(0, 14, 0, 12) };
+        root.Children.Add(title);
+        root.Children.Add(hint);
+        root.Children.Add(filter);
+        root.Children.Add(selectRow);
+        root.Children.Add(list);
+        root.Children.Add(impliedNote);
+        root.Children.Add(footer);
+
+        var flyout = new Flyout
+        {
+            Content = root,
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom
+        };
+        AutomationProperties.SetAutomationId(flyout, "FlyRemoveTags");
+
+        var completed = false;
+        void Complete(IReadOnlyList<string>? result)
+        {
+            if (completed)
+            {
+                return;
+            }
+
+            completed = true;
+            flyout.Hide();
+            tcs.TrySetResult(result);
         }
+
+        void ApplyFilter()
+        {
+            var filtered = TagRemoveFlyout.FilterByName(picks, filter.Text, p => p.Name);
+            visible.Clear();
+            foreach (var row in filtered)
+            {
+                visible.Add(row);
+            }
+
+            RefreshChrome();
+        }
+
+        void RefreshChrome()
+        {
+            var checkedCount = TagRemoveFlyout.CheckedTagCount(picks.Select(p => p.IsChecked));
+            removeBtn.IsEnabled = checkedCount > 0;
+            removeBtn.Content = TagRemoveConfirm.RemoveButtonLabel(checkedCount);
+            summary.Text = TagRemoveConfirm.AssignmentSummary(
+                TagRemoveFlyout.CheckedAssignmentCount(picks.Select(p => (p.IsChecked, p.AppliedCount))));
+            selectAll.IsChecked = TagRemoveFlyout.SelectAllState(visible.Select(p => p.IsChecked));
+        }
+
+        filter.TextChanged += (_, _) => ApplyFilter();
+        selectAll.Click += (_, _) =>
+        {
+            var target = TagRemoveFlyout.SelectAllState(visible.Select(p => p.IsChecked)) != true;
+            foreach (var row in visible)
+            {
+                row.IsChecked = target;
+            }
+
+            RefreshChrome();
+        };
 
         foreach (var pick in picks)
         {
-            pick.PropertyChanged += (_, _) => RefreshPrimary();
+            pick.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is nameof(RemovableTagPick.IsChecked) or null)
+                {
+                    RefreshChrome();
+                }
+            };
         }
 
-        var result = await dialog.ShowAsync();
-        if (result != ContentDialogResult.Primary)
+        removeBtn.Click += (_, _) =>
+            Complete(picks.Where(p => p.IsChecked).Select(p => p.TagId).ToList());
+        cancelBtn.Click += (_, _) => Complete(null);
+        flyout.Closed += (_, _) => tcs.TrySetResult(null);
+
+        RefreshChrome();
+        flyout.ShowAt(BtnRemoveTags);
+        return await tcs.Task;
+    }
+
+    private static void RemovableTag_ContainerContentChanging(
+        ListViewBase sender,
+        ContainerContentChangingEventArgs args)
+    {
+        if (args.InRecycleQueue || args.Item is not RemovableTagPick pick)
         {
-            return null;
+            return;
         }
 
-        return picks.Where(p => p.IsChecked).Select(p => p.TagId).ToList();
+        // Tag-colour dot (not accent) — DataTemplate Binding cannot convert hex → Brush.
+        if (FindDescendantByAutomationId(args.ItemContainer, "BrdRemoveTagDot") is Border dot)
+        {
+            dot.Background = TagColor.ChipFill(pick.DotColor);
+        }
     }
 
     private static DataTemplate BuildRemovableTagTemplate() =>
@@ -4073,7 +4225,7 @@ public sealed partial class LibraryPage : Page
             """
             <DataTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                           xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-              <Grid ColumnSpacing="10" Padding="0,4">
+              <Grid ColumnSpacing="10" Padding="12,0" Height="36">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="Auto"/>
                   <ColumnDefinition Width="Auto"/>
@@ -4084,14 +4236,26 @@ public sealed partial class LibraryPage : Page
                           IsChecked="{Binding IsChecked, Mode=TwoWay}"
                           MinWidth="0"
                           VerticalAlignment="Center"/>
-                <Border Grid.Column="1" Width="10" Height="10" CornerRadius="5"
+                <Border x:Name="BrdRemoveTagDot"
+                        Grid.Column="1"
+                        Width="8" Height="8" CornerRadius="4"
                         VerticalAlignment="Center"
-                        Background="{ThemeResource AccentFillColorDefaultBrush}"/>
+                        AutomationProperties.AutomationId="BrdRemoveTagDot"/>
                 <TextBlock Grid.Column="2" Text="{Binding Name}" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis"/>
-                <TextBlock Grid.Column="3" Text="{Binding CountLabel}" VerticalAlignment="Center"
-                           Opacity="0.7"
-                           Style="{StaticResource CaptionTextBlockStyle}"/>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8"
+                            VerticalAlignment="Center">
+                  <Border Width="60" Height="4" CornerRadius="2" VerticalAlignment="Center"
+                          Background="{ThemeResource ControlAltFillColorTertiaryBrush}">
+                    <Border HorizontalAlignment="Left" Height="4" CornerRadius="2"
+                            Width="{Binding UsageBarWidth}"
+                            Background="{ThemeResource TextFillColorSecondaryBrush}"/>
+                  </Border>
+                  <TextBlock Text="{Binding CountLabel}" VerticalAlignment="Center"
+                             Width="46" TextAlignment="Right"
+                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                             Style="{StaticResource CaptionTextBlockStyle}"/>
+                </StackPanel>
               </Grid>
             </DataTemplate>
             """);

@@ -574,16 +574,22 @@ public partial class RemovableTagPick : ObservableObject
     public double Prevalence =>
         SelectionTotal <= 0 ? 0 : Math.Clamp((double)AppliedCount / SelectionTotal, 0, 1);
 
+    /// <summary>t2-04b usage bar fill width (DIP) for the Remove tags flyout.</summary>
+    public double UsageBarWidth =>
+        Helpers.TagRemoveFlyout.UsageBarFillWidth(Prevalence);
+
     partial void OnAppliedCountChanged(int value)
     {
         OnPropertyChanged(nameof(CountLabel));
         OnPropertyChanged(nameof(Prevalence));
+        OnPropertyChanged(nameof(UsageBarWidth));
     }
 
     partial void OnSelectionTotalChanged(int value)
     {
         OnPropertyChanged(nameof(CountLabel));
         OnPropertyChanged(nameof(Prevalence));
+        OnPropertyChanged(nameof(UsageBarWidth));
     }
 
     partial void OnEffectiveColorChanged(string? value) => OnPropertyChanged(nameof(DotColor));
