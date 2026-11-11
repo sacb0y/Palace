@@ -245,7 +245,6 @@ public partial class LibraryViewModel
                 ? "No tags assigned"
                 : string.Join(", ", AssignedTags.Concat(ImpliedAssignedTags).Select(t => t.TagName));
             ShowAssignedTagsSummary = AssignedTags.Count == 0 && ImpliedAssignedTags.Count == 0;
-            ShowRemoveTags = AssignedTags.Count > 0;
 
             // Prompt suggestion chips land in audit (k); keep Suggest engine warm only.
             Suggestions.Clear();
@@ -309,6 +308,9 @@ public partial class LibraryViewModel
         ShowSinglePreviewFileName = false;
         MultiSelectDetail = "";
         ShowRemoveTags = false;
+        ShowRemoveTagsLink = false;
+        ShowTagsMoreMenu = false;
+        AssignedTagsHeaderSuffix = "";
         PreviewRatingMixed = false;
         RatingCaption = SelectCommandBar.RatingCaption(false);
         CanEditRating = false;

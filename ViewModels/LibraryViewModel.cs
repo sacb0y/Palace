@@ -471,13 +471,21 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial string AssignedTagsHeader { get; set; } = "Tags";
 
-    /// <summary>Secondary "on N selected" (empty for single).</summary>
+    /// <summary>Secondary: single "N applied · M implied"; multi "on N selected".</summary>
     [ObservableProperty]
     public partial string AssignedTagsHeaderSuffix { get; set; } = "";
 
-    /// <summary>Hide Remove tags… when the selection has nothing to remove.</summary>
+    /// <summary>t8-03: ⋯ menu on the single-image Tags header.</summary>
+    [ObservableProperty]
+    public partial bool ShowTagsMoreMenu { get; set; }
+
+    /// <summary>True when at least one applied tag can be removed (enables Remove tags…).</summary>
     [ObservableProperty]
     public partial bool ShowRemoveTags { get; set; }
+
+    /// <summary>Multi-select header link; single-image uses the ⋯ menu instead.</summary>
+    [ObservableProperty]
+    public partial bool ShowRemoveTagsLink { get; set; }
 
     /// <summary>T8 inspector: show the Implied by tag rules subsection.</summary>
     [ObservableProperty]

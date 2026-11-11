@@ -4225,7 +4225,11 @@ public sealed partial class LibraryPage : Page
         flyout.Closed += (_, _) => tcs.TrySetResult(null);
 
         RefreshChrome();
-        flyout.ShowAt(BtnRemoveTags);
+        // Multi keeps BtnRemoveTags; single-image t8-03 anchors on the ⋯ button.
+        FrameworkElement anchor = ViewModel.ShowRemoveTagsLink
+            ? BtnRemoveTags
+            : BtnTagsMore;
+        flyout.ShowAt(anchor);
         return await tcs.Task;
     }
 

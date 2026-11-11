@@ -466,7 +466,13 @@ public partial class LibraryViewModel
     {
         var n = TagTargets().Count;
         AssignedTagsHeader = "Tags";
-        AssignedTagsHeaderSuffix = TagAddInput.AssignedTagsHeaderSuffix(n);
+        AssignedTagsHeaderSuffix = n == 1
+            ? TagAddInput.SingleImageHeaderSuffix(AssignedTags.Count, ImpliedAssignedTags.Count)
+            : TagAddInput.AssignedTagsHeaderSuffix(n);
+        // t8-03: single-image uses ⋯ (Remove tags… inside); multi keeps the header link.
+        ShowTagsMoreMenu = n == 1;
+        ShowRemoveTags = AssignedTags.Count > 0;
+        ShowRemoveTagsLink = n > 1 && ShowRemoveTags;
     }
 
     private void RefreshRemoveFromAllBar()

@@ -2386,23 +2386,52 @@
                             Style="{StaticResource BodyStrongTextBlockStyle}"
                             Text="{x:Bind ViewModel.AssignedTagsHeader, Mode=OneWay}" />
                         <TextBlock
+                            x:Name="TxtAssignedTagsHeaderSuffix"
                             VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="TxtAssignedTagsHeaderSuffix"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="{x:Bind ViewModel.AssignedTagsHeaderSuffix, Mode=OneWay}"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}" />
+                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.AssignedTagsHeaderSuffix), Mode=OneWay}" />
                     </StackPanel>
-                    <HyperlinkButton
-                        x:Name="BtnRemoveTags"
+                    <!-- Multi: Remove tags… link. Single (t8-03): ⋯ with Remove tags… inside. -->
+                    <StackPanel
                         Grid.Column="1"
-                        Padding="4,0"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="BtnRemoveTags"
-                        AutomationProperties.Name="Remove tags"
-                        Command="{x:Bind ViewModel.OpenRemoveTagsDialogCommand}"
-                        Content="Remove tags…"
-                        FontSize="12"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRemoveTags), Mode=OneWay}" />
+                        Orientation="Horizontal"
+                        Spacing="4">
+                        <HyperlinkButton
+                            x:Name="BtnRemoveTags"
+                            Padding="4,0"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="BtnRemoveTags"
+                            AutomationProperties.Name="Remove tags"
+                            Command="{x:Bind ViewModel.OpenRemoveTagsDialogCommand}"
+                            Content="Remove tags…"
+                            FontSize="12"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRemoveTagsLink), Mode=OneWay}" />
+                        <DropDownButton
+                            x:Name="BtnTagsMore"
+                            MinWidth="28"
+                            MinHeight="28"
+                            Padding="4"
+                            VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="BtnTagsMore"
+                            AutomationProperties.Name="Tags more"
+                            ToolTipService.ToolTip="More"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowTagsMoreMenu), Mode=OneWay}">
+                            <ic:FluentIcon Icon="MoreHorizontal" IconSize="Size16" IconVariant="Regular" />
+                            <DropDownButton.Flyout>
+                                <MenuFlyout Placement="Bottom">
+                                    <MenuFlyoutItem
+                                        x:Name="MnuRemoveTags"
+                                        AutomationProperties.AutomationId="MnuRemoveTags"
+                                        Command="{x:Bind ViewModel.OpenRemoveTagsDialogCommand}"
+                                        IsEnabled="{x:Bind ViewModel.ShowRemoveTags, Mode=OneWay}"
+                                        Text="Remove tags…" />
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                    </StackPanel>
                 </Grid>
                 <TextBlock
                     x:Name="TxtAssignedTags"
