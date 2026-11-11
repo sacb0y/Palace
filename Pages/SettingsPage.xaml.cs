@@ -66,6 +66,7 @@ public sealed partial class SettingsPage : Page
         {
             ViewModel.RequestPickCloudFolder = PickCloudFolderAsync;
             ViewModel.RequestConfirm = AskConfirmAsync;
+            ViewModel.RequestOpenMesh3dSpike = Mesh3dSpikeWindow.Show;
             await ErrorReporter.RunAsync("Load settings", null, ViewModel.LoadAsync);
             SyncTintPicker();
             ViewModel.RefreshBackgroundPresetSwatches();

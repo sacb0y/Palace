@@ -50,9 +50,23 @@ public partial class SettingsViewModel : ObservableObject
 
     public string InfancyNoteText { get; } = AppVersion.InfancyNote;
 
+    /// <summary>
+    /// Dev-only Diligent 3D spike. Visible in About only when
+    /// <c>PALACE_MESH3D_SPIKE=1</c> — never a product Settings toggle.
+    /// </summary>
+    public bool ShowMesh3dSpike => Mesh3dSpike.ShowsDevSurface;
+
+    public string Mesh3dSpikeCaption =>
+        Mesh3dNative.IsAvailable
+            ? $"Diligent D3D12 host ready ({Mesh3dNative.Version}). Opens a SwapChainPanel spike window."
+            : "Requires palace_mesh3d.dll (tools/mesh3d/build.ps1 on x64). Opens the SwapChainPanel spike window when the flag is on.";
+
     public IReadOnlyList<ShortcutHint> ShortcutHints { get; } = ShortcutCheatsheet.Entries;
 
     public Func<ICloudLibrary, Task<CloudEntry?>>? RequestPickCloudFolder { get; set; }
+
+    /// <summary>Wired by SettingsPage to <see cref="Mesh3dSpikeWindow.Show"/>.</summary>
+    public Action? RequestOpenMesh3dSpike { get; set; }
 
     /// <summary>
     /// Confirm dialog: title, body, primary label. Safe option is Cancel (default).
@@ -1831,6 +1845,25 @@ public partial class SettingsViewModel : ObservableObject
         data.SetText(AppVersionText);
         Clipboard.SetContent(data);
         StatusText = "Version copied.";
+    }
+
+    [RelayCommand]
+    private void OpenMesh3dSpike()
+    {
+        if (!Mesh3dSpike.ShowsDevSurface)
+        {
+            StatusText = "3D spike flag off (set PALACE_MESH3D_SPIKE=1).";
+            return;
+        }
+
+        if (RequestOpenMesh3dSpike is null)
+        {
+            StatusText = "3D spike host not wired.";
+            return;
+        }
+
+        RequestOpenMesh3dSpike.Invoke();
+        StatusText = "Opened 3D spike window.";
     }
 
     [RelayCommand]
