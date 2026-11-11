@@ -119,6 +119,34 @@ public sealed class TagAlias
     public string IdealTagId { get; set; } = "";
 }
 
+/// <summary>One row of the Tags ▸ Aliases list (al-01): alias › the tag it points to.</summary>
+public sealed class TagAliasRow
+{
+    public string AliasTagId { get; init; } = "";
+    public string AliasName { get; init; } = "";
+    public string IdealTagId { get; init; } = "";
+    public string IdealName { get; init; } = "";
+    public string? IdealColor { get; init; }
+    public int FileCount { get; init; }
+
+    private string Key => string.Concat(AliasName.Where(char.IsLetterOrDigit));
+
+    public string AutomationId => "BtnAliasRow_" + Key;
+
+    /// <summary>List-row delete button.</summary>
+    public string RemoveAutomationId => "BtnRemoveAlias_" + Key;
+
+    /// <summary>Also known as chip in the details column.</summary>
+    public string ChipAutomationId => "BtnAliasChip_" + Key;
+
+    public string ChipRemoveAutomationId => "BtnRemoveAliasChip_" + Key;
+
+    public string FileCountText => FileCount == 0 ? "" : FileCount.ToString();
+
+    /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
+    public override string ToString() => $"{AliasName} › {IdealName}";
+}
+
 /// <summary>Result of <c>AddAliasAsync</c>: edge + AssetTag rows rewritten alias→ideal (for undo journal).</summary>
 public sealed class AliasAddResult
 {

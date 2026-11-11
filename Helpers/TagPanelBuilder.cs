@@ -19,6 +19,8 @@ public sealed class TagPanelGroup
     public bool IsUngrouped { get; init; }
     public TagScope? ScopeKind { get; init; }
     public string? AutomationIdOverride { get; init; }
+    /// <summary>Row count when <see cref="Chips"/> is not the list (Aliases pin).</summary>
+    public int? TotalCount { get; init; }
     public IReadOnlyList<TagPanelChip> Chips { get; init; } = [];
 }
 
@@ -201,7 +203,8 @@ public static class TagPanelBuilder
         string? query = null,
         IReadOnlyDictionary<string, string?>? colors = null,
         IReadOnlyList<string>? recentIds = null,
-        IReadOnlyList<string>? extraRootGroupIds = null)
+        IReadOnlyList<string>? extraRootGroupIds = null,
+        int aliasCount = 0)
     {
         var model = Build(
             tags,
@@ -271,7 +274,7 @@ public static class TagPanelBuilder
         }
 
         var uncategorized = model.Groups.FirstOrDefault(g => g.IsUngrouped);
-        // All / Uncategorized / Starred / Recent / GROUPS+ then user groups (t2-03b board shell).
+        // All / Uncategorized / Starred / Recent / Aliases / GROUPS+ then user groups (t2-03b, al-01).
         var sections = new List<TagPanelGroup>
         {
             new()
@@ -302,6 +305,14 @@ public static class TagPanelBuilder
                 ScopeKind = TagScope.Recent,
                 AutomationIdOverride = "SelTagScopeRecent",
                 Chips = model.Recent
+            },
+            new()
+            {
+                Name = "Aliases",
+                ScopeKind = TagScope.Aliases,
+                AutomationIdOverride = "SelTagScopeAliases",
+                TotalCount = Math.Max(0, aliasCount),
+                Chips = []
             },
             new()
             {
@@ -353,6 +364,7 @@ public static class TagPanelBuilder
             TagScope.Ungrouped => "ungrouped",
             TagScope.Starred => "starred",
             TagScope.Recent => "recent",
+            TagScope.Aliases => "aliases",
             TagScope.GroupsHeader => "groups-header",
             _ => group.GroupId ?? "ungrouped"
         };

@@ -425,8 +425,9 @@ public sealed partial class CatalogService
 
     /// <summary>
     /// Add alias→ideal (with AssetTag migrate) and journal <see cref="FileOpKind.TagAliasAdd"/>
-    /// in <b>one</b> SQLite transaction when migration rows exist. No migration → commit the
-    /// edge without a journal row (same as prior FileOp path). Journal failure rolls back.
+    /// in <b>one</b> SQLite transaction whenever the edge is new (Undo drops it and restores any
+    /// migrated rows). An edge that already existed commits without a journal row.
+    /// Journal failure rolls back.
     /// </summary>
     public Task<BulkTagBatchResult> ApplyAddAliasJournaledAsync(
         string projectId,
@@ -461,7 +462,7 @@ public sealed partial class CatalogService
                     }
                 }
 
-                if (migrated.Count == 0)
+                if (!inserted)
                 {
                     tx.Commit();
                     return new BulkTagBatchResult
@@ -472,6 +473,7 @@ public sealed partial class CatalogService
                     };
                 }
 
+                // Journal even when no AssetTag rows moved so Tags Undo can drop the edge (al-01).
                 ThrowIfBeforeJournalFault(probe);
                 var payload = SerializeAliasMigration(migrated);
                 var items = new List<FileOpItem>
@@ -484,9 +486,227 @@ public sealed partial class CatalogService
                         NewSourceId = payload
                     }
                 };
-                var summary = $"Aliased tag ({AssetNouns.Count(migrated.Count)} updated)";
+                var summary = migrated.Count == 0
+                    ? "Aliased tag"
+                    : $"Aliased tag ({AssetNouns.Count(migrated.Count)} updated)";
                 var batchId = InsertJournaledBatch(
                     conn, tx, projectId, FileOpKind.TagAliasAdd, summary, items, probe);
+                tx.Commit();
+                return new BulkTagBatchResult
+                {
+                    Ok = true,
+                    Message = summary + ".",
+                    BatchId = batchId,
+                    Summary = summary
+                };
+            }
+            catch (BulkTagFaultException)
+            {
+                return BulkTagBatchResult.Fail(BulkTagAbortedMessage);
+            }
+        });
+
+    /// <summary>
+    /// Alias manager "add" for names that are not tags yet: insert each Tag row and its alias edge in
+    /// <b>one</b> transaction and journal them as one <see cref="FileOpKind.TagAliasAdd"/> batch
+    /// (<see cref="FileOpStep.CreateTag"/> then <see cref="FileOpStep.AddAlias"/> per name), so one Undo
+    /// removes the edges and the unused tags. Names that already match a tag are skipped.
+    /// </summary>
+    public Task<BulkTagBatchResult> ApplyAddNewAliasesJournaledAsync(
+        string projectId,
+        string idealTagId,
+        IReadOnlyList<string> names) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrEmpty(idealTagId))
+            {
+                return BulkTagBatchResult.Fail("Pick a tag first.");
+            }
+
+            var probe = TakeBulkTagFault();
+            InvalidateGraphCaches();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var resolvedIdeal = ResolveIdealTagId(conn, idealTagId, tx);
+                var idealName = TagNameOf(conn, resolvedIdeal, tx);
+                var items = new List<FileOpItem>();
+                var added = new List<string>();
+                foreach (var raw in TagNameList.Split(string.Join('\n', names)))
+                {
+                    if (FindTagByName(conn, raw, tx) is not null)
+                    {
+                        continue;
+                    }
+
+                    var tag = InsertTag(conn, raw, 0, tx);
+                    if (!TryAddAlias(conn, tag.Id, resolvedIdeal, tx, out _))
+                    {
+                        return BulkTagBatchResult.Fail("That alias is not allowed.");
+                    }
+
+                    items.Add(new FileOpItem { Step = FileOpStep.CreateTag, OldPath = tag.Id, NewPath = tag.Name });
+                    items.Add(new FileOpItem
+                    {
+                        Step = FileOpStep.AddAlias,
+                        OldPath = tag.Id,
+                        NewPath = resolvedIdeal,
+                        NewSourceId = SerializeAliasMigration([])
+                    });
+                    added.Add(tag.Name);
+                }
+
+                if (added.Count == 0)
+                {
+                    return BulkTagBatchResult.Fail("Those names already match a tag.");
+                }
+
+                ThrowIfMutationFault(probe, mutations: 1);
+                ThrowIfBeforeJournalFault(probe);
+                var summary = added.Count == 1
+                    ? $"Added alias {added[0]} to {idealName}"
+                    : $"Added {added.Count} aliases to {idealName}";
+                var batchId = InsertJournaledBatch(
+                    conn, tx, projectId, FileOpKind.TagAliasAdd, summary, items, probe);
+                tx.Commit();
+                return new BulkTagBatchResult
+                {
+                    Ok = true,
+                    Message = summary + ".",
+                    BatchId = batchId,
+                    Summary = summary
+                };
+            }
+            catch (BulkTagFaultException)
+            {
+                return BulkTagBatchResult.Fail(BulkTagAbortedMessage);
+            }
+        });
+
+    /// <summary>Delete one alias edge and journal <see cref="FileOpKind.TagAliasRemove"/>; Undo re-inserts it.</summary>
+    public Task<BulkTagBatchResult> ApplyRemoveAliasJournaledAsync(string projectId, string aliasTagId) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrEmpty(aliasTagId))
+            {
+                return BulkTagBatchResult.Fail("Pick an alias first.");
+            }
+
+            var probe = TakeBulkTagFault();
+            InvalidateGraphCaches();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                if (!LoadAliasMap(conn, tx).TryGetValue(aliasTagId, out var idealId))
+                {
+                    return BulkTagBatchResult.Fail("That alias is already gone.");
+                }
+
+                var aliasName = TagNameOf(conn, aliasTagId, tx);
+                using (var del = conn.CreateCommand())
+                {
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a";
+                    del.Parameters.AddWithValue("$a", aliasTagId);
+                    del.ExecuteNonQuery();
+                }
+
+                ThrowIfMutationFault(probe, mutations: 1);
+                ThrowIfBeforeJournalFault(probe);
+                var summary = $"Removed alias {aliasName}";
+                var batchId = InsertJournaledBatch(
+                    conn,
+                    tx,
+                    projectId,
+                    FileOpKind.TagAliasRemove,
+                    summary,
+                    [new FileOpItem { Step = FileOpStep.RemoveAlias, OldPath = aliasTagId, NewPath = idealId }],
+                    probe);
+                tx.Commit();
+                return new BulkTagBatchResult
+                {
+                    Ok = true,
+                    Message = summary + ".",
+                    BatchId = batchId,
+                    Summary = summary
+                };
+            }
+            catch (BulkTagFaultException)
+            {
+                return BulkTagBatchResult.Fail(BulkTagAbortedMessage);
+            }
+        });
+
+    /// <summary>
+    /// "Move it here": point an existing alias at <paramref name="newIdealId"/> and journal
+    /// <see cref="FileOpKind.TagAliasRepoint"/> as one Undo step.
+    /// </summary>
+    public Task<BulkTagBatchResult> ApplyRepointAliasJournaledAsync(
+        string projectId,
+        string aliasTagId,
+        string newIdealId) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrEmpty(aliasTagId) || string.IsNullOrEmpty(newIdealId))
+            {
+                return BulkTagBatchResult.Fail("Pick two tags.");
+            }
+
+            var probe = TakeBulkTagFault();
+            InvalidateGraphCaches();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                if (!LoadAliasMap(conn, tx).TryGetValue(aliasTagId, out var oldIdeal))
+                {
+                    return BulkTagBatchResult.Fail("That alias is already gone.");
+                }
+
+                var resolvedNew = ResolveIdealTagId(conn, newIdealId, tx);
+                if (string.Equals(oldIdeal, resolvedNew, StringComparison.Ordinal))
+                {
+                    return BulkTagBatchResult.Fail("That alias already points there.");
+                }
+
+                using (var del = conn.CreateCommand())
+                {
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM TagAlias WHERE AliasTagId = $a";
+                    del.Parameters.AddWithValue("$a", aliasTagId);
+                    del.ExecuteNonQuery();
+                }
+
+                if (!TryAddAlias(conn, aliasTagId, resolvedNew, tx, out _))
+                {
+                    return BulkTagBatchResult.Fail("That alias is not allowed.");
+                }
+
+                var migrated = MigrateAssetTagsAliasToIdeal(conn, aliasTagId, resolvedNew, tx);
+                ThrowIfMutationFault(probe, mutations: 1);
+                foreach (var assetId in migrated.Select(m => m.AssetId).Distinct(StringComparer.Ordinal))
+                {
+                    RefreshFts(conn, assetId, tx);
+                }
+
+                ThrowIfBeforeJournalFault(probe);
+                var summary = $"Moved alias {TagNameOf(conn, aliasTagId, tx)} to {TagNameOf(conn, resolvedNew, tx)}";
+                var batchId = InsertJournaledBatch(
+                    conn,
+                    tx,
+                    projectId,
+                    FileOpKind.TagAliasRepoint,
+                    summary,
+                    [
+                        new FileOpItem
+                        {
+                            Step = FileOpStep.RepointAlias,
+                            OldPath = aliasTagId,
+                            NewPath = resolvedNew,
+                            OldSourceId = oldIdeal,
+                            NewSourceId = SerializeAliasMigration(migrated)
+                        }
+                    ],
+                    probe);
                 tx.Commit();
                 return new BulkTagBatchResult
                 {

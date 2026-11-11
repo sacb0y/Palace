@@ -74,7 +74,9 @@ public enum TagScope
     /// <summary>Tags board left-nav Recent row (t2-03b).</summary>
     Recent,
     /// <summary>Non-selectable GROUPS header with + (t2-03b).</summary>
-    GroupsHeader
+    GroupsHeader,
+    /// <summary>Tags board left-nav Aliases row (al-01): Col1 lists alias › ideal rows.</summary>
+    Aliases
 }
 
 public enum DestinationPolicy
@@ -129,6 +131,10 @@ public enum FileOpKind
     TagCreate,
     /// <summary>Add a TagAlias edge (+ AssetTag rewrite); Undo restores alias assignments.</summary>
     TagAliasAdd,
+    /// <summary>Delete a TagAlias edge; Undo re-inserts it.</summary>
+    TagAliasRemove,
+    /// <summary>"Move it here": point an alias at another ideal; Undo restores the old ideal.</summary>
+    TagAliasRepoint,
     /// <summary>
     /// Recycle rejected files (+ emptied <c>_rejected</c> folders). Undo restores from
     /// Recycle Bin / trash and reinserts catalog rows. Permanent delete is not journaled.
@@ -165,6 +171,13 @@ public enum FileOpStep
     AddMembership,
     /// <summary>OldPath=aliasId; NewPath=idealId; NewSourceId=JSON migrated AssetTag rows.</summary>
     AddAlias,
+    /// <summary>OldPath=aliasId; NewPath=idealId the edge pointed at when removed.</summary>
+    RemoveAlias,
+    /// <summary>
+    /// OldPath=aliasId; NewPath=new idealId; OldSourceId=previous idealId;
+    /// NewSourceId=JSON migrated AssetTag rows.
+    /// </summary>
+    RepointAlias,
     /// <summary>
     /// Recycled rejected file. AssetId set; OldPath=original path; NewPath=JSON
     /// <c>AssetDeleteSnapshot</c>; OldSourceId=source folder id; NewSourceId=trash token.

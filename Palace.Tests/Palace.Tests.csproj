@@ -139,6 +139,8 @@
     <Compile Include="..\Helpers\TagChipVisual.cs" Link="TagChipVisual.cs" />
     <Compile Include="..\Helpers\TagAlphaIndex.cs" Link="TagAlphaIndex.cs" />
     <Compile Include="..\Helpers\TagAliasResolve.cs" Link="TagAliasResolve.cs" />
+    <Compile Include="..\Helpers\TagAliasDraft.cs" Link="TagAliasDraft.cs" />
+    <Compile Include="..\Helpers\TagAliasList.cs" Link="TagAliasList.cs" />
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
     <Compile Include="..\Helpers\TagGroups.cs" Link="TagGroups.cs" />
     <Compile Include="..\Helpers\TagMosaicGroups.cs" Link="TagMosaicGroups.cs" />

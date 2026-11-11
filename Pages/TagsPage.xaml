@@ -136,7 +136,8 @@
                 <StackPanel
                     Grid.Column="1"
                     Orientation="Horizontal"
-                    Spacing="4">
+                    Spacing="4"
+                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
                     <Button
                         x:Name="BtnExpandAllTagBoard"
                         Padding="8,4"
@@ -171,6 +172,171 @@
                         </StackPanel>
                     </Button>
                 </StackPanel>
+                <StackPanel
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
+                    <Button
+                        x:Name="BtnNewAlias"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnNewAlias"
+                        AutomationProperties.Name="New alias"
+                        Command="{x:Bind ViewModel.FocusNewAliasCommand}"
+                        Style="{StaticResource AccentButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                            <TextBlock VerticalAlignment="Center" Text="New alias" />
+                        </StackPanel>
+                    </Button>
+                    <DropDownButton
+                        x:Name="BtnAliasSort"
+                        Padding="8,4"
+                        AutomationProperties.AutomationId="BtnAliasSort"
+                        AutomationProperties.Name="Sort aliases">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.AliasSortLabel, Mode=OneWay}" />
+                            <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
+                        </StackPanel>
+                        <DropDownButton.Flyout>
+                            <MenuFlyout>
+                                <MenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetAliasSortTagCommand}"
+                                    Text="Tag" />
+                                <MenuFlyoutItem
+                                    Command="{x:Bind ViewModel.SetAliasSortAliasCommand}"
+                                    Text="Alias" />
+                            </MenuFlyout>
+                        </DropDownButton.Flyout>
+                    </DropDownButton>
+                </StackPanel>
+            </Grid>
+            <Grid
+                Grid.Row="1"
+                RowSpacing="8"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Other words that mean the same tag. Typing, pasting or importing an alias applies the tag it points to."
+                    TextWrapping="Wrap" />
+                <AutoSuggestBox
+                    x:Name="AsbAliasSearch"
+                    Grid.Row="1"
+                    AutomationProperties.AutomationId="AsbAliasSearch"
+                    PlaceholderText="Search aliases or tags"
+                    QueryIcon="Find"
+                    Text="{x:Bind ViewModel.AliasSearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid Grid.Row="2" RowSpacing="4">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="8" Padding="4,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Alias" />
+                        <TextBlock
+                            Grid.Column="2"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Points to tag" />
+                        <TextBlock
+                            Grid.Column="3"
+                            MinWidth="28"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="Tag files" />
+                    </Grid>
+                <ListView
+                    x:Name="LstAliases"
+                    Grid.Row="1"
+                    AutomationProperties.AutomationId="LstAliases"
+                    AutomationProperties.Name="Aliases"
+                    IsItemClickEnabled="True"
+                    ItemClick="LstAliases_ItemClick"
+                    ItemsSource="{x:Bind ViewModel.AliasRows, Mode=OneWay}"
+                    SelectionMode="Single"
+                    SelectionChanged="LstAliases_SelectionChanged">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagAliasRow">
+                            <Grid ColumnSpacing="8" Padding="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ic:FluentIcon
+                                        VerticalAlignment="Center"
+                                        Icon="Link"
+                                        IconSize="Size16"
+                                        IconVariant="Regular" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource BodyTextBlockStyle}"
+                                        Text="{x:Bind AliasName, Mode=OneWay}" />
+                                </StackPanel>
+                                <ic:FluentIcon
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Icon="ChevronRight"
+                                    IconSize="Size16"
+                                    IconVariant="Regular" />
+                                <StackPanel
+                                    Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    Spacing="6">
+                                    <Border
+                                        Width="10"
+                                        Height="10"
+                                        VerticalAlignment="Center"
+                                        Background="{x:Bind helpers:TagColor.ChipFill(IdealColor), Mode=OneWay}"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="5" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Style="{StaticResource BodyTextBlockStyle}"
+                                        Text="{x:Bind IdealName, Mode=OneWay}" />
+                                </StackPanel>
+                                <TextBlock
+                                    Grid.Column="3"
+                                    MinWidth="28"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind FileCountText, Mode=OneWay}" />
+                                <Button
+                                    Grid.Column="4"
+                                    Padding="6,4"
+                                    AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
+                                    AutomationProperties.Name="{x:Bind AliasName, Mode=OneWay}"
+                                    Command="{x:Bind pages:TagsPage.GetRemoveAliasCommand()}"
+                                    CommandParameter="{x:Bind}"
+                                    ToolTipService.ToolTip="Delete alias">
+                                    <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                </Grid>
             </Grid>
             <ScrollViewer
                 Grid.Row="1"
@@ -178,7 +344,8 @@
                 AutomationProperties.Name="Tags in selected group"
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
-                VerticalScrollBarVisibility="Auto">
+                VerticalScrollBarVisibility="Auto"
+                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
                 <ItemsControl
                     ItemsSource="{x:Bind ViewModel.SelectedBoard.Letters, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
@@ -295,7 +462,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
-            <StackPanel Grid.Row="2" Spacing="6">
+            <StackPanel
+                Grid.Row="2"
+                Spacing="6"
+                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBlock
                         VerticalAlignment="Center"
@@ -692,6 +862,110 @@
                         <TextBlock VerticalAlignment="Center" Text="Rename" />
                     </StackPanel>
                 </Button>
+
+                <TextBlock
+                    x:Name="TxtAlsoKnownAs"
+                    AutomationProperties.AutomationId="TxtAlsoKnownAs"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="{x:Bind ViewModel.AlsoKnownAsHeader, Mode=OneWay}" />
+                <ItemsRepeater
+                    x:Name="RepTagAliases"
+                    AutomationProperties.AutomationId="RepTagAliases"
+                    ItemsSource="{x:Bind ViewModel.SelectedAliases, Mode=OneWay}">
+                    <ItemsRepeater.Layout>
+                        <helpers:ChipWrapLayout HorizontalSpacing="6" VerticalSpacing="6" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="models:TagAliasRow">
+                            <controls:TagChip
+                                ChipAutomationId="{x:Bind ChipAutomationId, Mode=OneWay}"
+                                Label="{x:Bind AliasName, Mode=OneWay}"
+                                RemoveAutomationId="{x:Bind ChipRemoveAutomationId, Mode=OneWay}"
+                                RemoveCommand="{x:Bind pages:TagsPage.GetRemoveAliasCommand()}"
+                                RemoveCommandParameter="{x:Bind}"
+                                ShowRemove="True"
+                                Tag="{x:Bind}"
+                                TagColor="{x:Bind IdealColor, Mode=OneWay}" />
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+                <TextBox
+                    x:Name="AsbAddAlias"
+                    AutomationProperties.AutomationId="AsbAddAlias"
+                    Header="Add another name"
+                    IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
+                    KeyDown="AsbAddAlias_KeyDown"
+                    PlaceholderText="Add another name…"
+                    Text="{x:Bind ViewModel.AliasAddQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Border
+                    Padding="10,8"
+                    Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
+                    BorderBrush="{ThemeResource SystemFillColorAttentionBrush}"
+                    BorderThickness="3,0,0,0"
+                    CornerRadius="4"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.AliasValidationIsInfo), Mode=OneWay}">
+                    <StackPanel Spacing="4">
+                        <TextBlock
+                            x:Name="TxtAliasValidationInfo"
+                            AutomationProperties.AutomationId="TxtAliasValidation"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Text="{x:Bind ViewModel.AliasValidationHeadline, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.AliasValidationDetail, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.AliasValidationDetail), Mode=OneWay}" />
+                    </StackPanel>
+                </Border>
+                <Border
+                    Padding="10,8"
+                    Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                    BorderBrush="{ThemeResource SystemFillColorCriticalBrush}"
+                    BorderThickness="3,0,0,0"
+                    CornerRadius="4"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.AliasValidationIsError), Mode=OneWay}">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            AutomationProperties.AutomationId="TxtAliasValidationError"
+                            Style="{StaticResource BodyTextBlockStyle}"
+                            Text="{x:Bind ViewModel.AliasValidationHeadline, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.AliasValidationDetail, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind helpers:BindHelpers.StringToVisibility(ViewModel.AliasValidationDetail), Mode=OneWay}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="BtnMoveAliasHere"
+                                AutomationProperties.Name="{x:Bind ViewModel.AliasMoveLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.MoveAliasHereCommand}"
+                                Content="{x:Bind ViewModel.AliasMoveLabel, Mode=OneWay}"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowAliasMove), Mode=OneWay}" />
+                            <Button
+                                AutomationProperties.AutomationId="BtnMergeAliasTag"
+                                AutomationProperties.Name="{x:Bind ViewModel.AliasMergeLabel, Mode=OneWay}"
+                                Command="{x:Bind ViewModel.MergeAliasTagCommand}"
+                                Content="{x:Bind ViewModel.AliasMergeLabel, Mode=OneWay}"
+                                Style="{StaticResource AccentButtonStyle}"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowAliasMerge), Mode=OneWay}" />
+                            <Button
+                                AutomationProperties.AutomationId="BtnCancelAliasMove"
+                                Command="{x:Bind ViewModel.CancelAliasDraftCommand}"
+                                Content="Cancel" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.AliasHelperText, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+
                 <NumberBox
                     x:Name="NbTagPriority"
                     AutomationProperties.AutomationId="NbTagPriority"

@@ -52,7 +52,10 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial TagBoardGroup? SelectedBoard { get; set; }
 
-    public string ChildrenHeader => SelectedBoard?.CountLabel ?? "Tags";
+    public string ChildrenHeader =>
+        SelectedBoard?.ScopeKind == TagScope.Aliases
+            ? (string.IsNullOrWhiteSpace(AliasListCaption) ? "Aliases" : $"Aliases ({AliasListCaption})")
+            : SelectedBoard?.CountLabel ?? "Tags";
     public ObservableCollection<AssetItem> Assets { get; } = [];
     public ObservableCollection<TagMosaicSection> MosaicGroups { get; } = [];
     public ObservableCollection<TagGroupPick> ParentGroups { get; } = [];
@@ -335,6 +338,8 @@ public partial class TagsViewModel : ObservableObject
             _tags = (await _catalog.GetTagsAsync()).ToList();
             _memberships = (await _catalog.GetMembershipsAsync()).ToList();
             _implications = (await _catalog.GetImplicationsAsync()).ToList();
+            _aliases = (await _catalog.GetAliasesAsync()).ToList();
+            await LoadAliasFileCountsAsync();
             await UiDispatch.RunAsync(RebuildTree);
             await LoadSelectionAsync();
             await LoadMosaicAsync();
@@ -1165,7 +1170,8 @@ public partial class TagsViewModel : ObservableObject
         }
 
         _boardSelectionKey = BoardKey(group);
-        if (group.ScopeKind is TagScope.All or TagScope.Ungrouped or TagScope.Starred or TagScope.Recent)
+        if (group.ScopeKind is TagScope.All or TagScope.Ungrouped or TagScope.Starred
+            or TagScope.Recent or TagScope.Aliases)
         {
             if (Scope != group.ScopeKind.Value)
             {
@@ -1179,6 +1185,11 @@ public partial class TagsViewModel : ObservableObject
             if (group.ScopeKind == TagScope.Ungrouped)
             {
                 CreateTargetGroup = null;
+            }
+
+            if (group.ScopeKind == TagScope.Aliases)
+            {
+                RebuildAliasRows();
             }
 
             return;
@@ -1252,6 +1263,10 @@ public partial class TagsViewModel : ObservableObject
                 AvailableGroups.Clear();
                 ImpliedTags.Clear();
                 ImpliedSuggestions.Clear();
+                SelectedAliases.Clear();
+                AlsoKnownAsHeader = "Also known as";
+                AliasAddQuery = "";
+                ClearAliasDraftUi();
                 SelectedIsStarred = false;
                 ShowDetails = false;
                 _renameBaseline = null;
@@ -1341,6 +1356,7 @@ public partial class TagsViewModel : ObservableObject
             ApplyImpliedSuggestionFilter(ImpliedQuery);
             SelectedIsStarred = tag.IsStarred;
             ShowDetails = true;
+            RebuildSelectedAliases();
         });
     }
 
@@ -1405,7 +1421,8 @@ public partial class TagsViewModel : ObservableObject
             query: SearchQuery,
             colors: colors,
             recentIds: _recentTagIds,
-            extraRootGroupIds: _pendingEmptyGroupIds.ToList());
+            extraRootGroupIds: _pendingEmptyGroupIds.ToList(),
+            aliasCount: _aliases.Count);
         Board.Clear();
         foreach (var group in groups)
         {
@@ -1417,6 +1434,7 @@ public partial class TagsViewModel : ObservableObject
                 IsUngrouped = group.IsUngrouped,
                 ScopeKind = group.ScopeKind,
                 AutomationIdOverride = group.AutomationIdOverride,
+                TotalChipCount = group.TotalCount,
                 IsExpanded = false
             };
             var key = BoardKey(item);
@@ -1452,6 +1470,7 @@ public partial class TagsViewModel : ObservableObject
 
         RebuildCreateTargets();
         RebuildRecentlyCreatedList();
+        RebuildAliasRows();
         ApplyBoardExpansion();
     }
 
@@ -1554,7 +1573,15 @@ public partial class TagsViewModel : ObservableObject
         SelectedBoard = Board.FirstOrDefault(group => group.IsExpanded);
     }
 
-    partial void OnSelectedBoardChanged(TagBoardGroup? value) => OnPropertyChanged(nameof(ChildrenHeader));
+    partial void OnSelectedBoardChanged(TagBoardGroup? value)
+    {
+        IsAliasesView = value?.ScopeKind == TagScope.Aliases;
+        OnPropertyChanged(nameof(ChildrenHeader));
+        if (IsAliasesView)
+        {
+            RebuildAliasRows();
+        }
+    }
 
     private static string BoardKey(TagBoardGroup group) =>
         group.ScopeKind switch
@@ -1563,6 +1590,7 @@ public partial class TagsViewModel : ObservableObject
             TagScope.Ungrouped => "ungrouped",
             TagScope.Starred => "starred",
             TagScope.Recent => "recent",
+            TagScope.Aliases => "aliases",
             TagScope.GroupsHeader => "groups-header",
             _ => group.GroupId ?? "ungrouped"
         };

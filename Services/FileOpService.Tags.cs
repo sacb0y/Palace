@@ -3,8 +3,8 @@ using Palace.Models;
 namespace Palace.Services;
 
 /// <summary>
-/// Forward tag assign / remove / delete / alias through the shared undo journal.
-/// Assign/remove/paste, delete-tag, and add-alias mutate catalog rows + journal in
+/// Forward tag assign / remove / delete / alias (add, remove, repoint) through the shared undo journal.
+/// Assign/remove/paste, delete-tag, and alias edits mutate catalog rows + journal in
 /// one SQLite transaction
 /// (<see cref="CatalogService.ApplyBulkAssignJournaledAsync"/> /
 /// <see cref="CatalogService.ApplyBulkRemoveJournaledAsync"/> /
@@ -235,6 +235,30 @@ public sealed partial class FileOpService
             .ConfigureAwait(false);
         return ToFileOpResult(batch);
     }
+
+    /// <summary>
+    /// Create each name as a new tag and alias it to <paramref name="idealTagId"/> in one
+    /// <see cref="FileOpKind.TagAliasAdd"/> batch (one Undo).
+    /// </summary>
+    public Task<FileOpResult> AddNewAliasesAsync(
+        string idealTagId,
+        IReadOnlyList<string> names,
+        string projectId) =>
+        GatedAsync(projectId, async () =>
+            ToFileOpResult(await _catalog.ApplyAddNewAliasesJournaledAsync(projectId, idealTagId, names)
+                .ConfigureAwait(false)));
+
+    /// <summary>Delete the alias edge; journals <see cref="FileOpKind.TagAliasRemove"/>.</summary>
+    public Task<FileOpResult> RemoveAliasAsync(string aliasTagId, string projectId) =>
+        GatedAsync(projectId, async () =>
+            ToFileOpResult(await _catalog.ApplyRemoveAliasJournaledAsync(projectId, aliasTagId)
+                .ConfigureAwait(false)));
+
+    /// <summary>Move it here: point the alias at another ideal; journals <see cref="FileOpKind.TagAliasRepoint"/>.</summary>
+    public Task<FileOpResult> RepointAliasAsync(string aliasTagId, string newIdealTagId, string projectId) =>
+        GatedAsync(projectId, async () =>
+            ToFileOpResult(await _catalog.ApplyRepointAliasJournaledAsync(projectId, aliasTagId, newIdealTagId)
+                .ConfigureAwait(false)));
 
     private async Task<FileOpResult> DeleteTagCoreAsync(string tagId, string projectId)
     {
