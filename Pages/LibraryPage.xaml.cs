@@ -334,6 +334,9 @@ public sealed partial class LibraryPage : Page
 
     public static IRelayCommand<AssignedTagItem> GetRemoveTagCommand() => AppServices.Library.RemoveAssignedTagCommand;
 
+    public static IRelayCommand<AssignedTagItem> GetToggleAssignedChipCommand() =>
+        AppServices.Library.ToggleAssignedChipSelectionCommand;
+
     public static IRelayCommand<PendingTagChip> GetRemovePendingTagCommand() => AppServices.Library.RemovePendingTagCommand;
 
 
@@ -560,22 +563,6 @@ public sealed partial class LibraryPage : Page
         }
 
         DispatcherQueue.TryEnqueue(() => AsbAssignTag.Focus(FocusState.Programmatic));
-    }
-
-    private void AssignedTagChip_Tapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (e.OriginalSource is DependencyObject source
-            && FindAncestor<Button>(source) is not null)
-        {
-            // × button owns remove; don't also toggle selection.
-            return;
-        }
-
-        if (sender is FrameworkElement { Tag: AssignedTagItem item })
-        {
-            ViewModel.ToggleAssignedChipSelectionCommand.Execute(item);
-            e.Handled = true;
-        }
     }
 
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();

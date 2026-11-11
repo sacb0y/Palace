@@ -70,19 +70,22 @@ public partial class LibraryViewModel
 
         var total = targets.Count;
         var multi = SelectCommandBar.ShowMultiSelectPreview(total);
-        var union = new Dictionary<string, (AssignedTag Sample, int Count, HashSet<TagSource> Sources)>(StringComparer.Ordinal);
-        foreach (var list in perAsset)
+        var union = new Dictionary<string, (AssignedTag Sample, HashSet<string> AssetIds, HashSet<TagSource> Sources)>(
+            StringComparer.Ordinal);
+        for (var i = 0; i < perAsset.Count; i++)
         {
-            foreach (var tag in list)
+            var assetId = targets[i].Id;
+            foreach (var tag in perAsset[i])
             {
                 if (!union.TryGetValue(tag.TagId, out var current))
                 {
-                    union[tag.TagId] = (tag, 1, [tag.Source]);
+                    union[tag.TagId] = (tag, new HashSet<string>(StringComparer.Ordinal) { assetId }, [tag.Source]);
                 }
                 else
                 {
                     current.Sources.Add(tag.Source);
-                    union[tag.TagId] = (current.Sample, current.Count + 1, current.Sources);
+                    current.AssetIds.Add(assetId);
+                    union[tag.TagId] = (current.Sample, current.AssetIds, current.Sources);
                 }
             }
         }
@@ -179,7 +182,8 @@ public partial class LibraryViewModel
             {
                 var tag = entry.Sample;
                 var groups = tag.ParentNames.Count > 0 ? $" ({string.Join(", ", tag.ParentNames)})" : "";
-                var isPartial = total > 1 && entry.Count < total;
+                var appliedCount = entry.AssetIds.Count;
+                var isPartial = total > 1 && appliedCount < total;
                 var impliedOnly = AssignedTagPartition.IsImpliedOnly(entry.Sources);
                 var source = AssignedTagPartition.EffectiveSource(entry.Sources, tag.Source);
                 // One IsAlsoImplied / NearestSourceId walk per chip (exclude self for also-implied).
@@ -214,10 +218,11 @@ public partial class LibraryViewModel
                         : "Mixed",
                     EffectiveColor = tag.EffectiveColor,
                     IsPartial = isPartial,
-                    AppliedCount = entry.Count,
+                    AppliedCount = appliedCount,
                     SelectionTotal = total,
+                    AssetIds = entry.AssetIds.ToList(),
                     IsChipSelected = false,
-                    CountLabel = isPartial ? TagChipVisual.PartialBadge(entry.Count, total) : "",
+                    CountLabel = isPartial ? TagChipVisual.PartialBadge(appliedCount, total) : "",
                     NearestImpliedByName = nearestName,
                     IsAlsoImplied = alsoImplied,
                     AliasNames = aliasesByIdeal.GetValueOrDefault(tag.TagId) ?? []

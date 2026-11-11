@@ -63,9 +63,13 @@ public static class TagChipVisual
     public static string PartialBadge(int count, int total) =>
         total > 0 && count >= 0 ? $"{count}/{total}" : "";
 
+    /// <summary>
+    /// Partial multi-select tooltip. Click selects the chip (t2-04a / Item 6) — do not
+    /// promise "Click to add to all" (t8-02 #10 dropped).
+    /// </summary>
     public static string PartialTooltip(int count, int total) =>
         total > 0
-            ? $"On {count} of {total} selected. Click to add to all."
+            ? $"On {count} of {total} selected."
             : "";
 
     public static string AssignTooltip(TagChipApplyState state, string? name, int partialCount, int selectionTotal)

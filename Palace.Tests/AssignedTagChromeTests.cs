@@ -70,4 +70,19 @@ public sealed class AssignedTagChromeTests
                 countLabel: null,
                 tagName: "sketch"));
     }
+
+    [Fact]
+    public void ChipTooltip_PartialSelects_NoClickToAdd()
+    {
+        var tip = AssignedTagChrome.ChipTooltip(
+            TagSource.Manual,
+            isAlsoImplied: false,
+            nearestImpliedByName: null,
+            aliasNames: null,
+            isPartial: true,
+            countLabel: "18/24",
+            tagName: "wip");
+        Assert.Equal("On 18 of 24 selected.", tip);
+        Assert.DoesNotContain("Click to add", tip, StringComparison.OrdinalIgnoreCase);
+    }
 }

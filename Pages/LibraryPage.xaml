@@ -2205,80 +2205,25 @@
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="models:AssignedTagItem">
-                            <Grid
+                            <controls:TagChip
                                 HorizontalAlignment="Left"
-                                Opacity="{x:Bind ChromeOpacity, Mode=OneWay}">
-                                <Border
-                                    MinWidth="0"
-                                    Padding="8,4,4,4"
-                                    AutomationProperties.Name="{x:Bind ChipAutomationName, Mode=OneWay}"
-                                    Background="{x:Bind helpers:BindHelpers.AssignedChipBackground(IsChipSelected), Mode=OneWay}"
-                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="16"
-                                    Tapped="AssignedTagChip_Tapped"
-                                    Tag="{x:Bind}"
-                                    ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            FontSize="12"
-                                            FontWeight="SemiBold"
-                                            Foreground="{x:Bind helpers:BindHelpers.AssignedChipForeground(IsChipSelected), Mode=OneWay}"
-                                            Text="✓"
-                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowOnAllCheck), Mode=OneWay}" />
-                                        <Ellipse
-                                            Width="8"
-                                            Height="8"
-                                            VerticalAlignment="Center"
-                                            Fill="{x:Bind helpers:TagColor.ChipFill(DotColor), Mode=OneWay}" />
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            Foreground="{x:Bind helpers:BindHelpers.AssignedChipForeground(IsChipSelected), Mode=OneWay}"
-                                            Style="{StaticResource BodyTextBlockStyle}"
-                                            Text="{x:Bind TagName, Mode=OneWay}" />
-                                        <ic:FluentIcon
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                            Icon="Link"
-                                            IconSize="Size16"
-                                            IconVariant="Regular"
-                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowAlsoImpliedLink), Mode=OneWay}" />
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Style="{StaticResource CaptionTextBlockStyle}"
-                                            Text="{x:Bind CountLabel, Mode=OneWay}"
-                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                                        <Button
-                                            Width="24"
-                                            Height="24"
-                                            Padding="4"
-                                            VerticalAlignment="Center"
-                                            AutomationProperties.AutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
-                                            AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            Command="{x:Bind pages:LibraryPage.GetRemoveTagCommand()}"
-                                            CommandParameter="{x:Bind}"
-                                            ToolTipService.ToolTip="{x:Bind RemoveAutomationName, Mode=OneWay}"
-                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowRemove), Mode=OneWay}">
-                                            <ic:FluentIcon
-                                                Icon="Dismiss"
-                                                IconSize="Size12"
-                                                IconVariant="Regular" />
-                                        </Button>
-                                    </StackPanel>
-                                </Border>
-                                <Rectangle
-                                    RadiusX="16"
-                                    RadiusY="16"
-                                    Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-                                    StrokeDashArray="1.5,1.5"
-                                    StrokeThickness="1.5"
-                                    IsHitTestVisible="False"
-                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsPartial), Mode=OneWay}" />
-                            </Grid>
+                                ApplyState="{x:Bind ApplyState, Mode=OneWay}"
+                                ChipAutomationName="{x:Bind ChipAutomationName, Mode=OneWay}"
+                                ChipTooltip="{x:Bind ChipTooltip, Mode=OneWay}"
+                                Command="{x:Bind pages:LibraryPage.GetToggleAssignedChipCommand()}"
+                                CommandParameter="{x:Bind}"
+                                IsSelected="{x:Bind IsChipSelected, Mode=OneWay}"
+                                Label="{x:Bind TagName, Mode=OneWay}"
+                                PartialCount="{x:Bind AppliedCount, Mode=OneWay}"
+                                RemoveAutomationId="{x:Bind RemoveAutomationId, Mode=OneWay}"
+                                RemoveAutomationName="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                RemoveCommand="{x:Bind pages:LibraryPage.GetRemoveTagCommand()}"
+                                RemoveCommandParameter="{x:Bind}"
+                                SelectionTotal="{x:Bind SelectionTotal, Mode=OneWay}"
+                                ShowAppliedCheck="{x:Bind ShowOnAllCheck, Mode=OneWay}"
+                                ShowRemove="{x:Bind ShowRemove, Mode=OneWay}"
+                                ShowTrailingLink="{x:Bind ShowAlsoImpliedLink, Mode=OneWay}"
+                                TagColor="{x:Bind DotColor, Mode=OneWay}" />
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
@@ -2311,58 +2256,68 @@
                         </ItemsRepeater.Layout>
                         <ItemsRepeater.ItemTemplate>
                             <DataTemplate x:DataType="models:AssignedTagItem">
-                                <Border
-                                    MinWidth="0"
-                                    Padding="8,4,10,4"
+                                <controls:TagChip
                                     HorizontalAlignment="Left"
-                                    AutomationProperties.Name="{x:Bind ChipAutomationName, Mode=OneWay}"
-                                    Background="Transparent"
-                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="16"
-                                    Opacity="{x:Bind ChromeOpacity, Mode=OneWay}"
-                                    ToolTipService.ToolTip="{x:Bind ChipTooltip, Mode=OneWay}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <ic:FluentIcon
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                            Icon="Link"
-                                            IconSize="Size16"
-                                            IconVariant="Regular" />
-                                        <Ellipse
-                                            Width="8"
-                                            Height="8"
-                                            VerticalAlignment="Center"
-                                            Fill="{x:Bind helpers:TagColor.ChipFill(DotColor), Mode=OneWay}"
-                                            Opacity="0.55" />
-                                        <TextBlock
-                                            VerticalAlignment="Center"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Style="{StaticResource BodyTextBlockStyle}"
-                                            Text="{x:Bind TagName, Mode=OneWay}" />
-                                    </StackPanel>
-                                </Border>
+                                    ApplyState="Off"
+                                    ChipAutomationName="{x:Bind ChipAutomationName, Mode=OneWay}"
+                                    ChipTooltip="{x:Bind ChipTooltip, Mode=OneWay}"
+                                    DotOpacity="0.55"
+                                    IsTabStop="True"
+                                    Label="{x:Bind TagName, Mode=OneWay}"
+                                    ShowLeadingLink="True"
+                                    TagColor="{x:Bind DotColor, Mode=OneWay}" />
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>
                 </StackPanel>
-                <StackPanel
-                    Orientation="Horizontal"
-                    Spacing="8"
+                <Border
+                    Padding="12,6,6,6"
+                    Background="{ThemeResource AccentFillColorTertiaryBrush}"
+                    BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRemoveFromAllBar), Mode=OneWay}">
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="{x:Bind ViewModel.RemoveFromAllSummary, Mode=OneWay}" />
-                    <Button
-                        x:Name="BtnRemoveFromAll"
-                        AutomationProperties.AutomationId="BtnRemoveFromAll"
-                        AutomationProperties.Name="Remove from all"
-                        Command="{x:Bind ViewModel.RemoveSelectedAssignedTagsCommand}"
-                        Content="Remove from all"
-                        Style="{StaticResource AccentButtonStyle}" />
-                </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.RemoveFromAllSummary, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                        <Button
+                            x:Name="BtnRemoveFromAll"
+                            Grid.Column="1"
+                            AutomationProperties.AutomationId="BtnRemoveFromAll"
+                            AutomationProperties.Name="Remove from all"
+                            Command="{x:Bind ViewModel.RemoveSelectedAssignedTagsCommand}"
+                            Style="{StaticResource AccentButtonStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ic:FluentIcon
+                                    VerticalAlignment="Center"
+                                    Icon="Delete"
+                                    IconSize="Size16"
+                                    IconVariant="Regular" />
+                                <TextBlock VerticalAlignment="Center" Text="Remove from all" />
+                                <Border
+                                    Padding="5,0"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="3">
+                                    <TextBlock
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="Del" />
+                                </Border>
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+                </Border>
 
                 <!-- T2 merged Add tags box (shortcut T). Keeps AsbAssignTag / BtnAssignTag AutomationIds. -->
                 <StackPanel
@@ -2402,43 +2357,18 @@
                                 </ItemsRepeater.Layout>
                                 <ItemsRepeater.ItemTemplate>
                                     <DataTemplate x:DataType="models:PendingTagChip">
-                                        <Border
-                                            Padding="8,2,2,2"
-                                            Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="13">
-                                            <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <Ellipse
-                                                    Width="8"
-                                                    Height="8"
-                                                    VerticalAlignment="Center"
-                                                    Fill="{x:Bind helpers:TagColor.ChipFill(DotColor), Mode=OneWay}" />
-                                                <TextBlock
-                                                    VerticalAlignment="Center"
-                                                    FontSize="13"
-                                                    Text="{x:Bind FaceLabel, Mode=OneWay}" />
-                                                <TextBlock
-                                                    VerticalAlignment="Center"
-                                                    FontSize="11"
-                                                    FontWeight="SemiBold"
-                                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                                                    Text="+ new"
-                                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsNew), Mode=OneWay}" />
-                                                <Button
-                                                    Width="20"
-                                                    Height="20"
-                                                    Padding="2"
-                                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                                    AutomationProperties.Name="{x:Bind RemoveAutomationName, Mode=OneWay}"
-                                                    Background="Transparent"
-                                                    BorderThickness="0"
-                                                    Command="{x:Bind pages:LibraryPage.GetRemovePendingTagCommand()}"
-                                                    CommandParameter="{x:Bind}">
-                                                    <ic:FluentIcon Icon="Dismiss" IconSize="Size12" IconVariant="Regular" />
-                                                </Button>
-                                            </StackPanel>
-                                        </Border>
+                                        <controls:TagChip
+                                            HorizontalAlignment="Left"
+                                            ApplyState="Off"
+                                            Compact="True"
+                                            Label="{x:Bind FaceLabel, Mode=OneWay}"
+                                            RemoveAutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                            RemoveAutomationName="{x:Bind RemoveAutomationName, Mode=OneWay}"
+                                            RemoveCommand="{x:Bind pages:LibraryPage.GetRemovePendingTagCommand()}"
+                                            RemoveCommandParameter="{x:Bind}"
+                                            ShowNewBadge="{x:Bind IsNew, Mode=OneWay}"
+                                            ShowRemove="True"
+                                            TagColor="{x:Bind DotColor, Mode=OneWay}" />
                                     </DataTemplate>
                                 </ItemsRepeater.ItemTemplate>
                             </ItemsRepeater>

@@ -34,16 +34,37 @@
             CornerRadius="16">
             <Grid ColumnSpacing="6">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
+
+                <!-- Leading link glyph (implied-only). -->
+                <Viewbox
+                    x:Name="VbLeadingLink"
+                    Width="12"
+                    Height="12"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed">
+                    <ic:FluentIcon
+                        x:Name="IcnLeadingLink"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Icon="Link"
+                        IconSize="Size16"
+                        IconVariant="Regular" />
+                </Viewbox>
 
                 <!-- Leading apply glyph (Checkmark / Subtract). Never the word On. -->
                 <Viewbox
                     x:Name="VbStateGlyph"
+                    Grid.Column="1"
                     Width="12"
                     Height="12"
                     HorizontalAlignment="Center"
@@ -58,7 +79,7 @@
 
                 <Ellipse
                     x:Name="EllColorDot"
-                    Grid.Column="1"
+                    Grid.Column="2"
                     Width="8"
                     Height="8"
                     VerticalAlignment="Center"
@@ -68,15 +89,42 @@
 
                 <TextBlock
                     x:Name="TxtLabel"
-                    Grid.Column="2"
+                    Grid.Column="3"
                     VerticalAlignment="Center"
                     IsHitTestVisible="False"
                     Style="{StaticResource BodyTextBlockStyle}"
                     TextWrapping="NoWrap" />
 
                 <TextBlock
+                    x:Name="TxtNewBadge"
+                    Grid.Column="4"
+                    VerticalAlignment="Center"
+                    FontSize="11"
+                    FontWeight="SemiBold"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                    IsHitTestVisible="False"
+                    Text="+ new"
+                    Visibility="Collapsed" />
+
+                <Viewbox
+                    x:Name="VbTrailingLink"
+                    Grid.Column="5"
+                    Width="12"
+                    Height="12"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Visibility="Collapsed">
+                    <ic:FluentIcon
+                        x:Name="IcnTrailingLink"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Icon="Link"
+                        IconSize="Size16"
+                        IconVariant="Regular" />
+                </Viewbox>
+
+                <TextBlock
                     x:Name="TxtPartialBadge"
-                    Grid.Column="3"
+                    Grid.Column="6"
                     VerticalAlignment="Center"
                     IsHitTestVisible="False"
                     Style="{StaticResource CaptionTextBlockStyle}"
@@ -84,7 +132,7 @@
 
                 <Button
                     x:Name="BtnStar"
-                    Grid.Column="4"
+                    Grid.Column="7"
                     Width="24"
                     Height="24"
                     MinWidth="24"
@@ -104,6 +152,31 @@
                         VerticalAlignment="Center"
                         Icon="Star"
                         IconSize="Size16"
+                        IconVariant="Regular" />
+                </Button>
+
+                <Button
+                    x:Name="BtnRemove"
+                    Grid.Column="8"
+                    Width="24"
+                    Height="24"
+                    MinWidth="24"
+                    MinHeight="24"
+                    Padding="0"
+                    VerticalAlignment="Center"
+                    AutomationProperties.Name="Remove tag"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    Click="BtnRemove_Click"
+                    IsTabStop="False"
+                    ToolTipService.ToolTip="Remove tag"
+                    Visibility="Collapsed">
+                    <ic:FluentIcon
+                        x:Name="IcnRemove"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Icon="Dismiss"
+                        IconSize="Size12"
                         IconVariant="Regular" />
                 </Button>
             </Grid>

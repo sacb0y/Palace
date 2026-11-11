@@ -11,8 +11,8 @@ using Windows.UI;
 namespace Palace.Controls;
 
 /// <summary>
-/// Shared Gooey tag pill: accent fill when applied, dashed partial, leading state
-/// glyph, optional color dot, separate star button. Never shows the word "On".
+/// Shared Gooey tag pill: accent fill when applied, dashed partial, tinted selected,
+/// leading state glyph, optional color / link / × / star. Never shows the word "On".
 /// </summary>
 public sealed partial class TagChip : UserControl
 {
@@ -28,12 +28,40 @@ public sealed partial class TagChip : UserControl
         nameof(ApplyState), typeof(TagChipApplyState), typeof(TagChip),
         new PropertyMetadata(TagChipApplyState.Off, OnChromeChanged));
 
+    public static readonly DependencyProperty IsSelectedProperty = DependencyProperty.Register(
+        nameof(IsSelected), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
     public static readonly DependencyProperty IsStarredProperty = DependencyProperty.Register(
         nameof(IsStarred), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
 
     public static readonly DependencyProperty ShowStarProperty = DependencyProperty.Register(
         nameof(ShowStar), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
+    public static readonly DependencyProperty ShowRemoveProperty = DependencyProperty.Register(
+        nameof(ShowRemove), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
+    public static readonly DependencyProperty ShowLeadingLinkProperty = DependencyProperty.Register(
+        nameof(ShowLeadingLink), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
+    public static readonly DependencyProperty ShowTrailingLinkProperty = DependencyProperty.Register(
+        nameof(ShowTrailingLink), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
+    public static readonly DependencyProperty ShowNewBadgeProperty = DependencyProperty.Register(
+        nameof(ShowNewBadge), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
+    /// <summary>
+    /// Leading ✓ for "on every selected file" without forcing ApplyState.On accent fill
+    /// (preview Manual chips stay ControlFill; board filter On still uses ApplyState).
+    /// </summary>
+    public static readonly DependencyProperty ShowAppliedCheckProperty = DependencyProperty.Register(
+        nameof(ShowAppliedCheck), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
 
     public static readonly DependencyProperty CompactProperty = DependencyProperty.Register(
@@ -48,8 +76,28 @@ public sealed partial class TagChip : UserControl
         nameof(SelectionTotal), typeof(int), typeof(TagChip),
         new PropertyMetadata(0, OnChromeChanged));
 
+    public static readonly DependencyProperty DotOpacityProperty = DependencyProperty.Register(
+        nameof(DotOpacity), typeof(double), typeof(TagChip),
+        new PropertyMetadata(1.0, OnChromeChanged));
+
+    public static readonly DependencyProperty ChipTooltipProperty = DependencyProperty.Register(
+        nameof(ChipTooltip), typeof(string), typeof(TagChip),
+        new PropertyMetadata(null, OnChromeChanged));
+
     public static readonly DependencyProperty ChipAutomationIdProperty = DependencyProperty.Register(
         nameof(ChipAutomationId), typeof(string), typeof(TagChip),
+        new PropertyMetadata(null, OnChromeChanged));
+
+    public static readonly DependencyProperty ChipAutomationNameProperty = DependencyProperty.Register(
+        nameof(ChipAutomationName), typeof(string), typeof(TagChip),
+        new PropertyMetadata(null, OnChromeChanged));
+
+    public static readonly DependencyProperty RemoveAutomationIdProperty = DependencyProperty.Register(
+        nameof(RemoveAutomationId), typeof(string), typeof(TagChip),
+        new PropertyMetadata(null, OnChromeChanged));
+
+    public static readonly DependencyProperty RemoveAutomationNameProperty = DependencyProperty.Register(
+        nameof(RemoveAutomationName), typeof(string), typeof(TagChip),
         new PropertyMetadata(null, OnChromeChanged));
 
     public static readonly DependencyProperty CommandProperty = DependencyProperty.Register(
@@ -66,6 +114,14 @@ public sealed partial class TagChip : UserControl
 
     public static readonly DependencyProperty StarCommandParameterProperty = DependencyProperty.Register(
         nameof(StarCommandParameter), typeof(object), typeof(TagChip),
+        new PropertyMetadata(null));
+
+    public static readonly DependencyProperty RemoveCommandProperty = DependencyProperty.Register(
+        nameof(RemoveCommand), typeof(ICommand), typeof(TagChip),
+        new PropertyMetadata(null));
+
+    public static readonly DependencyProperty RemoveCommandParameterProperty = DependencyProperty.Register(
+        nameof(RemoveCommandParameter), typeof(object), typeof(TagChip),
         new PropertyMetadata(null));
 
     private bool _pointerOver;
@@ -99,6 +155,13 @@ public sealed partial class TagChip : UserControl
         set => SetValue(ApplyStateProperty, value);
     }
 
+    /// <summary>T2 selected for Remove from all — tinted accent + ✓ (t8-02 #3).</summary>
+    public bool IsSelected
+    {
+        get => (bool)GetValue(IsSelectedProperty);
+        set => SetValue(IsSelectedProperty, value);
+    }
+
     public bool IsStarred
     {
         get => (bool)GetValue(IsStarredProperty);
@@ -109,6 +172,36 @@ public sealed partial class TagChip : UserControl
     {
         get => (bool)GetValue(ShowStarProperty);
         set => SetValue(ShowStarProperty, value);
+    }
+
+    public bool ShowRemove
+    {
+        get => (bool)GetValue(ShowRemoveProperty);
+        set => SetValue(ShowRemoveProperty, value);
+    }
+
+    public bool ShowLeadingLink
+    {
+        get => (bool)GetValue(ShowLeadingLinkProperty);
+        set => SetValue(ShowLeadingLinkProperty, value);
+    }
+
+    public bool ShowTrailingLink
+    {
+        get => (bool)GetValue(ShowTrailingLinkProperty);
+        set => SetValue(ShowTrailingLinkProperty, value);
+    }
+
+    public bool ShowNewBadge
+    {
+        get => (bool)GetValue(ShowNewBadgeProperty);
+        set => SetValue(ShowNewBadgeProperty, value);
+    }
+
+    public bool ShowAppliedCheck
+    {
+        get => (bool)GetValue(ShowAppliedCheckProperty);
+        set => SetValue(ShowAppliedCheckProperty, value);
     }
 
     public bool Compact
@@ -129,10 +222,41 @@ public sealed partial class TagChip : UserControl
         set => SetValue(SelectionTotalProperty, value);
     }
 
+    public double DotOpacity
+    {
+        get => (double)GetValue(DotOpacityProperty);
+        set => SetValue(DotOpacityProperty, value);
+    }
+
+    /// <summary>When set, replaces the default AssignTooltip.</summary>
+    public string? ChipTooltip
+    {
+        get => (string?)GetValue(ChipTooltipProperty);
+        set => SetValue(ChipTooltipProperty, value);
+    }
+
     public string? ChipAutomationId
     {
         get => (string?)GetValue(ChipAutomationIdProperty);
         set => SetValue(ChipAutomationIdProperty, value);
+    }
+
+    public string? ChipAutomationName
+    {
+        get => (string?)GetValue(ChipAutomationNameProperty);
+        set => SetValue(ChipAutomationNameProperty, value);
+    }
+
+    public string? RemoveAutomationId
+    {
+        get => (string?)GetValue(RemoveAutomationIdProperty);
+        set => SetValue(RemoveAutomationIdProperty, value);
+    }
+
+    public string? RemoveAutomationName
+    {
+        get => (string?)GetValue(RemoveAutomationNameProperty);
+        set => SetValue(RemoveAutomationNameProperty, value);
     }
 
     public ICommand? Command
@@ -159,9 +283,23 @@ public sealed partial class TagChip : UserControl
         set => SetValue(StarCommandParameterProperty, value);
     }
 
+    public ICommand? RemoveCommand
+    {
+        get => (ICommand?)GetValue(RemoveCommandProperty);
+        set => SetValue(RemoveCommandProperty, value);
+    }
+
+    public object? RemoveCommandParameter
+    {
+        get => GetValue(RemoveCommandParameterProperty);
+        set => SetValue(RemoveCommandParameterProperty, value);
+    }
+
     public event RoutedEventHandler? ChipClick;
 
     public event RoutedEventHandler? StarClick;
+
+    public event RoutedEventHandler? RemoveClick;
 
     private static void OnChromeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -185,8 +323,12 @@ public sealed partial class TagChip : UserControl
         BrdChip.CornerRadius = new CornerRadius(radius);
         RectPartialDash.RadiusX = radius;
         RectPartialDash.RadiusY = radius;
+        BrdChip.Padding = Compact
+            ? new Thickness(8, 0, 2, 0)
+            : new Thickness(8, 0, 4, 0);
 
         TxtLabel.Text = Label ?? "";
+        TxtLabel.FontSize = Compact ? 13 : 14;
         var highContrast = ShellBackdrop.IsHighContrast();
         var state = ApplyState;
         var light = ActualTheme == ElementTheme.Light
@@ -196,8 +338,11 @@ public sealed partial class TagChip : UserControl
         ApplyFillAndBorder(state, highContrast);
         ApplyStateGlyph(state, highContrast);
         ApplyColorDot();
+        ApplyLinks();
+        ApplyNewBadge();
         ApplyPartialBadge(state);
         ApplyStar(light, state, highContrast);
+        ApplyRemove(state, highContrast);
         ApplyTooltip(state);
         ApplyAutomation(state);
 
@@ -214,7 +359,7 @@ public sealed partial class TagChip : UserControl
 
         if (highContrast)
         {
-            if (state == TagChipApplyState.On)
+            if (IsSelected || state == TagChipApplyState.On)
             {
                 BrdChip.Background = ThemeBrush("SystemColorHighlightColorBrush");
                 BrdChip.BorderBrush = ThemeBrush("SystemColorHighlightColorBrush");
@@ -236,6 +381,15 @@ public sealed partial class TagChip : UserControl
                 TxtLabel.Foreground = ThemeBrush("SystemColorButtonTextColorBrush");
             }
 
+            return;
+        }
+
+        // Selected (Remove from all): tinted accent fill + accent outline + primary text.
+        if (IsSelected)
+        {
+            BrdChip.Background = ThemeBrush("AccentFillColorTertiaryBrush");
+            BrdChip.BorderBrush = ThemeBrush("AccentFillColorDefaultBrush");
+            TxtLabel.Foreground = ThemeBrush("TextFillColorPrimaryBrush");
             return;
         }
 
@@ -262,9 +416,45 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Pending "+ new" gets a light accent tint (t8-02 #13).
+        if (ShowNewBadge)
+        {
+            BrdChip.Background = _pressed || _pointerOver
+                ? ThemeBrush("AccentFillColorTertiaryBrush")
+                : SoftAccentFill();
+            BrdChip.BorderBrush = ThemeBrush("AccentFillColorDefaultBrush");
+            TxtLabel.Foreground = ThemeBrush("TextFillColorPrimaryBrush");
+            return;
+        }
+
+        // Preview Manual / pending existing: control fill + stroke (not filter On accent).
+        if (ShowRemove)
+        {
+            BrdChip.Background = _pressed || _pointerOver
+                ? ThemeBrush("SubtleFillColorSecondaryBrush")
+                : ThemeBrush("ControlFillColorDefaultBrush");
+            BrdChip.BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush");
+            TxtLabel.Foreground = ThemeBrush("TextFillColorPrimaryBrush");
+            return;
+        }
+
         BrdChip.Background = TransparentOrSubtle();
         BrdChip.BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush");
-        TxtLabel.Foreground = ThemeBrush("TextFillColorPrimaryBrush");
+        TxtLabel.Foreground = ShowLeadingLink
+            ? ThemeBrush("TextFillColorSecondaryBrush")
+            : ThemeBrush("TextFillColorPrimaryBrush");
+    }
+
+    private Brush SoftAccentFill()
+    {
+        if (Application.Current?.Resources.TryGetValue("AccentFillColorDefaultBrush", out var value) == true
+            && value is SolidColorBrush accent)
+        {
+            var c = accent.Color;
+            return new SolidColorBrush(Color.FromArgb(0x1F, c.R, c.G, c.B));
+        }
+
+        return ThemeBrush("AccentFillColorTertiaryBrush");
     }
 
     private Brush TransparentOrSubtle()
@@ -284,23 +474,34 @@ public sealed partial class TagChip : UserControl
 
     private void ApplyStateGlyph(TagChipApplyState state, bool highContrast)
     {
-        if (state == TagChipApplyState.Off)
+        if (ShowLeadingLink)
+        {
+            VbStateGlyph.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var showPartial = !IsSelected && state == TagChipApplyState.Partial;
+        var showOn = IsSelected || ShowAppliedCheck || state == TagChipApplyState.On;
+        if (!showPartial && !showOn)
         {
             VbStateGlyph.Visibility = Visibility.Collapsed;
             return;
         }
 
         VbStateGlyph.Visibility = Visibility.Visible;
-        // FluentIcon.Icon is FluentIcons.Common.Icon (not Symbol).
-        IcnState.Icon = state == TagChipApplyState.Partial
+        IcnState.Icon = showPartial && !showOn
             ? FluentIcons.Common.Icon.Subtract
             : FluentIcons.Common.Icon.Checkmark;
 
         if (highContrast)
         {
-            IcnState.Foreground = state == TagChipApplyState.On
+            IcnState.Foreground = IsSelected || state == TagChipApplyState.On
                 ? ThemeBrush("SystemColorHighlightTextColorBrush")
                 : ThemeBrush("SystemColorButtonTextColorBrush");
+        }
+        else if (IsSelected || ShowAppliedCheck)
+        {
+            IcnState.Foreground = ThemeBrush("AccentFillColorDefaultBrush");
         }
         else if (state == TagChipApplyState.On)
         {
@@ -324,11 +525,23 @@ public sealed partial class TagChip : UserControl
 
         EllColorDot.Visibility = Visibility.Visible;
         EllColorDot.Fill = new SolidColorBrush(color);
+        EllColorDot.Opacity = DotOpacity > 0 ? DotOpacity : 1;
+    }
+
+    private void ApplyLinks()
+    {
+        VbLeadingLink.Visibility = ShowLeadingLink ? Visibility.Visible : Visibility.Collapsed;
+        VbTrailingLink.Visibility = ShowTrailingLink ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyNewBadge()
+    {
+        TxtNewBadge.Visibility = ShowNewBadge ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void ApplyPartialBadge(TagChipApplyState state)
     {
-        if (state != TagChipApplyState.Partial)
+        if (state != TagChipApplyState.Partial || IsSelected)
         {
             TxtPartialBadge.Visibility = Visibility.Collapsed;
             TxtPartialBadge.Text = "";
@@ -338,7 +551,7 @@ public sealed partial class TagChip : UserControl
         var badge = TagChipVisual.PartialBadge(PartialCount, SelectionTotal);
         TxtPartialBadge.Text = badge;
         TxtPartialBadge.Visibility = string.IsNullOrEmpty(badge) ? Visibility.Collapsed : Visibility.Visible;
-        TxtPartialBadge.Foreground = TxtLabel.Foreground;
+        TxtPartialBadge.Foreground = ThemeBrush("TextFillColorSecondaryBrush");
     }
 
     private void ApplyStar(bool light, TagChipApplyState state, bool highContrast)
@@ -349,7 +562,6 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
-        // Keep star in layout when ShowStar; fade unstarred until hover/focus.
         BtnStar.Visibility = Visibility.Visible;
         var reveal = IsStarred || _pointerOver || FocusState != FocusState.Unfocused;
         BtnStar.Opacity = reveal ? 1 : 0;
@@ -373,7 +585,7 @@ public sealed partial class TagChip : UserControl
 
         if (IsStarred)
         {
-            if (state == TagChipApplyState.On)
+            if (state == TagChipApplyState.On && !IsSelected)
             {
                 IcnStar.Foreground = ThemeBrush("TextOnAccentFillColorPrimaryBrush");
             }
@@ -384,21 +596,67 @@ public sealed partial class TagChip : UserControl
         }
         else
         {
-            IcnStar.Foreground = state == TagChipApplyState.On
+            IcnStar.Foreground = state == TagChipApplyState.On && !IsSelected
                 ? ThemeBrush("TextOnAccentFillColorPrimaryBrush")
+                : ThemeBrush("TextFillColorSecondaryBrush");
+        }
+    }
+
+    private void ApplyRemove(TagChipApplyState state, bool highContrast)
+    {
+        if (!ShowRemove)
+        {
+            BtnRemove.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        BtnRemove.Visibility = Visibility.Visible;
+        var tip = string.IsNullOrWhiteSpace(RemoveAutomationName)
+            ? $"Remove {Label}"
+            : RemoveAutomationName!;
+        ToolTipService.SetToolTip(BtnRemove, tip);
+        AutomationProperties.SetName(BtnRemove, tip);
+        if (!string.IsNullOrEmpty(RemoveAutomationId))
+        {
+            AutomationProperties.SetAutomationId(BtnRemove, RemoveAutomationId);
+        }
+
+        if (highContrast)
+        {
+            IcnRemove.Foreground = IsSelected || state == TagChipApplyState.On
+                ? ThemeBrush("SystemColorHighlightTextColorBrush")
+                : ThemeBrush("SystemColorButtonTextColorBrush");
+            return;
+        }
+
+        if (state == TagChipApplyState.On && !IsSelected)
+        {
+            IcnRemove.Foreground = _pointerOver
+                ? ThemeBrush("TextOnAccentFillColorPrimaryBrush")
+                : ThemeBrush("TextOnAccentFillColorSecondaryBrush");
+        }
+        else
+        {
+            IcnRemove.Foreground = _pointerOver
+                ? ThemeBrush("TextFillColorPrimaryBrush")
                 : ThemeBrush("TextFillColorSecondaryBrush");
         }
     }
 
     private void ApplyTooltip(TagChipApplyState state)
     {
-        var tip = TagChipVisual.AssignTooltip(state, Label, PartialCount, SelectionTotal);
+        var tip = !string.IsNullOrWhiteSpace(ChipTooltip)
+            ? ChipTooltip
+            : TagChipVisual.AssignTooltip(state, Label, PartialCount, SelectionTotal);
         ToolTipService.SetToolTip(this, string.IsNullOrEmpty(tip) ? null : tip);
     }
 
     private void ApplyAutomation(TagChipApplyState state)
     {
-        AutomationProperties.SetName(this, TagChipVisual.AutomationName(Label, state, IsStarred));
+        var name = !string.IsNullOrWhiteSpace(ChipAutomationName)
+            ? ChipAutomationName!
+            : TagChipVisual.AutomationName(Label, state, IsStarred);
+        AutomationProperties.SetName(this, name);
         AutomationProperties.SetFullDescription(
             this,
             state == TagChipApplyState.Partial
@@ -420,7 +678,8 @@ public sealed partial class TagChip : UserControl
 
     private void Root_Tapped(object sender, TappedRoutedEventArgs e)
     {
-        if (e.OriginalSource is DependencyObject source && IsUnderStar(source))
+        if (e.OriginalSource is DependencyObject source
+            && (IsUnderStar(source) || IsUnderRemove(source)))
         {
             return;
         }
@@ -438,6 +697,8 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Del for Remove from all is handled on LibraryRoot (selected chips), not as ×.
+
         if (!ShowStar)
         {
             return;
@@ -452,11 +713,9 @@ public sealed partial class TagChip : UserControl
         }
     }
 
-    private void BtnStar_Click(object sender, RoutedEventArgs e)
-    {
-        // WinUI RoutedEventArgs has no Handled; star Click already stops at the Button.
-        InvokeStar();
-    }
+    private void BtnStar_Click(object sender, RoutedEventArgs e) => InvokeStar();
+
+    private void BtnRemove_Click(object sender, RoutedEventArgs e) => InvokeRemove();
 
     private void InvokeChip()
     {
@@ -476,11 +735,24 @@ public sealed partial class TagChip : UserControl
         }
     }
 
-    private bool IsUnderStar(DependencyObject? source)
+    private void InvokeRemove()
+    {
+        RemoveClick?.Invoke(this, new RoutedEventArgs());
+        if (RemoveCommand?.CanExecute(RemoveCommandParameter) == true)
+        {
+            RemoveCommand.Execute(RemoveCommandParameter);
+        }
+    }
+
+    private bool IsUnderStar(DependencyObject? source) => IsUnder(source, BtnStar);
+
+    private bool IsUnderRemove(DependencyObject? source) => IsUnder(source, BtnRemove);
+
+    private static bool IsUnder(DependencyObject? source, DependencyObject target)
     {
         while (source is not null)
         {
-            if (ReferenceEquals(source, BtnStar))
+            if (ReferenceEquals(source, target))
             {
                 return true;
             }
@@ -506,7 +778,8 @@ public sealed partial class TagChip : UserControl
 
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
-        if (IsUnderStar(e.OriginalSource as DependencyObject))
+        if (IsUnderStar(e.OriginalSource as DependencyObject)
+            || IsUnderRemove(e.OriginalSource as DependencyObject))
         {
             return;
         }
