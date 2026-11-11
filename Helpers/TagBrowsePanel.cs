@@ -29,6 +29,8 @@ public static class TagBrowsePanel
     /// <summary>
     /// Build Starred, Recent, GROUPS label, then collapsible groups from
     /// <see cref="TagPanelBuilder.Build"/>. Filter matches tag and group names.
+    /// <paramref name="extraRootGroupIds"/> pins empty roots under GROUPS (t8-01 +)
+    /// and keeps them out of Uncategorized.
     /// </summary>
     public static IReadOnlyList<TagBrowsePanelSection> Build(
         IReadOnlyList<Tag> tags,
@@ -36,7 +38,8 @@ public static class TagBrowsePanel
         IReadOnlyList<string>? recentIds = null,
         string? query = null,
         IReadOnlyDictionary<string, string?>? colors = null,
-        IReadOnlySet<string>? collapsedKeys = null)
+        IReadOnlySet<string>? collapsedKeys = null,
+        IReadOnlyList<string>? extraRootGroupIds = null)
     {
         var model = TagPanelBuilder.Build(
             tags,
@@ -46,6 +49,14 @@ public static class TagBrowsePanel
             colors: colors);
 
         var collapsed = collapsedKeys ?? new HashSet<string>(StringComparer.Ordinal);
+        var extra = new HashSet<string>(
+            (extraRootGroupIds ?? []).Where(id => !string.IsNullOrEmpty(id)),
+            StringComparer.Ordinal);
+        var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
+        var q = (query ?? "").Trim();
+        bool NameMatches(string name) =>
+            q.Length == 0 || name.Contains(q, StringComparison.OrdinalIgnoreCase);
+
         var sections = new List<TagBrowsePanelSection>
         {
             new()
@@ -74,11 +85,28 @@ public static class TagBrowsePanel
             }
         };
 
+        var knownGroupIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var group in model.Groups)
         {
+            IReadOnlyList<TagPanelChip> chips = group.Chips;
+            if (group.IsUngrouped && extra.Count > 0)
+            {
+                chips = group.Chips.Where(c => !extra.Contains(c.TagId)).ToList();
+            }
+
+            if (group.IsUngrouped && chips.Count == 0)
+            {
+                continue;
+            }
+
             var key = group.IsUngrouped
                 ? "ungrouped"
                 : group.GroupId ?? group.Name;
+            if (!group.IsUngrouped && group.GroupId is { } gid)
+            {
+                knownGroupIds.Add(gid);
+            }
+
             sections.Add(new TagBrowsePanelSection
             {
                 Key = key,
@@ -86,9 +114,54 @@ public static class TagBrowsePanel
                 Color = group.Color,
                 IsUngrouped = group.IsUngrouped,
                 IsExpanded = !collapsed.Contains(key),
-                Count = group.Chips.Count,
-                Chips = group.Chips
+                Count = chips.Count,
+                Chips = chips
             });
+        }
+
+        if (extra.Count > 0)
+        {
+            var inserted = new List<TagBrowsePanelSection>();
+            foreach (var id in extra)
+            {
+                if (!knownGroupIds.Add(id) || !byId.TryGetValue(id, out var root))
+                {
+                    continue;
+                }
+
+                if (q.Length > 0 && !NameMatches(root.Name))
+                {
+                    continue;
+                }
+
+                var key = root.Id;
+                inserted.Add(new TagBrowsePanelSection
+                {
+                    Key = key,
+                    Name = root.Name,
+                    Color = colors is not null && colors.TryGetValue(root.Id, out var mapped)
+                        ? mapped
+                        : string.IsNullOrWhiteSpace(root.Color) ? null : root.Color,
+                    IsExpanded = !collapsed.Contains(key),
+                    Count = 0,
+                    Chips = []
+                });
+            }
+
+            if (inserted.Count > 0)
+            {
+                // Keep user groups A–Z after GROUPS header (pinned sections stay first).
+                var headerIndex = sections.FindIndex(s => s.IsGroupsHeader);
+                var before = headerIndex < 0 ? sections.Count : headerIndex + 1;
+                var user = sections.Skip(before).ToList();
+                user.AddRange(inserted);
+                user = user
+                    .OrderBy(s => s.IsUngrouped ? 1 : 0)
+                    .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(s => s.Name, StringComparer.Ordinal)
+                    .ToList();
+                sections = sections.Take(before).Concat(user).ToList();
+            }
         }
 
         return sections;

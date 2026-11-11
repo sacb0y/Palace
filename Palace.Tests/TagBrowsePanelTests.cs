@@ -99,4 +99,28 @@ public sealed class TagBrowsePanelTests
     [Fact]
     public void FilterPlaceholder_MatchesMockup() =>
         Assert.Equal("Filter tags or groups", TagBrowsePanel.FilterPlaceholder);
+
+    [Fact]
+    public void Build_ExtraRootGroupIds_ShowsEmptyGroup_NotUncategorized()
+    {
+        var tags = new List<Tag>
+        {
+            new() { Id = "subject", Name = "Subject", Color = "#14B8A6" },
+            new() { Id = "landscape", Name = "landscape" },
+            new() { Id = "new-group", Name = "New group" }
+        };
+        var edges = new List<TagMembership>
+        {
+            new() { ParentId = "subject", ChildId = "landscape" }
+        };
+
+        var sections = TagBrowsePanel.Build(
+            tags,
+            edges,
+            extraRootGroupIds: ["new-group"]);
+
+        Assert.Contains(sections, s => s.Key == "new-group" && s.Count == 0 && !s.IsUngrouped);
+        var uncategorized = sections.SingleOrDefault(s => s.IsUngrouped);
+        Assert.True(uncategorized is null || uncategorized.Chips.All(c => c.TagId != "new-group"));
+    }
 }

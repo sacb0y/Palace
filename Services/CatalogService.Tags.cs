@@ -459,6 +459,31 @@ public sealed partial class CatalogService
             return (IReadOnlyDictionary<string, int>)map;
         });
 
+    /// <summary>
+    /// Project-scoped AssetTag pairs for Library ▸ Tags panel file counts (t8-01).
+    /// </summary>
+    public Task<IReadOnlyList<(string AssetId, string TagId)>> GetProjectAssetTagPairsAsync(string? projectId) =>
+        _db.ReadAsync(conn =>
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$project", (object?)projectId ?? DBNull.Value);
+            cmd.CommandText = """
+                SELECT at.AssetId, at.TagId
+                  FROM AssetTag at
+                  JOIN Asset a ON a.Id = at.AssetId
+                 WHERE ($project IS NULL OR a.SourceFolderId IN (
+                         SELECT Id FROM SourceFolder WHERE ProjectId = $project))
+                """;
+            var rows = new List<(string, string)>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add((reader.GetString(0), reader.GetString(1)));
+            }
+
+            return (IReadOnlyList<(string AssetId, string TagId)>)rows;
+        });
+
     public Task<Tag> CreateChildTagAsync(string parentId, string name, int priority = 0) =>
         _db.WriteAsync(conn =>
         {

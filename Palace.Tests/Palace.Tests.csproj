@@ -127,6 +127,8 @@
     <Compile Include="..\Helpers\AssignedTagPartition.cs" Link="AssignedTagPartition.cs" />
     <Compile Include="..\Helpers\ImpliedNearest.cs" Link="ImpliedNearest.cs" />
     <Compile Include="..\Helpers\TagBrowsePanel.cs" Link="TagBrowsePanel.cs" />
+    <Compile Include="..\Helpers\TagBrowseCounts.cs" Link="TagBrowseCounts.cs" />
+    <Compile Include="..\Helpers\TagFilterStrip.cs" Link="TagFilterStrip.cs" />
     <Compile Include="..\Helpers\AssetNouns.cs" Link="AssetNouns.cs" />
     <Compile Include="..\Helpers\TagInk.cs" Link="TagInk.cs" />
     <Compile Include="..\Helpers\TagSuggest.cs" Link="TagSuggest.cs" />

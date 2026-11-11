@@ -489,29 +489,9 @@ public sealed partial class LibraryPage : Page
         ViewModel.IsTagBrowse = sender.SelectedItem == SelTags;
     }
 
-    private void SelTagMatch_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
-    {
-        if (_suppressBrowseChrome)
-        {
-            return;
-        }
-
-        ViewModel.TagFilterMode = sender.SelectedItem == SelTagMatchAny
-            ? TagFilterMode.Any
-            : sender.SelectedItem == SelTagMatchNone
-                ? TagFilterMode.None
-                : TagFilterMode.All;
-    }
-
     private void SyncBrowseChromeFromViewModel()
     {
         SelBrowseMode.SelectedItem = ViewModel.IsTagBrowse ? SelTags : SelFolders;
-        SelTagMatch.SelectedItem = ViewModel.TagFilterMode switch
-        {
-            TagFilterMode.Any => SelTagMatchAny,
-            TagFilterMode.None => SelTagMatchNone,
-            _ => SelTagMatchAll
-        };
     }
 
     private void InfUndo_PointerEntered(object sender, PointerRoutedEventArgs e) =>

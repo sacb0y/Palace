@@ -781,6 +781,14 @@ public partial class TagChipItem : ObservableObject
     [ObservableProperty]
     public partial string? CountBadge { get; set; }
 
+    /// <summary>t8-01 group-row file count (implied-inclusive).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FileCountText))]
+    public partial int FileCount { get; set; }
+
+    /// <summary>Trailing count face for Library tag rows (empty when 0).</summary>
+    public string FileCountText => Helpers.TagBrowseCounts.Face(FileCount);
+
     /// <summary>Multi-select assign flyout: how many of the selection already have this tag.</summary>
     [ObservableProperty]
     public partial int PartialCount { get; set; }
