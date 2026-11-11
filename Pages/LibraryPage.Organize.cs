@@ -44,6 +44,12 @@ public sealed partial class LibraryPage
             return;
         }
 
+        if (TryHandleTagPanelFilterKey(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (TryHandleAddTagsEscape(e))
         {
             e.Handled = true;
@@ -132,6 +138,25 @@ public sealed partial class LibraryPage
         }
 
         ViewModel.FocusAssignTagCommand.Execute(null);
+        return true;
+    }
+
+    /// <summary>Ctrl+F focuses the Tags panel filter while tag-browse is open (t8-01).</summary>
+    private bool TryHandleTagPanelFilterKey(KeyRoutedEventArgs e)
+    {
+        if (!TagPanelFilterShortcut.ShouldHandle(
+                (int)e.Key,
+                IsKeyDown(VirtualKey.Control),
+                IsKeyDown(VirtualKey.Menu),
+                IsKeyDown(VirtualKey.Shift),
+                ViewModel.IsGalleryOverlayOpen,
+                ViewModel.IsTagBrowse))
+        {
+            return false;
+        }
+
+        TxtTagPanelFilter.Focus(FocusState.Programmatic);
+        TxtTagPanelFilter.SelectAll();
         return true;
     }
 

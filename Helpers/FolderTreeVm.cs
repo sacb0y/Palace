@@ -27,6 +27,13 @@ public static class FolderTreeVm
     /// <summary>Face count for a tree row, including <c>0</c> for empty folders.</summary>
     public static string CountText(int assetCount) => assetCount.ToString("N0");
 
+    /// <summary>
+    /// Exact leaf name <c>_rejected</c> (case-insensitive) — red/pink folder glyph + count
+    /// in the tree (Delete-rejected mockups). Not path-based: nested siblings share the name.
+    /// </summary>
+    public static bool IsRejectedFolderName(string? name) =>
+        string.Equals(name, ReviewReject.FolderName, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>UIA name: includes count or "empty" so Narrator is not name-only.</summary>
     public static string AutomationName(string name, int assetCount) =>
         assetCount > 0 ? $"{name}, {assetCount} items" : $"{name}, empty";

@@ -84,6 +84,12 @@ public sealed class TagAddInputTests
     public void SingleImageHeaderSuffix_AppliedAndImplied(int applied, int implied, string expected) =>
         Assert.Equal(expected, TagAddInput.SingleImageHeaderSuffix(applied, implied));
 
+    [Theory]
+    [InlineData(false, "Implied by tag rules")]
+    [InlineData(true, "Implied on some files")]
+    public void ImpliedSectionTitle_MultiVsSingle(bool multi, string expected) =>
+        Assert.Equal(expected, TagAddInput.ImpliedSectionTitle(multi));
+
     [Fact]
     public void AliasFace_JoinsWithChevron() =>
         Assert.Equal("scenery › landscape", TagAddInput.AliasFace("scenery", "landscape"));

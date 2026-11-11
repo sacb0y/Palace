@@ -957,12 +957,12 @@
                     IsOn="{x:Bind ViewModel.IncludeNested, Mode=TwoWay}" />
                 <Button
                     AutomationProperties.AutomationId="BtnOrganizeByTag"
-                    AutomationProperties.Name="Organize images into a folder"
+                    AutomationProperties.Name="Organize files into a folder"
                     Command="{x:Bind ViewModel.PreviewOrganizeCommand}"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="FolderArrowRight" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Organize images into a folder" />
+                        <TextBlock VerticalAlignment="Center" Text="Organize files into a folder" />
                     </StackPanel>
                 </Button>
 
@@ -1012,8 +1012,11 @@
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="BtnTagsStatusUndo"
                     AutomationProperties.Name="Undo"
+                    Background="Transparent"
+                    BorderThickness="0"
                     Command="{x:Bind Library.UndoFileOpCommand}"
                     Content="Undo"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowStatusUndo), Mode=OneWay}" />
                 <TextBlock
                     VerticalAlignment="Center"

@@ -6,11 +6,15 @@ namespace Palace.Helpers;
 public static class AssignedTagChrome
 {
     /// <summary>
-    /// Implied-only chips use full opacity — transparency comes from the outline style,
-    /// not a dimmed Opacity (T8 mockup). Partial Manual stays lightly muted.
+    /// Full strength for every chip — partial uses dashed outline + k/n, not whole-chip dim
+    /// (t2-04a / tag-editor-review D2). Implied mute is outline/dot opacity in XAML.
     /// </summary>
-    public static double Opacity(bool isPartial, TagSource source) =>
-        source == TagSource.Implied ? 1.0 : isPartial ? 0.75 : 1.0;
+    public static double Opacity(bool isPartial, TagSource source)
+    {
+        _ = isPartial;
+        _ = source;
+        return 1.0;
+    }
 
     /// <summary>Manual / Implied / Mixed (+ optional k/n) for ToolTipService — not chip face text.</summary>
     public static string Tooltip(string? sourceLabel, string? countLabel)

@@ -22,7 +22,7 @@ public sealed class TagBrowsePanelSection
 
 public static class TagBrowsePanel
 {
-    public const string FilterPlaceholder = "Filter tags or groups";
+    public const string FilterPlaceholder = "Filter tags or groups (Ctrl+F)";
 
     public const int DefaultVisiblePerGroup = 4;
 

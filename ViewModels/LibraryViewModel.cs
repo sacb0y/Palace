@@ -491,6 +491,10 @@ public partial class LibraryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool HasImpliedAssignedTags { get; set; }
 
+    /// <summary>Implied subsection caption — multi uses "Implied on some files".</summary>
+    [ObservableProperty]
+    public partial string ImpliedSectionTitle { get; set; } = Helpers.TagAddInput.ImpliedSectionTitle(false);
+
     /// <summary>T8 Library Tags panel filter (matches tag and group names).</summary>
     [ObservableProperty]
     public partial string TagPanelFilter { get; set; } = "";

@@ -395,7 +395,7 @@
                         </Grid.ColumnDefinitions>
                         <ic:FluentIcon
                             Grid.Column="0"
-                            Foreground="#FF99A4"
+                            Foreground="{ThemeResource FolderTreeRejectedBrush}"
                             Icon="DismissCircle"
                             IconSize="Size16"
                             IconVariant="Regular" />
@@ -408,7 +408,7 @@
                             Grid.Column="2"
                             VerticalAlignment="Center"
                             AutomationProperties.AutomationId="TxtAllRejectedCount"
-                            Foreground="#FF99A4"
+                            Foreground="{ThemeResource FolderTreeRejectedBrush}"
                             Text="{x:Bind ViewModel.AllRejectedCountText, Mode=OneWay}" />
                     </Grid>
                 </Button>
@@ -512,12 +512,21 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
+                                <!-- Warm yellow folders; pink/red when leaf is _rejected (mockup fold / RED). -->
                                 <ic:FluentIcon
                                     VerticalAlignment="Center"
-                                    Foreground="{ThemeResource AccentTextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource FolderTreeFolderBrush}"
                                     Icon="{x:Bind helpers:FluentGlyph.FolderTreeIcon(IsRoot, IsExpanded), Mode=OneWay}"
                                     IconSize="Size16"
-                                    IconVariant="Regular" />
+                                    IconVariant="Regular"
+                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsRejectedFolder), Mode=OneWay}" />
+                                <ic:FluentIcon
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource FolderTreeRejectedBrush}"
+                                    Icon="{x:Bind helpers:FluentGlyph.FolderTreeIcon(IsRoot, IsExpanded), Mode=OneWay}"
+                                    IconSize="Size16"
+                                    IconVariant="Regular"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsRejectedFolder), Mode=OneWay}" />
                                 <TextBlock
                                     Grid.Column="1"
                                     VerticalAlignment="Center"
@@ -554,7 +563,14 @@
                                     Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                     Style="{StaticResource CaptionTextBlockStyle}"
                                     Text="{x:Bind CountText, Mode=OneWay}"
-                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsSelected), Mode=OneWay}" />
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowNeutralCount), Mode=OneWay}" />
+                                <TextBlock
+                                    Grid.Column="2"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource FolderTreeRejectedBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind CountText, Mode=OneWay}"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowRejectedCount), Mode=OneWay}" />
                             </Grid>
                         </TreeViewItem>
                     </DataTemplate>
@@ -576,7 +592,7 @@
                         x:Name="TxtTagPanelFilter"
                         AutomationProperties.AutomationId="TxtTagPanelFilter"
                         AutomationProperties.Name="Filter tags or groups"
-                        PlaceholderText="Filter tags or groups"
+                        PlaceholderText="{x:Bind helpers:TagBrowsePanel.FilterPlaceholder}"
                         Text="{x:Bind ViewModel.TagPanelFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     <Grid ColumnSpacing="4">
                         <Grid.ColumnDefinitions>
@@ -2490,12 +2506,12 @@
                             VerticalAlignment="Center"
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="Implied by tag rules" />
+                            Text="{x:Bind ViewModel.ImpliedSectionTitle, Mode=OneWay}" />
                     </StackPanel>
                     <ItemsRepeater
                         x:Name="LstImpliedTags"
                         AutomationProperties.AutomationId="LstImpliedTags"
-                        AutomationProperties.Name="Implied by tag rules"
+                        AutomationProperties.Name="{x:Bind ViewModel.ImpliedSectionTitle, Mode=OneWay}"
                         ItemsSource="{x:Bind ViewModel.ImpliedAssignedTags, Mode=OneWay}">
                         <ItemsRepeater.Layout>
                             <helpers:ChipWrapLayout HorizontalSpacing="8" VerticalSpacing="8" />
@@ -2786,10 +2802,17 @@
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="{x:Bind ViewModel.ApplyPendingHint, Mode=OneWay}"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasPendingTags), Mode=OneWay}" />
+                    <!-- UIA live region only — status bar owns the visible confirmation (t2-03a). -->
                     <TextBlock
                         x:Name="TxtAssignAnnouncement"
+                        Width="1"
+                        Height="1"
+                        Margin="0"
+                        Padding="0"
                         AutomationProperties.LiveSetting="Assertive"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        IsHitTestVisible="False"
+                        Opacity="0"
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="{x:Bind ViewModel.AssignAnnouncement, Mode=OneWay}" />
                 </StackPanel>
@@ -2846,8 +2869,7 @@
                     Header="Notes"
                     IsEnabled="{x:Bind ViewModel.CanEditNotes, Mode=OneWay}"
                     Text="{x:Bind ViewModel.PreviewNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    TextWrapping="Wrap"
-                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}" />
+                    TextWrapping="Wrap" />
 
                 <StackPanel
                     Spacing="8"
@@ -2967,8 +2989,11 @@
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="BtnStatusUndo"
                     AutomationProperties.Name="Undo"
+                    Background="Transparent"
+                    BorderThickness="0"
                     Command="{x:Bind ViewModel.UndoFileOpCommand}"
                     Content="Undo"
+                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowStatusUndo), Mode=OneWay}" />
                 <TextBlock
                     VerticalAlignment="Center"
