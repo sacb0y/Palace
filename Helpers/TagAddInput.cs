@@ -104,6 +104,10 @@ public static class TagAddInput
     public static string AssignedTagsHeaderSuffix(int selectedCount) =>
         selectedCount <= 1 ? "" : $"on {selectedCount} selected";
 
+    /// <summary>t8-03 single-image inspector: bold "Tags" + this secondary clause.</summary>
+    public static string SingleImageHeaderSuffix(int appliedCount, int impliedCount) =>
+        $"{Math.Max(0, appliedCount)} applied · {Math.Max(0, impliedCount)} implied";
+
     public static string AliasFace(string aliasName, string idealName) =>
         $"{aliasName} › {idealName}";
 

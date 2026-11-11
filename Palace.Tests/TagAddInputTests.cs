@@ -76,6 +76,14 @@ public sealed class TagAddInputTests
     public void AssignedTagsHeaderSuffix_MultiOnly(int n, string expected) =>
         Assert.Equal(expected, TagAddInput.AssignedTagsHeaderSuffix(n));
 
+    [Theory]
+    [InlineData(5, 3, "5 applied · 3 implied")]
+    [InlineData(0, 0, "0 applied · 0 implied")]
+    [InlineData(1, 0, "1 applied · 0 implied")]
+    [InlineData(0, 2, "0 applied · 2 implied")]
+    public void SingleImageHeaderSuffix_AppliedAndImplied(int applied, int implied, string expected) =>
+        Assert.Equal(expected, TagAddInput.SingleImageHeaderSuffix(applied, implied));
+
     [Fact]
     public void AliasFace_JoinsWithChevron() =>
         Assert.Equal("scenery › landscape", TagAddInput.AliasFace("scenery", "landscape"));
