@@ -238,4 +238,68 @@ public static class PreviewPane
             PaneMode.Docked,
             LibraryColumnLayout.AllocateWithPreview(contentWidth, width));
     }
+
+    /// <summary>
+    /// Column + chrome flags the Library page must apply for one Effective result.
+    /// Docked Preview uses a right-aligned host sized to <see cref="PreviewPaneLayoutState.DockHostWidth"/>;
+    /// the Grid's third column stays 0 so hide→show never cycles ColumnDefinition Width 0↔N
+    /// (that left the dock child arranged over the folder tree — FENRIR #177).
+    /// </summary>
+    public static PreviewPaneLayoutState Layout(PreviewPaneEffective effective) =>
+        new(
+            effective.Mode,
+            effective.Widths.Tree,
+            effective.Widths.Mosaic,
+            effective.Widths.Preview,
+            DockHostVisible: effective.Mode == PaneMode.Docked,
+            OverlayVisible: effective.Mode == PaneMode.Overlay);
+
+    /// <summary>
+    /// Pixel width for <c>ColPreview</c> — always 0. Dock chrome is right-aligned, not column 2.
+    /// </summary>
+    public static double GridPreviewColumnWidth(PreviewPaneLayoutState layout) => 0;
+
+    /// <summary>
+    /// Width for the right-aligned dock host when Docked; 0 otherwise.
+    /// </summary>
+    public static double DockHostWidth(PreviewPaneLayoutState layout) =>
+        layout.Mode == PaneMode.Docked ? layout.Preview : 0;
+
+    /// <summary>
+    /// Dock host chrome without Visibility=Collapsed. Hide uses Opacity=0 + no hit-test
+    /// so hide→show never re-enters Collapsed→Visible (FENRIR: that left the pane at the
+    /// folder-tree X while cold start stayed correct).
+    /// </summary>
+    public static PreviewDockChrome DockChrome(PreviewPaneLayoutState layout) =>
+        layout.Mode == PaneMode.Docked
+            ? new PreviewDockChrome(
+                Width: layout.Preview,
+                Opacity: 1,
+                HitTestVisible: true)
+            : new PreviewDockChrome(
+                Width: 0,
+                Opacity: 0,
+                HitTestVisible: false);
+
+    /// <summary>
+    /// True when docked mosaic reservation appears or disappears — Grid must remeasure.
+    /// </summary>
+    public static bool NeedsDockColumnRelayout(PaneMode from, PaneMode to) =>
+        (from == PaneMode.Docked) != (to == PaneMode.Docked);
 }
+
+/// <summary>Right-aligned dock host width / opacity / hit-test (no Collapse).</summary>
+public readonly record struct PreviewDockChrome(
+    double Width,
+    double Opacity,
+    bool HitTestVisible);
+
+/// <summary>Applied Library Preview column + chrome visibility for one layout pass.</summary>
+/// <param name="Preview">Logical dock width from Allocate (UserWidth clamped) when Docked; else 0.</param>
+public readonly record struct PreviewPaneLayoutState(
+    PaneMode Mode,
+    double Tree,
+    double Mosaic,
+    double Preview,
+    bool DockHostVisible,
+    bool OverlayVisible);

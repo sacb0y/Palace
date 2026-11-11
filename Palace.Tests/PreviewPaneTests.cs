@@ -219,4 +219,79 @@ public sealed class PreviewPaneTests
         Assert.Equal(340, PreviewPane.ClampUserWidth(double.NaN));
         Assert.Equal(340, PreviewPane.ResetUserWidth(PreviewPane.Initial with { UserWidth = 500 }).UserWidth);
     }
+
+    [Fact]
+    public void Layout_DockedHideShowRestoresDockHostWidth_GridPreviewColumnStaysZero()
+    {
+        var wide = PreviewPane.AutoShowAboveContentDip + 200;
+        var userWidth = 400d;
+        var s = PreviewPane.OnWidth(
+            PreviewPane.Initial with { UserWidth = userWidth },
+            wide);
+        var docked = PreviewPane.Layout(PreviewPane.Effective(s, wide));
+        Assert.Equal(PaneMode.Docked, docked.Mode);
+        Assert.True(docked.DockHostVisible);
+        Assert.False(docked.OverlayVisible);
+        Assert.Equal(userWidth, docked.Preview, 0.01);
+        Assert.Equal(userWidth, PreviewPane.DockHostWidth(docked), 0.01);
+        Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(docked));
+        var dockShown = PreviewPane.DockChrome(docked);
+        Assert.Equal(userWidth, dockShown.Width, 0.01);
+        Assert.Equal(1, dockShown.Opacity);
+        Assert.True(dockShown.HitTestVisible);
+        Assert.True(docked.Mosaic >= LibraryColumnLayout.MosaicMinWidth - 0.01);
+
+        // Hide → show three times: dock chrome width/opacity restore; ColPreview stays 0;
+        // hide is Opacity=0 (not Collapse) so WinUI never re-enters Collapsed→Visible.
+        for (var i = 0; i < 3; i++)
+        {
+            s = PreviewPane.ApplyToggle(s);
+            var hidden = PreviewPane.Layout(PreviewPane.Effective(s, wide));
+            Assert.Equal(PaneMode.Hidden, hidden.Mode);
+            Assert.False(hidden.DockHostVisible);
+            Assert.False(hidden.OverlayVisible);
+            Assert.Equal(0, hidden.Preview);
+            Assert.Equal(0, PreviewPane.DockHostWidth(hidden));
+            Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(hidden));
+            var dockHidden = PreviewPane.DockChrome(hidden);
+            Assert.Equal(0, dockHidden.Width);
+            Assert.Equal(0, dockHidden.Opacity);
+            Assert.False(dockHidden.HitTestVisible);
+            Assert.True(hidden.Mosaic > docked.Mosaic);
+
+            s = PreviewPane.ApplyToggle(s);
+            var shown = PreviewPane.Layout(PreviewPane.Effective(s, wide));
+            Assert.Equal(PaneMode.Docked, shown.Mode);
+            Assert.True(shown.DockHostVisible);
+            Assert.False(shown.OverlayVisible);
+            Assert.Equal(userWidth, shown.Preview, 0.01);
+            Assert.Equal(userWidth, PreviewPane.DockHostWidth(shown), 0.01);
+            Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(shown));
+            var chrome = PreviewPane.DockChrome(shown);
+            Assert.Equal(userWidth, chrome.Width, 0.01);
+            Assert.Equal(1, chrome.Opacity);
+            Assert.True(chrome.HitTestVisible);
+            Assert.Equal(docked.Mosaic, shown.Mosaic, 0.01);
+            Assert.Equal(docked.Tree, shown.Tree, 0.01);
+            Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, shown.Mode));
+            Assert.True(PreviewPane.NeedsDockColumnRelayout(shown.Mode, PaneMode.Hidden));
+            Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
+        }
+    }
+
+    [Fact]
+    public void Layout_OverlayDoesNotClaimPreviewColumn()
+    {
+        var narrow = PreviewPane.AutoHideBelowContentDip - 1;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
+        s = PreviewPane.ApplyToggle(s);
+        var overlay = PreviewPane.Layout(PreviewPane.Effective(s, narrow));
+        Assert.Equal(PaneMode.Overlay, overlay.Mode);
+        Assert.False(overlay.DockHostVisible);
+        Assert.True(overlay.OverlayVisible);
+        Assert.Equal(0, overlay.Preview);
+        Assert.Equal(0, PreviewPane.DockHostWidth(overlay));
+        Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(overlay));
+        Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Overlay));
+    }
 }

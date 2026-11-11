@@ -200,19 +200,43 @@ public sealed partial class LibraryPage
     private void SyncPreviewChrome(PreviewPaneEffective effective)
     {
         var mode = effective.Mode;
+        var fromMode = _previewVisualMode;
+        var layout = PreviewPane.Layout(effective);
+        var dock = PreviewPane.DockChrome(layout);
         HostPreviewBody(mode);
-        ApplyPreviewOverlayVisibility(mode);
+        ApplyPreviewOverlayWidth();
         UpdatePreviewEdgeTab(mode);
         SyncPreviewToggleButton();
-        AnimatePreviewModeChange(mode);
+
+        // Dock host: never Collapsed after load. FENRIR #177 — first Collapsed→Visible
+        // (cold start) was fine; every later hide→show left ScrPreviewPane at X≈451 over
+        // the folder tree. Opacity + Width + hit-test only; no Composition Offset on dock.
+        GrdPreviewDockHost.Visibility = Visibility.Visible;
+        ScrPreviewPane.Visibility = Visibility.Visible;
+        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Right;
+        GrdPreviewDockHost.Width = dock.Width;
+        GrdPreviewDockHost.Opacity = dock.Opacity;
+        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
+        ResetPreviewMotionOffset(GrdPreviewDockHost);
+
+        if (mode == PaneMode.Overlay)
+        {
+            BrdPreviewOverlay.Visibility = Visibility.Visible;
+        }
+
+        // Overlay may still use slide motion; dock does not (Offset fights Right align).
+        if (mode == PaneMode.Overlay || fromMode == PaneMode.Overlay)
+        {
+            AnimatePreviewOverlayChange(fromMode, mode);
+        }
+
         _previewVisualMode = mode;
 
-        GrdPreviewDockHost.Visibility = mode == PaneMode.Docked
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        ScrPreviewPane.Visibility = mode == PaneMode.Docked
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        if (mode != PaneMode.Overlay)
+        {
+            BrdPreviewOverlay.Visibility = Visibility.Collapsed;
+            ResetPreviewMotionOffset(BrdPreviewOverlay);
+        }
     }
 
     private void HostPreviewBody(PaneMode mode)
@@ -249,11 +273,9 @@ public sealed partial class LibraryPage
         _previewBodyInOverlay = false;
     }
 
-    private void ApplyPreviewOverlayVisibility(PaneMode mode)
+    private void ApplyPreviewOverlayWidth()
     {
-        BrdPreviewOverlay.Visibility = mode == PaneMode.Overlay
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        // Visibility is applied in SyncPreviewChrome (Visible before motion; Collapsed after).
         BrdPreviewOverlay.Width = PreviewPane.OverlayWidthDip;
     }
 
@@ -297,25 +319,37 @@ public sealed partial class LibraryPage
         }
     }
 
-    private void AnimatePreviewModeChange(PaneMode mode)
+    private void AnimatePreviewOverlayChange(PaneMode fromMode, PaneMode toMode)
     {
-        if (_previewVisualMode == mode || !PreviewMotionEnabled())
+        if (fromMode == toMode || !PreviewMotionEnabled())
         {
             return;
         }
 
-        var showing = mode is PaneMode.Docked or PaneMode.Overlay;
-        var hiding = _previewVisualMode is PaneMode.Docked or PaneMode.Overlay
-            && mode == PaneMode.Hidden;
-        if (!showing && !hiding && mode != PaneMode.Overlay && _previewVisualMode != PaneMode.Overlay)
+        // Dock host is not animated — Composition Offset.X on it correlated with
+        // hide→show landing over the folder tree (FENRIR measured X≈451).
+        UIElement? target = null;
+        var showing = false;
+        if (toMode == PaneMode.Overlay && fromMode != PaneMode.Overlay)
+        {
+            target = BrdPreviewOverlay;
+            showing = true;
+        }
+        else if (fromMode == PaneMode.Overlay && toMode != PaneMode.Overlay)
+        {
+            target = BrdPreviewOverlay;
+            showing = false;
+        }
+
+        if (target is null)
         {
             return;
         }
 
         try
         {
-            var target = mode == PaneMode.Overlay ? (UIElement)BrdPreviewOverlay : GrdPreviewDockHost;
             var visual = ElementCompositionPreview.GetElementVisual(target);
+            visual.StopAnimation("Offset.X");
             var compositor = visual.Compositor;
             var ms = showing ? PreviewPane.MotionInMs : PreviewPane.MotionOutMs;
             var ease = showing
@@ -329,11 +363,29 @@ public sealed partial class LibraryPage
             anim.InsertKeyFrame(0f, showing ? 24f : 0f, ease);
             anim.InsertKeyFrame(1f, showing ? 0f : 24f, ease);
             anim.Duration = TimeSpan.FromMilliseconds(ms);
+            visual.Offset = new System.Numerics.Vector3(
+                showing ? 24f : 0f,
+                visual.Offset.Y,
+                visual.Offset.Z);
             visual.StartAnimation("Offset.X", anim);
         }
         catch
         {
             // Composition unavailable — layout still correct.
+        }
+    }
+
+    private static void ResetPreviewMotionOffset(UIElement target)
+    {
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(target);
+            visual.StopAnimation("Offset.X");
+            visual.Offset = new System.Numerics.Vector3(0f, visual.Offset.Y, visual.Offset.Z);
+        }
+        catch
+        {
+            // Composition unavailable.
         }
     }
 

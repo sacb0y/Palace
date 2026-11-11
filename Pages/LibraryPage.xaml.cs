@@ -531,8 +531,9 @@ public sealed partial class LibraryPage : Page
         ViewModel.RebuildAssignPanelPublic();
         // Open the preview only when the user has it hidden — never flip a visible pane off.
         var openedPreview = false;
+        // Dock host stays Visibility=Visible (Opacity hide); use pane mode, not Visibility.
         if (ViewModel.HasSelection
-            && ScrPreviewPane.Visibility != Visibility.Visible
+            && _previewPaneMode is not (PaneMode.Docked or PaneMode.Overlay)
             && (!_previewPane.UserShow || _previewPane.AutoHidden))
         {
             ApplyPreviewToggleFromUser();
@@ -776,22 +777,29 @@ public sealed partial class LibraryPage : Page
 
     private void ApplyLibraryColumnLayout(PreviewPaneEffective effective)
     {
-        var widths = effective.Widths;
-        var mode = effective.Mode;
+        var layout = PreviewPane.Layout(effective);
+        var mode = layout.Mode;
         var wasShowing = _previewPaneMode is PaneMode.Docked or PaneMode.Overlay;
         var showing = mode is PaneMode.Docked or PaneMode.Overlay;
         var wasDocked = _previewPaneMode == PaneMode.Docked;
+        var needsDockRelayout = PreviewPane.NeedsDockColumnRelayout(_previewPaneMode, mode);
         _previewPaneMode = mode;
-        _allocatedMosaicWidth = widths.Mosaic;
+        _allocatedMosaicWidth = layout.Mosaic;
 
         // Fixed widths from Effective — MinWidths always 0 so column mins never sum
         // above available width (that floored DesiredSize and froze resize).
-        ColFolderTree.Width = new GridLength(widths.Tree);
+        // ColPreview stays 0: dock host is right-aligned (see GrdPreviewDockHost).
+        ColFolderTree.Width = new GridLength(layout.Tree);
         ColFolderTree.MinWidth = 0;
-        ColMosaic.Width = new GridLength(widths.Mosaic);
+        ColMosaic.Width = new GridLength(layout.Mosaic);
         ColMosaic.MinWidth = 0;
-        ColPreview.Width = new GridLength(widths.Preview);
+        ColPreview.Width = new GridLength(PreviewPane.GridPreviewColumnWidth(layout));
         ColPreview.MinWidth = 0;
+        var dock = PreviewPane.DockChrome(layout);
+        GrdPreviewDockHost.Width = dock.Width;
+        GrdPreviewDockHost.Opacity = dock.Opacity;
+        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
+        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Right;
 
         if (!showing)
         {
@@ -807,6 +815,14 @@ public sealed partial class LibraryPage : Page
         }
 
         SyncPreviewChrome(effective);
+
+        // Mosaic width changes when dock reservation appears/disappears.
+        if (needsDockRelayout)
+        {
+            GrdLibraryColumns.InvalidateMeasure();
+            GrdLibraryColumns.InvalidateArrange();
+        }
+
         if (showing && !wasShowing)
         {
             // Pane just shown (docked or overlay) — refresh decode.
@@ -820,8 +836,8 @@ public sealed partial class LibraryPage : Page
         AnchorMosaicOnFirstVisibleTile();
 
         // HostWidth from Allocate mosaic (Overlay also uses preview=0 widths).
-        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(widths.Mosaic));
-        UpdateMosaicToolbarOverflow(widths.Mosaic);
+        MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(layout.Mosaic));
+        UpdateMosaicToolbarOverflow(layout.Mosaic);
     }
 
     private void PausePreviewPaneMedia()
