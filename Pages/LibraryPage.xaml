@@ -2384,8 +2384,8 @@
                                 SuggestionChosen="AsbAssignTag_SuggestionChosen"
                                 TextChanged="AsbAssignTag_TextChanged"
                                 Text="{x:Bind ViewModel.TagQuery, Mode=OneWay}"
-                                TextMemberPath="Name"
-                                UpdateTextOnSelect="True">
+                                TextMemberPath="SuggestText"
+                                UpdateTextOnSelect="False">
                                 <AutoSuggestBox.ItemTemplate>
                                     <DataTemplate x:DataType="models:TagPickItem">
                                         <!-- t2-02: match bold + group/count; alias pill; Create last. -->

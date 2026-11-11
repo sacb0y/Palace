@@ -1534,9 +1534,10 @@ public sealed partial class LibraryPage : Page
     {
         if (args.SelectedItem is TagPickItem pick)
         {
-            // Create row Name is the typed token; TextMemberPath=Name keeps the box on that token.
+            // SuggestText is for ASB ranking only; box + pending always use Name (typed token / tag).
             ViewModel.SelectedPickTag = pick.IsCreateRow ? null : pick;
             ViewModel.TagQuery = pick.Name;
+            sender.Text = pick.Name;
         }
     }
 
@@ -1556,6 +1557,7 @@ public sealed partial class LibraryPage : Page
         {
             ViewModel.SelectedPickTag = pick.IsCreateRow ? null : pick;
             ViewModel.TagQuery = pick.Name;
+            sender.Text = pick.Name;
         }
         else if (!string.Equals(ViewModel.TagQuery, sender.Text ?? "", StringComparison.Ordinal))
         {

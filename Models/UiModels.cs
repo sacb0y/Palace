@@ -738,6 +738,12 @@ public sealed class TagPickItem
     /// <summary>Last-row "+ Create tag …" suggestion (t2-02).</summary>
     public bool IsCreateRow { get; set; }
 
+    /// <summary>
+    /// AutoSuggestBox TextMemberPath. Matches use <see cref="Name"/>; Create uses a
+    /// trailing sort key so WinUI cannot promote Create above prefix matches (t2-02).
+    /// </summary>
+    public string SuggestText { get; set; } = "";
+
     public string UseCountText => UseCount > 0 ? UseCount.ToString(System.Globalization.CultureInfo.InvariantCulture) : "";
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>

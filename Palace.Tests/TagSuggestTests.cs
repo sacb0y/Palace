@@ -59,4 +59,32 @@ public sealed class TagSuggestTests
         Assert.Equal("landscape", span.Match);
         Assert.Equal("", span.After);
     }
+
+    [Fact]
+    public void CreateSuggestText_SortsAfterNameMatches()
+    {
+        var create = TagSuggest.CreateSuggestText("Create tag “vis”");
+        Assert.StartsWith("\uFFFF", create, StringComparison.Ordinal);
+        // Exact query "vis" as TextMemberPath would sort before "vista"; Create must not.
+        Assert.True(string.CompareOrdinal(create, "vis") > 0);
+        Assert.True(string.CompareOrdinal(create, "vista") > 0);
+        Assert.True(string.CompareOrdinal(create, "visual development") > 0);
+    }
+
+    [Fact]
+    public void WithCreateLast_AppendsCreateAndDropsDupes()
+    {
+        var ordered = TagSuggest.WithCreateLast(
+            [
+                (Name: "vista", Create: false),
+                (Name: "bogus-create", Create: true),
+                (Name: "visor", Create: false),
+            ],
+            (Name: "vis", Create: true),
+            r => r.Create);
+
+        Assert.Equal(["vista", "visor", "vis"], ordered.Select(r => r.Name).ToArray());
+        Assert.True(ordered[^1].Create);
+        Assert.DoesNotContain(ordered.Take(ordered.Count - 1), r => r.Create);
+    }
 }

@@ -87,4 +87,34 @@ public static class TagSuggest
             text.Substring(idx, q.Length),
             text[(idx + q.Length)..]);
     }
+
+    /// <summary>
+    /// AutoSuggestBox TextMemberPath for the Create row. Leading U+FFFF keeps Create
+    /// after name matches when WinUI reorders by TextMemberPath (exact Name==query
+    /// was promoting Create to the top — Fenrir #183).
+    /// </summary>
+    public static string CreateSuggestText(string? createLabel) =>
+        "\uFFFF" + (createLabel ?? "");
+
+    /// <summary>Append <paramref name="create"/> last; drops any prior create-flagged rows.</summary>
+    public static IReadOnlyList<T> WithCreateLast<T>(
+        IEnumerable<T>? matches,
+        T create,
+        Func<T, bool> isCreate)
+    {
+        var list = new List<T>();
+        if (matches is not null)
+        {
+            foreach (var row in matches)
+            {
+                if (!isCreate(row))
+                {
+                    list.Add(row);
+                }
+            }
+        }
+
+        list.Add(create);
+        return list;
+    }
 }

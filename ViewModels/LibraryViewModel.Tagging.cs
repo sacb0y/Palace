@@ -571,6 +571,7 @@ public partial class LibraryViewModel
                 TagId = source.TagId,
                 Name = source.Name,
                 Display = display,
+                SuggestText = source.Name,
                 EffectiveColor = faceColor,
                 GroupName = group,
                 UseCount = useCount,
@@ -582,27 +583,32 @@ public partial class LibraryViewModel
             });
         }
 
-        // Create is always last while typing so Enter prefers a match above it (t2-02).
-        items.Add(new TagPickItem
-        {
-            TagId = "",
-            Name = q,
-            Display = TagAddInput.CreateSuggestionLabel(q),
-            MatchText = TagAddInput.CreateSuggestionLabel(q),
-            IsCreateRow = true,
-            EffectiveColor = TagAddInput.SlateHex,
-        });
+        // Create is always last (list + SuggestText) so Enter prefers a match (t2-02).
+        var createLabel = TagAddInput.CreateSuggestionLabel(q);
+        var ordered = TagSuggest.WithCreateLast(
+            items,
+            new TagPickItem
+            {
+                TagId = "",
+                Name = q,
+                Display = createLabel,
+                SuggestText = TagSuggest.CreateSuggestText(createLabel),
+                MatchText = createLabel,
+                IsCreateRow = true,
+                EffectiveColor = TagAddInput.SlateHex,
+            },
+            t => t.IsCreateRow);
 
         TagSuggestions.Clear();
-        foreach (var item in items)
+        foreach (var item in ordered)
         {
             TagSuggestions.Add(item);
         }
 
         ShowTagSuggestions = true;
-        var matchNames = items.Where(t => !t.IsCreateRow).Select(t => t.Name).ToList();
+        var matchNames = ordered.Where(t => !t.IsCreateRow).Select(t => t.Name).ToList();
         TagSuggestionsSummary = matchNames.Count == 0
-            ? TagAddInput.CreateSuggestionLabel(q)
+            ? createLabel
             : string.Join(", ", matchNames);
     }
 
@@ -640,6 +646,7 @@ public partial class LibraryViewModel
                 TagId = tag.Id,
                 Name = tag.Name,
                 Display = tag.Name + extra,
+                SuggestText = tag.Name,
                 GroupName = groupName,
                 UseCount = useCounts?.GetValueOrDefault(tag.Id) ?? 0,
                 EffectiveColor = colors.GetValueOrDefault(tag.Id)
