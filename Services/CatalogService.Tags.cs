@@ -469,49 +469,122 @@ public sealed partial class CatalogService
         });
 
     public Task<TagCreateBatchResult> CreateTagsAsync(IEnumerable<string> names, string? parentId = null) =>
+        _db.WriteAsync(conn => CreateTagsCore(conn, names, parentId, tx: null));
+
+    public Task SetTagDescriptionAsync(string id, string? description) =>
         _db.WriteAsync(conn =>
         {
-            var created = 0;
-            var existed = 0;
-            var rejected = 0;
-            var tags = new List<Tag>();
-            foreach (var raw in TagNameList.Split(string.Join('\n', names)))
-            {
-                var existing = FindTagByName(conn, raw);
-                Tag tag;
-                if (existing is null)
-                {
-                    tag = InsertTag(conn, raw, 0);
-                    created++;
-                }
-                else
-                {
-                    // Existing alias names resolve to ideal before membership / return.
-                    tag = ResolveIdealTag(conn, existing);
-                    existed++;
-                }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Tag SET Description = $d WHERE Id = $id";
+            cmd.Parameters.AddWithValue(
+                "$d",
+                string.IsNullOrWhiteSpace(description) ? DBNull.Value : description.Trim());
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        });
 
-                if (parentId is not null && !TryAddMembership(conn, parentId, tag.Id))
+    private TagCreateBatchResult CreateTagsCore(
+        SqliteConnection conn,
+        IEnumerable<string> names,
+        string? parentId,
+        SqliteTransaction? tx,
+        List<FileOpItem>? journal = null)
+    {
+        var created = 0;
+        var existed = 0;
+        var rejected = 0;
+        var tags = new List<Tag>();
+        var createdIds = new List<string>();
+        var membershipAdded = 0;
+        foreach (var raw in TagNameList.Split(string.Join('\n', names)))
+        {
+            var existing = FindTagByName(conn, raw, tx);
+            Tag tag;
+            if (existing is null)
+            {
+                tag = InsertTag(conn, raw, 0, tx);
+                created++;
+                createdIds.Add(tag.Id);
+                journal?.Add(new FileOpItem
+                {
+                    Step = FileOpStep.CreateTag,
+                    OldPath = tag.Id,
+                    NewPath = tag.Name
+                });
+            }
+            else
+            {
+                // Existing alias names resolve to ideal before membership / return.
+                tag = ResolveIdealTag(conn, existing, tx);
+                existed++;
+            }
+
+            if (parentId is not null)
+            {
+                var hadEdge = MembershipExists(conn, parentId, tag.Id, tx);
+                if (!TryAddMembership(conn, parentId, tag.Id, tx))
                 {
                     rejected++;
                 }
-
-                tags.Add(tag);
+                else if (!hadEdge)
+                {
+                    membershipAdded++;
+                    journal?.Add(new FileOpItem
+                    {
+                        Step = FileOpStep.AddMembership,
+                        OldPath = parentId,
+                        NewPath = tag.Id
+                    });
+                }
             }
 
-            if (created > 0)
+            tags.Add(tag);
+        }
+
+        if (created > 0 || membershipAdded > 0)
+        {
+            InvalidateGraphCaches();
+        }
+
+        string? groupName = null;
+        if (parentId is not null)
+        {
+            using var parentCmd = conn.CreateCommand();
+            if (tx is not null)
             {
-                InvalidateGraphCaches();
+                parentCmd.Transaction = tx;
             }
 
-            return new TagCreateBatchResult
-            {
-                Created = created,
-                Existed = existed,
-                MembershipRejected = rejected,
-                Tags = tags
-            };
-        });
+            parentCmd.CommandText = "SELECT Name FROM Tag WHERE Id = $id";
+            parentCmd.Parameters.AddWithValue("$id", parentId);
+            groupName = parentCmd.ExecuteScalar() as string;
+        }
+
+        return new TagCreateBatchResult
+        {
+            Created = created,
+            Existed = existed,
+            MembershipRejected = rejected,
+            Tags = tags,
+            CreatedTagIds = createdIds,
+            GroupName = groupName
+        };
+    }
+
+    private static bool MembershipExists(
+        SqliteConnection conn,
+        string parentId,
+        string childId,
+        SqliteTransaction? tx = null)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText =
+            "SELECT 1 FROM TagMembership WHERE ParentId = $p AND ChildId = $c LIMIT 1";
+        cmd.Parameters.AddWithValue("$p", parentId);
+        cmd.Parameters.AddWithValue("$c", childId);
+        return cmd.ExecuteScalar() is not null;
+    }
 
     public Task SetTagStarredAsync(string id, bool starred) =>
         _db.WriteAsync(conn =>
@@ -676,6 +749,7 @@ public sealed partial class CatalogService
             cmd.Parameters.AddWithValue("$p", parentId);
             cmd.Parameters.AddWithValue("$c", childId);
             cmd.ExecuteNonQuery();
+            InvalidateGraphCaches();
         });
 
     public Task<IReadOnlyList<Tag>> GetParentsAsync(string tagId) =>
@@ -700,23 +774,25 @@ public sealed partial class CatalogService
                 Priority = reader.GetInt32(2),
                 Slug = reader.GetString(3),
                 Color = reader.FieldCount > 4 && !reader.IsDBNull(4) ? reader.GetString(4) : null,
-                IsStarred = reader.FieldCount > 5 && !reader.IsDBNull(5) && reader.GetInt32(5) != 0
+                IsStarred = reader.FieldCount > 5 && !reader.IsDBNull(5) && reader.GetInt32(5) != 0,
+                Description = reader.FieldCount > 6 && !reader.IsDBNull(6) ? reader.GetString(6) : null
             });
         }
 
         return list;
     }
 
-    private static Tag? FindTagByName(SqliteConnection conn, string name)
+    private static Tag? FindTagByName(SqliteConnection conn, string name, SqliteTransaction? tx = null)
     {
-        var id = TagNames.FindId(conn, name);
+        var id = TagNames.FindId(conn, name, tx: tx);
         if (id is null)
         {
             return null;
         }
 
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag WHERE Id = $id";
+        cmd.Transaction = tx;
+        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred, Description FROM Tag WHERE Id = $id";
         cmd.Parameters.AddWithValue("$id", id);
         var list = ReadTags(cmd);
         return list.Count > 0 ? list[0] : null;
@@ -725,7 +801,7 @@ public sealed partial class CatalogService
     private static List<Tag> LoadTags(SqliteConnection conn)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred FROM Tag ORDER BY Priority DESC, Name COLLATE NOCASE";
+        cmd.CommandText = "SELECT Id, Name, Priority, Slug, Color, IsStarred, Description FROM Tag ORDER BY Priority DESC, Name COLLATE NOCASE";
         return ReadTags(cmd);
     }
 

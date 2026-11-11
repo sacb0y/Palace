@@ -57,6 +57,21 @@ public sealed partial class FileOpService
     public Task<FileOpResult> DeleteTagAsync(string tagId, string projectId) =>
         GatedAsync(projectId, () => DeleteTagCoreAsync(tagId, projectId));
 
+    /// <summary>
+    /// Tags-page batch create in <paramref name="parentId"/> (null = ungrouped).
+    /// Journals <see cref="FileOpKind.TagCreate"/>.
+    /// </summary>
+    public Task<TagCreateBatchResult> CreateTagsAsync(
+        IReadOnlyList<string> names,
+        string? parentId,
+        string projectId) =>
+        GatedAsync(projectId, async () =>
+        {
+            var result = await _catalog.ApplyCreateTagsJournaledAsync(projectId, names, parentId)
+                .ConfigureAwait(false);
+            return result;
+        });
+
     private async Task<FileOpResult> AssignTagsCoreAsync(
         IReadOnlyList<string> assetIds,
         IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,

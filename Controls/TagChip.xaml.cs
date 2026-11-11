@@ -56,6 +56,11 @@ public sealed partial class TagChip : UserControl
         nameof(ShowNewBadge), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
 
+    /// <summary>t2-03b briefly-created green outline on the Tags board.</summary>
+    public static readonly DependencyProperty IsRecentlyCreatedProperty = DependencyProperty.Register(
+        nameof(IsRecentlyCreated), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
     /// <summary>
     /// Leading ✓ for "on every selected file" without forcing ApplyState.On accent fill
     /// (preview Manual chips stay ControlFill; board filter On still uses ApplyState).
@@ -198,6 +203,12 @@ public sealed partial class TagChip : UserControl
         set => SetValue(ShowNewBadgeProperty, value);
     }
 
+    public bool IsRecentlyCreated
+    {
+        get => (bool)GetValue(IsRecentlyCreatedProperty);
+        set => SetValue(IsRecentlyCreatedProperty, value);
+    }
+
     public bool ShowAppliedCheck
     {
         get => (bool)GetValue(ShowAppliedCheckProperty);
@@ -336,6 +347,7 @@ public sealed partial class TagChip : UserControl
                 && Application.Current?.RequestedTheme == ApplicationTheme.Light);
 
         ApplyFillAndBorder(state, highContrast);
+        ApplyRecentlyCreatedOutline();
         ApplyStateGlyph(state, highContrast);
         ApplyColorDot();
         ApplyLinks();
@@ -443,6 +455,25 @@ public sealed partial class TagChip : UserControl
         TxtLabel.Foreground = ShowLeadingLink
             ? ThemeBrush("TextFillColorSecondaryBrush")
             : ThemeBrush("TextFillColorPrimaryBrush");
+    }
+
+    private void ApplyRecentlyCreatedOutline()
+    {
+        if (!IsRecentlyCreated || BrdChip is null)
+        {
+            return;
+        }
+
+        if (TagInk.TryParse(TagBoardShell.RecentlyCreatedFillHex, out var fill)
+            && TagInk.TryParse(TagBoardShell.RecentlyCreatedBorderHex, out var border))
+        {
+            BrdChip.Background = new SolidColorBrush(
+                Color.FromArgb(fill.A, fill.R, fill.G, fill.B));
+            BrdChip.BorderBrush = new SolidColorBrush(
+                Color.FromArgb(border.A, border.R, border.G, border.B));
+            BrdChip.BorderThickness = new Thickness(1);
+            RectPartialDash.Visibility = Visibility.Collapsed;
+        }
     }
 
     private Brush SoftAccentFill()

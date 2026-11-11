@@ -166,6 +166,106 @@ public sealed partial class CatalogService
         });
 
     /// <summary>
+    /// Tags-page batch create (t2-03b): insert / find-or-nest tags and journal
+    /// <see cref="FileOpKind.TagCreate"/> (<see cref="FileOpStep.CreateTag"/> then
+    /// <see cref="FileOpStep.AddMembership"/>) in one transaction.
+    /// </summary>
+    public Task<TagCreateBatchResult> ApplyCreateTagsJournaledAsync(
+        string projectId,
+        IEnumerable<string> names,
+        string? parentId) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrWhiteSpace(projectId))
+            {
+                return new TagCreateBatchResult
+                {
+                    Ok = false,
+                    Message = "Open a project first."
+                };
+            }
+
+            var probe = TakeBulkTagFault();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var journal = new List<FileOpItem>();
+                var result = CreateTagsCore(conn, names, parentId, tx, journal);
+                if (result.Created == 0 && result.Existed == 0)
+                {
+                    tx.Commit();
+                    return new TagCreateBatchResult
+                    {
+                        Ok = true,
+                        Message = "Enter one or more tag names.",
+                        Tags = result.Tags,
+                        CreatedTagIds = result.CreatedTagIds,
+                        GroupName = result.GroupName
+                    };
+                }
+
+                if (journal.Count == 0)
+                {
+                    // Existing tags already in the group — nothing to journal.
+                    tx.Commit();
+                    var existedMsg = TagCreateCopy.Describe(result, parentId is null ? null : " in the group");
+                    return new TagCreateBatchResult
+                    {
+                        Created = result.Created,
+                        Existed = result.Existed,
+                        MembershipRejected = result.MembershipRejected,
+                        Tags = result.Tags,
+                        CreatedTagIds = result.CreatedTagIds,
+                        GroupName = result.GroupName,
+                        Ok = true,
+                        Message = existedMsg
+                    };
+                }
+
+                ThrowIfBeforeJournalFault(probe);
+                var createdNames = result.Tags
+                    .Where(t => result.CreatedTagIds.Contains(t.Id))
+                    .Select(t => t.Name)
+                    .ToList();
+                // Prefer CreatedInGroup wording when any tag was newly inserted.
+                var status = result.Created > 0
+                    ? TagStatusBar.CreatedInGroup(
+                        result.Created,
+                        result.GroupName,
+                        createdNames.Count > 0
+                            ? createdNames
+                            : result.Tags.Select(t => t.Name).ToList())
+                    : TagCreateCopy.Describe(result, parentId is null ? null : " in the group");
+                var summary = status.StartsWith(TagStatusBar.CheckMark, StringComparison.Ordinal)
+                    ? status[TagStatusBar.CheckMark.Length..].TrimStart()
+                    : status;
+                var batchId = InsertJournaledBatch(
+                    conn, tx, projectId, FileOpKind.TagCreate, summary, journal, probe);
+                tx.Commit();
+                return new TagCreateBatchResult
+                {
+                    Created = result.Created,
+                    Existed = result.Existed,
+                    MembershipRejected = result.MembershipRejected,
+                    Tags = result.Tags,
+                    CreatedTagIds = result.CreatedTagIds,
+                    GroupName = result.GroupName,
+                    BatchId = batchId,
+                    Ok = true,
+                    Message = status
+                };
+            }
+            catch (BulkTagFaultException)
+            {
+                return new TagCreateBatchResult
+                {
+                    Ok = false,
+                    Message = BulkTagAbortedMessage
+                };
+            }
+        });
+
+    /// <summary>
     /// Remove tags across assets and journal <see cref="FileOpKind.TagRemove"/> in one transaction.
     /// <paramref name="sourceFallback"/> is used when an asset lacks the row (same as prior FileOp path).
     /// Implied rows are swept without journaling (never rematerialized on Undo).

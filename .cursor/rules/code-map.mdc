@@ -70,7 +70,7 @@ alwaysApply: false
 | Tags mosaic groups | `Helpers/TagMosaicGroups.cs` (longest path under the selected root, then Priority then name) |
 | Tag name lists | `Helpers/TagNameList.cs` |
 | Tag filter sets | `Helpers/TagFilter.cs` |
-| Tag board / assign panel | `Helpers/TagPanelBuilder.cs` (`BuildBoard` pins All / Uncategorized / Starred, then user groups; Uncategorized keeps `BtnTagGroup_Ungrouped`); Library ▸ Tags Eagle panel `Helpers/TagBrowsePanel.cs` + `BrowseStarredTags` / `BrowseRecentTags` / `BrowseTagGroups`; implied chip nearest source `Helpers/ImpliedNearest.cs` |
+| Tag board / assign panel | `Helpers/TagPanelBuilder.cs` (`BuildBoard` pins All / Uncategorized / Starred / Recent / GROUPS +, then user groups; Uncategorized keeps `BtnTagGroup_Ungrouped`); Tags-page create `Helpers/TagBoardShell.cs` + `FileOpKind.TagCreate` / `FileOpStep.AddMembership` (`CatalogService.ApplyCreateTagsJournaledAsync`); Library ▸ Tags Eagle panel `Helpers/TagBrowsePanel.cs` + `BrowseStarredTags` / `BrowseRecentTags` / `BrowseTagGroups`; implied chip nearest source `Helpers/ImpliedNearest.cs` |
 | Tag board expand | `Helpers/TagBoardExpand.cs` (create/select opens the row that shows the tag) |
 | Tag sibling order | `Helpers/TagSiblings.cs` |
 | Tag group destinations | `Helpers/TagGroups.cs` |

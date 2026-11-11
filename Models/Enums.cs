@@ -70,7 +70,11 @@ public enum TagScope
 {
     All,
     Ungrouped,
-    Starred
+    Starred,
+    /// <summary>Tags board left-nav Recent row (t2-03b).</summary>
+    Recent,
+    /// <summary>Non-selectable GROUPS header with + (t2-03b).</summary>
+    GroupsHeader
 }
 
 public enum DestinationPolicy
@@ -118,6 +122,11 @@ public enum FileOpKind
     TagRemove,
     /// <summary>Delete a tag row (assignments / memberships / implications snapshotted); Undo restores.</summary>
     TagDelete,
+    /// <summary>
+    /// Tags-page batch create (t2-03b). Journals <see cref="FileOpStep.CreateTag"/> and
+    /// optional <see cref="FileOpStep.AddMembership"/>; Undo reverses membership then unused creates.
+    /// </summary>
+    TagCreate,
     /// <summary>Add a TagAlias edge (+ AssetTag rewrite); Undo restores alias assignments.</summary>
     TagAliasAdd,
     /// <summary>
@@ -144,11 +153,16 @@ public enum FileOpStep
     /// <summary>OldPath=tagId; NewPath=JSON <c>TagDeleteSnapshot</c>.</summary>
     DeleteTag,
     /// <summary>
-    /// Tag row created during TagAssign (quick-create). OldPath=tagId; NewPath=tagName.
-    /// Undo deletes the tag when unused. Journaled before AssignTag so Undo strips
-    /// assignments first, then the empty Tag row.
+    /// Tag row created during TagAssign (quick-create) or Tags-page TagCreate.
+    /// OldPath=tagId; NewPath=tagName. Undo deletes the tag when unused.
+    /// Journaled before AssignTag / AddMembership so Undo strips dependents first.
     /// </summary>
     CreateTag,
+    /// <summary>
+    /// Group membership added during Tags-page create. OldPath=parentId; NewPath=childId.
+    /// Undo removes the edge (so a following CreateTag undo can delete an unused child).
+    /// </summary>
+    AddMembership,
     /// <summary>OldPath=aliasId; NewPath=idealId; NewSourceId=JSON migrated AssetTag rows.</summary>
     AddAlias,
     /// <summary>

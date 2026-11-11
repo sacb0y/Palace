@@ -179,6 +179,7 @@ public sealed partial class FileOpService
             FileOpKind.TagAssign => $"Undo tag on {Items(batch.Items.Count(i => i.Step == FileOpStep.AssignTag))}",
             FileOpKind.TagRemove => $"Undo remove tag from {Items(batch.Items.Count(i => i.Step == FileOpStep.RemoveTag))}",
             FileOpKind.TagDelete => $"Undo delete of “{TagDeleteName(batch)}”",
+            FileOpKind.TagCreate => $"Undo create of {Items(batch.Items.Count(i => i.Step == FileOpStep.CreateTag))}",
             FileOpKind.TagAliasAdd => "Undo tag alias",
             FileOpKind.DeleteRejected =>
                 $"Undo Recycle of {Files(batch.Items.Count(i => i.Step == FileOpStep.RecycleFile))}",
@@ -975,7 +976,7 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("Nothing to redo.");
         }
 
-        if (batch.Kind != FileOpKind.TagAssign)
+        if (batch.Kind is not (FileOpKind.TagAssign or FileOpKind.TagCreate))
         {
             return FileOpResult.Fail("Redo for this operation isn't available yet.");
         }
@@ -1080,6 +1081,24 @@ public sealed partial class FileOpService
                 catch (Exception ex)
                 {
                     return UndoNote.Retry($"{item.NewPath}: {ex.Message}");
+                }
+            }
+
+            case FileOpStep.AddMembership:
+            {
+                if (string.IsNullOrEmpty(item.OldPath) || string.IsNullOrEmpty(item.NewPath))
+                {
+                    return UndoNote.Skip("membership redo: incomplete journal row");
+                }
+
+                try
+                {
+                    await _catalog.AddMembershipAsync(item.OldPath, item.NewPath).ConfigureAwait(false);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"membership redo: {ex.Message}");
                 }
             }
 
@@ -1429,6 +1448,7 @@ public sealed partial class FileOpService
             case FileOpStep.RemoveTag:
             case FileOpStep.DeleteTag:
             case FileOpStep.CreateTag:
+            case FileOpStep.AddMembership:
             case FileOpStep.AddAlias:
                 return await UndoTagOpStepAsync(item).ConfigureAwait(false);
 
@@ -1563,6 +1583,24 @@ public sealed partial class FileOpService
                 {
                     var name = string.IsNullOrWhiteSpace(item.NewPath) ? item.OldPath : item.NewPath;
                     return UndoNote.Retry($"{name}: {ex.Message}");
+                }
+            }
+
+            case FileOpStep.AddMembership:
+            {
+                if (string.IsNullOrEmpty(item.OldPath) || string.IsNullOrEmpty(item.NewPath))
+                {
+                    return UndoNote.Skip("membership: incomplete journal row");
+                }
+
+                try
+                {
+                    await _catalog.RemoveMembershipAsync(item.OldPath, item.NewPath).ConfigureAwait(false);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return UndoNote.Retry($"membership undo: {ex.Message}");
                 }
             }
 
