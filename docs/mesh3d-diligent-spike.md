@@ -1,4 +1,6 @@
-# Diligent D3D12 3D viewer spike (0.3.59)
+# Diligent D3D12 3D viewer spike (draft)
+
+No version bump while this stays a draft. Apply a PATCH bump when the spike is eventually merged.
 
 Dev-only throwaway path to prove Diligent on **D3D12** inside a WinUI **SwapChainPanel**, loading a **glTF** with **PBR + IBL**, and obtaining native **ID3D12Device** + **ID3D12GraphicsCommandList** for a later NVIDIA Streamline hook. **x64 only.** Not product UI.
 
