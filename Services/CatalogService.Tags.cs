@@ -558,15 +558,16 @@ public sealed partial class CatalogService
     public Task<bool> RenameTagAsync(string id, string name) =>
         _db.WriteAsync(conn =>
         {
-            if (TagNames.FindId(conn, name, excludeId: id) is not null)
+            var normalized = TagNames.Normalize(name);
+            if (normalized.Length == 0 || TagNames.FindId(conn, normalized, excludeId: id) is not null)
             {
                 return false;
             }
 
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE Tag SET Name = $name, Slug = $slug WHERE Id = $id";
-            cmd.Parameters.AddWithValue("$name", name.Trim());
-            cmd.Parameters.AddWithValue("$slug", PathSafe.Slug(name));
+            cmd.Parameters.AddWithValue("$name", normalized);
+            cmd.Parameters.AddWithValue("$slug", PathSafe.Slug(normalized));
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
             RefreshFtsForTag(conn, id);
@@ -821,7 +822,7 @@ public sealed partial class CatalogService
                     var id = reader.GetString(0);
                     var name = reader.GetString(1);
                     nameById[id] = name;
-                    idByName.TryAdd(name, id);
+                    idByName.TryAdd(TagNames.Normalize(name), id);
                 }
             }
 
@@ -889,12 +890,25 @@ public sealed partial class CatalogService
             return true;
         }
 
-        using var cmd = conn.CreateCommand();
-        cmd.Transaction = tx;
-        cmd.CommandText = "INSERT INTO TagAlias (AliasTagId, IdealTagId) VALUES ($a, $i)";
-        cmd.Parameters.AddWithValue("$a", aliasTagId);
-        cmd.Parameters.AddWithValue("$i", idealTagId);
-        cmd.ExecuteNonQuery();
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "INSERT INTO TagAlias (AliasTagId, IdealTagId) VALUES ($a, $i)";
+            cmd.Parameters.AddWithValue("$a", aliasTagId);
+            cmd.Parameters.AddWithValue("$i", idealTagId);
+            cmd.ExecuteNonQuery();
+        }
+
+        // Flatten: any edge that pointed at the new alias now points at its ultimate ideal.
+        using (var flatten = conn.CreateCommand())
+        {
+            flatten.Transaction = tx;
+            flatten.CommandText = "UPDATE TagAlias SET IdealTagId = $i WHERE IdealTagId = $a";
+            flatten.Parameters.AddWithValue("$i", idealTagId);
+            flatten.Parameters.AddWithValue("$a", aliasTagId);
+            flatten.ExecuteNonQuery();
+        }
+
         inserted = true;
         return true;
     }
@@ -1137,17 +1151,18 @@ public sealed partial class CatalogService
         int priority,
         SqliteTransaction? tx = null)
     {
-        if (TagNames.FindId(conn, name, tx: tx) is not null)
+        var normalized = TagNames.Normalize(name);
+        if (TagNames.FindId(conn, normalized, tx: tx) is not null)
         {
-            throw new DuplicateTagNameException(name);
+            throw new DuplicateTagNameException(normalized);
         }
 
         var tag = new Tag
         {
             Id = PalaceDb.NewId(),
-            Name = name.Trim(),
+            Name = normalized,
             Priority = priority,
-            Slug = PathSafe.Slug(name)
+            Slug = PathSafe.Slug(normalized)
         };
         using var cmd = conn.CreateCommand();
         cmd.Transaction = tx;

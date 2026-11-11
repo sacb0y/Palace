@@ -81,6 +81,20 @@ public sealed class TagAliasTests : IAsyncLifetime
         Assert.True((await _catalog.AddAliasAsync(a.Id, b.Id)).Ok);
         Assert.True((await _catalog.AddAliasAsync(b.Id, c.Id)).Ok);
         Assert.Equal(c.Id, await _catalog.ResolveIdealTagIdAsync(a.Id));
+        // Stored edges are flattened: a→c and b→c (no chain through b).
+        var aliases = await _catalog.GetAliasesAsync();
+        Assert.Contains(aliases, x => x.AliasTagId == a.Id && x.IdealTagId == c.Id);
+        Assert.Contains(aliases, x => x.AliasTagId == b.Id && x.IdealTagId == c.Id);
+        Assert.DoesNotContain(aliases, x => x.AliasTagId == a.Id && x.IdealTagId == b.Id);
+    }
+
+    [Fact]
+    public async Task Create_rejects_underscore_near_duplicate_of_existing_name()
+    {
+        await _catalog.CreateTagAsync("Black Hair");
+        await Assert.ThrowsAsync<DuplicateTagNameException>(() => _catalog.CreateTagAsync("black_hair"));
+        var found = await _catalog.GetOrCreateTagAsync("black-hair");
+        Assert.Equal("Black Hair", found.Name);
     }
 
     [Fact]
