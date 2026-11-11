@@ -1,0 +1,1 @@
+﻿FIXED: Preview ON + asset selected ~1024 — image in dock; Tags/Notes opaque; grid reflowed

@@ -1,0 +1,1 @@
+﻿Preview OFF (ToggleState=Off) ~1024. Thin right-edge chevron intentional (BtnPreviewPaneEdge).

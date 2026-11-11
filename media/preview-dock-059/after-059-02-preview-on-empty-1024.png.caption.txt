@@ -1,0 +1,1 @@
+﻿FIXED: Preview ON empty ~1024 — opaque dock; mosaic reflows beside panel
