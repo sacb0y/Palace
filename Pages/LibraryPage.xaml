@@ -63,7 +63,7 @@
                 x:Name="ColMosaic"
                 Width="560"
                 MinWidth="0" />
-            <!-- Width always 0 at runtime — dock host is right-aligned (GrdPreviewDockHost). -->
+            <!-- Width from PreviewPane.GridPreviewColumnWidth at runtime (0 when hidden). -->
             <ColumnDefinition
                 x:Name="ColPreview"
                 Width="0"
@@ -2207,15 +2207,14 @@
             </Grid>
         </Grid>
 
-        <!-- Right-aligned over tree+mosaic. Stay Visibility=Visible; hide via Opacity=0
-             (Collapsed→Visible after the first show left the pane over the folder tree). -->
+        <!-- Real ColPreview slot. Stay Visibility=Visible; hide via Opacity=0 + column width 0
+             (Collapsed→Visible after the first show left the pane over the folder tree — #177).
+             Opaque base fill so mosaic never shows through Tags / Notes / empty state. -->
         <Grid
             x:Name="GrdPreviewDockHost"
             Grid.Row="1"
-            Grid.Column="0"
-            Grid.ColumnSpan="3"
-            Width="0"
-            HorizontalAlignment="Right"
+            Grid.Column="2"
+            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
             Opacity="0"
             IsHitTestVisible="False"
             Visibility="Visible">
@@ -2241,6 +2240,7 @@
             x:Name="ScrPreviewPane"
             Grid.Column="1"
             AutomationProperties.AutomationId="ScrPreviewPane"
+            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
             VerticalScrollBarVisibility="Auto">
             <!-- Shared body for docked + overlay; pad once so chips / Add tags / Apply share one inset. -->
             <StackPanel x:Name="PnlPreviewBody" Padding="16" Spacing="12">
@@ -3218,7 +3218,8 @@
         </Grid>
     </Grid>
 
-        <!-- Preview overlay (auto-hidden open): acrylic right panel; mosaic does not reflow. -->
+        <!-- Legacy overlay host (kept Collapsed). 0.3.59+ opens Preview as opaque docked
+             ColPreview instead of acrylic-over-mosaic. -->
         <Border
             x:Name="BrdPreviewOverlay"
             Width="360"
@@ -3226,7 +3227,7 @@
             HorizontalAlignment="Right"
             VerticalAlignment="Stretch"
             AutomationProperties.AutomationId="BrdPreviewOverlay"
-            Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="8"

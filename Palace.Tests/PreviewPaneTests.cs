@@ -102,24 +102,37 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void ApplyToggle_AutoHiddenOpensOverlay_DoesNotFlipUserShowOff()
+    public void ApplyToggle_AutoHiddenPinsDock_ReflowsBesideOpaqueColumn()
     {
-        var s = PreviewPane.OnWidth(PreviewPane.Initial, PreviewPane.AutoHideBelowContentDip - 1);
+        var narrow = PreviewPane.AutoHideBelowContentDip - 1;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
         Assert.True(s.AutoHidden);
         Assert.True(s.UserShow);
         Assert.False(PreviewPane.IsChromeChecked(s));
         Assert.Equal(PreviewPane.AutoHiddenTooltip, PreviewPane.ChromeTooltip(s));
+        Assert.Contains("docks beside", PreviewPane.AutoHiddenTooltip, StringComparison.OrdinalIgnoreCase);
 
+        var without = PreviewPane.Effective(s, narrow);
         s = PreviewPane.ApplyToggle(s);
         Assert.True(s.UserShow);
-        Assert.True(s.OverlayOpen);
-        Assert.True(PreviewPane.IsChromeChecked(s));
-        Assert.Equal(PaneMode.Overlay, PreviewPane.Effective(s, PreviewPane.AutoHideBelowContentDip - 1).Mode);
-
-        s = PreviewPane.ApplyToggle(s);
+        Assert.True(s.Pinned);
         Assert.False(s.OverlayOpen);
-        Assert.True(s.UserShow);
+        Assert.True(PreviewPane.IsChromeChecked(s));
+        var docked = PreviewPane.Effective(s, narrow);
+        Assert.Equal(PaneMode.Docked, docked.Mode);
+        Assert.True(docked.Widths.Preview > 0);
+        Assert.True(docked.Widths.Mosaic < without.Widths.Mosaic);
+        var layout = PreviewPane.Layout(docked);
+        Assert.Equal(docked.Widths.Preview, PreviewPane.GridPreviewColumnWidth(layout), 0.01);
+        Assert.True(double.IsNaN(PreviewPane.DockHostWidth(layout)));
+        Assert.False(layout.OverlayVisible);
+
+        s = PreviewPane.ApplyToggle(s);
+        Assert.False(s.Pinned);
+        Assert.False(s.UserShow);
+        Assert.False(s.OverlayOpen);
         Assert.False(PreviewPane.IsChromeChecked(s));
+        Assert.Equal(PaneMode.Hidden, PreviewPane.Effective(s, narrow).Mode);
     }
 
     [Fact]
@@ -141,9 +154,6 @@ public sealed class PreviewPaneTests
     {
         var narrow = PreviewPane.AutoHideBelowContentDip - 1;
         var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
-        s = PreviewPane.ApplyToggle(s);
-        Assert.Equal(PaneMode.Overlay, PreviewPane.Effective(s, narrow).Mode);
-
         s = PreviewPane.Pin(s);
         Assert.True(s.Pinned);
         Assert.False(s.OverlayOpen);
@@ -187,28 +197,33 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void Effective_OverlayAllocatesPreviewZero_EvenWhenWide()
+    public void Effective_LegacyOverlayOpen_PromotesToDockedReflow()
     {
         var wide = PreviewPane.AutoShowAboveContentDip + 100;
         var s = PreviewPane.OnWidth(PreviewPane.Initial, wide);
+        var withoutOverlay = PreviewPane.Effective(s, wide);
         s = PreviewPane.SetOverlayOpen(s, true);
         var eff = PreviewPane.Effective(s, wide);
-        Assert.Equal(PaneMode.Overlay, eff.Mode);
-        Assert.Equal(0, eff.Widths.Preview);
-        Assert.True(eff.Widths.PreviewHidden);
+        Assert.Equal(PaneMode.Docked, eff.Mode);
+        Assert.Equal(withoutOverlay.Widths.Preview, eff.Widths.Preview, 0.01);
+        Assert.Equal(withoutOverlay.Widths.Mosaic, eff.Widths.Mosaic, 0.01);
+        Assert.False(eff.Widths.PreviewHidden);
     }
 
     [Fact]
-    public void Effective_OverlayWhileAutoHidden_DoesNotReflowGrid()
+    public void Effective_NarrowToggle_ReflowsGrid_NotAcrylicOverlay()
     {
+        // ~1024 client → content below AutoHideBelow; toggle must dock+reflow.
         var narrow = PreviewPane.AutoHideBelowContentDip - 1;
+        Assert.True(narrow < 1024);
         var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
         var without = PreviewPane.Effective(s, narrow);
         s = PreviewPane.ApplyToggle(s);
-        var overlay = PreviewPane.Effective(s, narrow);
-        Assert.Equal(PaneMode.Overlay, overlay.Mode);
-        Assert.Equal(without.Widths.Mosaic, overlay.Widths.Mosaic, 0.01);
-        Assert.Equal(0, overlay.Widths.Preview);
+        var shown = PreviewPane.Effective(s, narrow);
+        Assert.Equal(PaneMode.Docked, shown.Mode);
+        Assert.True(shown.Widths.Preview >= LibraryColumnLayout.PreviewMinWidth - 0.01);
+        Assert.True(shown.Widths.Mosaic < without.Widths.Mosaic);
+        Assert.False(PreviewPane.Layout(shown).OverlayVisible);
     }
 
     [Fact]
@@ -221,7 +236,7 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void Layout_DockedHideShowRestoresDockHostWidth_GridPreviewColumnStaysZero()
+    public void Layout_DockedHideShowRestoresColPreview_OpacityHideNoCollapse()
     {
         var wide = PreviewPane.AutoShowAboveContentDip + 200;
         var userWidth = 400d;
@@ -233,16 +248,15 @@ public sealed class PreviewPaneTests
         Assert.True(docked.DockHostVisible);
         Assert.False(docked.OverlayVisible);
         Assert.Equal(userWidth, docked.Preview, 0.01);
-        Assert.Equal(userWidth, PreviewPane.DockHostWidth(docked), 0.01);
-        Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(docked));
+        Assert.True(double.IsNaN(PreviewPane.DockHostWidth(docked)));
+        Assert.Equal(userWidth, PreviewPane.GridPreviewColumnWidth(docked), 0.01);
         var dockShown = PreviewPane.DockChrome(docked);
-        Assert.Equal(userWidth, dockShown.Width, 0.01);
+        Assert.True(double.IsNaN(dockShown.Width));
         Assert.Equal(1, dockShown.Opacity);
         Assert.True(dockShown.HitTestVisible);
         Assert.True(docked.Mosaic >= LibraryColumnLayout.MosaicMinWidth - 0.01);
 
-        // Hide → show three times: dock chrome width/opacity restore; ColPreview stays 0;
-        // hide is Opacity=0 (not Collapse) so WinUI never re-enters Collapsed→Visible.
+        // Hide → show three times: ColPreview restores; hide is Opacity=0 (not Collapse).
         for (var i = 0; i < 3; i++)
         {
             s = PreviewPane.ApplyToggle(s);
@@ -265,10 +279,10 @@ public sealed class PreviewPaneTests
             Assert.True(shown.DockHostVisible);
             Assert.False(shown.OverlayVisible);
             Assert.Equal(userWidth, shown.Preview, 0.01);
-            Assert.Equal(userWidth, PreviewPane.DockHostWidth(shown), 0.01);
-            Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(shown));
+            Assert.True(double.IsNaN(PreviewPane.DockHostWidth(shown)));
+            Assert.Equal(userWidth, PreviewPane.GridPreviewColumnWidth(shown), 0.01);
             var chrome = PreviewPane.DockChrome(shown);
-            Assert.Equal(userWidth, chrome.Width, 0.01);
+            Assert.True(double.IsNaN(chrome.Width));
             Assert.Equal(1, chrome.Opacity);
             Assert.True(chrome.HitTestVisible);
             Assert.Equal(docked.Mosaic, shown.Mosaic, 0.01);
@@ -280,18 +294,17 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void Layout_OverlayDoesNotClaimPreviewColumn()
+    public void Layout_NarrowOpenNeverClaimsOverlayChrome()
     {
         var narrow = PreviewPane.AutoHideBelowContentDip - 1;
         var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
         s = PreviewPane.ApplyToggle(s);
-        var overlay = PreviewPane.Layout(PreviewPane.Effective(s, narrow));
-        Assert.Equal(PaneMode.Overlay, overlay.Mode);
-        Assert.False(overlay.DockHostVisible);
-        Assert.True(overlay.OverlayVisible);
-        Assert.Equal(0, overlay.Preview);
-        Assert.Equal(0, PreviewPane.DockHostWidth(overlay));
-        Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(overlay));
-        Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Overlay));
+        var layout = PreviewPane.Layout(PreviewPane.Effective(s, narrow));
+        Assert.Equal(PaneMode.Docked, layout.Mode);
+        Assert.True(layout.DockHostVisible);
+        Assert.False(layout.OverlayVisible);
+        Assert.True(layout.Preview > 0);
+        Assert.Equal(layout.Preview, PreviewPane.GridPreviewColumnWidth(layout), 0.01);
+        Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Docked));
     }
 }

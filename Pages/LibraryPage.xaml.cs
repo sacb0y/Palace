@@ -773,18 +773,14 @@ public sealed partial class LibraryPage : Page
 
         // Fixed widths from Effective — MinWidths always 0 so column mins never sum
         // above available width (that floored DesiredSize and froze resize).
-        // ColPreview stays 0: dock host is right-aligned (see GrdPreviewDockHost).
+        // ColPreview is the real dock slot (0 when hidden); host stretches inside it.
         ColFolderTree.Width = new GridLength(layout.Tree);
         ColFolderTree.MinWidth = 0;
         ColMosaic.Width = new GridLength(layout.Mosaic);
         ColMosaic.MinWidth = 0;
         ColPreview.Width = new GridLength(PreviewPane.GridPreviewColumnWidth(layout));
         ColPreview.MinWidth = 0;
-        var dock = PreviewPane.DockChrome(layout);
-        GrdPreviewDockHost.Width = dock.Width;
-        GrdPreviewDockHost.Opacity = dock.Opacity;
-        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
-        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Right;
+        ApplyPreviewDockHostChrome(PreviewPane.DockChrome(layout));
 
         if (!showing)
         {

@@ -210,33 +210,34 @@ public sealed partial class LibraryPage
 
         // Dock host: never Collapsed after load. FENRIR #177 — first Collapsed→Visible
         // (cold start) was fine; every later hide→show left ScrPreviewPane at X≈451 over
-        // the folder tree. Opacity + Width + hit-test only; no Composition Offset on dock.
+        // the folder tree. Opacity + ColPreview width + hit-test only; host stays in
+        // Grid.Column=2 (opaque SolidBackgroundFillColorBaseBrush).
         GrdPreviewDockHost.Visibility = Visibility.Visible;
         ScrPreviewPane.Visibility = Visibility.Visible;
-        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Right;
-        GrdPreviewDockHost.Width = dock.Width;
-        GrdPreviewDockHost.Opacity = dock.Opacity;
-        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
+        ApplyPreviewDockHostChrome(dock);
         ResetPreviewMotionOffset(GrdPreviewDockHost);
 
-        if (mode == PaneMode.Overlay)
-        {
-            BrdPreviewOverlay.Visibility = Visibility.Visible;
-        }
-
-        // Overlay may still use slide motion; dock does not (Offset fights Right align).
-        if (mode == PaneMode.Overlay || fromMode == PaneMode.Overlay)
-        {
-            AnimatePreviewOverlayChange(fromMode, mode);
-        }
+        // Overlay chrome stays Collapsed — Effective promotes OverlayOpen to Docked.
+        BrdPreviewOverlay.Visibility = Visibility.Collapsed;
+        ResetPreviewMotionOffset(BrdPreviewOverlay);
 
         _previewVisualMode = mode;
+    }
 
-        if (mode != PaneMode.Overlay)
+    private void ApplyPreviewDockHostChrome(PreviewDockChrome dock)
+    {
+        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Stretch;
+        if (double.IsNaN(dock.Width))
         {
-            BrdPreviewOverlay.Visibility = Visibility.Collapsed;
-            ResetPreviewMotionOffset(BrdPreviewOverlay);
+            GrdPreviewDockHost.ClearValue(WidthProperty);
         }
+        else
+        {
+            GrdPreviewDockHost.Width = dock.Width;
+        }
+
+        GrdPreviewDockHost.Opacity = dock.Opacity;
+        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
     }
 
     private void HostPreviewBody(PaneMode mode)
