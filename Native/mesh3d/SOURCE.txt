@@ -1,4 +1,4 @@
-palace_mesh3d: Palace Diligent D3D12 SwapChainPanel spike host.
+﻿palace_mesh3d: Palace Diligent D3D12 SwapChainPanel spike host.
 
 Stub build (default): Windows SDK D3D12 + DXGI only.
 Diligent build: DiligentCore / DiligentTools / DiligentFX (Apache-2.0) linked when
@@ -9,3 +9,9 @@ tools/mesh3d/build.ps1 -WithDiligent is used. Upstream:
 
 Do not vendor Diligent sources in this repo. Pin commits here when a win-x64
 DLL is published beside this file.
+
+FENRIR-STUDIO 2026-11-11: built with -WithDiligent (compile define ON).
+CMake does not yet add_subdirectory Diligent — glTF path validates file + arms
+load flag; SwapChainPanel presents D3D12 clear; Streamline probe returns device
++ command list. Do not commit palace_mesh3d.dll until a Diligent-engine-linked
+binary is intentionally published (see win-x64/README.txt).

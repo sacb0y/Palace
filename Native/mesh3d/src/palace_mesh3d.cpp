@@ -35,7 +35,7 @@ struct Host {
     ComPtr<ID3D12CommandAllocator> allocator;
     ComPtr<ID3D12GraphicsCommandList> cmdList;
     ComPtr<IDXGIFactory4> factory;
-    ComPtr<IDXGISwapChain1> swapChain;
+    ComPtr<IDXGISwapChain3> swapChain;
     ComPtr<ID3D12DescriptorHeap> rtvHeap;
     ComPtr<ID3D12Resource> backBuffers[2];
     UINT rtvDescriptorSize = 0;
@@ -185,14 +185,21 @@ HRESULT CreateCompositionSwapChain(Host* host, unsigned width, unsigned height)
     desc.Scaling = DXGI_SCALING_STRETCH;
     desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
 
-    ComPtr<IDXGISwapChain1> sc;
-    HRESULT hr = host->factory->CreateSwapChainForComposition(host->queue.Get(), &desc, nullptr, &sc);
+    ComPtr<IDXGISwapChain1> sc1;
+    HRESULT hr = host->factory->CreateSwapChainForComposition(host->queue.Get(), &desc, nullptr, &sc1);
     if (FAILED(hr)) {
         SetError(host, "CreateSwapChainForComposition failed");
         return hr;
     }
 
-    host->swapChain = sc;
+    ComPtr<IDXGISwapChain3> sc3;
+    hr = sc1.As(&sc3);
+    if (FAILED(hr)) {
+        SetError(host, "QueryInterface IDXGISwapChain3 failed");
+        return hr;
+    }
+
+    host->swapChain = sc3;
     host->width = width;
     host->height = height;
 
@@ -364,9 +371,16 @@ PM3_API int pm3_load_gltf(void* host_ptr, const wchar_t* path_utf16)
     host->gltfPath = path_utf16;
 
 #if defined(PALACE_MESH3D_WITH_DILIGENT)
-    // Diligent GLTF::Model + PBR_Renderer::Render + IBL env map go here.
+    // Diligent GLTF::Model + PBR_Renderer::Render + IBL env map go here once
+    // DiligentCore/Tools/FX are linked. Until then, validate the sample path and
+    // arm the load flag so the SwapChainPanel spike can exercise the C# path.
+    if (GetFileAttributesW(path_utf16) == INVALID_FILE_ATTRIBUTES) {
+        host->gltfLoaded = false;
+        SetError(host, "glTF path not found");
+        return PM3_LOAD_FAILED;
+    }
     host->gltfLoaded = true;
-    SetError(host, "glTF load path armed (Diligent PBR+IBL)");
+    SetError(host, "glTF load path armed (Diligent PBR+IBL define; engine link pending)");
     return PM3_OK;
 #else
     host->gltfLoaded = false;
