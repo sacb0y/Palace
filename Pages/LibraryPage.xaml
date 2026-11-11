@@ -2012,12 +2012,14 @@
             <!-- Shared body for docked + overlay; pad once so chips / Add tags / Apply share one inset. -->
             <StackPanel x:Name="PnlPreviewBody" Padding="16" Spacing="12">
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Preview" />
+                <!-- Single-asset / empty preview chrome. -->
                 <Border
                     MinHeight="200"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    CornerRadius="{StaticResource ControlCornerRadius}">
+                    CornerRadius="{StaticResource ControlCornerRadius}"
+                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}">
                     <Grid>
                         <Image
                             x:Name="ImgPreview"
@@ -2051,38 +2053,102 @@
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Text="Online" />
                         </StackPanel>
-                        <!-- Multi-select summary: stacked thumbs (first 4–5). -->
-                        <Grid
-                            x:Name="GrdMultiSelectPreview"
-                            Padding="16"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}">
-                            <ItemsRepeater
-                                x:Name="RepMultiSelectThumbs"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                AutomationProperties.AutomationId="RepMultiSelectThumbs"
-                                ItemsSource="{x:Bind ViewModel.MultiSelectThumbs, Mode=OneWay}">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Orientation="Horizontal" Spacing="0" />
-                                </ItemsRepeater.Layout>
-                                <ItemsRepeater.ItemTemplate>
-                                    <DataTemplate x:DataType="models:AssetItem">
-                                        <Border
-                                            Width="72"
-                                            Height="72"
-                                            Margin="0,0,-28,0"
-                                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                                            BorderThickness="2"
-                                            CornerRadius="8">
-                                            <Image
-                                                Stretch="UniformToFill"
-                                                Source="{x:Bind ThumbImage, Mode=OneWay}" />
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsRepeater.ItemTemplate>
-                            </ItemsRepeater>
-                        </Grid>
+                    </Grid>
+                </Border>
+                <!-- T2 multi-select header: fan stack of 3 + N selected + extension breakdown. -->
+                <Border
+                    x:Name="GrdMultiSelectPreview"
+                    Padding="12,10"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource ControlCornerRadius}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Canvas
+                            x:Name="RepMultiSelectThumbs"
+                            Width="200"
+                            Height="110"
+                            AutomationProperties.AutomationId="RepMultiSelectThumbs">
+                            <Border
+                                Canvas.Left="{x:Bind ViewModel.MultiSelectThumb0Left, Mode=OneWay}"
+                                Canvas.Top="{x:Bind ViewModel.MultiSelectThumb0Top, Mode=OneWay}"
+                                Width="118"
+                                Height="92"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                RenderTransformOrigin="0.5,0.5"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasMultiSelectThumb0), Mode=OneWay}">
+                                <Border.RenderTransform>
+                                    <RotateTransform Angle="{x:Bind ViewModel.MultiSelectThumb0Angle, Mode=OneWay}" />
+                                </Border.RenderTransform>
+                                <Image
+                                    Stretch="UniformToFill"
+                                    Source="{x:Bind helpers:BindHelpers.AssetThumb(ViewModel.MultiSelectThumb0), Mode=OneWay}" />
+                            </Border>
+                            <Border
+                                Canvas.Left="{x:Bind ViewModel.MultiSelectThumb1Left, Mode=OneWay}"
+                                Canvas.Top="{x:Bind ViewModel.MultiSelectThumb1Top, Mode=OneWay}"
+                                Width="118"
+                                Height="92"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                RenderTransformOrigin="0.5,0.5"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasMultiSelectThumb1), Mode=OneWay}">
+                                <Border.RenderTransform>
+                                    <RotateTransform Angle="{x:Bind ViewModel.MultiSelectThumb1Angle, Mode=OneWay}" />
+                                </Border.RenderTransform>
+                                <Image
+                                    Stretch="UniformToFill"
+                                    Source="{x:Bind helpers:BindHelpers.AssetThumb(ViewModel.MultiSelectThumb1), Mode=OneWay}" />
+                            </Border>
+                            <Border
+                                Canvas.Left="{x:Bind ViewModel.MultiSelectThumb2Left, Mode=OneWay}"
+                                Canvas.Top="{x:Bind ViewModel.MultiSelectThumb2Top, Mode=OneWay}"
+                                Width="118"
+                                Height="92"
+                                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                RenderTransformOrigin="0.5,0.5"
+                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasMultiSelectThumb2), Mode=OneWay}">
+                                <Border.RenderTransform>
+                                    <RotateTransform Angle="{x:Bind ViewModel.MultiSelectThumb2Angle, Mode=OneWay}" />
+                                </Border.RenderTransform>
+                                <Image
+                                    Stretch="UniformToFill"
+                                    Source="{x:Bind helpers:BindHelpers.AssetThumb(ViewModel.MultiSelectThumb2), Mode=OneWay}" />
+                            </Border>
+                        </Canvas>
+                        <StackPanel
+                            Grid.Column="1"
+                            Margin="8,0,0,0"
+                            VerticalAlignment="Center"
+                            Spacing="4">
+                            <TextBlock
+                                x:Name="TxtMultiSelectCount"
+                                AutomationProperties.AutomationId="TxtMultiSelectCount"
+                                FontSize="20"
+                                FontWeight="SemiBold"
+                                Text="{x:Bind ViewModel.PreviewFileName, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                x:Name="TxtMultiSelectDetail"
+                                AutomationProperties.AutomationId="TxtMultiSelectDetail"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.MultiSelectDetail, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
                     </Grid>
                 </Border>
                 <TextBlock
@@ -2091,24 +2157,24 @@
                     Style="{StaticResource BodyTextBlockStyle}"
                     Text="{x:Bind ViewModel.PreviewFileName, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasSelection), Mode=OneWay}" />
-                <TextBlock
-                    x:Name="TxtMultiSelectDetail"
-                    AutomationProperties.AutomationId="TxtMultiSelectDetail"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="{x:Bind ViewModel.MultiSelectDetail, Mode=OneWay}"
-                    TextWrapping="Wrap"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}" />
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowSinglePreviewFileName), Mode=OneWay}" />
 
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                        Text="{x:Bind ViewModel.AssignedTagsHeader, Mode=OneWay}" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="{x:Bind ViewModel.AssignedTagsHeader, Mode=OneWay}" />
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.AssignedTagsHeaderSuffix, Mode=OneWay}"
+                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}" />
+                    </StackPanel>
                     <HyperlinkButton
                         x:Name="BtnRemoveTags"
                         Grid.Column="1"
@@ -2119,7 +2185,7 @@
                         Command="{x:Bind ViewModel.OpenRemoveTagsDialogCommand}"
                         Content="Remove tags…"
                         FontSize="12"
-                        IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}" />
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowRemoveTags), Mode=OneWay}" />
                 </Grid>
                 <TextBlock
                     x:Name="TxtAssignedTags"
@@ -2317,6 +2383,7 @@
                                 Text="T" />
                         </Border>
                     </StackPanel>
+                    <!-- One accent-underlined field; AutoSuggestBox border cleared (no box-in-box). -->
                     <Border
                         MinHeight="40"
                         Padding="6,4"
@@ -2379,6 +2446,8 @@
                                 x:Name="AsbAssignTag"
                                 AutomationProperties.AutomationId="AsbAssignTag"
                                 AutomationProperties.Name="Add tags"
+                                Background="Transparent"
+                                BorderThickness="0"
                                 ItemsSource="{x:Bind ViewModel.TagSuggestions, Mode=OneWay}"
                                 PlaceholderText="Add tags — type, or paste a list"
                                 QuerySubmitted="AsbAssignTag_QuerySubmitted"
@@ -2418,7 +2487,10 @@
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="{x:Bind ViewModel.PendingSummary, Mode=OneWay}"
                         Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowPendingSummary), Mode=OneWay}" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasPendingTags), Mode=OneWay}">
                         <Button
                             x:Name="BtnAssignTag"
                             AutomationProperties.AutomationId="BtnAssignTag"
@@ -2431,25 +2503,21 @@
                             x:Name="BtnClearPendingTags"
                             AutomationProperties.AutomationId="BtnClearPendingTags"
                             Command="{x:Bind ViewModel.ClearPendingTagsCommand}"
-                            Content="Clear"
-                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasPendingTags), Mode=OneWay}" />
+                            Content="Clear" />
                     </StackPanel>
+                    <TextBlock
+                        x:Name="TxtApplyPendingHint"
+                        AutomationProperties.AutomationId="TxtApplyPendingHint"
+                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind ViewModel.ApplyPendingHint, Mode=OneWay}"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasPendingTags), Mode=OneWay}" />
                     <TextBlock
                         x:Name="TxtAssignAnnouncement"
                         AutomationProperties.LiveSetting="Assertive"
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Style="{StaticResource CaptionTextBlockStyle}"
                         Text="{x:Bind ViewModel.AssignAnnouncement, Mode=OneWay}" />
-                    <!-- Hidden AutomationId kept for Tag selected… / legacy BtnBrowseTags callers. -->
-                    <Button
-                        x:Name="BtnBrowseTags"
-                        AutomationProperties.AutomationId="BtnBrowseTags"
-                        AutomationProperties.Name="{x:Bind ViewModel.AddTagButtonLabel, Mode=OneWay}"
-                        Click="BtnBrowseTags_Click"
-                        Height="1"
-                        Width="1"
-                        Opacity="0"
-                        IsTabStop="False" />
                 </StackPanel>
 
                 <StackPanel
@@ -2506,36 +2574,6 @@
                     Text="{x:Bind ViewModel.PreviewNotes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                     TextWrapping="Wrap"
                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsMultiSelectPreview), Mode=OneWay}" />
-
-                <TextBlock
-                    Style="{StaticResource BodyStrongTextBlockStyle}"
-                    Text="Prompt suggestions"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowGeneration), Mode=OneWay}" />
-                <ListView
-                    x:Name="LstSuggestions"
-                    AutomationProperties.AutomationId="LstSuggestions"
-                    ItemsSource="{x:Bind ViewModel.Suggestions, Mode=OneWay}"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowGeneration), Mode=OneWay}">
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="models:PromptSuggestion">
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock
-                                    Style="{StaticResource BodyTextBlockStyle}"
-                                    Text="{x:Bind Token, Mode=OneTime}" />
-                                <Button
-                                    Grid.Column="1"
-                                    AutomationProperties.Name="Accept suggestion"
-                                    Command="{x:Bind pages:LibraryPage.GetAcceptSuggestionCommand()}"
-                                    CommandParameter="{x:Bind}"
-                                    Content="Add" />
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
 
                 <StackPanel
                     Spacing="8"

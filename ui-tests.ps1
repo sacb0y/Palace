@@ -261,12 +261,13 @@ function Get-AssignTagQuery {
 
 function Assign-LibraryTag {
     param([string]$Name)
+    # Apply button only while pending chips exist (audit b); Enter absorbs typed remnant.
     winapp ui send-keys 'ctrl+a' --target 'AsbAssignTag' @(WinArgs) --via send-input | Out-Null
     Start-Sleep -Milliseconds 80
     winapp ui send-keys --verbatim $Name --target 'AsbAssignTag' @(WinArgs) --via send-input | Out-Null
     Start-Sleep -Milliseconds 400
-    winapp ui invoke 'BtnAssignTag' @(WinArgs)
-    if ($LASTEXITCODE -ne 0) { throw "BtnAssignTag failed for $Name" }
+    winapp ui send-keys '{ENTER}' --target 'AsbAssignTag' @(WinArgs) --via send-input | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Enter assign failed for $Name" }
     Start-Sleep -Milliseconds 700
 }
 
@@ -565,8 +566,6 @@ Test-UI 'Navigate back to Library' {
 }
 Test-UI 'Library search still present' { winapp ui wait-for 'AsbSearch' -a $AppPid -t 4000 }
 Test-UI 'Tag typeahead exists' { winapp ui wait-for 'AsbAssignTag' -a $AppPid -t 4000 }
-Test-UI 'Assign tag button exists' { winapp ui wait-for 'BtnAssignTag' -a $AppPid -t 3000 }
-Test-UI 'Add tag exists' { winapp ui wait-for 'BtnBrowseTags' -a $AppPid -t 3000 }
 Test-UI 'Assigned summary exists' { winapp ui wait-for 'TxtAssignedTags' -a $AppPid -t 3000 }
 Test-UI 'Suggestion summary exists' { winapp ui wait-for 'TxtTagSuggestions' -a $AppPid -t 3000 }
 Test-UI 'Typeahead shows newly created tag' {
@@ -608,8 +607,8 @@ Test-UI 'Assign ImpSonic from typeahead' {
     Start-Sleep -Milliseconds 400
     winapp ui wait-for 'TxtTagSuggestions' -a $AppPid --value 'ImpSonic' --contains -t 3000
     if ($LASTEXITCODE -ne 0) { throw 'ImpSonic not in typeahead before assign' }
-    winapp ui invoke 'BtnAssignTag' -a $AppPid
-    if ($LASTEXITCODE -ne 0) { throw 'BtnAssignTag failed' }
+    winapp ui send-keys '{ENTER}' --target 'AsbAssignTag' -a $AppPid --via send-input
+    if ($LASTEXITCODE -ne 0) { throw 'Enter assign failed' }
 }
 Start-Sleep -Milliseconds 1000
 Test-UI 'Created tag assigned immediately' {

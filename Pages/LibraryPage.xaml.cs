@@ -336,7 +336,6 @@ public sealed partial class LibraryPage : Page
 
     public static IRelayCommand<PendingTagChip> GetRemovePendingTagCommand() => AppServices.Library.RemovePendingTagCommand;
 
-    public static IRelayCommand<PromptSuggestion> GetAcceptSuggestionCommand() => AppServices.Library.AcceptSuggestionCommand;
 
     public static IRelayCommand<AssetItem?> GetActivateFolderHeaderCommand() => AppServices.Library.ActivateFolderHeaderCommand;
 
@@ -524,11 +523,9 @@ public sealed partial class LibraryPage : Page
     private void InfUndo_FocusExited(object sender, RoutedEventArgs e) =>
         ViewModel.ResumeUndoToastTimer();
 
-    private void BtnBrowseTags_Click(object sender, RoutedEventArgs e) => FocusAddTagsBox();
-
     private void BtnTagSelected_Click(object sender, RoutedEventArgs e) => FocusAddTagsBox();
 
-    /// <summary>T2/T8: Tag selected… / T focus the Add tags box (legacy FlyAssignTags removed).</summary>
+    /// <summary>T2/T8: Tag selected… / T focus the Add tags box.</summary>
     private void FocusAddTagsBox()
     {
         ViewModel.RebuildAssignPanelPublic();
