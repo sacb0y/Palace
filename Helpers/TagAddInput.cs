@@ -108,6 +108,10 @@ public static class TagAddInput
     public static string SingleImageHeaderSuffix(int appliedCount, int impliedCount) =>
         $"{Math.Max(0, appliedCount)} applied · {Math.Max(0, impliedCount)} implied";
 
+    /// <summary>Implied subsection title — multi-select uses t2-04b/c wording.</summary>
+    public static string ImpliedSectionTitle(bool multiSelect) =>
+        multiSelect ? "Implied on some files" : "Implied by tag rules";
+
     public static string AliasFace(string aliasName, string idealName) =>
         $"{aliasName} › {idealName}";
 

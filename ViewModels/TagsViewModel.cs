@@ -1099,7 +1099,7 @@ public partial class TagsViewModel : ObservableObject
             var assets = await _catalog.GetAssetsForTagsAsync(tagIds);
             if (assets.Count == 0)
             {
-                StatusText = "No images have this tag yet.";
+                StatusText = "No files have this tag yet.";
                 OrganizePreview.Clear();
                 ShowOrganizePanel = false;
                 return;

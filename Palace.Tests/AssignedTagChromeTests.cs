@@ -8,11 +8,11 @@ public sealed class AssignedTagChromeTests
 {
     [Theory]
     [InlineData(false, TagSource.Manual, 1.0)]
-    [InlineData(true, TagSource.Manual, 0.75)]
+    [InlineData(true, TagSource.Manual, 1.0)]
     [InlineData(false, TagSource.Implied, 1.0)]
     [InlineData(true, TagSource.Implied, 1.0)]
     [InlineData(false, TagSource.Prompt, 1.0)]
-    public void Opacity_MutesPartialManual_ImpliedFull(bool partial, TagSource source, double expected) =>
+    public void Opacity_FullStrength_NoPartialDim(bool partial, TagSource source, double expected) =>
         Assert.Equal(expected, AssignedTagChrome.Opacity(partial, source));
 
     [Theory]

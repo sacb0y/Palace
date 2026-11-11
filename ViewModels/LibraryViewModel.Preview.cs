@@ -241,6 +241,7 @@ public partial class LibraryViewModel
             }
 
             HasImpliedAssignedTags = ImpliedAssignedTags.Count > 0;
+            ImpliedSectionTitle = TagAddInput.ImpliedSectionTitle(multi);
             AssignedTagsSummary = AssignedTags.Count == 0 && ImpliedAssignedTags.Count == 0
                 ? "No tags assigned"
                 : string.Join(", ", AssignedTags.Concat(ImpliedAssignedTags).Select(t => t.TagName));
@@ -297,6 +298,7 @@ public partial class LibraryViewModel
         AssignedTags.Clear();
         ImpliedAssignedTags.Clear();
         HasImpliedAssignedTags = false;
+        ImpliedSectionTitle = TagAddInput.ImpliedSectionTitle(false);
         Suggestions.Clear();
         _previewTargets = [];
         AssignedTagsSummary = "";

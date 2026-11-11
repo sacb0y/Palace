@@ -115,4 +115,16 @@ public sealed class FolderTreeVmTests : IAsyncLifetime
     [Fact]
     public void CountText_uses_N0_grouping() =>
         Assert.Equal(1000.ToString("N0"), FolderTreeVm.CountText(1000));
+
+    [Theory]
+    [InlineData("_rejected", true)]
+    [InlineData("_Rejected", true)]
+    [InlineData("_REJECTED", true)]
+    [InlineData("rejected", false)]
+    [InlineData("_rejected_backup", false)]
+    [InlineData("Sketchbook 2026", false)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    public void IsRejectedFolderName_exact_leaf(string? name, bool expected) =>
+        Assert.Equal(expected, FolderTreeVm.IsRejectedFolderName(name));
 }

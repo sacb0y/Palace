@@ -98,7 +98,7 @@ public sealed class TagBrowsePanelTests
 
     [Fact]
     public void FilterPlaceholder_MatchesMockup() =>
-        Assert.Equal("Filter tags or groups", TagBrowsePanel.FilterPlaceholder);
+        Assert.Equal("Filter tags or groups (Ctrl+F)", TagBrowsePanel.FilterPlaceholder);
 
     [Fact]
     public void Build_ExtraRootGroupIds_ShowsEmptyGroup_NotUncategorized()
