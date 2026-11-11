@@ -107,6 +107,8 @@ public partial class LibraryViewModel : ObservableObject
     public Action? RequestFocusAssignTag { get; set; }
     public Action? RequestOpenAssignPanel { get; set; }
     public Action? RequestRestoreMosaicSelection { get; set; }
+    /// <summary>it-01: switch Main nav to Tags (Edit rule / Go to tag).</summary>
+    public Action? RequestShowTags { get; set; }
     public Action<GalleryViewModel>? RequestOpenGalleryWindow { get; set; }
     public Action? MosaicReset { get; set; }
     public Action? MosaicChunkAppended { get; set; }

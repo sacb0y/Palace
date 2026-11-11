@@ -834,6 +834,7 @@
         </Grid>
 
         <ScrollViewer
+            x:Name="ScrTagDetails"
             Grid.Row="1"
             Grid.Column="3"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDetails), Mode=OneWay}">

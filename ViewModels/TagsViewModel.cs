@@ -275,8 +275,12 @@ public partial class TagsViewModel : ObservableObject
     public Action<GalleryViewModel>? RequestOpenGallery { get; set; }
     public Action? RequestShowLibrary { get; set; }
     public Action? RequestFocusRename { get; set; }
+    /// <summary>it-01 Edit: scroll details to Implicit tags; arg = implied tag id to select.</summary>
+    public Action<string?>? RequestFocusImplies { get; set; }
     public Action? MosaicReset { get; set; }
     public Action? MosaicChunkAppended { get; set; }
+
+    private (string TagId, string Name, bool ScrollToImplies, string? FocusImpliedId)? _pendingOpen;
 
     [ObservableProperty]
     public partial string SearchQuery { get; set; } = "";
@@ -348,10 +352,78 @@ public partial class TagsViewModel : ObservableObject
                 await library.ReloadTagCatalogAsync();
                 await library.ReloadAssignedTagsAsync();
             }
+
+            await ApplyPendingOpenAsync();
         }
         finally
         {
             EndBusy();
+        }
+    }
+
+    /// <summary>
+    /// it-01: Library queues a Tags details open before navigating. Applied after
+    /// <see cref="RefreshAsync"/> so the catalog is loaded.
+    /// </summary>
+    public void QueueOpenTagDetails(
+        string tagId,
+        string name,
+        bool scrollToImplies,
+        string? focusImpliedTagId)
+    {
+        if (string.IsNullOrWhiteSpace(tagId))
+        {
+            return;
+        }
+
+        _pendingOpen = (tagId, name ?? "", scrollToImplies, focusImpliedTagId);
+    }
+
+    private async Task ApplyPendingOpenAsync()
+    {
+        if (_pendingOpen is not { } pending)
+        {
+            return;
+        }
+
+        _pendingOpen = null;
+        await OpenTagDetailsAsync(
+            pending.TagId,
+            pending.Name,
+            pending.ScrollToImplies,
+            pending.FocusImpliedId);
+    }
+
+    public async Task OpenTagDetailsAsync(
+        string tagId,
+        string? name,
+        bool scrollToImplies = false,
+        string? focusImpliedTagId = null)
+    {
+        if (string.IsNullOrWhiteSpace(tagId))
+        {
+            return;
+        }
+
+        var tag = _tags.FirstOrDefault(t => t.Id == tagId);
+        var node = TagTreeBuilder.Find(TagTree, tagId)
+            ?? new TagTreeNode
+            {
+                TagId = tagId,
+                Name = tag?.Name ?? name ?? "",
+                EffectiveColor = tag?.Color,
+                IsStarred = tag?.IsStarred ?? false
+            };
+        SelectedNode = node;
+        ShowDetails = true;
+        StampSelectionName(node);
+        StampBoardSelection();
+        RevealSelectedBoardRow();
+        await LoadSelectionAsync();
+        await LoadMosaicAsync();
+        if (scrollToImplies)
+        {
+            RequestFocusImplies?.Invoke(focusImpliedTagId);
         }
     }
 

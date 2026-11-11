@@ -17,6 +17,7 @@ public sealed partial class MainPage : Page
         InitializeComponent();
         ViewModel.RequestProjectName = AskProjectNameAsync;
         AppServices.Tags.RequestShowLibrary = () => NavMain.SelectedItem = NavLibrary;
+        AppServices.Library.RequestShowTags = () => NavMain.SelectedItem = NavTags;
         Loaded += async (_, _) =>
         {
             await ErrorReporter.RunAsync("Load projects", null, ViewModel.LoadAsync);

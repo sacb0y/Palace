@@ -2528,7 +2528,62 @@
                                     IsTabStop="True"
                                     Label="{x:Bind TagName, Mode=OneWay}"
                                     ShowLeadingLink="True"
-                                    TagColor="{x:Bind DotColor, Mode=OneWay}" />
+                                    Tag="{x:Bind}"
+                                    TagColor="{x:Bind DotColor, Mode=OneWay}">
+                                    <controls:TagChip.ContextFlyout>
+                                        <MenuFlyout Opening="ImpliedChipMenu_Opening">
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="MnuImpliedByHeader"
+                                                IsEnabled="False"
+                                                Text="Implied by tag rules"
+                                                Tag="header">
+                                                <MenuFlyoutItem.Icon>
+                                                    <ic:FluentIcon Icon="Link" IconSize="Size16" IconVariant="Regular" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="MnuImpliedEditRule"
+                                                Command="{x:Bind pages:LibraryPage.GetEditImpliedRuleCommand()}"
+                                                CommandParameter="{x:Bind}"
+                                                Tag="edit"
+                                                Text="Edit implication rule…">
+                                                <MenuFlyoutItem.Icon>
+                                                    <ic:FluentIcon Icon="Edit" IconSize="Size16" IconVariant="Regular" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="MnuImpliedFilterTag"
+                                                Command="{x:Bind pages:LibraryPage.GetFilterByImpliedTagCommand()}"
+                                                CommandParameter="{x:Bind}"
+                                                Text="Filter by tag"
+                                                Tag="filter">
+                                                <MenuFlyoutItem.Icon>
+                                                    <ic:FluentIcon Icon="Filter" IconSize="Size16" IconVariant="Regular" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutSeparator />
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="MnuImpliedAddManual"
+                                                Command="{x:Bind pages:LibraryPage.GetAddImpliedAsManualCommand()}"
+                                                CommandParameter="{x:Bind}"
+                                                Text="Add as manual tag">
+                                                <MenuFlyoutItem.Icon>
+                                                    <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                            <MenuFlyoutItem
+                                                AutomationProperties.AutomationId="MnuImpliedGoToTag"
+                                                Command="{x:Bind pages:LibraryPage.GetGoToImpliedTagCommand()}"
+                                                CommandParameter="{x:Bind}"
+                                                Text="Go to tag">
+                                                <MenuFlyoutItem.Icon>
+                                                    <ic:FluentIcon Icon="Tag" IconSize="Size16" IconVariant="Regular" />
+                                                </MenuFlyoutItem.Icon>
+                                            </MenuFlyoutItem>
+                                        </MenuFlyout>
+                                    </controls:TagChip.ContextFlyout>
+                                </controls:TagChip>
                             </DataTemplate>
                         </ItemsRepeater.ItemTemplate>
                     </ItemsRepeater>

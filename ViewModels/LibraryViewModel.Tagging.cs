@@ -228,6 +228,99 @@ public partial class LibraryViewModel
         RequestFocusAssignTag?.Invoke();
     }
 
+    /// <summary>it-01: Filter by the implied chip’s own tag (already on Library).</summary>
+    [RelayCommand]
+    private void FilterByImpliedTag(AssignedTagItem? item)
+    {
+        if (item is null || !ImpliedChipMenu.CanActOnImpliedTag(item.TagId))
+        {
+            return;
+        }
+
+        ApplySingleTagFilter(item.TagId, item.TagName);
+    }
+
+    /// <summary>it-01: promote computed Implied → Manual on the chip’s AssetIds.</summary>
+    [RelayCommand]
+    private Task AddImpliedAsManualAsync(AssignedTagItem? item) =>
+        ErrorReporter.RunAsync("Add as manual tag", Notify, async () =>
+        {
+            if (item is null || !ImpliedChipMenu.CanActOnImpliedTag(item.TagId))
+            {
+                return;
+            }
+
+            var assetIds = item.AssetIds.Count > 0
+                ? item.AssetIds.ToList()
+                : TagTargets().Select(t => t.Id).ToList();
+            if (assetIds.Count == 0)
+            {
+                return;
+            }
+
+            var rows = assetIds
+                .Select(id => (id, item.TagId, item.TagName, TagSource.Manual))
+                .ToList();
+            var result = await _fileOps.AssignTagRowsAsync(
+                rows,
+                AppServices.CurrentProject.Id);
+            RememberRecent(item.TagId);
+            await RefreshUndoStateAsync();
+            if (result.Ok)
+            {
+                var status = TagStatusBar.Tagged(assetIds.Count, [item.TagName]);
+                await UiDispatch.RunAsync(() =>
+                {
+                    StatusText = status;
+                    ShowStatusUndo = result.BatchId is not null && CanUndoFileOp;
+                    ShowUndoToast = false;
+                    AssignAnnouncement = status;
+                });
+            }
+            else
+            {
+                StatusText = result.Message;
+                ShowStatusUndo = false;
+            }
+
+            await LoadPreviewAsync(SelectedAsset);
+            await ReloadTagCatalogAsync();
+        });
+
+    /// <summary>it-01: Tags page › nearest source details, scrolled to Implies.</summary>
+    [RelayCommand]
+    private void EditImpliedRule(AssignedTagItem? item)
+    {
+        if (item is null || !ImpliedChipMenu.CanEditRule(item.NearestImpliedById))
+        {
+            return;
+        }
+
+        AppServices.Tags.QueueOpenTagDetails(
+            item.NearestImpliedById!,
+            item.NearestImpliedByName ?? "",
+            scrollToImplies: true,
+            focusImpliedTagId: item.TagId);
+        RequestShowTags?.Invoke();
+    }
+
+    /// <summary>it-01: Tags page › the implied tag itself.</summary>
+    [RelayCommand]
+    private void GoToImpliedTag(AssignedTagItem? item)
+    {
+        if (item is null || !ImpliedChipMenu.CanActOnImpliedTag(item.TagId))
+        {
+            return;
+        }
+
+        AppServices.Tags.QueueOpenTagDetails(
+            item.TagId,
+            item.TagName,
+            scrollToImplies: false,
+            focusImpliedTagId: null);
+        RequestShowTags?.Invoke();
+    }
+
     public Task ReloadAssignedTagsAsync() => LoadPreviewAsync(SelectedAsset);
 
     public async Task ReloadTagCatalogAsync()

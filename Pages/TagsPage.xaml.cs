@@ -53,6 +53,7 @@ public sealed partial class TagsPage : Page
         ViewModel.RequestOpenGallery = GalleryWindow.Show;
         ViewModel.RequestFocusRename = FocusRenameBox;
         ViewModel.RequestFocusAliasAdd = FocusAliasAddBox;
+        ViewModel.RequestFocusImplies = FocusImpliesSection;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
         ViewModel.PropertyChanged += (_, e) =>
@@ -94,6 +95,11 @@ public sealed partial class TagsPage : Page
             {
                 ViewModel.MosaicReset = null;
                 ViewModel.MosaicChunkAppended = null;
+            }
+
+            if (ReferenceEquals(ViewModel.RequestFocusImplies, (Action<string?>)FocusImpliesSection))
+            {
+                ViewModel.RequestFocusImplies = null;
             }
 
             if (_hookedOverlay is not null)
@@ -227,6 +233,45 @@ public sealed partial class TagsPage : Page
 
             TxtRenameTag.Focus(FocusState.Programmatic);
             TxtRenameTag.SelectAll();
+        });
+    }
+
+    /// <summary>it-01 Edit implication rule… — scroll details to Implicit tags and select the edge.</summary>
+    private void FocusImpliesSection(string? impliedTagId)
+    {
+        _ = FocusImpliesSectionAsync(impliedTagId);
+    }
+
+    private async Task FocusImpliesSectionAsync(string? impliedTagId)
+    {
+        // Wait for nav + details paint after Library → Tags.
+        await Task.Delay(120);
+        await UiDispatch.RunAsync(() =>
+        {
+            if (!ViewModel.ShowDetails || !IsLoaded)
+            {
+                return;
+            }
+
+            LstImpliedTags.StartBringIntoView();
+            if (string.IsNullOrWhiteSpace(impliedTagId))
+            {
+                AsbAddImplied.Focus(FocusState.Programmatic);
+                return;
+            }
+
+            var pick = ViewModel.ImpliedTags
+                .FirstOrDefault(t => string.Equals(t.TagId, impliedTagId, StringComparison.Ordinal));
+            if (pick is not null)
+            {
+                LstImpliedTags.SelectedItem = pick;
+                LstImpliedTags.ScrollIntoView(pick);
+                LstImpliedTags.Focus(FocusState.Programmatic);
+            }
+            else
+            {
+                AsbAddImplied.Focus(FocusState.Programmatic);
+            }
         });
     }
 
