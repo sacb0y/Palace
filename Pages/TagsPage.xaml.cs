@@ -207,6 +207,8 @@ public sealed partial class TagsPage : Page
 
     public static IRelayCommand<TagAliasRow?> GetRemoveAliasCommand() => AppServices.Tags.RemoveAliasRowCommand;
 
+    public static IRelayCommand GetCreateGroupCommand() => AppServices.Tags.CreateGroupCommand;
+
     private void TagChip_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { Tag: TagChipItem chip })

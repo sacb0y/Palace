@@ -73,43 +73,129 @@
                     ItemsSource="{x:Bind ViewModel.Board, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:TagBoardGroup">
-                            <Button
-                                Margin="0,0,0,4"
-                                HorizontalAlignment="Stretch"
-                                HorizontalContentAlignment="Left"
-                                AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                                AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
-                                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}"
-                                BorderThickness="{x:Bind helpers:BindHelpers.SelectedBorder(IsExpanded), Mode=OneWay}"
-                                Click="TagGroupHeader_Click"
-                                Tag="{x:Bind}">
-                                <Grid>
+                            <Grid Margin="0,0,0,2">
+                                <!-- Plain GROUPS small-caps + Add group (not a row-styled button). -->
+                                <Grid
+                                    Margin="4,8,0,2"
+                                    ColumnSpacing="8"
+                                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsGroupsHeader), Mode=OneWay}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Border
-                                            Width="12"
-                                            Height="12"
-                                            Background="{x:Bind helpers:TagColor.ChipFill(Color), Mode=OneWay}"
-                                            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="2"
-                                            Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsGroupsHeader), Mode=OneWay}" />
-                                        <TextBlock
-                                            Style="{StaticResource BodyStrongTextBlockStyle}"
-                                            Text="{x:Bind CountLabel, Mode=OneWay}" />
-                                    </StackPanel>
-                                    <ic:FluentIcon
+                                    <TextBlock
+                                        CharacterSpacing="40"
+                                        FontSize="11"
+                                        FontWeight="SemiBold"
+                                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                        Text="GROUPS"
+                                        VerticalAlignment="Center" />
+                                    <Button
                                         Grid.Column="1"
-                                        VerticalAlignment="Center"
-                                        Icon="Add"
-                                        IconSize="Size16"
-                                        IconVariant="Regular"
-                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsGroupsHeader), Mode=OneWay}" />
+                                        MinWidth="28"
+                                        MinHeight="28"
+                                        Padding="4"
+                                        AutomationProperties.AutomationId="BtnTagGroupsHeader"
+                                        AutomationProperties.Name="Add group"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        Command="{x:Bind pages:TagsPage.GetCreateGroupCommand()}"
+                                        ToolTipService.ToolTip="Add group">
+                                        <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                                    </Button>
                                 </Grid>
-                            </Button>
+                                <!-- Fixed views + group rows: flat, left accent + fill when selected. -->
+                                <Button
+                                    Padding="4,6"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                                    AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
+                                    Background="{x:Bind helpers:BindHelpers.FilterRowBackground(IsExpanded), Mode=OneWay}"
+                                    BorderThickness="0"
+                                    Click="TagGroupHeader_Click"
+                                    CornerRadius="4"
+                                    Tag="{x:Bind}"
+                                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsGroupsHeader), Mode=OneWay}">
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border
+                                            Width="3"
+                                            Height="16"
+                                            VerticalAlignment="Center"
+                                            Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                            CornerRadius="1.5"
+                                            Visibility="{x:Bind helpers:BindHelpers.FilterRowCheckVisibility(IsExpanded), Mode=OneWay}" />
+                                        <Grid
+                                            Grid.Column="1"
+                                            Width="16"
+                                            Height="16"
+                                            VerticalAlignment="Center">
+                                            <ic:FluentIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Icon="Tag"
+                                                IconSize="Size16"
+                                                IconVariant="Filled"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAllScope), Mode=OneWay}" />
+                                            <ic:FluentIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Icon="Tag"
+                                                IconSize="Size16"
+                                                IconVariant="Regular"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsUncategorizedScope), Mode=OneWay}" />
+                                            <ic:FluentIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Foreground="#F2B600"
+                                                Icon="Star"
+                                                IconSize="Size16"
+                                                IconVariant="Filled"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsStarredScope), Mode=OneWay}" />
+                                            <ic:FluentIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Icon="Clock"
+                                                IconSize="Size16"
+                                                IconVariant="Regular"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsRecentScope), Mode=OneWay}" />
+                                            <ic:FluentIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Icon="Link"
+                                                IconSize="Size16"
+                                                IconVariant="Regular"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsAliasesScope), Mode=OneWay}" />
+                                            <Border
+                                                Width="8"
+                                                Height="8"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Background="{x:Bind helpers:TagColor.ChipFill(Color), Mode=OneWay}"
+                                                CornerRadius="4"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsUserGroupRow), Mode=OneWay}" />
+                                        </Grid>
+                                        <TextBlock
+                                            Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Text="{x:Bind Name, Mode=OneWay}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock
+                                            Grid.Column="3"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind ChipCountText, Mode=OneWay}"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowChipCount), Mode=OneWay}" />
+                                    </Grid>
+                                </Button>
+                            </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

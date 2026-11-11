@@ -27,8 +27,10 @@ public sealed class TagBoardShellTests
     public void NavKeys_RecognizePinnedSections()
     {
         Assert.True(TagBoardShell.IsNavSection("all"));
+        Assert.True(TagBoardShell.IsNavSection("aliases"));
         Assert.True(TagBoardShell.IsGroupsHeader("groups-header"));
         Assert.True(TagBoardShell.IsUserGroupKey("medium"));
         Assert.False(TagBoardShell.IsUserGroupKey("recent"));
+        Assert.False(TagBoardShell.IsUserGroupKey("aliases"));
     }
 }

@@ -10,6 +10,7 @@ public static class TagBoardShell
     public const string UngroupedKey = "ungrouped";
     public const string StarredKey = "starred";
     public const string RecentKey = "recent";
+    public const string AliasesKey = "aliases";
     public const string GroupsHeaderKey = "groups-header";
 
     public const string NewTagsPlaceholder =
@@ -60,7 +61,7 @@ public static class TagBoardShell
     }
 
     public static bool IsNavSection(string? key) =>
-        key is AllKey or UngroupedKey or StarredKey or RecentKey or GroupsHeaderKey;
+        key is AllKey or UngroupedKey or StarredKey or RecentKey or AliasesKey or GroupsHeaderKey;
 
     public static bool IsGroupsHeader(string? key) =>
         string.Equals(key, GroupsHeaderKey, StringComparison.Ordinal);

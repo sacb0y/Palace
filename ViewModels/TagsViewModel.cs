@@ -1235,9 +1235,9 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
+        // GROUPS header is not selectable; Add group (+) owns create.
         if (group.ScopeKind == TagScope.GroupsHeader)
         {
-            _ = CreateGroupCommand.ExecuteAsync(null);
             return;
         }
 

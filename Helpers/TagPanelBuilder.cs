@@ -279,7 +279,7 @@ public static class TagPanelBuilder
         {
             new()
             {
-                Name = "All",
+                Name = "All tags",
                 ScopeKind = TagScope.All,
                 AutomationIdOverride = "SelTagScopeAll",
                 Chips = all
