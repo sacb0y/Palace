@@ -61,6 +61,24 @@ public static class BindHelpers
     public static Thickness SelectedBorder(bool selected) =>
         selected ? new Thickness(2) : new Thickness(0);
 
+    /// <summary>t8-01 Library tag-row fill: soft accent when the filter is selected.</summary>
+    public static Brush FilterRowBackground(bool selected)
+    {
+        if (selected
+            && Application.Current?.Resources.TryGetValue("AccentFillColorDefaultBrush", out var accent) == true
+            && accent is SolidColorBrush solid)
+        {
+            var c = solid.Color;
+            return new SolidColorBrush(Windows.UI.Color.FromArgb(0x29, c.R, c.G, c.B));
+        }
+
+        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    /// <summary>t8-01 check glyph visible only on a selected filter row.</summary>
+    public static Visibility FilterRowCheckVisibility(bool selected) =>
+        selected ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>T2 assigned-chip fill: accent when selected for Remove from all.</summary>
     public static Brush AssignedChipBackground(bool selected)
     {

@@ -138,6 +138,86 @@ public partial class LibraryViewModel
         _ = ApplyFilterAsync();
     }
 
+    [RelayCommand]
+    private void ClearTagFilters()
+    {
+        if (SelectedFilterTags.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var chip in SelectedFilterTags.ToList())
+        {
+            var node = TagTreeBuilder.Find(TagTree, chip.TagId);
+            if (node is not null)
+            {
+                node.IsFilterSelected = false;
+            }
+        }
+
+        SelectedFilterTags.Clear();
+        SelectedTag = null;
+        SyncFilterFlags();
+        RebuildBreadcrumbs();
+        _ = ApplyFilterAsync();
+    }
+
+    [RelayCommand]
+    private void SetTagFilterMode(string? mode)
+    {
+        if (string.IsNullOrWhiteSpace(mode)
+            || !Enum.TryParse<TagFilterMode>(mode, ignoreCase: true, out var parsed))
+        {
+            return;
+        }
+
+        TagFilterMode = parsed;
+    }
+
+    [RelayCommand]
+    private void ToggleBrowseStarredSection()
+    {
+        BrowseStarredExpanded = !BrowseStarredExpanded;
+        if (BrowseStarredExpanded)
+        {
+            _browseCollapsedKeys.Remove("starred");
+        }
+        else
+        {
+            _browseCollapsedKeys.Add("starred");
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleBrowseRecentSection()
+    {
+        BrowseRecentExpanded = !BrowseRecentExpanded;
+        if (BrowseRecentExpanded)
+        {
+            _browseCollapsedKeys.Remove("recent");
+        }
+        else
+        {
+            _browseCollapsedKeys.Add("recent");
+        }
+    }
+
+    [RelayCommand]
+    private Task CreateBrowseGroupAsync() =>
+        ErrorReporter.RunAsync("Create group", Notify, async () =>
+        {
+            var name = "New group";
+            var n = 2;
+            while (_tags.Any(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                name = $"New group ({n++})";
+            }
+
+            await _catalog.CreateTagAsync(name);
+            await RefreshQuietAsync();
+            StatusText = $"Created group “{name}”. Add tags on the Tags page.";
+        });
+
     private async Task ApplyFilterAsync()
     {
         BeginBusy("Loading…");
@@ -220,13 +300,11 @@ public partial class LibraryViewModel
             // Display omits collapsed-section tiles; Ordered keeps them for Review/select-all/range.
             var items = build.Display;
             var assetCount = build.Ordered.Count(item => !item.IsFolderHeader);
-            var joiner = matchMode == TagFilterMode.All
-                ? " + "
-                : matchMode == TagFilterMode.None ? " except " : " or ";
+            var libraryTotal = Math.Max(assetCount, _allAssets.Count);
             var doneStatus = !string.IsNullOrWhiteSpace(search)
                 ? $"{assetCount} search results"
                 : tagBrowse
-                    ? $"{assetCount} tagged {string.Join(joiner, filterNames)}"
+                    ? TagFilterStrip.StatusLine(assetCount, libraryTotal, filterNames, matchMode)
                     : IsAllRejectedView
                         ? assetCount == 0
                             ? "No rejected files"
@@ -236,6 +314,11 @@ public partial class LibraryViewModel
                             : assetCount == 0
                                 ? "Add a folder to start your library."
                                 : $"{assetCount} assets";
+
+            if (tagBrowse)
+            {
+                TagFilterStripLead = TagFilterStrip.StripLead(assetCount);
+            }
 
             await PopulateMosaicAsync(items, epoch, doneStatus);
             _ = RefreshRejectedCountsAsync();
@@ -252,8 +335,15 @@ public partial class LibraryViewModel
         ShowTagFilterChips = HasTagFilters && IsTagBrowse;
         TagFilterSummary = SelectedFilterTags.Count == 0
             ? ""
-            : string.Join(TagFilterMode == TagFilterMode.All ? " + " : TagFilterMode == TagFilterMode.None ? " except " : " or ",
+            : string.Join(
+                TagFilterStrip.StatusJoiner(TagFilterMode),
                 SelectedFilterTags.Select(t => t.Name));
+        if (!ShowTagFilterChips)
+        {
+            TagFilterStripLead = "";
+        }
+
+        OnPropertyChanged(nameof(TagFilterMatchLabel));
         RebuildBrowseTags();
     }
 
@@ -280,6 +370,9 @@ public partial class LibraryViewModel
         {
             if (section.IsStarredSection)
             {
+                BrowseStarredExpanded = section.IsExpanded;
+                BrowseStarredCountText = section.Count.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
                 foreach (var chip in section.Chips)
                 {
                     var item = ToBrowseChip(chip, selected);
@@ -292,6 +385,9 @@ public partial class LibraryViewModel
 
             if (section.IsRecentSection)
             {
+                BrowseRecentExpanded = section.IsExpanded;
+                BrowseRecentCountText = section.Count.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
                 foreach (var chip in section.Chips)
                 {
                     var item = ToBrowseChip(chip, selected);
@@ -336,15 +432,67 @@ public partial class LibraryViewModel
 
             BrowseTagGroups.Add(group);
         }
+
+        _ = RefreshBrowseFileCountsAsync();
     }
 
-    private static TagChipItem ToBrowseChip(TagPanelChip chip, HashSet<string> selected) => new()
+    private async Task RefreshBrowseFileCountsAsync()
+    {
+        var epoch = Interlocked.Increment(ref _browseCountsEpoch);
+        try
+        {
+            var projectId = AppServices.CurrentProject?.Id;
+            var pairs = await _catalog.GetProjectAssetTagPairsAsync(projectId);
+            if (epoch != Volatile.Read(ref _browseCountsEpoch))
+            {
+                return;
+            }
+
+            var ids = BrowseTags.Select(t => t.TagId)
+                .Concat(BrowseTagGroups.SelectMany(g => g.Chips.Select(c => c.TagId)))
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var counts = TagBrowseCounts.ForTags(pairs, _implications, ids);
+            await UiDispatch.RunAsync(() =>
+            {
+                if (epoch != Volatile.Read(ref _browseCountsEpoch))
+                {
+                    return;
+                }
+
+                _browseFileCounts = counts;
+                ApplyBrowseFileCounts(BrowseStarredTags);
+                ApplyBrowseFileCounts(BrowseRecentTags);
+                ApplyBrowseFileCounts(BrowseTags);
+                foreach (var group in BrowseTagGroups)
+                {
+                    ApplyBrowseFileCounts(group.Chips);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.Report("Browse tag counts", ex, Notify);
+        }
+    }
+
+    private void ApplyBrowseFileCounts(IEnumerable<TagChipItem> chips)
+    {
+        foreach (var chip in chips)
+        {
+            chip.FileCount = _browseFileCounts.GetValueOrDefault(chip.TagId);
+        }
+    }
+
+    private TagChipItem ToBrowseChip(TagPanelChip chip, HashSet<string> selected) => new()
     {
         TagId = chip.TagId,
         Name = chip.Name,
         EffectiveColor = chip.EffectiveColor,
         IsStarred = chip.IsStarred,
         IsFilterSelected = selected.Contains(chip.TagId),
+        FileCount = _browseFileCounts.GetValueOrDefault(chip.TagId),
         AutomationPrefix = "BtnTagChip_"
     };
 
@@ -380,6 +528,8 @@ public partial class LibraryViewModel
     private void ExpandAllBrowseTagGroups()
     {
         _browseCollapsedKeys.Clear();
+        BrowseStarredExpanded = true;
+        BrowseRecentExpanded = true;
         foreach (var group in BrowseTagGroups)
         {
             group.IsExpanded = true;
@@ -389,6 +539,10 @@ public partial class LibraryViewModel
     [RelayCommand]
     private void CollapseAllBrowseTagGroups()
     {
+        _browseCollapsedKeys.Add("starred");
+        _browseCollapsedKeys.Add("recent");
+        BrowseStarredExpanded = false;
+        BrowseRecentExpanded = false;
         foreach (var group in BrowseTagGroups)
         {
             var key = group.GroupId ?? group.Name;

@@ -27,6 +27,9 @@ public partial class LibraryViewModel : ObservableObject
     private List<TagPickItem> _tagPicks = [];
     private List<string> _recentTagIds = [];
     private HashSet<string> _browseCollapsedKeys = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, int> _browseFileCounts =
+        new Dictionary<string, int>(StringComparer.Ordinal);
+    private int _browseCountsEpoch;
     private HashSet<string> _browseShowAllGroups = new(StringComparer.Ordinal);
     private List<AssetItem> _selection = [];
     private List<AssetItem> _previewTargets = [];
@@ -154,6 +157,29 @@ public partial class LibraryViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string TagFilterSummary { get; set; } = "";
+
+    /// <summary>t8-01 above-grid strip lead: "41 files with".</summary>
+    [ObservableProperty]
+    public partial string TagFilterStripLead { get; set; } = "";
+
+    /// <summary>t8-01 Match all / any / none label for strip + sidebar.</summary>
+    public string TagFilterMatchLabel => TagFilterStrip.MatchLabel(TagFilterMode);
+
+    /// <summary>Starred section expanded (Library ▸ Tags panel).</summary>
+    [ObservableProperty]
+    public partial bool BrowseStarredExpanded { get; set; } = true;
+
+    /// <summary>Recent section expanded (Library ▸ Tags panel).</summary>
+    [ObservableProperty]
+    public partial bool BrowseRecentExpanded { get; set; } = true;
+
+    /// <summary>Starred chip count face.</summary>
+    [ObservableProperty]
+    public partial string BrowseStarredCountText { get; set; } = "0";
+
+    /// <summary>Recent chip count face.</summary>
+    [ObservableProperty]
+    public partial string BrowseRecentCountText { get; set; } = "0";
 
     [ObservableProperty]
     public partial double MosaicRowHeight { get; set; } = 140;
@@ -529,6 +555,8 @@ public partial class LibraryViewModel : ObservableObject
 
     partial void OnTagFilterModeChanged(TagFilterMode value)
     {
+        OnPropertyChanged(nameof(TagFilterMatchLabel));
+        SyncFilterFlags();
         if (!_suppressFilter && IsTagBrowse)
         {
             _ = ApplyFilterAsync();
