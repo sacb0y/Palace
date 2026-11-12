@@ -1,0 +1,12 @@
+﻿tip_sha=276087a0f42e0c784432cc0d0e4906dd3b0753af
+main_proof=06-main-081-same-library-thumbs.png (0.3.81 / be103dd lineage)
+dpi=144
+scale_pct=150
+identity=PalaceOrganizeTest-5E1F
+tip_version=0.3.84.0
+maximized=False
+window_dip=1053x666
+window_phys=1580x999
+host=FENRIR-STUDIO
+fenrir_desktop=not_touched
+thumb_verdict=synthetic SFW solid-color JPEGs (art-a #9FB4C7); cache present; not 0.3.84 decode regression
