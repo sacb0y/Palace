@@ -100,6 +100,15 @@ public sealed class TagColorTests
     }
 
     [Fact]
+    public void MapEffectiveColors_UngroupedLeafNull_StaysNull()
+    {
+        var loose = new Tag { Id = "t-loose", Name = "Loose", Priority = 0 };
+        var colors = CatalogService.MapEffectiveColors([loose], []);
+        Assert.Null(colors[loose.Id]);
+        Assert.Equal("No color", CatalogService.DescribeTagColor(loose, [loose], []));
+    }
+
+    [Fact]
     public void MapEffectiveColors_NullGroupColour_ChipsShareResolvedFace()
     {
         var subject = new Tag { Id = "g-subject", Name = "Subject", Priority = 10 };
@@ -139,5 +148,23 @@ public sealed class TagColorTests
         Assert.NotEqual("#FF010101", TagInk.Normalize(groupFace));
         Assert.Equal(groupFace, colors[smile.Id]);
         Assert.False(TagInk.IsTooDarkForFace(groupFace));
+    }
+
+    [Fact]
+    public void MapEffectiveColors_GroupFace_DoesNotColourSiblingUngroupedLeaf()
+    {
+        var subject = new Tag { Id = "g-subject2", Name = "Subject", Priority = 10 };
+        var smile = new Tag { Id = "t-smile2", Name = "smile", Priority = 1 };
+        var loose = new Tag { Id = "t-loose2", Name = "Loose", Priority = 0 };
+        var tags = new List<Tag> { subject, smile, loose };
+        var edges = new List<TagMembership>
+        {
+            new() { ParentId = subject.Id, ChildId = smile.Id }
+        };
+
+        var colors = CatalogService.MapEffectiveColors(tags, edges);
+        Assert.False(string.IsNullOrWhiteSpace(colors[subject.Id]));
+        Assert.Equal(colors[subject.Id], colors[smile.Id]);
+        Assert.Null(colors[loose.Id]);
     }
 }

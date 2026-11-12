@@ -638,14 +638,15 @@
                 <Grid Grid.Row="1" VerticalAlignment="Center">
                     <DropDownButton
                         x:Name="BtnTagMosaicSort"
-                        HorizontalAlignment="Stretch"
+                        MaxWidth="280"
+                        HorizontalAlignment="Left"
                         HorizontalContentAlignment="Left"
                         VerticalAlignment="Center"
                         AutomationProperties.AutomationId="BtnTagMosaicSort"
                         AutomationProperties.HelpText="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}"
                         AutomationProperties.Name="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
                         ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}">
-                        <Grid ColumnSpacing="8">
+                        <Grid MaxWidth="240" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -658,7 +659,7 @@
                             <TextBlock
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
-                                Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
+                                Text="{x:Bind ViewModel.SortButtonFaceLabel, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis"
                                 TextWrapping="NoWrap" />
                         </Grid>

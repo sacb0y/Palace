@@ -826,12 +826,16 @@ public sealed partial class CatalogService
     {
         var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
         var parents = new Dictionary<string, List<Tag>>(StringComparer.Ordinal);
+        // Parents that have at least one child — GROUPS rows; face palette applies only here.
+        var groupIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var edge in memberships)
         {
-            if (!byId.TryGetValue(edge.ParentId, out var parent))
+            if (!byId.TryGetValue(edge.ParentId, out var parent) || !byId.ContainsKey(edge.ChildId))
             {
                 continue;
             }
+
+            groupIds.Add(edge.ParentId);
 
             if (!parents.TryGetValue(edge.ChildId, out var list))
             {
@@ -845,7 +849,7 @@ public sealed partial class CatalogService
         var cache = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var tag in tags)
         {
-            ResolveEffectiveColor(tag.Id, byId, parents, cache, []);
+            ResolveEffectiveColor(tag.Id, byId, parents, groupIds, cache, []);
         }
 
         return cache;
@@ -1283,6 +1287,7 @@ public sealed partial class CatalogService
         string tagId,
         IReadOnlyDictionary<string, Tag> tags,
         IReadOnlyDictionary<string, List<Tag>> parents,
+        HashSet<string> groupIds,
         Dictionary<string, string?> cache,
         HashSet<string> visiting)
     {
@@ -1310,17 +1315,24 @@ public sealed partial class CatalogService
                 .OrderByDescending(p => p.Priority)
                 .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
                 .First();
-            var inherited = ResolveEffectiveColor(winner.Id, tags, parents, cache, visiting);
+            var inherited = ResolveEffectiveColor(winner.Id, tags, parents, groupIds, cache, visiting);
             cache[tagId] = inherited;
             visiting.Remove(tagId);
             return inherited;
         }
 
-        // Root with no / too-dark colour → deterministic mockup palette (al-01).
-        var face = TagInk.FaceColor(tag.Color, string.IsNullOrWhiteSpace(tag.Id) ? tag.Name : tag.Id);
-        cache[tagId] = face;
+        // Only GROUPS (tags with children) get the mockup face palette. Ungrouped leaves stay neutral.
+        if (groupIds.Contains(tagId))
+        {
+            var face = TagInk.FaceColor(tag.Color, string.IsNullOrWhiteSpace(tag.Id) ? tag.Name : tag.Id);
+            cache[tagId] = face;
+            visiting.Remove(tagId);
+            return face;
+        }
+
+        cache[tagId] = null;
         visiting.Remove(tagId);
-        return face;
+        return null;
     }
 
     private static string? FindColorAncestorName(
