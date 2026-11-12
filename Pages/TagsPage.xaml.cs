@@ -329,7 +329,7 @@ public sealed partial class TagsPage : Page
                 BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush", Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(16),
-                Padding = new Thickness(10, 4),
+                Padding = new Thickness(10, 4, 10, 4),
                 Child = row,
                 Opacity = 0.92
             };
@@ -344,7 +344,7 @@ public sealed partial class TagsPage : Page
                 {
                     Background = ThemeBrush("AccentFillColorDefaultBrush", Color.FromArgb(0xFF, 0xED, 0x9F, 0xBC)),
                     CornerRadius = new CornerRadius(8),
-                    Padding = new Thickness(6, 2),
+                    Padding = new Thickness(6, 2, 6, 2),
                     HorizontalAlignment = HorizontalAlignment.Right,
                     VerticalAlignment = VerticalAlignment.Top,
                     Margin = new Thickness(0, -8, -10, 0),
@@ -375,6 +375,12 @@ public sealed partial class TagsPage : Page
                 return null;
             }
 
+            var pixelBytes = new byte[pixels.Length];
+            using (var reader = DataReader.FromBuffer(pixels))
+            {
+                reader.ReadBytes(pixelBytes);
+            }
+
             using var stream = new InMemoryRandomAccessStream();
             var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
             var dpi = (XamlRoot?.RasterizationScale ?? 1.0) * 96.0;
@@ -385,7 +391,7 @@ public sealed partial class TagsPage : Page
                 (uint)rtb.PixelHeight,
                 dpi,
                 dpi,
-                pixels.ToArray());
+                pixelBytes);
             await encoder.FlushAsync();
             stream.Seek(0);
 
