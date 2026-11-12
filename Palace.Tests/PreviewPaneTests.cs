@@ -124,7 +124,11 @@ public sealed class PreviewPaneTests
         Assert.True(docked.Widths.Mosaic < without.Widths.Mosaic);
         var layout = PreviewPane.Layout(docked);
         Assert.Equal(docked.Widths.Preview, PreviewPane.GridPreviewColumnWidth(layout), 0.01);
-        Assert.True(double.IsNaN(PreviewPane.DockHostWidth(layout)));
+        Assert.Equal(docked.Widths.Preview, PreviewPane.DockHostWidth(layout), 0.01);
+        var slot = PreviewPane.DockHostSlot(layout);
+        Assert.True(slot.AlignRight);
+        Assert.Equal(3, slot.ColumnSpan);
+        Assert.Equal(docked.Widths.Preview, slot.Width, 0.01);
         Assert.False(layout.OverlayVisible);
 
         s = PreviewPane.ApplyToggle(s);
@@ -248,13 +252,18 @@ public sealed class PreviewPaneTests
         Assert.True(docked.DockHostVisible);
         Assert.False(docked.OverlayVisible);
         Assert.Equal(userWidth, docked.Preview, 0.01);
-        Assert.True(double.IsNaN(PreviewPane.DockHostWidth(docked)));
+        Assert.Equal(userWidth, PreviewPane.DockHostWidth(docked), 0.01);
         Assert.Equal(userWidth, PreviewPane.GridPreviewColumnWidth(docked), 0.01);
         var dockShown = PreviewPane.DockChrome(docked);
-        Assert.True(double.IsNaN(dockShown.Width));
+        Assert.Equal(userWidth, dockShown.Width, 0.01);
         Assert.Equal(1, dockShown.Opacity);
         Assert.True(dockShown.HitTestVisible);
         Assert.True(docked.Mosaic >= LibraryColumnLayout.MosaicMinWidth - 0.01);
+        var slotDocked = PreviewPane.DockHostSlot(docked);
+        Assert.Equal(0, slotDocked.Column);
+        Assert.Equal(3, slotDocked.ColumnSpan);
+        Assert.True(slotDocked.AlignRight);
+        Assert.Equal(userWidth, slotDocked.Width, 0.01);
 
         // Hide → show three times: ColPreview restores; hide is Opacity=0 (not Collapse).
         for (var i = 0; i < 3; i++)
@@ -279,25 +288,26 @@ public sealed class PreviewPaneTests
             Assert.True(shown.DockHostVisible);
             Assert.False(shown.OverlayVisible);
             Assert.Equal(userWidth, shown.Preview, 0.01);
-            Assert.True(double.IsNaN(PreviewPane.DockHostWidth(shown)));
+            Assert.Equal(userWidth, PreviewPane.DockHostWidth(shown), 0.01);
             Assert.Equal(userWidth, PreviewPane.GridPreviewColumnWidth(shown), 0.01);
             var chrome = PreviewPane.DockChrome(shown);
-            Assert.True(double.IsNaN(chrome.Width));
+            Assert.Equal(userWidth, chrome.Width, 0.01);
             Assert.Equal(1, chrome.Opacity);
             Assert.True(chrome.HitTestVisible);
             Assert.Equal(docked.Mosaic, shown.Mosaic, 0.01);
             Assert.Equal(docked.Tree, shown.Tree, 0.01);
             Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, shown.Mode));
             Assert.True(PreviewPane.NeedsDockColumnRelayout(shown.Mode, PaneMode.Hidden));
-            // Docked→Docked must still invalidate (height-only window resize).
-            Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
+            // Height-only: column widths unchanged — no column invalidate required;
+            // host X is right-align + explicit width (not ColPreview stretch arrange).
+            Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
         }
     }
 
     [Fact]
-    public void NeedsDockColumnRelayout_HeightOnlyWhileDocked_StillInvalidates()
+    public void NeedsDockColumnRelayout_HeightOnlyWhileDocked_DoesNotInvalidateColumns()
     {
-        Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
+        Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
         Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Docked));
         Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Hidden));
         Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Hidden));
@@ -307,11 +317,12 @@ public sealed class PreviewPaneTests
     public void Layout_SameContentWidth_IdempotentAcrossRepeatedPasses()
     {
         // Height-only resize: content width unchanged; every pass must yield the
-        // same column state (no width-delta gating in the reducer).
+        // same column + host slot (no width-delta gating in the reducer).
         var width = PreviewPane.AutoShowAboveContentDip + 80;
         var s = PreviewPane.OnWidth(PreviewPane.Initial with { UserWidth = 360 }, width);
         var first = PreviewPane.Layout(PreviewPane.Effective(s, width));
         Assert.Equal(PaneMode.Docked, first.Mode);
+        var firstSlot = PreviewPane.DockHostSlot(first);
         for (var i = 0; i < 8; i++)
         {
             // Simulate SizeChanged with unchanged content width (height-only).
@@ -326,27 +337,59 @@ public sealed class PreviewPaneTests
                 PreviewPane.GridPreviewColumnWidth(pass),
                 0.01);
             var slot = PreviewPane.DockHostSlot(pass);
-            Assert.Equal(2, slot.Column);
-            Assert.Equal(1, slot.ColumnSpan);
+            Assert.Equal(0, slot.Column);
+            Assert.Equal(3, slot.ColumnSpan);
             Assert.Equal(1, slot.Row);
-            Assert.True(slot.Stretch);
-            Assert.True(double.IsNaN(slot.Width));
+            Assert.True(slot.AlignRight);
+            Assert.Equal(first.Preview, slot.Width, 0.01);
+            Assert.Equal(firstSlot.Width, slot.Width, 0.01);
             Assert.Equal(1, slot.Opacity);
             Assert.True(slot.HitTestVisible);
-            Assert.True(PreviewPane.NeedsDockColumnRelayout(pass.Mode, pass.Mode));
+            Assert.False(PreviewPane.NeedsDockColumnRelayout(pass.Mode, pass.Mode));
         }
     }
 
     [Fact]
-    public void DockHostSlot_Hidden_ZeroWidthColumn2()
+    public void DockHostSlot_HeightOnlyClientSizeChange_KeepsRightAlignedGeometry()
+    {
+        // Studio FAIL: height-only SetWindowPos left prev.x≈tree.x while prev.w and
+        // grid.w unchanged. Slot from current content width alone must stay right-
+        // aligned with explicit Preview width (ColPreview still reserves the same DIP).
+        var contentWidth = PreviewPane.AutoShowAboveContentDip + 120;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial with { UserWidth = 340 }, contentWidth);
+        var before = PreviewPane.Layout(PreviewPane.Effective(s, contentWidth));
+        var beforeSlot = PreviewPane.DockHostSlot(before);
+
+        // Height-only: same content width, many layout passes (no width delta).
+        for (var i = 0; i < 5; i++)
+        {
+            s = PreviewPane.OnWidth(s, contentWidth);
+            var after = PreviewPane.Layout(PreviewPane.Effective(s, contentWidth));
+            var afterSlot = PreviewPane.DockHostSlot(after);
+            Assert.Equal(before.Preview, after.Preview, 0.01);
+            Assert.Equal(before.Mosaic, after.Mosaic, 0.01);
+            Assert.Equal(beforeSlot.ColumnSpan, afterSlot.ColumnSpan);
+            Assert.Equal(beforeSlot.AlignRight, afterSlot.AlignRight);
+            Assert.Equal(beforeSlot.Width, afterSlot.Width, 0.01);
+            Assert.True(afterSlot.AlignRight);
+            Assert.Equal(3, afterSlot.ColumnSpan);
+            Assert.Equal(after.Preview, afterSlot.Width, 0.01);
+            Assert.Equal(after.Preview, PreviewPane.GridPreviewColumnWidth(after), 0.01);
+            Assert.False(double.IsNaN(afterSlot.Width));
+        }
+    }
+
+    [Fact]
+    public void DockHostSlot_Hidden_ZeroWidthRightAlignedSpan()
     {
         var wide = PreviewPane.AutoShowAboveContentDip + 100;
         var s = PreviewPane.OnWidth(PreviewPane.Initial with { UserShow = false }, wide);
         var layout = PreviewPane.Layout(PreviewPane.Effective(s, wide));
         var slot = PreviewPane.DockHostSlot(layout);
         Assert.Equal(PaneMode.Hidden, layout.Mode);
-        Assert.Equal(2, slot.Column);
-        Assert.Equal(1, slot.ColumnSpan);
+        Assert.Equal(0, slot.Column);
+        Assert.Equal(3, slot.ColumnSpan);
+        Assert.True(slot.AlignRight);
         Assert.Equal(0, slot.Width);
         Assert.Equal(0, slot.Opacity);
         Assert.False(slot.HitTestVisible);

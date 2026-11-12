@@ -208,11 +208,10 @@ public sealed partial class LibraryPage
         UpdatePreviewEdgeTab(mode);
         SyncPreviewToggleButton();
 
-        // Dock host: never Collapsed after load. FENRIR #177 — first Collapsed→Visible
-        // (cold start) was fine; every later hide→show left ScrPreviewPane at X≈451 over
-        // the folder tree. Opacity + ColPreview width + hit-test only; host stays in
-        // Grid.Column=2 (opaque SolidBackgroundFillColorBaseBrush). Re-apply the full
-        // slot every pass — height-only resize must not keep a stale arrange X.
+        // Dock host: never Collapsed after load. FENRIR #177 — Collapsed→Visible left
+        // ScrPreviewPane at the folder-tree X. Opacity + hit-test hide; ColPreview still
+        // reserves width for mosaic reflow; host is ColumnSpan=3 + Right + explicit Width
+        // (Studio height-only @150% DPI parked stretch-in-ColPreview at prev.x≈406).
         GrdPreviewDockHost.Visibility = Visibility.Visible;
         ScrPreviewPane.Visibility = Visibility.Visible;
         ApplyPreviewDockHostSlot(PreviewPane.DockHostSlot(layout));
@@ -225,28 +224,20 @@ public sealed partial class LibraryPage
     }
 
     /// <summary>
-    /// Re-assert ColPreview slot + stretch + zero Composition offset every layout pass
-    /// (height-only included). Idempotent from current size — no previous-size gating.
+    /// Re-assert right-aligned dock host + zero Composition offset every layout pass.
+    /// Idempotent from current size — no previous-size / width-delta gating.
     /// </summary>
     private void ApplyPreviewDockHostSlot(PreviewDockHostSlot slot)
     {
         Grid.SetColumn(GrdPreviewDockHost, slot.Column);
         Grid.SetColumnSpan(GrdPreviewDockHost, slot.ColumnSpan);
         Grid.SetRow(GrdPreviewDockHost, slot.Row);
-        GrdPreviewDockHost.HorizontalAlignment = slot.Stretch
-            ? HorizontalAlignment.Stretch
-            : HorizontalAlignment.Left;
+        GrdPreviewDockHost.HorizontalAlignment = slot.AlignRight
+            ? HorizontalAlignment.Right
+            : HorizontalAlignment.Stretch;
         GrdPreviewDockHost.VerticalAlignment = VerticalAlignment.Stretch;
         GrdPreviewDockHost.ClearValue(MarginProperty);
-        if (double.IsNaN(slot.Width))
-        {
-            GrdPreviewDockHost.ClearValue(WidthProperty);
-        }
-        else
-        {
-            GrdPreviewDockHost.Width = slot.Width;
-        }
-
+        GrdPreviewDockHost.Width = slot.Width;
         GrdPreviewDockHost.Opacity = slot.Opacity;
         GrdPreviewDockHost.IsHitTestVisible = slot.HitTestVisible;
         ResetPreviewMotionOffset(GrdPreviewDockHost);

@@ -2207,13 +2207,17 @@
             </Grid>
         </Grid>
 
-        <!-- Real ColPreview slot. Stay Visibility=Visible; hide via Opacity=0 + column width 0
-             (Collapsed→Visible after the first show left the pane over the folder tree — #177).
-             Opaque base fill so mosaic never shows through Tags / Notes / empty state. -->
+        <!-- ColPreview (column 2) reserves width for mosaic reflow. Host is ColumnSpan=3 +
+             Right + explicit Width so height-only Grid arrange cannot park it at the tree X
+             (FENRIR-STUDIO 150% DPI). Stay Visibility=Visible; hide via Opacity=0 + Width 0
+             (#177 Collapsed→Visible). Opaque fill so mosaic never shows through. -->
         <Grid
             x:Name="GrdPreviewDockHost"
             Grid.Row="1"
-            Grid.Column="2"
+            Grid.Column="0"
+            Grid.ColumnSpan="3"
+            Width="0"
+            HorizontalAlignment="Right"
             Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
             Opacity="0"
             IsHitTestVisible="False"
