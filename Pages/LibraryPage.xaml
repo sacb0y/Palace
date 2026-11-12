@@ -2208,8 +2208,9 @@
         </Grid>
 
         <!-- ColPreview (column 2) reserves width for mosaic reflow. Host is ColumnSpan=3 +
-             Right + explicit Width so height-only Grid arrange cannot park it at the tree X
-             (FENRIR-STUDIO 150% DPI). Stay Visibility=Visible; hide via Opacity=0 + Width 0
+             Left + MarginLeft (code-owned X from Tree+Mosaic+gaps) + explicit Width.
+             Right/Stretch arrange parked the host at tree.x on Studio height-only @150%
+             DPI (0.3.61–0.3.64). Stay Visibility=Visible; hide via Opacity=0 + Width 0
              (#177 Collapsed→Visible). Opaque fill so mosaic never shows through. -->
         <Grid
             x:Name="GrdPreviewDockHost"
@@ -2217,7 +2218,7 @@
             Grid.Column="0"
             Grid.ColumnSpan="3"
             Width="0"
-            HorizontalAlignment="Right"
+            HorizontalAlignment="Left"
             Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
             Opacity="0"
             IsHitTestVisible="False"

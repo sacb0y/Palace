@@ -276,19 +276,40 @@ public static class PreviewPane
         layout.Mode == PaneMode.Docked ? layout.Preview : 0;
 
     /// <summary>
-    /// Host Width for the dock element. Explicit Preview DIP when Docked (right-aligned
-    /// over the ColPreview spacer); 0 when hidden. Never NaN/stretch-in-column — WinUI
-    /// Grid can leave a Column=2 Stretch child at the folder-tree X after height-only
-    /// resize (FENRIR-STUDIO 150% DPI: prev.x 1788→406 while column widths unchanged).
+    /// Host Width for the dock element. Explicit Preview DIP when Docked; 0 when hidden.
+    /// Never NaN/stretch — WinUI Grid Stretch/Right arrange can park the host at the
+    /// folder-tree X after height-only resize (Studio @150%: prev.x 1788→406).
     /// </summary>
     public static double DockHostWidth(PreviewPaneLayoutState layout) =>
         layout.Mode == PaneMode.Docked ? layout.Preview : 0;
 
     /// <summary>
+    /// Left margin inside the ColumnSpan=3 arrange slot so the host sits on the
+    /// ColPreview spacer. Derived from current Tree/Mosaic + column spacing — not from
+    /// HorizontalAlignment.Right (Studio height-only left Right/Stretch at tree.x).
+    /// </summary>
+    public static double DockHostMarginLeft(PreviewPaneLayoutState layout) =>
+        layout.Mode == PaneMode.Docked
+            ? layout.Tree
+                + LibraryColumnLayout.ColumnSpacing
+                + layout.Mosaic
+                + LibraryColumnLayout.ColumnSpacing
+            : 0;
+
+    /// <summary>
+    /// Expected <c>ActualOffset.X</c> of the dock host relative to
+    /// <c>GrdLibraryColumns</c> (includes page padding edge).
+    /// </summary>
+    public static double DockHostExpectedOffsetX(PreviewPaneLayoutState layout) =>
+        layout.Mode == PaneMode.Docked
+            ? LibraryColumnLayout.PagePaddingEdgeDip + DockHostMarginLeft(layout)
+            : LibraryColumnLayout.PagePaddingEdgeDip;
+
+    /// <summary>
     /// Dock host chrome without Visibility=Collapsed. Hide uses Opacity=0 + no hit-test
     /// so hide→show never re-enters Collapsed→Visible (FENRIR: that left the pane at the
     /// folder-tree X while cold start stayed correct). Width is explicit Preview DIP when
-    /// Docked (right-aligned), not NaN stretch.
+    /// Docked, not NaN stretch.
     /// </summary>
     public static PreviewDockChrome DockChrome(PreviewPaneLayoutState layout) =>
         layout.Mode == PaneMode.Docked
@@ -302,26 +323,26 @@ public static class PreviewPane
                 HitTestVisible: false);
 
     /// <summary>
-    /// True when docked mosaic reservation appears or disappears — Grid must remeasure
-    /// column widths. Height-only (Docked→Docked) returns false: host X comes from
-    /// right-alignment + explicit width, not Column=2 stretch arrange.
+    /// True when the library columns Grid must InvalidateMeasure/Arrange after applying
+    /// the slot. Docked→Docked is true: height-only does not change column DIP, and WinUI
+    /// can leave the host at a stale X unless the grid rearranges (Studio 0.3.61–0.3.64).
     /// </summary>
     public static bool NeedsDockColumnRelayout(PaneMode from, PaneMode to) =>
-        (from == PaneMode.Docked) != (to == PaneMode.Docked);
+        from == PaneMode.Docked || to == PaneMode.Docked || from != to;
 
     /// <summary>
     /// Idempotent dock-host slot for one layout pass — always the same from
     /// <paramref name="layout"/> alone (no width-delta / previous-size gating).
-    /// <c>ColPreview</c> still reserves width for mosaic reflow; the host itself is
-    /// ColumnSpan=3 + Right + explicit Width so height-only Grid arrange cannot park
-    /// it at the tree X (Studio measured 406 ≈ tree.x).
+    /// Code-behind owns X via <see cref="PreviewDockHostSlot.MarginLeft"/> + Left align
+    /// (not Right/Stretch, not VSM). <c>ColPreview</c> still reserves mosaic width.
     /// </summary>
     public static PreviewDockHostSlot DockHostSlot(PreviewPaneLayoutState layout) =>
         new(
             Column: 0,
             ColumnSpan: 3,
             Row: 1,
-            AlignRight: true,
+            AlignRight: false,
+            MarginLeft: DockHostMarginLeft(layout),
             Width: DockHostWidth(layout),
             Opacity: DockChrome(layout).Opacity,
             HitTestVisible: DockChrome(layout).HitTestVisible);
@@ -335,14 +356,15 @@ public readonly record struct PreviewDockChrome(
 
 /// <summary>
 /// Full dock-host attachment for one layout pass. Apply every refresh from current
-/// size alone. Host is right-aligned across the library columns (not stretch-in
-/// ColPreview) so height-only Grid arrange cannot move it to the tree X.
+/// size alone. X is <see cref="MarginLeft"/> + Left (code-behind owner) — not Grid
+/// Right/Stretch arrange, which Studio height-only @150% DPI parked at tree.x.
 /// </summary>
 public readonly record struct PreviewDockHostSlot(
     int Column,
     int ColumnSpan,
     int Row,
     bool AlignRight,
+    double MarginLeft,
     double Width,
     double Opacity,
     bool HitTestVisible);

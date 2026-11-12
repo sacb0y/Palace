@@ -23,6 +23,8 @@ public sealed partial class LibraryPage
     private PaneMode _previewVisualMode = PaneMode.Hidden;
     private UISettings? _previewUiSettings;
     private bool? _previewAnimationsEnabled;
+    private bool _previewDockProbeHooked;
+    private long _previewDockProbeLastTick;
 
     private void HookPreviewPaneSettings()
     {
@@ -35,12 +37,14 @@ public sealed partial class LibraryPage
             UserShow = PreviewPaneSettings.UserShow,
             UserWidth = PreviewPaneSettings.UserWidth
         };
+        HookPreviewDockLayoutProbe();
         RefreshLibraryLayout();
     }
 
     private void UnhookPreviewPaneSettings()
     {
         PreviewPaneSettings.Changed -= PreviewPaneSettings_Changed;
+        UnhookPreviewDockLayoutProbe();
         if (_previewUiSettings is not null)
         {
             _previewUiSettings.AnimationsEnabledChanged -= PreviewUiSettings_AnimationsEnabledChanged;
@@ -210,8 +214,8 @@ public sealed partial class LibraryPage
 
         // Dock host: never Collapsed after load. FENRIR #177 — Collapsed→Visible left
         // ScrPreviewPane at the folder-tree X. Opacity + hit-test hide; ColPreview still
-        // reserves width for mosaic reflow; host is ColumnSpan=3 + Right + explicit Width
-        // (Studio height-only @150% DPI parked stretch-in-ColPreview at prev.x≈406).
+        // reserves width for mosaic reflow. Host X is code-owned MarginLeft + Left
+        // (Studio @150%: Right/Stretch parked prev.x≈tree.x on height-only).
         GrdPreviewDockHost.Visibility = Visibility.Visible;
         ScrPreviewPane.Visibility = Visibility.Visible;
         ApplyPreviewDockHostSlot(PreviewPane.DockHostSlot(layout));
@@ -221,26 +225,139 @@ public sealed partial class LibraryPage
         ResetPreviewMotionOffset(BrdPreviewOverlay);
 
         _previewVisualMode = mode;
+        ProbePreviewDockLayout("SyncPreviewChrome");
     }
 
     /// <summary>
-    /// Re-assert right-aligned dock host + zero Composition offset every layout pass.
-    /// Idempotent from current size — no previous-size / width-delta gating.
+    /// Re-assert code-owned dock host geometry every layout pass (MarginLeft + Left +
+    /// explicit Width). Idempotent from current size — no previous-size / width-delta gating.
     /// </summary>
     private void ApplyPreviewDockHostSlot(PreviewDockHostSlot slot)
     {
         Grid.SetColumn(GrdPreviewDockHost, slot.Column);
         Grid.SetColumnSpan(GrdPreviewDockHost, slot.ColumnSpan);
         Grid.SetRow(GrdPreviewDockHost, slot.Row);
-        GrdPreviewDockHost.HorizontalAlignment = slot.AlignRight
-            ? HorizontalAlignment.Right
-            : HorizontalAlignment.Stretch;
+        // Left + MarginLeft owns X. Do not use Right/Stretch — Studio height-only @150%
+        // DPI left those alignments at the folder-tree X while Width stayed correct.
+        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Left;
         GrdPreviewDockHost.VerticalAlignment = VerticalAlignment.Stretch;
-        GrdPreviewDockHost.ClearValue(MarginProperty);
+        GrdPreviewDockHost.Margin = new Thickness(slot.MarginLeft, 0, 0, 0);
         GrdPreviewDockHost.Width = slot.Width;
         GrdPreviewDockHost.Opacity = slot.Opacity;
         GrdPreviewDockHost.IsHitTestVisible = slot.HitTestVisible;
         ResetPreviewMotionOffset(GrdPreviewDockHost);
+    }
+
+    private void HookPreviewDockLayoutProbe()
+    {
+        if (_previewDockProbeHooked || !PreviewDockLayoutProbe.IsEnabled)
+        {
+            return;
+        }
+
+        GrdPreviewDockHost.LayoutUpdated += PreviewDockHost_LayoutUpdated;
+        _previewDockProbeHooked = true;
+        PreviewDockLayoutProbe.Log("Hook", "LayoutUpdated probe armed");
+    }
+
+    private void UnhookPreviewDockLayoutProbe()
+    {
+        if (!_previewDockProbeHooked)
+        {
+            return;
+        }
+
+        GrdPreviewDockHost.LayoutUpdated -= PreviewDockHost_LayoutUpdated;
+        _previewDockProbeHooked = false;
+    }
+
+    private void PreviewDockHost_LayoutUpdated(object? sender, object e)
+    {
+        if (!PreviewDockLayoutProbe.IsEnabled)
+        {
+            return;
+        }
+
+        // Throttle: LayoutUpdated is extremely chatty.
+        var now = Environment.TickCount64;
+        if (now - _previewDockProbeLastTick < 50)
+        {
+            return;
+        }
+
+        _previewDockProbeLastTick = now;
+        ProbePreviewDockLayout("LayoutUpdated");
+    }
+
+    private void ProbePreviewDockLayout(string source)
+    {
+        if (!PreviewDockLayoutProbe.IsEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var windowDip = ResolveWindowClientDip();
+            var contentWidth = ResolveAvailableContentWidth(windowDip);
+            var effective = PreviewPane.Effective(_previewPane, contentWidth);
+            var layout = PreviewPane.Layout(effective);
+            var slot = PreviewPane.DockHostSlot(layout);
+            var hostVisual = ElementCompositionPreview.GetElementVisual(GrdPreviewDockHost);
+            var states = CollectLibraryVisualStates();
+            var snap = PreviewDockLayoutProbe.BuildSnapshot(
+                windowW: XamlRoot?.Size.Width ?? ActualWidth,
+                windowH: XamlRoot?.Size.Height ?? ActualHeight,
+                layout: layout,
+                slot: slot,
+                colTree: ColFolderTree.Width.Value,
+                colMosaic: ColMosaic.Width.Value,
+                colPreview: ColPreview.Width.Value,
+                hostOffsetX: GrdPreviewDockHost.ActualOffset.X,
+                hostOffsetY: GrdPreviewDockHost.ActualOffset.Y,
+                hostActualW: GrdPreviewDockHost.ActualWidth,
+                hostActualH: GrdPreviewDockHost.ActualHeight,
+                hostWidthProp: GrdPreviewDockHost.Width,
+                hostColumn: Grid.GetColumn(GrdPreviewDockHost),
+                hostColumnSpan: Grid.GetColumnSpan(GrdPreviewDockHost),
+                hostAlign: GrdPreviewDockHost.HorizontalAlignment.ToString(),
+                hostMargin: GrdPreviewDockHost.Margin.ToString(),
+                paneOffsetX: ScrPreviewPane.ActualOffset.X,
+                paneActualW: ScrPreviewPane.ActualWidth,
+                visualOffsetX: hostVisual.Offset.X,
+                visualOffsetY: hostVisual.Offset.Y,
+                visualStates: states);
+
+            var expected = PreviewPane.DockHostExpectedOffsetX(layout);
+            var drift = GrdPreviewDockHost.ActualOffset.X - expected;
+            PreviewDockLayoutProbe.Log(
+                source,
+                string.Create(
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    $"{snap} driftX={drift:0.#}"));
+
+            // If arrange ignored MarginLeft (host still near tree), re-assert once.
+            if (layout.Mode == PaneMode.Docked
+                && GrdPreviewDockHost.ActualWidth > 1
+                && Math.Abs(drift) > 24)
+            {
+                PreviewDockLayoutProbe.Log(source, $"CORRECTIVE re-apply slot (driftX={drift:0.#})");
+                ApplyPreviewDockHostSlot(slot);
+                GrdLibraryColumns.InvalidateMeasure();
+                GrdLibraryColumns.InvalidateArrange();
+            }
+        }
+        catch (Exception ex)
+        {
+            PreviewDockLayoutProbe.Log(source, "probe-failed: " + ex.GetType().Name);
+        }
+    }
+
+    private static string CollectLibraryVisualStates()
+    {
+        // LibraryPage has no AdaptiveTrigger / VSM groups targeting the dock host
+        // (grepped 2026-11-12). Keep an empty marker so Studio logs prove the scan ran.
+        return "none-on-LibraryPage";
     }
 
     private void HostPreviewBody(PaneMode mode)

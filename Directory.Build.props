@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <!--
     Single source of truth for Palace SemVer (MAJOR.MINOR.PATCH).
     Package.appxmanifest Identity Version must be $(PalaceVersion).0 (Revision always 0).
@@ -6,7 +6,7 @@
     See .cursor/rules/versioning-release.mdc and AGENTS.md.
   -->
   <PropertyGroup>
-    <PalaceVersion>0.3.63</PalaceVersion>
+    <PalaceVersion>0.3.65</PalaceVersion>
     <Version>$(PalaceVersion)</Version>
     <AssemblyVersion>$(PalaceVersion).0</AssemblyVersion>
     <FileVersion>$(PalaceVersion).0</FileVersion>

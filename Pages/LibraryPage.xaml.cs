@@ -773,14 +773,14 @@ public sealed partial class LibraryPage : Page
 
         // Fixed widths from Effective — MinWidths always 0 so column mins never sum
         // above available width (that floored DesiredSize and froze resize).
-        // ColPreview is the real dock slot (0 when hidden); host stretches inside it.
+        // ColPreview reserves mosaic width; host X is MarginLeft + Left (code-owned).
         ColFolderTree.Width = new GridLength(layout.Tree);
         ColFolderTree.MinWidth = 0;
         ColMosaic.Width = new GridLength(layout.Mosaic);
         ColMosaic.MinWidth = 0;
         ColPreview.Width = new GridLength(PreviewPane.GridPreviewColumnWidth(layout));
         ColPreview.MinWidth = 0;
-        // Full right-aligned host slot every pass (height-only included).
+        // Full host slot every pass (height-only included) — MarginLeft from layout.
         ApplyPreviewDockHostSlot(PreviewPane.DockHostSlot(layout));
 
         if (!showing)
@@ -798,14 +798,16 @@ public sealed partial class LibraryPage : Page
 
         SyncPreviewChrome(effective);
 
-        // Remeasure only when dock reservation appears/disappears. Host X is
-        // right-align + explicit width (not ColPreview stretch); height-only must
-        // not force a Grid remeasure that parked stretch children at tree X.
+        // Remeasure whenever docked (incl. height-only Docked→Docked): column DIP may
+        // be unchanged while Grid arrange still parks the host at tree.x without a
+        // forced pass. Host X itself is MarginLeft, not Stretch/Right.
         if (needsDockRelayout)
         {
             GrdLibraryColumns.InvalidateMeasure();
             GrdLibraryColumns.InvalidateArrange();
         }
+
+        ProbePreviewDockLayout("ApplyLibraryColumnLayout");
 
         if (showing && !wasShowing)
         {
