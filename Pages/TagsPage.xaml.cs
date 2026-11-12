@@ -167,12 +167,12 @@ public sealed partial class TagsPage : Page
     /// natural width and the star board column expands TagsPage past ContentFrame
     /// (root ~1239 at client 1014). Constrain measure to the shell host slot.
     /// </summary>
-    protected override Size MeasureOverride(Size availableSize)
+    protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
     {
         var host = ResolveTagHostWidthDip();
         var measureWidth = TagPageLayout.ResolvePageMeasureWidth(availableSize.Width, host);
-        var measured = base.MeasureOverride(new Size(measureWidth, availableSize.Height));
-        return new Size(Math.Min(measured.Width, measureWidth), measured.Height);
+        var measured = base.MeasureOverride(new Windows.Foundation.Size(measureWidth, availableSize.Height));
+        return new Windows.Foundation.Size(Math.Min(measured.Width, measureWidth), measured.Height);
     }
 
     private void ApplyTagColumnLayout()
