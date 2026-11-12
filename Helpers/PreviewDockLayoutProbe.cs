@@ -86,7 +86,7 @@ public static class PreviewDockLayoutProbe
     public static string FormatSlot(PreviewDockHostSlot slot) =>
         string.Create(
             CultureInfo.InvariantCulture,
-            $"col={slot.Column} span={slot.ColumnSpan} row={slot.Row} alignRight={slot.AlignRight} marginL={slot.MarginLeft:0.###} w={slot.Width:0.###} op={slot.Opacity:0.###} hit={slot.HitTestVisible}");
+            $"col={slot.Column} span={slot.ColumnSpan} row={slot.Row} stretch={slot.Stretch} w={slot.Width:0.###} op={slot.Opacity:0.###} hit={slot.HitTestVisible}");
 
     public static string FormatLayout(PreviewPaneLayoutState layout) =>
         string.Create(

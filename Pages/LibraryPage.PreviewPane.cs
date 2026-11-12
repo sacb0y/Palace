@@ -206,46 +206,64 @@ public sealed partial class LibraryPage
         var mode = effective.Mode;
         var fromMode = _previewVisualMode;
         var layout = PreviewPane.Layout(effective);
-        var dock = PreviewPane.DockChrome(layout);
         HostPreviewBody(mode);
         ApplyPreviewOverlayWidth();
         UpdatePreviewEdgeTab(mode);
         SyncPreviewToggleButton();
 
         // Dock host: never Collapsed after load. FENRIR #177 — Collapsed→Visible left
-        // ScrPreviewPane at the folder-tree X. Opacity + hit-test hide; ColPreview still
-        // reserves width for mosaic reflow. Host X is code-owned MarginLeft + Left
-        // (Studio @150%: Right/Stretch parked prev.x≈tree.x on height-only).
+        // ScrPreviewPane at the folder-tree X. Opacity + hit-test hide; ColPreview is the
+        // real column (Grid owns X). Never write Composition Visual.Offset on the host.
         GrdPreviewDockHost.Visibility = Visibility.Visible;
         ScrPreviewPane.Visibility = Visibility.Visible;
         ApplyPreviewDockHostSlot(PreviewPane.DockHostSlot(layout));
 
-        // Overlay chrome stays Collapsed — Effective promotes OverlayOpen to Docked.
-        BrdPreviewOverlay.Visibility = Visibility.Collapsed;
-        ResetPreviewMotionOffset(BrdPreviewOverlay);
+        if (mode == PaneMode.Overlay)
+        {
+            BrdPreviewOverlay.Visibility = Visibility.Visible;
+        }
+
+        if (mode == PaneMode.Overlay || fromMode == PaneMode.Overlay)
+        {
+            AnimatePreviewOverlayChange(fromMode, mode);
+        }
 
         _previewVisualMode = mode;
+
+        if (mode != PaneMode.Overlay)
+        {
+            BrdPreviewOverlay.Visibility = Visibility.Collapsed;
+            ResetPreviewOverlayTranslation();
+        }
+
         ProbePreviewDockLayout("SyncPreviewChrome");
     }
 
     /// <summary>
-    /// Re-assert code-owned dock host geometry every layout pass (MarginLeft + Left +
-    /// explicit Width). Idempotent from current size — no previous-size / width-delta gating.
+    /// Re-assert ColPreview dock slot every layout pass. Grid owns X (Column=2 Stretch).
+    /// Idempotent from current size — no MarginLeft / width-delta gating.
     /// </summary>
     private void ApplyPreviewDockHostSlot(PreviewDockHostSlot slot)
     {
         Grid.SetColumn(GrdPreviewDockHost, slot.Column);
         Grid.SetColumnSpan(GrdPreviewDockHost, slot.ColumnSpan);
         Grid.SetRow(GrdPreviewDockHost, slot.Row);
-        // Left + MarginLeft owns X. Do not use Right/Stretch — Studio height-only @150%
-        // DPI left those alignments at the folder-tree X while Width stayed correct.
-        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Left;
+        GrdPreviewDockHost.HorizontalAlignment = slot.Stretch
+            ? HorizontalAlignment.Stretch
+            : HorizontalAlignment.Left;
         GrdPreviewDockHost.VerticalAlignment = VerticalAlignment.Stretch;
-        GrdPreviewDockHost.Margin = new Thickness(slot.MarginLeft, 0, 0, 0);
-        GrdPreviewDockHost.Width = slot.Width;
+        GrdPreviewDockHost.ClearValue(MarginProperty);
+        if (double.IsNaN(slot.Width))
+        {
+            GrdPreviewDockHost.ClearValue(WidthProperty);
+        }
+        else
+        {
+            GrdPreviewDockHost.Width = slot.Width;
+        }
+
         GrdPreviewDockHost.Opacity = slot.Opacity;
         GrdPreviewDockHost.IsHitTestVisible = slot.HitTestVisible;
-        ResetPreviewMotionOffset(GrdPreviewDockHost);
     }
 
     private void HookPreviewDockLayoutProbe()
@@ -330,22 +348,13 @@ public sealed partial class LibraryPage
 
             var expected = PreviewPane.DockHostExpectedOffsetX(layout);
             var drift = GrdPreviewDockHost.ActualOffset.X - expected;
+            // Read-only: compare layout ActualOffset vs Composition Visual.Offset.
+            // Never write Visual.Offset — that fought arrange (height-only over tree).
             PreviewDockLayoutProbe.Log(
                 source,
                 string.Create(
                     System.Globalization.CultureInfo.InvariantCulture,
-                    $"{snap} driftX={drift:0.#}"));
-
-            // If arrange ignored MarginLeft (host still near tree), re-assert once.
-            if (layout.Mode == PaneMode.Docked
-                && GrdPreviewDockHost.ActualWidth > 1
-                && Math.Abs(drift) > 24)
-            {
-                PreviewDockLayoutProbe.Log(source, $"CORRECTIVE re-apply slot (driftX={drift:0.#})");
-                ApplyPreviewDockHostSlot(slot);
-                GrdLibraryColumns.InvalidateMeasure();
-                GrdLibraryColumns.InvalidateArrange();
-            }
+                    $"{snap} expectX={expected:0.#} driftX={drift:0.#}"));
         }
         catch (Exception ex)
         {
@@ -397,7 +406,9 @@ public sealed partial class LibraryPage
     private void ApplyPreviewOverlayWidth()
     {
         // Visibility is applied in SyncPreviewChrome (Visible before motion; Collapsed after).
-        BrdPreviewOverlay.Width = PreviewPane.OverlayWidthDip;
+        // Width from UserWidth, clamped to available − leading margin (XAML position only).
+        var contentWidth = ResolveAvailableContentWidth(ResolveWindowClientDip());
+        BrdPreviewOverlay.Width = PreviewPane.OverlayPanelWidth(_previewPane, contentWidth);
     }
 
     private void UpdatePreviewEdgeTab(PaneMode mode)
@@ -414,7 +425,15 @@ public sealed partial class LibraryPage
         else if (mode == PaneMode.Overlay)
         {
             BtnPreviewPaneEdge.HorizontalAlignment = HorizontalAlignment.Right;
-            BtnPreviewPaneEdge.Margin = new Thickness(0, 0, PreviewPane.OverlayWidthDip + 12, 0);
+            var overlayW = BrdPreviewOverlay.Width;
+            if (!double.IsFinite(overlayW) || overlayW <= 0)
+            {
+                overlayW = PreviewPane.OverlayPanelWidth(
+                    _previewPane,
+                    ResolveAvailableContentWidth(ResolveWindowClientDip()));
+            }
+
+            BtnPreviewPaneEdge.Margin = new Thickness(0, 0, overlayW + 12, 0);
         }
         else
         {
@@ -447,8 +466,7 @@ public sealed partial class LibraryPage
             return;
         }
 
-        // Dock host is not animated — Composition Offset.X on it correlated with
-        // hide→show landing over the folder tree (FENRIR measured X≈451).
+        // Slide via Translation only — never Visual.Offset (hand-out Offset IS layout X).
         UIElement? target = null;
         var showing = false;
         if (toMode == PaneMode.Overlay && fromMode != PaneMode.Overlay)
@@ -469,8 +487,9 @@ public sealed partial class LibraryPage
 
         try
         {
+            ElementCompositionPreview.SetIsTranslationEnabled(target, true);
             var visual = ElementCompositionPreview.GetElementVisual(target);
-            visual.StopAnimation("Offset.X");
+            visual.StopAnimation("Translation.X");
             var compositor = visual.Compositor;
             var ms = showing ? PreviewPane.MotionInMs : PreviewPane.MotionOutMs;
             var ease = showing
@@ -480,15 +499,14 @@ public sealed partial class LibraryPage
                 : compositor.CreateCubicBezierEasingFunction(
                     new System.Numerics.Vector2(0.7f, 0f),
                     new System.Numerics.Vector2(1f, 0.5f));
+            var from = showing ? 24f : 0f;
+            var to = showing ? 0f : 24f;
+            visual.Properties.InsertVector3("Translation", new System.Numerics.Vector3(from, 0f, 0f));
             var anim = compositor.CreateScalarKeyFrameAnimation();
-            anim.InsertKeyFrame(0f, showing ? 24f : 0f, ease);
-            anim.InsertKeyFrame(1f, showing ? 0f : 24f, ease);
+            anim.InsertKeyFrame(0f, from, ease);
+            anim.InsertKeyFrame(1f, to, ease);
             anim.Duration = TimeSpan.FromMilliseconds(ms);
-            visual.Offset = new System.Numerics.Vector3(
-                showing ? 24f : 0f,
-                visual.Offset.Y,
-                visual.Offset.Z);
-            visual.StartAnimation("Offset.X", anim);
+            visual.StartAnimation("Translation.X", anim);
         }
         catch
         {
@@ -496,16 +514,14 @@ public sealed partial class LibraryPage
         }
     }
 
-    private static void ResetPreviewMotionOffset(UIElement target)
+    private void ResetPreviewOverlayTranslation()
     {
         try
         {
-            var visual = ElementCompositionPreview.GetElementVisual(target);
-            visual.StopAnimation("Offset.X");
-            visual.StopAnimation("Offset.Y");
-            // Full zero — keeping Offset.Y across height-only passes left the host
-            // visually detached from ColPreview (FENRIR height-drag).
-            visual.Offset = System.Numerics.Vector3.Zero;
+            ElementCompositionPreview.SetIsTranslationEnabled(BrdPreviewOverlay, true);
+            var visual = ElementCompositionPreview.GetElementVisual(BrdPreviewOverlay);
+            visual.StopAnimation("Translation.X");
+            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
         }
         catch
         {
