@@ -1,0 +1,8 @@
+﻿build_sha=f4788a41b33d6ddfcf24d3a6693f61916e6c57a4
+dpi=144
+scale_pct=150
+identity=PalaceOrganizeTest-5E1F
+version=0.3.81
+maximized=False
+click_method=winapp ui click (mouse simulation) after ForceForeground
+host=FENRIR-STUDIO
