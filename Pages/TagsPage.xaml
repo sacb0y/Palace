@@ -15,8 +15,39 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
+    <!-- AdaptiveTrigger = window-scoped Wimbly guards; ControlSizeTrigger = page/host
+         width (1024 window − nav ≈ 776). ApplyTagColumnLayout uses page Classify. -->
+    <VisualStateManager.VisualStateGroups>
+        <VisualStateGroup x:Name="TagsWindowWidthStates" CurrentStateChanged="TagsWidthStates_CurrentStateChanged">
+            <VisualState x:Name="TagsWindowWide">
+                <VisualState.StateTriggers>
+                    <AdaptiveTrigger MinWindowWidth="760" />
+                </VisualState.StateTriggers>
+            </VisualState>
+            <VisualState x:Name="TagsWindowNarrow">
+                <VisualState.StateTriggers>
+                    <AdaptiveTrigger MinWindowWidth="640" />
+                </VisualState.StateTriggers>
+            </VisualState>
+            <VisualState x:Name="TagsWindowStacked" />
+        </VisualStateGroup>
+        <VisualStateGroup x:Name="TagsPageWidthStates" CurrentStateChanged="TagsWidthStates_CurrentStateChanged">
+            <VisualState x:Name="TagsPageWide">
+                <VisualState.StateTriggers>
+                    <ControlSizeTrigger MinWidth="760" TargetElement="{x:Bind}" />
+                </VisualState.StateTriggers>
+            </VisualState>
+            <VisualState x:Name="TagsPageNarrow">
+                <VisualState.StateTriggers>
+                    <ControlSizeTrigger MinWidth="640" TargetElement="{x:Bind}" />
+                </VisualState.StateTriggers>
+            </VisualState>
+            <VisualState x:Name="TagsPageStacked" />
+        </VisualStateGroup>
+    </VisualStateManager.VisualStateGroups>
+
     <!-- Horizontal scroll disabled (Mode + Bar). Column widths are set in code from
-         the shell Frame ActualWidth (TagPageLayout.Allocate) — star-to-content under
+         the shell Frame ActualWidth (TagPageLayout.AllocateForPage) — star-to-content under
          infinite measure pushed ScrTagDetails past the HWND @ ~1024 (Desktop #197). -->
     <ScrollViewer
         HorizontalScrollBarVisibility="Disabled"
@@ -40,6 +71,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <!-- Stacked mode: details under board. Height 0 when Wide/Narrow. -->
+            <RowDefinition x:Name="RowTagDetailsStack" Height="0" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -55,7 +88,10 @@
             ShowPaused="False"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsBusy), Mode=OneWay}" />
 
-        <Grid Grid.Row="1" RowSpacing="8">
+        <Grid
+            x:Name="GrdTagSidebarPane"
+            Grid.Row="1"
+            RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -217,7 +253,11 @@
             </ScrollViewer>
         </Grid>
 
-        <Grid Grid.Row="1" Grid.Column="1" RowSpacing="8">
+        <Grid
+            x:Name="GrdTagBoardPane"
+            Grid.Row="1"
+            Grid.Column="1"
+            RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="2*" MinHeight="160" />
@@ -967,6 +1007,7 @@
             Grid.Column="2"
             Padding="0,0,12,0"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDetails), Mode=OneWay}">
+            <!-- Wide/Narrow: row 1 col 2. Stacked (<640 page): row 2 col 1 under board. -->
             <StackPanel
                 x:Name="FlyTagDetails"
                 Padding="0,0,0,12"
@@ -1411,7 +1452,11 @@
             </StackPanel>
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2" Grid.ColumnSpan="3" Spacing="4">
+        <StackPanel
+            x:Name="StkTagStatus"
+            Grid.Row="3"
+            Grid.ColumnSpan="3"
+            Spacing="4">
             <TextBlock
                 x:Name="TxtBackfillStatus"
                 AutomationProperties.AutomationId="TxtBackfillStatus"

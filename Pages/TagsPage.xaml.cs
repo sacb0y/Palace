@@ -52,8 +52,9 @@ public sealed partial class TagsPage : Page
     private NavigationView? _shellNav;
     private bool _tagLayoutApplying;
     private bool _tagLayoutQueued;
-    private double _lastTagContentWidth = double.NaN;
+    private double _lastTagHostWidth = double.NaN;
     private bool _lastTagShowDetails;
+    private TagPageLayoutMode? _lastTagLayoutMode;
 
     public TagsPage()
     {
@@ -162,46 +163,82 @@ public sealed partial class TagsPage : Page
         }
     }
 
+    private void TagsWidthStates_CurrentStateChanged(object sender, VisualStateChangedEventArgs e) =>
+        RefreshTagColumnLayout();
+
     private void ApplyTagColumnLayout()
     {
-        var content = ResolveTagContentWidthDip();
+        var host = ResolveTagHostWidthDip();
         var showDetails = ViewModel.ShowDetails;
-        if (content < MosaicLayoutWidth.MinUsable)
+        if (host < MosaicLayoutWidth.MinUsable)
         {
             return;
         }
 
-        if (Math.Abs(content - _lastTagContentWidth) < 0.5
+        var (sidebar, board, details, mode) = TagPageLayout.AllocateForPage(host, showDetails);
+        if (Math.Abs(host - _lastTagHostWidth) < 0.5
             && showDetails == _lastTagShowDetails
+            && mode == _lastTagLayoutMode
             && ColTagSidebar.Width.IsAbsolute)
         {
             return;
         }
 
-        var (sidebar, board, details) = TagPageLayout.Allocate(content, showDetails);
         ColTagSidebar.MinWidth = 0;
         ColTagBoard.MinWidth = 0;
         ColTagDetails.MinWidth = 0;
         ColTagSidebar.Width = new GridLength(sidebar);
         ColTagBoard.Width = new GridLength(board);
-        ColTagDetails.Width = new GridLength(details);
-        _lastTagContentWidth = content;
+        ApplyTagLayoutMode(mode, showDetails, details);
+        _lastTagHostWidth = host;
         _lastTagShowDetails = showDetails;
+        _lastTagLayoutMode = mode;
     }
 
-    private double ResolveTagContentWidthDip()
+    /// <summary>
+    /// Wide/Narrow: details in row 1 col 2. Stacked (&lt;640 page): details under board
+    /// (row 2 col 1); sidebar spans main+details rows; details column width 0.
+    /// </summary>
+    private void ApplyTagLayoutMode(TagPageLayoutMode mode, bool showDetails, double detailsWidth)
+    {
+        var stacked = mode == TagPageLayoutMode.Stacked && showDetails;
+        if (stacked)
+        {
+            Grid.SetRow(ScrTagDetails, 2);
+            Grid.SetColumn(ScrTagDetails, 1);
+            Grid.SetColumnSpan(ScrTagDetails, 1);
+            Grid.SetRowSpan(GrdTagSidebarPane, 2);
+            RowTagDetailsStack.Height = new GridLength(1, GridUnitType.Star);
+            RowTagDetailsStack.MinHeight = TagPageLayout.DetailsMinWidthDip > 0 ? 160 : 0;
+            ColTagDetails.Width = new GridLength(0);
+            ScrTagDetails.Width = double.NaN;
+            ScrTagDetails.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
+        else
+        {
+            Grid.SetRow(ScrTagDetails, 1);
+            Grid.SetColumn(ScrTagDetails, 2);
+            Grid.SetColumnSpan(ScrTagDetails, 1);
+            Grid.SetRowSpan(GrdTagSidebarPane, 1);
+            RowTagDetailsStack.Height = new GridLength(0);
+            RowTagDetailsStack.MinHeight = 0;
+            ColTagDetails.Width = new GridLength(showDetails ? detailsWidth : 0);
+        }
+    }
+
+    private double ResolveTagHostWidthDip()
     {
         EnsureShellContentFrameReference();
         var slot = _shellContentFrame?.ActualWidth ?? 0;
         if (double.IsFinite(slot) && slot >= MosaicLayoutWidth.MinUsable)
         {
-            return TagPageLayout.ContentWidthFromHostDip(slot);
+            return slot;
         }
 
         var page = ActualWidth;
         if (double.IsFinite(page) && page >= MosaicLayoutWidth.MinUsable)
         {
-            return TagPageLayout.ContentWidthFromHostDip(page);
+            return page;
         }
 
         return 0;
