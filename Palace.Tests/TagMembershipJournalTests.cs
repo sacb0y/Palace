@@ -108,4 +108,29 @@ public sealed class TagMembershipJournalTests : IAsyncLifetime
         var tags = await _catalog.GetTagsAsync();
         Assert.DoesNotContain(tags, t => t.Id == result.CreatedGroupId);
     }
+
+    /// <summary>
+    /// Mid-batch membership fault (after 2nd Added) rolls back every edge and journals nothing
+    /// — same probe pattern as TagT2 / TagBulkFailureSafetyTests.
+    /// </summary>
+    [Fact]
+    public async Task MidBatchMembershipFault_RollsBackAllAndJournalsNothing()
+    {
+        var hair = await _catalog.CreateTagAsync("Hair");
+        var a = await _catalog.CreateTagAsync("alpha");
+        var b = await _catalog.CreateTagAsync("beta");
+        var c = await _catalog.CreateTagAsync("gamma");
+
+        // First Added succeeds inside the tx; second faults → full rollback.
+        _catalog.TestBulkTagFault = new BulkTagFaultProbe { FailAfterMutations = 2 };
+        var result = await _ops.AddTagsToGroupAsync([a.Id, b.Id, c.Id], hair.Id, _projectId);
+
+        Assert.False(result.Ok);
+        Assert.Equal(CatalogService.BulkTagAbortedMessage, result.Message);
+        Assert.Null(result.BatchId);
+        Assert.DoesNotContain(await _catalog.GetParentsAsync(a.Id), p => p.Id == hair.Id);
+        Assert.DoesNotContain(await _catalog.GetParentsAsync(b.Id), p => p.Id == hair.Id);
+        Assert.DoesNotContain(await _catalog.GetParentsAsync(c.Id), p => p.Id == hair.Id);
+        Assert.Null(await _ops.PeekUndoAsync(_projectId));
+    }
 }

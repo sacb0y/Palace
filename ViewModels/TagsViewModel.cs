@@ -1032,6 +1032,30 @@ public partial class TagsViewModel : ObservableObject
         }
     }
 
+    /// <summary>dg-01a/b: dim every chip in the drag payload until DropCompleted.</summary>
+    public void SetChipDragSources(IReadOnlyList<string> tagIds)
+    {
+        var set = tagIds
+            .Where(id => !string.IsNullOrEmpty(id))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var chip in BoardChips())
+        {
+            chip.IsDragSource = set.Contains(chip.TagId);
+        }
+    }
+
+    public void ClearChipDragSources()
+    {
+        foreach (var chip in BoardChips())
+        {
+            chip.IsDragSource = false;
+        }
+    }
+
+    private IEnumerable<TagChipItem> BoardChips() =>
+        SelectedBoard?.Letters.SelectMany(letter => letter.Chips)
+        ?? Enumerable.Empty<TagChipItem>();
+
     [RelayCommand]
     private void OpenAsset(AssetItem? item)
     {

@@ -32,6 +32,10 @@ public sealed partial class TagChip : UserControl
         nameof(IsSelected), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
 
+    public static readonly DependencyProperty IsDragSourceProperty = DependencyProperty.Register(
+        nameof(IsDragSource), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
     public static readonly DependencyProperty IsStarredProperty = DependencyProperty.Register(
         nameof(IsStarred), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
@@ -181,6 +185,13 @@ public sealed partial class TagChip : UserControl
     {
         get => (bool)GetValue(IsSelectedProperty);
         set => SetValue(IsSelectedProperty, value);
+    }
+
+    /// <summary>dg-01a/b: dim while this chip is the drag source (ghost follows pointer).</summary>
+    public bool IsDragSource
+    {
+        get => (bool)GetValue(IsDragSourceProperty);
+        set => SetValue(IsDragSourceProperty, value);
     }
 
     public bool IsStarred
@@ -387,7 +398,9 @@ public sealed partial class TagChip : UserControl
         ApplyRemove(state, highContrast);
         ApplyTooltip(state);
         ApplyAutomation(state);
-        Opacity = IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
+        Opacity = IsDragSource
+            ? 0.4
+            : IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
 
         if (!string.IsNullOrEmpty(ChipAutomationId))
         {

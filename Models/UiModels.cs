@@ -802,6 +802,10 @@ public partial class TagChipItem : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>dg-01a/b: dim source chips while their drag ghost is in flight.</summary>
+    [ObservableProperty]
+    public partial bool IsDragSource { get; set; }
+
     /// <summary>Optional trailing use count on board chips (t2-03b).</summary>
     [ObservableProperty]
     public partial string? CountBadge { get; set; }

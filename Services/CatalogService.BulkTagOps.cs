@@ -379,6 +379,8 @@ public sealed partial class CatalogService
                                 OldPath = groupId!,
                                 NewPath = childId
                             });
+                            // Mid-batch fault → dispose rolls back every Added + CreateTag.
+                            ThrowIfMutationFault(probe, added);
                             break;
                         case MembershipAddResult.AlreadyMember:
                             already++;

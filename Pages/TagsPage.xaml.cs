@@ -5,12 +5,16 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Shapes;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
+using Windows.Graphics.Imaging;
 using Windows.Media.Core;
 using Windows.Storage;
+using Windows.Storage.Streams;
 using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
@@ -241,7 +245,7 @@ public sealed partial class TagsPage : Page
         }
     }
 
-    private void TagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
+    private async void TagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
         if (sender is not FrameworkElement { Tag: TagChipItem chip } || string.IsNullOrEmpty(chip.TagId))
         {
@@ -261,15 +265,166 @@ public sealed partial class TagsPage : Page
             return;
         }
 
-        args.Data.Properties[TagMembershipAdd.DataKey] = TagMembershipAdd.Serialize(ids);
-        args.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
-        var badge = TagMembershipAdd.MultiBadge(ids.Count);
-        args.DragUI.SetContentFromDataPackage();
-        if (!string.IsNullOrEmpty(badge))
+        // Custom ghost — never SetContentFromDataPackage (blank file icon).
+        var deferral = args.GetDeferral();
+        try
         {
-            args.Data.Properties.Title = badge;
+            ViewModel.SetChipDragSources(ids);
+            args.Data.Properties[TagMembershipAdd.DataKey] = TagMembershipAdd.Serialize(ids);
+            args.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            var badge = TagMembershipAdd.MultiBadge(ids.Count);
+            if (!string.IsNullOrEmpty(badge))
+            {
+                args.Data.Properties.Title = badge;
+            }
+
+            var bitmap = await TryBuildTagDragGhostAsync(chip, ids.Count);
+            if (bitmap is not null)
+            {
+                args.DragUI.SetContentFromBitmapImage(bitmap);
+            }
+        }
+        finally
+        {
+            deferral.Complete();
         }
     }
+
+    private void TagChip_DropCompleted(UIElement sender, DropCompletedEventArgs e) =>
+        ViewModel.ClearChipDragSources();
+
+    /// <summary>dg-01a/b: pill ghost + optional "N tags" badge via RenderTargetBitmap.</summary>
+    private async Task<BitmapImage?> TryBuildTagDragGhostAsync(TagChipItem chip, int count)
+    {
+        try
+        {
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            if (TagColor.TryParse(chip.EffectiveColor, out var color))
+            {
+                row.Children.Add(new Ellipse
+                {
+                    Width = 8,
+                    Height = 8,
+                    Fill = new SolidColorBrush(color),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+            }
+
+            row.Children.Add(new TextBlock
+            {
+                Text = chip.Name ?? "",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = ThemeBrush("TextFillColorPrimaryBrush", Microsoft.UI.Colors.White)
+            });
+
+            var chipBorder = new Border
+            {
+                Background = ThemeBrush("ControlFillColorDefaultBrush", Color.FromArgb(0xE0, 0x2C, 0x2C, 0x2C)),
+                BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush", Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(10, 4),
+                Child = row,
+                Opacity = 0.92
+            };
+
+            UIElement visual = chipBorder;
+            var badgeText = TagMembershipAdd.MultiBadge(count);
+            if (!string.IsNullOrEmpty(badgeText))
+            {
+                var grid = new Grid();
+                grid.Children.Add(chipBorder);
+                grid.Children.Add(new Border
+                {
+                    Background = ThemeBrush("AccentFillColorDefaultBrush", Color.FromArgb(0xFF, 0xED, 0x9F, 0xBC)),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, -8, -10, 0),
+                    Child = new TextBlock
+                    {
+                        Text = badgeText,
+                        FontSize = 10,
+                        Foreground = ThemeBrush("TextOnAccentFillColorPrimaryBrush", Microsoft.UI.Colors.Black)
+                    }
+                });
+                visual = grid;
+            }
+
+            visual.XamlRoot = XamlRoot;
+            visual.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            var size = visual.DesiredSize;
+            if (size.Width < 1 || size.Height < 1)
+            {
+                return null;
+            }
+
+            visual.Arrange(new Windows.Foundation.Rect(0, 0, size.Width, size.Height));
+            var rtb = new RenderTargetBitmap();
+            await rtb.RenderAsync(visual);
+            var pixels = await rtb.GetPixelsAsync();
+            if (rtb.PixelWidth == 0 || rtb.PixelHeight == 0 || pixels.Length == 0)
+            {
+                return null;
+            }
+
+            using var stream = new InMemoryRandomAccessStream();
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+            var dpi = (XamlRoot?.RasterizationScale ?? 1.0) * 96.0;
+            encoder.SetPixelData(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                (uint)rtb.PixelWidth,
+                (uint)rtb.PixelHeight,
+                dpi,
+                dpi,
+                pixels.ToArray());
+            await encoder.FlushAsync();
+            stream.Seek(0);
+
+            var image = new BitmapImage();
+            await image.SetSourceAsync(stream);
+            return image;
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("Tag drag ghost", ex);
+            return null;
+        }
+    }
+
+    private static Brush ThemeBrush(string key, Color fallback)
+    {
+        if (Application.Current?.Resources.TryGetValue(key, out var value) == true
+            && value is Brush brush)
+        {
+            return brush;
+        }
+
+        return new SolidColorBrush(fallback);
+    }
+
+    /// <summary>dg-05 solid colour dot — PathIcon EllipseGeometry (not font glyphs).</summary>
+    private static PathIcon TagGroupColorDot(Color color) =>
+        new()
+        {
+            Width = 10,
+            Height = 10,
+            Foreground = new SolidColorBrush(color),
+            Data = new EllipseGeometry
+            {
+                Center = new Windows.Foundation.Point(5, 5),
+                RadiusX = 4,
+                RadiusY = 4
+            }
+        };
 
     private void TagGroup_DragOver(object sender, DragEventArgs e)
     {
@@ -289,10 +444,13 @@ public sealed partial class TagsPage : Page
         e.AcceptedOperation = allow
             ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
             : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+        // Caption + ± glyph; ghost content already set — never show blank file icon.
         e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.IsContentVisible = true;
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.Caption = TagMembershipAdd.DragHint(group.Name, added, already, cycle);
         ViewModel.SetGroupDropChrome(group.GroupId, allow);
+        e.Handled = true;
     }
 
     private void TagGroup_DragLeave(object sender, DragEventArgs e) =>
@@ -301,6 +459,7 @@ public sealed partial class TagsPage : Page
     private async void TagGroup_Drop(object sender, DragEventArgs e)
     {
         ViewModel.ClearGroupDropChrome();
+        ViewModel.ClearChipDragSources();
         if (sender is not FrameworkElement { Tag: TagBoardGroup group }
             || !group.IsUserGroupRow
             || string.IsNullOrEmpty(group.GroupId)
@@ -553,14 +712,8 @@ public sealed partial class TagsPage : Page
 
             if (TagColor.TryParse(pick.Color, out var color))
             {
-                // Segoe UI has U+25CF; Segoe Fluent Icons falls back to a hollow box (Doktor #197).
-                item.Icon = new FontIcon
-                {
-                    Glyph = "\u25CF",
-                    FontSize = 10,
-                    FontFamily = new FontFamily("Segoe UI"),
-                    Foreground = new SolidColorBrush(color)
-                };
+                // EllipseGeometry PathIcon — Segoe Fluent Icons U+25CF draws a hollow box.
+                item.Icon = TagGroupColorDot(color);
             }
 
             AutomationProperties.SetAutomationId(

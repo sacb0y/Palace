@@ -134,7 +134,7 @@
                                             Background="{ThemeResource AccentFillColorDefaultBrush}"
                                             CornerRadius="1.5"
                                             IsHitTestVisible="False"
-                                            Visibility="{x:Bind helpers:BindHelpers.FilterRowCheckVisibility(IsExpanded), Mode=OneWay}" />
+                                            Visibility="{x:Bind helpers:BindHelpers.TagGroupAccentVisibility(IsExpanded, IsDropTargetValid), Mode=OneWay}" />
                                         <Grid ColumnSpacing="10">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="20" />
@@ -478,6 +478,8 @@
                                                 ChipAutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                                 ChipClick="TagChip_Click"
                                                 DragStarting="TagChip_DragStarting"
+                                                DropCompleted="TagChip_DropCompleted"
+                                                IsDragSource="{x:Bind IsDragSource, Mode=OneWay}"
                                                 IsRecentlyCreated="{x:Bind IsRecentlyCreated, Mode=OneWay}"
                                                 IsSelected="{x:Bind IsSelected, Mode=OneWay}"
                                                 IsStarred="{x:Bind IsStarred, Mode=OneWay}"

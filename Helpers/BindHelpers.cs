@@ -79,6 +79,10 @@ public static class BindHelpers
     public static Visibility FilterRowCheckVisibility(bool selected) =>
         selected ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>dg-02: left accent bar when the group is selected or a valid drop target.</summary>
+    public static Visibility TagGroupAccentVisibility(bool selected, bool dropValid) =>
+        selected || dropValid ? Visibility.Visible : Visibility.Collapsed;
+
     /// <summary>dg-02/03 group row fill while dragging tags onto GROUPS.</summary>
     public static Brush TagGroupDropBackground(bool selected, bool dropValid, bool dropRefuse)
     {
