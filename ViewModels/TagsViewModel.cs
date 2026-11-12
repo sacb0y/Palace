@@ -131,10 +131,11 @@ public partial class TagsViewModel : ObservableObject
     public partial bool IncludeNested { get; set; } = true;
 
     [ObservableProperty]
-    public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
+    public partial MosaicSort MosaicSort { get; set; } =
+        MosaicSortOrder.SanitizeForTags(MosaicSortOrder.Default);
 
     /// <summary>Sort field choices (the direction is <see cref="ToggleSortDirectionCommand"/>).</summary>
-    public IReadOnlyList<string> SortLabels => MosaicSortOrder.FieldLabels;
+    public IReadOnlyList<string> SortLabels => MosaicSortOrder.TagsFieldLabels;
 
     /// <summary>Index into <see cref="SortLabels"/>; picking a field starts in its natural direction.</summary>
     public int MosaicSortIndex
@@ -170,7 +171,8 @@ public partial class TagsViewModel : ObservableObject
     [RelayCommand]
     private void SetMosaicSortField(string? fieldName)
     {
-        if (!Enum.TryParse<MosaicSortField>(fieldName, ignoreCase: true, out var field))
+        if (!Enum.TryParse<MosaicSortField>(fieldName, ignoreCase: true, out var field)
+            || field == MosaicSortField.DateModified)
         {
             return;
         }
@@ -332,7 +334,8 @@ public partial class TagsViewModel : ObservableObject
         }
 
         var settings = ApplicationData.Current.LocalSettings.Values;
-        var next = MosaicSortOrder.Load(key => settings.TryGetValue(key, out var v) ? v : null, projectId, MosaicSortView.Tags);
+        var next = MosaicSortOrder.SanitizeForTags(
+            MosaicSortOrder.Load(key => settings.TryGetValue(key, out var v) ? v : null, projectId, MosaicSortView.Tags));
         _suppressMosaicSort = true;
         MosaicSort = next;
         _suppressMosaicSort = false;

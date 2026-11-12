@@ -652,6 +652,7 @@
                     TextTrimming="CharacterEllipsis"
                     TextWrapping="NoWrap" />
                 <Grid Grid.Row="1" VerticalAlignment="Center">
+                    <!-- Inert on Tags (plan/Wimbly): hide mosaic Date-modified sort chrome; keep Id for UIA. -->
                     <DropDownButton
                         x:Name="BtnTagMosaicSort"
                         MaxWidth="280"
@@ -661,7 +662,10 @@
                         AutomationProperties.AutomationId="BtnTagMosaicSort"
                         AutomationProperties.HelpText="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}"
                         AutomationProperties.Name="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
-                        ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}">
+                        IsHitTestVisible="False"
+                        IsTabStop="False"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
+                        Visibility="Collapsed">
                         <Grid MaxWidth="240" ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />

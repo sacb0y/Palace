@@ -62,6 +62,24 @@ public static class MosaicSortOrder
 
     public static IReadOnlyList<string> FieldLabels { get; } = FieldChoices.Select(c => c.Label).ToList();
 
+    /// <summary>
+    /// Tags mosaic omits Date modified (inert there). Prefer Date taken when a
+    /// persisted Tags sort still points at DateNewest / DateOldest.
+    /// </summary>
+    public static IReadOnlyList<(MosaicSortField Field, string Label)> TagsFieldChoices { get; } =
+        FieldChoices.Where(c => c.Field != MosaicSortField.DateModified).ToList();
+
+    public static IReadOnlyList<string> TagsFieldLabels { get; } =
+        TagsFieldChoices.Select(c => c.Label).ToList();
+
+    public static MosaicSort SanitizeForTags(MosaicSort sort)
+    {
+        var normalized = Normalize(sort);
+        return FieldOf(normalized) == MosaicSortField.DateModified
+            ? Compose(MosaicSortField.DateTaken, IsDescending(normalized))
+            : normalized;
+    }
+
     public static MosaicSortField FieldOf(MosaicSort sort) => Normalize(sort) switch
     {
         MosaicSort.DateTakenNewest or MosaicSort.DateTakenOldest => MosaicSortField.DateTaken,
