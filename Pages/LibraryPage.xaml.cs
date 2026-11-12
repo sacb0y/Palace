@@ -2195,7 +2195,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        var reveal = new TileMoreReveal(this, button, tile, container);
+        var reveal = new TileMoreReveal(this, button, container);
         button.Tag = reveal;
         reveal.Attach();
         reveal.Apply();
@@ -2220,7 +2220,6 @@ public sealed partial class LibraryPage : Page
     {
         private readonly LibraryPage _page;
         private readonly Button _button;
-        private readonly Grid _tile;
         private readonly ItemContainer _container;
         private AssetItem? _item;
         private FlyoutBase? _flyout;
@@ -2233,12 +2232,10 @@ public sealed partial class LibraryPage : Page
         public TileMoreReveal(
             LibraryPage page,
             Button button,
-            Grid tile,
             ItemContainer container)
         {
             _page = page;
             _button = button;
-            _tile = tile;
             _container = container;
         }
 
@@ -2259,7 +2256,8 @@ public sealed partial class LibraryPage : Page
             _button.DataContextChanged += OnDataContextChanged;
             BindItem(_page.FindAssetItem(_button) ?? _button.DataContext as AssetItem);
             BindFlyout(_container.ContextFlyout);
-            _pointerOver = _container.IsPointerOver;
+            // Track hover via PointerEntered/Exited only (no pointer-over property).
+            _pointerOver = false;
             _focused = HasKeyboardFocusInside();
         }
 
@@ -2307,14 +2305,16 @@ public sealed partial class LibraryPage : Page
             }
 
             _shown = show;
-            VisualStateManager.GoToElementState(
-                _tile,
-                TileMoreChrome.StateName(show),
-                useTransitions: false);
-            // Keep properties in sync if a recycled visual missed the default state.
-            _button.Opacity = show ? 1 : 0;
-            _button.IsHitTestVisible = show;
-            _button.IsTabStop = TileMoreChrome.IsTabStop(show);
+            // WinUI has no GoToElementState; MoreHidden/MoreShown setters live on
+            // GrdAssetTile for the contract — mirror them on the button here.
+            ApplyRevealVisual(_button, show);
+        }
+
+        private static void ApplyRevealVisual(Button button, bool show)
+        {
+            button.Opacity = TileMoreChrome.Opacity(show);
+            button.IsHitTestVisible = show;
+            button.IsTabStop = TileMoreChrome.IsTabStop(show);
         }
 
         private void BindItem(AssetItem? item)
@@ -2415,7 +2415,7 @@ public sealed partial class LibraryPage : Page
         private void OnFlyoutClosed(object? sender, object e)
         {
             _flyoutOpen = false;
-            _pointerOver = _container.IsPointerOver;
+            // Keep last enter/exit pointer flag; PointerEntered re-fires if still over.
             _focused = HasKeyboardFocusInside();
             Apply();
         }

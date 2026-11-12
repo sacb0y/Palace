@@ -25,6 +25,9 @@ public static class TileMoreChrome
     public static string StateName(bool show) =>
         show ? ShownState : HiddenState;
 
+    /// <summary>Opacity for the overflow control (no layout jump).</summary>
+    public static double Opacity(bool show) => show ? 1 : 0;
+
     /// <summary>Tab stop only while the control is shown.</summary>
     public static bool IsTabStop(bool show) => show;
 }

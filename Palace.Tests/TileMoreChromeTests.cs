@@ -23,10 +23,12 @@ public sealed class TileMoreChromeTests
             TileMoreChrome.ShouldShow(pointerOver, focused, selected, flyoutOpen));
 
     [Fact]
-    public void StateName_And_TabStop_FollowShow()
+    public void StateName_Opacity_And_TabStop_FollowShow()
     {
         Assert.Equal(TileMoreChrome.HiddenState, TileMoreChrome.StateName(show: false));
         Assert.Equal(TileMoreChrome.ShownState, TileMoreChrome.StateName(show: true));
+        Assert.Equal(0, TileMoreChrome.Opacity(show: false));
+        Assert.Equal(1, TileMoreChrome.Opacity(show: true));
         Assert.False(TileMoreChrome.IsTabStop(show: false));
         Assert.True(TileMoreChrome.IsTabStop(show: true));
     }
