@@ -22,6 +22,12 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
         typeof(ChipWrapLayout),
         new PropertyMetadata(6d, OnLayoutPropertyChanged));
 
+    /// <summary>Last finite arrange width — used when Measure gets infinity (StackPanel).</summary>
+    private double _arrangeWidth;
+
+    /// <summary>Width used for the last MeasureOverride extent (detect arrange mismatch).</summary>
+    private double _measuredWidth;
+
     public double HorizontalSpacing
     {
         get => (double)GetValue(HorizontalSpacingProperty);
@@ -36,17 +42,26 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
 
     protected override Size MeasureOverride(NonVirtualizingLayoutContext context, Size availableSize)
     {
-        var width = double.IsFinite(availableSize.Width) && availableSize.Width > 0
-            ? availableSize.Width
-            : 260;
+        var width = ResolveWidth(availableSize.Width);
+        _measuredWidth = width;
         var children = context.Children;
         var sizes = new (double Width, double Height)[children.Count];
-        var constraint = new Size(width, double.PositiveInfinity);
+        // Content-sized chips: measure unconstrained so Auto columns win (not Stretch / * fill).
+        var unconstrained = new Size(double.PositiveInfinity, double.PositiveInfinity);
         for (var i = 0; i < children.Count; i++)
         {
-            children[i].Measure(constraint);
+            children[i].Measure(unconstrained);
             var desired = children[i].DesiredSize;
-            sizes[i] = (desired.Width, desired.Height);
+            var w = Math.Max(1, desired.Width);
+            if (w > width)
+            {
+                // Re-measure at row width so long labels can wrap/clip within the board.
+                children[i].Measure(new Size(width, double.PositiveInfinity));
+                desired = children[i].DesiredSize;
+                w = Math.Max(1, Math.Min(width, desired.Width));
+            }
+
+            sizes[i] = (w, Math.Max(1, desired.Height));
         }
 
         var slots = ChipWrap.Layout(sizes, width, HorizontalSpacing, VerticalSpacing);
@@ -55,15 +70,25 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
 
     protected override Size ArrangeOverride(NonVirtualizingLayoutContext context, Size finalSize)
     {
-        var width = double.IsFinite(finalSize.Width) && finalSize.Width > 0
-            ? finalSize.Width
-            : 260;
+        var width = ResolveWidth(finalSize.Width);
+        if (WidthChanged(width, _arrangeWidth) || WidthChanged(width, _measuredWidth))
+        {
+            _arrangeWidth = width;
+            InvalidateMeasure();
+        }
+        else
+        {
+            _arrangeWidth = width;
+        }
+
         var children = context.Children;
         var sizes = new (double Width, double Height)[children.Count];
         for (var i = 0; i < children.Count; i++)
         {
             var desired = children[i].DesiredSize;
-            sizes[i] = (desired.Width, desired.Height);
+            sizes[i] = (
+                Math.Max(1, Math.Min(width, desired.Width)),
+                Math.Max(1, desired.Height));
         }
 
         var slots = ChipWrap.Layout(sizes, width, HorizontalSpacing, VerticalSpacing);
@@ -75,6 +100,24 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
 
         return new Size(width, ChipWrap.ExtentHeight(slots));
     }
+
+    private double ResolveWidth(double candidate)
+    {
+        if (double.IsFinite(candidate) && candidate > 0)
+        {
+            return candidate;
+        }
+
+        if (double.IsFinite(_arrangeWidth) && _arrangeWidth > 0)
+        {
+            return _arrangeWidth;
+        }
+
+        return 260;
+    }
+
+    private static bool WidthChanged(double a, double b) =>
+        double.IsFinite(a) && double.IsFinite(b) && Math.Abs(a - b) > 0.5;
 
     private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

@@ -434,19 +434,23 @@
             </Grid>
             <ScrollViewer
                 Grid.Row="1"
+                VerticalAlignment="Stretch"
                 AutomationProperties.AutomationId="RepTagChildren"
                 AutomationProperties.Name="Tags in selected group"
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
+                VerticalContentAlignment="Top"
                 VerticalScrollBarVisibility="Auto"
                 Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
                 <ItemsControl
+                    VerticalAlignment="Top"
                     ItemsSource="{x:Bind ViewModel.SelectedBoard.Letters, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:TagLetterSection">
                             <StackPanel
                                 Margin="0,0,0,8"
                                 HorizontalAlignment="Stretch"
+                                VerticalAlignment="Top"
                                 Spacing="6">
                                 <TextBlock
                                     HorizontalAlignment="Stretch"
@@ -455,6 +459,7 @@
                                     Text="{x:Bind Header, Mode=OneWay}" />
                                 <ItemsRepeater
                                     HorizontalAlignment="Stretch"
+                                    VerticalAlignment="Top"
                                     ItemsSource="{x:Bind Chips, Mode=OneWay}">
                                     <ItemsRepeater.Layout>
                                         <helpers:ChipWrapLayout
@@ -952,8 +957,13 @@
             x:Name="ScrTagDetails"
             Grid.Row="1"
             Grid.Column="2"
+            Padding="0,0,12,0"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDetails), Mode=OneWay}">
-            <StackPanel x:Name="FlyTagDetails" Spacing="12">
+            <StackPanel
+                x:Name="FlyTagDetails"
+                Padding="0,0,0,12"
+                HorizontalAlignment="Stretch"
+                Spacing="12">
                 <TextBox
                     x:Name="TxtRenameTag"
                     MinWidth="0"
@@ -1010,12 +1020,14 @@
                 </ItemsRepeater>
                 <TextBox
                     x:Name="AsbAddAlias"
+                    HorizontalAlignment="Stretch"
                     AutomationProperties.AutomationId="AsbAddAlias"
                     Header="Add another name"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
                     KeyDown="AsbAddAlias_KeyDown"
                     PlaceholderText="Add another name…"
-                    Text="{x:Bind ViewModel.AliasAddQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    Text="{x:Bind ViewModel.AliasAddQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="Wrap" />
                 <Border
                     Padding="10,8"
                     Background="{ThemeResource SystemFillColorAttentionBackgroundBrush}"
@@ -1087,14 +1099,19 @@
 
                 <NumberBox
                     x:Name="NbTagPriority"
+                    HorizontalAlignment="Stretch"
                     AutomationProperties.AutomationId="NbTagPriority"
-                    Description="Higher priority sorts first in the tag mosaic and assign panel"
                     Header="Priority"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
                     Minimum="0"
                     SpinButtonPlacementMode="Inline"
                     ValueChanged="NbTagPriority_ValueChanged"
                     Value="{x:Bind ViewModel.SelectedPriority, Mode=TwoWay}" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Higher priority sorts first in the tag mosaic and assign panel"
+                    TextWrapping="Wrap" />
                 <ToggleSwitch
                     x:Name="TglStarTag"
                     AutomationProperties.AutomationId="TglStarTag"
@@ -1212,6 +1229,7 @@
                 <TextBox
                     x:Name="TxtTagDescription"
                     AcceptsReturn="True"
+                    HorizontalAlignment="Stretch"
                     AutomationProperties.AutomationId="TxtTagDescription"
                     Header="Description"
                     IsEnabled="{x:Bind ViewModel.HasSelection, Mode=OneWay}"
@@ -1270,6 +1288,7 @@
                 </ItemsRepeater>
                 <ComboBox
                     x:Name="CmbAddGroup"
+                    HorizontalAlignment="Stretch"
                     AutomationProperties.AutomationId="CmbAddGroup"
                     DisplayMemberPath="Name"
                     Header="Add to another group"

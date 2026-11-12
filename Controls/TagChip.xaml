@@ -32,12 +32,14 @@
             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="16">
-            <Grid ColumnSpacing="6">
+            <!-- All Auto: content-sized width for ChipWrap (a * label column
+                 stretched every chip to the measure width → equal pills + tall wrap). -->
+            <Grid ColumnSpacing="6" HorizontalAlignment="Left">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
