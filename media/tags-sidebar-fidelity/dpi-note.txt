@@ -1,0 +1,1 @@
+dpi=150 only on this primary; 100/125 not switched this session
