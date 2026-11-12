@@ -46,6 +46,10 @@ public sealed class TagPageLayoutTests
         Assert.Equal(6, TagPageLayout.ChipWrapSpacingDip);
 
     [Fact]
+    public void BoardHeaderCompact_Below400() =>
+        Assert.Equal(400, TagPageLayout.BoardHeaderCompactBelowDip);
+
+    [Fact]
     public void Classify_PageWidth_WideNarrowStacked()
     {
         Assert.Equal(TagPageLayoutMode.Wide, TagPageLayout.ClassifyPageWidth(800));

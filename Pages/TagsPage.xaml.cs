@@ -55,6 +55,7 @@ public sealed partial class TagsPage : Page
     private double _lastTagHostWidth = double.NaN;
     private bool _lastTagShowDetails;
     private TagPageLayoutMode? _lastTagLayoutMode;
+    private bool? _boardHeaderCompact;
 
     public TagsPage()
     {
@@ -161,6 +162,26 @@ public sealed partial class TagsPage : Page
 
     private void TagsWidthStates_CurrentStateChanged(object sender, VisualStateChangedEventArgs e) =>
         RefreshTagColumnLayout();
+
+    /// <summary>
+    /// A1: Expand/Collapse icon-only (labels Collapsed) when board header &lt;~400 DIP.
+    /// Tooltips + AutomationProperties.Name stay for the icon-only state.
+    /// </summary>
+    private void GrdTagBoardHeader_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Width < TagPageLayout.BoardHeaderCompactBelowDip;
+        if (_boardHeaderCompact == compact)
+        {
+            return;
+        }
+
+        _boardHeaderCompact = compact;
+        var labelVisibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        TxtExpandAllTagBoard.Visibility = labelVisibility;
+        TxtCollapseAllTagBoard.Visibility = labelVisibility;
+        BtnExpandAllTagBoard.Padding = compact ? new Thickness(6, 0, 6, 0) : new Thickness(8, 4, 8, 4);
+        BtnCollapseAllTagBoard.Padding = compact ? new Thickness(6, 0, 6, 0) : new Thickness(8, 4, 8, 4);
+    }
 
     private void ApplyTagColumnLayout()
     {

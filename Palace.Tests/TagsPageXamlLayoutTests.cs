@@ -47,4 +47,54 @@ public sealed class TagsPageXamlLayoutTests
             xaml,
             StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void BoardHeader_IsOneRowStarAutoAutoAuto()
+    {
+        var xaml = TagsPageXaml();
+        var header = xaml.IndexOf("x:Name=\"GrdTagBoardHeader\"", StringComparison.Ordinal);
+        Assert.True(header >= 0, "GrdTagBoardHeader missing");
+        var cols = xaml.IndexOf("<Grid.ColumnDefinitions>", header, StringComparison.Ordinal);
+        var colsEnd = xaml.IndexOf("</Grid.ColumnDefinitions>", cols, StringComparison.Ordinal);
+        Assert.True(cols >= 0 && colsEnd > cols);
+        var block = xaml[cols..colsEnd];
+        Assert.Contains("Width=\"*\"", block, StringComparison.Ordinal);
+        Assert.Equal(3, Regex.Matches(block, @"Width=""Auto""").Count);
+        Assert.Contains("TxtExpandAllTagBoard", xaml, StringComparison.Ordinal);
+        Assert.Contains("TxtCollapseAllTagBoard", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTipService.ToolTip=\"Expand all\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ToolTipService.ToolTip=\"Collapse all\"", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BoardPane_ChipStar_ComposerAuto_ItemsCountDocked()
+    {
+        var xaml = TagsPageXaml();
+        var pane = xaml.IndexOf("x:Name=\"GrdTagBoardPane\"", StringComparison.Ordinal);
+        Assert.True(pane >= 0);
+        var rows = xaml.IndexOf("<Grid.RowDefinitions>", pane, StringComparison.Ordinal);
+        var rowsEnd = xaml.IndexOf("</Grid.RowDefinitions>", rows, StringComparison.Ordinal);
+        var block = xaml[rows..rowsEnd];
+        Assert.DoesNotContain("2*", block, StringComparison.Ordinal);
+        Assert.DoesNotContain("MinHeight=\"160\"", block, StringComparison.Ordinal);
+        Assert.Contains("TxtTagAssetCount", xaml, StringComparison.Ordinal);
+        // Items count lives with the Auto composer dock, not alone in mosaic header.
+        var count = xaml.IndexOf("x:Name=\"TxtTagAssetCount\"", StringComparison.Ordinal);
+        var mosaic = xaml.IndexOf("x:Name=\"GrdTagAssets\"", StringComparison.Ordinal);
+        Assert.True(count > 0 && mosaic > count, "TxtTagAssetCount should precede GrdTagAssets");
+    }
+
+    [Fact]
+    public void ScrTagDetails_EnablesVerticalScroll()
+    {
+        var xaml = TagsPageXaml();
+        var scr = xaml.IndexOf("x:Name=\"ScrTagDetails\"", StringComparison.Ordinal);
+        Assert.True(scr >= 0);
+        // Opening element spans lines; take until the StackPanel child starts.
+        var child = xaml.IndexOf("x:Name=\"FlyTagDetails\"", scr, StringComparison.Ordinal);
+        Assert.True(child > scr);
+        var open = xaml[scr..child];
+        Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", open, StringComparison.Ordinal);
+        Assert.Contains("VerticalScrollMode=\"Enabled\"", open, StringComparison.Ordinal);
+    }
 }

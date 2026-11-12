@@ -19,6 +19,12 @@ public static class TagPageLayout
     /// <summary>Soft board preference when the strip is wide enough (not an XAML MinWidth).</summary>
     public const double BoardMinWidthDip = 320;
 
+    /// <summary>
+    /// Board header Expand/Collapse switch to icon-only below this width
+    /// (tooltips + AutomationProperties.Name stay). ~252 DIP at true 1024.
+    /// </summary>
+    public const double BoardHeaderCompactBelowDip = 400;
+
     /// <summary>Soft board floor while shrinking sidebar at narrow widths.</summary>
     public const double BoardSoftMinWidthDip = 120;
 

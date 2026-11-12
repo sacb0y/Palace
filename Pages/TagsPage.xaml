@@ -240,15 +240,22 @@
             Grid.Row="1"
             Grid.Column="1"
             RowSpacing="8">
+            <!-- A1: one-row header Grid (* / Auto / Auto / Auto). No WrapPanel.
+                 Expand/Collapse → icon-only + tooltips when board &lt;~400 DIP. -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="2*" MinHeight="160" />
+                <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" MinHeight="160" />
+                <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <Grid ColumnSpacing="8">
+            <Grid
+                x:Name="GrdTagBoardHeader"
+                ColumnSpacing="4"
+                SizeChanged="GrdTagBoardHeader_SizeChanged">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock
@@ -256,81 +263,98 @@
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="TxtTagChildrenHeader"
                     Style="{StaticResource BodyStrongTextBlockStyle}"
-                    Text="{x:Bind ViewModel.ChildrenHeader, Mode=OneWay}" />
-                <StackPanel
+                    Text="{x:Bind ViewModel.ChildrenHeader, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+                <Button
+                    x:Name="BtnExpandAllTagBoard"
                     Grid.Column="1"
-                    Orientation="Horizontal"
-                    Spacing="4"
+                    MinWidth="32"
+                    MinHeight="28"
+                    Padding="8,4"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnExpandAllTagBoard"
+                    AutomationProperties.Name="Expand all"
+                    Command="{x:Bind ViewModel.ExpandAllBoardGroupsCommand}"
+                    ToolTipService.ToolTip="Expand all"
                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
-                    <Button
-                        x:Name="BtnExpandAllTagBoard"
-                        Padding="8,4"
-                        AutomationProperties.AutomationId="BtnExpandAllTagBoard"
-                        AutomationProperties.Name="Expand all"
-                        Command="{x:Bind ViewModel.ExpandAllBoardGroupsCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
-                            <TextBlock VerticalAlignment="Center" Text="Expand all" />
-                        </StackPanel>
-                    </Button>
-                    <Button
-                        x:Name="BtnCollapseAllTagBoard"
-                        Padding="8,4"
-                        AutomationProperties.AutomationId="BtnCollapseAllTagBoard"
-                        AutomationProperties.Name="Collapse all"
-                        Command="{x:Bind ViewModel.CollapseAllBoardGroupsCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <ic:FluentIcon Icon="ChevronUp" IconSize="Size16" IconVariant="Regular" />
-                            <TextBlock VerticalAlignment="Center" Text="Collapse all" />
-                        </StackPanel>
-                    </Button>
-                    <Button
-                        x:Name="BtnTagBoardSortName"
-                        Padding="8,4"
-                        AutomationProperties.AutomationId="BtnTagBoardSortName"
-                        AutomationProperties.Name="Name"
-                        IsEnabled="False">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.BoardSortLabel, Mode=OneWay}" />
-                            <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
-                <StackPanel
-                    Grid.Column="1"
-                    Orientation="Horizontal"
-                    Spacing="4"
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock
+                            x:Name="TxtExpandAllTagBoard"
+                            VerticalAlignment="Center"
+                            Text="Expand all" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    x:Name="BtnCollapseAllTagBoard"
+                    Grid.Column="2"
+                    MinWidth="32"
+                    MinHeight="28"
+                    Padding="8,4"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnCollapseAllTagBoard"
+                    AutomationProperties.Name="Collapse all"
+                    Command="{x:Bind ViewModel.CollapseAllBoardGroupsCommand}"
+                    ToolTipService.ToolTip="Collapse all"
+                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ic:FluentIcon Icon="ChevronUp" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock
+                            x:Name="TxtCollapseAllTagBoard"
+                            VerticalAlignment="Center"
+                            Text="Collapse all" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    x:Name="BtnTagBoardSortName"
+                    Grid.Column="3"
+                    Padding="8,4"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnTagBoardSortName"
+                    AutomationProperties.Name="Name"
+                    IsEnabled="False"
+                    Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.BoardSortLabel, Mode=OneWay}" />
+                        <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
+                    </StackPanel>
+                </Button>
+                <Button
+                    x:Name="BtnNewAlias"
+                    Grid.Column="2"
+                    Padding="8,4"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnNewAlias"
+                    AutomationProperties.Name="New alias"
+                    Command="{x:Bind ViewModel.FocusNewAliasCommand}"
+                    Style="{StaticResource AccentButtonStyle}"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
-                    <Button
-                        x:Name="BtnNewAlias"
-                        Padding="8,4"
-                        AutomationProperties.AutomationId="BtnNewAlias"
-                        AutomationProperties.Name="New alias"
-                        Command="{x:Bind ViewModel.FocusNewAliasCommand}"
-                        Style="{StaticResource AccentButtonStyle}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
-                            <TextBlock VerticalAlignment="Center" Text="New alias" />
-                        </StackPanel>
-                    </Button>
-                    <DropDownButton
-                        x:Name="BtnAliasSort"
-                        Padding="8,4"
-                        AutomationProperties.AutomationId="BtnAliasSort"
-                        AutomationProperties.Name="Sort aliases"
-                        Content="{x:Bind ViewModel.AliasSortLabel, Mode=OneWay}">
-                        <DropDownButton.Flyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetAliasSortTagCommand}"
-                                    Text="Tag" />
-                                <MenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetAliasSortAliasCommand}"
-                                    Text="Alias" />
-                            </MenuFlyout>
-                        </DropDownButton.Flyout>
-                    </DropDownButton>
-                </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="New alias" />
+                    </StackPanel>
+                </Button>
+                <DropDownButton
+                    x:Name="BtnAliasSort"
+                    Grid.Column="3"
+                    Padding="8,4"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BtnAliasSort"
+                    AutomationProperties.Name="Sort aliases"
+                    Content="{x:Bind ViewModel.AliasSortLabel, Mode=OneWay}"
+                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
+                    <DropDownButton.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetAliasSortTagCommand}"
+                                Text="Tag" />
+                            <MenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetAliasSortAliasCommand}"
+                                Text="Alias" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
             </Grid>
             <Grid
                 Grid.Row="1"
@@ -600,6 +624,7 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+            <!-- A2: chip list * fills column; composer + items count Auto docked under it. -->
             <StackPanel
                 Grid.Row="2"
                 Spacing="6"
@@ -644,9 +669,17 @@
                         <TextBlock VerticalAlignment="Center" Text="Create" />
                     </StackPanel>
                 </Button>
+                <TextBlock
+                    x:Name="TxtTagAssetCount"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtTagAssetCount"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
             </StackPanel>
 
-            <Grid Grid.Row="3" MinHeight="160" RowSpacing="8">
+            <Grid Grid.Row="3" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -674,106 +707,92 @@
                 Opacity="0"
                 Visibility="Collapsed" />
             <Grid Grid.Row="1" ColumnSpacing="12">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
-                <TextBlock
-                    x:Name="TxtTagAssetCount"
+                <!-- Inert on Tags (plan/Wimbly): hide mosaic Date-modified sort chrome; keep Id for UIA. -->
+                <DropDownButton
+                    x:Name="BtnTagMosaicSort"
+                    MaxWidth="280"
+                    HorizontalAlignment="Left"
+                    HorizontalContentAlignment="Left"
                     VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="TxtTagAssetCount"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis"
-                    TextWrapping="NoWrap" />
-                <Grid Grid.Row="1" VerticalAlignment="Center">
-                    <!-- Inert on Tags (plan/Wimbly): hide mosaic Date-modified sort chrome; keep Id for UIA. -->
-                    <DropDownButton
-                        x:Name="BtnTagMosaicSort"
-                        MaxWidth="280"
-                        HorizontalAlignment="Left"
-                        HorizontalContentAlignment="Left"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="BtnTagMosaicSort"
-                        AutomationProperties.HelpText="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}"
-                        AutomationProperties.Name="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
-                        IsHitTestVisible="False"
-                        IsTabStop="False"
-                        ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
-                        Visibility="Collapsed">
-                        <Grid MaxWidth="240" ColumnSpacing="8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <ic:FluentIcon
-                                VerticalAlignment="Center"
-                                Icon="ArrowSort"
-                                IconSize="Size16"
-                                IconVariant="Regular" />
-                            <TextBlock
-                                Grid.Column="1"
-                                VerticalAlignment="Center"
-                                Text="{x:Bind ViewModel.SortButtonFaceLabel, Mode=OneWay}"
-                                TextTrimming="CharacterEllipsis"
-                                TextWrapping="NoWrap" />
-                        </Grid>
-                        <DropDownButton.Flyout>
-                            <MenuFlyout Placement="Bottom">
-                                <RadioMenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
-                                    CommandParameter="DateTaken"
-                                    GroupName="TagMosaicSortField"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateTaken'), Mode=OneWay}"
-                                    Text="Date taken" />
-                                <RadioMenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
-                                    CommandParameter="DateAdded"
-                                    GroupName="TagMosaicSortField"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateAdded'), Mode=OneWay}"
-                                    Text="Date added" />
-                                <RadioMenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
-                                    CommandParameter="Name"
-                                    GroupName="TagMosaicSortField"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Name'), Mode=OneWay}"
-                                    Text="Name" />
-                                <RadioMenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
-                                    CommandParameter="Size"
-                                    GroupName="TagMosaicSortField"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Size'), Mode=OneWay}"
-                                    Text="Size" />
-                                <RadioMenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
-                                    CommandParameter="Type"
-                                    GroupName="TagMosaicSortField"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Type'), Mode=OneWay}"
-                                    Text="Type" />
-                                <RadioMenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
-                                    CommandParameter="Rating"
-                                    GroupName="TagMosaicSortField"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Rating'), Mode=OneWay}"
-                                    Text="Rating" />
-                                <MenuFlyoutSeparator />
-                                <RadioMenuFlyoutItem
-                                    AutomationProperties.AutomationId="BtnTagSortDirection"
-                                    Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
-                                    CommandParameter="true"
-                                    GroupName="TagMosaicSortDir"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort), Mode=OneWay}"
-                                    Text="{x:Bind ViewModel.SortDescendingLabel, Mode=OneWay}" />
-                                <RadioMenuFlyoutItem
-                                    Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
-                                    CommandParameter="false"
-                                    GroupName="TagMosaicSortDir"
-                                    IsChecked="{x:Bind helpers:BindHelpers.IsMosaicAscending(ViewModel.MosaicSort), Mode=OneWay}"
-                                    Text="{x:Bind ViewModel.SortAscendingLabel, Mode=OneWay}" />
-                            </MenuFlyout>
-                        </DropDownButton.Flyout>
-                    </DropDownButton>
-                </Grid>
+                    AutomationProperties.AutomationId="BtnTagMosaicSort"
+                    AutomationProperties.HelpText="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}"
+                    AutomationProperties.Name="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
+                    IsHitTestVisible="False"
+                    IsTabStop="False"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
+                    Visibility="Collapsed">
+                    <Grid MaxWidth="240" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ic:FluentIcon
+                            VerticalAlignment="Center"
+                            Icon="ArrowSort"
+                            IconSize="Size16"
+                            IconVariant="Regular" />
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind ViewModel.SortButtonFaceLabel, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="NoWrap" />
+                    </Grid>
+                    <DropDownButton.Flyout>
+                        <MenuFlyout Placement="Bottom">
+                            <RadioMenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="DateTaken"
+                                GroupName="TagMosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateTaken'), Mode=OneWay}"
+                                Text="Date taken" />
+                            <RadioMenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="DateAdded"
+                                GroupName="TagMosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'DateAdded'), Mode=OneWay}"
+                                Text="Date added" />
+                            <RadioMenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Name"
+                                GroupName="TagMosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Name'), Mode=OneWay}"
+                                Text="Name" />
+                            <RadioMenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Size"
+                                GroupName="TagMosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Size'), Mode=OneWay}"
+                                Text="Size" />
+                            <RadioMenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Type"
+                                GroupName="TagMosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Type'), Mode=OneWay}"
+                                Text="Type" />
+                            <RadioMenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetMosaicSortFieldCommand}"
+                                CommandParameter="Rating"
+                                GroupName="TagMosaicSortField"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicField(ViewModel.MosaicSort, 'Rating'), Mode=OneWay}"
+                                Text="Rating" />
+                            <MenuFlyoutSeparator />
+                            <RadioMenuFlyoutItem
+                                AutomationProperties.AutomationId="BtnTagSortDirection"
+                                Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                CommandParameter="true"
+                                GroupName="TagMosaicSortDir"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicDescending(ViewModel.MosaicSort), Mode=OneWay}"
+                                Text="{x:Bind ViewModel.SortDescendingLabel, Mode=OneWay}" />
+                            <RadioMenuFlyoutItem
+                                Command="{x:Bind ViewModel.SetMosaicSortDescendingCommand}"
+                                CommandParameter="false"
+                                GroupName="TagMosaicSortDir"
+                                IsChecked="{x:Bind helpers:BindHelpers.IsMosaicAscending(ViewModel.MosaicSort), Mode=OneWay}"
+                                Text="{x:Bind ViewModel.SortAscendingLabel, Mode=OneWay}" />
+                        </MenuFlyout>
+                    </DropDownButton.Flyout>
+                </DropDownButton>
             </Grid>
             <ScrollViewer
                 x:Name="GrdTagAssets"
@@ -988,8 +1007,13 @@
             Grid.Row="1"
             Grid.Column="2"
             Padding="0,0,12,0"
+            HorizontalScrollBarVisibility="Disabled"
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Auto"
+            VerticalScrollMode="Enabled"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDetails), Mode=OneWay}">
-            <!-- Wide/Narrow: row 1 col 2. Stacked (<640 page): row 2 col 1 under board. -->
+            <!-- Wide/Narrow: row 1 col 2. Stacked (<640 page): row 2 col 1 under board.
+                 A3: vertical scroll so color swatches aren't clipped @ 1024×800. -->
             <StackPanel
                 x:Name="FlyTagDetails"
                 Padding="0,0,0,12"
