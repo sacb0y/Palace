@@ -595,13 +595,20 @@ public sealed partial class LibraryPage : Page
         UpdateLibraryToolbarOverflow(windowDip);
     }
 
-    /// <summary>Window client DIP — toolbar overflow thresholds use this.</summary>
+    /// <summary>
+    /// Window client DIP — toolbar overflow + Preview auto-hide input.
+    /// Cross-checks <c>XamlRoot.Size</c> with <c>AppWindow.Size</c>/scale so a stale
+    /// XamlRoot after HWND resize cannot inflate content past AutoHideBelow (Studio
+    /// ~900/1003 stayed Docked while content should have been AutoHidden).
+    /// </summary>
     private double ResolveWindowClientDip()
     {
         var root = XamlRoot?.Size.Width ?? 0;
-        if (root >= MosaicLayoutWidth.MinUsable)
+        var appDip = ResolveAppWindowClientDip();
+        var live = LibraryColumnLayout.PreferLiveClientDip(root, appDip);
+        if (live >= MosaicLayoutWidth.MinUsable)
         {
-            return root;
+            return live;
         }
 
         // Page is nav content; add shell pane to approximate client.
@@ -611,6 +618,36 @@ public sealed partial class LibraryPage : Page
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// AppWindow client width in DIP (<c>Size</c> is physical px — divide by scale).
+    /// </summary>
+    private double ResolveAppWindowClientDip()
+    {
+        try
+        {
+            var window = App.Window;
+            if (window?.AppWindow is null)
+            {
+                return 0;
+            }
+
+            var scale = XamlRoot?.RasterizationScale
+                ?? window.Content?.XamlRoot?.RasterizationScale
+                ?? 0;
+            if (!double.IsFinite(scale) || scale <= 0)
+            {
+                scale = 1;
+            }
+
+            // Same physical px units as AppWindow.Resize in MainWindow.
+            return window.AppWindow.Size.Width / scale;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     /// <summary>

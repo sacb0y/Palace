@@ -407,4 +407,90 @@ public sealed class PreviewPaneTests
         Assert.Equal(0, layout.Preview);
         Assert.Equal(0, PreviewPane.GridPreviewColumnWidth(layout));
     }
+
+    /// <summary>
+    /// Studio FAIL 0.3.68: window ~909 / ~1003 DIP reported AutoHidden=false / Docked.
+    /// With correct content (nav+pad subtracted) those clients are far below 1024 —
+    /// OnWidth must AutoHidden=true and toggle → Overlay. Threshold unchanged.
+    /// </summary>
+    [Theory]
+    [InlineData(909, LibraryColumnLayout.ShellNavPaneWidthDip)]
+    [InlineData(909, LibraryColumnLayout.ShellNavCompactPaneWidthDip)]
+    [InlineData(909, 0)]
+    [InlineData(1003, LibraryColumnLayout.ShellNavPaneWidthDip)]
+    [InlineData(1003, LibraryColumnLayout.ShellNavCompactPaneWidthDip)]
+    [InlineData(1003, 0)]
+    public void OnWidth_StudioOverlayWindowClients_AutoHidden_ToggleOpensOverlay(
+        double windowClientDip,
+        double navPaneDip)
+    {
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(windowClientDip, navPaneDip);
+        Assert.True(
+            content < PreviewPane.AutoHideBelowContentDip,
+            $"content {content} must stay below AutoHideBelow {PreviewPane.AutoHideBelowContentDip}");
+
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, content);
+        Assert.True(s.AutoHidden);
+        Assert.False(s.Pinned);
+        Assert.Equal(PaneMode.Hidden, PreviewPane.Effective(s, content).Mode);
+
+        s = PreviewPane.ApplyToggle(s);
+        Assert.True(s.OverlayOpen);
+        Assert.False(s.Pinned);
+        Assert.Equal(PaneMode.Overlay, PreviewPane.Effective(s, content).Mode);
+    }
+
+    [Fact]
+    public void OnWidth_AutoHideDisabled_WrongInput_StaysDockedEvenWhenNarrow()
+    {
+        // Hypothesis (1): Settings Preview=Show → AutoHideEnabled false.
+        // Documented wrong input — no threshold change; Studio must use Automatic.
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(1003);
+        Assert.True(content < PreviewPane.AutoHideBelowContentDip);
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, content, autoHideEnabled: false);
+        Assert.False(s.AutoHidden);
+        Assert.Equal(PaneMode.Docked, PreviewPane.Effective(s, content).Mode);
+        s = PreviewPane.ApplyToggle(s);
+        Assert.False(s.OverlayOpen);
+        Assert.Equal(PaneMode.Hidden, PreviewPane.Effective(s, content).Mode);
+    }
+
+    [Fact]
+    public void OnWidth_InflatedClientLikeStaleXamlRoot_WouldSkipAutoHide()
+    {
+        // Hypothesis (2): stale XamlRoot ~1920 while HWND is ~1003 → content above
+        // AutoHideBelow. PreferLiveClientDip must pick 1003 so OnWidth hides.
+        var stale = LibraryColumnLayout.PreferLiveClientDip(1920, 1003);
+        Assert.Equal(1003, stale, 0.01);
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(stale);
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, content);
+        Assert.True(s.AutoHidden);
+
+        var inflatedContent = LibraryColumnLayout.ContentWidthFromClientDip(1920);
+        Assert.True(inflatedContent >= PreviewPane.AutoHideBelowContentDip);
+        var wrong = PreviewPane.OnWidth(PreviewPane.Initial, inflatedContent);
+        Assert.False(wrong.AutoHidden);
+    }
+
+    [Fact]
+    public void OnWidth_CrossingIntoAutoHide_ClearsPinnedAndOverlay()
+    {
+        // Hypothesis (3): Pinned sticky — crossing into AutoHidden clears pin.
+        var wide = LibraryColumnLayout.ContentWidthFromClientDip(1400);
+        var narrow = LibraryColumnLayout.ContentWidthFromClientDip(1003);
+        Assert.True(wide >= PreviewPane.AutoShowAboveContentDip);
+        Assert.True(narrow < PreviewPane.AutoHideBelowContentDip);
+
+        var s = PreviewPane.OnWidth(PreviewPane.Initial, wide);
+        Assert.False(s.AutoHidden);
+        s = PreviewPane.Pin(s);
+        Assert.True(s.Pinned);
+        s = s with { OverlayOpen = true };
+
+        s = PreviewPane.OnWidth(s, narrow);
+        Assert.True(s.AutoHidden);
+        Assert.False(s.Pinned);
+        Assert.False(s.OverlayOpen);
+        Assert.Equal(PaneMode.Hidden, PreviewPane.Effective(s, narrow).Mode);
+    }
 }

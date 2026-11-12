@@ -317,6 +317,9 @@ public sealed partial class LibraryPage
         try
         {
             var windowDip = ResolveWindowClientDip();
+            var appDip = ResolveAppWindowClientDip();
+            var rootDip = XamlRoot?.Size.Width ?? 0;
+            var scale = XamlRoot?.RasterizationScale ?? 0;
             var contentWidth = ResolveAvailableContentWidth(windowDip);
             var effective = PreviewPane.Effective(_previewPane, contentWidth);
             var layout = PreviewPane.Layout(effective);
@@ -324,7 +327,7 @@ public sealed partial class LibraryPage
             var hostVisual = ElementCompositionPreview.GetElementVisual(GrdPreviewDockHost);
             var states = CollectLibraryVisualStates();
             var snap = PreviewDockLayoutProbe.BuildSnapshot(
-                windowW: XamlRoot?.Size.Width ?? ActualWidth,
+                windowW: windowDip,
                 windowH: XamlRoot?.Size.Height ?? ActualHeight,
                 layout: layout,
                 slot: slot,
@@ -348,13 +351,17 @@ public sealed partial class LibraryPage
 
             var expected = PreviewPane.DockHostExpectedOffsetX(layout);
             var drift = GrdPreviewDockHost.ActualOffset.X - expected;
-            // Read-only: compare layout ActualOffset vs Composition Visual.Offset.
-            // Never write Visual.Offset — that fought arrange (height-only over tree).
+            // Read-only: ActualOffset vs Visual.Offset; also auto-hide inputs for Studio.
             PreviewDockLayoutProbe.Log(
                 source,
                 string.Create(
                     System.Globalization.CultureInfo.InvariantCulture,
-                    $"{snap} expectX={expected:0.#} driftX={drift:0.#}"));
+                    $"{snap} expectX={expected:0.#} driftX={drift:0.#} " +
+                    $"autoHideEnabled={PreviewPaneSettings.AutoHideEnabled} " +
+                    $"mode={PreviewPaneSettings.Mode} content={contentWidth:0.#} " +
+                    $"autoHidden={_previewPane.AutoHidden} pinned={_previewPane.Pinned} " +
+                    $"overlayOpen={_previewPane.OverlayOpen} eff={effective.Mode} " +
+                    $"xamlRootW={rootDip:0.#} appWinDip={appDip:0.#} scale={scale:0.###}"));
         }
         catch (Exception ex)
         {

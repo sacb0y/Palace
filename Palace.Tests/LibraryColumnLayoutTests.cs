@@ -172,4 +172,22 @@ public sealed class LibraryColumnLayoutTests
         // Collapsed hamburger frees ~200 DIP — Preview threshold must shift with it.
         Assert.Equal(200, compact - open, 0.01);
     }
+
+    [Fact]
+    public void PreferLiveClientDip_PrefersMin_WhenXamlRootStaleAfterHwndResize()
+    {
+        // Studio FAIL 0.3.68: HWND ~1003 DIP but stale XamlRoot ~1920 kept content
+        // above AutoHideBelow → AutoHidden=false / Docked. Prefer the live AppWindow DIP.
+        Assert.Equal(
+            1003,
+            LibraryColumnLayout.PreferLiveClientDip(1920, 1003),
+            0.01);
+        Assert.Equal(
+            909,
+            LibraryColumnLayout.PreferLiveClientDip(1400, 909),
+            0.01);
+        Assert.Equal(1003, LibraryColumnLayout.PreferLiveClientDip(0, 1003), 0.01);
+        Assert.Equal(1003, LibraryColumnLayout.PreferLiveClientDip(1003, 0), 0.01);
+        Assert.Equal(0, LibraryColumnLayout.PreferLiveClientDip(32, 16), 0.01);
+    }
 }

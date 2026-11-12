@@ -138,6 +138,33 @@ public static class LibraryColumnLayout
     }
 
     /// <summary>
+    /// Pick a live window client width (DIP) from XamlRoot and/or AppWindow.
+    /// When both are usable, returns the <b>minimum</b> so a stale
+    /// <c>XamlRoot.Size</c> after HWND <c>SetWindowPos</c> (Studio harness) cannot
+    /// inflate content past <see cref="PreviewPane.AutoHideBelowContentDip"/> and
+    /// keep Preview docked at ~900–1000 client DIP. Does not change the 1024
+    /// content auto-hide threshold. Values below <paramref name="minUsable"/> ignored.
+    /// </summary>
+    public static double PreferLiveClientDip(
+        double xamlRootDip,
+        double appWindowClientDip,
+        double minUsable = MosaicLayoutWidth.MinUsable)
+    {
+        var root = double.IsFinite(xamlRootDip) && xamlRootDip >= minUsable
+            ? xamlRootDip
+            : 0;
+        var app = double.IsFinite(appWindowClientDip) && appWindowClientDip >= minUsable
+            ? appWindowClientDip
+            : 0;
+        if (root > 0 && app > 0)
+        {
+            return Math.Min(root, app);
+        }
+
+        return root > 0 ? root : app;
+    }
+
+    /// <summary>
     /// Client-X of the packed mosaic's right edge (nav + pad + tree + gap + pack).
     /// Must stay ≤ <paramref name="windowClientDip"/> − right page pad.
     /// </summary>
