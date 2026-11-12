@@ -1980,12 +1980,32 @@
                                     </Button>
                                 </Grid>
                                 <Grid
+                                    x:Name="GrdAssetTile"
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"
                                     IsDoubleTapEnabled="True"
                                     ManipulationMode="System"
                                     RightTapped="AssetItem_RightTapped"
                                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsFolderHeader), Mode=OneWay}">
+                                    <VisualStateManager.VisualStateGroups>
+                                        <!-- Idle: Opacity 0 + no hit-test / tab stop so ⋮ cannot steal clicks. -->
+                                        <VisualStateGroup x:Name="MoreRevealStates">
+                                            <VisualState x:Name="MoreHidden">
+                                                <VisualState.Setters>
+                                                    <Setter Target="BtnAssetMore.Opacity" Value="0" />
+                                                    <Setter Target="BtnAssetMore.IsHitTestVisible" Value="False" />
+                                                    <Setter Target="BtnAssetMore.IsTabStop" Value="False" />
+                                                </VisualState.Setters>
+                                            </VisualState>
+                                            <VisualState x:Name="MoreShown">
+                                                <VisualState.Setters>
+                                                    <Setter Target="BtnAssetMore.Opacity" Value="1" />
+                                                    <Setter Target="BtnAssetMore.IsHitTestVisible" Value="True" />
+                                                    <Setter Target="BtnAssetMore.IsTabStop" Value="True" />
+                                                </VisualState.Setters>
+                                            </VisualState>
+                                        </VisualStateGroup>
+                                    </VisualStateManager.VisualStateGroups>
                                     <Image
                                         DataContextChanged="TileImage_DataContextChanged"
                                         DoubleTapped="AssetItem_DoubleTapped"
@@ -2094,8 +2114,10 @@
                                             IconSize="Size16"
                                             IconVariant="Regular" />
                                     </Border>
-                                    <!-- Context menu: "…" / right-click (not touch long-press). -->
+                                    <!-- Context menu: "…" / right-click (not touch long-press).
+                                         Hidden idle; MoreRevealStates show on hover / focus / selected / flyout. -->
                                     <Button
+                                        x:Name="BtnAssetMore"
                                         Width="28"
                                         Height="28"
                                         Margin="4"
@@ -2108,7 +2130,12 @@
                                         BorderThickness="0"
                                         Click="AssetMore_Click"
                                         CornerRadius="14"
-                                        ToolTipService.ToolTip="More">
+                                        IsHitTestVisible="False"
+                                        IsTabStop="False"
+                                        Loaded="BtnAssetMore_Loaded"
+                                        Opacity="0"
+                                        ToolTipService.ToolTip="More"
+                                        Unloaded="BtnAssetMore_Unloaded">
                                         <ic:FluentIcon Icon="MoreVertical" IconSize="Size16" IconVariant="Regular" />
                                     </Button>
                                 </Grid>
