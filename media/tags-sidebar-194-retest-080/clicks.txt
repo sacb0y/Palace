@@ -1,0 +1,5 @@
+﻿clicked SelTagScopeAll (all-tags)
+clicked BtnTagGroup_Ungrouped (uncategorized)
+clicked SelTagScopeRecent (recent)
+clicked SelTagScopeStarred (starred)
+clicked SelTagScopeAliases (aliases)
