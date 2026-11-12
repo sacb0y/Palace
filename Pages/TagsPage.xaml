@@ -474,17 +474,23 @@
                     ItemsSource="{x:Bind ViewModel.SelectedBoard.Letters, Mode=OneWay}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:TagLetterSection">
-                            <StackPanel
+                            <!-- Grid (not horizontal StackPanel / Auto) so ChipWrap gets * width. -->
+                            <Grid
                                 Margin="0,0,0,8"
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Top"
-                                Spacing="6">
+                                RowSpacing="6">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
                                 <TextBlock
                                     HorizontalAlignment="Stretch"
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                     Style="{StaticResource BodyStrongTextBlockStyle}"
                                     Text="{x:Bind Header, Mode=OneWay}" />
                                 <ItemsRepeater
+                                    Grid.Row="1"
                                     HorizontalAlignment="Stretch"
                                     VerticalAlignment="Top"
                                     ItemsSource="{x:Bind Chips, Mode=OneWay}">
@@ -595,7 +601,7 @@
                                         </DataTemplate>
                                     </ItemsRepeater.ItemTemplate>
                                 </ItemsRepeater>
-                            </StackPanel>
+                            </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

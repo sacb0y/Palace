@@ -55,10 +55,13 @@ public sealed partial class TagsPage : Page
     private double _lastTagHostWidth = double.NaN;
     private bool _lastTagShowDetails;
     private TagPageLayoutMode? _lastTagLayoutMode;
+    private double _lastKnownPageWidth = double.NaN;
+    private int _measureLogRemaining;
 
     public TagsPage()
     {
         InitializeComponent();
+        SizeChanged += TagsPage_SizeChangedForMeasureLog;
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestOpenGallery = GalleryWindow.Show;
@@ -163,16 +166,56 @@ public sealed partial class TagsPage : Page
         RefreshTagColumnLayout();
 
     /// <summary>
-    /// NavigationView measures content with ∞ width; ChipWrap then reports one-row
-    /// natural width and the star board column expands TagsPage past ContentFrame
-    /// (root ~1239 at client 1014). Constrain measure to the shell host slot.
+    /// Backstop: cap DesiredWidth to the shell host so ChipWrap one-row natural
+    /// cannot expand Tags past ContentFrame. Wimbly: prove whether available is
+    /// ∞ or finite (~726) via the first 3 logs after restore→1024.
     /// </summary>
     protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
     {
+        if (_measureLogRemaining > 0)
+        {
+            LogMeasureOverrideAvailable(availableSize.Width);
+            _measureLogRemaining--;
+        }
+
         var host = ResolveTagHostWidthDip();
         var measureWidth = TagPageLayout.ResolvePageMeasureWidth(availableSize.Width, host);
         var measured = base.MeasureOverride(new Windows.Foundation.Size(measureWidth, availableSize.Height));
         return new Windows.Foundation.Size(Math.Min(measured.Width, measureWidth), measured.Height);
+    }
+
+    private void TagsPage_SizeChangedForMeasureLog(object sender, SizeChangedEventArgs e)
+    {
+        var w = e.NewSize.Width;
+        // Arm 3 MeasureOverride logs after maximize → restore to ~1024 content.
+        if (double.IsFinite(_lastKnownPageWidth)
+            && _lastKnownPageWidth > 1000
+            && w is >= 600 and <= 900)
+        {
+            _measureLogRemaining = 3;
+        }
+
+        _lastKnownPageWidth = w;
+    }
+
+    private static void LogMeasureOverrideAvailable(double availableWidth)
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(),
+                "palace-tags-measure-override.log");
+            var label = double.IsFinite(availableWidth)
+                ? availableWidth.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                : availableWidth.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            System.IO.File.AppendAllText(
+                path,
+                $"{DateTime.UtcNow:O}\tavailableSize.Width={label}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Diagnostics only — never break layout.
+        }
     }
 
     private void ApplyTagColumnLayout()
@@ -271,6 +314,7 @@ public sealed partial class TagsPage : Page
     private double ResolveTagHostWidthDip()
     {
         EnsureShellContentFrameReference();
+        EnsureShellNavReference();
         var slot = _shellContentFrame?.ActualWidth ?? 0;
         if (double.IsFinite(slot) && slot >= MosaicLayoutWidth.MinUsable)
         {
@@ -283,7 +327,62 @@ public sealed partial class TagsPage : Page
             return page;
         }
 
+        // Wimbly: if ContentFrame lookup fails, XamlRoot − nav OpenPaneLength (not ∞).
+        if (XamlRoot is not null)
+        {
+            var rootW = XamlRoot.Size.Width;
+            if (double.IsFinite(rootW) && rootW >= MosaicLayoutWidth.MinUsable)
+            {
+                var pane = ResolveShellNavPaneWidthDip();
+                var host = rootW - pane;
+                if (host >= MosaicLayoutWidth.MinUsable)
+                {
+                    return host;
+                }
+            }
+        }
+
         return 0;
+    }
+
+    private void EnsureShellNavReference()
+    {
+        if (_shellNav is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is NavigationView nav)
+            {
+                _shellNav = nav;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+    }
+
+    private double ResolveShellNavPaneWidthDip()
+    {
+        if (_shellNav is null)
+        {
+            return TagPageLayout.ShellNavPaneWidthDip;
+        }
+
+        if (_shellNav.DisplayMode == NavigationViewDisplayMode.Minimal)
+        {
+            return 0;
+        }
+
+        if (_shellNav.IsPaneOpen)
+        {
+            return _shellNav.OpenPaneLength;
+        }
+
+        return _shellNav.CompactPaneLength;
     }
 
     private void EnsureShellContentFrameReference()
