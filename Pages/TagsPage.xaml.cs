@@ -553,10 +553,12 @@ public sealed partial class TagsPage : Page
 
             if (TagColor.TryParse(pick.Color, out var color))
             {
+                // Segoe UI has U+25CF; Segoe Fluent Icons falls back to a hollow box (Doktor #197).
                 item.Icon = new FontIcon
                 {
                     Glyph = "\u25CF",
                     FontSize = 10,
+                    FontFamily = new FontFamily("Segoe UI"),
                     Foreground = new SolidColorBrush(color)
                 };
             }

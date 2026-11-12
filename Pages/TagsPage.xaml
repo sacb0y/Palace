@@ -15,13 +15,14 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
+    <!-- Horizontal scroll disabled: Enabled measured the grid at ∞ width so board *
+         never got a real width and details ran off-screen (Doktor #197). -->
     <ScrollViewer
-        HorizontalScrollBarVisibility="Auto"
-        HorizontalScrollMode="Enabled"
+        HorizontalScrollBarVisibility="Disabled"
+        HorizontalScrollMode="Disabled"
         VerticalScrollBarVisibility="Disabled"
         VerticalScrollMode="Disabled">
     <Grid
-        MinWidth="800"
         Padding="16"
         ColumnSpacing="16"
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"

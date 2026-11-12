@@ -20,7 +20,8 @@
     PointerCanceled="Root_PointerCanceled"
     PointerCaptureLost="Root_PointerCaptureLost"
     Tapped="Root_Tapped">
-    <!-- MinWidth=0 defeats theme Control/ButtonMinWidth (~120) that equalized short chips. -->
+    <!-- MinWidth=0 defeats theme Control/ButtonMinWidth (~120). StackPanel Spacing
+         skips Collapsed chrome (Grid ColumnSpacing did not → uniform ~48 DIP pad). -->
     <Grid
         x:Name="GrdRoot"
         MinWidth="0"
@@ -37,24 +38,12 @@
             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="16">
-            <!-- All Auto: content-sized width for ChipWrap (a * label column
-                 stretched every chip to the measure width → equal pills + tall wrap). -->
-            <Grid
+            <StackPanel
                 MinWidth="0"
-                ColumnSpacing="6"
-                HorizontalAlignment="Left">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
+                HorizontalAlignment="Left"
+                Orientation="Horizontal"
+                Spacing="6"
+                VerticalAlignment="Center">
                 <!-- Leading link glyph (implied-only). -->
                 <Viewbox
                     x:Name="VbLeadingLink"
@@ -74,7 +63,6 @@
                 <!-- Leading apply glyph (Checkmark / Subtract). Never the word On. -->
                 <Viewbox
                     x:Name="VbStateGlyph"
-                    Grid.Column="1"
                     Width="12"
                     Height="12"
                     HorizontalAlignment="Center"
@@ -89,7 +77,6 @@
 
                 <Ellipse
                     x:Name="EllColorDot"
-                    Grid.Column="2"
                     Width="8"
                     Height="8"
                     VerticalAlignment="Center"
@@ -99,7 +86,6 @@
 
                 <TextBlock
                     x:Name="TxtLabel"
-                    Grid.Column="3"
                     VerticalAlignment="Center"
                     IsHitTestVisible="False"
                     Style="{StaticResource BodyTextBlockStyle}"
@@ -107,7 +93,6 @@
 
                 <TextBlock
                     x:Name="TxtNewBadge"
-                    Grid.Column="4"
                     VerticalAlignment="Center"
                     FontSize="11"
                     FontWeight="SemiBold"
@@ -118,7 +103,6 @@
 
                 <Viewbox
                     x:Name="VbTrailingLink"
-                    Grid.Column="5"
                     Width="12"
                     Height="12"
                     HorizontalAlignment="Center"
@@ -134,7 +118,6 @@
 
                 <TextBlock
                     x:Name="TxtPartialBadge"
-                    Grid.Column="6"
                     VerticalAlignment="Center"
                     IsHitTestVisible="False"
                     Style="{StaticResource CaptionTextBlockStyle}"
@@ -142,7 +125,6 @@
 
                 <Button
                     x:Name="BtnStar"
-                    Grid.Column="7"
                     Width="24"
                     Height="24"
                     MinWidth="24"
@@ -167,7 +149,6 @@
 
                 <Button
                     x:Name="BtnRemove"
-                    Grid.Column="8"
                     Width="24"
                     Height="24"
                     MinWidth="24"
@@ -189,7 +170,7 @@
                         IconSize="Size12"
                         IconVariant="Regular" />
                 </Button>
-            </Grid>
+            </StackPanel>
         </Border>
 
         <!-- Dashed accent outline for Partial (Border cannot dash). -->

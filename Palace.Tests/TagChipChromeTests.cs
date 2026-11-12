@@ -23,9 +23,7 @@ public sealed class TagChipChromeTests
         var longChip = TagChipChrome.WrapWidth("character-design-reference");
         Assert.True(longChip > shortChip);
         Assert.Equal(
-            TagChipChrome.HorizontalPaddingDip
-                + TagChipChrome.LeadingStateSlotDip
-                + (2 * TagChipChrome.CharacterDip),
+            TagChipChrome.HorizontalPaddingDip + (2 * TagChipChrome.CharacterDip),
             shortChip);
     }
 
@@ -40,6 +38,10 @@ public sealed class TagChipChromeTests
         Assert.Equal(3, "Cat".Length);
         Assert.Equal(9, "Character".Length);
         Assert.True(three < nine, $"expected Cat ({three}) < Character ({nine})");
+        // Collapsed leading slots must not pad every chip equally (was Grid ColumnSpacing × 8).
+        Assert.Equal(
+            TagChipChrome.HorizontalPaddingDip + (3 * TagChipChrome.CharacterDip),
+            three);
     }
 
     [Fact]
@@ -49,14 +51,11 @@ public sealed class TagChipChromeTests
         var baseWidth = TagChipChrome.WrapWidth(name);
         Assert.Equal(baseWidth + TagChipChrome.StarGlyphDip, TagChipChrome.WrapWidth(name, starred: true));
         Assert.Equal(baseWidth + TagChipChrome.ColorDotSlotDip, TagChipChrome.WrapWidth(name, hasColor: true));
-        // filterSelected no longer adds a face "On" label — state glyph is already in the base width.
-        Assert.Equal(baseWidth, TagChipChrome.WrapWidth(name, filterSelected: true));
+        Assert.Equal(baseWidth + TagChipChrome.LeadingStateSlotDip, TagChipChrome.WrapWidth(name, filterSelected: true));
         Assert.Equal(TagChipChrome.LeadingStateSlotDip, TagChipChrome.FilterOnLabelDip);
     }
 
     [Fact]
     public void WrapWidth_TreatsNullNameAsEmpty() =>
-        Assert.Equal(
-            TagChipChrome.HorizontalPaddingDip + TagChipChrome.LeadingStateSlotDip,
-            TagChipChrome.WrapWidth(null));
+        Assert.Equal(TagChipChrome.HorizontalPaddingDip, TagChipChrome.WrapWidth(null));
 }
