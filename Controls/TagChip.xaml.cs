@@ -140,6 +140,17 @@ public sealed partial class TagChip : UserControl
     public TagChip()
     {
         InitializeComponent();
+        MinWidth = TagChipVisual.BoardMinWidthDip;
+        if (GrdRoot is not null)
+        {
+            GrdRoot.MinWidth = TagChipVisual.BoardMinWidthDip;
+        }
+
+        if (BrdChip is not null)
+        {
+            BrdChip.MinWidth = TagChipVisual.BoardMinWidthDip;
+        }
+
         ActualThemeChanged += (_, _) => ApplyChrome();
         GotFocus += (_, _) => ApplyChrome();
         LostFocus += (_, _) => ApplyChrome();
@@ -345,9 +356,17 @@ public sealed partial class TagChip : UserControl
         BrdChip.CornerRadius = new CornerRadius(radius);
         RectPartialDash.RadiusX = radius;
         RectPartialDash.RadiusY = radius;
+        // Board padding ~10,4 (content-sized; MinWidth 0 clears theme ButtonMinWidth).
+        BrdChip.MinWidth = 0;
+        GrdRoot.MinWidth = 0;
+        MinWidth = 0;
         BrdChip.Padding = Compact
-            ? new Thickness(8, 0, 2, 0)
-            : new Thickness(8, 0, 4, 0);
+            ? new Thickness(8, 2, 4, 2)
+            : new Thickness(
+                TagChipVisual.BoardPaddingXDip,
+                TagChipVisual.BoardPaddingYDip,
+                TagChipVisual.BoardPaddingXDip,
+                TagChipVisual.BoardPaddingYDip);
 
         TxtLabel.Text = Label ?? "";
         TxtLabel.FontSize = Compact ? 13 : 14;

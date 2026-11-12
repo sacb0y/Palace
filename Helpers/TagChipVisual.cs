@@ -15,6 +15,15 @@ public static class TagChipVisual
 {
     public const int HeightDip = 32;
 
+    /// <summary>Board / wrap chip horizontal padding (Thickness left/right).</summary>
+    public const int BoardPaddingXDip = 10;
+
+    /// <summary>Board / wrap chip vertical padding (Thickness top/bottom).</summary>
+    public const int BoardPaddingYDip = 4;
+
+    /// <summary>Theme Control/ButtonMinWidth must not apply — chips size to text.</summary>
+    public const int BoardMinWidthDip = 0;
+
     /// <summary>Pending chips inside the Add tags box (T8 mockup: 26px).</summary>
     public const int CompactHeightDip = 26;
 

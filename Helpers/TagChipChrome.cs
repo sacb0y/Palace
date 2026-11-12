@@ -6,7 +6,8 @@ namespace Palace.Helpers;
 /// </summary>
 public static class TagChipChrome
 {
-    public const int HorizontalPaddingDip = 16;
+    /// <summary>Left + right board padding (<see cref="TagChipVisual.BoardPaddingXDip"/> × 2).</summary>
+    public const int HorizontalPaddingDip = TagChipVisual.BoardPaddingXDip * 2;
 
     public const int CharacterDip = 7;
 

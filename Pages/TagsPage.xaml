@@ -469,6 +469,7 @@
                                     <ItemsRepeater.ItemTemplate>
                                         <DataTemplate x:DataType="models:TagChipItem">
                                             <controls:TagChip
+                                                MinWidth="0"
                                                 HorizontalAlignment="Left"
                                                 VerticalAlignment="Top"
                                                 ApplyState="{x:Bind ApplyState, Mode=OneWay}"

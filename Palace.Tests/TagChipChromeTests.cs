@@ -30,6 +30,19 @@ public sealed class TagChipChromeTests
     }
 
     [Fact]
+    public void WrapWidth_ThreeLetterChip_NarrowerThanNineLetter()
+    {
+        // DesiredWidth proxy (WinUI-free): 3-letter board chip must be narrower than 9-letter.
+        Assert.Equal(0, TagChipVisual.BoardMinWidthDip);
+        Assert.Equal(20, TagChipChrome.HorizontalPaddingDip);
+        var three = TagChipChrome.WrapWidth("Cat");
+        var nine = TagChipChrome.WrapWidth("Character");
+        Assert.Equal(3, "Cat".Length);
+        Assert.Equal(9, "Character".Length);
+        Assert.True(three < nine, $"expected Cat ({three}) < Character ({nine})");
+    }
+
+    [Fact]
     public void WrapWidth_AddsStarAndColorDot_NotOnWord()
     {
         var name = "sonic";

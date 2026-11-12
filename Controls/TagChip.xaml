@@ -7,6 +7,8 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    MinWidth="0"
+    HorizontalAlignment="Left"
     IsTabStop="True"
     UseSystemFocusVisuals="True"
     XYFocusKeyboardNavigation="Enabled"
@@ -18,15 +20,18 @@
     PointerCanceled="Root_PointerCanceled"
     PointerCaptureLost="Root_PointerCaptureLost"
     Tapped="Root_Tapped">
+    <!-- MinWidth=0 defeats theme Control/ButtonMinWidth (~120) that equalized short chips. -->
     <Grid
         x:Name="GrdRoot"
+        MinWidth="0"
         MinHeight="32"
         HorizontalAlignment="Left"
         Background="Transparent">
         <Border
             x:Name="BrdChip"
+            MinWidth="0"
             MinHeight="32"
-            Padding="8,0,4,0"
+            Padding="10,4"
             HorizontalAlignment="Left"
             Background="Transparent"
             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
@@ -34,7 +39,10 @@
             CornerRadius="16">
             <!-- All Auto: content-sized width for ChipWrap (a * label column
                  stretched every chip to the measure width → equal pills + tall wrap). -->
-            <Grid ColumnSpacing="6" HorizontalAlignment="Left">
+            <Grid
+                MinWidth="0"
+                ColumnSpacing="6"
+                HorizontalAlignment="Left">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
