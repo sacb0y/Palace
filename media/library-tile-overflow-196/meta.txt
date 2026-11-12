@@ -1,0 +1,12 @@
+build_sha=71eaf208530c0d0393aab0e6edaa842cc064f054
+dpi=144
+scale_pct=150
+identity=PalaceOrganizeTest-5E1F
+version=0.3.82.0
+maximized=False
+window_dip=1053x666
+window_phys=1580x999
+click_method=winapp ui hover/focus/click (SendInput) after ForceForeground
+host=FENRIR-STUDIO
+fenrir_desktop=not_touched
+verdict=PASS

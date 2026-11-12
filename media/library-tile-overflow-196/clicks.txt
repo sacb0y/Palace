@@ -1,0 +1,6 @@
+hover NavLibrary (idle - mouse off tiles)
+hover ListItem art-a.jpg (real pointer SendInput)
+hover NavLibrary then focus art-a.jpg (keyboard focus)
+invoke TglSelectMode On
+click art-a.jpg to select
+hover art-a.jpg then click BtnAssetMore (flyout open; verified MnuOpen)

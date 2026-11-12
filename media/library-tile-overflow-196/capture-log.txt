@@ -1,0 +1,29 @@
+2026-11-12T10:10:43.4216692-05:00 START tip=71eaf208530c0d0393aab0e6edaa842cc064f054 pid=28100
+2026-11-12T10:10:44.6632945-05:00 Resize targetDIP=1280x900 actualDIP=1053x666 phys=1580x999 work=1600x1019 clamped=True dpi=144 zoomed=False
+2026-11-12T10:10:45.4865743-05:00 invoke TglPreviewPane -> Off
+2026-11-12T10:10:46.6469045-05:00 hover NavLibrary (idle - mouse off tiles)
+2026-11-12T10:10:49.1303287-05:00 SHOT 01-idle-grid-no-overflow.png size=602652
+2026-11-12T10:10:49.3473365-05:00 hover ListItem art-a.jpg (real pointer SendInput)
+2026-11-12T10:10:52.4968576-05:00 SHOT 02-hover-tile-overflow.png size=603488
+2026-11-12T10:10:52.5122060-05:00 hover NavLibrary then focus art-a.jpg (keyboard focus)
+2026-11-12T10:10:54.9344266-05:00 focused={
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "art-a.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 838,
+    "y": 334,
+    "width": 287,
+    "height": 216,
+    "selector": "itm-artajpg-f0a6",
+    "isInvokable": true
+  }
+}
+2026-11-12T10:10:55.9000507-05:00 SHOT 03-keyboard-focus-overflow.png size=603570
+2026-11-12T10:10:55.9152870-05:00 invoke TglSelectMode On
+2026-11-12T10:10:56.6368181-05:00 click art-a.jpg to select
+2026-11-12T10:11:00.1884107-05:00 SHOT 04-selected-tile-overflow.png size=617392
+2026-11-12T10:11:00.4032079-05:00 hover art-a.jpg then click BtnAssetMore (flyout open)
