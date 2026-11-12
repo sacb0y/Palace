@@ -15,25 +15,27 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
-    <!-- Horizontal scroll disabled (Mode + Bar): Enabled measured the grid at ∞
-         width so board * never got a real width and details ran off-screen
-         (Doktor #197 / Desktop ScrTagDetails past HWND @ ~1024). -->
+    <!-- Horizontal scroll disabled (Mode + Bar). Column widths are set in code from
+         the shell Frame ActualWidth (TagPageLayout.Allocate) — star-to-content under
+         infinite measure pushed ScrTagDetails past the HWND @ ~1024 (Desktop #197). -->
     <ScrollViewer
         HorizontalScrollBarVisibility="Disabled"
         HorizontalScrollMode="Disabled"
         VerticalScrollBarVisibility="Disabled"
         VerticalScrollMode="Disabled">
     <Grid
+        x:Name="GrdTagColumns"
         Padding="16"
         ColumnSpacing="16"
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
-        RowSpacing="12">
+        RowSpacing="12"
+        SizeChanged="GrdTagColumns_SizeChanged">
         <Grid.ColumnDefinitions>
-            <!-- Gooey dg-02 @ ~1024: sidebar fixed, board * (no MinWidth — a 320
-                 floor + details 260 blew past the HWND with nav open), details 240–300. -->
-            <ColumnDefinition Width="200" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="260" MinWidth="240" MaxWidth="300" />
+            <!-- Initial widths; ApplyTagColumnLayout overwrites from shell slot. MinWidth
+                 always 0 so column mins never sum above available. -->
+            <ColumnDefinition x:Name="ColTagSidebar" Width="200" MinWidth="0" />
+            <ColumnDefinition x:Name="ColTagBoard" Width="*" MinWidth="0" />
+            <ColumnDefinition x:Name="ColTagDetails" Width="240" MinWidth="0" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

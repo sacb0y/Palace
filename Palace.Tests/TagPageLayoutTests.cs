@@ -46,23 +46,46 @@ public sealed class TagPageLayoutTests
         Assert.Equal(6, TagPageLayout.ChipWrapSpacingDip);
 
     /// <summary>
-    /// XAML must not put a board MinWidth floor on top of sidebar + details —
-    /// at ~1024 DIP with expanded nav the Tags strip is ~670 and a 320 board
-    /// floor pushed ScrTagDetails past the HWND (Desktop #197).
+    /// Real Desktop wrap-1024: window client 1024 DIP @ 150%, expanded nav 248,
+    /// Tags pad 32 → content strip must host sidebar|board|details with details ≥ 240.
     /// </summary>
     [Fact]
-    public void XamlColumnFloors_Fit1024WithExpandedNav()
+    public void Allocate_Window1024ExpandedNav_DetailsInFrame()
     {
-        const double windowDip = 1024;
-        const double expandedNavDip = 320;
-        const double pagePadDip = 32; // Tags grid Padding 16+16
-        var tagsStrip = windowDip - expandedNavDip - pagePadDip;
-        // Board is Width=* with no MinWidth; only sidebar + details + gaps are fixed.
-        var fixedColumns = TagPageLayout.SidebarWidthDip
-            + 260 // details Width in TagsPage.xaml
+        var content = TagPageLayout.ContentWidthFromClientDip(
+            windowClientDip: 1024,
+            navPaneWidthDip: TagPageLayout.ShellNavPaneWidthDip);
+        Assert.Equal(1024 - TagPageLayout.ShellNavPaneWidthDip - TagPageLayout.PagePaddingHorizontalDip, content, 0.01);
+
+        var (sidebar, board, details) = TagPageLayout.Allocate(content);
+        Assert.Equal(content, sidebar + board + details + TagPageLayout.GapsWidth, 0.01);
+        Assert.InRange(details, TagPageLayout.DetailsMinWidthDip, TagPageLayout.DetailsMaxWidthDip);
+        Assert.True(sidebar <= TagPageLayout.SidebarWidthDip);
+        Assert.True(sidebar >= TagPageLayout.SidebarMinWidthDip - 0.01);
+        Assert.True(board > 0);
+        Assert.True(TagPageLayout.DetailsFitsActions(details));
+    }
+
+    [Fact]
+    public void Allocate_TightStrip_ShrinksSidebarBeforeClippingDetails()
+    {
+        // Below preferred sidebar+details+soft board — sidebar shrinks toward 160.
+        var content = TagPageLayout.SidebarMinWidthDip
+            + TagPageLayout.DetailsMinWidthDip
+            + TagPageLayout.BoardSoftMinWidthDip
             + TagPageLayout.GapsWidth;
-        Assert.True(fixedColumns <= tagsStrip);
-        Assert.True(tagsStrip - fixedColumns > 0);
-        Assert.True(TagPageLayout.DetailsFitsActions(TagPageLayout.DetailsMinWidthDip));
+        var (sidebar, board, details) = TagPageLayout.Allocate(content);
+        Assert.Equal(content, sidebar + board + details + TagPageLayout.GapsWidth, 0.01);
+        Assert.Equal(TagPageLayout.SidebarMinWidthDip, sidebar, 0.01);
+        Assert.True(TagPageLayout.DetailsFitsActions(details));
+        Assert.True(board + 0.01 >= TagPageLayout.BoardSoftMinWidthDip);
+    }
+
+    [Fact]
+    public void Allocate_HideDetails_GivesBoardTheRest()
+    {
+        var (sidebar, board, details) = TagPageLayout.Allocate(800, showDetails: false);
+        Assert.Equal(0, details);
+        Assert.Equal(800, sidebar + board + TagPageLayout.GapsWidth, 0.01);
     }
 }

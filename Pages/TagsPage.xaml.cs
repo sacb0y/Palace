@@ -48,6 +48,12 @@ public sealed partial class TagsPage : Page
     private bool _lastPressWasTouch;
     private bool _suppressTouchContextFlyout;
     private ViewerOverlayAutoHide? _viewerOverlayAutoHide;
+    private Frame? _shellContentFrame;
+    private NavigationView? _shellNav;
+    private bool _tagLayoutApplying;
+    private bool _tagLayoutQueued;
+    private double _lastTagContentWidth = double.NaN;
+    private bool _lastTagShowDetails;
 
     public TagsPage()
     {
@@ -72,9 +78,17 @@ public sealed partial class TagsPage : Page
                     GrdGalleryOverlay.Focus(FocusState.Programmatic);
                 }
             }
+
+            if (e.PropertyName is nameof(TagsViewModel.ShowDetails))
+            {
+                RefreshTagColumnLayout();
+            }
         };
+        SizeChanged += (_, _) => RefreshTagColumnLayout();
         Loaded += async (_, _) =>
         {
+            HookShellNavLayoutTracking();
+            RefreshTagColumnLayout();
             GrdTagAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdTagAssets_KeyDown), true);
             GrdTagAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdTagAssets_RangeMoved), true);
             GrdTagAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdTagAssets_RangeReleased), true);
@@ -95,6 +109,8 @@ public sealed partial class TagsPage : Page
         };
         Unloaded += (_, _) =>
         {
+            UnhookShellNavLayoutTracking();
+            _shellContentFrame = null;
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
@@ -113,6 +129,162 @@ public sealed partial class TagsPage : Page
             }
         };
     }
+
+    private void GrdTagColumns_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RefreshTagColumnLayout();
+
+    /// <summary>
+    /// Drive sidebar / board / details from the shell Frame slot (excludes nav pane).
+    /// Never from this grid's own ActualWidth — star-to-content under ∞ measure
+    /// latched ScrTagDetails past the HWND @ ~1024 DIP.
+    /// </summary>
+    private void RefreshTagColumnLayout()
+    {
+        if (_tagLayoutApplying)
+        {
+            _tagLayoutQueued = true;
+            return;
+        }
+
+        _tagLayoutApplying = true;
+        try
+        {
+            do
+            {
+                _tagLayoutQueued = false;
+                ApplyTagColumnLayout();
+            }
+            while (_tagLayoutQueued);
+        }
+        finally
+        {
+            _tagLayoutApplying = false;
+        }
+    }
+
+    private void ApplyTagColumnLayout()
+    {
+        var content = ResolveTagContentWidthDip();
+        var showDetails = ViewModel.ShowDetails;
+        if (content < MosaicLayoutWidth.MinUsable)
+        {
+            return;
+        }
+
+        if (Math.Abs(content - _lastTagContentWidth) < 0.5
+            && showDetails == _lastTagShowDetails
+            && ColTagSidebar.Width.IsAbsolute)
+        {
+            return;
+        }
+
+        var (sidebar, board, details) = TagPageLayout.Allocate(content, showDetails);
+        ColTagSidebar.MinWidth = 0;
+        ColTagBoard.MinWidth = 0;
+        ColTagDetails.MinWidth = 0;
+        ColTagSidebar.Width = new GridLength(sidebar);
+        ColTagBoard.Width = new GridLength(board);
+        ColTagDetails.Width = new GridLength(details);
+        _lastTagContentWidth = content;
+        _lastTagShowDetails = showDetails;
+    }
+
+    private double ResolveTagContentWidthDip()
+    {
+        EnsureShellContentFrameReference();
+        var slot = _shellContentFrame?.ActualWidth ?? 0;
+        if (double.IsFinite(slot) && slot >= MosaicLayoutWidth.MinUsable)
+        {
+            return TagPageLayout.ContentWidthFromHostDip(slot);
+        }
+
+        var page = ActualWidth;
+        if (double.IsFinite(page) && page >= MosaicLayoutWidth.MinUsable)
+        {
+            return TagPageLayout.ContentWidthFromHostDip(page);
+        }
+
+        return 0;
+    }
+
+    private void EnsureShellContentFrameReference()
+    {
+        if (_shellContentFrame is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is Frame frame)
+            {
+                _shellContentFrame = frame;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+    }
+
+    private void HookShellNavLayoutTracking()
+    {
+        EnsureShellContentFrameReference();
+        if (_shellContentFrame is not null)
+        {
+            _shellContentFrame.SizeChanged -= ShellContentFrame_SizeChanged;
+            _shellContentFrame.SizeChanged += ShellContentFrame_SizeChanged;
+        }
+
+        if (_shellNav is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is NavigationView nav)
+            {
+                _shellNav = nav;
+                nav.PaneOpened += ShellNav_PaneLayoutChanged;
+                nav.PaneClosed += ShellNav_PaneLayoutChanged;
+                nav.DisplayModeChanged += ShellNav_DisplayModeChanged;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+    }
+
+    private void UnhookShellNavLayoutTracking()
+    {
+        if (_shellContentFrame is not null)
+        {
+            _shellContentFrame.SizeChanged -= ShellContentFrame_SizeChanged;
+        }
+
+        if (_shellNav is null)
+        {
+            return;
+        }
+
+        _shellNav.PaneOpened -= ShellNav_PaneLayoutChanged;
+        _shellNav.PaneClosed -= ShellNav_PaneLayoutChanged;
+        _shellNav.DisplayModeChanged -= ShellNav_DisplayModeChanged;
+        _shellNav = null;
+    }
+
+    private void ShellContentFrame_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RefreshTagColumnLayout();
+
+    private void ShellNav_PaneLayoutChanged(NavigationView sender, object args) =>
+        RefreshTagColumnLayout();
+
+    private void ShellNav_DisplayModeChanged(
+        NavigationView sender,
+        NavigationViewDisplayModeChangedEventArgs args) =>
+        RefreshTagColumnLayout();
 
     public static IRelayCommand<AssetItem?> GetOpenAssetCommand() => AppServices.Tags.OpenAssetCommand;
 
