@@ -284,11 +284,8 @@
                         x:Name="BtnAliasSort"
                         Padding="8,4"
                         AutomationProperties.AutomationId="BtnAliasSort"
-                        AutomationProperties.Name="Sort aliases">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.AliasSortLabel, Mode=OneWay}" />
-                            <ic:FluentIcon Icon="ChevronDown" IconSize="Size16" IconVariant="Regular" />
-                        </StackPanel>
+                        AutomationProperties.Name="Sort aliases"
+                        Content="{x:Bind ViewModel.AliasSortLabel, Mode=OneWay}">
                         <DropDownButton.Flyout>
                             <MenuFlyout>
                                 <MenuFlyoutItem
@@ -638,23 +635,33 @@
                     Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis"
                     TextWrapping="NoWrap" />
-                <StackPanel
-                    Grid.Row="1"
-                    VerticalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="8">
+                <Grid Grid.Row="1" VerticalAlignment="Center">
                     <DropDownButton
                         x:Name="BtnTagMosaicSort"
-                        MinWidth="200"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Left"
                         VerticalAlignment="Center"
                         AutomationProperties.AutomationId="BtnTagMosaicSort"
                         AutomationProperties.HelpText="{x:Bind ViewModel.SortDirectionLabel, Mode=OneWay}"
                         AutomationProperties.Name="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
                         ToolTipService.ToolTip="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <ic:FluentIcon Icon="ArrowSort" IconSize="Size16" IconVariant="Regular" />
-                            <TextBlock VerticalAlignment="Center" Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}" />
-                        </StackPanel>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ic:FluentIcon
+                                VerticalAlignment="Center"
+                                Icon="ArrowSort"
+                                IconSize="Size16"
+                                IconVariant="Regular" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Text="{x:Bind ViewModel.SortButtonLabel, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="NoWrap" />
+                        </Grid>
                         <DropDownButton.Flyout>
                             <MenuFlyout Placement="Bottom">
                                 <RadioMenuFlyoutItem
@@ -716,7 +723,7 @@
                             </MenuFlyout>
                         </DropDownButton.Flyout>
                     </DropDownButton>
-                </StackPanel>
+                </Grid>
             </Grid>
             <ScrollViewer
                 x:Name="GrdTagAssets"
