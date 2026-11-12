@@ -110,5 +110,16 @@ public sealed class TagsPageXamlLayoutTests
         var hostEnd = xaml.IndexOf("</Canvas>", host, StringComparison.Ordinal);
         var block = xaml[host..hostEnd];
         Assert.DoesNotContain("Visibility=\"Collapsed\"", block, StringComparison.Ordinal);
+
+        // WMC0035: host must be a child of GrdTagColumns, not a root Grid child
+        // before VisualStateManager (that duplicates Grid.Children).
+        var root = xaml.IndexOf("<Grid>", StringComparison.Ordinal);
+        var vsm = xaml.IndexOf("VisualStateManager.VisualStateGroups", StringComparison.Ordinal);
+        var cols = xaml.IndexOf("x:Name=\"GrdTagColumns\"", StringComparison.Ordinal);
+        Assert.True(root >= 0 && vsm > root && cols > vsm && host > cols);
+        Assert.DoesNotContain(
+            "CvsTagDragGhostHost",
+            xaml[root..vsm],
+            StringComparison.Ordinal);
     }
 }

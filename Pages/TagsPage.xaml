@@ -15,19 +15,6 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
-    <!-- Off-screen host for drag-ghost RenderTargetBitmap (must be in the live tree;
-         unparented RTB is blank — WinUI docs). Opacity stays 1 so pixels aren't clear. -->
-    <Canvas
-        x:Name="CvsTagDragGhostHost"
-        Width="480"
-        Height="96"
-        HorizontalAlignment="Left"
-        VerticalAlignment="Top"
-        IsHitTestVisible="False">
-        <Canvas.RenderTransform>
-            <TranslateTransform X="-8000" Y="-8000" />
-        </Canvas.RenderTransform>
-    </Canvas>
     <!-- AdaptiveTrigger narrow guards only (&lt;~760 / &lt;~640).
          At ~1014 client they stay Wide — must not rewrite column widths (Wimbly #197).
          ControlSizeTrigger omitted: needs CommunityToolkit.WinUI.Triggers (not referenced). -->
@@ -70,6 +57,23 @@
             <RowDefinition x:Name="RowTagDetailsStack" Height="0" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+
+        <!-- Off-screen host for drag-ghost RenderTargetBitmap (must be in the live tree;
+             unparented RTB is blank — WinUI docs). Single Children collection with the
+             rest of GrdTagColumns — not a second root Grid.Children (WMC0035). -->
+        <Canvas
+            x:Name="CvsTagDragGhostHost"
+            Grid.Row="0"
+            Grid.Column="0"
+            Width="480"
+            Height="96"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            IsHitTestVisible="False">
+            <Canvas.RenderTransform>
+                <TranslateTransform X="-8000" Y="-8000" />
+            </Canvas.RenderTransform>
+        </Canvas>
 
         <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Tags" />
         <ProgressBar
