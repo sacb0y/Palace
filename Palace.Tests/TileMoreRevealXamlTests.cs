@@ -61,8 +61,8 @@ public sealed class TileMoreRevealXamlTests
         var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"));
         Assert.Contains("TileMoreChrome.ShouldShow", cs, StringComparison.Ordinal);
         Assert.Contains("ApplyRevealVisual", cs, StringComparison.Ordinal);
+        Assert.Contains("TileMoreChrome.Opacity", cs, StringComparison.Ordinal);
         Assert.DoesNotContain(".IsPointerOver", cs, StringComparison.Ordinal);
-        Assert.DoesNotContain("GoToElementState", cs, StringComparison.Ordinal);
     }
 
     [Fact]

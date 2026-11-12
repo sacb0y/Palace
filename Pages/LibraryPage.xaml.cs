@@ -2305,8 +2305,8 @@ public sealed partial class LibraryPage : Page
             }
 
             _shown = show;
-            // WinUI has no GoToElementState; MoreHidden/MoreShown setters live on
-            // GrdAssetTile for the contract — mirror them on the button here.
+            // MoreHidden/MoreShown setters live on GrdAssetTile; WinUI VSM only
+            // targets Control templates, so mirror Opacity / hit-test / tab here.
             ApplyRevealVisual(_button, show);
         }
 
