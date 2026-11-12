@@ -15,6 +15,19 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
+    <!-- Off-screen host for drag-ghost RenderTargetBitmap (must be in the live tree;
+         unparented RTB is blank — WinUI docs). Opacity stays 1 so pixels aren't clear. -->
+    <Canvas
+        x:Name="CvsTagDragGhostHost"
+        Width="480"
+        Height="96"
+        HorizontalAlignment="Left"
+        VerticalAlignment="Top"
+        IsHitTestVisible="False">
+        <Canvas.RenderTransform>
+            <TranslateTransform X="-8000" Y="-8000" />
+        </Canvas.RenderTransform>
+    </Canvas>
     <!-- AdaptiveTrigger narrow guards only (&lt;~760 / &lt;~640).
          At ~1014 client they stay Wide — must not rewrite column widths (Wimbly #197).
          ControlSizeTrigger omitted: needs CommunityToolkit.WinUI.Triggers (not referenced). -->
@@ -135,9 +148,9 @@
                                     AllowDrop="True"
                                     AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                                     AutomationProperties.Name="{x:Bind Name, Mode=OneWay}"
-                                    Background="{x:Bind helpers:BindHelpers.TagGroupDropBackground(IsExpanded, IsDropTargetValid, IsDropTargetRefuse), Mode=OneWay}"
-                                    BorderBrush="{x:Bind helpers:BindHelpers.TagGroupDropBorder(IsDropTargetValid, IsDropTargetRefuse), Mode=OneWay}"
-                                    BorderThickness="{x:Bind helpers:BindHelpers.TagGroupDropThickness(IsDropTargetValid, IsDropTargetRefuse), Mode=OneWay}"
+                                    Background="{x:Bind helpers:BindHelpers.TagGroupDropBackground(IsExpanded, IsDropTargetValid, IsDropTargetRefuse, DropChromeRevision), Mode=OneWay}"
+                                    BorderBrush="{x:Bind helpers:BindHelpers.TagGroupDropBorder(IsDropTargetValid, IsDropTargetRefuse, DropChromeRevision), Mode=OneWay}"
+                                    BorderThickness="{x:Bind helpers:BindHelpers.TagGroupDropThickness(IsDropTargetValid, IsDropTargetRefuse, DropChromeRevision), Mode=OneWay}"
                                     Click="TagGroupHeader_Click"
                                     CornerRadius="4"
                                     DragLeave="TagGroup_DragLeave"
@@ -145,7 +158,8 @@
                                     Drop="TagGroup_Drop"
                                     Tag="{x:Bind}"
                                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsGroupsHeader), Mode=OneWay}">
-                                    <!-- Accent overlays left padding (mockup absolute bar) so icon x is stable selected/unselected. -->
+                                    <!-- Accent overlays left padding (mockup absolute bar) so icon x is stable selected/unselected.
+                                         Bind ShowAccentBar (not multi-arg helper) so mid-drag IsDropTargetValid updates paint. -->
                                     <Grid>
                                         <Border
                                             Width="3"
@@ -156,7 +170,7 @@
                                             Background="{ThemeResource AccentFillColorDefaultBrush}"
                                             CornerRadius="1.5"
                                             IsHitTestVisible="False"
-                                            Visibility="{x:Bind helpers:BindHelpers.TagGroupAccentVisibility(IsExpanded, IsDropTargetValid), Mode=OneWay}" />
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowAccentBar), Mode=OneWay}" />
                                         <Grid ColumnSpacing="10">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="20" />
@@ -536,6 +550,7 @@
                                                 Label="{x:Bind Name, Mode=OneWay}"
                                                 PointerEntered="TagChip_PointerEntered"
                                                 PointerExited="TagChip_PointerExited"
+                                                PointerPressed="TagChip_PointerPressed"
                                                 ShowStar="True"
                                                 StarCommand="{x:Bind pages:TagsPage.GetStarChipCommand()}"
                                                 StarCommandParameter="{x:Bind}"

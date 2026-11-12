@@ -150,6 +150,7 @@
     <Compile Include="..\Helpers\TagFilter.cs" Link="TagFilter.cs" />
     <Compile Include="..\Helpers\TagGroups.cs" Link="TagGroups.cs" />
     <Compile Include="..\Helpers\TagMembershipAdd.cs" Link="TagMembershipAdd.cs" />
+    <Compile Include="..\Helpers\TagDragUi.cs" Link="TagDragUi.cs" />
     <Compile Include="..\Helpers\TagPageLayout.cs" Link="TagPageLayout.cs" />
     <Compile Include="..\Helpers\TagMosaicGroups.cs" Link="TagMosaicGroups.cs" />
     <Compile Include="..\Helpers\TagNameList.cs" Link="TagNameList.cs" />

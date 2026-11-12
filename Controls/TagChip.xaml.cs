@@ -399,7 +399,7 @@ public sealed partial class TagChip : UserControl
         ApplyTooltip(state);
         ApplyAutomation(state);
         Opacity = IsDragSource
-            ? 0.4
+            ? TagDragUi.DragSourceOpacity
             : IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
 
         if (!string.IsNullOrEmpty(ChipAutomationId))

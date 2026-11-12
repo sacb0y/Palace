@@ -97,4 +97,18 @@ public sealed class TagsPageXamlLayoutTests
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", open, StringComparison.Ordinal);
         Assert.Contains("VerticalScrollMode=\"Enabled\"", open, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void DragGhostHost_InTree_AndChipPrefetchWired()
+    {
+        var xaml = TagsPageXaml();
+        Assert.Contains("x:Name=\"CvsTagDragGhostHost\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("PointerPressed=\"TagChip_PointerPressed\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("ShowAccentBar", xaml, StringComparison.Ordinal);
+        // Ghost RTB host must stay Visible (not Collapsed) for capture.
+        var host = xaml.IndexOf("x:Name=\"CvsTagDragGhostHost\"", StringComparison.Ordinal);
+        var hostEnd = xaml.IndexOf("</Canvas>", host, StringComparison.Ordinal);
+        var block = xaml[host..hostEnd];
+        Assert.DoesNotContain("Visibility=\"Collapsed\"", block, StringComparison.Ordinal);
+    }
 }

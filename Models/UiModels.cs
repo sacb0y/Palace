@@ -948,6 +948,28 @@ public partial class TagBoardGroup : ObservableObject
     [ObservableProperty]
     public partial bool IsDropTargetRefuse { get; set; }
 
+    /// <summary>
+    /// Single bindable chrome token so multi-arg x:Bind helpers re-evaluate when
+    /// drop flags flip mid-drag (dg-02 accent / dg-03 refuse).
+    /// </summary>
+    public int DropChromeRevision { get; private set; }
+
+    /// <summary>Left accent bar: selected row or valid drop target (dg-02).</summary>
+    public bool ShowAccentBar => IsExpanded || IsDropTargetValid;
+
+    partial void OnIsDropTargetValidChanged(bool value) => NotifyDropChrome();
+
+    partial void OnIsDropTargetRefuseChanged(bool value) => NotifyDropChrome();
+
+    partial void OnIsExpandedChanged(bool value) => NotifyDropChrome();
+
+    private void NotifyDropChrome()
+    {
+        DropChromeRevision++;
+        OnPropertyChanged(nameof(DropChromeRevision));
+        OnPropertyChanged(nameof(ShowAccentBar));
+    }
+
     public bool ShowChipCount => !IsGroupsHeader;
 
     /// <summary>

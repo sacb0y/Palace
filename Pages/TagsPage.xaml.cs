@@ -56,6 +56,9 @@ public sealed partial class TagsPage : Page
     private bool _lastTagShowDetails;
     private TagPageLayoutMode? _lastTagLayoutMode;
     private bool? _boardHeaderCompact;
+    private BitmapImage? _tagDragGhost;
+    private string? _tagDragGhostKey;
+    private int _tagDragGhostEpoch;
 
     public TagsPage()
     {
@@ -490,9 +493,27 @@ public sealed partial class TagsPage : Page
     private void TagChip_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         // Mouse-only CanDrag so touch/pen still pans the chip ScrollViewer (AssetDrag pattern).
-        if (sender is UIElement el)
+        if (sender is not UIElement el
+            || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
         {
-            el.CanDrag = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+            return;
+        }
+
+        el.CanDrag = true;
+        if (sender is FrameworkElement { Tag: TagChipItem chip })
+        {
+            PrefetchTagDragGhost(chip);
+        }
+    }
+
+    private void TagChip_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        // Reinforce prefetch before the drag threshold so DragStarting can set
+        // DragUI synchronously (no deferral await — WinUI drops late SetContent).
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse
+            && sender is FrameworkElement { Tag: TagChipItem chip })
+        {
+            PrefetchTagDragGhost(chip);
         }
     }
 
@@ -504,7 +525,11 @@ public sealed partial class TagsPage : Page
         }
     }
 
-    private async void TagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
+    /// <summary>
+    /// dg-01a/b: set ghost + dim synchronously. Never await/GetDeferral before
+    /// <see cref="DragUI.SetContentFromBitmapImage"/> — post-await content is dropped.
+    /// </summary>
+    private void TagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
     {
         if (sender is not FrameworkElement { Tag: TagChipItem chip } || string.IsNullOrEmpty(chip.TagId))
         {
@@ -524,37 +549,76 @@ public sealed partial class TagsPage : Page
             return;
         }
 
-        // Custom ghost — never SetContentFromDataPackage (blank file icon).
-        var deferral = args.GetDeferral();
-        try
+        // Dim source chips immediately (dg-01a/b).
+        ViewModel.SetChipDragSources(ids);
+        args.Data.Properties[TagMembershipAdd.DataKey] = TagMembershipAdd.Serialize(ids);
+        args.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+        var badge = TagMembershipAdd.MultiBadge(ids.Count);
+        if (!string.IsNullOrEmpty(badge))
         {
-            ViewModel.SetChipDragSources(ids);
-            args.Data.Properties[TagMembershipAdd.DataKey] = TagMembershipAdd.Serialize(ids);
-            args.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
-            var badge = TagMembershipAdd.MultiBadge(ids.Count);
-            if (!string.IsNullOrEmpty(badge))
-            {
-                args.Data.Properties.Title = badge;
-            }
-
-            var bitmap = await TryBuildTagDragGhostAsync(chip, ids.Count);
-            if (bitmap is not null)
-            {
-                args.DragUI.SetContentFromBitmapImage(bitmap);
-            }
+            args.Data.Properties.Title = badge;
         }
-        finally
+
+        // Custom ghost — never SetContentFromDataPackage (blank file icon).
+        if (_tagDragGhost is not null
+            && TagDragUi.TryGetCachedGhostKey(_tagDragGhostKey, chip.TagId, ids.Count))
         {
-            deferral.Complete();
+            args.DragUI.SetContentFromBitmapImage(_tagDragGhost);
+        }
+        else
+        {
+            // Cache miss (very fast SendInput): kick a rebuild for the next gesture;
+            // still keep payload + dim. Do not defer — late SetContent is dropped.
+            PrefetchTagDragGhost(chip);
         }
     }
 
-    private void TagChip_DropCompleted(UIElement sender, DropCompletedEventArgs e) =>
+    private void TagChip_DropCompleted(UIElement sender, DropCompletedEventArgs e)
+    {
         ViewModel.ClearChipDragSources();
+        ViewModel.ClearGroupDropChrome();
+    }
 
-    /// <summary>dg-01a/b: pill ghost + optional "N tags" badge via RenderTargetBitmap.</summary>
+    private void PrefetchTagDragGhost(TagChipItem chip)
+    {
+        if (string.IsNullOrEmpty(chip.TagId))
+        {
+            return;
+        }
+
+        // Prefer the multi-select payload when this chip is already selected.
+        var count = Math.Max(1, ViewModel.ChipPayloadIds(chip).Count);
+        var key = TagDragUi.GhostCacheKey(chip.TagId, count);
+        if (_tagDragGhost is not null
+            && string.Equals(_tagDragGhostKey, key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var epoch = ++_tagDragGhostEpoch;
+        _ = BuildAndCacheTagDragGhostAsync(chip, count, key, epoch);
+    }
+
+    private async Task BuildAndCacheTagDragGhostAsync(
+        TagChipItem chip,
+        int count,
+        string key,
+        int epoch)
+    {
+        var bitmap = await TryBuildTagDragGhostAsync(chip, count);
+        if (bitmap is null || epoch != _tagDragGhostEpoch)
+        {
+            return;
+        }
+
+        _tagDragGhost = bitmap;
+        _tagDragGhostKey = key;
+    }
+
+    /// <summary>dg-01a/b: pill ghost + optional "N tags" badge via in-tree RenderTargetBitmap.</summary>
     private async Task<BitmapImage?> TryBuildTagDragGhostAsync(TagChipItem chip, int count)
     {
+        UIElement? visual = null;
         try
         {
             var row = new StackPanel
@@ -586,14 +650,14 @@ public sealed partial class TagsPage : Page
             {
                 Background = ThemeBrush("ControlFillColorDefaultBrush", Color.FromArgb(0xE0, 0x2C, 0x2C, 0x2C)),
                 BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush", Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
-                BorderThickness = new Thickness(1),
+                BorderThickness = new Thickness(1, 1, 1, 1),
                 CornerRadius = new CornerRadius(16),
                 Padding = new Thickness(10, 4, 10, 4),
                 Child = row,
                 Opacity = 0.92
             };
 
-            UIElement visual = chipBorder;
+            visual = chipBorder;
             var badgeText = TagMembershipAdd.MultiBadge(count);
             if (!string.IsNullOrEmpty(badgeText))
             {
@@ -617,7 +681,9 @@ public sealed partial class TagsPage : Page
                 visual = grid;
             }
 
-            visual.XamlRoot = XamlRoot;
+            // RTB only works for elements connected to the live XAML tree.
+            CvsTagDragGhostHost.Children.Clear();
+            CvsTagDragGhostHost.Children.Add(visual);
             visual.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
             var size = visual.DesiredSize;
             if (size.Width < 1 || size.Height < 1)
@@ -625,9 +691,16 @@ public sealed partial class TagsPage : Page
                 return null;
             }
 
-            visual.Arrange(new Windows.Foundation.Rect(0, 0, size.Width, size.Height));
+            // Badge hangs past the chip — pad so RTB doesn't clip "N tags".
+            var pad = string.IsNullOrEmpty(badgeText) ? 0.0 : 14.0;
+            var width = size.Width + pad;
+            var height = size.Height + pad;
+            visual.Arrange(new Windows.Foundation.Rect(pad * 0.5, pad * 0.5, size.Width, size.Height));
+            CvsTagDragGhostHost.Width = Math.Max(width, 1);
+            CvsTagDragGhostHost.Height = Math.Max(height, 1);
+
             var rtb = new RenderTargetBitmap();
-            await rtb.RenderAsync(visual);
+            await rtb.RenderAsync(CvsTagDragGhostHost);
             var pixels = await rtb.GetPixelsAsync();
             if (rtb.PixelWidth == 0 || rtb.PixelHeight == 0 || pixels.Length == 0)
             {
@@ -662,6 +735,10 @@ public sealed partial class TagsPage : Page
         {
             ErrorReporter.LogOnly("Tag drag ghost", ex);
             return null;
+        }
+        finally
+        {
+            CvsTagDragGhostHost.Children.Clear();
         }
     }
 
@@ -709,17 +786,34 @@ public sealed partial class TagsPage : Page
         e.AcceptedOperation = allow
             ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
             : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
-        // Caption + ± glyph; ghost content already set — never show blank file icon.
+        // Keep custom ghost (IsContentVisible); caption + glyph for dg-02/03 hints.
         e.DragUIOverride.IsCaptionVisible = true;
         e.DragUIOverride.IsContentVisible = true;
         e.DragUIOverride.IsGlyphVisible = true;
         e.DragUIOverride.Caption = TagMembershipAdd.DragHint(group.Name, added, already, cycle);
-        ViewModel.SetGroupDropChrome(group.GroupId, allow);
+        // dg-02 left accent + fill when valid; dg-03 refuse chrome when not.
+        ViewModel.SetGroupDropChrome(
+            group.GroupId,
+            TagDragUi.ShowsValidDropChrome(group.IsUserGroupRow, allow));
         e.Handled = true;
     }
 
-    private void TagGroup_DragLeave(object sender, DragEventArgs e) =>
-        ViewModel.ClearGroupDropChrome();
+    private void TagGroup_DragLeave(object sender, DragEventArgs e)
+    {
+        // Child hit-testing inside the row fires Leave without exiting — only clear
+        // when the pointer is outside the group row (keeps dg-02 accent stable).
+        if (sender is not FrameworkElement fe)
+        {
+            ViewModel.ClearGroupDropChrome();
+            return;
+        }
+
+        var pos = e.GetPosition(fe);
+        if (TagDragUi.ShouldClearDropChromeOnLeave(pos.X, pos.Y, fe.ActualWidth, fe.ActualHeight))
+        {
+            ViewModel.ClearGroupDropChrome();
+        }
+    }
 
     private async void TagGroup_Drop(object sender, DragEventArgs e)
     {
