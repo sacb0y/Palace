@@ -902,8 +902,14 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Keep _pressed chrome for tap; never CapturePointer while CanDrag — that
+        // steals the gesture from WinUI DnD so DragStarting never fires (Wimbly).
         _pressed = true;
-        CapturePointer(e.Pointer);
+        if (TagDragUi.ShouldCapturePointerForPressChrome(CanDrag))
+        {
+            CapturePointer(e.Pointer);
+        }
+
         ApplyChrome();
     }
 

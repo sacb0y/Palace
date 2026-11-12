@@ -10,6 +10,8 @@ public sealed class TagDragUiTests
     {
         Assert.True(TagDragUi.RequiresSynchronousDragUiContent);
         Assert.Equal(0.4, TagDragUi.DragSourceOpacity);
+        Assert.False(TagDragUi.ShouldCapturePointerForPressChrome(canDrag: true));
+        Assert.True(TagDragUi.ShouldCapturePointerForPressChrome(canDrag: false));
     }
 
     [Fact]
