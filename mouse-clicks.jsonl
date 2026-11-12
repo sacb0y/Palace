@@ -1,0 +1,9 @@
+{"t":"2026-11-12T08:06:31.4062640-05:00","label":"sel-tile04","x":1149,"y":1289,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:06:39.2403671-05:00","label":"tgl-ov","x":1298,"y":98,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:06:51.3932845-05:00","label":"sel-tile04","x":1149,"y":1180,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:07:02.2124824-05:00","label":"close-X","x":1286,"y":180,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:07:18.2936913-05:00","label":"reopen-tgl","x":1298,"y":98,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:07:21.6277585-05:00","label":"sel-tile04","x":1149,"y":1180,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:07:45.1926322-05:00","label":"close-hide","x":1286,"y":180,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:07:56.1572643-05:00","label":"sel-tile04","x":1149,"y":1180,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}
+{"t":"2026-11-12T08:08:03.9135630-05:00","label":"tgl-ov","x":1298,"y":98,"winL":19,"winR":1351,"method":"SendInput","buildSha":"ffc9c2bb5b415b00a6720fa2c05573ff8651e831"}

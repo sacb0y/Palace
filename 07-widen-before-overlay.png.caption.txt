@@ -1,0 +1,1 @@
+﻿Tip ffc9c2b / 0.3.78 (#193 opaque-reflow) PalaceStudioShot-078doktor. buildSha=ffc9c2bb5b415b00a6720fa2c05573ff8651e831. Capture=PerMonitorV2+DWM CopyFromScreen. capW=1332 physW=1332 match=True. SendInput; harness forbids @(0,0). galleryChrome=False. BEFORE widen Overlay (context). mode=Overlay Close=Y Img=455x341 orange=25744.

@@ -1,0 +1,1 @@
+﻿Tip ffc9c2b / 0.3.78 (#193 opaque-reflow) PalaceStudioShot-078doktor. buildSha=ffc9c2bb5b415b00a6720fa2c05573ff8651e831. Capture=PerMonitorV2+DWM CopyFromScreen. capW=2082 physW=2082 match=True. SendInput; harness forbids @(0,0). galleryChrome=False. (b) AFTER widen → Docked Preview — DISTINCT widen→docked file. mode=Docked Close=N Img=452x339 orange=25392.

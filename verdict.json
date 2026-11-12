@@ -1,0 +1,11 @@
+{
+    "overlayOpen900":  true,
+    "mouseCloseX":  true,
+    "reopenAfterClose":  true,
+    "widenToDock":  true,
+    "dockedGlass":  true,
+    "noZeroClick":  true,
+    "buildShaPerShot":  true,
+    "overall":  true,
+    "buildSha":  "ffc9c2bb5b415b00a6720fa2c05573ff8651e831"
+}
