@@ -107,11 +107,13 @@ public sealed partial class LibraryPage
     private void BtnPreviewPaneEdge_PointerExited(object sender, PointerRoutedEventArgs e) =>
         BtnPreviewPaneEdge.Opacity = 0.35;
 
-    private void BtnPreviewPanePin_Click(object sender, RoutedEventArgs e)
+    private void BtnPreviewOverlayClose_Click(object sender, RoutedEventArgs e)
     {
-        _previewPane = PreviewPane.Pin(_previewPane);
+        // Same as Esc / empty-grid light-dismiss — toggle unchecked while auto-hidden.
+        _previewPane = PreviewPane.CloseOverlay(_previewPane);
         PersistPreviewUserShowAndWidth();
         RefreshLibraryLayout();
+        SyncPreviewToggleButton();
     }
 
     private void ApplyPreviewToggleFromUser()
@@ -427,31 +429,27 @@ public sealed partial class LibraryPage
 
     private void UpdatePreviewEdgeTab(PaneMode mode)
     {
-        var open = mode is PaneMode.Docked or PaneMode.Overlay;
+        // Gooey / Doktor: faint ›/‹ handle when docked or hidden; hide entirely while
+        // overlay is open (no ‹ tab beside the panel).
+        if (mode == PaneMode.Overlay)
+        {
+            BtnPreviewPaneEdge.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        BtnPreviewPaneEdge.Visibility = Visibility.Visible;
+        BtnPreviewPaneEdge.Opacity = 0.35;
+        var open = mode == PaneMode.Docked;
         TxtPreviewPaneEdge.Text = open ? "‹" : "›";
+        BtnPreviewPaneEdge.HorizontalAlignment = HorizontalAlignment.Right;
         if (mode == PaneMode.Docked)
         {
             // Sit on the pane's left edge (right edge of mosaic).
-            BtnPreviewPaneEdge.HorizontalAlignment = HorizontalAlignment.Right;
             var marginRight = _previewPane.UserWidth + 12; // page pad
             BtnPreviewPaneEdge.Margin = new Thickness(0, 0, marginRight, 0);
         }
-        else if (mode == PaneMode.Overlay)
-        {
-            BtnPreviewPaneEdge.HorizontalAlignment = HorizontalAlignment.Right;
-            var overlayW = BrdPreviewOverlay.Width;
-            if (!double.IsFinite(overlayW) || overlayW <= 0)
-            {
-                overlayW = PreviewPane.OverlayPanelWidth(
-                    _previewPane,
-                    ResolveAvailableContentWidth(ResolveWindowClientDip()));
-            }
-
-            BtnPreviewPaneEdge.Margin = new Thickness(0, 0, overlayW + 12, 0);
-        }
         else
         {
-            BtnPreviewPaneEdge.HorizontalAlignment = HorizontalAlignment.Right;
             BtnPreviewPaneEdge.Margin = new Thickness(0);
         }
     }

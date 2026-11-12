@@ -2,7 +2,8 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Pure Preview pane state for Library columns. Auto-hide from available width
-/// (40 DIP hysteresis); 0.3.12 toggle / pin / overlay. Off WinUI for Palace.Tests.
+/// (40 DIP hysteresis); toggle / overlay. Docking is automatic when wide only —
+/// no pin-to-dock (Isiac). Off WinUI for Palace.Tests.
 /// </summary>
 public enum PaneMode
 {
@@ -15,7 +16,7 @@ public enum PaneMode
 /// <param name="UserShow">User wants the pane; auto-hide must never overwrite this.</param>
 /// <param name="AutoHidden">True when available width cannot keep mosaic ≥560 with Preview.</param>
 /// <param name="OverlayOpen">Floating overlay while auto-hidden; cleared when auto-hide crosses.</param>
-/// <param name="Pinned">Pin docks while width would auto-hide; cleared when auto-hide crosses.</param>
+/// <param name="Pinned">Legacy no-op field (always cleared). Kept for record shape; docking is never pinned.</param>
 /// <param name="UserWidth">Persisted dock width (280–560); default 340.</param>
 public readonly record struct PreviewPaneState(
     bool UserShow,
@@ -88,8 +89,8 @@ public static class PreviewPane
     /// <summary>
     /// Recompute <see cref="PreviewPaneState.AutoHidden"/> from available content width.
     /// When <paramref name="autoHideEnabled"/> is false (Settings Show), AutoHidden stays false.
-    /// Crossing the auto-hide band clears <see cref="PreviewPaneState.Pinned"/> and
-    /// <see cref="PreviewPaneState.OverlayOpen"/>. Never changes UserShow.
+    /// Crossing the auto-hide band clears <see cref="PreviewPaneState.OverlayOpen"/>
+    /// (and any leftover <see cref="PreviewPaneState.Pinned"/>). Never changes UserShow.
     /// </summary>
     public static PreviewPaneState OnWidth(
         PreviewPaneState state,
@@ -107,7 +108,7 @@ public static class PreviewPane
             return state with
             {
                 AutoHidden = false,
-                Pinned = wasHidden ? false : state.Pinned,
+                Pinned = false,
                 OverlayOpen = wasHidden ? false : state.OverlayOpen
             };
         }
@@ -121,7 +122,7 @@ public static class PreviewPane
         return state with
         {
             AutoHidden = autoHidden,
-            Pinned = crossed ? false : state.Pinned,
+            Pinned = false,
             OverlayOpen = crossed ? false : state.OverlayOpen
         };
     }
@@ -131,47 +132,44 @@ public static class PreviewPane
         state with { UserShow = !state.UserShow };
 
     /// <summary>
-    /// Toolbar / Alt+P / edge-tab intent: while auto-hidden, open opaque Overlay
-    /// over the mosaic (Gooey narrow-window) — not pin/dock. Dismiss overlay, or
-    /// flip UserShow when roomy. Pin (chrome button) still docks while narrow.
+    /// Toolbar / Alt+P / edge-tab intent: while auto-hidden, open acrylic Overlay
+    /// over the mosaic — never pin/dock. Dismiss overlay (toggle unchecked), or
+    /// flip UserShow when roomy. Docking is automatic when wide only (Isiac).
     /// </summary>
     public static PreviewPaneState ApplyToggle(PreviewPaneState state)
     {
         if (state.OverlayOpen)
         {
-            return state with { OverlayOpen = false };
+            return state with { OverlayOpen = false, Pinned = false };
         }
 
         if (state.AutoHidden)
         {
-            if (state.Pinned)
-            {
-                return state with
-                {
-                    UserShow = false,
-                    OverlayOpen = false,
-                    Pinned = false
-                };
-            }
-
             return state with { UserShow = true, OverlayOpen = true, Pinned = false };
         }
 
-        return state with { UserShow = !state.UserShow, OverlayOpen = false };
+        return state with { UserShow = !state.UserShow, OverlayOpen = false, Pinned = false };
     }
 
-    /// <summary>User pin — docks while auto-hidden until width band crosses or restart.</summary>
+    /// <summary>
+    /// Close overlay (✕ / Esc / light-dismiss). Leaves UserShow so the next wide
+    /// layout can dock; toggle appears unchecked while auto-hidden.
+    /// </summary>
+    public static PreviewPaneState CloseOverlay(PreviewPaneState state) =>
+        state with { OverlayOpen = false, Pinned = false };
+
+    /// <summary>Obsolete pin-to-dock — always clears pin; prefer <see cref="CloseOverlay"/>.</summary>
     public static PreviewPaneState Pin(PreviewPaneState state, bool pinned = true) =>
         state with
         {
-            Pinned = pinned,
+            Pinned = false,
             OverlayOpen = pinned ? false : state.OverlayOpen,
-            UserShow = pinned ? true : state.UserShow
+            UserShow = state.UserShow
         };
 
     /// <summary>User overlay open — does not touch AutoHidden / UserShow.</summary>
     public static PreviewPaneState SetOverlayOpen(PreviewPaneState state, bool open) =>
-        state with { OverlayOpen = open };
+        state with { OverlayOpen = open, Pinned = open ? false : state.Pinned };
 
     /// <summary>Persist dock width (clamped); does not touch auto-hide flags.</summary>
     public static PreviewPaneState SetUserWidth(PreviewPaneState state, double width) =>
@@ -196,7 +194,7 @@ public static class PreviewPane
             return true;
         }
 
-        if (state.AutoHidden && !state.Pinned)
+        if (state.AutoHidden)
         {
             return false;
         }
@@ -217,7 +215,7 @@ public static class PreviewPane
     public const double OverlayMinLeadingMarginDip = 48;
 
     public static string ChromeTooltip(PreviewPaneState state) =>
-        state.AutoHidden && state.UserShow && !state.OverlayOpen && !state.Pinned
+        state.AutoHidden && state.UserShow && !state.OverlayOpen
             ? AutoHiddenTooltip
             : DefaultTooltip;
 
@@ -242,7 +240,7 @@ public static class PreviewPane
     /// <summary>
     /// Resolve pane mode + column widths for available content width.
     /// Overlay (auto-hidden open) allocates with preview=0 so the mosaic does not
-    /// reflow. Pin docks even when AutoHidden. Roomy + UserShow docks in ColPreview.
+    /// reflow. Docking is automatic when wide only — never via pin (Isiac).
     /// </summary>
     public static PreviewPaneEffective Effective(PreviewPaneState state, double contentWidth)
     {
@@ -261,7 +259,7 @@ public static class PreviewPane
                 LibraryColumnLayout.AllocateWithoutPreview(contentWidth));
         }
 
-        if (state.AutoHidden && !state.Pinned)
+        if (state.AutoHidden)
         {
             return new PreviewPaneEffective(
                 PaneMode.Hidden,

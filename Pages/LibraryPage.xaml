@@ -2215,7 +2215,7 @@
             x:Name="GrdPreviewDockHost"
             Grid.Row="1"
             Grid.Column="2"
-            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            Background="{ThemeResource PalacePreviewPaneFillBrush}"
             Opacity="0"
             IsHitTestVisible="False"
             Visibility="Visible">
@@ -2237,15 +2237,26 @@
                 PointerPressed="BrdPreviewResize_PointerPressed"
                 PointerReleased="BrdPreviewResize_PointerReleased"
                 ToolTipService.ToolTip="Drag to resize Preview. Double-click to reset" />
+            <!-- Docked chrome: single "Preview" title (pin lives on overlay header only). -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock
+                    x:Name="TxtPreviewDockTitle"
+                    Padding="16,12,16,0"
+                    Style="{StaticResource SubtitleTextBlockStyle}"
+                    Text="Preview" />
         <ScrollViewer
             x:Name="ScrPreviewPane"
-            Grid.Column="1"
+            Grid.Row="1"
             AutomationProperties.AutomationId="ScrPreviewPane"
-            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            Background="Transparent"
             VerticalScrollBarVisibility="Auto">
-            <!-- Shared body for docked + overlay; pad once so chips / Add tags / Apply share one inset. -->
+            <!-- Shared body for docked + overlay; pad once so chips / Add tags / Apply share one inset.
+                 Title lives in dock/overlay chrome — not duplicated here (Gooey 4-narrow-overlay). -->
             <StackPanel x:Name="PnlPreviewBody" Padding="16" Spacing="12">
-                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Preview" />
                 <!-- Single-asset / empty preview chrome. -->
                 <Border
                     MinHeight="200"
@@ -3102,6 +3113,7 @@
                 </StackPanel>
             </StackPanel>
         </ScrollViewer>
+            </Grid>
         </Grid>
 
         <!-- Toast slot overlays the mosaic so opening/closing does not reflow the grid.
@@ -3217,18 +3229,21 @@
                     Value="{x:Bind ViewModel.MosaicRowHeight, Mode=TwoWay}" />
             </StackPanel>
         </Grid>
-    </Grid>
 
-        <!-- Narrow-window overlay (auto-hide): opaque over mosaic, XAML Right-aligned.
-             Slide via Translation only — never Visual.Offset. Pin docks while narrow. -->
+        <!-- Narrow overlay: Grid.Row=1 = below Library toolbar, above status/row-height
+             (Gooey 4-narrow-overlay). Not Offset/Translation for vertical place.
+             Single header = title + pin; body has no second "Preview" caption. -->
         <Border
             x:Name="BrdPreviewOverlay"
+            Grid.Row="1"
+            Grid.ColumnSpan="3"
             Width="340"
-            Margin="0,8,12,8"
+            Margin="0,0,0,0"
             HorizontalAlignment="Right"
             VerticalAlignment="Stretch"
+            Canvas.ZIndex="2"
             AutomationProperties.AutomationId="BrdPreviewOverlay"
-            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            Background="{ThemeResource PalacePreviewPaneFillBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1,0,0,0"
             CornerRadius="8"
@@ -3247,35 +3262,41 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock
+                        x:Name="TxtPreviewOverlayTitle"
                         VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
                         Text="Preview" />
+                    <!-- Isiac: Close ✕ dismisses overlay (Esc / light-dismiss); no pin-to-dock. -->
                     <Button
-                        x:Name="BtnPreviewPanePin"
+                        x:Name="BtnPreviewOverlayClose"
                         Grid.Column="1"
                         MinWidth="32"
                         MinHeight="32"
-                        AutomationProperties.AutomationId="BtnPreviewPanePin"
-                        AutomationProperties.Name="Pin Preview pane"
-                        Click="BtnPreviewPanePin_Click"
-                        ToolTipService.ToolTip="Pin Preview pane (dock until window resize or restart)">
-                        <ic:FluentIcon Icon="Pin" IconSize="Size16" IconVariant="Regular" />
+                        AutomationProperties.AutomationId="BtnPreviewOverlayClose"
+                        AutomationProperties.Name="Close Preview"
+                        Click="BtnPreviewOverlayClose_Click"
+                        ToolTipService.ToolTip="Close Preview">
+                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
                     </Button>
                 </Grid>
                 <ScrollViewer
                     x:Name="ScrPreviewOverlay"
                     Grid.Row="1"
                     AutomationProperties.AutomationId="ScrPreviewOverlay"
+                    Background="Transparent"
                     VerticalScrollBarVisibility="Auto" />
             </Grid>
         </Border>
 
-        <!-- Hover/touch edge chevron: pane left edge when open; window right when hidden. -->
+        <!-- Doktor faint edge handle — hide while overlay open (‹ tab must not show). -->
         <Button
             x:Name="BtnPreviewPaneEdge"
+            Grid.Row="1"
+            Grid.ColumnSpan="3"
             Width="14"
             Height="56"
             Padding="0"
+            Canvas.ZIndex="3"
             HorizontalAlignment="Right"
             VerticalAlignment="Center"
             AutomationProperties.AutomationId="BtnPreviewPaneEdge"
@@ -3295,6 +3316,7 @@
                 FontSize="12"
                 Text="‹" />
         </Button>
+    </Grid>
 
         <Grid
             x:Name="GrdGalleryOverlay"

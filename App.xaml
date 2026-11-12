@@ -27,6 +27,13 @@
                                         TintColor="{ThemeResource SystemAccentColorDark3}"
                                         TintLuminosityOpacity="0.85"
                                         TintOpacity="0.08" />
+                                    <!-- Preview dock/overlay: 0.3.15-style acrylic with strong tint (Isiac). -->
+                                    <AcrylicBrush
+                                        x:Key="PalacePreviewPaneFillBrush"
+                                        FallbackColor="#FF2C2C2C"
+                                        TintColor="{ThemeResource SystemAccentColorDark2}"
+                                        TintLuminosityOpacity="0.9"
+                                        TintOpacity="0.55" />
                                     <AcrylicBrush
                                         x:Key="GalleryOverlayBackdropBrush"
                                         FallbackColor="{ThemeResource SmokeFillColorDefault}"
@@ -47,6 +54,12 @@
                                         TintLuminosityOpacity="0.85"
                                         TintOpacity="0.08" />
                                     <AcrylicBrush
+                                        x:Key="PalacePreviewPaneFillBrush"
+                                        FallbackColor="#FF2C2C2C"
+                                        TintColor="{ThemeResource SystemAccentColorDark2}"
+                                        TintLuminosityOpacity="0.9"
+                                        TintOpacity="0.55" />
+                                    <AcrylicBrush
                                         x:Key="GalleryOverlayBackdropBrush"
                                         FallbackColor="{ThemeResource SmokeFillColorDefault}"
                                         TintColor="{ThemeResource SolidBackgroundFillColorBase}"
@@ -65,6 +78,12 @@
                                         TintLuminosityOpacity="0.9"
                                         TintOpacity="0.08" />
                                     <AcrylicBrush
+                                        x:Key="PalacePreviewPaneFillBrush"
+                                        FallbackColor="#FFF3F3F3"
+                                        TintColor="{ThemeResource SystemAccentColorLight2}"
+                                        TintLuminosityOpacity="0.92"
+                                        TintOpacity="0.5" />
+                                    <AcrylicBrush
                                         x:Key="GalleryOverlayBackdropBrush"
                                         FallbackColor="{ThemeResource SmokeFillColorDefault}"
                                         TintColor="{ThemeResource SolidBackgroundFillColorBase}"
@@ -77,6 +96,7 @@
                                 </ResourceDictionary>
                                 <ResourceDictionary x:Key="HighContrast">
                                     <StaticResource x:Key="PalacePaneFillBrush" ResourceKey="SystemColorWindowColorBrush" />
+                                    <StaticResource x:Key="PalacePreviewPaneFillBrush" ResourceKey="SystemColorWindowColorBrush" />
                                     <SolidColorBrush x:Key="GalleryOverlayBackdropBrush" Color="{ThemeResource SystemColorWindowColor}" />
                                     <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="SystemColorWindowColorBrush" />
                                     <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="SystemColorWindowColorBrush" />

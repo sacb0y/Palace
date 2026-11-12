@@ -151,28 +151,32 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void Pin_DocksWhileAutoHidden_UntilCleared()
+    public void CloseOverlay_DismissesWithoutPinDock()
     {
+        // Isiac: ✕ / Esc closes overlay; docking is automatic when wide only.
         var narrow = PreviewPane.AutoHideBelowContentDip - 1;
         var s = PreviewPane.OnWidth(PreviewPane.Initial, narrow);
-        s = PreviewPane.Pin(s);
-        Assert.True(s.Pinned);
+        s = PreviewPane.ApplyToggle(s);
+        Assert.True(s.OverlayOpen);
+        Assert.Equal(PaneMode.Overlay, PreviewPane.Effective(s, narrow).Mode);
+
+        s = PreviewPane.CloseOverlay(s);
         Assert.False(s.OverlayOpen);
+        Assert.False(s.Pinned);
+        Assert.True(s.UserShow);
         Assert.True(s.AutoHidden);
-        Assert.Equal(PaneMode.Docked, PreviewPane.Effective(s, narrow).Mode);
+        Assert.False(PreviewPane.IsChromeChecked(s));
+        Assert.Equal(PaneMode.Hidden, PreviewPane.Effective(s, narrow).Mode);
     }
 
     [Fact]
-    public void Pin_DoesNotTouchAutoOrUserShow()
+    public void Pin_LegacyNoLongerDocksWhileAutoHidden()
     {
         var s = PreviewPane.OnWidth(PreviewPane.Initial, PreviewPane.AutoHideBelowContentDip - 1);
         s = PreviewPane.Pin(s);
-        Assert.True(s.Pinned);
-        Assert.True(s.AutoHidden);
-        Assert.True(s.UserShow);
-        s = PreviewPane.Pin(s, pinned: false);
         Assert.False(s.Pinned);
         Assert.True(s.AutoHidden);
+        Assert.Equal(PaneMode.Hidden, PreviewPane.Effective(s, PreviewPane.AutoHideBelowContentDip - 1).Mode);
     }
 
     [Fact]
@@ -474,9 +478,8 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void OnWidth_CrossingIntoAutoHide_ClearsPinnedAndOverlay()
+    public void OnWidth_CrossingIntoAutoHide_ClearsOverlay_NoPinDock()
     {
-        // Hypothesis (3): Pinned sticky — crossing into AutoHidden clears pin.
         var wide = LibraryColumnLayout.ContentWidthFromClientDip(1400);
         var narrow = LibraryColumnLayout.ContentWidthFromClientDip(1003);
         Assert.True(wide >= PreviewPane.AutoShowAboveContentDip);
@@ -484,8 +487,6 @@ public sealed class PreviewPaneTests
 
         var s = PreviewPane.OnWidth(PreviewPane.Initial, wide);
         Assert.False(s.AutoHidden);
-        s = PreviewPane.Pin(s);
-        Assert.True(s.Pinned);
         s = s with { OverlayOpen = true };
 
         s = PreviewPane.OnWidth(s, narrow);
