@@ -78,28 +78,26 @@ public sealed class PreviewOverlayMockupXamlTests
     }
 
     [Fact]
-    public void OverlayUsesStockAcrylicInApp_DockHostTransparent_NoCustomPreviewBrush()
+    public void OverlayPaintsAcrylicOnShadowHost_NoTransparentOuterSplit_NoCustomBrush()
     {
-        // Wimbly / 9c8f684: delete PalacePreviewPaneFillBrush; dock Transparent;
-        // acrylic on inner fill; ThemeShadow stays on outer BrdPreviewOverlay.
+        // Control 10c6379 painted; d1cdab6 Transparent-outer+inner-acrylic ghosted (UIA OK,
+        // pixels open≡closed). 9c8f684: AcrylicInApp + ThemeShadow on the SAME border.
         var root = LoadLibraryPage();
         var overlay = RequireNamed(root, "BrdPreviewOverlay");
-        Assert.Equal("Transparent", Attr(overlay, "Background"));
-        Assert.NotNull(overlay.Element(overlay.Name.Namespace + "Border.Shadow")
-            ?? overlay.Elements().FirstOrDefault(e => e.Name.LocalName == "Border.Shadow"));
-
-        var fill = RequireNamed(root, "BrdPreviewOverlayFill");
         Assert.Contains(
             "AcrylicInAppFillColorDefaultBrush",
-            Attr(fill, "Background") ?? "",
+            Attr(overlay, "Background") ?? "",
             StringComparison.Ordinal);
-        Assert.Equal("1,0,0,0", Attr(fill, "BorderThickness"));
-        Assert.True(
-            fill.Ancestors().Any(a => Attr(a, "Name") == "BrdPreviewOverlay"),
-            "acrylic fill must be inside outer overlay (shadow/Translation host)");
+        Assert.Equal("1,0,0,0", Attr(overlay, "BorderThickness"));
+        Assert.NotNull(overlay.Elements().FirstOrDefault(e => e.Name.LocalName == "Border.Shadow"));
+        Assert.Null(
+            root.Descendants().FirstOrDefault(e => Attr(e, "Name") == "BrdPreviewOverlayFill"));
 
         var dock = RequireNamed(root, "GrdPreviewDockHost");
-        Assert.Equal("Transparent", Attr(dock, "Background"));
+        Assert.Contains(
+            "SolidBackgroundFillColorBaseBrush",
+            Attr(dock, "Background") ?? "",
+            StringComparison.Ordinal);
 
         var appXaml = File.ReadAllText(Path.Combine(RepoRoot(), "App.xaml"));
         Assert.DoesNotContain("PalacePreviewPaneFillBrush", appXaml, StringComparison.Ordinal);

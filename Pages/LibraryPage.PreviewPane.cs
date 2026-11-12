@@ -223,6 +223,11 @@ public sealed partial class LibraryPage
         if (mode == PaneMode.Overlay)
         {
             BrdPreviewOverlay.Visibility = Visibility.Visible;
+            // Ensure body is parented before first compose frame (ghost: Visible chrome, empty SV).
+            if (!ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
+            {
+                HostPreviewBody(PaneMode.Overlay);
+            }
         }
 
         if (mode == PaneMode.Overlay || fromMode == PaneMode.Overlay)
@@ -236,6 +241,11 @@ public sealed partial class LibraryPage
         {
             BrdPreviewOverlay.Visibility = Visibility.Collapsed;
             ResetPreviewOverlayTranslation();
+        }
+        else if (fromMode == PaneMode.Overlay)
+        {
+            // Refresh while already open — keep Translation.Z for ThemeShadow (9c8f684).
+            EnsurePreviewOverlayTranslationResting();
         }
 
         ProbePreviewDockLayout("SyncPreviewChrome");
@@ -387,35 +397,34 @@ public sealed partial class LibraryPage
 
     private void HostPreviewBody(PaneMode mode)
     {
+        // Always re-assert Content — a stale _previewBodyInOverlay flag with a null
+        // ScrollViewer.Content left Overlay/Docked UIA-alive but pixels empty (0.3.74 ghost).
         if (mode == PaneMode.Overlay)
         {
-            if (_previewBodyInOverlay || ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
+            if (!ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
             {
-                _previewBodyInOverlay = true;
-                return;
+                if (ReferenceEquals(ScrPreviewPane.Content, PnlPreviewBody))
+                {
+                    ScrPreviewPane.Content = null;
+                }
+
+                ScrPreviewOverlay.Content = PnlPreviewBody;
             }
 
-            if (ReferenceEquals(ScrPreviewPane.Content, PnlPreviewBody))
-            {
-                ScrPreviewPane.Content = null;
-            }
-
-            ScrPreviewOverlay.Content = PnlPreviewBody;
             _previewBodyInOverlay = true;
             return;
         }
 
-        if (!_previewBodyInOverlay && ReferenceEquals(ScrPreviewPane.Content, PnlPreviewBody))
+        if (!ReferenceEquals(ScrPreviewPane.Content, PnlPreviewBody))
         {
-            return;
+            if (ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
+            {
+                ScrPreviewOverlay.Content = null;
+            }
+
+            ScrPreviewPane.Content = PnlPreviewBody;
         }
 
-        if (ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
-        {
-            ScrPreviewOverlay.Content = null;
-        }
-
-        ScrPreviewPane.Content = PnlPreviewBody;
         _previewBodyInOverlay = false;
     }
 
@@ -511,9 +520,11 @@ public sealed partial class LibraryPage
                 : compositor.CreateCubicBezierEasingFunction(
                     new System.Numerics.Vector2(0.7f, 0f),
                     new System.Numerics.Vector2(1f, 0.5f));
+            // Keep Z=32 for ThemeShadow (9c8f684 Translation="0,0,32"); only slide X.
+            const float shadowZ = 32f;
             var from = showing ? 24f : 0f;
             var to = showing ? 0f : 24f;
-            visual.Properties.InsertVector3("Translation", new System.Numerics.Vector3(from, 0f, 0f));
+            visual.Properties.InsertVector3("Translation", new System.Numerics.Vector3(from, 0f, shadowZ));
             var anim = compositor.CreateScalarKeyFrameAnimation();
             anim.InsertKeyFrame(0f, from, ease);
             anim.InsertKeyFrame(1f, to, ease);
@@ -523,17 +534,25 @@ public sealed partial class LibraryPage
         catch
         {
             // Composition unavailable — layout still correct.
+            EnsurePreviewOverlayTranslationResting();
         }
     }
 
-    private void ResetPreviewOverlayTranslation()
+    private void ResetPreviewOverlayTranslation() =>
+        EnsurePreviewOverlayTranslationResting();
+
+    /// <summary>
+    /// Resting overlay Translation: X/Y=0, Z=32 (ThemeShadow depth from 9c8f684).
+    /// Never leave a Transparent shadow host with a non-resting slide.
+    /// </summary>
+    private void EnsurePreviewOverlayTranslationResting()
     {
         try
         {
             ElementCompositionPreview.SetIsTranslationEnabled(BrdPreviewOverlay, true);
             var visual = ElementCompositionPreview.GetElementVisual(BrdPreviewOverlay);
             visual.StopAnimation("Translation.X");
-            visual.Properties.InsertVector3("Translation", System.Numerics.Vector3.Zero);
+            visual.Properties.InsertVector3("Translation", new System.Numerics.Vector3(0f, 0f, 32f));
         }
         catch
         {
