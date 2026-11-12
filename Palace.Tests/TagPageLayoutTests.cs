@@ -44,4 +44,25 @@ public sealed class TagPageLayoutTests
     [Fact]
     public void ChipWrapSpacing_IsSix() =>
         Assert.Equal(6, TagPageLayout.ChipWrapSpacingDip);
+
+    /// <summary>
+    /// XAML must not put a board MinWidth floor on top of sidebar + details —
+    /// at ~1024 DIP with expanded nav the Tags strip is ~670 and a 320 board
+    /// floor pushed ScrTagDetails past the HWND (Desktop #197).
+    /// </summary>
+    [Fact]
+    public void XamlColumnFloors_Fit1024WithExpandedNav()
+    {
+        const double windowDip = 1024;
+        const double expandedNavDip = 320;
+        const double pagePadDip = 32; // Tags grid Padding 16+16
+        var tagsStrip = windowDip - expandedNavDip - pagePadDip;
+        // Board is Width=* with no MinWidth; only sidebar + details + gaps are fixed.
+        var fixedColumns = TagPageLayout.SidebarWidthDip
+            + 260 // details Width in TagsPage.xaml
+            + TagPageLayout.GapsWidth;
+        Assert.True(fixedColumns <= tagsStrip);
+        Assert.True(tagsStrip - fixedColumns > 0);
+        Assert.True(TagPageLayout.DetailsFitsActions(TagPageLayout.DetailsMinWidthDip));
+    }
 }

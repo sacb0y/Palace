@@ -15,8 +15,9 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
-    <!-- Horizontal scroll disabled: Enabled measured the grid at ∞ width so board *
-         never got a real width and details ran off-screen (Doktor #197). -->
+    <!-- Horizontal scroll disabled (Mode + Bar): Enabled measured the grid at ∞
+         width so board * never got a real width and details ran off-screen
+         (Doktor #197 / Desktop ScrTagDetails past HWND @ ~1024). -->
     <ScrollViewer
         HorizontalScrollBarVisibility="Disabled"
         HorizontalScrollMode="Disabled"
@@ -28,9 +29,10 @@
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
         RowSpacing="12">
         <Grid.ColumnDefinitions>
-            <!-- Gooey dg-02 @ ~1024: sidebar fixed, board *, details 240–300. Mosaic nests under board. -->
+            <!-- Gooey dg-02 @ ~1024: sidebar fixed, board * (no MinWidth — a 320
+                 floor + details 260 blew past the HWND with nav open), details 240–300. -->
             <ColumnDefinition Width="200" />
-            <ColumnDefinition Width="*" MinWidth="320" />
+            <ColumnDefinition Width="*" />
             <ColumnDefinition Width="260" MinWidth="240" MaxWidth="300" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
