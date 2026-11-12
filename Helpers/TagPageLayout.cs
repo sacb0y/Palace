@@ -25,8 +25,35 @@ public static class TagPageLayout
     /// <summary>Details pane floor — Name / Groups / actions must fit @ 150%.</summary>
     public const double DetailsMinWidthDip = 240;
 
+    /// <summary>XAML Wide details column Width="260" (between min and max).</summary>
+    public const double DetailsWidthDip = 260;
+
     /// <summary>Details pane cap (~24% of a 1024 content strip ≈ 245–300).</summary>
     public const double DetailsMaxWidthDip = 300;
+
+    /// <summary>
+    /// Width used to measure TagsPage when the parent passes ∞ (NavigationView).
+    /// Prefer the shell ContentFrame host; else fixed columns + soft board so
+    /// ChipWrap one-row natural cannot expand DesiredSize past the HWND.
+    /// </summary>
+    public static double ResolvePageMeasureWidth(double availableWidth, double hostWidthDip)
+    {
+        if (double.IsFinite(availableWidth) && availableWidth >= MosaicLayoutWidth.MinUsable)
+        {
+            return availableWidth;
+        }
+
+        if (double.IsFinite(hostWidthDip) && hostWidthDip >= MosaicLayoutWidth.MinUsable)
+        {
+            return hostWidthDip;
+        }
+
+        return SidebarWidthDip
+            + DetailsWidthDip
+            + BoardSoftMinWidthDip
+            + GapsWidth
+            + PagePaddingHorizontalDip;
+    }
 
     /// <summary>~6 DIP chip wrap spacing (both axes).</summary>
     public const double ChipWrapSpacingDip = 6;

@@ -162,6 +162,19 @@ public sealed partial class TagsPage : Page
     private void TagsWidthStates_CurrentStateChanged(object sender, VisualStateChangedEventArgs e) =>
         RefreshTagColumnLayout();
 
+    /// <summary>
+    /// NavigationView measures content with ∞ width; ChipWrap then reports one-row
+    /// natural width and the star board column expands TagsPage past ContentFrame
+    /// (root ~1239 at client 1014). Constrain measure to the shell host slot.
+    /// </summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        var host = ResolveTagHostWidthDip();
+        var measureWidth = TagPageLayout.ResolvePageMeasureWidth(availableSize.Width, host);
+        var measured = base.MeasureOverride(new Size(measureWidth, availableSize.Height));
+        return new Size(Math.Min(measured.Width, measureWidth), measured.Height);
+    }
+
     private void ApplyTagColumnLayout()
     {
         var host = ResolveTagHostWidthDip();

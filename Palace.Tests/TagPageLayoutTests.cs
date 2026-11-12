@@ -46,6 +46,26 @@ public sealed class TagPageLayoutTests
         Assert.Equal(6, TagPageLayout.ChipWrapSpacingDip);
 
     [Fact]
+    public void ResolvePageMeasureWidth_Infinity_UsesHostNotChipNatural()
+    {
+        Assert.Equal(726, TagPageLayout.ResolvePageMeasureWidth(double.PositiveInfinity, 726), 0.01);
+        var fallback = TagPageLayout.ResolvePageMeasureWidth(double.PositiveInfinity, 0);
+        Assert.True(fallback < 900);
+        Assert.Equal(
+            TagPageLayout.SidebarWidthDip
+                + TagPageLayout.DetailsWidthDip
+                + TagPageLayout.BoardSoftMinWidthDip
+                + TagPageLayout.GapsWidth
+                + TagPageLayout.PagePaddingHorizontalDip,
+            fallback,
+            0.01);
+    }
+
+    [Fact]
+    public void ResolvePageMeasureWidth_Finite_KeepsAvailable() =>
+        Assert.Equal(1014, TagPageLayout.ResolvePageMeasureWidth(1014, 726), 0.01);
+
+    [Fact]
     public void Classify_PageWidth_WideNarrowStacked()
     {
         Assert.Equal(TagPageLayoutMode.Wide, TagPageLayout.ClassifyPageWidth(800));
