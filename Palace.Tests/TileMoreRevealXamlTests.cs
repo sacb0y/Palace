@@ -51,6 +51,11 @@ public sealed class TileMoreRevealXamlTests
             .FirstOrDefault(e => Attr(e, "Name") == "GrdAssetTile");
         Assert.NotNull(tile);
 
+        var container = button.Ancestors()
+            .FirstOrDefault(e => e.Name.LocalName == "ItemContainer");
+        Assert.NotNull(container);
+        Assert.Equal("True", Attr(container!, "UseSystemFocusVisuals"));
+
         var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml"));
         Assert.Contains("x:Name=\"MoreHidden\"", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"MoreShown\"", xaml, StringComparison.Ordinal);
@@ -62,6 +67,8 @@ public sealed class TileMoreRevealXamlTests
         Assert.Contains("TileMoreChrome.ShouldShow", cs, StringComparison.Ordinal);
         Assert.Contains("ApplyRevealVisual", cs, StringComparison.Ordinal);
         Assert.Contains("TileMoreChrome.Opacity", cs, StringComparison.Ordinal);
+        Assert.Contains("BottomEdgeAlignedRight", cs, StringComparison.Ordinal);
+        Assert.Contains("FlyoutShowOptions", cs, StringComparison.Ordinal);
         Assert.DoesNotContain(".IsPointerOver", cs, StringComparison.Ordinal);
     }
 

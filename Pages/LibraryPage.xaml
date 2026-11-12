@@ -1677,7 +1677,8 @@
                                 IsHoldingEnabled="True"
                                 IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                                 ManipulationMode="System"
-                                Tag="{x:Bind MosaicTag, Mode=OneWay}">
+                                Tag="{x:Bind MosaicTag, Mode=OneWay}"
+                                UseSystemFocusVisuals="True">
                                 <ItemContainer.ContextFlyout>
                                     <MenuFlyout Opening="AssetMenu_Opening">
                                         <!-- Batch header / Keep / Reject: visible only in select mode (ConfigureAssetMenu). -->

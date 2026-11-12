@@ -2162,7 +2162,14 @@ public sealed partial class LibraryPage : Page
         var container = FindAncestor<ItemContainer>(fe);
         if (container?.ContextFlyout is FlyoutBase flyout)
         {
-            flyout.ShowAt(fe);
+            // Anchor under the ⋮ (not the pointer). Right-click keeps default
+            // ContextFlyout-at-pointer via ItemContainer.
+            flyout.ShowAt(
+                fe,
+                new FlyoutShowOptions
+                {
+                    Placement = FlyoutPlacementMode.BottomEdgeAlignedRight,
+                });
         }
     }
 
