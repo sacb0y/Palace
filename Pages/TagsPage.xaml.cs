@@ -326,40 +326,23 @@ public sealed partial class TagsPage : Page
 
     private double ResolveTagHostWidthDip()
     {
-        EnsureShellContentFrameReference();
         EnsureShellNavReference();
 
-        // Prefer the tightest credible host — never a stale wide page ActualWidth.
-        var best = double.PositiveInfinity;
-        void Consider(double width)
+        // During MeasureOverride, Frame/Page ActualWidth feedback-loops (Desktop log:
+        // host 936 → 1272 → 2310). Use XamlRoot − nav pane only (Wimbly #197).
+        if (XamlRoot is null)
         {
-            if (double.IsFinite(width) && width >= MosaicLayoutWidth.MinUsable)
-            {
-                best = Math.Min(best, width);
-            }
+            return 0;
         }
 
-        Consider(_shellContentFrame?.ActualWidth ?? 0);
-
-        if (XamlRoot is not null)
+        var rootW = XamlRoot.Size.Width;
+        if (!double.IsFinite(rootW) || rootW < MosaicLayoutWidth.MinUsable)
         {
-            var rootW = XamlRoot.Size.Width;
-            if (double.IsFinite(rootW) && rootW >= MosaicLayoutWidth.MinUsable)
-            {
-                Consider(rootW - ResolveShellNavPaneWidthDip());
-            }
+            return 0;
         }
 
-        // Page ActualWidth only if already ≤ best candidate (skip stale maximize width).
-        var page = ActualWidth;
-        if (double.IsFinite(page)
-            && page >= MosaicLayoutWidth.MinUsable
-            && (!double.IsFinite(best) || page <= best + 0.5))
-        {
-            Consider(page);
-        }
-
-        return double.IsInfinity(best) ? 0 : best;
+        var host = rootW - ResolveShellNavPaneWidthDip();
+        return host >= MosaicLayoutWidth.MinUsable ? host : 0;
     }
 
     private void EnsureShellNavReference()
