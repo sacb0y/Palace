@@ -62,8 +62,12 @@ public sealed class TagPageLayoutTests
     }
 
     [Fact]
-    public void ResolvePageMeasureWidth_Finite_KeepsAvailable() =>
-        Assert.Equal(1014, TagPageLayout.ResolvePageMeasureWidth(1014, 726), 0.01);
+    public void ResolvePageMeasureWidth_LargeFinite_CapsToHost() =>
+        Assert.Equal(726, TagPageLayout.ResolvePageMeasureWidth(1239, 726), 0.01);
+
+    [Fact]
+    public void ResolvePageMeasureWidth_FiniteNoHost_KeepsAvailable() =>
+        Assert.Equal(1014, TagPageLayout.ResolvePageMeasureWidth(1014, 0), 0.01);
 
     [Fact]
     public void Classify_PageWidth_WideNarrowStacked()

@@ -38,14 +38,24 @@ public static class TagPageLayout
     /// </summary>
     public static double ResolvePageMeasureWidth(double availableWidth, double hostWidthDip)
     {
-        if (double.IsFinite(availableWidth) && availableWidth >= MosaicLayoutWidth.MinUsable)
+        var availOk = double.IsFinite(availableWidth) && availableWidth >= MosaicLayoutWidth.MinUsable;
+        var hostOk = double.IsFinite(hostWidthDip) && hostWidthDip >= MosaicLayoutWidth.MinUsable;
+
+        // Cap to ContentFrame host — a large finite available (or prior extent) must
+        // never expand Tags DesiredWidth past the shell slot (Wimbly #197 Step1).
+        if (availOk && hostOk)
         {
-            return availableWidth;
+            return Math.Min(availableWidth, hostWidthDip);
         }
 
-        if (double.IsFinite(hostWidthDip) && hostWidthDip >= MosaicLayoutWidth.MinUsable)
+        if (hostOk)
         {
             return hostWidthDip;
+        }
+
+        if (availOk)
+        {
+            return availableWidth;
         }
 
         return SidebarWidthDip

@@ -172,14 +172,14 @@ public sealed partial class TagsPage : Page
     /// </summary>
     protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
     {
+        var host = ResolveTagHostWidthDip();
+        var measureWidth = TagPageLayout.ResolvePageMeasureWidth(availableSize.Width, host);
         if (_measureLogRemaining > 0)
         {
-            LogMeasureOverrideAvailable(availableSize.Width);
+            LogMeasureOverrideAvailable(availableSize.Width, host, measureWidth);
             _measureLogRemaining--;
         }
 
-        var host = ResolveTagHostWidthDip();
-        var measureWidth = TagPageLayout.ResolvePageMeasureWidth(availableSize.Width, host);
         var measured = base.MeasureOverride(new Windows.Foundation.Size(measureWidth, availableSize.Height));
         return new Windows.Foundation.Size(Math.Min(measured.Width, measureWidth), measured.Height);
     }
@@ -187,30 +187,41 @@ public sealed partial class TagsPage : Page
     private void TagsPage_SizeChangedForMeasureLog(object sender, SizeChangedEventArgs e)
     {
         var w = e.NewSize.Width;
-        // Arm 3 MeasureOverride logs after maximize → restore to ~1024 content.
+        // Arm when shell ContentFrame shrinks into the ~1024-window host band
+        // (page ActualWidth may still be stale/wide — do not require 600–900 page).
+        EnsureShellContentFrameReference();
+        var slot = _shellContentFrame?.ActualWidth ?? 0;
+        if (double.IsFinite(slot) && slot is >= 600 and <= 900)
+        {
+            _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
+        }
+
+        // Also arm on page shrink from maximized-ish → narrower (restore path).
         if (double.IsFinite(_lastKnownPageWidth)
             && _lastKnownPageWidth > 1000
-            && w is >= 600 and <= 900)
+            && double.IsFinite(w)
+            && w < _lastKnownPageWidth - 50)
         {
-            _measureLogRemaining = 3;
+            _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
         }
 
         _lastKnownPageWidth = w;
     }
 
-    private static void LogMeasureOverrideAvailable(double availableWidth)
+    private static void LogMeasureOverrideAvailable(double availableWidth, double hostWidth, double measureWidth)
     {
         try
         {
             var path = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(),
                 "palace-tags-measure-override.log");
-            var label = double.IsFinite(availableWidth)
-                ? availableWidth.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
-                : availableWidth.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            static string Fmt(double v) =>
+                double.IsFinite(v)
+                    ? v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
+                    : v.ToString(System.Globalization.CultureInfo.InvariantCulture);
             System.IO.File.AppendAllText(
                 path,
-                $"{DateTime.UtcNow:O}\tavailableSize.Width={label}{Environment.NewLine}");
+                $"{DateTime.UtcNow:O}\tavailableSize.Width={Fmt(availableWidth)}\thost={Fmt(hostWidth)}\tmeasureWidth={Fmt(measureWidth)}{Environment.NewLine}");
         }
         catch
         {
