@@ -826,12 +826,16 @@ public sealed partial class CatalogService
     {
         var byId = tags.ToDictionary(t => t.Id, StringComparer.Ordinal);
         var parents = new Dictionary<string, List<Tag>>(StringComparer.Ordinal);
+        // Parents that have at least one child — GROUPS rows; face palette applies only here.
+        var groupIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var edge in memberships)
         {
-            if (!byId.TryGetValue(edge.ParentId, out var parent))
+            if (!byId.TryGetValue(edge.ParentId, out var parent) || !byId.ContainsKey(edge.ChildId))
             {
                 continue;
             }
+
+            groupIds.Add(edge.ParentId);
 
             if (!parents.TryGetValue(edge.ChildId, out var list))
             {
@@ -845,7 +849,7 @@ public sealed partial class CatalogService
         var cache = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var tag in tags)
         {
-            ResolveEffectiveColor(tag.Id, byId, parents, cache, []);
+            ResolveEffectiveColor(tag.Id, byId, parents, groupIds, cache, []);
         }
 
         return cache;
@@ -856,19 +860,14 @@ public sealed partial class CatalogService
         IReadOnlyList<Tag> tags,
         IReadOnlyList<TagMembership> memberships)
     {
+        // Face palette fills are display-only — describe from stored colours only.
         if (!string.IsNullOrWhiteSpace(tag.Color) && TagInk.Normalize(tag.Color) is not null)
         {
             return "Custom";
         }
 
-        var colors = MapEffectiveColors(tags, memberships);
-        if (colors.GetValueOrDefault(tag.Id) is null)
-        {
-            return "No color";
-        }
-
         var ancestor = FindColorAncestorName(tag.Id, tags.ToDictionary(t => t.Id, StringComparer.Ordinal), memberships);
-        return ancestor is null ? "Inherited" : $"Inherited from {ancestor}";
+        return ancestor is null ? "No color" : $"Inherited from {ancestor}";
     }
 
     public Task<bool> AddMembershipAsync(string parentId, string childId) =>
@@ -1288,6 +1287,7 @@ public sealed partial class CatalogService
         string tagId,
         IReadOnlyDictionary<string, Tag> tags,
         IReadOnlyDictionary<string, List<Tag>> parents,
+        HashSet<string> groupIds,
         Dictionary<string, string?> cache,
         HashSet<string> visiting)
     {
@@ -1301,28 +1301,38 @@ public sealed partial class CatalogService
             return null;
         }
 
-        if (TagInk.Normalize(tag.Color) is { } own)
+        // Readable own colour wins; near-black stored colours fall through to inherit / face.
+        if (TagInk.Normalize(tag.Color) is { } own && !TagInk.IsTooDarkForFace(own))
         {
             cache[tagId] = own;
             visiting.Remove(tagId);
             return own;
         }
 
-        if (!parents.TryGetValue(tagId, out var list) || list.Count == 0)
+        if (parents.TryGetValue(tagId, out var list) && list.Count > 0)
         {
-            cache[tagId] = null;
+            var winner = list
+                .OrderByDescending(p => p.Priority)
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .First();
+            var inherited = ResolveEffectiveColor(winner.Id, tags, parents, groupIds, cache, visiting);
+            cache[tagId] = inherited;
             visiting.Remove(tagId);
-            return null;
+            return inherited;
         }
 
-        var winner = list
-            .OrderByDescending(p => p.Priority)
-            .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
-            .First();
-        var inherited = ResolveEffectiveColor(winner.Id, tags, parents, cache, visiting);
-        cache[tagId] = inherited;
+        // Only GROUPS (tags with children) get the mockup face palette. Ungrouped leaves stay neutral.
+        if (groupIds.Contains(tagId))
+        {
+            var face = TagInk.FaceColor(tag.Color, string.IsNullOrWhiteSpace(tag.Id) ? tag.Name : tag.Id);
+            cache[tagId] = face;
+            visiting.Remove(tagId);
+            return face;
+        }
+
+        cache[tagId] = null;
         visiting.Remove(tagId);
-        return inherited;
+        return null;
     }
 
     private static string? FindColorAncestorName(

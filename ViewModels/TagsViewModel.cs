@@ -158,7 +158,11 @@ public partial class TagsViewModel : ObservableObject
         MosaicSortOrder.DirectionLabel(MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), descending: true));
     public string SortAscendingLabel =>
         MosaicSortOrder.DirectionLabel(MosaicSortOrder.Compose(MosaicSortOrder.FieldOf(MosaicSort), descending: false));
+    /// <summary>Full sort wording for tooltip / AutomationProperties.Name.</summary>
     public string SortButtonLabel => MosaicSortOrder.ButtonLabel(MosaicSort);
+
+    /// <summary>Narrow Tags mosaic DropDownButton face (~1280 DIP).</summary>
+    public string SortButtonFaceLabel => MosaicSortOrder.CompactButtonLabel(MosaicSort);
 
     [RelayCommand]
     private void ToggleSortDirection() => MosaicSort = MosaicSortOrder.ToggleDirection(MosaicSort);
@@ -304,6 +308,7 @@ public partial class TagsViewModel : ObservableObject
         OnPropertyChanged(nameof(SortDescendingLabel));
         OnPropertyChanged(nameof(SortAscendingLabel));
         OnPropertyChanged(nameof(SortButtonLabel));
+        OnPropertyChanged(nameof(SortButtonFaceLabel));
         if (_suppressMosaicSort)
         {
             return;
@@ -1235,9 +1240,9 @@ public partial class TagsViewModel : ObservableObject
             return;
         }
 
+        // GROUPS header is not selectable; Add group (+) owns create.
         if (group.ScopeKind == TagScope.GroupsHeader)
         {
-            _ = CreateGroupCommand.ExecuteAsync(null);
             return;
         }
 

@@ -12,7 +12,7 @@
   <Identity
     Name="C20A7629-6BDE-449F-958A-5AAF8BCE88F3"
     Publisher="CN=AppPublisher"
-    Version="0.3.78.0" />
+    Version="0.3.81.0" />
 
   <mp:PhoneIdentity PhoneProductId="C20A7629-6BDE-449F-958A-5AAF8BCE88F3" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -39,7 +39,7 @@
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
         DisplayName="Palace"
-        Description="Palace — local image, video, and asset library"
+        Description="Palace - local image, video, and asset library"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
@@ -57,3 +57,5 @@
     <systemai:Capability Name="systemAIModels"/>
   </Capabilities>
 </Package>
+
+

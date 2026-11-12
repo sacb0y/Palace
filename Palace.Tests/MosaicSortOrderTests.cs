@@ -129,4 +129,11 @@ public sealed class MosaicSortOrderTests
     [Fact]
     public void CatalogDefault_StaysName() =>
         Assert.Equal(MosaicSort.Name, MosaicSortOrder.CatalogDefault);
+
+    [Fact]
+    public void CompactButtonLabel_OmitsSortPrefixAndShortensDirection()
+    {
+        Assert.Equal("Date modified · Newest", MosaicSortOrder.CompactButtonLabel(MosaicSort.DateNewest));
+        Assert.Equal("Sort: Date modified · Newest first", MosaicSortOrder.ButtonLabel(MosaicSort.DateNewest));
+    }
 }

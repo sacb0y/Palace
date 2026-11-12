@@ -914,6 +914,26 @@ public partial class TagBoardGroup : ObservableObject
 
     public bool IsGroupsHeader => ScopeKind == TagScope.GroupsHeader;
 
+    /// <summary>Fixed nav row (All tags / Uncategorized / Starred / Recent / Aliases).</summary>
+    public bool IsFixedView =>
+        ScopeKind is TagScope.All or TagScope.Ungrouped or TagScope.Starred
+            or TagScope.Recent or TagScope.Aliases;
+
+    public bool IsAllScope => ScopeKind == TagScope.All;
+
+    public bool IsUncategorizedScope => ScopeKind == TagScope.Ungrouped;
+
+    public bool IsStarredScope => ScopeKind == TagScope.Starred;
+
+    public bool IsRecentScope => ScopeKind == TagScope.Recent;
+
+    public bool IsAliasesScope => ScopeKind == TagScope.Aliases;
+
+    /// <summary>User group under GROUPS — round colour dot, not a fixed-view glyph.</summary>
+    public bool IsUserGroupRow => !IsGroupsHeader && ScopeKind is null;
+
+    public bool ShowChipCount => !IsGroupsHeader;
+
     /// <summary>
     /// Full tag count for the group face (Library Tags may truncate <see cref="Chips"/>).
     /// Null = use <see cref="Chips"/>.Count (Tags board loads every chip).
@@ -943,10 +963,11 @@ public partial class TagBoardGroup : ObservableObject
 
     public int EffectiveChipCount => TotalChipCount ?? Chips.Count;
 
+    /// <summary>Children header / ToString — keeps count in parentheses; sidebar binds Name + ChipCountText.</summary>
     public string CountLabel =>
         IsGroupsHeader ? Name : $"{Name} ({EffectiveChipCount})";
 
-    /// <summary>Chip count alone for T8 group-row trailing label (full group size).</summary>
+    /// <summary>Right-aligned count for Tags / Library board rows (no parentheses).</summary>
     public string ChipCountText => EffectiveChipCount.ToString();
 
     /// <summary>Hidden chips under a truncated Library Tags group ("Show N more").</summary>

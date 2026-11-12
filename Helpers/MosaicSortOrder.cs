@@ -144,6 +144,24 @@ public static class MosaicSortOrder
         return $"Sort: {field} · {DirectionLabel(sort)}";
     }
 
+    /// <summary>
+    /// Narrow Tags mosaic face (no "Sort:" / " first") so ~1280 DIP columns do not clip.
+    /// Full <see cref="ButtonLabel"/> stays on tooltip / AutomationProperties.
+    /// </summary>
+    public static string CompactButtonLabel(MosaicSort sort)
+    {
+        var field = FieldChoices[FieldIndexOf(sort)].Label;
+        var descending = IsDescending(sort);
+        var dir = FieldOf(sort) switch
+        {
+            MosaicSortField.Name or MosaicSortField.Type => descending ? "Z to A" : "A to Z",
+            MosaicSortField.Size => descending ? "Largest" : "Smallest",
+            MosaicSortField.Rating => descending ? "Highest" : "Lowest",
+            _ => descending ? "Newest" : "Oldest"
+        };
+        return $"{field} · {dir}";
+    }
+
     public static string FieldLabel(MosaicSortField field)
     {
         foreach (var (f, label) in FieldChoices)

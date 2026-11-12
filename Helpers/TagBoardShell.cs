@@ -10,7 +10,20 @@ public static class TagBoardShell
     public const string UngroupedKey = "ungrouped";
     public const string StarredKey = "starred";
     public const string RecentKey = "recent";
+    public const string AliasesKey = "aliases";
     public const string GroupsHeaderKey = "groups-header";
+
+    /// <summary>Fluent Size16 face for fixed Tags sidebar views (All tags…Aliases).</summary>
+    public const double ViewIconDip = 16;
+
+    /// <summary>
+    /// Layout slot for <see cref="ViewIconDip"/>. A tight 16×16 clips Tag / Clock / Link
+    /// left ink (Star looked OK); Gooey Aliases mockup leaves ≥20 DIP.
+    /// </summary>
+    public const double ViewIconSlotDip = 20;
+
+    /// <summary>Left selection accent width; reserved so selected/unselected share one icon x.</summary>
+    public const double ViewAccentWidthDip = 3;
 
     public const string NewTagsPlaceholder =
         "Type or paste names — comma, semicolon or one per line";
@@ -60,11 +73,18 @@ public static class TagBoardShell
     }
 
     public static bool IsNavSection(string? key) =>
-        key is AllKey or UngroupedKey or StarredKey or RecentKey or GroupsHeaderKey;
+        key is AllKey or UngroupedKey or StarredKey or RecentKey or AliasesKey or GroupsHeaderKey;
 
     public static bool IsGroupsHeader(string? key) =>
         string.Equals(key, GroupsHeaderKey, StringComparison.Ordinal);
 
     public static bool IsUserGroupKey(string? key) =>
         !string.IsNullOrEmpty(key) && !IsNavSection(key);
+
+    /// <summary>
+    /// True when the icon host is wide enough that Size16 Fluent glyphs are not clipped
+    /// and the glyph sits inside the slot (icon ≤ slot, slot ≥ 20).
+    /// </summary>
+    public static bool ViewIconSlotIsSafe(double slotDip, double iconDip = ViewIconDip) =>
+        slotDip >= ViewIconSlotDip && iconDip > 0 && iconDip <= slotDip;
 }

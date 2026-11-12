@@ -138,7 +138,7 @@ public sealed class TagPanelBuilderTests
         var board = TagPanelBuilder.BuildBoard(tags, edges);
 
         Assert.Equal(
-            ["All", "Uncategorized", "Starred", "Recent", "Aliases", "GROUPS", "Character", "Shot"],
+            ["All tags", "Uncategorized", "Starred", "Recent", "Aliases", "GROUPS", "Character", "Shot"],
             board.Select(g => g.Name).ToArray());
         Assert.Equal(TagScope.All, board[0].ScopeKind);
         Assert.Equal(["Character", "Closeup", "Loose", "Shot", "Sonic", "Tails"], board[0].Chips.Select(c => c.Name).ToArray());
@@ -161,7 +161,7 @@ public sealed class TagPanelBuilderTests
         var board = TagPanelBuilder.BuildBoard(tags, edges, aliasCount: 14);
 
         Assert.Equal(
-            ["All", "Uncategorized", "Starred", "Recent", "Aliases", "GROUPS"],
+            ["All tags", "Uncategorized", "Starred", "Recent", "Aliases", "GROUPS"],
             board.Take(6).Select(g => g.Name).ToArray());
         Assert.Equal(
             ["all", "ungrouped", "starred", "recent", "aliases", "groups-header"],
@@ -191,7 +191,7 @@ public sealed class TagPanelBuilderTests
         var board = TagPanelBuilder.BuildBoard(tags, edges, query: "sonic");
 
         Assert.Equal(
-            ["All", "Uncategorized", "Starred", "Recent", "Aliases", "GROUPS"],
+            ["All tags", "Uncategorized", "Starred", "Recent", "Aliases", "GROUPS"],
             board.Take(6).Select(g => g.Name).ToArray());
         Assert.Equal("Character", Assert.Single(board.Skip(6)).Name);
     }
