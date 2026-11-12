@@ -2162,7 +2162,314 @@ public sealed partial class LibraryPage : Page
         var container = FindAncestor<ItemContainer>(fe);
         if (container?.ContextFlyout is FlyoutBase flyout)
         {
-            flyout.ShowAt(fe);
+            // Anchor under the ⋮ (not the pointer). Right-click keeps default
+            // ContextFlyout-at-pointer via ItemContainer.
+            flyout.ShowAt(
+                fe,
+                new FlyoutShowOptions
+                {
+                    Placement = FlyoutPlacementMode.BottomEdgeAlignedRight,
+                });
+        }
+    }
+
+    /// <summary>
+    /// Wire hover / focus / selected / flyout → opacity / hit-test / tab on
+    /// <c>BtnAssetMore</c> (see <see cref="TileMoreChrome"/>).
+    /// </summary>
+    private void BtnAssetMore_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+        {
+            return;
+        }
+
+        if (button.Tag is TileMoreReveal existing)
+        {
+            existing.Detach();
+        }
+
+        var tile = FindAncestor<Grid>(button);
+        // Named asset face grid only — skip folder-header grids.
+        while (tile is not null && tile.Name != "GrdAssetTile")
+        {
+            tile = FindAncestor<Grid>(VisualTreeHelper.GetParent(tile));
+        }
+
+        var container = FindAncestor<ItemContainer>(button);
+        if (tile is null || container is null)
+        {
+            return;
+        }
+
+        var reveal = new TileMoreReveal(this, button, container);
+        button.Tag = reveal;
+        reveal.Attach();
+        reveal.Apply();
+    }
+
+    private void BtnAssetMore_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not TileMoreReveal reveal)
+        {
+            return;
+        }
+
+        reveal.Detach();
+        if (ReferenceEquals(button.Tag, reveal))
+        {
+            button.Tag = null;
+        }
+    }
+
+    /// <summary>Per-realized mosaic tile ⋮ reveal tracker (ItemsView recycle-safe).</summary>
+    private sealed class TileMoreReveal
+    {
+        private readonly LibraryPage _page;
+        private readonly Button _button;
+        private readonly ItemContainer _container;
+        private AssetItem? _item;
+        private FlyoutBase? _flyout;
+        private bool _pointerOver;
+        private bool _focused;
+        private bool _flyoutOpen;
+        private bool _attached;
+        private bool _shown;
+
+        public TileMoreReveal(
+            LibraryPage page,
+            Button button,
+            ItemContainer container)
+        {
+            _page = page;
+            _button = button;
+            _container = container;
+        }
+
+        public void Attach()
+        {
+            if (_attached)
+            {
+                return;
+            }
+
+            _attached = true;
+            _container.PointerEntered += OnPointerEntered;
+            _container.PointerExited += OnPointerExited;
+            _container.PointerCanceled += OnPointerCanceled;
+            _container.PointerCaptureLost += OnPointerCaptureLost;
+            _container.GotFocus += OnGotFocus;
+            _container.LostFocus += OnLostFocus;
+            _button.GotFocus += OnGotFocus;
+            _button.LostFocus += OnLostFocus;
+            _button.DataContextChanged += OnDataContextChanged;
+            BindItem(_page.FindAssetItem(_button) ?? _button.DataContext as AssetItem);
+            BindFlyout(_container.ContextFlyout);
+            // Track hover via enter/exit/cancel/capture-lost (no pointer-over property).
+            _pointerOver = false;
+            _focused = HasKeyboardFocusInside();
+        }
+
+        public void Detach()
+        {
+            if (!_attached)
+            {
+                return;
+            }
+
+            _attached = false;
+            _container.PointerEntered -= OnPointerEntered;
+            _container.PointerExited -= OnPointerExited;
+            _container.PointerCanceled -= OnPointerCanceled;
+            _container.PointerCaptureLost -= OnPointerCaptureLost;
+            _container.GotFocus -= OnGotFocus;
+            _container.LostFocus -= OnLostFocus;
+            _button.GotFocus -= OnGotFocus;
+            _button.LostFocus -= OnLostFocus;
+            _button.DataContextChanged -= OnDataContextChanged;
+            BindItem(null);
+            BindFlyout(null);
+            _pointerOver = false;
+            _focused = false;
+            _flyoutOpen = false;
+        }
+
+        public void Apply()
+        {
+            if (!_attached)
+            {
+                return;
+            }
+
+            var selected = _item?.IsSelected == true || _container.IsSelected;
+            var show = TileMoreChrome.ShouldShow(
+                _pointerOver,
+                _focused,
+                selected,
+                _flyoutOpen);
+            if (show == _shown
+                && _button.Opacity == (show ? 1 : 0)
+                && _button.IsHitTestVisible == show
+                && _button.IsTabStop == TileMoreChrome.IsTabStop(show))
+            {
+                return;
+            }
+
+            _shown = show;
+            ApplyRevealVisual(_button, show);
+        }
+
+        private static void ApplyRevealVisual(Button button, bool show)
+        {
+            button.Opacity = TileMoreChrome.Opacity(show);
+            button.IsHitTestVisible = show;
+            button.IsTabStop = TileMoreChrome.IsTabStop(show);
+        }
+
+        private void BindItem(AssetItem? item)
+        {
+            if (ReferenceEquals(_item, item))
+            {
+                return;
+            }
+
+            if (_item is not null)
+            {
+                _item.PropertyChanged -= OnItemPropertyChanged;
+            }
+
+            _item = item;
+            if (_item is not null)
+            {
+                _item.PropertyChanged += OnItemPropertyChanged;
+            }
+        }
+
+        private void BindFlyout(FlyoutBase? flyout)
+        {
+            if (ReferenceEquals(_flyout, flyout))
+            {
+                return;
+            }
+
+            if (_flyout is not null)
+            {
+                _flyout.Opened -= OnFlyoutOpened;
+                _flyout.Closed -= OnFlyoutClosed;
+            }
+
+            _flyout = flyout;
+            _flyoutOpen = false;
+            if (_flyout is not null)
+            {
+                _flyout.Opened += OnFlyoutOpened;
+                _flyout.Closed += OnFlyoutClosed;
+            }
+        }
+
+        private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
+        {
+            // Recycled ItemContainer keeps pointer handlers — clear sticky hover.
+            _pointerOver = false;
+            _flyoutOpen = false;
+            _focused = HasKeyboardFocusInside();
+            BindItem(_page.FindAssetItem(_button) ?? args.NewValue as AssetItem);
+            BindFlyout(_container.ContextFlyout);
+            Apply();
+        }
+
+        private void OnItemPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is null or nameof(AssetItem.IsSelected))
+            {
+                Apply();
+            }
+        }
+
+        private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
+        {
+            _pointerOver = true;
+            Apply();
+        }
+
+        private void OnPointerExited(object sender, PointerRoutedEventArgs e) =>
+            ClearPointerOver();
+
+        private void OnPointerCanceled(object sender, PointerRoutedEventArgs e) =>
+            ClearPointerOver();
+
+        private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
+            ClearPointerOver();
+
+        private void ClearPointerOver()
+        {
+            _pointerOver = false;
+            Apply();
+        }
+
+        private void OnGotFocus(object sender, RoutedEventArgs e)
+        {
+            _focused = true;
+            Apply();
+        }
+
+        private void OnLostFocus(object sender, RoutedEventArgs e)
+        {
+            // Focus may move tile → ⋮ (or back); wait a tick before hiding.
+            _ = _page.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_attached)
+                {
+                    return;
+                }
+
+                _focused = HasKeyboardFocusInside();
+                Apply();
+            });
+        }
+
+        private void OnFlyoutOpened(object? sender, object e)
+        {
+            _flyoutOpen = true;
+            Apply();
+        }
+
+        private void OnFlyoutClosed(object? sender, object e)
+        {
+            _flyoutOpen = false;
+            // Keep last enter/exit pointer flag; PointerEntered re-fires if still over.
+            _focused = HasKeyboardFocusInside();
+            Apply();
+        }
+
+        private bool HasKeyboardFocusInside()
+        {
+            if (_container.FocusState != FocusState.Unfocused
+                || _button.FocusState != FocusState.Unfocused)
+            {
+                return true;
+            }
+
+            if (_button.XamlRoot is null)
+            {
+                return false;
+            }
+
+            var focused = FocusManager.GetFocusedElement(_button.XamlRoot) as DependencyObject;
+            return focused is not null && IsInside(_container, focused);
+        }
+
+        private static bool IsInside(DependencyObject root, DependencyObject? node)
+        {
+            for (var cur = node; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+            {
+                if (ReferenceEquals(cur, root))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 

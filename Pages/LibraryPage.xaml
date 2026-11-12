@@ -1677,7 +1677,8 @@
                                 IsHoldingEnabled="True"
                                 IsTabStop="{x:Bind helpers:BindHelpers.Not(IsFolderHeader), Mode=OneWay}"
                                 ManipulationMode="System"
-                                Tag="{x:Bind MosaicTag, Mode=OneWay}">
+                                Tag="{x:Bind MosaicTag, Mode=OneWay}"
+                                UseSystemFocusVisuals="True">
                                 <ItemContainer.ContextFlyout>
                                     <MenuFlyout Opening="AssetMenu_Opening">
                                         <!-- Batch header / Keep / Reject: visible only in select mode (ConfigureAssetMenu). -->
@@ -1980,6 +1981,7 @@
                                     </Button>
                                 </Grid>
                                 <Grid
+                                    x:Name="GrdAssetTile"
                                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                                     DoubleTapped="AssetItem_DoubleTapped"
                                     IsDoubleTapEnabled="True"
@@ -2094,8 +2096,10 @@
                                             IconSize="Size16"
                                             IconVariant="Regular" />
                                     </Border>
-                                    <!-- Context menu: "…" / right-click (not touch long-press). -->
+                                    <!-- Context menu: "…" / right-click (not touch long-press).
+                                         Idle Opacity=0 + no hit-test/tab; TileMoreReveal shows on hover/focus/selected/flyout. -->
                                     <Button
+                                        x:Name="BtnAssetMore"
                                         Width="28"
                                         Height="28"
                                         Margin="4"
@@ -2108,7 +2112,12 @@
                                         BorderThickness="0"
                                         Click="AssetMore_Click"
                                         CornerRadius="14"
-                                        ToolTipService.ToolTip="More">
+                                        IsHitTestVisible="False"
+                                        IsTabStop="False"
+                                        Loaded="BtnAssetMore_Loaded"
+                                        Opacity="0"
+                                        ToolTipService.ToolTip="More"
+                                        Unloaded="BtnAssetMore_Unloaded">
                                         <ic:FluentIcon Icon="MoreVertical" IconSize="Size16" IconVariant="Regular" />
                                     </Button>
                                 </Grid>
