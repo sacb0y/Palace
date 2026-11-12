@@ -1,0 +1,9 @@
+﻿build_sha=af3c2c2ea3b77b242ec981b6dcb7a74e46679244
+dpi=144
+scale_pct=150
+identity=PalaceOrganizeTest-5E1F
+version=0.3.79
+maximized=False
+window_dip=1280x900
+click_method=winapp ui click (mouse simulation / SendInput-class)
+host=FENRIR-STUDIO

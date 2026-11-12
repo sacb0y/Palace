@@ -1,0 +1,5 @@
+﻿clicked SelTagScopeAll (all-tags) via winapp ui click (mouse simulation)
+clicked BtnTagGroup_Ungrouped (uncategorized) via winapp ui click (mouse simulation)
+clicked SelTagScopeRecent (recent) via winapp ui click (mouse simulation)
+clicked SelTagScopeStarred (starred) via winapp ui click (mouse simulation)
+clicked SelTagScopeAliases (aliases) via winapp ui click (mouse simulation)
