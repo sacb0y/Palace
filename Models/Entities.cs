@@ -99,6 +99,26 @@ public sealed class TagCreateBatchResult
     public string Message { get; init; } = "";
 }
 
+/// <summary>
+/// Drag / Add to group batch. Journals only <see cref="MembershipAddResult.Added"/> edges
+/// (plus optional CreateTag when New group…).
+/// </summary>
+public sealed class TagMembershipBatchResult
+{
+    public int Added { get; init; }
+    public int AlreadyMember { get; init; }
+    public int CycleRefuse { get; init; }
+    public string? GroupId { get; init; }
+    public string? GroupName { get; init; }
+    public string? CreatedGroupId { get; init; }
+    public string? BatchId { get; init; }
+    public bool Ok { get; init; } = true;
+    public string Message { get; init; } = "";
+
+    public static TagMembershipBatchResult Fail(string message) =>
+        new() { Ok = false, Message = message };
+}
+
 public sealed class TagMembership
 {
     public string ParentId { get; set; } = "";

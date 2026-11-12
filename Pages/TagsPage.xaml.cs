@@ -5,12 +5,16 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Shapes;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
 using Palace.ViewModels;
+using Windows.Graphics.Imaging;
 using Windows.Media.Core;
 using Windows.Storage;
+using Windows.Storage.Streams;
 using Windows.System;
 using Windows.UI;
 using Windows.UI.Core;
@@ -44,6 +48,17 @@ public sealed partial class TagsPage : Page
     private bool _lastPressWasTouch;
     private bool _suppressTouchContextFlyout;
     private ViewerOverlayAutoHide? _viewerOverlayAutoHide;
+    private Frame? _shellContentFrame;
+    private NavigationView? _shellNav;
+    private bool _tagLayoutApplying;
+    private bool _tagLayoutQueued;
+    private double _lastTagHostWidth = double.NaN;
+    private bool _lastTagShowDetails;
+    private TagPageLayoutMode? _lastTagLayoutMode;
+    private bool? _boardHeaderCompact;
+    private BitmapImage? _tagDragGhost;
+    private string? _tagDragGhostKey;
+    private int _tagDragGhostEpoch;
 
     public TagsPage()
     {
@@ -68,9 +83,17 @@ public sealed partial class TagsPage : Page
                     GrdGalleryOverlay.Focus(FocusState.Programmatic);
                 }
             }
+
+            if (e.PropertyName is nameof(TagsViewModel.ShowDetails))
+            {
+                RefreshTagColumnLayout();
+            }
         };
+        SizeChanged += (_, _) => RefreshTagColumnLayout();
         Loaded += async (_, _) =>
         {
+            HookShellNavLayoutTracking();
+            RefreshTagColumnLayout();
             GrdTagAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdTagAssets_KeyDown), true);
             GrdTagAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdTagAssets_RangeMoved), true);
             GrdTagAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdTagAssets_RangeReleased), true);
@@ -91,6 +114,8 @@ public sealed partial class TagsPage : Page
         };
         Unloaded += (_, _) =>
         {
+            UnhookShellNavLayoutTracking();
+            _shellContentFrame = null;
             if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
             {
                 ViewModel.MosaicReset = null;
@@ -109,6 +134,247 @@ public sealed partial class TagsPage : Page
             }
         };
     }
+
+    /// <summary>
+    /// AdaptiveTrigger narrow/stack guards only. Wide (~1014 client) keeps XAML
+    /// 200 / * / 260 — must not Allocate over columns (Wimbly #197).
+    /// </summary>
+    private void RefreshTagColumnLayout()
+    {
+        if (_tagLayoutApplying)
+        {
+            _tagLayoutQueued = true;
+            return;
+        }
+
+        _tagLayoutApplying = true;
+        try
+        {
+            do
+            {
+                _tagLayoutQueued = false;
+                ApplyTagColumnLayout();
+            }
+            while (_tagLayoutQueued);
+        }
+        finally
+        {
+            _tagLayoutApplying = false;
+        }
+    }
+
+    private void TagsWidthStates_CurrentStateChanged(object sender, VisualStateChangedEventArgs e) =>
+        RefreshTagColumnLayout();
+
+    /// <summary>
+    /// A1: Expand/Collapse icon-only (labels Collapsed) when board header &lt;~400 DIP.
+    /// Tooltips + AutomationProperties.Name stay for the icon-only state.
+    /// </summary>
+    private void GrdTagBoardHeader_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Width < TagPageLayout.BoardHeaderCompactBelowDip;
+        if (_boardHeaderCompact == compact)
+        {
+            return;
+        }
+
+        _boardHeaderCompact = compact;
+        var labelVisibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        TxtExpandAllTagBoard.Visibility = labelVisibility;
+        TxtCollapseAllTagBoard.Visibility = labelVisibility;
+        BtnExpandAllTagBoard.Padding = compact ? new Thickness(6, 0, 6, 0) : new Thickness(8, 4, 8, 4);
+        BtnCollapseAllTagBoard.Padding = compact ? new Thickness(6, 0, 6, 0) : new Thickness(8, 4, 8, 4);
+    }
+
+    private void ApplyTagColumnLayout()
+    {
+        var host = ResolveTagHostWidthDip();
+        var showDetails = ViewModel.ShowDetails;
+        if (host < MosaicLayoutWidth.MinUsable)
+        {
+            return;
+        }
+
+        var mode = TagPageLayout.ClassifyPageWidth(host);
+        if (Math.Abs(host - _lastTagHostWidth) < 0.5
+            && showDetails == _lastTagShowDetails
+            && mode == _lastTagLayoutMode)
+        {
+            return;
+        }
+
+        if (mode == TagPageLayoutMode.Wide)
+        {
+            RestoreWideTagColumns(showDetails);
+        }
+        else
+        {
+            var (_, _, details, _) = TagPageLayout.AllocateForPage(host, showDetails);
+            ApplyNarrowOrStackedTagColumns(mode, showDetails, details);
+        }
+
+        _lastTagHostWidth = host;
+        _lastTagShowDetails = showDetails;
+        _lastTagLayoutMode = mode;
+    }
+
+    /// <summary>XAML defaults — board star, details 260 (240–300). No Allocate.</summary>
+    private void RestoreWideTagColumns(bool showDetails)
+    {
+        ColTagSidebar.MinWidth = 0;
+        ColTagBoard.MinWidth = 0;
+        ColTagDetails.MinWidth = TagPageLayout.DetailsMinWidthDip;
+        ColTagDetails.MaxWidth = TagPageLayout.DetailsMaxWidthDip;
+        ColTagSidebar.Width = new GridLength(TagPageLayout.SidebarWidthDip);
+        ColTagBoard.Width = new GridLength(1, GridUnitType.Star);
+        ColTagDetails.Width = showDetails
+            ? new GridLength(260)
+            : new GridLength(0);
+        UnstackTagDetails();
+    }
+
+    private void ApplyNarrowOrStackedTagColumns(
+        TagPageLayoutMode mode,
+        bool showDetails,
+        double detailsWidth)
+    {
+        ColTagSidebar.MinWidth = 0;
+        ColTagBoard.MinWidth = 0;
+        ColTagDetails.MaxWidth = TagPageLayout.DetailsMaxWidthDip;
+
+        if (mode == TagPageLayoutMode.Stacked && showDetails)
+        {
+            ColTagSidebar.Width = new GridLength(TagPageLayout.NarrowSidebarWidthDip);
+            ColTagBoard.Width = new GridLength(1, GridUnitType.Star);
+            ColTagDetails.MinWidth = 0;
+            ColTagDetails.Width = new GridLength(0);
+            Grid.SetRow(ScrTagDetails, 2);
+            Grid.SetColumn(ScrTagDetails, 1);
+            Grid.SetColumnSpan(ScrTagDetails, 1);
+            Grid.SetRowSpan(GrdTagSidebarPane, 2);
+            RowTagDetailsStack.Height = new GridLength(1, GridUnitType.Star);
+            RowTagDetailsStack.MinHeight = 160;
+            ScrTagDetails.Width = double.NaN;
+            ScrTagDetails.HorizontalAlignment = HorizontalAlignment.Stretch;
+            return;
+        }
+
+        // Narrow (&lt;760): sidebar 180, details 240, board *.
+        ColTagSidebar.Width = new GridLength(TagPageLayout.NarrowSidebarWidthDip);
+        ColTagBoard.Width = new GridLength(1, GridUnitType.Star);
+        ColTagDetails.MinWidth = TagPageLayout.DetailsMinWidthDip;
+        ColTagDetails.Width = showDetails
+            ? new GridLength(Math.Max(TagPageLayout.DetailsMinWidthDip, detailsWidth))
+            : new GridLength(0);
+        UnstackTagDetails();
+    }
+
+    private void UnstackTagDetails()
+    {
+        Grid.SetRow(ScrTagDetails, 1);
+        Grid.SetColumn(ScrTagDetails, 2);
+        Grid.SetColumnSpan(ScrTagDetails, 1);
+        Grid.SetRowSpan(GrdTagSidebarPane, 1);
+        RowTagDetailsStack.Height = new GridLength(0);
+        RowTagDetailsStack.MinHeight = 0;
+    }
+
+    private double ResolveTagHostWidthDip()
+    {
+        EnsureShellContentFrameReference();
+        var slot = _shellContentFrame?.ActualWidth ?? 0;
+        if (double.IsFinite(slot) && slot >= MosaicLayoutWidth.MinUsable)
+        {
+            return slot;
+        }
+
+        var page = ActualWidth;
+        if (double.IsFinite(page) && page >= MosaicLayoutWidth.MinUsable)
+        {
+            return page;
+        }
+
+        return 0;
+    }
+
+    private void EnsureShellContentFrameReference()
+    {
+        if (_shellContentFrame is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is Frame frame)
+            {
+                _shellContentFrame = frame;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+    }
+
+    private void HookShellNavLayoutTracking()
+    {
+        EnsureShellContentFrameReference();
+        if (_shellContentFrame is not null)
+        {
+            _shellContentFrame.SizeChanged -= ShellContentFrame_SizeChanged;
+            _shellContentFrame.SizeChanged += ShellContentFrame_SizeChanged;
+        }
+
+        if (_shellNav is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is NavigationView nav)
+            {
+                _shellNav = nav;
+                nav.PaneOpened += ShellNav_PaneLayoutChanged;
+                nav.PaneClosed += ShellNav_PaneLayoutChanged;
+                nav.DisplayModeChanged += ShellNav_DisplayModeChanged;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
+    }
+
+    private void UnhookShellNavLayoutTracking()
+    {
+        if (_shellContentFrame is not null)
+        {
+            _shellContentFrame.SizeChanged -= ShellContentFrame_SizeChanged;
+        }
+
+        if (_shellNav is null)
+        {
+            return;
+        }
+
+        _shellNav.PaneOpened -= ShellNav_PaneLayoutChanged;
+        _shellNav.PaneClosed -= ShellNav_PaneLayoutChanged;
+        _shellNav.DisplayModeChanged -= ShellNav_DisplayModeChanged;
+        _shellNav = null;
+    }
+
+    private void ShellContentFrame_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RefreshTagColumnLayout();
+
+    private void ShellNav_PaneLayoutChanged(NavigationView sender, object args) =>
+        RefreshTagColumnLayout();
+
+    private void ShellNav_DisplayModeChanged(
+        NavigationView sender,
+        NavigationViewDisplayModeChangedEventArgs args) =>
+        RefreshTagColumnLayout();
 
     public static IRelayCommand<AssetItem?> GetOpenAssetCommand() => AppServices.Tags.OpenAssetCommand;
 
@@ -211,10 +477,374 @@ public sealed partial class TagsPage : Page
 
     private void TagChip_Click(object sender, RoutedEventArgs e)
     {
+        if (sender is not FrameworkElement { Tag: TagChipItem chip })
+        {
+            return;
+        }
+
+        var ctrl = IsKeyDown(VirtualKey.Control) || IsKeyDown(VirtualKey.LeftControl) || IsKeyDown(VirtualKey.RightControl);
+        var shift = IsKeyDown(VirtualKey.Shift) || IsKeyDown(VirtualKey.LeftShift) || IsKeyDown(VirtualKey.RightShift);
+        ViewModel.SelectChip(chip, toggle: ctrl, extend: shift && !ctrl);
+    }
+
+    private static bool IsKeyDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
+    private void TagChip_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        // Mouse-only CanDrag so touch/pen still pans the chip ScrollViewer (AssetDrag pattern).
+        if (sender is not UIElement el
+            || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
+        {
+            return;
+        }
+
+        el.CanDrag = true;
         if (sender is FrameworkElement { Tag: TagChipItem chip })
+        {
+            PrefetchTagDragGhost(chip);
+        }
+    }
+
+    private void TagChip_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        // Reinforce prefetch before the drag threshold so DragStarting can set
+        // DragUI synchronously (no deferral await — WinUI drops late SetContent).
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse
+            && sender is FrameworkElement { Tag: TagChipItem chip })
+        {
+            PrefetchTagDragGhost(chip);
+        }
+    }
+
+    private void TagChip_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement el)
+        {
+            el.CanDrag = false;
+        }
+    }
+
+    /// <summary>
+    /// dg-01a/b: set ghost + dim synchronously. Never await/GetDeferral before
+    /// <see cref="DragUI.SetContentFromBitmapImage"/> — post-await content is dropped.
+    /// </summary>
+    private void TagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: TagChipItem chip } || string.IsNullOrEmpty(chip.TagId))
+        {
+            TagDragUi.LogDragStarting(null, 0);
+            args.Cancel = true;
+            return;
+        }
+
+        if (!chip.IsSelected)
         {
             ViewModel.SelectChip(chip);
         }
+
+        var ids = ViewModel.ChipPayloadIds(chip);
+        TagDragUi.LogDragStarting(chip.TagId, ids.Count);
+        if (ids.Count == 0)
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        // Dim source chips immediately (dg-01a/b).
+        ViewModel.SetChipDragSources(ids);
+        args.Data.Properties[TagMembershipAdd.DataKey] = TagMembershipAdd.Serialize(ids);
+        args.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+        var badge = TagMembershipAdd.MultiBadge(ids.Count);
+        if (!string.IsNullOrEmpty(badge))
+        {
+            args.Data.Properties.Title = badge;
+        }
+
+        // Custom ghost — never SetContentFromDataPackage (blank file icon).
+        if (_tagDragGhost is not null
+            && TagDragUi.TryGetCachedGhostKey(_tagDragGhostKey, chip.TagId, ids.Count))
+        {
+            args.DragUI.SetContentFromBitmapImage(_tagDragGhost);
+        }
+        else
+        {
+            // Cache miss (very fast SendInput): kick a rebuild for the next gesture;
+            // still keep payload + dim. Do not defer — late SetContent is dropped.
+            PrefetchTagDragGhost(chip);
+        }
+    }
+
+    private void TagChip_DropCompleted(UIElement sender, DropCompletedEventArgs e)
+    {
+        ViewModel.ClearChipDragSources();
+        ViewModel.ClearGroupDropChrome();
+    }
+
+    private void PrefetchTagDragGhost(TagChipItem chip)
+    {
+        if (string.IsNullOrEmpty(chip.TagId))
+        {
+            return;
+        }
+
+        // Prefer the multi-select payload when this chip is already selected.
+        var count = Math.Max(1, ViewModel.ChipPayloadIds(chip).Count);
+        var key = TagDragUi.GhostCacheKey(chip.TagId, count);
+        if (_tagDragGhost is not null
+            && string.Equals(_tagDragGhostKey, key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var epoch = ++_tagDragGhostEpoch;
+        _ = BuildAndCacheTagDragGhostAsync(chip, count, key, epoch);
+    }
+
+    private async Task BuildAndCacheTagDragGhostAsync(
+        TagChipItem chip,
+        int count,
+        string key,
+        int epoch)
+    {
+        var bitmap = await TryBuildTagDragGhostAsync(chip, count);
+        if (bitmap is null || epoch != _tagDragGhostEpoch)
+        {
+            return;
+        }
+
+        _tagDragGhost = bitmap;
+        _tagDragGhostKey = key;
+    }
+
+    /// <summary>dg-01a/b: pill ghost + optional "N tags" badge via in-tree RenderTargetBitmap.</summary>
+    private async Task<BitmapImage?> TryBuildTagDragGhostAsync(TagChipItem chip, int count)
+    {
+        UIElement? visual = null;
+        try
+        {
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            if (TagColor.TryParse(chip.EffectiveColor, out var color))
+            {
+                row.Children.Add(new Ellipse
+                {
+                    Width = 8,
+                    Height = 8,
+                    Fill = new SolidColorBrush(color),
+                    VerticalAlignment = VerticalAlignment.Center
+                });
+            }
+
+            row.Children.Add(new TextBlock
+            {
+                Text = chip.Name ?? "",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = ThemeBrush("TextFillColorPrimaryBrush", Microsoft.UI.Colors.White)
+            });
+
+            var chipBorder = new Border
+            {
+                Background = ThemeBrush("ControlFillColorDefaultBrush", Color.FromArgb(0xE0, 0x2C, 0x2C, 0x2C)),
+                BorderBrush = ThemeBrush("ControlStrokeColorDefaultBrush", Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)),
+                BorderThickness = new Thickness(1, 1, 1, 1),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(10, 4, 10, 4),
+                Child = row,
+                Opacity = 0.92
+            };
+
+            visual = chipBorder;
+            var badgeText = TagMembershipAdd.MultiBadge(count);
+            if (!string.IsNullOrEmpty(badgeText))
+            {
+                var grid = new Grid();
+                grid.Children.Add(chipBorder);
+                grid.Children.Add(new Border
+                {
+                    Background = ThemeBrush("AccentFillColorDefaultBrush", Color.FromArgb(0xFF, 0xED, 0x9F, 0xBC)),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(6, 2, 6, 2),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, -8, -10, 0),
+                    Child = new TextBlock
+                    {
+                        Text = badgeText,
+                        FontSize = 10,
+                        Foreground = ThemeBrush("TextOnAccentFillColorPrimaryBrush", Microsoft.UI.Colors.Black)
+                    }
+                });
+                visual = grid;
+            }
+
+            // RTB only works for elements connected to the live XAML tree.
+            CvsTagDragGhostHost.Children.Clear();
+            CvsTagDragGhostHost.Children.Add(visual);
+            visual.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+            var size = visual.DesiredSize;
+            if (size.Width < 1 || size.Height < 1)
+            {
+                return null;
+            }
+
+            // Badge hangs past the chip — pad so RTB doesn't clip "N tags".
+            var pad = string.IsNullOrEmpty(badgeText) ? 0.0 : 14.0;
+            var width = size.Width + pad;
+            var height = size.Height + pad;
+            visual.Arrange(new Windows.Foundation.Rect(pad * 0.5, pad * 0.5, size.Width, size.Height));
+            CvsTagDragGhostHost.Width = Math.Max(width, 1);
+            CvsTagDragGhostHost.Height = Math.Max(height, 1);
+
+            var rtb = new RenderTargetBitmap();
+            await rtb.RenderAsync(CvsTagDragGhostHost);
+            var pixels = await rtb.GetPixelsAsync();
+            if (rtb.PixelWidth == 0 || rtb.PixelHeight == 0 || pixels.Length == 0)
+            {
+                return null;
+            }
+
+            var pixelBytes = new byte[pixels.Length];
+            using (var reader = DataReader.FromBuffer(pixels))
+            {
+                reader.ReadBytes(pixelBytes);
+            }
+
+            using var stream = new InMemoryRandomAccessStream();
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
+            var dpi = (XamlRoot?.RasterizationScale ?? 1.0) * 96.0;
+            encoder.SetPixelData(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Premultiplied,
+                (uint)rtb.PixelWidth,
+                (uint)rtb.PixelHeight,
+                dpi,
+                dpi,
+                pixelBytes);
+            await encoder.FlushAsync();
+            stream.Seek(0);
+
+            var image = new BitmapImage();
+            await image.SetSourceAsync(stream);
+            return image;
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("Tag drag ghost", ex);
+            return null;
+        }
+        finally
+        {
+            CvsTagDragGhostHost.Children.Clear();
+        }
+    }
+
+    private static Brush ThemeBrush(string key, Color fallback)
+    {
+        if (Application.Current?.Resources.TryGetValue(key, out var value) == true
+            && value is Brush brush)
+        {
+            return brush;
+        }
+
+        return new SolidColorBrush(fallback);
+    }
+
+    /// <summary>dg-05 solid colour dot — PathIcon EllipseGeometry (not font glyphs).</summary>
+    private static PathIcon TagGroupColorDot(Color color) =>
+        new()
+        {
+            Width = 10,
+            Height = 10,
+            Foreground = new SolidColorBrush(color),
+            Data = new EllipseGeometry
+            {
+                Center = new Windows.Foundation.Point(5, 5),
+                RadiusX = 4,
+                RadiusY = 4
+            }
+        };
+
+    private void TagGroup_DragOver(object sender, DragEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: TagBoardGroup group }
+            || !group.IsUserGroupRow
+            || string.IsNullOrEmpty(group.GroupId)
+            || !e.DataView.Properties.TryGetValue(TagMembershipAdd.DataKey, out var raw))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+            ViewModel.ClearGroupDropChrome();
+            TagDragUi.LogDragOver(null, null, allow: false, caption: "refuse-non-group");
+            return;
+        }
+
+        var ids = TagMembershipAdd.Parse(raw);
+        var (added, already, cycle) = ViewModel.PreviewAddToGroup(group.GroupId!, ids);
+        var allow = TagMembershipAdd.AllowsDrop(added);
+        e.AcceptedOperation = allow
+            ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
+            : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+        // Keep custom ghost (IsContentVisible); caption + glyph for dg-02/03 hints.
+        e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.IsContentVisible = true;
+        e.DragUIOverride.IsGlyphVisible = true;
+        var caption = TagMembershipAdd.DragHint(group.Name, added, already, cycle);
+        e.DragUIOverride.Caption = caption;
+        TagDragUi.LogDragOver(group.GroupId, group.Name, allow, caption);
+        // dg-02 left accent + fill when valid; dg-03 refuse chrome when not.
+        ViewModel.SetGroupDropChrome(
+            group.GroupId,
+            TagDragUi.ShowsValidDropChrome(group.IsUserGroupRow, allow));
+        e.Handled = true;
+    }
+
+    private void TagGroup_DragLeave(object sender, DragEventArgs e)
+    {
+        // Child hit-testing inside the row fires Leave without exiting — only clear
+        // when the pointer is outside the group row (keeps dg-02 accent stable).
+        if (sender is not FrameworkElement fe)
+        {
+            ViewModel.ClearGroupDropChrome();
+            return;
+        }
+
+        var pos = e.GetPosition(fe);
+        if (TagDragUi.ShouldClearDropChromeOnLeave(pos.X, pos.Y, fe.ActualWidth, fe.ActualHeight))
+        {
+            ViewModel.ClearGroupDropChrome();
+        }
+    }
+
+    private async void TagGroup_Drop(object sender, DragEventArgs e)
+    {
+        ViewModel.ClearGroupDropChrome();
+        ViewModel.ClearChipDragSources();
+        if (sender is not FrameworkElement { Tag: TagBoardGroup group }
+            || !group.IsUserGroupRow
+            || string.IsNullOrEmpty(group.GroupId)
+            || !e.DataView.Properties.TryGetValue(TagMembershipAdd.DataKey, out var raw))
+        {
+            TagDragUi.LogDrop(null, null, added: 0);
+            return;
+        }
+
+        var ids = TagMembershipAdd.Parse(raw);
+        var (added, _, _) = ViewModel.PreviewAddToGroup(group.GroupId!, ids);
+        TagDragUi.LogDrop(group.GroupId, group.Name, added);
+        if (!TagMembershipAdd.AllowsDrop(added))
+        {
+            return;
+        }
+
+        await ErrorReporter.RunAsync(
+            "Add tags to group",
+            null,
+            () => ViewModel.AddTagsToGroupCoreAsync(ids, group.GroupId!));
     }
 
     private void FocusRenameBox()
@@ -389,16 +1019,20 @@ public sealed partial class TagsPage : Page
     private void FillGroupSubmenu(MenuFlyoutSubItem sub, TagChipItem chip, bool add)
     {
         sub.Items.Clear();
-        var groups = ViewModel.GroupDestinations(chip, add);
+        if (add)
+        {
+            FillAddToGroupMenu(sub, chip);
+            return;
+        }
+
+        var groups = ViewModel.GroupDestinations(chip, add: false);
         sub.IsEnabled = groups.Count > 0;
-        var command = add ? ViewModel.AddChipToGroupCommand : ViewModel.MoveChipToGroupCommand;
-        var prefix = add ? "MnuAddToGroup_" : "MnuMoveToGroup_";
         foreach (var group in groups)
         {
             var item = new MenuFlyoutItem
             {
                 Text = group.Name,
-                Command = command,
+                Command = ViewModel.MoveChipToGroupCommand,
                 CommandParameter = new TagChipGroupMove
                 {
                     Chip = chip,
@@ -408,10 +1042,68 @@ public sealed partial class TagsPage : Page
             };
             AutomationProperties.SetAutomationId(
                 item,
-                prefix + string.Concat((group.Name ?? "").Where(char.IsLetterOrDigit)));
+                "MnuMoveToGroup_" + string.Concat((group.Name ?? "").Where(char.IsLetterOrDigit)));
             AutomationProperties.SetName(item, group.Name);
             sub.Items.Add(item);
         }
+    }
+
+    /// <summary>dg-05: colour dots, checked+disabled existing, New group… one undoable step.</summary>
+    private void FillAddToGroupMenu(MenuFlyoutSubItem sub, TagChipItem chip)
+    {
+        var picks = ViewModel.AddGroupMenuPicks(chip);
+        sub.IsEnabled = true;
+        foreach (var pick in picks)
+        {
+            // Icon lives on MenuFlyoutItem (not MenuFlyoutItemBase).
+            MenuFlyoutItem item = pick.IsMember
+                ? new ToggleMenuFlyoutItem
+                {
+                    Text = pick.Name,
+                    IsChecked = true,
+                    IsEnabled = false
+                }
+                : new MenuFlyoutItem
+                {
+                    Text = pick.Name,
+                    IsEnabled = pick.IsEnabled,
+                    Command = ViewModel.AddChipToGroupCommand,
+                    CommandParameter = new TagChipGroupMove
+                    {
+                        Chip = chip,
+                        GroupId = pick.TagId,
+                        GroupName = pick.Name ?? ""
+                    }
+                };
+
+            if (TagColor.TryParse(pick.Color, out var color))
+            {
+                // EllipseGeometry PathIcon — Segoe Fluent Icons U+25CF draws a hollow box.
+                item.Icon = TagGroupColorDot(color);
+            }
+
+            AutomationProperties.SetAutomationId(
+                item,
+                "MnuAddToGroup_" + string.Concat((pick.Name ?? "").Where(char.IsLetterOrDigit)));
+            AutomationProperties.SetName(item, pick.Name);
+            sub.Items.Add(item);
+        }
+
+        if (sub.Items.Count > 0)
+        {
+            sub.Items.Add(new MenuFlyoutSeparator());
+        }
+
+        var create = new MenuFlyoutItem
+        {
+            Text = "New group…",
+            Command = ViewModel.CreateGroupAndAddChipsCommand,
+            CommandParameter = chip
+        };
+        create.Icon = new FontIcon { Glyph = "\uE710", FontSize = 16 };
+        AutomationProperties.SetAutomationId(create, "MnuAddToGroup_New");
+        AutomationProperties.SetName(create, "New group");
+        sub.Items.Add(create);
     }
 
     private void TagGroupHeader_Click(object sender, RoutedEventArgs e)

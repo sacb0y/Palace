@@ -82,6 +82,29 @@ public sealed partial class FileOpService
             return result;
         });
 
+    /// <summary>
+    /// Add tags to an existing group. Journals <see cref="FileOpKind.TagMembership"/>
+    /// with <see cref="FileOpStep.AddMembership"/> for Added edges only.
+    /// </summary>
+    public Task<TagMembershipBatchResult> AddTagsToGroupAsync(
+        IReadOnlyList<string> tagIds,
+        string groupId,
+        string projectId) =>
+        GatedAsync(projectId, () =>
+            _catalog.ApplyAddMembershipJournaledAsync(projectId, tagIds, groupId));
+
+    /// <summary>
+    /// Create a new root group and add tags in one <see cref="FileOpKind.TagMembership"/> step
+    /// (dg-05 New group…).
+    /// </summary>
+    public Task<TagMembershipBatchResult> CreateGroupAndAddTagsAsync(
+        IReadOnlyList<string> tagIds,
+        string projectId,
+        string preferredName = "New group") =>
+        GatedAsync(projectId, () =>
+            _catalog.ApplyAddMembershipJournaledAsync(
+                projectId, tagIds, parentId: null, createGroupName: preferredName));
+
     private async Task<FileOpResult> AssignTagsCoreAsync(
         IReadOnlyList<string> assetIds,
         IReadOnlyList<(string TagId, string TagName, TagSource Source)> tags,

@@ -12,7 +12,7 @@ public static class ChipWrap
         double horizontalSpacing,
         double verticalSpacing)
     {
-        if (sizes.Count == 0 || width <= 0)
+        if (sizes.Count == 0 || width <= 0 || double.IsNaN(width))
         {
             return [];
         }
@@ -51,4 +51,66 @@ public static class ChipWrap
 
         return Math.Max(0, bottom);
     }
+
+    /// <summary>Right edge of the widest laid-out row.</summary>
+    public static double ExtentWidth(IReadOnlyList<MosaicSlot> slots)
+    {
+        var right = 0d;
+        foreach (var slot in slots)
+        {
+            right = Math.Max(right, slot.X + slot.Width);
+        }
+
+        return Math.Max(0, right);
+    }
+
+    /// <summary>One-row natural width (sum of chips + gaps) — infinite-measure path.</summary>
+    public static double NaturalContentWidth(
+        IReadOnlyList<(double Width, double Height)> sizes,
+        double horizontalSpacing)
+    {
+        if (sizes.Count == 0)
+        {
+            return 0;
+        }
+
+        var total = 0d;
+        for (var i = 0; i < sizes.Count; i++)
+        {
+            total += Math.Max(1, sizes[i].Width);
+            if (i > 0)
+            {
+                total += Math.Max(0, horizontalSpacing);
+            }
+        }
+
+        return total;
+    }
+
+    /// <summary>
+    /// Measure desired width: widest laid-out row, capped at finite available.
+    /// Infinite / non-positive available → natural content width (never a prior arrange width).
+    /// </summary>
+    public static double MeasureDesiredWidth(
+        IReadOnlyList<(double Width, double Height)> sizes,
+        double availableWidth,
+        double horizontalSpacing,
+        double verticalSpacing)
+    {
+        if (sizes.Count == 0)
+        {
+            return 0;
+        }
+
+        if (!IsFinitePositive(availableWidth))
+        {
+            return NaturalContentWidth(sizes, horizontalSpacing);
+        }
+
+        var slots = Layout(sizes, availableWidth, horizontalSpacing, verticalSpacing);
+        return Math.Min(availableWidth, ExtentWidth(slots));
+    }
+
+    public static bool IsFinitePositive(double value) =>
+        double.IsFinite(value) && value > 0;
 }

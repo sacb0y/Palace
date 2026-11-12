@@ -106,8 +106,8 @@ public partial class LibraryViewModel
                     await ApplyMovesToUiAsync(result.Moves, destinationDir: null);
                 }
                 else if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete
-                    or FileOpKind.TagCreate or FileOpKind.TagAliasAdd or FileOpKind.TagAliasRemove
-                    or FileOpKind.TagAliasRepoint)
+                    or FileOpKind.TagCreate or FileOpKind.TagMembership or FileOpKind.TagAliasAdd
+                    or FileOpKind.TagAliasRemove or FileOpKind.TagAliasRepoint)
                 {
                     await ReloadTagCatalogAsync();
                     await LoadPreviewAsync(SelectedAsset);
@@ -115,7 +115,8 @@ public partial class LibraryViewModel
                     {
                         await AppServices.Tags.RefreshAsync();
                         if (result.Ok && peek.Kind is FileOpKind.TagDelete or FileOpKind.TagCreate
-                            or FileOpKind.TagAliasAdd or FileOpKind.TagAliasRemove or FileOpKind.TagAliasRepoint)
+                            or FileOpKind.TagMembership or FileOpKind.TagAliasAdd
+                            or FileOpKind.TagAliasRemove or FileOpKind.TagAliasRepoint)
                         {
                             AppServices.Tags.StatusText = result.Message;
                             AppServices.Tags.ShowStatusUndo = false;
@@ -143,8 +144,8 @@ public partial class LibraryViewModel
                 {
                     // Tag undos confirm in the status bar (T2); file-op undos keep InfUndo.
                     if (peek?.Kind is FileOpKind.TagAssign or FileOpKind.TagRemove or FileOpKind.TagDelete
-                        or FileOpKind.TagCreate or FileOpKind.TagAliasAdd or FileOpKind.TagAliasRemove
-                        or FileOpKind.TagAliasRepoint)
+                        or FileOpKind.TagCreate or FileOpKind.TagMembership or FileOpKind.TagAliasAdd
+                        or FileOpKind.TagAliasRemove or FileOpKind.TagAliasRepoint)
                     {
                         StatusText = result.Message;
                     }

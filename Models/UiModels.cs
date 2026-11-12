@@ -798,6 +798,14 @@ public partial class TagChipItem : ObservableObject
     [ObservableProperty]
     public partial bool IsRecentlyCreated { get; set; }
 
+    /// <summary>Board multi-select (Ctrl/Shift + drag payload). Accent outline on chip.</summary>
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    /// <summary>dg-01a/b: dim source chips while their drag ghost is in flight.</summary>
+    [ObservableProperty]
+    public partial bool IsDragSource { get; set; }
+
     /// <summary>Optional trailing use count on board chips (t2-03b).</summary>
     [ObservableProperty]
     public partial string? CountBadge { get; set; }
@@ -932,6 +940,36 @@ public partial class TagBoardGroup : ObservableObject
     /// <summary>User group under GROUPS — round colour dot, not a fixed-view glyph.</summary>
     public bool IsUserGroupRow => !IsGroupsHeader && ScopeKind is null;
 
+    /// <summary>dg-02 valid drop target chrome while dragging tags onto this group.</summary>
+    [ObservableProperty]
+    public partial bool IsDropTargetValid { get; set; }
+
+    /// <summary>dg-03 muted refuse chrome (already / cycle).</summary>
+    [ObservableProperty]
+    public partial bool IsDropTargetRefuse { get; set; }
+
+    /// <summary>
+    /// Single bindable chrome token so multi-arg x:Bind helpers re-evaluate when
+    /// drop flags flip mid-drag (dg-02 accent / dg-03 refuse).
+    /// </summary>
+    public int DropChromeRevision { get; private set; }
+
+    /// <summary>Left accent bar: selected row or valid drop target (dg-02).</summary>
+    public bool ShowAccentBar => IsExpanded || IsDropTargetValid;
+
+    partial void OnIsDropTargetValidChanged(bool value) => NotifyDropChrome();
+
+    partial void OnIsDropTargetRefuseChanged(bool value) => NotifyDropChrome();
+
+    partial void OnIsExpandedChanged(bool value) => NotifyDropChrome();
+
+    private void NotifyDropChrome()
+    {
+        DropChromeRevision++;
+        OnPropertyChanged(nameof(DropChromeRevision));
+        OnPropertyChanged(nameof(ShowAccentBar));
+    }
+
     public bool ShowChipCount => !IsGroupsHeader;
 
     /// <summary>
@@ -1053,6 +1091,8 @@ public sealed class TagGroupPick
 {
     public string TagId { get; set; } = "";
     public string Name { get; set; } = "";
+    /// <summary>Optional group colour for details chips / menus (dg-05).</summary>
+    public string? Color { get; set; }
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Name;

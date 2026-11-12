@@ -7,6 +7,8 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    MinWidth="0"
+    HorizontalAlignment="Left"
     IsTabStop="True"
     UseSystemFocusVisuals="True"
     XYFocusKeyboardNavigation="Enabled"
@@ -18,33 +20,30 @@
     PointerCanceled="Root_PointerCanceled"
     PointerCaptureLost="Root_PointerCaptureLost"
     Tapped="Root_Tapped">
+    <!-- MinWidth=0 defeats theme Control/ButtonMinWidth (~120). StackPanel Spacing
+         skips Collapsed chrome (Grid ColumnSpacing did not → uniform ~48 DIP pad). -->
     <Grid
         x:Name="GrdRoot"
+        MinWidth="0"
         MinHeight="32"
         HorizontalAlignment="Left"
         Background="Transparent">
         <Border
             x:Name="BrdChip"
+            MinWidth="0"
             MinHeight="32"
-            Padding="8,0,4,0"
+            Padding="10,4"
             HorizontalAlignment="Left"
             Background="Transparent"
             BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
             BorderThickness="1"
             CornerRadius="16">
-            <Grid ColumnSpacing="6">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
+            <StackPanel
+                MinWidth="0"
+                HorizontalAlignment="Left"
+                Orientation="Horizontal"
+                Spacing="6"
+                VerticalAlignment="Center">
                 <!-- Leading link glyph (implied-only). -->
                 <Viewbox
                     x:Name="VbLeadingLink"
@@ -64,7 +63,6 @@
                 <!-- Leading apply glyph (Checkmark / Subtract). Never the word On. -->
                 <Viewbox
                     x:Name="VbStateGlyph"
-                    Grid.Column="1"
                     Width="12"
                     Height="12"
                     HorizontalAlignment="Center"
@@ -79,7 +77,6 @@
 
                 <Ellipse
                     x:Name="EllColorDot"
-                    Grid.Column="2"
                     Width="8"
                     Height="8"
                     VerticalAlignment="Center"
@@ -89,7 +86,6 @@
 
                 <TextBlock
                     x:Name="TxtLabel"
-                    Grid.Column="3"
                     VerticalAlignment="Center"
                     IsHitTestVisible="False"
                     Style="{StaticResource BodyTextBlockStyle}"
@@ -97,7 +93,6 @@
 
                 <TextBlock
                     x:Name="TxtNewBadge"
-                    Grid.Column="4"
                     VerticalAlignment="Center"
                     FontSize="11"
                     FontWeight="SemiBold"
@@ -108,7 +103,6 @@
 
                 <Viewbox
                     x:Name="VbTrailingLink"
-                    Grid.Column="5"
                     Width="12"
                     Height="12"
                     HorizontalAlignment="Center"
@@ -124,7 +118,6 @@
 
                 <TextBlock
                     x:Name="TxtPartialBadge"
-                    Grid.Column="6"
                     VerticalAlignment="Center"
                     IsHitTestVisible="False"
                     Style="{StaticResource CaptionTextBlockStyle}"
@@ -132,7 +125,6 @@
 
                 <Button
                     x:Name="BtnStar"
-                    Grid.Column="7"
                     Width="24"
                     Height="24"
                     MinWidth="24"
@@ -157,7 +149,6 @@
 
                 <Button
                     x:Name="BtnRemove"
-                    Grid.Column="8"
                     Width="24"
                     Height="24"
                     MinWidth="24"
@@ -179,7 +170,7 @@
                         IconSize="Size12"
                         IconVariant="Regular" />
                 </Button>
-            </Grid>
+            </StackPanel>
         </Border>
 
         <!-- Dashed accent outline for Partial (Border cannot dash). -->

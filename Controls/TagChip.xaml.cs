@@ -32,6 +32,10 @@ public sealed partial class TagChip : UserControl
         nameof(IsSelected), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
 
+    public static readonly DependencyProperty IsDragSourceProperty = DependencyProperty.Register(
+        nameof(IsDragSource), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
     public static readonly DependencyProperty IsStarredProperty = DependencyProperty.Register(
         nameof(IsStarred), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
@@ -140,6 +144,17 @@ public sealed partial class TagChip : UserControl
     public TagChip()
     {
         InitializeComponent();
+        MinWidth = TagChipVisual.BoardMinWidthDip;
+        if (GrdRoot is not null)
+        {
+            GrdRoot.MinWidth = TagChipVisual.BoardMinWidthDip;
+        }
+
+        if (BrdChip is not null)
+        {
+            BrdChip.MinWidth = TagChipVisual.BoardMinWidthDip;
+        }
+
         ActualThemeChanged += (_, _) => ApplyChrome();
         GotFocus += (_, _) => ApplyChrome();
         LostFocus += (_, _) => ApplyChrome();
@@ -170,6 +185,13 @@ public sealed partial class TagChip : UserControl
     {
         get => (bool)GetValue(IsSelectedProperty);
         set => SetValue(IsSelectedProperty, value);
+    }
+
+    /// <summary>dg-01a/b: dim while this chip is the drag source (ghost follows pointer).</summary>
+    public bool IsDragSource
+    {
+        get => (bool)GetValue(IsDragSourceProperty);
+        set => SetValue(IsDragSourceProperty, value);
     }
 
     public bool IsStarred
@@ -345,9 +367,17 @@ public sealed partial class TagChip : UserControl
         BrdChip.CornerRadius = new CornerRadius(radius);
         RectPartialDash.RadiusX = radius;
         RectPartialDash.RadiusY = radius;
+        // Board padding ~10,4 (content-sized; MinWidth 0 clears theme ButtonMinWidth).
+        BrdChip.MinWidth = 0;
+        GrdRoot.MinWidth = 0;
+        MinWidth = 0;
         BrdChip.Padding = Compact
-            ? new Thickness(8, 0, 2, 0)
-            : new Thickness(8, 0, 4, 0);
+            ? new Thickness(8, 2, 4, 2)
+            : new Thickness(
+                TagChipVisual.BoardPaddingXDip,
+                TagChipVisual.BoardPaddingYDip,
+                TagChipVisual.BoardPaddingXDip,
+                TagChipVisual.BoardPaddingYDip);
 
         TxtLabel.Text = Label ?? "";
         TxtLabel.FontSize = Compact ? 13 : 14;
@@ -368,7 +398,9 @@ public sealed partial class TagChip : UserControl
         ApplyRemove(state, highContrast);
         ApplyTooltip(state);
         ApplyAutomation(state);
-        Opacity = IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
+        Opacity = IsDragSource
+            ? TagDragUi.DragSourceOpacity
+            : IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
 
         if (!string.IsNullOrEmpty(ChipAutomationId))
         {
@@ -870,8 +902,14 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Keep _pressed chrome for tap; never CapturePointer while CanDrag — that
+        // steals the gesture from WinUI DnD so DragStarting never fires (Wimbly).
         _pressed = true;
-        CapturePointer(e.Pointer);
+        if (TagDragUi.ShouldCapturePointerForPressChrome(CanDrag))
+        {
+            CapturePointer(e.Pointer);
+        }
+
         ApplyChrome();
     }
 
