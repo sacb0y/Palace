@@ -227,6 +227,20 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
+    public void OverlayTopMarginBelowToolbar_AddsGapOrFallsBack()
+    {
+        Assert.Equal(64, PreviewPane.OverlayTopMarginBelowToolbar(56), 0.01);
+        Assert.Equal(
+            PreviewPane.OverlayTopFallbackDip,
+            PreviewPane.OverlayTopMarginBelowToolbar(0),
+            0.01);
+        Assert.Equal(
+            PreviewPane.OverlayTopFallbackDip,
+            PreviewPane.OverlayTopMarginBelowToolbar(-1),
+            0.01);
+    }
+
+    [Fact]
     public void ClampUserWidth_Bounds280To560()
     {
         Assert.Equal(280, PreviewPane.ClampUserWidth(100));

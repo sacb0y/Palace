@@ -55,9 +55,12 @@ public sealed partial class LibraryPage : Page
     private PreviewPaneState _previewPane = PreviewPane.Initial;
     private PaneMode _previewPaneMode = PaneMode.Hidden;
     private NavigationView? _shellNav;
+    private Frame? _shellContentFrame;
     private bool _shellNavHooked;
     private bool _libraryLayoutHooked;
     private XamlRoot? _libraryLayoutXamlRoot;
+    private readonly LibraryLayoutRefreshGate _libraryLayoutRefreshGate = new();
+    private bool _libraryLayoutRefreshQueued;
     /// <summary>
     /// Section collapse republish depth + generation. Separate from
     /// <see cref="_suppressMosaicSelection"/> so TglSelectMode / range / header
@@ -566,49 +569,83 @@ public sealed partial class LibraryPage : Page
     private void InvalidateMosaicLayout() => MosaicLayout.Relayout();
 
     /// <summary>
-    /// Grid SizeChanged is a backup only — available width must come from XamlRoot /
-    /// page, never from this grid's own ActualWidth (docked Preview MinWidths used to
-    /// floor DesiredSize and stop SizeChanged entirely).
+    /// Grid SizeChanged is a backup only — available width must come from the shell
+    /// content slot (Frame), never from this grid's own ActualWidth (docked Preview
+    /// MinWidths used to floor DesiredSize and stop SizeChanged entirely) and never
+    /// from page ActualWidth (sibling overlay reflow looped RefreshLibraryLayout).
     /// </summary>
     private void GrdLibraryColumns_SizeChanged(object sender, SizeChangedEventArgs e) =>
         RefreshLibraryLayout();
 
     /// <summary>
     /// OnWidth → Effective → columns, pane, HostWidth, both toolbar overflows.
-    /// Available width from XamlRoot / page (not GrdLibraryColumns.ActualWidth).
+    /// Content width from shell <c>ContentFrame</c> / ContentPresenter slot — not page
+    /// ActualWidth. Re-entrant + same-input no-op (Isiac freeze).
     /// </summary>
     private void RefreshLibraryLayout()
     {
-        var windowDip = ResolveWindowClientDip();
-        var contentWidth = ResolveAvailableContentWidth(windowDip);
-        if (contentWidth < 1)
+        LibraryLayoutRefreshProbe.RecordCall();
+        if (!_libraryLayoutRefreshGate.TryEnter())
         {
+            // Nested SizeChanged / nav callback — run once more after the outer exit.
+            _libraryLayoutRefreshQueued = true;
             return;
         }
 
-        _previewPane = PreviewPane.OnWidth(
-            _previewPane,
-            contentWidth,
-            PreviewPaneSettings.AutoHideEnabled);
-        var effective = PreviewPane.Effective(_previewPane, contentWidth);
-        ApplyLibraryColumnLayout(effective);
-        UpdateLibraryToolbarOverflow(windowDip);
+        try
+        {
+            do
+            {
+                _libraryLayoutRefreshQueued = false;
+                var windowDip = ResolveWindowClientDip();
+                var contentWidth = ResolveAvailableContentWidth(windowDip);
+                if (contentWidth < 1)
+                {
+                    continue;
+                }
+
+                var autoHide = PreviewPaneSettings.AutoHideEnabled;
+                var nextPane = PreviewPane.OnWidth(_previewPane, contentWidth, autoHide);
+                var effective = PreviewPane.Effective(nextPane, contentWidth);
+                var layout = PreviewPane.Layout(effective);
+                if (!_libraryLayoutRefreshGate.ShouldApply(
+                        contentWidth,
+                        windowDip,
+                        autoHide,
+                        nextPane,
+                        layout))
+                {
+                    continue;
+                }
+
+                _previewPane = nextPane;
+                _libraryLayoutRefreshGate.Commit(
+                    contentWidth,
+                    windowDip,
+                    autoHide,
+                    nextPane,
+                    layout);
+                ApplyLibraryColumnLayout(effective);
+                UpdateLibraryToolbarOverflow(windowDip);
+            }
+            while (_libraryLayoutRefreshQueued);
+        }
+        finally
+        {
+            _libraryLayoutRefreshGate.Exit();
+        }
     }
 
     /// <summary>
-    /// Window client DIP — toolbar overflow + Preview auto-hide input.
-    /// Prefers <see cref="FrameworkElement.ActualWidth"/> + shell nav (page layout DIP).
-    /// Do not drive layout from <c>XamlRoot.Size</c> or AppWindow/scale: Studio @150%
-    /// showed rootW≈HWND_DIP×scale while page ActualWidth tracked the real client.
-    /// <c>XamlRoot.Size</c> is already DIP by contract — never divide it by
-    /// <c>RasterizationScale</c> (that double-corrects when root is right).
+    /// Window client DIP — toolbar overflow. Prefers shell content slot + live nav
+    /// (stable vs page ActualWidth). Never divide <c>XamlRoot.Size</c> by scale.
     /// </summary>
     private double ResolveWindowClientDip()
     {
-        // Ground truth for OnWidth / toolbar: page host + live nav pane.
-        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
+        var slot = ResolveShellContentSlotWidthDip();
+        if (slot >= MosaicLayoutWidth.MinUsable)
         {
-            return ActualWidth + ResolveShellNavPaneWidthDip();
+            return slot + ResolveShellNavPaneWidthDip();
         }
 
         // Pre-layout fallback only. Treat Size as DIP (WinUI contract).
@@ -694,16 +731,18 @@ public sealed partial class LibraryPage : Page
         };
 
     /// <summary>
-    /// Library columns content width from the <b>page</b> ActualWidth (nav content host),
-    /// never from <c>GrdLibraryColumns.ActualWidth</c> (latches when Preview docks) and
-    /// never from a scaled/inflated XamlRoot client guess.
+    /// Library columns content width from the shell content slot
+    /// (<c>MainPage.ContentFrame</c> / ContentPresenter) — already excludes the nav
+    /// pane and does not move when sibling Preview overlay / column Apply runs
+    /// (page ActualWidth did → RefreshLibraryLayout loop). Never from
+    /// <c>GrdLibraryColumns.ActualWidth</c> once docked (latches).
     /// </summary>
     private double ResolveAvailableContentWidth(double windowClientDip)
     {
-        // Prefer page ActualWidth — already excludes the shell pane.
-        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
+        var slot = ResolveShellContentSlotWidthDip();
+        if (slot >= MosaicLayoutWidth.MinUsable)
         {
-            return LibraryColumnLayout.ContentWidthFromHostDip(ActualWidth);
+            return LibraryColumnLayout.ContentWidthFromHostDip(slot);
         }
 
         if (windowClientDip >= MosaicLayoutWidth.MinUsable)
@@ -713,8 +752,39 @@ public sealed partial class LibraryPage : Page
                 ResolveShellNavPaneWidthDip());
         }
 
-        // Last resort before first layout — may latch; avoid once page has ActualWidth.
+        // Last resort before first layout — may latch; avoid once shell slot is live.
         return LibraryColumnLayout.ContentWidthFromHostDip(GrdLibraryColumns.ActualWidth);
+    }
+
+    /// <summary>
+    /// ActualWidth of the shell <see cref="Frame"/> that hosts this page (NavigationView
+    /// content slot). Stable input for OnWidth — not page ActualWidth.
+    /// </summary>
+    private double ResolveShellContentSlotWidthDip()
+    {
+        EnsureShellContentFrameReference();
+        var w = _shellContentFrame?.ActualWidth ?? 0;
+        return double.IsFinite(w) ? w : 0;
+    }
+
+    private void EnsureShellContentFrameReference()
+    {
+        if (_shellContentFrame is not null)
+        {
+            return;
+        }
+
+        DependencyObject? node = this;
+        while (node is not null)
+        {
+            if (node is Frame frame)
+            {
+                _shellContentFrame = frame;
+                return;
+            }
+
+            node = VisualTreeHelper.GetParent(node);
+        }
     }
 
     private void HookLibraryLayoutTracking()
@@ -785,6 +855,7 @@ public sealed partial class LibraryPage : Page
 
         _shellNavHooked = false;
         _shellNav = null;
+        _shellContentFrame = null;
     }
 
     private void EnsureShellNavReference()

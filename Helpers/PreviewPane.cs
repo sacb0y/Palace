@@ -214,6 +214,18 @@ public static class PreviewPane
     /// </summary>
     public const double OverlayMinLeadingMarginDip = 48;
 
+    /// <summary>Gap below Library toolbar before overlay top (sibling tree, not Grid.Row).</summary>
+    public const double OverlayToolbarGapDip = 8;
+
+    /// <summary>Fallback top margin when toolbar bounds are unavailable.</summary>
+    public const double OverlayTopFallbackDip = 56;
+
+    /// <summary>Right outer inset matching GrdLibraryColumns padding.</summary>
+    public const double OverlayOuterMarginRightDip = 12;
+
+    /// <summary>Bottom outer inset matching GrdLibraryColumns padding.</summary>
+    public const double OverlayOuterMarginBottomDip = 8;
+
     public static string ChromeTooltip(PreviewPaneState state) =>
         state.AutoHidden && state.UserShow && !state.OverlayOpen
             ? AutoHiddenTooltip
@@ -236,6 +248,16 @@ public static class PreviewPane
             contentWidth - OverlayMinLeadingMarginDip);
         return Math.Min(width, max);
     }
+
+    /// <summary>
+    /// Top margin so a page-level sibling overlay clears the Library toolbar.
+    /// <paramref name="toolbarBottomInHost"/> is toolbar bottom Y in the page/host;
+    /// when unknown/non-positive, uses <see cref="OverlayTopFallbackDip"/>.
+    /// </summary>
+    public static double OverlayTopMarginBelowToolbar(double toolbarBottomInHost) =>
+        toolbarBottomInHost > 0
+            ? toolbarBottomInHost + OverlayToolbarGapDip
+            : OverlayTopFallbackDip;
 
     /// <summary>
     /// Resolve pane mode + column widths for available content width.

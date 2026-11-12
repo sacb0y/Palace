@@ -287,6 +287,7 @@ public sealed partial class LibraryPage
 
         GrdPreviewDockHost.LayoutUpdated += PreviewDockHost_LayoutUpdated;
         _previewDockProbeHooked = true;
+        LibraryLayoutRefreshProbe.LogEnabled = true;
         PreviewDockLayoutProbe.Log("Hook", "LayoutUpdated probe armed");
     }
 
@@ -334,9 +335,11 @@ public sealed partial class LibraryPage
             var rootDip = XamlRoot?.Size.Width ?? 0;
             var scale = ResolveRasterizationScale();
             var pageActualW = ActualWidth;
+            var slotDip = ResolveShellContentSlotWidthDip();
             var navDip = ResolveShellNavPaneWidthDip();
             var pagePlusNav = pageActualW + navDip;
             var contentWidth = ResolveAvailableContentWidth(windowDip);
+            var refreshRate = LibraryLayoutRefreshProbe.CallsPerSecond();
             var effective = PreviewPane.Effective(_previewPane, contentWidth);
             var layout = PreviewPane.Layout(effective);
             var slot = PreviewPane.DockHostSlot(layout);
@@ -379,6 +382,7 @@ public sealed partial class LibraryPage
                     $"overlayOpen={_previewPane.OverlayOpen} eff={effective.Mode} " +
                     $"xamlRootW={rootDip:0.#} appClientSizeW={appClientSizeW:0.#} " +
                     $"appClientDip={appDip:0.#} pageActualW={pageActualW:0.#} " +
+                    $"shellSlotW={slotDip:0.#} refreshRate={refreshRate:0.##}/s " +
                     $"nav={navDip:0.#} pagePlusNav={pagePlusNav:0.#} " +
                     $"windowDip={windowDip:0.#} scale={scale:0.###}"));
         }
@@ -397,8 +401,8 @@ public sealed partial class LibraryPage
 
     private void HostPreviewBody(PaneMode mode)
     {
-        // Always re-assert Content — a stale _previewBodyInOverlay flag with a null
-        // ScrollViewer.Content left Overlay/Docked UIA-alive but pixels empty (0.3.74 ghost).
+        // Re-parent PnlPreviewBody between dock/overlay SVs. After leave ColPreview=0 /
+        // Opacity=0, DesiredSize can stick at 0×0 — always InvalidateMeasure after assign.
         if (mode == PaneMode.Overlay)
         {
             if (!ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
@@ -412,6 +416,7 @@ public sealed partial class LibraryPage
             }
 
             _previewBodyInOverlay = true;
+            InvalidatePreviewBodyLayout(ScrPreviewOverlay);
             return;
         }
 
@@ -426,14 +431,62 @@ public sealed partial class LibraryPage
         }
 
         _previewBodyInOverlay = false;
+        InvalidatePreviewBodyLayout(ScrPreviewPane);
+    }
+
+    private void InvalidatePreviewBodyLayout(ScrollViewer host)
+    {
+        try
+        {
+            PnlPreviewBody.InvalidateMeasure();
+            PnlPreviewBody.InvalidateArrange();
+            host.InvalidateMeasure();
+            host.InvalidateArrange();
+        }
+        catch
+        {
+            // Layout pass may not be ready.
+        }
     }
 
     private void ApplyPreviewOverlayWidth()
     {
         // Visibility is applied in SyncPreviewChrome (Visible before motion; Collapsed after).
-        // Width from UserWidth, clamped to available − leading margin (XAML position only).
+        // Width from UserWidth; top margin clears toolbar (sibling tree — not Grid.Row=1).
         var contentWidth = ResolveAvailableContentWidth(ResolveWindowClientDip());
         BrdPreviewOverlay.Width = PreviewPane.OverlayPanelWidth(_previewPane, contentWidth);
+        BrdPreviewOverlay.Margin = new Thickness(
+            0,
+            ResolvePreviewOverlayTopMargin(),
+            PreviewPane.OverlayOuterMarginRightDip,
+            PreviewPane.OverlayOuterMarginBottomDip);
+    }
+
+    /// <summary>
+    /// Toolbar bottom Y in page space → top margin for page-level sibling overlay.
+    /// </summary>
+    private double ResolvePreviewOverlayTopMargin()
+    {
+        try
+        {
+            if (GrdLibraryToolbarHost.ActualHeight > 0)
+            {
+                var transform = GrdLibraryToolbarHost.TransformToVisual(this);
+                var bounds = transform.TransformBounds(
+                    new Windows.Foundation.Rect(
+                        0,
+                        0,
+                        GrdLibraryToolbarHost.ActualWidth,
+                        GrdLibraryToolbarHost.ActualHeight));
+                return PreviewPane.OverlayTopMarginBelowToolbar(bounds.Bottom);
+            }
+        }
+        catch
+        {
+            // Transform unavailable before first layout.
+        }
+
+        return PreviewPane.OverlayTopMarginBelowToolbar(0);
     }
 
     private void UpdatePreviewEdgeTab(PaneMode mode)
