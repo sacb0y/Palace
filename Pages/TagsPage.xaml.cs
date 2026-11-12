@@ -55,13 +55,10 @@ public sealed partial class TagsPage : Page
     private double _lastTagHostWidth = double.NaN;
     private bool _lastTagShowDetails;
     private TagPageLayoutMode? _lastTagLayoutMode;
-    private double _lastKnownPageWidth = double.NaN;
-    private int _measureLogRemaining;
 
     public TagsPage()
     {
         InitializeComponent();
-        SizeChanged += TagsPage_SizeChangedForMeasureLog;
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestOpenGallery = GalleryWindow.Show;
@@ -165,72 +162,6 @@ public sealed partial class TagsPage : Page
     private void TagsWidthStates_CurrentStateChanged(object sender, VisualStateChangedEventArgs e) =>
         RefreshTagColumnLayout();
 
-    /// <summary>
-    /// Backstop: cap DesiredWidth to the shell host so ChipWrap one-row natural
-    /// cannot expand Tags past ContentFrame. Wimbly: prove whether available is
-    /// ∞ or finite (~726) via the first 3 logs after restore→1024.
-    /// </summary>
-    protected override Windows.Foundation.Size MeasureOverride(Windows.Foundation.Size availableSize)
-    {
-        var host = ResolveTagHostWidthDip();
-        var measureWidth = TagPageLayout.ResolvePageMeasureWidth(availableSize.Width, host);
-        if (_measureLogRemaining > 0)
-        {
-            LogMeasureOverrideAvailable(availableSize.Width, host, measureWidth);
-            _measureLogRemaining--;
-        }
-
-        var measured = base.MeasureOverride(new Windows.Foundation.Size(measureWidth, availableSize.Height));
-        return new Windows.Foundation.Size(Math.Min(measured.Width, measureWidth), measured.Height);
-    }
-
-    private void TagsPage_SizeChangedForMeasureLog(object sender, SizeChangedEventArgs e)
-    {
-        var w = e.NewSize.Width;
-        // Arm when shell ContentFrame shrinks into the ~1024-window host band
-        // (page ActualWidth may still be stale/wide — do not require 600–900 page).
-        EnsureShellContentFrameReference();
-        var slot = _shellContentFrame?.ActualWidth ?? 0;
-        if (double.IsFinite(slot) && slot is >= 600 and <= 900)
-        {
-            _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
-        }
-
-        // Also arm + remeasure on page shrink from maximized-ish → narrower (restore).
-        if (double.IsFinite(_lastKnownPageWidth)
-            && _lastKnownPageWidth > 1000
-            && double.IsFinite(w)
-            && w < _lastKnownPageWidth - 50)
-        {
-            _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
-            InvalidateMeasure();
-            InvalidateArrange();
-        }
-
-        _lastKnownPageWidth = w;
-    }
-
-    private static void LogMeasureOverrideAvailable(double availableWidth, double hostWidth, double measureWidth)
-    {
-        try
-        {
-            var path = System.IO.Path.Combine(
-                System.IO.Path.GetTempPath(),
-                "palace-tags-measure-override.log");
-            static string Fmt(double v) =>
-                double.IsFinite(v)
-                    ? v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)
-                    : v.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            System.IO.File.AppendAllText(
-                path,
-                $"{DateTime.UtcNow:O}\tavailableSize.Width={Fmt(availableWidth)}\thost={Fmt(hostWidth)}\tmeasureWidth={Fmt(measureWidth)}{Environment.NewLine}");
-        }
-        catch
-        {
-            // Diagnostics only — never break layout.
-        }
-    }
-
     private void ApplyTagColumnLayout()
     {
         var host = ResolveTagHostWidthDip();
@@ -326,63 +257,20 @@ public sealed partial class TagsPage : Page
 
     private double ResolveTagHostWidthDip()
     {
-        EnsureShellNavReference();
-
-        // During MeasureOverride, Frame/Page ActualWidth feedback-loops (Desktop log:
-        // host 936 → 1272 → 2310). Use XamlRoot − nav pane only (Wimbly #197).
-        if (XamlRoot is null)
+        EnsureShellContentFrameReference();
+        var slot = _shellContentFrame?.ActualWidth ?? 0;
+        if (double.IsFinite(slot) && slot >= MosaicLayoutWidth.MinUsable)
         {
-            return 0;
+            return slot;
         }
 
-        var rootW = XamlRoot.Size.Width;
-        if (!double.IsFinite(rootW) || rootW < MosaicLayoutWidth.MinUsable)
+        var page = ActualWidth;
+        if (double.IsFinite(page) && page >= MosaicLayoutWidth.MinUsable)
         {
-            return 0;
+            return page;
         }
 
-        var host = rootW - ResolveShellNavPaneWidthDip();
-        return host >= MosaicLayoutWidth.MinUsable ? host : 0;
-    }
-
-    private void EnsureShellNavReference()
-    {
-        if (_shellNav is not null)
-        {
-            return;
-        }
-
-        DependencyObject? node = this;
-        while (node is not null)
-        {
-            if (node is NavigationView nav)
-            {
-                _shellNav = nav;
-                return;
-            }
-
-            node = VisualTreeHelper.GetParent(node);
-        }
-    }
-
-    private double ResolveShellNavPaneWidthDip()
-    {
-        if (_shellNav is null)
-        {
-            return TagPageLayout.ShellNavPaneWidthDip;
-        }
-
-        if (_shellNav.DisplayMode == NavigationViewDisplayMode.Minimal)
-        {
-            return 0;
-        }
-
-        if (_shellNav.IsPaneOpen)
-        {
-            return _shellNav.OpenPaneLength;
-        }
-
-        return _shellNav.CompactPaneLength;
+        return 0;
     }
 
     private void EnsureShellContentFrameReference()
@@ -453,15 +341,8 @@ public sealed partial class TagsPage : Page
         _shellNav = null;
     }
 
-    private void ShellContentFrame_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        // After maximize→restore the page can keep a stale wide ActualWidth if
-        // MeasureOverride never re-runs (log showed available=1272 at 1014 client).
-        _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
-        InvalidateMeasure();
-        InvalidateArrange();
+    private void ShellContentFrame_SizeChanged(object sender, SizeChangedEventArgs e) =>
         RefreshTagColumnLayout();
-    }
 
     private void ShellNav_PaneLayoutChanged(NavigationView sender, object args) =>
         RefreshTagColumnLayout();
