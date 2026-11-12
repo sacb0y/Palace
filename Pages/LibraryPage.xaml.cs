@@ -780,7 +780,8 @@ public sealed partial class LibraryPage : Page
         ColMosaic.MinWidth = 0;
         ColPreview.Width = new GridLength(PreviewPane.GridPreviewColumnWidth(layout));
         ColPreview.MinWidth = 0;
-        ApplyPreviewDockHostChrome(PreviewPane.DockChrome(layout));
+        // Full slot every pass (incl. Docked→Docked height-only) — see NeedsDockColumnRelayout.
+        ApplyPreviewDockHostSlot(PreviewPane.DockHostSlot(layout));
 
         if (!showing)
         {
@@ -797,7 +798,9 @@ public sealed partial class LibraryPage : Page
 
         SyncPreviewChrome(effective);
 
-        // Mosaic width changes when dock reservation appears/disappears.
+        // Always remeasure while docked (or on dock appear/disappear). Height-only
+        // resize does not change column DIP — without Invalidate, WinUI keeps a
+        // stale host X over the mosaic (FENRIR 0.3.60).
         if (needsDockRelayout)
         {
             GrdLibraryColumns.InvalidateMeasure();

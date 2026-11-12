@@ -289,8 +289,67 @@ public sealed class PreviewPaneTests
             Assert.Equal(docked.Tree, shown.Tree, 0.01);
             Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, shown.Mode));
             Assert.True(PreviewPane.NeedsDockColumnRelayout(shown.Mode, PaneMode.Hidden));
-            Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
+            // Docked→Docked must still invalidate (height-only window resize).
+            Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
         }
+    }
+
+    [Fact]
+    public void NeedsDockColumnRelayout_HeightOnlyWhileDocked_StillInvalidates()
+    {
+        Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Docked));
+        Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Docked));
+        Assert.True(PreviewPane.NeedsDockColumnRelayout(PaneMode.Docked, PaneMode.Hidden));
+        Assert.False(PreviewPane.NeedsDockColumnRelayout(PaneMode.Hidden, PaneMode.Hidden));
+    }
+
+    [Fact]
+    public void Layout_SameContentWidth_IdempotentAcrossRepeatedPasses()
+    {
+        // Height-only resize: content width unchanged; every pass must yield the
+        // same column state (no width-delta gating in the reducer).
+        var width = PreviewPane.AutoShowAboveContentDip + 80;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial with { UserWidth = 360 }, width);
+        var first = PreviewPane.Layout(PreviewPane.Effective(s, width));
+        Assert.Equal(PaneMode.Docked, first.Mode);
+        for (var i = 0; i < 8; i++)
+        {
+            // Simulate SizeChanged with unchanged content width (height-only).
+            s = PreviewPane.OnWidth(s, width);
+            var pass = PreviewPane.Layout(PreviewPane.Effective(s, width));
+            Assert.Equal(first.Mode, pass.Mode);
+            Assert.Equal(first.Tree, pass.Tree, 0.01);
+            Assert.Equal(first.Mosaic, pass.Mosaic, 0.01);
+            Assert.Equal(first.Preview, pass.Preview, 0.01);
+            Assert.Equal(
+                PreviewPane.GridPreviewColumnWidth(first),
+                PreviewPane.GridPreviewColumnWidth(pass),
+                0.01);
+            var slot = PreviewPane.DockHostSlot(pass);
+            Assert.Equal(2, slot.Column);
+            Assert.Equal(1, slot.ColumnSpan);
+            Assert.Equal(1, slot.Row);
+            Assert.True(slot.Stretch);
+            Assert.True(double.IsNaN(slot.Width));
+            Assert.Equal(1, slot.Opacity);
+            Assert.True(slot.HitTestVisible);
+            Assert.True(PreviewPane.NeedsDockColumnRelayout(pass.Mode, pass.Mode));
+        }
+    }
+
+    [Fact]
+    public void DockHostSlot_Hidden_ZeroWidthColumn2()
+    {
+        var wide = PreviewPane.AutoShowAboveContentDip + 100;
+        var s = PreviewPane.OnWidth(PreviewPane.Initial with { UserShow = false }, wide);
+        var layout = PreviewPane.Layout(PreviewPane.Effective(s, wide));
+        var slot = PreviewPane.DockHostSlot(layout);
+        Assert.Equal(PaneMode.Hidden, layout.Mode);
+        Assert.Equal(2, slot.Column);
+        Assert.Equal(1, slot.ColumnSpan);
+        Assert.Equal(0, slot.Width);
+        Assert.Equal(0, slot.Opacity);
+        Assert.False(slot.HitTestVisible);
     }
 
     [Fact]

@@ -299,14 +299,47 @@ public static class PreviewPane
                 HitTestVisible: false);
 
     /// <summary>
-    /// True when docked mosaic reservation appears or disappears — Grid must remeasure.
+    /// True when <c>GrdLibraryColumns</c> must InvalidateMeasure/Arrange after applying
+    /// column widths. Docked→Docked still returns true: height-only window resize does
+    /// not change column widths numerically, and WinUI can leave <c>GrdPreviewDockHost</c>
+    /// at a stale X (over the mosaic) unless the grid is forced to remeasure — FENRIR
+    /// 0.3.60. Width drag corrected because mosaic/preview DIP changed.
     /// </summary>
     public static bool NeedsDockColumnRelayout(PaneMode from, PaneMode to) =>
-        (from == PaneMode.Docked) != (to == PaneMode.Docked);
+        from == PaneMode.Docked || to == PaneMode.Docked || from != to;
+
+    /// <summary>
+    /// Idempotent dock-host slot for one layout pass — always the same from
+    /// <paramref name="layout"/> alone (no width-delta / previous-size gating).
+    /// Column 2, span 1, stretch; NaN width when Docked so the host fills ColPreview.
+    /// </summary>
+    public static PreviewDockHostSlot DockHostSlot(PreviewPaneLayoutState layout) =>
+        new(
+            Column: 2,
+            ColumnSpan: 1,
+            Row: 1,
+            Stretch: true,
+            Width: DockHostWidth(layout),
+            Opacity: DockChrome(layout).Opacity,
+            HitTestVisible: DockChrome(layout).HitTestVisible);
 }
 
 /// <summary>Dock host width / opacity / hit-test (no Collapse; Width NaN = stretch in column).</summary>
 public readonly record struct PreviewDockChrome(
+    double Width,
+    double Opacity,
+    bool HitTestVisible);
+
+/// <summary>
+/// Full dock-host attachment for one layout pass (column slot + chrome). Apply every
+/// refresh — including height-only — so arrange never keeps a stale X from #177-era
+/// right-align / ColumnSpan leftovers or a skipped InvalidateMeasure.
+/// </summary>
+public readonly record struct PreviewDockHostSlot(
+    int Column,
+    int ColumnSpan,
+    int Row,
+    bool Stretch,
     double Width,
     double Opacity,
     bool HitTestVisible);

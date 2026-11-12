@@ -211,11 +211,11 @@ public sealed partial class LibraryPage
         // Dock host: never Collapsed after load. FENRIR #177 — first Collapsed→Visible
         // (cold start) was fine; every later hide→show left ScrPreviewPane at X≈451 over
         // the folder tree. Opacity + ColPreview width + hit-test only; host stays in
-        // Grid.Column=2 (opaque SolidBackgroundFillColorBaseBrush).
+        // Grid.Column=2 (opaque SolidBackgroundFillColorBaseBrush). Re-apply the full
+        // slot every pass — height-only resize must not keep a stale arrange X.
         GrdPreviewDockHost.Visibility = Visibility.Visible;
         ScrPreviewPane.Visibility = Visibility.Visible;
-        ApplyPreviewDockHostChrome(dock);
-        ResetPreviewMotionOffset(GrdPreviewDockHost);
+        ApplyPreviewDockHostSlot(PreviewPane.DockHostSlot(layout));
 
         // Overlay chrome stays Collapsed — Effective promotes OverlayOpen to Docked.
         BrdPreviewOverlay.Visibility = Visibility.Collapsed;
@@ -224,20 +224,32 @@ public sealed partial class LibraryPage
         _previewVisualMode = mode;
     }
 
-    private void ApplyPreviewDockHostChrome(PreviewDockChrome dock)
+    /// <summary>
+    /// Re-assert ColPreview slot + stretch + zero Composition offset every layout pass
+    /// (height-only included). Idempotent from current size — no previous-size gating.
+    /// </summary>
+    private void ApplyPreviewDockHostSlot(PreviewDockHostSlot slot)
     {
-        GrdPreviewDockHost.HorizontalAlignment = HorizontalAlignment.Stretch;
-        if (double.IsNaN(dock.Width))
+        Grid.SetColumn(GrdPreviewDockHost, slot.Column);
+        Grid.SetColumnSpan(GrdPreviewDockHost, slot.ColumnSpan);
+        Grid.SetRow(GrdPreviewDockHost, slot.Row);
+        GrdPreviewDockHost.HorizontalAlignment = slot.Stretch
+            ? HorizontalAlignment.Stretch
+            : HorizontalAlignment.Left;
+        GrdPreviewDockHost.VerticalAlignment = VerticalAlignment.Stretch;
+        GrdPreviewDockHost.ClearValue(MarginProperty);
+        if (double.IsNaN(slot.Width))
         {
             GrdPreviewDockHost.ClearValue(WidthProperty);
         }
         else
         {
-            GrdPreviewDockHost.Width = dock.Width;
+            GrdPreviewDockHost.Width = slot.Width;
         }
 
-        GrdPreviewDockHost.Opacity = dock.Opacity;
-        GrdPreviewDockHost.IsHitTestVisible = dock.HitTestVisible;
+        GrdPreviewDockHost.Opacity = slot.Opacity;
+        GrdPreviewDockHost.IsHitTestVisible = slot.HitTestVisible;
+        ResetPreviewMotionOffset(GrdPreviewDockHost);
     }
 
     private void HostPreviewBody(PaneMode mode)
@@ -382,7 +394,10 @@ public sealed partial class LibraryPage
         {
             var visual = ElementCompositionPreview.GetElementVisual(target);
             visual.StopAnimation("Offset.X");
-            visual.Offset = new System.Numerics.Vector3(0f, visual.Offset.Y, visual.Offset.Z);
+            visual.StopAnimation("Offset.Y");
+            // Full zero — keeping Offset.Y across height-only passes left the host
+            // visually detached from ColPreview (FENRIR height-drag).
+            visual.Offset = System.Numerics.Vector3.Zero;
         }
         catch
         {
