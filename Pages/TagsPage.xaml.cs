@@ -196,13 +196,15 @@ public sealed partial class TagsPage : Page
             _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
         }
 
-        // Also arm on page shrink from maximized-ish → narrower (restore path).
+        // Also arm + remeasure on page shrink from maximized-ish → narrower (restore).
         if (double.IsFinite(_lastKnownPageWidth)
             && _lastKnownPageWidth > 1000
             && double.IsFinite(w)
             && w < _lastKnownPageWidth - 50)
         {
             _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
+            InvalidateMeasure();
+            InvalidateArrange();
         }
 
         _lastKnownPageWidth = w;
@@ -326,34 +328,38 @@ public sealed partial class TagsPage : Page
     {
         EnsureShellContentFrameReference();
         EnsureShellNavReference();
-        var slot = _shellContentFrame?.ActualWidth ?? 0;
-        if (double.IsFinite(slot) && slot >= MosaicLayoutWidth.MinUsable)
+
+        // Prefer the tightest credible host — never a stale wide page ActualWidth.
+        var best = double.PositiveInfinity;
+        void Consider(double width)
         {
-            return slot;
+            if (double.IsFinite(width) && width >= MosaicLayoutWidth.MinUsable)
+            {
+                best = Math.Min(best, width);
+            }
         }
 
-        var page = ActualWidth;
-        if (double.IsFinite(page) && page >= MosaicLayoutWidth.MinUsable)
-        {
-            return page;
-        }
+        Consider(_shellContentFrame?.ActualWidth ?? 0);
 
-        // Wimbly: if ContentFrame lookup fails, XamlRoot − nav OpenPaneLength (not ∞).
         if (XamlRoot is not null)
         {
             var rootW = XamlRoot.Size.Width;
             if (double.IsFinite(rootW) && rootW >= MosaicLayoutWidth.MinUsable)
             {
-                var pane = ResolveShellNavPaneWidthDip();
-                var host = rootW - pane;
-                if (host >= MosaicLayoutWidth.MinUsable)
-                {
-                    return host;
-                }
+                Consider(rootW - ResolveShellNavPaneWidthDip());
             }
         }
 
-        return 0;
+        // Page ActualWidth only if already ≤ best candidate (skip stale maximize width).
+        var page = ActualWidth;
+        if (double.IsFinite(page)
+            && page >= MosaicLayoutWidth.MinUsable
+            && (!double.IsFinite(best) || page <= best + 0.5))
+        {
+            Consider(page);
+        }
+
+        return double.IsInfinity(best) ? 0 : best;
     }
 
     private void EnsureShellNavReference()
@@ -464,8 +470,15 @@ public sealed partial class TagsPage : Page
         _shellNav = null;
     }
 
-    private void ShellContentFrame_SizeChanged(object sender, SizeChangedEventArgs e) =>
+    private void ShellContentFrame_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // After maximize→restore the page can keep a stale wide ActualWidth if
+        // MeasureOverride never re-runs (log showed available=1272 at 1014 client).
+        _measureLogRemaining = Math.Max(_measureLogRemaining, 3);
+        InvalidateMeasure();
+        InvalidateArrange();
         RefreshTagColumnLayout();
+    }
 
     private void ShellNav_PaneLayoutChanged(NavigationView sender, object args) =>
         RefreshTagColumnLayout();
