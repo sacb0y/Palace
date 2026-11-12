@@ -9,8 +9,8 @@ public static class ShellChrome
     public const string ThroughFill = "Transparent";
     /// <summary>Accent-tinted acrylic pane (<c>PalacePaneFillBrush</c>); HC maps to window color.</summary>
     public const string PaneFill = "PalacePaneFillBrush";
-    /// <summary>Strong-tint acrylic for Library Preview dock + overlay (Isiac / 0.3.15 style).</summary>
-    public const string PreviewPaneFill = "PalacePreviewPaneFillBrush";
+    /// <summary>Stock in-app acrylic for Preview overlay fill (9c8f684 / Wimbly).</summary>
+    public const string PreviewOverlayFill = "AcrylicInAppFillColorDefaultBrush";
     public const string CardFill = "CardBackgroundFillColorDefaultBrush";
     public const string LayerFill = "LayerFillColorDefaultBrush";
     public const string NavContentBackgroundKey = "NavigationViewContentBackground";
@@ -45,7 +45,7 @@ public static class ShellChrome
     }
 
     public static bool IsThemeChromeFill(string? brush) =>
-        brush is PaneFill or PreviewPaneFill or CardFill or LayerFill;
+        brush is PaneFill or PreviewOverlayFill or CardFill or LayerFill;
 
     /// <summary>
     /// Page, NavigationView, and content presenter must be through-fills.

@@ -2215,7 +2215,7 @@
             x:Name="GrdPreviewDockHost"
             Grid.Row="1"
             Grid.Column="2"
-            Background="{ThemeResource PalacePreviewPaneFillBrush}"
+            Background="Transparent"
             Opacity="0"
             IsHitTestVisible="False"
             Visibility="Visible">
@@ -3230,9 +3230,8 @@
             </StackPanel>
         </Grid>
 
-        <!-- Narrow overlay: Grid.Row=1 = below Library toolbar, above status/row-height
-             (Gooey 4-narrow-overlay). Not Offset/Translation for vertical place.
-             Single header = title + pin; body has no second "Preview" caption. -->
+        <!-- Narrow overlay: Grid.Row=1 below toolbar (9c8f684 acrylic). Outer hosts
+             Translation / ThemeShadow; inner paints AcrylicInApp (Wimbly step 2+3). -->
         <Border
             x:Name="BrdPreviewOverlay"
             Grid.Row="1"
@@ -3243,49 +3242,53 @@
             VerticalAlignment="Stretch"
             Canvas.ZIndex="2"
             AutomationProperties.AutomationId="BrdPreviewOverlay"
-            Background="{ThemeResource PalacePreviewPaneFillBrush}"
-            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1,0,0,0"
-            CornerRadius="8"
+            Background="Transparent"
             Visibility="Collapsed">
             <Border.Shadow>
                 <ThemeShadow />
             </Border.Shadow>
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid Padding="8,6" ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        x:Name="TxtPreviewOverlayTitle"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource SubtitleTextBlockStyle}"
-                        Text="Preview" />
-                    <!-- Isiac: Close ✕ dismisses overlay (Esc / light-dismiss); no pin-to-dock. -->
-                    <Button
-                        x:Name="BtnPreviewOverlayClose"
-                        Grid.Column="1"
-                        MinWidth="32"
-                        MinHeight="32"
-                        AutomationProperties.AutomationId="BtnPreviewOverlayClose"
-                        AutomationProperties.Name="Close Preview"
-                        Click="BtnPreviewOverlayClose_Click"
-                        ToolTipService.ToolTip="Close Preview">
-                        <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
-                    </Button>
+            <Border
+                x:Name="BrdPreviewOverlayFill"
+                Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1,0,0,0"
+                CornerRadius="8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Padding="8,6" ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            x:Name="TxtPreviewOverlayTitle"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            Text="Preview" />
+                        <!-- Isiac: Close ✕ dismisses overlay (Esc / light-dismiss); no pin-to-dock. -->
+                        <Button
+                            x:Name="BtnPreviewOverlayClose"
+                            Grid.Column="1"
+                            MinWidth="32"
+                            MinHeight="32"
+                            AutomationProperties.AutomationId="BtnPreviewOverlayClose"
+                            AutomationProperties.Name="Close Preview"
+                            Click="BtnPreviewOverlayClose_Click"
+                            ToolTipService.ToolTip="Close Preview">
+                            <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                        </Button>
+                    </Grid>
+                    <ScrollViewer
+                        x:Name="ScrPreviewOverlay"
+                        Grid.Row="1"
+                        AutomationProperties.AutomationId="ScrPreviewOverlay"
+                        Background="Transparent"
+                        VerticalScrollBarVisibility="Auto" />
                 </Grid>
-                <ScrollViewer
-                    x:Name="ScrPreviewOverlay"
-                    Grid.Row="1"
-                    AutomationProperties.AutomationId="ScrPreviewOverlay"
-                    Background="Transparent"
-                    VerticalScrollBarVisibility="Auto" />
-            </Grid>
+            </Border>
         </Border>
 
         <!-- Doktor faint edge handle — hide while overlay open (‹ tab must not show). -->

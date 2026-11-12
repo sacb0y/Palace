@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Palace.Helpers;
 using Xunit;
 
 namespace Palace.Tests;
@@ -77,19 +78,32 @@ public sealed class PreviewOverlayMockupXamlTests
     }
 
     [Fact]
-    public void OverlayAndDock_UseStrongAcrylic_NotOpaqueBase()
+    public void OverlayUsesStockAcrylicInApp_DockHostTransparent_NoCustomPreviewBrush()
     {
+        // Wimbly / 9c8f684: delete PalacePreviewPaneFillBrush; dock Transparent;
+        // acrylic on inner fill; ThemeShadow stays on outer BrdPreviewOverlay.
         var root = LoadLibraryPage();
         var overlay = RequireNamed(root, "BrdPreviewOverlay");
-        Assert.Contains("PalacePreviewPaneFillBrush", Attr(overlay, "Background") ?? "", StringComparison.Ordinal);
-        Assert.Equal("1,0,0,0", Attr(overlay, "BorderThickness"));
+        Assert.Equal("Transparent", Attr(overlay, "Background"));
+        Assert.NotNull(overlay.Element(overlay.Name.Namespace + "Border.Shadow")
+            ?? overlay.Elements().FirstOrDefault(e => e.Name.LocalName == "Border.Shadow"));
+
+        var fill = RequireNamed(root, "BrdPreviewOverlayFill");
+        Assert.Contains(
+            "AcrylicInAppFillColorDefaultBrush",
+            Attr(fill, "Background") ?? "",
+            StringComparison.Ordinal);
+        Assert.Equal("1,0,0,0", Attr(fill, "BorderThickness"));
+        Assert.True(
+            fill.Ancestors().Any(a => Attr(a, "Name") == "BrdPreviewOverlay"),
+            "acrylic fill must be inside outer overlay (shadow/Translation host)");
 
         var dock = RequireNamed(root, "GrdPreviewDockHost");
-        Assert.Contains("PalacePreviewPaneFillBrush", Attr(dock, "Background") ?? "", StringComparison.Ordinal);
+        Assert.Equal("Transparent", Attr(dock, "Background"));
 
         var appXaml = File.ReadAllText(Path.Combine(RepoRoot(), "App.xaml"));
-        Assert.Contains("x:Key=\"PalacePreviewPaneFillBrush\"", appXaml, StringComparison.Ordinal);
-        Assert.Contains("TintOpacity=\"0.55\"", appXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("PalacePreviewPaneFillBrush", appXaml, StringComparison.Ordinal);
+        Assert.Equal("AcrylicInAppFillColorDefaultBrush", ShellChrome.PreviewOverlayFill);
     }
 
     [Fact]
