@@ -2244,7 +2244,7 @@
             x:Name="ScrPreviewPane"
             Grid.Column="1"
             AutomationProperties.AutomationId="ScrPreviewPane"
-            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+            Background="Transparent"
             HorizontalScrollBarVisibility="Disabled"
             HorizontalScrollMode="Disabled"
             VerticalScrollBarVisibility="Auto">

@@ -111,6 +111,11 @@ public sealed class PreviewOverlayMockupXamlTests
                 || dockBg.Contains("Transparent", StringComparison.OrdinalIgnoreCase),
             "GrdPreviewDockHost must be Transparent (9c8f684 glass)");
 
+        var scr = RequireNamed(root, "ScrPreviewPane");
+        var scrBg = Attr(scr, "Background") ?? "";
+        Assert.Equal("Transparent", scrBg, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Solid", scrBg, StringComparison.OrdinalIgnoreCase);
+
         var appXaml = File.ReadAllText(Path.Combine(RepoRoot(), "App.xaml"));
         Assert.DoesNotContain("PalacePreviewPaneFillBrush", appXaml, StringComparison.Ordinal);
         Assert.Equal("AcrylicInAppFillColorDefaultBrush", ShellChrome.PreviewOverlayFill);
