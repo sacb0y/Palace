@@ -1,0 +1,1 @@
+Notes offscreen=False y=1009 h=89 @1024 ON. Tip 720095e.

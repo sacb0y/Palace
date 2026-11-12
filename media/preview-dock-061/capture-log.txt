@@ -1,0 +1,6 @@
+2026-11-12T01:14:42.1522097-05:00 BEGIN AppPid=18528 MediaDir=C:\Users\iadag\AppData\Local\Temp\palace-fenrir-shots-193-194-061\preview-dock-061 Tip=720095e
+2026-11-12T01:14:44.7215710-05:00 Resize targetDIP=1024x900 actualDIP=1024x666 phys=1536x999 work=1600x1019 clamped=True dpi=144
+2026-11-12T01:14:47.6512992-05:00 Assert grid.w=936 prev.x=1788 prev.w=504 tree.x=418 tree.w=390
+2026-11-12T01:14:48.5314515-05:00 SHOT 01-height-1024-before.png bytes=666933
+2026-11-12T01:14:49.2554590-05:00 HeightOnly w=1536->1536 h=999->819
+2026-11-12T01:14:50.1565532-05:00 Assert grid.w=936 prev.x=406 prev.w=504 tree.x=418 tree.w=390
