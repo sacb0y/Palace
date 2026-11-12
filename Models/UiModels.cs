@@ -798,6 +798,10 @@ public partial class TagChipItem : ObservableObject
     [ObservableProperty]
     public partial bool IsRecentlyCreated { get; set; }
 
+    /// <summary>Board multi-select (Ctrl/Shift + drag payload). Accent outline on chip.</summary>
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
     /// <summary>Optional trailing use count on board chips (t2-03b).</summary>
     [ObservableProperty]
     public partial string? CountBadge { get; set; }
@@ -932,6 +936,14 @@ public partial class TagBoardGroup : ObservableObject
     /// <summary>User group under GROUPS — round colour dot, not a fixed-view glyph.</summary>
     public bool IsUserGroupRow => !IsGroupsHeader && ScopeKind is null;
 
+    /// <summary>dg-02 valid drop target chrome while dragging tags onto this group.</summary>
+    [ObservableProperty]
+    public partial bool IsDropTargetValid { get; set; }
+
+    /// <summary>dg-03 muted refuse chrome (already / cycle).</summary>
+    [ObservableProperty]
+    public partial bool IsDropTargetRefuse { get; set; }
+
     public bool ShowChipCount => !IsGroupsHeader;
 
     /// <summary>
@@ -1053,6 +1065,8 @@ public sealed class TagGroupPick
 {
     public string TagId { get; set; } = "";
     public string Name { get; set; } = "";
+    /// <summary>Optional group colour for details chips / menus (dg-05).</summary>
+    public string? Color { get; set; }
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Name;

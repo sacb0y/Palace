@@ -296,6 +296,167 @@ public sealed partial class CatalogService
         });
 
     /// <summary>
+    /// Add tags to a group (drag / Add to group ›). Journals only
+    /// <see cref="MembershipAddResult.Added"/> edges under <see cref="FileOpKind.TagMembership"/>.
+    /// When <paramref name="createGroupName"/> is set, creates that group first and adds in one batch.
+    /// </summary>
+    public Task<TagMembershipBatchResult> ApplyAddMembershipJournaledAsync(
+        string projectId,
+        IReadOnlyList<string> childIds,
+        string? parentId,
+        string? createGroupName = null) =>
+        _db.WriteAsync(conn =>
+        {
+            if (string.IsNullOrWhiteSpace(projectId))
+            {
+                return TagMembershipBatchResult.Fail("Open a project first.");
+            }
+
+            var ids = childIds
+                .Where(id => !string.IsNullOrEmpty(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (ids.Count == 0 && string.IsNullOrWhiteSpace(createGroupName))
+            {
+                return TagMembershipBatchResult.Fail("Select a tag first.");
+            }
+
+            var probe = TakeBulkTagFault();
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var journal = new List<FileOpItem>();
+                string? groupId = parentId;
+                string? groupName = null;
+                string? createdGroupId = null;
+                var createdGroup = false;
+
+                if (!string.IsNullOrWhiteSpace(createGroupName))
+                {
+                    var name = UniqueGroupName(conn, createGroupName.Trim(), tx);
+                    var group = InsertTag(conn, name, 0, tx);
+                    createdGroupId = group.Id;
+                    groupId = group.Id;
+                    groupName = group.Name;
+                    createdGroup = true;
+                    journal.Add(new FileOpItem
+                    {
+                        Step = FileOpStep.CreateTag,
+                        OldPath = group.Id,
+                        NewPath = group.Name
+                    });
+                }
+                else if (string.IsNullOrEmpty(groupId))
+                {
+                    return TagMembershipBatchResult.Fail("Pick a group first.");
+                }
+                else
+                {
+                    using var nameCmd = conn.CreateCommand();
+                    nameCmd.Transaction = tx;
+                    nameCmd.CommandText = "SELECT Name FROM Tag WHERE Id = $id";
+                    nameCmd.Parameters.AddWithValue("$id", groupId);
+                    groupName = nameCmd.ExecuteScalar() as string;
+                    if (groupName is null)
+                    {
+                        return TagMembershipBatchResult.Fail("That group no longer exists.");
+                    }
+                }
+
+                var added = 0;
+                var already = 0;
+                var cycle = 0;
+                foreach (var childId in ids)
+                {
+                    var result = TryAddMembership(conn, groupId!, childId, tx);
+                    switch (result)
+                    {
+                        case MembershipAddResult.Added:
+                            added++;
+                            journal.Add(new FileOpItem
+                            {
+                                Step = FileOpStep.AddMembership,
+                                OldPath = groupId!,
+                                NewPath = childId
+                            });
+                            break;
+                        case MembershipAddResult.AlreadyMember:
+                            already++;
+                            break;
+                        case MembershipAddResult.CycleRefuse:
+                            cycle++;
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException(nameof(result), result, null);
+                    }
+                }
+
+                if (journal.Count == 0)
+                {
+                    tx.Commit();
+                    return new TagMembershipBatchResult
+                    {
+                        Added = 0,
+                        AlreadyMember = already,
+                        CycleRefuse = cycle,
+                        GroupId = groupId,
+                        GroupName = groupName,
+                        Ok = true,
+                        Message = TagMembershipAdd.StatusMessage(0, already, cycle, groupName)
+                    };
+                }
+
+                if (added > 0 || createdGroup)
+                {
+                    InvalidateGraphCaches();
+                }
+
+                ThrowIfBeforeJournalFault(probe);
+                var status = TagMembershipAdd.StatusMessage(
+                    added, already, cycle, groupName, createdGroup);
+                var summary = TagMembershipAdd.JournalSummary(added, groupName, createdGroup);
+                var batchId = InsertJournaledBatch(
+                    conn, tx, projectId, FileOpKind.TagMembership, summary, journal, probe);
+                tx.Commit();
+                return new TagMembershipBatchResult
+                {
+                    Added = added,
+                    AlreadyMember = already,
+                    CycleRefuse = cycle,
+                    GroupId = groupId,
+                    GroupName = groupName,
+                    CreatedGroupId = createdGroupId,
+                    BatchId = batchId,
+                    Ok = true,
+                    Message = status
+                };
+            }
+            catch (BulkTagFaultException)
+            {
+                return TagMembershipBatchResult.Fail(BulkTagAbortedMessage);
+            }
+        });
+
+    private static string UniqueGroupName(SqliteConnection conn, string preferred, SqliteTransaction tx)
+    {
+        var name = string.IsNullOrWhiteSpace(preferred) ? "New group" : preferred.Trim();
+        if (FindTagByName(conn, name, tx) is null)
+        {
+            return name;
+        }
+
+        var n = 2;
+        while (true)
+        {
+            var candidate = $"{name} ({n++})";
+            if (FindTagByName(conn, candidate, tx) is null)
+            {
+                return candidate;
+            }
+        }
+    }
+
+    /// <summary>
     /// Remove tags across assets and journal <see cref="FileOpKind.TagRemove"/> in one transaction.
     /// <paramref name="sourceFallback"/> is used when an asset lacks the row (same as prior FileOp path).
     /// Implied rows are swept without journaling (never rematerialized on Undo).

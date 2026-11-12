@@ -823,16 +823,8 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
-            StatusText = ok
-                ? $"Also grouped under {move.GroupName}."
-                : "That membership would create a cycle.";
-            if (ok)
-            {
-                _reorderParentId = move.GroupId;
-            }
-
-            await RefreshAsync();
+            var ids = ChipPayloadIds(move.Chip);
+            await AddTagsToGroupCoreAsync(ids, move.GroupId);
         });
 
     [RelayCommand]
@@ -859,7 +851,8 @@ public partial class TagsViewModel : ObservableObject
                 }
             }
 
-            var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+            var result = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+            var ok = result != MembershipAddResult.CycleRefuse;
             StatusText = ok
                 ? $"Moved to {move.GroupName}."
                 : "Removed from this group, but that destination would create a cycle.";
@@ -878,7 +871,97 @@ public partial class TagsViewModel : ObservableObject
             .ToList();
     }
 
-    public void SelectChip(TagChipItem? chip)
+    /// <summary>dg-05 Add to group › picks (colour + checked/disabled existing).</summary>
+    public IReadOnlyList<TagGroupMenuPick> AddGroupMenuPicks(TagChipItem chip) =>
+        TagMembershipAdd.AddMenuPicks(_tags, _memberships, chip.TagId);
+
+    /// <summary>Drag/drop preview against live memberships (Shift-drag is still add).</summary>
+    public (int Added, int AlreadyMember, int CycleRefuse) PreviewAddToGroup(
+        string groupId,
+        IReadOnlyList<string> tagIds) =>
+        TagMembershipAdd.CountResults(groupId, tagIds, _memberships);
+
+    public IReadOnlyList<string> ChipPayloadIds(TagChipItem chip) =>
+        TagMembershipAdd.PayloadIds(
+            chip.TagId,
+            chip.IsSelected,
+            SelectedChipIds);
+
+    public IReadOnlyList<string> SelectedChipIds =>
+        SelectedBoard?.Letters
+            .SelectMany(letter => letter.Chips)
+            .Where(chip => chip.IsSelected)
+            .Select(chip => chip.TagId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList()
+        ?? [];
+
+    public async Task AddTagsToGroupCoreAsync(IReadOnlyList<string> tagIds, string groupId)
+    {
+        var projectId = AppServices.CurrentProject?.Id;
+        if (string.IsNullOrEmpty(projectId) || string.IsNullOrEmpty(groupId) || tagIds.Count == 0)
+        {
+            return;
+        }
+
+        var result = await _fileOps.AddTagsToGroupAsync(tagIds, groupId, projectId);
+        StatusText = result.Message;
+        ShowStatusUndo = result.Ok && result.BatchId is not null && AppServices.Library.CanUndoFileOp;
+        if (result.Added > 0)
+        {
+            _reorderParentId = groupId;
+        }
+
+        await RefreshAsync();
+        if (AppServices.Library is { } library)
+        {
+            await library.RefreshUndoStateAsync();
+            ShowStatusUndo = result.Ok && result.BatchId is not null && library.CanUndoFileOp;
+        }
+    }
+
+    [RelayCommand]
+    private Task CreateGroupAndAddChipsAsync(TagChipItem? chip) =>
+        ErrorReporter.RunAsync("New group and add", Notify, async () =>
+        {
+            if (chip?.TagId is null)
+            {
+                return;
+            }
+
+            var projectId = AppServices.CurrentProject?.Id;
+            if (string.IsNullOrEmpty(projectId))
+            {
+                return;
+            }
+
+            var ids = ChipPayloadIds(chip);
+            var result = await _fileOps.CreateGroupAndAddTagsAsync(ids, projectId);
+            StatusText = result.Message;
+            ShowStatusUndo = result.Ok && result.BatchId is not null && AppServices.Library.CanUndoFileOp;
+            if (!string.IsNullOrEmpty(result.GroupId))
+            {
+                _reorderParentId = result.GroupId;
+                if (!string.IsNullOrEmpty(result.CreatedGroupId))
+                {
+                    _pendingEmptyGroupIds.Remove(result.CreatedGroupId);
+                }
+            }
+
+            await RefreshAsync();
+            if (!string.IsNullOrEmpty(result.GroupId))
+            {
+                SelectCreated(result.GroupId);
+            }
+
+            if (AppServices.Library is { } library)
+            {
+                await library.RefreshUndoStateAsync();
+                ShowStatusUndo = result.Ok && result.BatchId is not null && library.CanUndoFileOp;
+            }
+        });
+
+    public void SelectChip(TagChipItem? chip, bool toggle = false, bool extend = false)
     {
         if (chip?.TagId is null)
         {
@@ -890,10 +973,60 @@ public partial class TagsViewModel : ObservableObject
             _boardSelectionKey = chip.BoardKey;
         }
 
+        if (toggle)
+        {
+            chip.IsSelected = !chip.IsSelected;
+        }
+        else if (extend)
+        {
+            chip.IsSelected = true;
+        }
+        else
+        {
+            ClearChipSelection();
+            chip.IsSelected = true;
+        }
+
         _reorderParentId = string.IsNullOrEmpty(chip.ParentGroupId) ? null : chip.ParentGroupId;
         var node = TagTreeBuilder.Find(TagTree, chip.TagId)
             ?? new TagTreeNode { TagId = chip.TagId, Name = chip.Name, EffectiveColor = chip.EffectiveColor, IsStarred = chip.IsStarred };
         SelectNode(node);
+    }
+
+    public void ClearChipSelection()
+    {
+        if (SelectedBoard is null)
+        {
+            return;
+        }
+
+        foreach (var letter in SelectedBoard.Letters)
+        {
+            foreach (var chip in letter.Chips)
+            {
+                chip.IsSelected = false;
+            }
+        }
+    }
+
+    public void ClearGroupDropChrome()
+    {
+        foreach (var group in Board)
+        {
+            group.IsDropTargetValid = false;
+            group.IsDropTargetRefuse = false;
+        }
+    }
+
+    public void SetGroupDropChrome(string? groupId, bool valid)
+    {
+        foreach (var group in Board)
+        {
+            var hit = !string.IsNullOrEmpty(groupId)
+                && string.Equals(group.GroupId, groupId, StringComparison.Ordinal);
+            group.IsDropTargetValid = hit && valid;
+            group.IsDropTargetRefuse = hit && !valid;
+        }
     }
 
     [RelayCommand]
@@ -1077,14 +1210,7 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            var ok = await _catalog.AddMembershipAsync(SelectedAvailableGroup.TagId, SelectedNode.TagId);
-            StatusText = ok ? $"Also grouped under {SelectedAvailableGroup.Name}." : "That membership would create a cycle.";
-            if (ok)
-            {
-                _reorderParentId = SelectedAvailableGroup.TagId;
-            }
-
-            await RefreshAsync();
+            await AddTagsToGroupCoreAsync([SelectedNode.TagId], SelectedAvailableGroup.TagId);
         });
 
     [RelayCommand]
@@ -1412,13 +1538,23 @@ public partial class TagsViewModel : ObservableObject
             ParentGroups.Clear();
             foreach (var parent in parents)
             {
-                ParentGroups.Add(new TagGroupPick { TagId = parent.Id, Name = parent.Name });
+                ParentGroups.Add(new TagGroupPick
+                {
+                    TagId = parent.Id,
+                    Name = parent.Name,
+                    Color = colors.GetValueOrDefault(parent.Id) ?? parent.Color
+                });
             }
 
             AvailableGroups.Clear();
             foreach (var candidate in available)
             {
-                AvailableGroups.Add(new TagGroupPick { TagId = candidate.Id, Name = candidate.Name });
+                AvailableGroups.Add(new TagGroupPick
+                {
+                    TagId = candidate.Id,
+                    Name = candidate.Name,
+                    Color = colors.GetValueOrDefault(candidate.Id) ?? candidate.Color
+                });
             }
 
             ImpliedTags.Clear();

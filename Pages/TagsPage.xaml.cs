@@ -211,10 +211,115 @@ public sealed partial class TagsPage : Page
 
     private void TagChip_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { Tag: TagChipItem chip })
+        if (sender is not FrameworkElement { Tag: TagChipItem chip })
+        {
+            return;
+        }
+
+        var ctrl = IsKeyDown(VirtualKey.Control) || IsKeyDown(VirtualKey.LeftControl) || IsKeyDown(VirtualKey.RightControl);
+        var shift = IsKeyDown(VirtualKey.Shift) || IsKeyDown(VirtualKey.LeftShift) || IsKeyDown(VirtualKey.RightShift);
+        ViewModel.SelectChip(chip, toggle: ctrl, extend: shift && !ctrl);
+    }
+
+    private static bool IsKeyDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
+
+    private void TagChip_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        // Mouse-only CanDrag so touch/pen still pans the chip ScrollViewer (AssetDrag pattern).
+        if (sender is UIElement el)
+        {
+            el.CanDrag = e.Pointer.PointerDeviceType == PointerDeviceType.Mouse;
+        }
+    }
+
+    private void TagChip_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is UIElement el)
+        {
+            el.CanDrag = false;
+        }
+    }
+
+    private void TagChip_DragStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        if (sender is not FrameworkElement { Tag: TagChipItem chip } || string.IsNullOrEmpty(chip.TagId))
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        if (!chip.IsSelected)
         {
             ViewModel.SelectChip(chip);
         }
+
+        var ids = ViewModel.ChipPayloadIds(chip);
+        if (ids.Count == 0)
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        args.Data.Properties[TagMembershipAdd.DataKey] = TagMembershipAdd.Serialize(ids);
+        args.AllowedOperations = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+        var badge = TagMembershipAdd.MultiBadge(ids.Count);
+        args.DragUI.SetContentFromDataPackage();
+        if (!string.IsNullOrEmpty(badge))
+        {
+            args.Data.Properties.Title = badge;
+        }
+    }
+
+    private void TagGroup_DragOver(object sender, DragEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: TagBoardGroup group }
+            || !group.IsUserGroupRow
+            || string.IsNullOrEmpty(group.GroupId)
+            || !e.DataView.Properties.TryGetValue(TagMembershipAdd.DataKey, out var raw))
+        {
+            e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+            ViewModel.ClearGroupDropChrome();
+            return;
+        }
+
+        var ids = TagMembershipAdd.Parse(raw);
+        var (added, already, cycle) = ViewModel.PreviewAddToGroup(group.GroupId!, ids);
+        var allow = TagMembershipAdd.AllowsDrop(added);
+        e.AcceptedOperation = allow
+            ? Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy
+            : Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+        e.DragUIOverride.IsCaptionVisible = true;
+        e.DragUIOverride.IsGlyphVisible = true;
+        e.DragUIOverride.Caption = TagMembershipAdd.DragHint(group.Name, added, already, cycle);
+        ViewModel.SetGroupDropChrome(group.GroupId, allow);
+    }
+
+    private void TagGroup_DragLeave(object sender, DragEventArgs e) =>
+        ViewModel.ClearGroupDropChrome();
+
+    private async void TagGroup_Drop(object sender, DragEventArgs e)
+    {
+        ViewModel.ClearGroupDropChrome();
+        if (sender is not FrameworkElement { Tag: TagBoardGroup group }
+            || !group.IsUserGroupRow
+            || string.IsNullOrEmpty(group.GroupId)
+            || !e.DataView.Properties.TryGetValue(TagMembershipAdd.DataKey, out var raw))
+        {
+            return;
+        }
+
+        var ids = TagMembershipAdd.Parse(raw);
+        var (added, _, _) = ViewModel.PreviewAddToGroup(group.GroupId!, ids);
+        if (!TagMembershipAdd.AllowsDrop(added))
+        {
+            return;
+        }
+
+        await ErrorReporter.RunAsync(
+            "Add tags to group",
+            null,
+            () => ViewModel.AddTagsToGroupCoreAsync(ids, group.GroupId!));
     }
 
     private void FocusRenameBox()
@@ -389,16 +494,20 @@ public sealed partial class TagsPage : Page
     private void FillGroupSubmenu(MenuFlyoutSubItem sub, TagChipItem chip, bool add)
     {
         sub.Items.Clear();
-        var groups = ViewModel.GroupDestinations(chip, add);
+        if (add)
+        {
+            FillAddToGroupMenu(sub, chip);
+            return;
+        }
+
+        var groups = ViewModel.GroupDestinations(chip, add: false);
         sub.IsEnabled = groups.Count > 0;
-        var command = add ? ViewModel.AddChipToGroupCommand : ViewModel.MoveChipToGroupCommand;
-        var prefix = add ? "MnuAddToGroup_" : "MnuMoveToGroup_";
         foreach (var group in groups)
         {
             var item = new MenuFlyoutItem
             {
                 Text = group.Name,
-                Command = command,
+                Command = ViewModel.MoveChipToGroupCommand,
                 CommandParameter = new TagChipGroupMove
                 {
                     Chip = chip,
@@ -408,10 +517,72 @@ public sealed partial class TagsPage : Page
             };
             AutomationProperties.SetAutomationId(
                 item,
-                prefix + string.Concat((group.Name ?? "").Where(char.IsLetterOrDigit)));
+                "MnuMoveToGroup_" + string.Concat((group.Name ?? "").Where(char.IsLetterOrDigit)));
             AutomationProperties.SetName(item, group.Name);
             sub.Items.Add(item);
         }
+    }
+
+    /// <summary>dg-05: colour dots, checked+disabled existing, New group… one undoable step.</summary>
+    private void FillAddToGroupMenu(MenuFlyoutSubItem sub, TagChipItem chip)
+    {
+        var picks = ViewModel.AddGroupMenuPicks(chip);
+        sub.IsEnabled = true;
+        foreach (var pick in picks)
+        {
+            // Icon lives on MenuFlyoutItem (not MenuFlyoutItemBase).
+            MenuFlyoutItem item = pick.IsMember
+                ? new ToggleMenuFlyoutItem
+                {
+                    Text = pick.Name,
+                    IsChecked = true,
+                    IsEnabled = false
+                }
+                : new MenuFlyoutItem
+                {
+                    Text = pick.Name,
+                    IsEnabled = pick.IsEnabled,
+                    Command = ViewModel.AddChipToGroupCommand,
+                    CommandParameter = new TagChipGroupMove
+                    {
+                        Chip = chip,
+                        GroupId = pick.TagId,
+                        GroupName = pick.Name ?? ""
+                    }
+                };
+
+            if (TagColor.TryParse(pick.Color, out var color))
+            {
+                item.Icon = new FontIcon
+                {
+                    Glyph = "\u25CF",
+                    FontSize = 10,
+                    Foreground = new SolidColorBrush(color)
+                };
+            }
+
+            AutomationProperties.SetAutomationId(
+                item,
+                "MnuAddToGroup_" + string.Concat((pick.Name ?? "").Where(char.IsLetterOrDigit)));
+            AutomationProperties.SetName(item, pick.Name);
+            sub.Items.Add(item);
+        }
+
+        if (sub.Items.Count > 0)
+        {
+            sub.Items.Add(new MenuFlyoutSeparator());
+        }
+
+        var create = new MenuFlyoutItem
+        {
+            Text = "New group…",
+            Command = ViewModel.CreateGroupAndAddChipsCommand,
+            CommandParameter = chip
+        };
+        create.Icon = new FontIcon { Glyph = "\uE710", FontSize = 16 };
+        AutomationProperties.SetAutomationId(create, "MnuAddToGroup_New");
+        AutomationProperties.SetName(create, "New group");
+        sub.Items.Add(create);
     }
 
     private void TagGroupHeader_Click(object sender, RoutedEventArgs e)

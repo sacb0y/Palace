@@ -74,8 +74,10 @@ alwaysApply: false
 | Tag board expand | `Helpers/TagBoardExpand.cs` (create/select opens the row that shows the tag) |
 | Tag sibling order | `Helpers/TagSiblings.cs` |
 | Tag group destinations | `Helpers/TagGroups.cs` |
+| Tag membership add / drag | `Helpers/TagMembershipAdd.cs` + `MembershipAddResult` / `FileOpKind.TagMembership` (`CatalogService.ApplyAddMembershipJournaledAsync`, `FileOpService.AddTagsToGroupAsync` / `CreateGroupAndAddTagsAsync`); Tags board drop chrome + chip `CanDrag` in `Pages/TagsPage.*` |
+| Tags page columns | `Helpers/TagPageLayout.cs` (sidebar 200 / board ≥320 / details 240–300) |
 | Tag A–Z index | `Helpers/TagAlphaIndex.cs` (letter buckets; Tags board chips wrap under each header) |
-| Tag children mosaic | `Pages/TagsPage.xaml` (`RepTagChildren` `WrapLayout` chips; keep `BtnTagChip_*`) |
+| Tag children mosaic | `Pages/TagsPage.xaml` (`RepTagChildren` `ChipWrapLayout` chips; keep `BtnTagChip_*`) |
 | Tag board / assign / preview chip | `Controls/TagChip.*` + `Helpers/TagChipVisual.cs` (Gooey pill: accent/partial/off/selected tint, never face "On"; color dot; × / link / + new) + `Helpers/TagChipChrome.cs` (wrap width) + `Helpers/TagRemoveConfirm.cs` (≤10 / union &gt;10; Del badge) + `Helpers/TagRemoveFlyout.cs` (t2-04b Remove tags… filter / select-all / most-used / usage bar; anchored `FlyRemoveTags` on `BtnRemoveTags` multi / `BtnTagsMore` single) + `Helpers/TagSuggest.cs` / `TagAddInput` (t2-02 autocomplete: bold match, alias pill, Create-last via owned `LstTagSuggestions` + `WithCreateLast`/`IsCreateLast` — ASB popup reverses when above the box; key hints; `TxtTagSuggestions`; t8-03 `SingleImageHeaderSuffix` + `BtnTagsMore` / `MnuRemoveTags` / `TxtAssignedTagsHeaderSuffix`). Library preview assigned / implied / pending bind `TagChip` (not inline LP markup). |
 | Tag rename apply | `Helpers/TagSelection.cs` |
 | Recent tags | `Helpers/RecentTags.cs` (Library Tags panel Recent chips; assign flyout shell removed in T8) |
