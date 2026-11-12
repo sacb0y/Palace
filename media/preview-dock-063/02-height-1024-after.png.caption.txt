@@ -1,0 +1,1 @@
+﻿AFTER height-only ~1024 prev.x=406 delta=-1382 overTree=True PASS=False. Tip 9069682.

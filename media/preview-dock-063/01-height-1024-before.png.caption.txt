@@ -1,0 +1,1 @@
+﻿BEFORE height-only ~1024 DIP Preview ON+selected prev.x=1788 overTree=False. Tip 9069682.
