@@ -138,12 +138,11 @@ public static class LibraryColumnLayout
     }
 
     /// <summary>
-    /// Pick a live window client width (DIP) from XamlRoot and/or AppWindow.
-    /// When both are usable, returns the <b>minimum</b> so a stale
-    /// <c>XamlRoot.Size</c> after HWND <c>SetWindowPos</c> (Studio harness) cannot
-    /// inflate content past <see cref="PreviewPane.AutoHideBelowContentDip"/> and
-    /// keep Preview docked at ~900–1000 client DIP. Does not change the 1024
-    /// content auto-hide threshold. Values below <paramref name="minUsable"/> ignored.
+    /// Debug helper: when XamlRoot DIP and AppWindow/scale DIP disagree, the
+    /// smaller usable value. <b>Not</b> the layout source — LibraryPage drives
+    /// OnWidth from page <c>ActualWidth</c> (+ nav). Never divide
+    /// <c>XamlRoot.Size</c> by scale (Size is already DIP). Values below
+    /// <paramref name="minUsable"/> ignored.
     /// </summary>
     public static double PreferLiveClientDip(
         double xamlRootDip,

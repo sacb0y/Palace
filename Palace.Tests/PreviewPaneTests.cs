@@ -456,20 +456,21 @@ public sealed class PreviewPaneTests
     }
 
     [Fact]
-    public void OnWidth_InflatedClientLikeStaleXamlRoot_WouldSkipAutoHide()
+    public void OnWidth_InflatedXamlRootLikeStudioScale_WouldSkipAutoHide_PageHostDoesNot()
     {
-        // Hypothesis (2): stale XamlRoot ~1920 while HWND is ~1003 → content above
-        // AutoHideBelow. PreferLiveClientDip must pick 1003 so OnWidth hides.
-        var stale = LibraryColumnLayout.PreferLiveClientDip(1920, 1003);
-        Assert.Equal(1003, stale, 0.01);
-        var content = LibraryColumnLayout.ContentWidthFromClientDip(stale);
-        var s = PreviewPane.OnWidth(PreviewPane.Initial, content);
-        Assert.True(s.AutoHidden);
+        // Studio @150%: XamlRoot.Size=1352 while HWND≈911 DIP. Layout must use page
+        // ActualWidth (host DIP), not the inflated root. Do not divide root by scale.
+        const double hwndDip = 911;
+        const double inflatedRoot = 1352; // ≈911×1.5 — lying input when treated as DIP
+        var pageHost = hwndDip - LibraryColumnLayout.ShellNavPaneWidthDip;
+        var fromPage = LibraryColumnLayout.ContentWidthFromHostDip(pageHost);
+        var fromRoot = LibraryColumnLayout.ContentWidthFromClientDip(inflatedRoot);
 
-        var inflatedContent = LibraryColumnLayout.ContentWidthFromClientDip(1920);
-        Assert.True(inflatedContent >= PreviewPane.AutoHideBelowContentDip);
-        var wrong = PreviewPane.OnWidth(PreviewPane.Initial, inflatedContent);
-        Assert.False(wrong.AutoHidden);
+        Assert.True(fromPage < PreviewPane.AutoHideBelowContentDip);
+        Assert.True(PreviewPane.OnWidth(PreviewPane.Initial, fromPage).AutoHidden);
+
+        Assert.True(fromRoot >= PreviewPane.AutoHideBelowContentDip);
+        Assert.False(PreviewPane.OnWidth(PreviewPane.Initial, fromRoot).AutoHidden);
     }
 
     [Fact]

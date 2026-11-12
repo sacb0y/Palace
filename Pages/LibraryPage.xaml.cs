@@ -597,31 +597,29 @@ public sealed partial class LibraryPage : Page
 
     /// <summary>
     /// Window client DIP — toolbar overflow + Preview auto-hide input.
-    /// Cross-checks <c>XamlRoot.Size</c> with <c>AppWindow.Size</c>/scale so a stale
-    /// XamlRoot after HWND resize cannot inflate content past AutoHideBelow (Studio
-    /// ~900/1003 stayed Docked while content should have been AutoHidden).
+    /// Prefers <see cref="FrameworkElement.ActualWidth"/> + shell nav (page layout DIP).
+    /// Do not drive layout from <c>XamlRoot.Size</c> or AppWindow/scale: Studio @150%
+    /// showed rootW≈HWND_DIP×scale while page ActualWidth tracked the real client.
+    /// <c>XamlRoot.Size</c> is already DIP by contract — never divide it by
+    /// <c>RasterizationScale</c> (that double-corrects when root is right).
     /// </summary>
     private double ResolveWindowClientDip()
     {
-        var root = XamlRoot?.Size.Width ?? 0;
-        var appDip = ResolveAppWindowClientDip();
-        var live = LibraryColumnLayout.PreferLiveClientDip(root, appDip);
-        if (live >= MosaicLayoutWidth.MinUsable)
-        {
-            return live;
-        }
-
-        // Page is nav content; add shell pane to approximate client.
+        // Ground truth for OnWidth / toolbar: page host + live nav pane.
         if (ActualWidth >= MosaicLayoutWidth.MinUsable)
         {
             return ActualWidth + ResolveShellNavPaneWidthDip();
         }
 
-        return 0;
+        // Pre-layout fallback only. Treat Size as DIP (WinUI contract).
+        var root = XamlRoot?.Size.Width ?? 0;
+        return root >= MosaicLayoutWidth.MinUsable ? root : 0;
     }
 
     /// <summary>
-    /// AppWindow client width in DIP (<c>Size</c> is physical px — divide by scale).
+    /// AppWindow width / scale — <b>debug cross-check only</b>, not a layout input.
+    /// <c>AppWindow.Size</c> matches the physical px units used by
+    /// <c>AppWindow.Resize</c> in <c>MainWindow</c>.
     /// </summary>
     private double ResolveAppWindowClientDip()
     {
@@ -633,14 +631,7 @@ public sealed partial class LibraryPage : Page
                 return 0;
             }
 
-            var scale = XamlRoot?.RasterizationScale
-                ?? window.Content?.XamlRoot?.RasterizationScale
-                ?? 0;
-            if (!double.IsFinite(scale) || scale <= 0)
-            {
-                scale = 1;
-            }
-
+            var scale = ResolveRasterizationScale();
             // Same physical px units as AppWindow.Resize in MainWindow.
             return window.AppWindow.Size.Width / scale;
         }
@@ -648,6 +639,32 @@ public sealed partial class LibraryPage : Page
         {
             return 0;
         }
+    }
+
+    /// <summary>Physical AppWindow.Size.Width (probe / cross-check only).</summary>
+    private double ResolveAppWindowClientSizeWidth()
+    {
+        try
+        {
+            return App.Window?.AppWindow?.Size.Width ?? 0;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    private double ResolveRasterizationScale()
+    {
+        var scale = XamlRoot?.RasterizationScale
+            ?? App.Window?.Content?.XamlRoot?.RasterizationScale
+            ?? 0;
+        if (!double.IsFinite(scale) || scale <= 0)
+        {
+            return 1;
+        }
+
+        return scale;
     }
 
     /// <summary>
@@ -677,11 +694,18 @@ public sealed partial class LibraryPage : Page
         };
 
     /// <summary>
-    /// Library columns content width from available (window/page) space — never from
-    /// the columns grid's arranged width (that latches when Preview docks).
+    /// Library columns content width from the <b>page</b> ActualWidth (nav content host),
+    /// never from <c>GrdLibraryColumns.ActualWidth</c> (latches when Preview docks) and
+    /// never from a scaled/inflated XamlRoot client guess.
     /// </summary>
     private double ResolveAvailableContentWidth(double windowClientDip)
     {
+        // Prefer page ActualWidth — already excludes the shell pane.
+        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
+        {
+            return LibraryColumnLayout.ContentWidthFromHostDip(ActualWidth);
+        }
+
         if (windowClientDip >= MosaicLayoutWidth.MinUsable)
         {
             return LibraryColumnLayout.ContentWidthFromClientDip(
@@ -689,12 +713,7 @@ public sealed partial class LibraryPage : Page
                 ResolveShellNavPaneWidthDip());
         }
 
-        if (ActualWidth >= MosaicLayoutWidth.MinUsable)
-        {
-            return LibraryColumnLayout.ContentWidthFromHostDip(ActualWidth);
-        }
-
-        // Last resort before first layout.
+        // Last resort before first layout — may latch; avoid once page has ActualWidth.
         return LibraryColumnLayout.ContentWidthFromHostDip(GrdLibraryColumns.ActualWidth);
     }
 

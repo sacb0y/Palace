@@ -317,9 +317,13 @@ public sealed partial class LibraryPage
         try
         {
             var windowDip = ResolveWindowClientDip();
+            var appClientSizeW = ResolveAppWindowClientSizeWidth();
             var appDip = ResolveAppWindowClientDip();
             var rootDip = XamlRoot?.Size.Width ?? 0;
-            var scale = XamlRoot?.RasterizationScale ?? 0;
+            var scale = ResolveRasterizationScale();
+            var pageActualW = ActualWidth;
+            var navDip = ResolveShellNavPaneWidthDip();
+            var pagePlusNav = pageActualW + navDip;
             var contentWidth = ResolveAvailableContentWidth(windowDip);
             var effective = PreviewPane.Effective(_previewPane, contentWidth);
             var layout = PreviewPane.Layout(effective);
@@ -361,7 +365,10 @@ public sealed partial class LibraryPage
                     $"mode={PreviewPaneSettings.Mode} content={contentWidth:0.#} " +
                     $"autoHidden={_previewPane.AutoHidden} pinned={_previewPane.Pinned} " +
                     $"overlayOpen={_previewPane.OverlayOpen} eff={effective.Mode} " +
-                    $"xamlRootW={rootDip:0.#} appWinDip={appDip:0.#} scale={scale:0.###}"));
+                    $"xamlRootW={rootDip:0.#} appClientSizeW={appClientSizeW:0.#} " +
+                    $"appClientDip={appDip:0.#} pageActualW={pageActualW:0.#} " +
+                    $"nav={navDip:0.#} pagePlusNav={pagePlusNav:0.#} " +
+                    $"windowDip={windowDip:0.#} scale={scale:0.###}"));
         }
         catch (Exception ex)
         {
