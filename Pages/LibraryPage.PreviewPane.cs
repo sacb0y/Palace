@@ -223,6 +223,19 @@ public sealed partial class LibraryPage
         if (mode == PaneMode.Overlay)
         {
             BrdPreviewOverlay.Visibility = Visibility.Visible;
+            BrdPreviewOverlay.IsHitTestVisible = true;
+            // Later siblings (Edge, Gallery) sit above the overlay in z-order — Collapse
+            // so they cannot steal clicks while Preview overlay is open.
+            BtnPreviewPaneEdge.Visibility = Visibility.Collapsed;
+            BtnPreviewPaneEdge.IsHitTestVisible = false;
+            if (!ViewModel.IsGalleryOverlayOpen)
+            {
+                // Local value while Preview overlay owns the right edge; ClearValue on exit
+                // restores the IsGalleryOverlayOpen binding.
+                GrdGalleryOverlay.Visibility = Visibility.Collapsed;
+                GrdGalleryOverlay.IsHitTestVisible = false;
+            }
+
             // Ensure body is parented before first compose frame (ghost: Visible chrome, empty SV).
             if (!ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
             {
@@ -240,11 +253,15 @@ public sealed partial class LibraryPage
         if (mode != PaneMode.Overlay)
         {
             BrdPreviewOverlay.Visibility = Visibility.Collapsed;
+            BrdPreviewOverlay.IsHitTestVisible = false;
+            BtnPreviewPaneEdge.IsHitTestVisible = true;
+            GrdGalleryOverlay.ClearValue(VisibilityProperty);
+            GrdGalleryOverlay.IsHitTestVisible = ViewModel.IsGalleryOverlayOpen;
             ResetPreviewOverlayTranslation();
         }
         else if (fromMode == PaneMode.Overlay)
         {
-            // Refresh while already open — keep Translation.Z for ThemeShadow (9c8f684).
+            // Refresh while already open — keep facade Translation Z=32 for ThemeShadow.
             EnsurePreviewOverlayTranslationResting();
         }
 
@@ -540,29 +557,26 @@ public sealed partial class LibraryPage
             return;
         }
 
-        // Slide via Translation only — never Visual.Offset (hand-out Offset IS layout X).
-        UIElement? target = null;
+        // Facade UIElement.Translation only — never SetIsTranslationEnabled /
+        // Properties.InsertVector3 (those desync hit-test from pixels). Never Offset.
         var showing = false;
         if (toMode == PaneMode.Overlay && fromMode != PaneMode.Overlay)
         {
-            target = BrdPreviewOverlay;
             showing = true;
         }
         else if (fromMode == PaneMode.Overlay && toMode != PaneMode.Overlay)
         {
-            target = BrdPreviewOverlay;
             showing = false;
         }
-
-        if (target is null)
+        else
         {
             return;
         }
 
         try
         {
-            ElementCompositionPreview.SetIsTranslationEnabled(target, true);
-            var visual = ElementCompositionPreview.GetElementVisual(target);
+            var visual = ElementCompositionPreview.GetElementVisual(BrdPreviewOverlay);
+            visual.StopAnimation("Translation");
             visual.StopAnimation("Translation.X");
             var compositor = visual.Compositor;
             var ms = showing ? PreviewPane.MotionInMs : PreviewPane.MotionOutMs;
@@ -573,16 +587,19 @@ public sealed partial class LibraryPage
                 : compositor.CreateCubicBezierEasingFunction(
                     new System.Numerics.Vector2(0.7f, 0f),
                     new System.Numerics.Vector2(1f, 0.5f));
-            // Keep Z=32 for ThemeShadow (9c8f684 Translation="0,0,32"); only slide X.
+            // Z=32 ThemeShadow (XAML Translation="0,0,32"); slide X only via Vector3.
             const float shadowZ = 32f;
-            var from = showing ? 24f : 0f;
-            var to = showing ? 0f : 24f;
-            visual.Properties.InsertVector3("Translation", new System.Numerics.Vector3(from, 0f, shadowZ));
-            var anim = compositor.CreateScalarKeyFrameAnimation();
+            var fromX = showing ? 24f : 0f;
+            var toX = showing ? 0f : 24f;
+            var from = new System.Numerics.Vector3(fromX, 0f, shadowZ);
+            var to = new System.Numerics.Vector3(toX, 0f, shadowZ);
+            BrdPreviewOverlay.Translation = from;
+            var anim = compositor.CreateVector3KeyFrameAnimation();
             anim.InsertKeyFrame(0f, from, ease);
             anim.InsertKeyFrame(1f, to, ease);
             anim.Duration = TimeSpan.FromMilliseconds(ms);
-            visual.StartAnimation("Translation.X", anim);
+            anim.Target = "Translation";
+            visual.StartAnimation("Translation", anim);
         }
         catch
         {
@@ -595,17 +612,17 @@ public sealed partial class LibraryPage
         EnsurePreviewOverlayTranslationResting();
 
     /// <summary>
-    /// Resting overlay Translation: X/Y=0, Z=32 (ThemeShadow depth from 9c8f684).
-    /// Never leave a Transparent shadow host with a non-resting slide.
+    /// Resting facade Translation: X/Y=0, Z=32 (ThemeShadow). No composition
+    /// property-bag writes — hit-test must track the painted overlay.
     /// </summary>
     private void EnsurePreviewOverlayTranslationResting()
     {
         try
         {
-            ElementCompositionPreview.SetIsTranslationEnabled(BrdPreviewOverlay, true);
             var visual = ElementCompositionPreview.GetElementVisual(BrdPreviewOverlay);
+            visual.StopAnimation("Translation");
             visual.StopAnimation("Translation.X");
-            visual.Properties.InsertVector3("Translation", new System.Numerics.Vector3(0f, 0f, 32f));
+            BrdPreviewOverlay.Translation = new System.Numerics.Vector3(0f, 0f, 32f);
         }
         catch
         {
