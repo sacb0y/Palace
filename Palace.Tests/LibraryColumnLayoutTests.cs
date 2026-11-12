@@ -172,4 +172,108 @@ public sealed class LibraryColumnLayoutTests
         // Collapsed hamburger frees ~200 DIP — Preview threshold must shift with it.
         Assert.Equal(200, compact - open, 0.01);
     }
+
+    [Fact]
+    public void PreferLiveClientDip_PrefersMin_DebugCrossCheckOnly()
+    {
+        // Debug helper only — layout uses page ActualWidth, not this.
+        Assert.Equal(
+            1003,
+            LibraryColumnLayout.PreferLiveClientDip(1920, 1003),
+            0.01);
+        Assert.Equal(
+            909,
+            LibraryColumnLayout.PreferLiveClientDip(1400, 909),
+            0.01);
+        Assert.Equal(1003, LibraryColumnLayout.PreferLiveClientDip(0, 1003), 0.01);
+        Assert.Equal(1003, LibraryColumnLayout.PreferLiveClientDip(1003, 0), 0.01);
+        Assert.Equal(0, LibraryColumnLayout.PreferLiveClientDip(32, 16), 0.01);
+    }
+
+    /// <summary>
+    /// Studio smoking gun @150%: HWND ~911 DIP vs XamlRoot.Size=1352 (≈911×1.5).
+    /// Content DIP math must ignore display scale — inputs are already DIP.
+    /// Treating (clientDip×scale) as DIP would inflate past AutoHideBelow.
+    /// </summary>
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void ContentWidthFromClientDip_IndependentOfDisplayScale(double scale)
+    {
+        const double hwndClientDip = 911;
+        const double nav = LibraryColumnLayout.ShellNavPaneWidthDip;
+        var content = LibraryColumnLayout.ContentWidthFromClientDip(hwndClientDip, nav);
+        Assert.Equal(
+            hwndClientDip - nav - LibraryColumnLayout.PagePaddingHorizontalDip,
+            content,
+            0.01);
+        Assert.True(content < PreviewPane.AutoHideBelowContentDip);
+
+        // Wrong: feed physical-looking width (DIP×scale) as if it were DIP.
+        var inflatedClient = hwndClientDip * scale;
+        var inflatedContent = LibraryColumnLayout.ContentWidthFromClientDip(inflatedClient, nav);
+        if (scale >= 1.5)
+        {
+            Assert.True(
+                inflatedContent >= PreviewPane.AutoHideBelowContentDip,
+                $"scale {scale}: inflated content {inflatedContent} should clear AutoHideBelow (documents the Studio bug)");
+        }
+    }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    [InlineData(2.0)]
+    public void ContentWidthFromHostDip_PageActualWidth_IndependentOfDisplayScale(double scale)
+    {
+        // Page ActualWidth excludes nav. Studio ~911 client − 248 nav ≈ 663 host DIP.
+        const double pageActualDip = 911 - LibraryColumnLayout.ShellNavPaneWidthDip;
+        var content = LibraryColumnLayout.ContentWidthFromHostDip(pageActualDip);
+        Assert.Equal(
+            pageActualDip - LibraryColumnLayout.PagePaddingHorizontalDip,
+            content,
+            0.01);
+        Assert.True(content < PreviewPane.AutoHideBelowContentDip);
+
+        // scale must not be multiplied into host DIP (Would be double-correct).
+        _ = scale;
+        var again = LibraryColumnLayout.ContentWidthFromHostDip(pageActualDip);
+        Assert.Equal(content, again, 0.01);
+    }
+
+    [Theory]
+    [InlineData(911, 1.5, 1352)]
+    [InlineData(1005, 1.5, 1492)]
+    [InlineData(782, 1.5, 1158)]
+    public void ContentWidthFromHostDip_ScaledXamlRootSignal_MustNotDriveLayout(
+        double hwndClientDip,
+        double scale,
+        double xamlRootReported)
+    {
+        // Probe: xamlRootReported ≈ hwndClientDip × scale (±harness chrome). Layout
+        // must use page host DIP from HWND client, not the inflated root reading.
+        Assert.InRange(xamlRootReported / hwndClientDip, scale - 0.05, scale + 0.05);
+
+        var pageHost = hwndClientDip - LibraryColumnLayout.ShellNavPaneWidthDip;
+        var fromPage = LibraryColumnLayout.ContentWidthFromHostDip(pageHost);
+        var fromInflatedRoot = LibraryColumnLayout.ContentWidthFromClientDip(xamlRootReported);
+
+        Assert.True(fromPage < PreviewPane.AutoHideBelowContentDip);
+        Assert.True(PreviewPane.OnWidth(PreviewPane.Initial, fromPage).AutoHidden);
+
+        // Inflated root is the lying input that kept AutoHidden=false @900/@1000.
+        if (hwndClientDip >= 900)
+        {
+            Assert.True(fromInflatedRoot >= PreviewPane.AutoHideBelowContentDip);
+            Assert.False(PreviewPane.OnWidth(PreviewPane.Initial, fromInflatedRoot).AutoHidden);
+        }
+        else
+        {
+            // ~782×1.5 still yields content under AutoHideBelow → Overlay PASS in probe.
+            Assert.True(fromInflatedRoot < PreviewPane.AutoHideBelowContentDip);
+        }
+    }
 }

@@ -2,7 +2,8 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Pure Preview pane state for Library columns. Auto-hide from available width
-/// (40 DIP hysteresis); 0.3.12 toggle / pin / overlay. Off WinUI for Palace.Tests.
+/// (40 DIP hysteresis); toggle / overlay. Docking is automatic when wide only —
+/// no pin-to-dock (Isiac). Off WinUI for Palace.Tests.
 /// </summary>
 public enum PaneMode
 {
@@ -15,7 +16,7 @@ public enum PaneMode
 /// <param name="UserShow">User wants the pane; auto-hide must never overwrite this.</param>
 /// <param name="AutoHidden">True when available width cannot keep mosaic ≥560 with Preview.</param>
 /// <param name="OverlayOpen">Floating overlay while auto-hidden; cleared when auto-hide crosses.</param>
-/// <param name="Pinned">Pin docks while width would auto-hide; cleared when auto-hide crosses.</param>
+/// <param name="Pinned">Legacy no-op field (always cleared). Kept for record shape; docking is never pinned.</param>
 /// <param name="UserWidth">Persisted dock width (280–560); default 340.</param>
 public readonly record struct PreviewPaneState(
     bool UserShow,
@@ -88,8 +89,8 @@ public static class PreviewPane
     /// <summary>
     /// Recompute <see cref="PreviewPaneState.AutoHidden"/> from available content width.
     /// When <paramref name="autoHideEnabled"/> is false (Settings Show), AutoHidden stays false.
-    /// Crossing the auto-hide band clears <see cref="PreviewPaneState.Pinned"/> and
-    /// <see cref="PreviewPaneState.OverlayOpen"/>. Never changes UserShow.
+    /// Crossing the auto-hide band clears <see cref="PreviewPaneState.OverlayOpen"/>
+    /// (and any leftover <see cref="PreviewPaneState.Pinned"/>). Never changes UserShow.
     /// </summary>
     public static PreviewPaneState OnWidth(
         PreviewPaneState state,
@@ -107,7 +108,7 @@ public static class PreviewPane
             return state with
             {
                 AutoHidden = false,
-                Pinned = wasHidden ? false : state.Pinned,
+                Pinned = false,
                 OverlayOpen = wasHidden ? false : state.OverlayOpen
             };
         }
@@ -121,7 +122,7 @@ public static class PreviewPane
         return state with
         {
             AutoHidden = autoHidden,
-            Pinned = crossed ? false : state.Pinned,
+            Pinned = false,
             OverlayOpen = crossed ? false : state.OverlayOpen
         };
     }
@@ -131,14 +132,15 @@ public static class PreviewPane
         state with { UserShow = !state.UserShow };
 
     /// <summary>
-    /// Toolbar / Alt+P / edge-tab intent: open overlay while auto-hidden,
-    /// dismiss overlay, or flip UserShow when docked / roomy.
+    /// Toolbar / Alt+P / edge-tab intent: while auto-hidden, open acrylic Overlay
+    /// over the mosaic — never pin/dock. Dismiss overlay (toggle unchecked), or
+    /// flip UserShow when roomy. Docking is automatic when wide only (Isiac).
     /// </summary>
     public static PreviewPaneState ApplyToggle(PreviewPaneState state)
     {
         if (state.OverlayOpen)
         {
-            return state with { OverlayOpen = false };
+            return state with { OverlayOpen = false, Pinned = false };
         }
 
         if (state.AutoHidden)
@@ -146,21 +148,28 @@ public static class PreviewPane
             return state with { UserShow = true, OverlayOpen = true, Pinned = false };
         }
 
-        return state with { UserShow = !state.UserShow, OverlayOpen = false };
+        return state with { UserShow = !state.UserShow, OverlayOpen = false, Pinned = false };
     }
 
-    /// <summary>User pin — docks while auto-hidden until width band crosses or restart.</summary>
+    /// <summary>
+    /// Close overlay (✕ / Esc / light-dismiss). Leaves UserShow so the next wide
+    /// layout can dock; toggle appears unchecked while auto-hidden.
+    /// </summary>
+    public static PreviewPaneState CloseOverlay(PreviewPaneState state) =>
+        state with { OverlayOpen = false, Pinned = false };
+
+    /// <summary>Obsolete pin-to-dock — always clears pin; prefer <see cref="CloseOverlay"/>.</summary>
     public static PreviewPaneState Pin(PreviewPaneState state, bool pinned = true) =>
         state with
         {
-            Pinned = pinned,
+            Pinned = false,
             OverlayOpen = pinned ? false : state.OverlayOpen,
-            UserShow = pinned ? true : state.UserShow
+            UserShow = state.UserShow
         };
 
     /// <summary>User overlay open — does not touch AutoHidden / UserShow.</summary>
     public static PreviewPaneState SetOverlayOpen(PreviewPaneState state, bool open) =>
-        state with { OverlayOpen = open };
+        state with { OverlayOpen = open, Pinned = open ? false : state.Pinned };
 
     /// <summary>Persist dock width (clamped); does not touch auto-hide flags.</summary>
     public static PreviewPaneState SetUserWidth(PreviewPaneState state, double width) =>
@@ -185,7 +194,7 @@ public static class PreviewPane
             return true;
         }
 
-        if (state.AutoHidden && !state.Pinned)
+        if (state.AutoHidden)
         {
             return false;
         }
@@ -200,15 +209,60 @@ public static class PreviewPane
     /// <summary>Default tooltip when the pane can dock or is open.</summary>
     public const string DefaultTooltip = "Preview pane (Alt+P)";
 
+    /// <summary>
+    /// Minimum margin (DIP) left of the overlay so mosaic/content stays reachable.
+    /// </summary>
+    public const double OverlayMinLeadingMarginDip = 48;
+
+    /// <summary>Gap below Library toolbar before overlay top (sibling tree, not Grid.Row).</summary>
+    public const double OverlayToolbarGapDip = 8;
+
+    /// <summary>Fallback top margin when toolbar bounds are unavailable.</summary>
+    public const double OverlayTopFallbackDip = 56;
+
+    /// <summary>Right outer inset matching GrdLibraryColumns padding.</summary>
+    public const double OverlayOuterMarginRightDip = 12;
+
+    /// <summary>Bottom outer inset matching GrdLibraryColumns padding.</summary>
+    public const double OverlayOuterMarginBottomDip = 8;
+
     public static string ChromeTooltip(PreviewPaneState state) =>
-        state.AutoHidden && state.UserShow && !state.OverlayOpen && !state.Pinned
+        state.AutoHidden && state.UserShow && !state.OverlayOpen
             ? AutoHiddenTooltip
             : DefaultTooltip;
 
     /// <summary>
+    /// Overlay panel width from the user's Preview width, clamped to available
+    /// content minus a leading margin (never via Composition Offset).
+    /// </summary>
+    public static double OverlayPanelWidth(PreviewPaneState state, double contentWidth)
+    {
+        var width = ClampUserWidth(state.UserWidth);
+        if (!double.IsFinite(contentWidth) || contentWidth <= 0)
+        {
+            return width;
+        }
+
+        var max = Math.Max(
+            LibraryColumnLayout.PreviewMinWidth,
+            contentWidth - OverlayMinLeadingMarginDip);
+        return Math.Min(width, max);
+    }
+
+    /// <summary>
+    /// Top margin so a page-level sibling overlay clears the Library toolbar.
+    /// <paramref name="toolbarBottomInHost"/> is toolbar bottom Y in the page/host;
+    /// when unknown/non-positive, uses <see cref="OverlayTopFallbackDip"/>.
+    /// </summary>
+    public static double OverlayTopMarginBelowToolbar(double toolbarBottomInHost) =>
+        toolbarBottomInHost > 0
+            ? toolbarBottomInHost + OverlayToolbarGapDip
+            : OverlayTopFallbackDip;
+
+    /// <summary>
     /// Resolve pane mode + column widths for available content width.
-    /// Overlay (including while auto-hidden) allocates with preview=0 so the mosaic
-    /// does not reflow. Pin docks even when AutoHidden.
+    /// Overlay (auto-hidden open) allocates with preview=0 so the mosaic does not
+    /// reflow. Docking is automatic when wide only — never via pin (Isiac).
     /// </summary>
     public static PreviewPaneEffective Effective(PreviewPaneState state, double contentWidth)
     {
@@ -227,7 +281,7 @@ public static class PreviewPane
                 LibraryColumnLayout.AllocateWithoutPreview(contentWidth));
         }
 
-        if (state.AutoHidden && !state.Pinned)
+        if (state.AutoHidden)
         {
             return new PreviewPaneEffective(
                 PaneMode.Hidden,
@@ -241,9 +295,10 @@ public static class PreviewPane
 
     /// <summary>
     /// Column + chrome flags the Library page must apply for one Effective result.
-    /// Docked Preview uses a right-aligned host sized to <see cref="PreviewPaneLayoutState.DockHostWidth"/>;
-    /// the Grid's third column stays 0 so hide→show never cycles ColumnDefinition Width 0↔N
-    /// (that left the dock child arranged over the folder tree — FENRIR #177).
+    /// Docked Preview lives in <c>ColPreview</c> (real grid column). Hide keeps the
+    /// host <c>Visibility=Visible</c> and uses Opacity + ColPreview width 0 so
+    /// hide→show never re-enters Collapsed→Visible (FENRIR #177). Overlay uses the
+    /// separate right-aligned chrome (opaque over mosaic).
     /// </summary>
     public static PreviewPaneLayoutState Layout(PreviewPaneEffective effective) =>
         new(
@@ -255,25 +310,42 @@ public static class PreviewPane
             OverlayVisible: effective.Mode == PaneMode.Overlay);
 
     /// <summary>
-    /// Pixel width for <c>ColPreview</c> — always 0. Dock chrome is right-aligned, not column 2.
+    /// Pixel width for <c>ColPreview</c> — Preview width when Docked; else 0.
     /// </summary>
-    public static double GridPreviewColumnWidth(PreviewPaneLayoutState layout) => 0;
+    public static double GridPreviewColumnWidth(PreviewPaneLayoutState layout) =>
+        layout.Mode == PaneMode.Docked ? layout.Preview : 0;
 
     /// <summary>
-    /// Width for the right-aligned dock host when Docked; 0 otherwise.
+    /// Host Width for the dock element. <see cref="double.NaN"/> = stretch in
+    /// <c>ColPreview</c> when Docked; 0 when hidden (column is also 0). Grid owns X —
+    /// never hand-compute MarginLeft / ColumnSpan=3 (rejected #177 fake-column).
     /// </summary>
     public static double DockHostWidth(PreviewPaneLayoutState layout) =>
-        layout.Mode == PaneMode.Docked ? layout.Preview : 0;
+        layout.Mode == PaneMode.Docked ? double.NaN : 0;
+
+    /// <summary>
+    /// Expected <c>ActualOffset.X</c> of the dock host relative to
+    /// <c>GrdLibraryColumns</c> when Docked in column 2 (pad + tree + gaps + mosaic).
+    /// Debug probe only — layout position comes from the Grid, not this helper.
+    /// </summary>
+    public static double DockHostExpectedOffsetX(PreviewPaneLayoutState layout) =>
+        layout.Mode == PaneMode.Docked
+            ? LibraryColumnLayout.PagePaddingEdgeDip
+                + layout.Tree
+                + LibraryColumnLayout.ColumnSpacing
+                + layout.Mosaic
+                + LibraryColumnLayout.ColumnSpacing
+            : LibraryColumnLayout.PagePaddingEdgeDip;
 
     /// <summary>
     /// Dock host chrome without Visibility=Collapsed. Hide uses Opacity=0 + no hit-test
     /// so hide→show never re-enters Collapsed→Visible (FENRIR: that left the pane at the
-    /// folder-tree X while cold start stayed correct).
+    /// folder-tree X while cold start stayed correct). Width is NaN (stretch) when Docked.
     /// </summary>
     public static PreviewDockChrome DockChrome(PreviewPaneLayoutState layout) =>
         layout.Mode == PaneMode.Docked
             ? new PreviewDockChrome(
-                Width: layout.Preview,
+                Width: double.NaN,
                 Opacity: 1,
                 HitTestVisible: true)
             : new PreviewDockChrome(
@@ -282,14 +354,45 @@ public static class PreviewPane
                 HitTestVisible: false);
 
     /// <summary>
-    /// True when docked mosaic reservation appears or disappears — Grid must remeasure.
+    /// True when docked mosaic reservation appears or disappears — Grid must remeasure
+    /// column widths. Height-only (Docked→Docked) returns false: host X is Grid column 2
+    /// arrange; do not write Composition <c>Visual.Offset</c> on the hand-out visual.
     /// </summary>
     public static bool NeedsDockColumnRelayout(PaneMode from, PaneMode to) =>
         (from == PaneMode.Docked) != (to == PaneMode.Docked);
+
+    /// <summary>
+    /// Idempotent dock-host slot for one layout pass — always the same from
+    /// <paramref name="layout"/> alone (no width-delta / previous-size gating).
+    /// Real column: <c>Grid.Column=2</c>, span 1, Stretch; Grid owns X.
+    /// </summary>
+    public static PreviewDockHostSlot DockHostSlot(PreviewPaneLayoutState layout) =>
+        new(
+            Column: 2,
+            ColumnSpan: 1,
+            Row: 1,
+            Stretch: true,
+            Width: DockHostWidth(layout),
+            Opacity: DockChrome(layout).Opacity,
+            HitTestVisible: DockChrome(layout).HitTestVisible);
 }
 
-/// <summary>Right-aligned dock host width / opacity / hit-test (no Collapse).</summary>
+/// <summary>Dock host width / opacity / hit-test (no Collapse; Width NaN = stretch in column).</summary>
 public readonly record struct PreviewDockChrome(
+    double Width,
+    double Opacity,
+    bool HitTestVisible);
+
+/// <summary>
+/// Full dock-host attachment for one layout pass. Apply every refresh from current
+/// size alone. Host fills <c>ColPreview</c> (column 2, stretch) — Grid owns X.
+/// Never write Composition <c>Visual.Offset</c> on this element.
+/// </summary>
+public readonly record struct PreviewDockHostSlot(
+    int Column,
+    int ColumnSpan,
+    int Row,
+    bool Stretch,
     double Width,
     double Opacity,
     bool HitTestVisible);

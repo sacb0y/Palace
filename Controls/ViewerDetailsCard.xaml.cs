@@ -369,10 +369,12 @@ public sealed partial class ViewerDetailsCard : UserControl
 
     private void ResetCompositionOffset()
     {
+        // Translation only — never Visual.Offset (hand-out Offset IS layout position).
         try
         {
+            ElementCompositionPreview.SetIsTranslationEnabled(BrdDetailsCard, true);
             var visual = ElementCompositionPreview.GetElementVisual(BrdDetailsCard);
-            visual.Offset = new Vector3(visual.Offset.X, 0, visual.Offset.Z);
+            visual.StopAnimation("Translation.Y");
             SetTranslationY(0);
         }
         catch
@@ -434,6 +436,7 @@ public sealed partial class ViewerDetailsCard : UserControl
         }
 
         _animating = true;
+        ElementCompositionPreview.SetIsTranslationEnabled(BrdDetailsCard, true);
         var visual = ElementCompositionPreview.GetElementVisual(BrdDetailsCard);
         var compositor = visual.Compositor;
         var duration = TimeSpan.FromMilliseconds(ms);
@@ -442,28 +445,29 @@ public sealed partial class ViewerDetailsCard : UserControl
             : compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0.0f), new Vector2(1.0f, 1.0f));
 
         BrdDetailsCard.Opacity = fromOpacity;
-        visual.Offset = new Vector3(visual.Offset.X, (float)fromY, visual.Offset.Z);
+        var z = BrdDetailsCard.Translation.Z == 0 ? 24f : BrdDetailsCard.Translation.Z;
+        visual.Properties.InsertVector3("Translation", new Vector3(0f, (float)fromY, z));
 
         var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
         opacityAnim.InsertKeyFrame(0, (float)fromOpacity);
         opacityAnim.InsertKeyFrame(1, (float)toOpacity, easing);
         opacityAnim.Duration = duration;
 
-        var offsetAnim = compositor.CreateScalarKeyFrameAnimation();
-        offsetAnim.InsertKeyFrame(0, (float)fromY);
-        offsetAnim.InsertKeyFrame(1, (float)toY, easing);
-        offsetAnim.Duration = duration;
+        var translationAnim = compositor.CreateScalarKeyFrameAnimation();
+        translationAnim.InsertKeyFrame(0, (float)fromY);
+        translationAnim.InsertKeyFrame(1, (float)toY, easing);
+        translationAnim.Duration = duration;
 
         var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
         batch.Completed += (_, _) =>
         {
             _animating = false;
             BrdDetailsCard.Opacity = toOpacity;
-            visual.Offset = new Vector3(visual.Offset.X, (float)toY, visual.Offset.Z);
+            SetTranslationY(toY);
             onComplete?.Invoke();
         };
         visual.StartAnimation("Opacity", opacityAnim);
-        visual.StartAnimation("Offset.Y", offsetAnim);
+        visual.StartAnimation("Translation.Y", translationAnim);
         batch.End();
     }
 

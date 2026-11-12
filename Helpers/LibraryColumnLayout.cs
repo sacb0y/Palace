@@ -122,10 +122,10 @@ public static class LibraryColumnLayout
     }
 
     /// <summary>
-    /// Library columns content width from the page / nav content host ActualWidth
-    /// (already excludes the shell pane). Prefer this over the columns grid's own
-    /// ActualWidth — once Preview is shown, mosaic MinWidth + Preview can floor the
-    /// grid DesiredSize so its ActualWidth stops tracking the window.
+    /// Library columns content width from the shell content slot ActualWidth
+    /// (Frame / ContentPresenter — already excludes the shell pane). Prefer this
+    /// over page ActualWidth (sibling overlay reflow) and over the columns grid's
+    /// own ActualWidth (latches when Preview docks).
     /// </summary>
     public static double ContentWidthFromHostDip(double hostDip)
     {
@@ -135,6 +135,32 @@ public static class LibraryColumnLayout
         }
 
         return Math.Max(0, hostDip - PagePaddingHorizontalDip);
+    }
+
+    /// <summary>
+    /// Debug helper: when XamlRoot DIP and AppWindow/scale DIP disagree, the
+    /// smaller usable value. <b>Not</b> the layout source — LibraryPage drives
+    /// OnWidth from the shell content slot (Frame) ActualWidth. Never divide
+    /// <c>XamlRoot.Size</c> by scale (Size is already DIP). Values below
+    /// <paramref name="minUsable"/> ignored.
+    /// </summary>
+    public static double PreferLiveClientDip(
+        double xamlRootDip,
+        double appWindowClientDip,
+        double minUsable = MosaicLayoutWidth.MinUsable)
+    {
+        var root = double.IsFinite(xamlRootDip) && xamlRootDip >= minUsable
+            ? xamlRootDip
+            : 0;
+        var app = double.IsFinite(appWindowClientDip) && appWindowClientDip >= minUsable
+            ? appWindowClientDip
+            : 0;
+        if (root > 0 && app > 0)
+        {
+            return Math.Min(root, app);
+        }
+
+        return root > 0 ? root : app;
     }
 
     /// <summary>

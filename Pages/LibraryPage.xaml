@@ -63,14 +63,17 @@
                 x:Name="ColMosaic"
                 Width="560"
                 MinWidth="0" />
-            <!-- Width always 0 at runtime — dock host is right-aligned (GrdPreviewDockHost). -->
+            <!-- Width from PreviewPane.GridPreviewColumnWidth at runtime (0 when hidden). -->
             <ColumnDefinition
                 x:Name="ColPreview"
                 Width="0"
                 MinWidth="0" />
         </Grid.ColumnDefinitions>
 
-        <Grid Grid.ColumnSpan="3" RowSpacing="4">
+        <Grid
+            x:Name="GrdLibraryToolbarHost"
+            Grid.ColumnSpan="3"
+            RowSpacing="4">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -2207,15 +2210,15 @@
             </Grid>
         </Grid>
 
-        <!-- Right-aligned over tree+mosaic. Stay Visibility=Visible; hide via Opacity=0
-             (Collapsed→Visible after the first show left the pane over the folder tree). -->
+        <!-- ColPreview (column 2) is the real dock slot. Host fills it (Stretch, no Width /
+             Margin). Grid owns X — never write Composition Visual.Offset on this element
+             (that zeroed layout X on height-only; Studio prev.x→tree). Stay
+             Visibility=Visible; hide via Opacity=0 + ColPreview width 0 (#177).
+             Transparent host (9c8f684) — glass wallpaper; body owns the Preview title. -->
         <Grid
             x:Name="GrdPreviewDockHost"
             Grid.Row="1"
-            Grid.Column="0"
-            Grid.ColumnSpan="3"
-            Width="0"
-            HorizontalAlignment="Right"
+            Grid.Column="2"
             Opacity="0"
             IsHitTestVisible="False"
             Visibility="Visible">
@@ -2241,8 +2244,11 @@
             x:Name="ScrPreviewPane"
             Grid.Column="1"
             AutomationProperties.AutomationId="ScrPreviewPane"
+            Background="Transparent"
+            HorizontalScrollBarVisibility="Disabled"
+            HorizontalScrollMode="Disabled"
             VerticalScrollBarVisibility="Auto">
-            <!-- Shared body for docked + overlay; pad once so chips / Add tags / Apply share one inset. -->
+            <!-- Shared body for docked + overlay; single Preview title lives here (not chrome). -->
             <StackPanel x:Name="PnlPreviewBody" Padding="16" Spacing="12">
                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Preview" />
                 <!-- Single-asset / empty preview chrome. -->
@@ -3218,17 +3224,19 @@
         </Grid>
     </Grid>
 
-        <!-- Preview overlay (auto-hidden open): acrylic right panel; mosaic does not reflow. -->
+        <!-- Narrow overlay: sibling of GrdLibraryColumns (64b7ece tree) — NOT Grid.Row=1
+             inside columns (fa5e598). Top margin below toolbar from code. AcrylicInApp +
+             ThemeShadow + Translation Z=32 on this border. Close ✕ Top/Right; title in body. -->
         <Border
             x:Name="BrdPreviewOverlay"
-            Width="360"
-            Margin="0,8,12,8"
+            Width="340"
+            Canvas.ZIndex="4"
             HorizontalAlignment="Right"
             VerticalAlignment="Stretch"
             AutomationProperties.AutomationId="BrdPreviewOverlay"
             Background="{ThemeResource AcrylicInAppFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-            BorderThickness="1"
+            BorderThickness="1,0,0,0"
             CornerRadius="8"
             Translation="0,0,32"
             Visibility="Collapsed">
@@ -3236,40 +3244,31 @@
                 <ThemeShadow />
             </Border.Shadow>
             <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid Padding="8,6" ColumnSpacing="8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="Preview" />
-                    <Button
-                        x:Name="BtnPreviewPanePin"
-                        Grid.Column="1"
-                        MinWidth="32"
-                        MinHeight="32"
-                        AutomationProperties.AutomationId="BtnPreviewPanePin"
-                        AutomationProperties.Name="Pin Preview pane"
-                        Click="BtnPreviewPanePin_Click"
-                        ToolTipService.ToolTip="Pin Preview pane (dock until window resize or restart)">
-                        <ic:FluentIcon Icon="Pin" IconSize="Size16" IconVariant="Regular" />
-                    </Button>
-                </Grid>
                 <ScrollViewer
                     x:Name="ScrPreviewOverlay"
-                    Grid.Row="1"
                     AutomationProperties.AutomationId="ScrPreviewOverlay"
+                    Background="Transparent"
+                    HorizontalScrollBarVisibility="Disabled"
+                    HorizontalScrollMode="Disabled"
                     VerticalScrollBarVisibility="Auto" />
+                <!-- Isiac: Close ✕ Top/Right dismisses overlay; no pin-to-dock. -->
+                <Button
+                    x:Name="BtnPreviewOverlayClose"
+                    MinWidth="32"
+                    MinHeight="32"
+                    Margin="8"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    AutomationProperties.AutomationId="BtnPreviewOverlayClose"
+                    AutomationProperties.Name="Close Preview"
+                    Click="BtnPreviewOverlayClose_Click"
+                    ToolTipService.ToolTip="Close Preview">
+                    <ic:FluentIcon Icon="Dismiss" IconSize="Size16" IconVariant="Regular" />
+                </Button>
             </Grid>
         </Border>
 
-        <!-- Hover/touch edge chevron: pane left edge when open; window right when hidden. -->
+        <!-- Doktor faint edge handle — hide while overlay open (‹ tab must not show). -->
         <Button
             x:Name="BtnPreviewPaneEdge"
             Width="14"
