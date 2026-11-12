@@ -85,3 +85,6 @@ Package.appxmanifest.release-backup
 
 # Fetched by tools/Get-Ffmpeg.ps1 (large, not committed)
 ThirdParty/ffmpeg/
+
+# Diligent mesh3d spike CMake output (DLL published under Native/mesh3d/win-x64 when ready)
+Native/mesh3d/build/

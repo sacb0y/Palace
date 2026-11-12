@@ -26,6 +26,10 @@
     <Content Include="Native\openexr\win-x64\palace_exr.dll" Link="palace_exr.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Native\openexr\win-x64\LICENSE.txt" Link="openexr\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Native\openexr\win-x64\SOURCE.txt" Link="openexr\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Diligent mesh3d spike host: built by tools/mesh3d/build.ps1; omitted until the DLL exists. -->
+    <Content Include="Native\mesh3d\win-x64\palace_mesh3d.dll" Link="palace_mesh3d.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Native\mesh3d\win-x64\palace_mesh3d.dll')" />
+    <Content Include="Native\mesh3d\win-x64\SOURCE.txt" Link="mesh3d\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Native\mesh3d\win-x64\palace_mesh3d.dll')" />
+    <Content Include="Native\mesh3d\win-x64\THIRD_PARTY.md" Link="mesh3d\THIRD_PARTY.md" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Native\mesh3d\win-x64\palace_mesh3d.dll')" />
   </ItemGroup>
 
   <ItemGroup>

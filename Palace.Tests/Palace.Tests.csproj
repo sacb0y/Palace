@@ -168,6 +168,9 @@
     <Compile Include="..\Helpers\ThumbTimingLog.cs" Link="ThumbTimingLog.cs" />
     <Compile Include="..\Helpers\VideoMosaicThumb.cs" Link="VideoMosaicThumb.cs" />
     <Compile Include="..\Helpers\MediaCache.cs" Link="MediaCache.cs" />
+    <Compile Include="..\Helpers\Mesh3dSpike.cs" Link="Mesh3dSpike.cs" />
+    <Compile Include="..\Helpers\Mesh3dGltf.cs" Link="Mesh3dGltf.cs" />
+    <Compile Include="..\Helpers\Mesh3dStreamlineProbe.cs" Link="Mesh3dStreamlineProbe.cs" />
     <Compile Include="..\Helpers\CatalogStore.cs" Link="CatalogStore.cs" />
     <Compile Include="..\Helpers\TagPortable.cs" Link="TagPortable.cs" />
     <Compile Include="..\Helpers\ToneMap.cs" Link="ToneMap.cs" />

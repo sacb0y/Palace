@@ -1,0 +1,101 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "Palace Mesh3dSpike"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "SpikeBox"
+    }
+  ],
+  "meshes": [
+    {
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1
+          },
+          "indices": 2,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "name": "PbrSpike",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.85,
+          0.55,
+          0.35,
+          1.0
+        ],
+        "metallicFactor": 0.2,
+        "roughnessFactor": 0.45
+      }
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3",
+      "max": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "min": [
+        -0.5,
+        -0.5,
+        -0.5
+      ]
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 12,
+      "componentType": 5126,
+      "count": 8,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 192,
+      "byteStride": 24,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 192,
+      "byteLength": 72,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 264,
+      "uri": "data:application/octet-stream;base64,AAAAvwAAAL8AAAC/Os0TvzrNE786zRO/AAAAPwAAAL8AAAC/Os0TPzrNE786zRO/AAAAPwAAAD8AAAC/Os0TPzrNEz86zRO/AAAAvwAAAD8AAAC/Os0TvzrNEz86zRO/AAAAvwAAAL8AAAA/Os0TvzrNE786zRM/AAAAPwAAAL8AAAA/Os0TPzrNE786zRM/AAAAPwAAAD8AAAA/Os0TPzrNEz86zRM/AAAAvwAAAD8AAAA/Os0TvzrNEz86zRM/AAABAAIAAAACAAMABAAGAAUABAAHAAYAAAAEAAUAAAAFAAEAAgAGAAcAAgAHAAMAAAADAAcAAAAHAAQAAQAFAAYAAQAGAAIA"
+    }
+  ]
+}
