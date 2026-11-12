@@ -2174,8 +2174,8 @@ public sealed partial class LibraryPage : Page
     }
 
     /// <summary>
-    /// Wire hover / focus / selected / flyout → <c>MoreHidden</c> / <c>MoreShown</c>
-    /// opacity VisualStates on the asset tile (see <see cref="TileMoreChrome"/>).
+    /// Wire hover / focus / selected / flyout → opacity / hit-test / tab on
+    /// <c>BtnAssetMore</c> (see <see cref="TileMoreChrome"/>).
     /// </summary>
     private void BtnAssetMore_Loaded(object sender, RoutedEventArgs e)
     {
@@ -2190,7 +2190,7 @@ public sealed partial class LibraryPage : Page
         }
 
         var tile = FindAncestor<Grid>(button);
-        // Named asset face grid hosts MoreRevealStates; skip folder-header grids.
+        // Named asset face grid only — skip folder-header grids.
         while (tile is not null && tile.Name != "GrdAssetTile")
         {
             tile = FindAncestor<Grid>(VisualTreeHelper.GetParent(tile));
@@ -2256,6 +2256,8 @@ public sealed partial class LibraryPage : Page
             _attached = true;
             _container.PointerEntered += OnPointerEntered;
             _container.PointerExited += OnPointerExited;
+            _container.PointerCanceled += OnPointerCanceled;
+            _container.PointerCaptureLost += OnPointerCaptureLost;
             _container.GotFocus += OnGotFocus;
             _container.LostFocus += OnLostFocus;
             _button.GotFocus += OnGotFocus;
@@ -2263,7 +2265,7 @@ public sealed partial class LibraryPage : Page
             _button.DataContextChanged += OnDataContextChanged;
             BindItem(_page.FindAssetItem(_button) ?? _button.DataContext as AssetItem);
             BindFlyout(_container.ContextFlyout);
-            // Track hover via PointerEntered/Exited only (no pointer-over property).
+            // Track hover via enter/exit/cancel/capture-lost (no pointer-over property).
             _pointerOver = false;
             _focused = HasKeyboardFocusInside();
         }
@@ -2278,6 +2280,8 @@ public sealed partial class LibraryPage : Page
             _attached = false;
             _container.PointerEntered -= OnPointerEntered;
             _container.PointerExited -= OnPointerExited;
+            _container.PointerCanceled -= OnPointerCanceled;
+            _container.PointerCaptureLost -= OnPointerCaptureLost;
             _container.GotFocus -= OnGotFocus;
             _container.LostFocus -= OnLostFocus;
             _button.GotFocus -= OnGotFocus;
@@ -2312,8 +2316,6 @@ public sealed partial class LibraryPage : Page
             }
 
             _shown = show;
-            // MoreHidden/MoreShown setters live on GrdAssetTile; WinUI VSM only
-            // targets Control templates, so mirror Opacity / hit-test / tab here.
             ApplyRevealVisual(_button, show);
         }
 
@@ -2367,6 +2369,10 @@ public sealed partial class LibraryPage : Page
 
         private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)
         {
+            // Recycled ItemContainer keeps pointer handlers — clear sticky hover.
+            _pointerOver = false;
+            _flyoutOpen = false;
+            _focused = HasKeyboardFocusInside();
             BindItem(_page.FindAssetItem(_button) ?? args.NewValue as AssetItem);
             BindFlyout(_container.ContextFlyout);
             Apply();
@@ -2386,7 +2392,16 @@ public sealed partial class LibraryPage : Page
             Apply();
         }
 
-        private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+        private void OnPointerExited(object sender, PointerRoutedEventArgs e) =>
+            ClearPointerOver();
+
+        private void OnPointerCanceled(object sender, PointerRoutedEventArgs e) =>
+            ClearPointerOver();
+
+        private void OnPointerCaptureLost(object sender, PointerRoutedEventArgs e) =>
+            ClearPointerOver();
+
+        private void ClearPointerOver()
         {
             _pointerOver = false;
             Apply();

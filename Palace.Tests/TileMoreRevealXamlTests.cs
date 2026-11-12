@@ -4,7 +4,7 @@ using Xunit;
 namespace Palace.Tests;
 
 /// <summary>
-/// Library mosaic <c>BtnAssetMore</c> idle opacity VisualStates (Oct 21 ⋮ gate).
+/// Library mosaic <c>BtnAssetMore</c> idle opacity gate (Oct 21 ⋮).
 /// </summary>
 public sealed class TileMoreRevealXamlTests
 {
@@ -34,7 +34,7 @@ public sealed class TileMoreRevealXamlTests
     }
 
     [Fact]
-    public void BtnAssetMore_DefaultsHidden_AndHostsMoreRevealStates()
+    public void BtnAssetMore_DefaultsHidden_CodeDrivenReveal()
     {
         var root = LoadLibraryPage();
         var button = root.Descendants()
@@ -51,17 +51,10 @@ public sealed class TileMoreRevealXamlTests
             .FirstOrDefault(e => Attr(e, "Name") == "GrdAssetTile");
         Assert.NotNull(tile);
 
-        var container = button.Ancestors()
-            .FirstOrDefault(e => e.Name.LocalName == "ItemContainer");
-        Assert.NotNull(container);
-        Assert.Equal("True", Attr(container!, "UseSystemFocusVisuals"));
-
         var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml"));
-        Assert.Contains("x:Name=\"MoreHidden\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"MoreShown\"", xaml, StringComparison.Ordinal);
-        Assert.Contains("MoreRevealStates", xaml, StringComparison.Ordinal);
-        Assert.Contains("BtnAssetMore.IsHitTestVisible", xaml, StringComparison.Ordinal);
-        Assert.Contains("BtnAssetMore.IsTabStop", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("MoreRevealStates", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("MoreHidden", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("MoreShown", xaml, StringComparison.Ordinal);
 
         var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"));
         Assert.Contains("TileMoreChrome.ShouldShow", cs, StringComparison.Ordinal);
@@ -69,6 +62,10 @@ public sealed class TileMoreRevealXamlTests
         Assert.Contains("TileMoreChrome.Opacity", cs, StringComparison.Ordinal);
         Assert.Contains("BottomEdgeAlignedRight", cs, StringComparison.Ordinal);
         Assert.Contains("FlyoutShowOptions", cs, StringComparison.Ordinal);
+        Assert.Contains("PointerCanceled", cs, StringComparison.Ordinal);
+        Assert.Contains("PointerCaptureLost", cs, StringComparison.Ordinal);
+        Assert.Contains("_pointerOver = false", cs, StringComparison.Ordinal);
+        Assert.Contains("OnDataContextChanged", cs, StringComparison.Ordinal);
         Assert.DoesNotContain(".IsPointerOver", cs, StringComparison.Ordinal);
     }
 

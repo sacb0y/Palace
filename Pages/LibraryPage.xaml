@@ -1988,25 +1988,6 @@
                                     ManipulationMode="System"
                                     RightTapped="AssetItem_RightTapped"
                                     Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsFolderHeader), Mode=OneWay}">
-                                    <VisualStateManager.VisualStateGroups>
-                                        <!-- Idle: Opacity 0 + no hit-test / tab stop so ⋮ cannot steal clicks. -->
-                                        <VisualStateGroup x:Name="MoreRevealStates">
-                                            <VisualState x:Name="MoreHidden">
-                                                <VisualState.Setters>
-                                                    <Setter Target="BtnAssetMore.Opacity" Value="0" />
-                                                    <Setter Target="BtnAssetMore.IsHitTestVisible" Value="False" />
-                                                    <Setter Target="BtnAssetMore.IsTabStop" Value="False" />
-                                                </VisualState.Setters>
-                                            </VisualState>
-                                            <VisualState x:Name="MoreShown">
-                                                <VisualState.Setters>
-                                                    <Setter Target="BtnAssetMore.Opacity" Value="1" />
-                                                    <Setter Target="BtnAssetMore.IsHitTestVisible" Value="True" />
-                                                    <Setter Target="BtnAssetMore.IsTabStop" Value="True" />
-                                                </VisualState.Setters>
-                                            </VisualState>
-                                        </VisualStateGroup>
-                                    </VisualStateManager.VisualStateGroups>
                                     <Image
                                         DataContextChanged="TileImage_DataContextChanged"
                                         DoubleTapped="AssetItem_DoubleTapped"
@@ -2116,7 +2097,7 @@
                                             IconVariant="Regular" />
                                     </Border>
                                     <!-- Context menu: "…" / right-click (not touch long-press).
-                                         Hidden idle; MoreRevealStates show on hover / focus / selected / flyout. -->
+                                         Idle Opacity=0 + no hit-test/tab; TileMoreReveal shows on hover/focus/selected/flyout. -->
                                     <Button
                                         x:Name="BtnAssetMore"
                                         Width="28"
