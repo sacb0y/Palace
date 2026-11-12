@@ -51,7 +51,7 @@ public static class TagPageLayout
 
     /// <summary>
     /// Page/host width below this → narrow guard (sidebar 180, details 240).
-    /// Matches TagsPage AdaptiveTrigger / ControlSizeTrigger.
+    /// Matches TagsPage AdaptiveTrigger narrow guards.
     /// </summary>
     public const double NarrowBelowPageWidthDip = 760;
 
@@ -278,7 +278,7 @@ public static class TagPageLayout
         detailsWidthDip + 0.01 >= DetailsMinWidthDip;
 }
 
-/// <summary>Tags page width mode for AdaptiveTrigger / ControlSizeTrigger guards.</summary>
+/// <summary>Tags page width mode for AdaptiveTrigger narrow guards.</summary>
 public enum TagPageLayoutMode
 {
     Wide = 0,

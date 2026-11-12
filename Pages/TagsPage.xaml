@@ -15,8 +15,9 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
-    <!-- AdaptiveTrigger / ControlSizeTrigger: narrow guards only (&lt;~760 / &lt;~640).
-         At ~1014 client they stay Wide — must not rewrite column widths (Wimbly #197). -->
+    <!-- AdaptiveTrigger narrow guards only (&lt;~760 / &lt;~640).
+         At ~1014 client they stay Wide — must not rewrite column widths (Wimbly #197).
+         ControlSizeTrigger omitted: needs CommunityToolkit.WinUI.Triggers (not referenced). -->
     <VisualStateManager.VisualStateGroups>
         <VisualStateGroup x:Name="TagsWindowWidthStates" CurrentStateChanged="TagsWidthStates_CurrentStateChanged">
             <VisualState x:Name="TagsWindowWide">
@@ -30,19 +31,6 @@
                 </VisualState.StateTriggers>
             </VisualState>
             <VisualState x:Name="TagsWindowStacked" />
-        </VisualStateGroup>
-        <VisualStateGroup x:Name="TagsPageWidthStates" CurrentStateChanged="TagsWidthStates_CurrentStateChanged">
-            <VisualState x:Name="TagsPageWide">
-                <VisualState.StateTriggers>
-                    <ControlSizeTrigger MinWidth="760" TargetElement="{x:Bind}" />
-                </VisualState.StateTriggers>
-            </VisualState>
-            <VisualState x:Name="TagsPageNarrow">
-                <VisualState.StateTriggers>
-                    <ControlSizeTrigger MinWidth="640" TargetElement="{x:Bind}" />
-                </VisualState.StateTriggers>
-            </VisualState>
-            <VisualState x:Name="TagsPageStacked" />
         </VisualStateGroup>
     </VisualStateManager.VisualStateGroups>
 
