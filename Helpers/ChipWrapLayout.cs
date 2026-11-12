@@ -7,6 +7,8 @@ namespace Palace.Helpers;
 /// <summary>
 /// Public chip mosaic for Library Tags browse. WASDK 2.4 keeps inbox
 /// <c>WrapLayout</c> inaccessible, so LibraryPage cannot use that type.
+/// Desired width is the widest laid-out row (capped at finite available) — never
+/// a prior arrange width (that ratcheted Tags root past the HWND).
 /// </summary>
 public sealed class ChipWrapLayout : NonVirtualizingLayout
 {
@@ -22,12 +24,6 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
         typeof(ChipWrapLayout),
         new PropertyMetadata(6d, OnLayoutPropertyChanged));
 
-    /// <summary>Last finite arrange width — used when Measure gets infinity (StackPanel).</summary>
-    private double _arrangeWidth;
-
-    /// <summary>Width used for the last MeasureOverride extent (detect arrange mismatch).</summary>
-    private double _measuredWidth;
-
     public double HorizontalSpacing
     {
         get => (double)GetValue(HorizontalSpacingProperty);
@@ -42,8 +38,6 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
 
     protected override Size MeasureOverride(NonVirtualizingLayoutContext context, Size availableSize)
     {
-        var width = ResolveWidth(availableSize.Width);
-        _measuredWidth = width;
         var children = context.Children;
         var sizes = new (double Width, double Height)[children.Count];
         // Content-sized chips: measure unconstrained so Auto columns win (not Stretch / * fill).
@@ -52,43 +46,58 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
         {
             children[i].Measure(unconstrained);
             var desired = children[i].DesiredSize;
-            var w = Math.Max(1, desired.Width);
-            if (w > width)
-            {
-                // Re-measure at row width so long labels can wrap/clip within the board.
-                children[i].Measure(new Size(width, double.PositiveInfinity));
-                desired = children[i].DesiredSize;
-                w = Math.Max(1, Math.Min(width, desired.Width));
-            }
-
-            sizes[i] = (w, Math.Max(1, desired.Height));
+            sizes[i] = (Math.Max(1, desired.Width), Math.Max(1, desired.Height));
         }
 
-        var slots = ChipWrap.Layout(sizes, width, HorizontalSpacing, VerticalSpacing);
-        return new Size(width, ChipWrap.ExtentHeight(slots));
+        var finiteAvail = ChipWrap.IsFinitePositive(availableSize.Width);
+        if (finiteAvail)
+        {
+            // Re-measure chips wider than the row so long labels wrap/clip within the board.
+            for (var i = 0; i < children.Count; i++)
+            {
+                if (sizes[i].Width <= availableSize.Width)
+                {
+                    continue;
+                }
+
+                children[i].Measure(new Size(availableSize.Width, double.PositiveInfinity));
+                var desired = children[i].DesiredSize;
+                sizes[i] = (
+                    Math.Max(1, Math.Min(availableSize.Width, desired.Width)),
+                    Math.Max(1, desired.Height));
+            }
+        }
+
+        var wrapWidth = finiteAvail
+            ? availableSize.Width
+            : Math.Max(1, ChipWrap.NaturalContentWidth(sizes, HorizontalSpacing));
+        var slots = ChipWrap.Layout(sizes, wrapWidth, HorizontalSpacing, VerticalSpacing);
+        var desiredWidth = ChipWrap.MeasureDesiredWidth(
+            sizes, availableSize.Width, HorizontalSpacing, VerticalSpacing);
+        return new Size(desiredWidth, ChipWrap.ExtentHeight(slots));
     }
 
     protected override Size ArrangeOverride(NonVirtualizingLayoutContext context, Size finalSize)
     {
-        var width = ResolveWidth(finalSize.Width);
-        if (WidthChanged(width, _arrangeWidth) || WidthChanged(width, _measuredWidth))
-        {
-            _arrangeWidth = width;
-            InvalidateMeasure();
-        }
-        else
-        {
-            _arrangeWidth = width;
-        }
-
+        // Do not InvalidateMeasure here — a prior arrange-width ratchet made Measure
+        // return the full board width and blew Tags root past the HWND (Wimbly #197).
         var children = context.Children;
         var sizes = new (double Width, double Height)[children.Count];
         for (var i = 0; i < children.Count; i++)
         {
             var desired = children[i].DesiredSize;
+            sizes[i] = (Math.Max(1, desired.Width), Math.Max(1, desired.Height));
+        }
+
+        var width = ChipWrap.IsFinitePositive(finalSize.Width)
+            ? finalSize.Width
+            : Math.Max(1, ChipWrap.NaturalContentWidth(sizes, HorizontalSpacing));
+
+        for (var i = 0; i < children.Count; i++)
+        {
             sizes[i] = (
-                Math.Max(1, Math.Min(width, desired.Width)),
-                Math.Max(1, desired.Height));
+                Math.Max(1, Math.Min(width, sizes[i].Width)),
+                sizes[i].Height);
         }
 
         var slots = ChipWrap.Layout(sizes, width, HorizontalSpacing, VerticalSpacing);
@@ -98,26 +107,11 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
             children[i].Arrange(new Rect(slot.X, slot.Y, slot.Width, slot.Height));
         }
 
-        return new Size(width, ChipWrap.ExtentHeight(slots));
+        var height = ChipWrap.ExtentHeight(slots);
+        return new Size(
+            ChipWrap.IsFinitePositive(finalSize.Width) ? finalSize.Width : ChipWrap.ExtentWidth(slots),
+            ChipWrap.IsFinitePositive(finalSize.Height) ? finalSize.Height : height);
     }
-
-    private double ResolveWidth(double candidate)
-    {
-        if (double.IsFinite(candidate) && candidate > 0)
-        {
-            return candidate;
-        }
-
-        if (double.IsFinite(_arrangeWidth) && _arrangeWidth > 0)
-        {
-            return _arrangeWidth;
-        }
-
-        return 260;
-    }
-
-    private static bool WidthChanged(double a, double b) =>
-        double.IsFinite(a) && double.IsFinite(b) && Math.Abs(a - b) > 0.5;
 
     private static void OnLayoutPropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {

@@ -41,4 +41,34 @@ public sealed class ChipWrapTests
         // Row span: 7*90 + 6*6 = 666 < 1000.
         Assert.True(slots[^1].X + slots[^1].Width < 1000);
     }
+
+    [Fact]
+    public void MeasureDesiredWidth_FiniteAvail_CapsAtAvailable()
+    {
+        // Chips that would be ~900 on one row; avail 400 → wrap; desired ≤ 400.
+        var sizes = Enumerable.Repeat((100d, 32d), 9).ToArray();
+        Assert.True(ChipWrap.NaturalContentWidth(sizes, 6) > 400);
+        var desired = ChipWrap.MeasureDesiredWidth(sizes, availableWidth: 400, 6, 6);
+        Assert.True(desired <= 400 + 0.01);
+        Assert.True(desired > 0);
+    }
+
+    [Fact]
+    public void MeasureDesiredWidth_Infinity_ReturnsNaturalNotPriorArrange()
+    {
+        // After a wide arrange (1200), infinite measure must report natural content
+        // width — never the prior arrange / _arrangeWidth ratchet.
+        var sizes = new (double Width, double Height)[] { (80, 32), (90, 32), (70, 32) };
+        var natural = ChipWrap.NaturalContentWidth(sizes, 6);
+        Assert.Equal(80 + 6 + 90 + 6 + 70, natural, 0.01);
+        Assert.True(natural < 1200);
+
+        var desired = ChipWrap.MeasureDesiredWidth(
+            sizes,
+            availableWidth: double.PositiveInfinity,
+            horizontalSpacing: 6,
+            verticalSpacing: 6);
+        Assert.Equal(natural, desired, 0.01);
+        Assert.NotEqual(1200, desired);
+    }
 }

@@ -15,8 +15,8 @@
     PreviewKeyDown="TagsPage_PreviewKeyDown">
 
     <Grid>
-    <!-- AdaptiveTrigger = window-scoped Wimbly guards; ControlSizeTrigger = page/host
-         width (1024 window − nav ≈ 776). ApplyTagColumnLayout uses page Classify. -->
+    <!-- AdaptiveTrigger / ControlSizeTrigger: narrow guards only (&lt;~760 / &lt;~640).
+         At ~1014 client they stay Wide — must not rewrite column widths (Wimbly #197). -->
     <VisualStateManager.VisualStateGroups>
         <VisualStateGroup x:Name="TagsWindowWidthStates" CurrentStateChanged="TagsWidthStates_CurrentStateChanged">
             <VisualState x:Name="TagsWindowWide">
@@ -46,27 +46,21 @@
         </VisualStateGroup>
     </VisualStateManager.VisualStateGroups>
 
-    <!-- Horizontal scroll disabled (Mode + Bar). Column widths are set in code from
-         the shell Frame ActualWidth (TagPageLayout.AllocateForPage) — star-to-content under
-         infinite measure pushed ScrTagDetails past the HWND @ ~1024 (Desktop #197). -->
-    <ScrollViewer
-        HorizontalScrollBarVisibility="Disabled"
-        HorizontalScrollMode="Disabled"
-        VerticalScrollBarVisibility="Disabled"
-        VerticalScrollMode="Disabled">
+    <!-- No page ScrollViewer around GrdTagColumns — Disabled ScrollViewer arranged
+         child at max(desired, viewport); ChipWrapLayout desired=full board width
+         ratcheted Tags root past the HWND (Wimbly #197). -->
     <Grid
         x:Name="GrdTagColumns"
         Padding="16"
         ColumnSpacing="16"
         IsHitTestVisible="{x:Bind helpers:BindHelpers.Not(ViewModel.IsGalleryOverlayOpen), Mode=OneWay}"
-        RowSpacing="12"
-        SizeChanged="GrdTagColumns_SizeChanged">
+        RowSpacing="12">
         <Grid.ColumnDefinitions>
-            <!-- Initial widths; ApplyTagColumnLayout overwrites from shell slot. MinWidth
-                 always 0 so column mins never sum above available. -->
-            <ColumnDefinition x:Name="ColTagSidebar" Width="200" MinWidth="0" />
-            <ColumnDefinition x:Name="ColTagBoard" Width="*" MinWidth="0" />
-            <ColumnDefinition x:Name="ColTagDetails" Width="240" MinWidth="0" />
+            <!-- Static XAML widths at Wide (~1014). Narrow/Stacked AdaptiveTrigger
+                 guards only; code must not Allocate over these at Wide. -->
+            <ColumnDefinition x:Name="ColTagSidebar" Width="200" />
+            <ColumnDefinition x:Name="ColTagBoard" Width="*" />
+            <ColumnDefinition x:Name="ColTagDetails" Width="260" MinWidth="240" MaxWidth="300" />
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -1490,7 +1484,6 @@
             </StackPanel>
         </StackPanel>
     </Grid>
-    </ScrollViewer>
 
         <StackPanel
             Margin="16,0,16,12"

@@ -131,13 +131,9 @@ public sealed partial class TagsPage : Page
         };
     }
 
-    private void GrdTagColumns_SizeChanged(object sender, SizeChangedEventArgs e) =>
-        RefreshTagColumnLayout();
-
     /// <summary>
-    /// Drive sidebar / board / details from the shell Frame slot (excludes nav pane).
-    /// Never from this grid's own ActualWidth — star-to-content under ∞ measure
-    /// latched ScrTagDetails past the HWND @ ~1024 DIP.
+    /// AdaptiveTrigger narrow/stack guards only. Wide (~1014 client) keeps XAML
+    /// 200 / * / 260 — must not Allocate over columns (Wimbly #197).
     /// </summary>
     private void RefreshTagColumnLayout()
     {
@@ -175,55 +171,88 @@ public sealed partial class TagsPage : Page
             return;
         }
 
-        var (sidebar, board, details, mode) = TagPageLayout.AllocateForPage(host, showDetails);
+        var mode = TagPageLayout.ClassifyPageWidth(host);
         if (Math.Abs(host - _lastTagHostWidth) < 0.5
             && showDetails == _lastTagShowDetails
-            && mode == _lastTagLayoutMode
-            && ColTagSidebar.Width.IsAbsolute)
+            && mode == _lastTagLayoutMode)
         {
             return;
         }
 
-        ColTagSidebar.MinWidth = 0;
-        ColTagBoard.MinWidth = 0;
-        ColTagDetails.MinWidth = 0;
-        ColTagSidebar.Width = new GridLength(sidebar);
-        ColTagBoard.Width = new GridLength(board);
-        ApplyTagLayoutMode(mode, showDetails, details);
+        if (mode == TagPageLayoutMode.Wide)
+        {
+            RestoreWideTagColumns(showDetails);
+        }
+        else
+        {
+            var (_, _, details, _) = TagPageLayout.AllocateForPage(host, showDetails);
+            ApplyNarrowOrStackedTagColumns(mode, showDetails, details);
+        }
+
         _lastTagHostWidth = host;
         _lastTagShowDetails = showDetails;
         _lastTagLayoutMode = mode;
     }
 
-    /// <summary>
-    /// Wide/Narrow: details in row 1 col 2. Stacked (&lt;640 page): details under board
-    /// (row 2 col 1); sidebar spans main+details rows; details column width 0.
-    /// </summary>
-    private void ApplyTagLayoutMode(TagPageLayoutMode mode, bool showDetails, double detailsWidth)
+    /// <summary>XAML defaults — board star, details 260 (240–300). No Allocate.</summary>
+    private void RestoreWideTagColumns(bool showDetails)
     {
-        var stacked = mode == TagPageLayoutMode.Stacked && showDetails;
-        if (stacked)
+        ColTagSidebar.MinWidth = 0;
+        ColTagBoard.MinWidth = 0;
+        ColTagDetails.MinWidth = TagPageLayout.DetailsMinWidthDip;
+        ColTagDetails.MaxWidth = TagPageLayout.DetailsMaxWidthDip;
+        ColTagSidebar.Width = new GridLength(TagPageLayout.SidebarWidthDip);
+        ColTagBoard.Width = new GridLength(1, GridUnitType.Star);
+        ColTagDetails.Width = showDetails
+            ? new GridLength(260)
+            : new GridLength(0);
+        UnstackTagDetails();
+    }
+
+    private void ApplyNarrowOrStackedTagColumns(
+        TagPageLayoutMode mode,
+        bool showDetails,
+        double detailsWidth)
+    {
+        ColTagSidebar.MinWidth = 0;
+        ColTagBoard.MinWidth = 0;
+        ColTagDetails.MaxWidth = TagPageLayout.DetailsMaxWidthDip;
+
+        if (mode == TagPageLayoutMode.Stacked && showDetails)
         {
+            ColTagSidebar.Width = new GridLength(TagPageLayout.NarrowSidebarWidthDip);
+            ColTagBoard.Width = new GridLength(1, GridUnitType.Star);
+            ColTagDetails.MinWidth = 0;
+            ColTagDetails.Width = new GridLength(0);
             Grid.SetRow(ScrTagDetails, 2);
             Grid.SetColumn(ScrTagDetails, 1);
             Grid.SetColumnSpan(ScrTagDetails, 1);
             Grid.SetRowSpan(GrdTagSidebarPane, 2);
             RowTagDetailsStack.Height = new GridLength(1, GridUnitType.Star);
-            RowTagDetailsStack.MinHeight = TagPageLayout.DetailsMinWidthDip > 0 ? 160 : 0;
-            ColTagDetails.Width = new GridLength(0);
+            RowTagDetailsStack.MinHeight = 160;
             ScrTagDetails.Width = double.NaN;
             ScrTagDetails.HorizontalAlignment = HorizontalAlignment.Stretch;
+            return;
         }
-        else
-        {
-            Grid.SetRow(ScrTagDetails, 1);
-            Grid.SetColumn(ScrTagDetails, 2);
-            Grid.SetColumnSpan(ScrTagDetails, 1);
-            Grid.SetRowSpan(GrdTagSidebarPane, 1);
-            RowTagDetailsStack.Height = new GridLength(0);
-            RowTagDetailsStack.MinHeight = 0;
-            ColTagDetails.Width = new GridLength(showDetails ? detailsWidth : 0);
-        }
+
+        // Narrow (&lt;760): sidebar 180, details 240, board *.
+        ColTagSidebar.Width = new GridLength(TagPageLayout.NarrowSidebarWidthDip);
+        ColTagBoard.Width = new GridLength(1, GridUnitType.Star);
+        ColTagDetails.MinWidth = TagPageLayout.DetailsMinWidthDip;
+        ColTagDetails.Width = showDetails
+            ? new GridLength(Math.Max(TagPageLayout.DetailsMinWidthDip, detailsWidth))
+            : new GridLength(0);
+        UnstackTagDetails();
+    }
+
+    private void UnstackTagDetails()
+    {
+        Grid.SetRow(ScrTagDetails, 1);
+        Grid.SetColumn(ScrTagDetails, 2);
+        Grid.SetColumnSpan(ScrTagDetails, 1);
+        Grid.SetRowSpan(GrdTagSidebarPane, 1);
+        RowTagDetailsStack.Height = new GridLength(0);
+        RowTagDetailsStack.MinHeight = 0;
     }
 
     private double ResolveTagHostWidthDip()
