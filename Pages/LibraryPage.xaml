@@ -2244,6 +2244,7 @@
             x:Name="ScrPreviewPane"
             Grid.Column="1"
             AutomationProperties.AutomationId="ScrPreviewPane"
+            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
             HorizontalScrollBarVisibility="Disabled"
             HorizontalScrollMode="Disabled"
             VerticalScrollBarVisibility="Auto">
@@ -3229,6 +3230,7 @@
         <Border
             x:Name="BrdPreviewOverlay"
             Width="340"
+            Canvas.ZIndex="4"
             HorizontalAlignment="Right"
             VerticalAlignment="Stretch"
             AutomationProperties.AutomationId="BrdPreviewOverlay"

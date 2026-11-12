@@ -123,8 +123,12 @@ public sealed class PreviewOverlayMockupXamlTests
         Assert.Contains("OverlayTopMarginBelowToolbar", cs, StringComparison.Ordinal);
         Assert.Contains("ResolvePreviewOverlayTopMargin", cs, StringComparison.Ordinal);
         Assert.Contains("CloseOverlay", cs, StringComparison.Ordinal);
-        Assert.Contains("Translation.X", cs, StringComparison.Ordinal);
-        Assert.Contains("StartAnimation(\"Translation\"", cs, StringComparison.Ordinal);
+        Assert.Contains("EnsurePreviewOverlayTranslationResting", cs, StringComparison.Ordinal);
+        Assert.Contains("BrdPreviewOverlay.StartAnimation(", cs, StringComparison.Ordinal);
+        Assert.Contains(
+            "BrdPreviewOverlay.Translation = new System.Numerics.Vector3(0f, 0f, 32f)",
+            cs,
+            StringComparison.Ordinal);
 
         Assert.Equal(64, PreviewPane.OverlayTopMarginBelowToolbar(56), 0.01);
         Assert.Equal(PreviewPane.OverlayTopFallbackDip, PreviewPane.OverlayTopMarginBelowToolbar(0), 0.01);

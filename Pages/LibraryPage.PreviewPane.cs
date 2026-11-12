@@ -25,6 +25,7 @@ public sealed partial class LibraryPage
     private bool? _previewAnimationsEnabled;
     private bool _previewDockProbeHooked;
     private long _previewDockProbeLastTick;
+    private ScalarKeyFrameAnimation? _overlayOpacityAnim;
 
     private void HookPreviewPaneSettings()
     {
@@ -224,23 +225,20 @@ public sealed partial class LibraryPage
         {
             BrdPreviewOverlay.Visibility = Visibility.Visible;
             BrdPreviewOverlay.IsHitTestVisible = true;
-            // Later siblings (Edge, Gallery) sit above the overlay in z-order — Collapse
-            // so they cannot steal clicks while Preview overlay is open.
+            BrdPreviewOverlay.Opacity = 1;
+            // Edge Collapsed while open (later sibling). Never write GrdGalleryOverlay.Visibility
+            // (ClearValue/local override left docked pixels=Gallery — Wimbly).
             BtnPreviewPaneEdge.Visibility = Visibility.Collapsed;
             BtnPreviewPaneEdge.IsHitTestVisible = false;
-            if (!ViewModel.IsGalleryOverlayOpen)
-            {
-                // Local value while Preview overlay owns the right edge; ClearValue on exit
-                // restores the IsGalleryOverlayOpen binding.
-                GrdGalleryOverlay.Visibility = Visibility.Collapsed;
-                GrdGalleryOverlay.IsHitTestVisible = false;
-            }
 
             // Ensure body is parented before first compose frame (ghost: Visible chrome, empty SV).
             if (!ReferenceEquals(ScrPreviewOverlay.Content, PnlPreviewBody))
             {
                 HostPreviewBody(PaneMode.Overlay);
             }
+
+            // Hit-test must match paint: facade Translation stays at resting (0,0,32).
+            EnsurePreviewOverlayTranslationResting();
         }
 
         if (mode == PaneMode.Overlay || fromMode == PaneMode.Overlay)
@@ -254,9 +252,11 @@ public sealed partial class LibraryPage
         {
             BrdPreviewOverlay.Visibility = Visibility.Collapsed;
             BrdPreviewOverlay.IsHitTestVisible = false;
+            // Edge Visible again — Visibility write only (never ClearValue).
+            BtnPreviewPaneEdge.Visibility = Visibility.Visible;
             BtnPreviewPaneEdge.IsHitTestVisible = true;
-            GrdGalleryOverlay.ClearValue(VisibilityProperty);
-            GrdGalleryOverlay.IsHitTestVisible = ViewModel.IsGalleryOverlayOpen;
+            // Re-host body into dock Scr every exit from Overlay (empty ColPreview otherwise).
+            HostPreviewBody(mode);
             ResetPreviewOverlayTranslation();
         }
         else if (fromMode == PaneMode.Overlay)
@@ -387,6 +387,7 @@ public sealed partial class LibraryPage
 
             var expected = PreviewPane.DockHostExpectedOffsetX(layout);
             var drift = GrdPreviewDockHost.ActualOffset.X - expected;
+            var overlayProbe = ProbeOverlayBoundsVsXamlRoot(rootDip);
             // Read-only: ActualOffset vs Visual.Offset; also auto-hide inputs for Studio.
             PreviewDockLayoutProbe.Log(
                 source,
@@ -401,11 +402,57 @@ public sealed partial class LibraryPage
                     $"appClientDip={appDip:0.#} pageActualW={pageActualW:0.#} " +
                     $"shellSlotW={slotDip:0.#} refreshRate={refreshRate:0.##}/s " +
                     $"nav={navDip:0.#} pagePlusNav={pagePlusNav:0.#} " +
-                    $"windowDip={windowDip:0.#} scale={scale:0.###}"));
+                    $"windowDip={windowDip:0.#} scale={scale:0.###} {overlayProbe}"));
         }
         catch (Exception ex)
         {
             PreviewDockLayoutProbe.Log(source, "probe-failed: " + ex.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// TransformToVisual bounds of overlay + Close vs XamlRoot width — reports
+    /// <c>overWide=1</c> when the right edge sits past the root (Close ✕ past HWND).
+    /// </summary>
+    private string ProbeOverlayBoundsVsXamlRoot(double rootDip)
+    {
+        try
+        {
+            if (BrdPreviewOverlay.Visibility != Visibility.Visible || rootDip < 1)
+            {
+                return "overlayBounds=n/a closeBounds=n/a overWide=0";
+            }
+
+            var root = XamlRoot?.Content as UIElement ?? this;
+            var overlayBounds = BrdPreviewOverlay
+                .TransformToVisual(root)
+                .TransformBounds(
+                    new Windows.Foundation.Rect(
+                        0,
+                        0,
+                        BrdPreviewOverlay.ActualWidth,
+                        BrdPreviewOverlay.ActualHeight));
+            var closeBounds = BtnPreviewOverlayClose
+                .TransformToVisual(root)
+                .TransformBounds(
+                    new Windows.Foundation.Rect(
+                        0,
+                        0,
+                        Math.Max(1, BtnPreviewOverlayClose.ActualWidth),
+                        Math.Max(1, BtnPreviewOverlayClose.ActualHeight)));
+            var overWide = overlayBounds.Right > rootDip + 0.5
+                || closeBounds.Right > rootDip + 0.5
+                || overlayBounds.X < -0.5
+                || closeBounds.X < -0.5;
+            return string.Create(
+                System.Globalization.CultureInfo.InvariantCulture,
+                $"overlayBounds={overlayBounds.X:0.#},{overlayBounds.Y:0.#},{overlayBounds.Width:0.#}x{overlayBounds.Height:0.#} " +
+                $"closeBounds={closeBounds.X:0.#},{closeBounds.Y:0.#},{closeBounds.Width:0.#}x{closeBounds.Height:0.#} " +
+                $"overWide={(overWide ? 1 : 0)}");
+        }
+        catch
+        {
+            return "overlayBounds=err closeBounds=err overWide=-1";
         }
     }
 
@@ -554,31 +601,24 @@ public sealed partial class LibraryPage
     {
         if (fromMode == toMode || !PreviewMotionEnabled())
         {
+            EnsurePreviewOverlayTranslationResting();
             return;
         }
 
-        // Facade UIElement.Translation only — never SetIsTranslationEnabled /
-        // Properties.InsertVector3 (those desync hit-test from pixels). Never Offset.
-        var showing = false;
-        if (toMode == PaneMode.Overlay && fromMode != PaneMode.Overlay)
-        {
-            showing = true;
-        }
-        else if (fromMode == PaneMode.Overlay && toMode != PaneMode.Overlay)
-        {
-            showing = false;
-        }
-        else
+        // Facade Translation stays at (0,0,32). Animate via UIElement.StartAnimation only
+        // (Wimbly: hand-out visual on the overlay broke hit-test). Opacity fade;
+        // compositor from the page, not the overlay.
+        if (toMode != PaneMode.Overlay && fromMode != PaneMode.Overlay)
         {
             return;
         }
 
+        var showing = toMode == PaneMode.Overlay;
         try
         {
-            var visual = ElementCompositionPreview.GetElementVisual(BrdPreviewOverlay);
-            visual.StopAnimation("Translation");
-            visual.StopAnimation("Translation.X");
-            var compositor = visual.Compositor;
+            EnsurePreviewOverlayTranslationResting();
+            StopOverlayOpacityAnimation();
+            var compositor = ElementCompositionPreview.GetElementVisual(this).Compositor;
             var ms = showing ? PreviewPane.MotionInMs : PreviewPane.MotionOutMs;
             var ease = showing
                 ? compositor.CreateCubicBezierEasingFunction(
@@ -587,46 +627,59 @@ public sealed partial class LibraryPage
                 : compositor.CreateCubicBezierEasingFunction(
                     new System.Numerics.Vector2(0.7f, 0f),
                     new System.Numerics.Vector2(1f, 0.5f));
-            // Z=32 ThemeShadow (XAML Translation="0,0,32"); slide X only via Vector3.
-            const float shadowZ = 32f;
-            var fromX = showing ? 24f : 0f;
-            var toX = showing ? 0f : 24f;
-            var from = new System.Numerics.Vector3(fromX, 0f, shadowZ);
-            var to = new System.Numerics.Vector3(toX, 0f, shadowZ);
-            BrdPreviewOverlay.Translation = from;
-            var anim = compositor.CreateVector3KeyFrameAnimation();
+            var from = showing ? 0f : 1f;
+            var to = showing ? 1f : 0f;
+            BrdPreviewOverlay.Opacity = from;
+            var anim = compositor.CreateScalarKeyFrameAnimation();
+            anim.Target = "Opacity";
             anim.InsertKeyFrame(0f, from, ease);
             anim.InsertKeyFrame(1f, to, ease);
             anim.Duration = TimeSpan.FromMilliseconds(ms);
-            anim.Target = "Translation";
-            visual.StartAnimation("Translation", anim);
+            _overlayOpacityAnim = anim;
+            BrdPreviewOverlay.StartAnimation(anim);
         }
         catch
         {
-            // Composition unavailable — layout still correct.
+            BrdPreviewOverlay.Opacity = 1;
             EnsurePreviewOverlayTranslationResting();
         }
+    }
+
+    private void StopOverlayOpacityAnimation()
+    {
+        if (_overlayOpacityAnim is null)
+        {
+            return;
+        }
+
+        try
+        {
+            BrdPreviewOverlay.StopAnimation(_overlayOpacityAnim);
+        }
+        catch
+        {
+            // Already stopped.
+        }
+
+        _overlayOpacityAnim = null;
     }
 
     private void ResetPreviewOverlayTranslation() =>
         EnsurePreviewOverlayTranslationResting();
 
     /// <summary>
-    /// Resting facade Translation: X/Y=0, Z=32 (ThemeShadow). No composition
-    /// property-bag writes — hit-test must track the painted overlay.
+    /// Resting facade Translation: X/Y=0, Z=32 (ThemeShadow). Set the
+    /// UIElement.Translation property only — never the overlay's hand-out visual.
     /// </summary>
     private void EnsurePreviewOverlayTranslationResting()
     {
         try
         {
-            var visual = ElementCompositionPreview.GetElementVisual(BrdPreviewOverlay);
-            visual.StopAnimation("Translation");
-            visual.StopAnimation("Translation.X");
             BrdPreviewOverlay.Translation = new System.Numerics.Vector3(0f, 0f, 32f);
         }
         catch
         {
-            // Composition unavailable.
+            // Translation unavailable.
         }
     }
 
