@@ -1,0 +1,1 @@
+﻿Tip 353b69a / 0.3.110 SendInput ~72% across Prompt face; outline star in trailing gap.
