@@ -260,11 +260,11 @@
             RowSpacing="8">
             <!-- A1: one-row header Grid (* / Auto / Auto / Auto). No WrapPanel.
                  Expand/Collapse → icon-only + tooltips when board &lt;~400 DIP. -->
-            <!-- chips * · mosaic * · composer Auto at bottom (star gap needs board wrap ~26). -->
+            <!-- header Auto · chips * · mosaic Auto (MaxHeight 280) · composer Auto. -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid
@@ -542,7 +542,7 @@
                                         <DataTemplate x:DataType="models:TagChipItem">
                                             <controls:TagChip
                                                 MinWidth="0"
-                                                HorizontalAlignment="Left"
+                                                HorizontalAlignment="Stretch"
                                                 VerticalAlignment="Top"
                                                 ApplyState="{x:Bind ApplyState, Mode=OneWay}"
                                                 CanDrag="False"
@@ -646,7 +646,10 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
-            <Grid Grid.Row="2" RowSpacing="8">
+            <Grid
+                Grid.Row="2"
+                RowSpacing="8"
+                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasTagAssets), Mode=OneWay}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -764,6 +767,7 @@
             <ScrollViewer
                 x:Name="GrdTagAssets"
                 Grid.Row="2"
+                MaxHeight="280"
                 AutomationProperties.AutomationId="GrdTagAssets"
                 AutomationProperties.Name="Tagged items"
                 IsHoldingEnabled="True"

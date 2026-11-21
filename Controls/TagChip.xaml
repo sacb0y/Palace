@@ -8,7 +8,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     MinWidth="0"
-    HorizontalAlignment="Left"
+    HorizontalAlignment="Stretch"
     IsTabStop="True"
     UseSystemFocusVisuals="True"
     XYFocusKeyboardNavigation="Enabled"
@@ -24,11 +24,12 @@
          skips Collapsed chrome (Grid ColumnSpacing did not → uniform ~48 DIP pad).
          GrdRoot has no Background — only GrdFace / BtnStar hit-test. Board ChipWrap
          ArrangeIntoTrailingGap gives face+26 so HA=Right star sits in the gap. -->
+    <!-- Stretch so ChipWrap face+26 gap is real width; GrdFace stays Left, star HA=Right. -->
     <Grid
         x:Name="GrdRoot"
         MinWidth="0"
         MinHeight="32"
-        HorizontalAlignment="Left">
+        HorizontalAlignment="Stretch">
         <Grid
             x:Name="GrdFace"
             HorizontalAlignment="Left"

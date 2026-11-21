@@ -67,7 +67,7 @@ public sealed class TagsPageXamlLayoutTests
     }
 
     [Fact]
-    public void BoardPane_ChipStar_MosaicStar_ComposerAutoBottom()
+    public void BoardPane_ChipStar_MosaicAuto_ComposerAutoBottom()
     {
         var xaml = TagsPageXaml();
         var pane = xaml.IndexOf("x:Name=\"GrdTagBoardPane\"", StringComparison.Ordinal);
@@ -77,8 +77,9 @@ public sealed class TagsPageXamlLayoutTests
         var block = xaml[rows..rowsEnd];
         Assert.DoesNotContain("2*", block, StringComparison.Ordinal);
         Assert.DoesNotContain("MinHeight=\"160\"", block, StringComparison.Ordinal);
-        Assert.Equal(2, Regex.Matches(block, @"Height=""\*""").Count);
-        Assert.Equal(2, Regex.Matches(block, @"Height=""Auto""").Count);
+        // header Auto · chips * · mosaic Auto · composer Auto
+        Assert.Single(Regex.Matches(block, @"Height=""\*"""));
+        Assert.Equal(3, Regex.Matches(block, @"Height=""Auto""").Count);
         Assert.Contains("TxtTagAssetCount", xaml, StringComparison.Ordinal);
         // Composer + items count dock Auto under mosaic (bottom of board pane).
         var mosaic = xaml.IndexOf("x:Name=\"GrdTagAssets\"", StringComparison.Ordinal);
@@ -87,6 +88,10 @@ public sealed class TagsPageXamlLayoutTests
         var composer = xaml.IndexOf("x:Name=\"CmbNewTagsGroup\"", StringComparison.Ordinal);
         Assert.True(composer > mosaic && composer < count);
         Assert.Contains("Grid.Row=\"3\"", xaml[mosaic..composer], StringComparison.Ordinal);
+
+        var assetsOpen = xaml[mosaic..(mosaic + 400)];
+        Assert.Contains("MaxHeight=\"280\"", assetsOpen, StringComparison.Ordinal);
+        Assert.Contains("HasTagAssets", xaml, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -100,6 +105,33 @@ public sealed class TagsPageXamlLayoutTests
         var block = xaml[layout..showStar];
         Assert.Contains("HorizontalSpacing=\"26\"", block, StringComparison.Ordinal);
         Assert.Contains("ArrangeIntoTrailingGap=\"True\"", block, StringComparison.Ordinal);
+        Assert.Contains("HorizontalAlignment=\"Stretch\"", block, StringComparison.Ordinal);
+        Assert.DoesNotContain("HorizontalAlignment=\"Left\"", block, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TagChip_RootAndGrdRoot_Stretch_FaceLeft()
+    {
+        var chipXaml = File.ReadAllText(Path.Combine(RepoRoot(), "Controls", "TagChip.xaml"));
+        // UserControl root + GrdRoot Stretch; GrdFace stays Left.
+        var uc = chipXaml.IndexOf("<UserControl", StringComparison.Ordinal);
+        Assert.True(uc >= 0);
+        var ucEnd = chipXaml.IndexOf(">", uc, StringComparison.Ordinal);
+        var rootAttrs = chipXaml[uc..ucEnd];
+        Assert.Contains("HorizontalAlignment=\"Stretch\"", rootAttrs, StringComparison.Ordinal);
+        Assert.DoesNotContain("HorizontalAlignment=\"Left\"", rootAttrs, StringComparison.Ordinal);
+
+        var grdRoot = chipXaml.IndexOf("x:Name=\"GrdRoot\"", StringComparison.Ordinal);
+        Assert.True(grdRoot > 0);
+        var grdRootEnd = chipXaml.IndexOf(">", grdRoot, StringComparison.Ordinal);
+        var grdRootOpen = chipXaml[grdRoot..grdRootEnd];
+        Assert.Contains("HorizontalAlignment=\"Stretch\"", grdRootOpen, StringComparison.Ordinal);
+        Assert.DoesNotContain("HorizontalAlignment=\"Left\"", grdRootOpen, StringComparison.Ordinal);
+
+        var face = chipXaml.IndexOf("x:Name=\"GrdFace\"", StringComparison.Ordinal);
+        Assert.True(face > 0);
+        var faceEnd = chipXaml.IndexOf(">", face, StringComparison.Ordinal);
+        Assert.Contains("HorizontalAlignment=\"Left\"", chipXaml[face..faceEnd], StringComparison.Ordinal);
     }
 
     [Fact]

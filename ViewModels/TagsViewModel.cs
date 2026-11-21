@@ -117,6 +117,12 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial int AssetCount { get; set; }
 
+    /// <summary>Board mosaic row collapses when the selected tag has no assets.</summary>
+    public bool HasTagAssets => AssetCount > 0;
+
+    partial void OnAssetCountChanged(int value) =>
+        OnPropertyChanged(nameof(HasTagAssets));
+
     [ObservableProperty]
     public partial string AssetCountLabel { get; set; } = "0 items with this tag";
 
