@@ -1,0 +1,46 @@
+﻿{
+    "stack":  {
+                  "L":  19,
+                  "W":  1422,
+                  "Length":  522464,
+                  "T":  10,
+                  "H":  1341,
+                  "Name":  "stacked-width-960-0.3.109.png",
+                  "Path":  "C:\\Users\\iadag\\AppData\\Local\\Temp\\palace-fenrir-shots-197-109\\tags-drag-to-group-197\\stacked-width-960-0.3.109.png",
+                  "Hash":  "E4D33487"
+              },
+    "rest":  {
+                 "L":  19,
+                 "W":  1632,
+                 "Length":  548053,
+                 "T":  10,
+                 "H":  1311,
+                 "Name":  "starred-rest-0.3.109.png",
+                 "Path":  "C:\\Users\\iadag\\AppData\\Local\\Temp\\palace-fenrir-shots-197-109\\tags-drag-to-group-197\\starred-rest-0.3.109.png",
+                 "Hash":  "AE8E3BEB"
+             },
+    "wrap":  {
+                 "L":  19,
+                 "W":  1518,
+                 "Length":  478100,
+                 "T":  10,
+                 "H":  1191,
+                 "Name":  "wrap-1024-0.3.109.png",
+                 "Path":  "C:\\Users\\iadag\\AppData\\Local\\Temp\\palace-fenrir-shots-197-109\\tags-drag-to-group-197\\wrap-1024-0.3.109.png",
+                 "Hash":  "BFCA07AD"
+             },
+    "crop":  {
+                 "Path":  "C:\\Users\\iadag\\AppData\\Local\\Temp\\palace-fenrir-shots-197-109\\tags-drag-to-group-197\\star-gap-hover-crop-0.3.109.png",
+                 "Length":  6612
+             },
+    "hover":  {
+                  "L":  19,
+                  "W":  1632,
+                  "Length":  548053,
+                  "T":  10,
+                  "H":  1311,
+                  "Name":  "star-gap-hover-0.3.109.png",
+                  "Path":  "C:\\Users\\iadag\\AppData\\Local\\Temp\\palace-fenrir-shots-197-109\\tags-drag-to-group-197\\star-gap-hover-0.3.109.png",
+                  "Hash":  "AE8E3BEB"
+              }
+}
