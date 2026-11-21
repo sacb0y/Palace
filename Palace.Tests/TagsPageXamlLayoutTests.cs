@@ -161,9 +161,20 @@ public sealed class TagsPageXamlLayoutTests
         var hostEnd = xaml.IndexOf("</Canvas>", host, StringComparison.Ordinal);
         var block = xaml[host..hostEnd];
         Assert.DoesNotContain("Visibility=\"Collapsed\"", block, StringComparison.Ordinal);
+        Assert.Contains("Width=\"1\"", block, StringComparison.Ordinal);
+        Assert.Contains("Height=\"1\"", block, StringComparison.Ordinal);
 
-        // WMC0035: host must be a child of GrdTagColumns, not a root Grid child
-        // before VisualStateManager (that duplicates Grid.Children).
+        // Parent is a sizeless outer Canvas (desired 0×0), not GrdTagColumns directly —
+        // so growing the host for RTB never stretches the Auto header.
+        var before = xaml[..host];
+        var lastCanvas = before.LastIndexOf("<Canvas", StringComparison.Ordinal);
+        Assert.True(lastCanvas >= 0 && lastCanvas < host);
+        Assert.DoesNotContain(
+            "x:Name=\"GrdTagColumns\"",
+            xaml[lastCanvas..host],
+            StringComparison.Ordinal);
+
+        // WMC0035: still under GrdTagColumns, not a root Grid child before VSM.
         var root = xaml.IndexOf("<Grid>", StringComparison.Ordinal);
         var vsm = xaml.IndexOf("VisualStateManager.VisualStateGroups", StringComparison.Ordinal);
         var cols = xaml.IndexOf("x:Name=\"GrdTagColumns\"", StringComparison.Ordinal);
@@ -172,5 +183,13 @@ public sealed class TagsPageXamlLayoutTests
             "CvsTagDragGhostHost",
             xaml[root..vsm],
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DragGhostHost_FinallyResetsSizeToOne()
+    {
+        var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "TagsPage.xaml.cs"));
+        Assert.Contains("CvsTagDragGhostHost.Width = 1", cs, StringComparison.Ordinal);
+        Assert.Contains("CvsTagDragGhostHost.Height = 1", cs, StringComparison.Ordinal);
     }
 }

@@ -59,20 +59,22 @@
         </Grid.RowDefinitions>
 
         <!-- Off-screen host for drag-ghost RenderTargetBitmap (must be in the live tree;
-             unparented RTB is blank — WinUI docs). Single Children collection with the
-             rest of GrdTagColumns — not a second root Grid.Children (WMC0035). -->
+             unparented RTB is blank — WinUI docs). Outer Canvas desired size is 0×0 so a
+             Height=96 capture never stretches the Auto header (first-open empty band).
+             Still under GrdTagColumns (not a second root Grid.Children — WMC0035). -->
         <Canvas
-            x:Name="CvsTagDragGhostHost"
             Grid.Row="0"
             Grid.Column="0"
-            Width="480"
-            Height="96"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Top"
             IsHitTestVisible="False">
-            <Canvas.RenderTransform>
-                <TranslateTransform X="-8000" Y="-8000" />
-            </Canvas.RenderTransform>
+            <Canvas
+                x:Name="CvsTagDragGhostHost"
+                Width="1"
+                Height="1"
+                IsHitTestVisible="False">
+                <Canvas.RenderTransform>
+                    <TranslateTransform X="-8000" Y="-8000" />
+                </Canvas.RenderTransform>
+            </Canvas>
         </Canvas>
 
         <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Tags" />

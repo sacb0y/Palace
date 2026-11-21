@@ -748,6 +748,9 @@ public sealed partial class TagsPage : Page
         finally
         {
             CvsTagDragGhostHost.Children.Clear();
+            // Keep desired size tiny so the sizeless outer Canvas never grows the header.
+            CvsTagDragGhostHost.Width = 1;
+            CvsTagDragGhostHost.Height = 1;
         }
     }
 
