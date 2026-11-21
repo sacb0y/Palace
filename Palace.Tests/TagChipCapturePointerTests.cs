@@ -132,6 +132,8 @@ public sealed class TagChipCapturePointerTests
         Assert.DoesNotContain("ArrangeOverride", cs, StringComparison.Ordinal);
         Assert.DoesNotContain("StarArrangeX", cs, StringComparison.Ordinal);
         Assert.DoesNotContain("InvalidateArrange", cs, StringComparison.Ordinal);
+        Assert.DoesNotContain(".IsPointerOver", cs, StringComparison.Ordinal);
+        Assert.Contains("_starPointerOver", cs, StringComparison.Ordinal);
 
         // GrdRoot must not paint Transparent over the wrap gap (steals next-chip hits).
         var root = xaml.IndexOf("x:Name=\"GrdRoot\"", StringComparison.Ordinal);

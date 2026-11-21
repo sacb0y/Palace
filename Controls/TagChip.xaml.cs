@@ -140,6 +140,7 @@ public sealed partial class TagChip : UserControl
         new PropertyMetadata(null));
 
     private bool _pointerOver;
+    private bool _starPointerOver;
     private bool _pressed;
 
     public TagChip()
@@ -905,7 +906,8 @@ public sealed partial class TagChip : UserControl
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         // Moving onto BtnStar (sibling of GrdFace) must not clear hover chrome.
-        if (BtnStar.IsPointerOver)
+        // WinUI UserControl has no IsPointerOver — track star with _starPointerOver.
+        if (_starPointerOver)
         {
             return;
         }
@@ -917,21 +919,16 @@ public sealed partial class TagChip : UserControl
 
     private void BtnStar_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        _starPointerOver = true;
         _pointerOver = true;
         ApplyChrome();
     }
 
     private void BtnStar_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        // Still over GrdFace / root — keep hover.
-        if (IsPointerOver)
-        {
-            return;
-        }
-
-        _pointerOver = false;
-        _pressed = false;
-        ApplyChrome();
+        _starPointerOver = false;
+        // Still over GrdFace: Root_PointerExited does not fire — keep _pointerOver.
+        // Leaving the chip entirely: Root_PointerExited clears both.
     }
 
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -968,6 +965,7 @@ public sealed partial class TagChip : UserControl
     {
         _pressed = false;
         _pointerOver = false;
+        _starPointerOver = false;
         ApplyChrome();
     }
 }
