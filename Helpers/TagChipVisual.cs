@@ -40,21 +40,12 @@ public static class TagChipVisual
     public const int StarButtonDip = 24;
 
     /// <summary>
-    /// Gap past the chip’s right border before the star (star sits in wrap spacing).
-    /// </summary>
-    public const int StarOutsideGapDip = 2;
-
-    /// <summary>
-    /// Tags board <c>ChipWrapLayout</c> horizontal spacing (~24–28) so a 20–24px star
-    /// fits between chips without overlaying label text.
+    /// Tags board <c>ChipWrapLayout</c> horizontal spacing / star slot width (~24–28)
+    /// so the HA=Right star sits in the gap without overlaying label text.
     /// </summary>
     public const int BoardStarWrapSpacingDip = 26;
 
     public const double PartialBorderThickness = 1.5;
-
-    /// <summary>X for star arrange slot — just past the chip face, outside measure.</summary>
-    public static double StarArrangeX(double chipWidthDip) =>
-        chipWidthDip + StarOutsideGapDip;
 
     /// <summary>Star fill on Dark / Default chrome.</summary>
     public const string StarGoldDarkHex = "#F2B600";

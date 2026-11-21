@@ -113,4 +113,24 @@ public static class ChipWrap
 
     public static bool IsFinitePositive(double value) =>
         double.IsFinite(value) && value > 0;
+
+    /// <summary>
+    /// Arrange width for one chip slot. When <paramref name="arrangeIntoTrailingGap"/>,
+    /// include horizontal spacing (star-in-gap) and clamp so the last chip on a row
+    /// does not extend past <paramref name="finalSizeWidth"/>.
+    /// </summary>
+    public static double ArrangeSlotWidth(
+        double slotWidth,
+        double slotX,
+        double horizontalSpacing,
+        double finalSizeWidth,
+        bool arrangeIntoTrailingGap)
+    {
+        if (!arrangeIntoTrailingGap)
+        {
+            return slotWidth;
+        }
+
+        return Math.Min(slotWidth + horizontalSpacing, finalSizeWidth - slotX);
+    }
 }

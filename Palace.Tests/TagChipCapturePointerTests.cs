@@ -116,18 +116,29 @@ public sealed class TagChipCapturePointerTests
     }
 
     [Fact]
-    public void TagChip_StarOutsideFace_MeasureOverrideExcludesStar()
+    public void TagChip_StarOutsideFace_NoArrangeOverride_GrdRootNoBackground()
     {
         var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "Controls", "TagChip.xaml"));
         var cs = TagChipCode();
-        // Star is a GrdRoot sibling of BrdChip — not inside the face StackPanel.
+        // Star is a GrdRoot sibling of GrdFace — not inside the face StackPanel.
         var stack = xaml.IndexOf("<StackPanel", StringComparison.Ordinal);
         var stackEnd = xaml.IndexOf("</StackPanel>", stack, StringComparison.Ordinal);
         Assert.True(stack > 0 && stackEnd > stack);
         Assert.DoesNotContain("x:Name=\"BtnStar\"", xaml[stack..stackEnd], StringComparison.Ordinal);
-        Assert.Contains("x:Name=\"BtnStar\"", xaml[stackEnd..], StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"GrdFace\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"BtnStar\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("HorizontalAlignment=\"Right\"", xaml, StringComparison.Ordinal);
         Assert.Contains("MeasureOverride", cs, StringComparison.Ordinal);
-        Assert.Contains("StarArrangeX", cs, StringComparison.Ordinal);
-        Assert.Contains("Desired size is the chip face only", cs, StringComparison.Ordinal);
+        Assert.DoesNotContain("ArrangeOverride", cs, StringComparison.Ordinal);
+        Assert.DoesNotContain("StarArrangeX", cs, StringComparison.Ordinal);
+        Assert.DoesNotContain("InvalidateArrange", cs, StringComparison.Ordinal);
+
+        // GrdRoot must not paint Transparent over the wrap gap (steals next-chip hits).
+        var root = xaml.IndexOf("x:Name=\"GrdRoot\"", StringComparison.Ordinal);
+        Assert.True(root >= 0);
+        var rootEnd = xaml.IndexOf(">", root, StringComparison.Ordinal);
+        var rootOpen = xaml[root..rootEnd];
+        Assert.DoesNotContain("Background=", rootOpen, StringComparison.Ordinal);
+        Assert.Contains("Background=\"Transparent\"", xaml, StringComparison.Ordinal); // GrdFace only
     }
 }

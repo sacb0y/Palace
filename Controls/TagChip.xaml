@@ -21,170 +21,178 @@
     PointerCaptureLost="Root_PointerCaptureLost"
     Tapped="Root_Tapped">
     <!-- MinWidth=0 defeats theme Control/ButtonMinWidth (~120). StackPanel Spacing
-         skips Collapsed chrome (Grid ColumnSpacing did not → uniform ~48 DIP pad). -->
+         skips Collapsed chrome (Grid ColumnSpacing did not → uniform ~48 DIP pad).
+         GrdRoot has no Background — only GrdFace / BtnStar hit-test. Board ChipWrap
+         ArrangeIntoTrailingGap gives face+26 so HA=Right star sits in the gap. -->
     <Grid
         x:Name="GrdRoot"
         MinWidth="0"
         MinHeight="32"
-        HorizontalAlignment="Left"
-        Background="Transparent">
-        <Border
-            x:Name="BrdChip"
-            MinWidth="0"
-            MinHeight="32"
-            Padding="10,4"
+        HorizontalAlignment="Left">
+        <Grid
+            x:Name="GrdFace"
             HorizontalAlignment="Left"
-            Background="Transparent"
-            BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-            BorderThickness="1"
-            CornerRadius="16">
-            <StackPanel
+            Background="Transparent">
+            <Border
+                x:Name="BrdChip"
                 MinWidth="0"
+                MinHeight="32"
+                Padding="10,4"
                 HorizontalAlignment="Left"
-                Orientation="Horizontal"
-                Spacing="6"
-                VerticalAlignment="Center">
-                <!-- Leading link glyph (implied-only). -->
-                <Viewbox
-                    x:Name="VbLeadingLink"
-                    Width="12"
-                    Height="12"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Visibility="Collapsed">
-                    <ic:FluentIcon
-                        x:Name="IcnLeadingLink"
-                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                        Icon="Link"
-                        IconSize="Size16"
-                        IconVariant="Regular" />
-                </Viewbox>
-
-                <!-- Leading apply glyph (Checkmark / Subtract). Never the word On. -->
-                <Viewbox
-                    x:Name="VbStateGlyph"
-                    Width="12"
-                    Height="12"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Visibility="Collapsed">
-                    <ic:FluentIcon
-                        x:Name="IcnState"
-                        Icon="Checkmark"
-                        IconSize="Size16"
-                        IconVariant="Regular" />
-                </Viewbox>
-
-                <Ellipse
-                    x:Name="EllColorDot"
-                    Width="8"
-                    Height="8"
-                    VerticalAlignment="Center"
-                    Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
-                    StrokeThickness="1"
-                    Visibility="Collapsed" />
-
-                <TextBlock
-                    x:Name="TxtLabel"
-                    VerticalAlignment="Center"
-                    IsHitTestVisible="False"
-                    Style="{StaticResource BodyTextBlockStyle}"
-                    TextWrapping="NoWrap" />
-
-                <TextBlock
-                    x:Name="TxtNewBadge"
-                    VerticalAlignment="Center"
-                    FontSize="11"
-                    FontWeight="SemiBold"
-                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
-                    IsHitTestVisible="False"
-                    Text="+ new"
-                    Visibility="Collapsed" />
-
-                <Viewbox
-                    x:Name="VbTrailingLink"
-                    Width="12"
-                    Height="12"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Visibility="Collapsed">
-                    <ic:FluentIcon
-                        x:Name="IcnTrailingLink"
-                        Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                        Icon="Link"
-                        IconSize="Size16"
-                        IconVariant="Regular" />
-                </Viewbox>
-
-                <TextBlock
-                    x:Name="TxtPartialBadge"
-                    VerticalAlignment="Center"
-                    IsHitTestVisible="False"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Visibility="Collapsed" />
-
-                <Button
-                    x:Name="BtnRemove"
-                    Width="24"
-                    Height="24"
-                    MinWidth="24"
-                    MinHeight="24"
-                    Padding="0"
-                    VerticalAlignment="Center"
-                    AutomationProperties.Name="Remove tag"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Click="BtnRemove_Click"
-                    IsTabStop="False"
-                    ToolTipService.ToolTip="Remove tag"
-                    Visibility="Collapsed">
-                    <ic:FluentIcon
-                        x:Name="IcnRemove"
+                Background="Transparent"
+                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="16">
+                <StackPanel
+                    MinWidth="0"
+                    HorizontalAlignment="Left"
+                    Orientation="Horizontal"
+                    Spacing="6"
+                    VerticalAlignment="Center">
+                    <!-- Leading link glyph (implied-only). -->
+                    <Viewbox
+                        x:Name="VbLeadingLink"
+                        Width="12"
+                        Height="12"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
-                        Icon="Dismiss"
-                        IconSize="Size12"
-                        IconVariant="Regular" />
-                </Button>
-            </StackPanel>
-        </Border>
+                        Visibility="Collapsed">
+                        <ic:FluentIcon
+                            x:Name="IcnLeadingLink"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Icon="Link"
+                            IconSize="Size16"
+                            IconVariant="Regular" />
+                    </Viewbox>
 
-        <!-- Star lives in the wrap gap past the chip border (not over label text).
-             MeasureOverride excludes it from DesiredSize so wrap/widths stay stable. -->
+                    <!-- Leading apply glyph (Checkmark / Subtract). Never the word On. -->
+                    <Viewbox
+                        x:Name="VbStateGlyph"
+                        Width="12"
+                        Height="12"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                        <ic:FluentIcon
+                            x:Name="IcnState"
+                            Icon="Checkmark"
+                            IconSize="Size16"
+                            IconVariant="Regular" />
+                    </Viewbox>
+
+                    <Ellipse
+                        x:Name="EllColorDot"
+                        Width="8"
+                        Height="8"
+                        VerticalAlignment="Center"
+                        Stroke="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        StrokeThickness="1"
+                        Visibility="Collapsed" />
+
+                    <TextBlock
+                        x:Name="TxtLabel"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False"
+                        Style="{StaticResource BodyTextBlockStyle}"
+                        TextWrapping="NoWrap" />
+
+                    <TextBlock
+                        x:Name="TxtNewBadge"
+                        VerticalAlignment="Center"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                        IsHitTestVisible="False"
+                        Text="+ new"
+                        Visibility="Collapsed" />
+
+                    <Viewbox
+                        x:Name="VbTrailingLink"
+                        Width="12"
+                        Height="12"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Visibility="Collapsed">
+                        <ic:FluentIcon
+                            x:Name="IcnTrailingLink"
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Icon="Link"
+                            IconSize="Size16"
+                            IconVariant="Regular" />
+                    </Viewbox>
+
+                    <TextBlock
+                        x:Name="TxtPartialBadge"
+                        VerticalAlignment="Center"
+                        IsHitTestVisible="False"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Visibility="Collapsed" />
+
+                    <Button
+                        x:Name="BtnRemove"
+                        Width="24"
+                        Height="24"
+                        MinWidth="24"
+                        MinHeight="24"
+                        Padding="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="Remove tag"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="BtnRemove_Click"
+                        IsTabStop="False"
+                        ToolTipService.ToolTip="Remove tag"
+                        Visibility="Collapsed">
+                        <ic:FluentIcon
+                            x:Name="IcnRemove"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Icon="Dismiss"
+                            IconSize="Size12"
+                            IconVariant="Regular" />
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Dashed accent outline for Partial (Border cannot dash). -->
+            <Rectangle
+                x:Name="RectPartialDash"
+                RadiusX="16"
+                RadiusY="16"
+                Stroke="{ThemeResource AccentFillColorDefaultBrush}"
+                StrokeDashArray="1.5,1.5"
+                StrokeThickness="1.5"
+                Visibility="Collapsed"
+                IsHitTestVisible="False" />
+        </Grid>
+
+        <!-- Width=26 (= board wrap gap); icon HA=Right Padding=0 — button left edge
+             touches face when ChipWrap arranges face+26. -->
         <Button
             x:Name="BtnStar"
-            Width="24"
+            Width="26"
             Height="24"
-            MinWidth="24"
+            MinWidth="26"
             MinHeight="24"
             Padding="0"
-            HorizontalAlignment="Left"
-            VerticalAlignment="Top"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Center"
             AutomationProperties.Name="Star tag"
             Background="Transparent"
             BorderThickness="0"
             Click="BtnStar_Click"
             IsTabStop="False"
+            PointerEntered="BtnStar_PointerEntered"
+            PointerExited="BtnStar_PointerExited"
             ToolTipService.ToolTip="Star tag"
             Visibility="Collapsed">
             <ic:FluentIcon
                 x:Name="IcnStar"
-                HorizontalAlignment="Center"
+                HorizontalAlignment="Right"
                 VerticalAlignment="Center"
                 Icon="Star"
                 IconSize="Size16"
                 IconVariant="Regular" />
         </Button>
-
-        <!-- Dashed accent outline for Partial (Border cannot dash). -->
-        <Rectangle
-            x:Name="RectPartialDash"
-            RadiusX="16"
-            RadiusY="16"
-            Stroke="{ThemeResource AccentFillColorDefaultBrush}"
-            StrokeDashArray="1.5,1.5"
-            StrokeThickness="1.5"
-            Visibility="Collapsed"
-            IsHitTestVisible="False" />
     </Grid>
 </UserControl>

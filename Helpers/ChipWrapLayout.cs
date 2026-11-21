@@ -24,6 +24,12 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
         typeof(ChipWrapLayout),
         new PropertyMetadata(6d, OnLayoutPropertyChanged));
 
+    public static readonly DependencyProperty ArrangeIntoTrailingGapProperty = DependencyProperty.Register(
+        nameof(ArrangeIntoTrailingGap),
+        typeof(bool),
+        typeof(ChipWrapLayout),
+        new PropertyMetadata(false, OnLayoutPropertyChanged));
+
     public double HorizontalSpacing
     {
         get => (double)GetValue(HorizontalSpacingProperty);
@@ -34,6 +40,16 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
     {
         get => (double)GetValue(VerticalSpacingProperty);
         set => SetValue(VerticalSpacingProperty, value);
+    }
+
+    /// <summary>
+    /// When true (Tags board only), arrange each chip into slot.Width + HorizontalSpacing
+    /// so HA=Right star sits in the wrap gap. Default false elsewhere.
+    /// </summary>
+    public bool ArrangeIntoTrailingGap
+    {
+        get => (bool)GetValue(ArrangeIntoTrailingGapProperty);
+        set => SetValue(ArrangeIntoTrailingGapProperty, value);
     }
 
     protected override Size MeasureOverride(NonVirtualizingLayoutContext context, Size availableSize)
@@ -101,17 +117,17 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
         }
 
         var slots = ChipWrap.Layout(sizes, width, HorizontalSpacing, VerticalSpacing);
+        var intoGap = ArrangeIntoTrailingGap;
         for (var i = 0; i < children.Count && i < slots.Count; i++)
         {
             var slot = slots[i];
-            // Trailing spacing is empty between chips — include it in the arrange
-            // slot so TagChip can place a hit-testable star past the border without
-            // overlapping the next chip’s layout rect (board spacing ~26 DIP).
-            children[i].Arrange(new Rect(
+            var arrangeWidth = ChipWrap.ArrangeSlotWidth(
+                slot.Width,
                 slot.X,
-                slot.Y,
-                slot.Width + HorizontalSpacing,
-                slot.Height));
+                HorizontalSpacing,
+                finalSize.Width,
+                intoGap);
+            children[i].Arrange(new Rect(slot.X, slot.Y, arrangeWidth, slot.Height));
         }
 
         var height = ChipWrap.ExtentHeight(slots);

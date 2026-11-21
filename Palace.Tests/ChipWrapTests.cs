@@ -71,4 +71,44 @@ public sealed class ChipWrapTests
         Assert.Equal(natural, desired, 0.01);
         Assert.NotEqual(1200, desired);
     }
+
+    [Fact]
+    public void ArrangeSlotWidth_Off_ReturnsSlotOnly()
+    {
+        Assert.Equal(
+            80,
+            ChipWrap.ArrangeSlotWidth(
+                slotWidth: 80,
+                slotX: 100,
+                horizontalSpacing: 26,
+                finalSizeWidth: 400,
+                arrangeIntoTrailingGap: false));
+    }
+
+    [Fact]
+    public void ArrangeSlotWidth_On_AddsSpacing()
+    {
+        Assert.Equal(
+            106,
+            ChipWrap.ArrangeSlotWidth(
+                slotWidth: 80,
+                slotX: 0,
+                horizontalSpacing: 26,
+                finalSizeWidth: 400,
+                arrangeIntoTrailingGap: true));
+    }
+
+    [Fact]
+    public void ArrangeSlotWidth_On_ClampsLastChipToFinalWidth()
+    {
+        // Last chip near row end: slot 80 @ x=360, spacing 26 → 106 would past 400.
+        Assert.Equal(
+            40,
+            ChipWrap.ArrangeSlotWidth(
+                slotWidth: 80,
+                slotX: 360,
+                horizontalSpacing: 26,
+                finalSizeWidth: 400,
+                arrangeIntoTrailingGap: true));
+    }
 }

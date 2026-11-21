@@ -99,6 +99,7 @@ public sealed class TagsPageXamlLayoutTests
         Assert.True(layout > 0);
         var block = xaml[layout..showStar];
         Assert.Contains("HorizontalSpacing=\"26\"", block, StringComparison.Ordinal);
+        Assert.Contains("ArrangeIntoTrailingGap=\"True\"", block, StringComparison.Ordinal);
     }
 
     [Fact]

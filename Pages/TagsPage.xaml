@@ -532,8 +532,9 @@
                                     VerticalAlignment="Top"
                                     ItemsSource="{x:Bind Chips, Mode=OneWay}">
                                     <ItemsRepeater.Layout>
-                                        <!-- ~26 DIP horizontal: star-in-gap past chip border (not over text). -->
+                                        <!-- ~26 DIP horizontal + ArrangeIntoTrailingGap: star in gap via Grid HA=Right. -->
                                         <helpers:ChipWrapLayout
+                                            ArrangeIntoTrailingGap="True"
                                             HorizontalSpacing="26"
                                             VerticalSpacing="6" />
                                     </ItemsRepeater.Layout>

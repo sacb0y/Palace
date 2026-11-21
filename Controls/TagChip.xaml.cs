@@ -164,44 +164,15 @@ public sealed partial class TagChip : UserControl
     }
 
     /// <summary>
-    /// Desired size is the chip face only — star sits in the wrap gap past the
-    /// right border and must not widen chips or change wrap (Wimbly / Isiac 0.3.107).
+    /// Desired size is the chip face only — star is HA=Right in the ChipWrap
+    /// trailing gap and must not widen chips or change wrap (Wimbly 0.3.108).
     /// </summary>
     protected override Size MeasureOverride(Size availableSize)
     {
-        BrdChip.Measure(availableSize);
-        var chip = BrdChip.DesiredSize;
-        var height = Math.Max(chip.Height, TagChipVisual.HeightDip);
-        RectPartialDash.Measure(new Size(chip.Width, height));
-        BtnStar.Measure(new Size(TagChipVisual.StarButtonDip, TagChipVisual.StarButtonDip));
-        GrdRoot.Measure(new Size(chip.Width, height));
-        return new Size(chip.Width, height);
-    }
-
-    protected override Size ArrangeOverride(Size finalSize)
-    {
-        var chipW = BrdChip.DesiredSize.Width;
-        var chipH = Math.Max(BrdChip.DesiredSize.Height, TagChipVisual.HeightDip);
-        var w = Math.Max(finalSize.Width, chipW);
-        var h = Math.Max(finalSize.Height, chipH);
-
-        GrdRoot.Arrange(new Rect(0, 0, w, h));
-        BrdChip.Arrange(new Rect(0, 0, chipW, chipH));
-        RectPartialDash.Arrange(new Rect(0, 0, chipW, chipH));
-
-        if (ShowStar && BtnStar.Visibility == Visibility.Visible)
-        {
-            var star = (double)TagChipVisual.StarButtonDip;
-            var x = TagChipVisual.StarArrangeX(chipW);
-            var y = Math.Max(0, (chipH - star) / 2.0);
-            BtnStar.Arrange(new Rect(x, y, star, star));
-        }
-        else
-        {
-            BtnStar.Arrange(new Rect(0, 0, 0, 0));
-        }
-
-        return new Size(w, h);
+        GrdRoot.Measure(availableSize);
+        return new Size(
+            BrdChip.DesiredSize.Width,
+            Math.Max(BrdChip.DesiredSize.Height, TagChipVisual.HeightDip));
     }
 
     public string Label
@@ -719,7 +690,6 @@ public sealed partial class TagChip : UserControl
         if (!ShowStar)
         {
             BtnStar.Visibility = Visibility.Collapsed;
-            InvalidateArrange();
             return;
         }
 
@@ -729,7 +699,6 @@ public sealed partial class TagChip : UserControl
         var reveal = IsStarred || _pointerOver || FocusState != FocusState.Unfocused;
         BtnStar.Opacity = reveal ? 1 : 0;
         BtnStar.IsHitTestVisible = reveal;
-        InvalidateArrange();
 
         IcnStar.IconVariant = IsStarred
             ? FluentIcons.Common.IconVariant.Filled
@@ -935,6 +904,31 @@ public sealed partial class TagChip : UserControl
 
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // Moving onto BtnStar (sibling of GrdFace) must not clear hover chrome.
+        if (BtnStar.IsPointerOver)
+        {
+            return;
+        }
+
+        _pointerOver = false;
+        _pressed = false;
+        ApplyChrome();
+    }
+
+    private void BtnStar_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _pointerOver = true;
+        ApplyChrome();
+    }
+
+    private void BtnStar_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        // Still over GrdFace / root — keep hover.
+        if (IsPointerOver)
+        {
+            return;
+        }
+
         _pointerOver = false;
         _pressed = false;
         ApplyChrome();

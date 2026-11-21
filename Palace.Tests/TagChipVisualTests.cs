@@ -90,9 +90,7 @@ public sealed class TagChipVisualTests
         Assert.Equal(14, TagChipVisual.LeadingGlyphSlotDip);
         Assert.Equal(8, TagChipVisual.ColorDotDip);
         Assert.Equal(24, TagChipVisual.StarButtonDip);
-        Assert.Equal(2, TagChipVisual.StarOutsideGapDip);
         Assert.Equal(26, TagChipVisual.BoardStarWrapSpacingDip);
-        Assert.Equal(82, TagChipVisual.StarArrangeX(80));
         Assert.Equal(1.5, TagChipVisual.PartialBorderThickness);
         Assert.Equal("#F2B600", TagChipVisual.StarGoldDarkHex);
         Assert.Equal("#B8860B", TagChipVisual.StarGoldLightHex);
