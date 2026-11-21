@@ -409,7 +409,7 @@ public sealed class TagT2CreateAssignUndoTests : IAsyncLifetime
             _projectId,
             createdTags: [(tag.Id, tag.Name)]);
         Assert.True(result.Ok, result.Message);
-        Assert.True(await _catalog.AddMembershipAsync(parent.Id, tag.Id));
+        Assert.Equal(MembershipAddResult.Added, await _catalog.AddMembershipAsync(parent.Id, tag.Id));
 
         var undo = await _ops.UndoLastAsync(_projectId);
         Assert.True(undo.Ok, undo.Message);

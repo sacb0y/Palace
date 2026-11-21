@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
+using Windows.Foundation;
 using Windows.System;
 using Windows.UI;
 
@@ -30,6 +31,10 @@ public sealed partial class TagChip : UserControl
 
     public static readonly DependencyProperty IsSelectedProperty = DependencyProperty.Register(
         nameof(IsSelected), typeof(bool), typeof(TagChip),
+        new PropertyMetadata(false, OnChromeChanged));
+
+    public static readonly DependencyProperty IsDragSourceProperty = DependencyProperty.Register(
+        nameof(IsDragSource), typeof(bool), typeof(TagChip),
         new PropertyMetadata(false, OnChromeChanged));
 
     public static readonly DependencyProperty IsStarredProperty = DependencyProperty.Register(
@@ -135,16 +140,40 @@ public sealed partial class TagChip : UserControl
         new PropertyMetadata(null));
 
     private bool _pointerOver;
+    private bool _starPointerOver;
     private bool _pressed;
 
     public TagChip()
     {
         InitializeComponent();
+        MinWidth = TagChipVisual.BoardMinWidthDip;
+        if (GrdRoot is not null)
+        {
+            GrdRoot.MinWidth = TagChipVisual.BoardMinWidthDip;
+        }
+
+        if (BrdChip is not null)
+        {
+            BrdChip.MinWidth = TagChipVisual.BoardMinWidthDip;
+        }
+
         ActualThemeChanged += (_, _) => ApplyChrome();
         GotFocus += (_, _) => ApplyChrome();
         LostFocus += (_, _) => ApplyChrome();
         Loaded += (_, _) => ApplyChrome();
         IsEnabledChanged += (_, _) => ApplyChrome();
+    }
+
+    /// <summary>
+    /// Desired size is the chip face only — star is HA=Right in the ChipWrap
+    /// trailing gap and must not widen chips or change wrap (Wimbly 0.3.108).
+    /// </summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        GrdRoot.Measure(availableSize);
+        return new Size(
+            BrdChip.DesiredSize.Width,
+            Math.Max(BrdChip.DesiredSize.Height, TagChipVisual.HeightDip));
     }
 
     public string Label
@@ -170,6 +199,13 @@ public sealed partial class TagChip : UserControl
     {
         get => (bool)GetValue(IsSelectedProperty);
         set => SetValue(IsSelectedProperty, value);
+    }
+
+    /// <summary>dg-01a/b: dim while this chip is the drag source (ghost follows pointer).</summary>
+    public bool IsDragSource
+    {
+        get => (bool)GetValue(IsDragSourceProperty);
+        set => SetValue(IsDragSourceProperty, value);
     }
 
     public bool IsStarred
@@ -345,9 +381,17 @@ public sealed partial class TagChip : UserControl
         BrdChip.CornerRadius = new CornerRadius(radius);
         RectPartialDash.RadiusX = radius;
         RectPartialDash.RadiusY = radius;
+        // Board padding ~10,4 (content-sized; MinWidth 0 clears theme ButtonMinWidth).
+        BrdChip.MinWidth = 0;
+        GrdRoot.MinWidth = 0;
+        MinWidth = 0;
         BrdChip.Padding = Compact
-            ? new Thickness(8, 0, 2, 0)
-            : new Thickness(8, 0, 4, 0);
+            ? new Thickness(8, 2, 4, 2)
+            : new Thickness(
+                TagChipVisual.BoardPaddingXDip,
+                TagChipVisual.BoardPaddingYDip,
+                TagChipVisual.BoardPaddingXDip,
+                TagChipVisual.BoardPaddingYDip);
 
         TxtLabel.Text = Label ?? "";
         TxtLabel.FontSize = Compact ? 13 : 14;
@@ -368,7 +412,9 @@ public sealed partial class TagChip : UserControl
         ApplyRemove(state, highContrast);
         ApplyTooltip(state);
         ApplyAutomation(state);
-        Opacity = IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
+        Opacity = IsDragSource
+            ? TagDragUi.DragSourceOpacity
+            : IsPromptSuggestion && ShowNewBadge ? 0.62 : 1.0;
 
         if (!string.IsNullOrEmpty(ChipAutomationId))
         {
@@ -648,6 +694,8 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Keep Visible when ShowStar so Opacity/hit-test can reveal without reflow;
+        // MeasureOverride still excludes the star from DesiredSize.
         BtnStar.Visibility = Visibility.Visible;
         var reveal = IsStarred || _pointerOver || FocusState != FocusState.Unfocused;
         BtnStar.Opacity = reveal ? 1 : 0;
@@ -669,22 +717,17 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Filled = sidebar Starred gold (#F2B600). Outline hover/focus = secondary text.
         if (IsStarred)
         {
-            if (state == TagChipApplyState.On && !IsSelected)
-            {
-                IcnStar.Foreground = ThemeBrush("TextOnAccentFillColorPrimaryBrush");
-            }
-            else if (Helpers.TagColor.TryParse(TagChipVisual.StarGoldHex(light), out var gold))
+            if (Helpers.TagColor.TryParse(TagChipVisual.StarGoldSidebarHex, out var gold))
             {
                 IcnStar.Foreground = new SolidColorBrush(gold);
             }
         }
         else
         {
-            IcnStar.Foreground = state == TagChipApplyState.On && !IsSelected
-                ? ThemeBrush("TextOnAccentFillColorPrimaryBrush")
-                : ThemeBrush("TextFillColorSecondaryBrush");
+            IcnStar.Foreground = ThemeBrush("TextFillColorSecondaryBrush");
         }
     }
 
@@ -857,9 +900,30 @@ public sealed partial class TagChip : UserControl
 
     private void Root_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // Moving onto BtnStar (sibling of GrdFace) must not clear hover chrome.
+        // WinUI UserControl has no IsPointerOver — track star with _starPointerOver.
+        if (_starPointerOver)
+        {
+            return;
+        }
+
         _pointerOver = false;
         _pressed = false;
         ApplyChrome();
+    }
+
+    private void BtnStar_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _starPointerOver = true;
+        _pointerOver = true;
+        ApplyChrome();
+    }
+
+    private void BtnStar_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _starPointerOver = false;
+        // Still over GrdFace: Root_PointerExited does not fire — keep _pointerOver.
+        // Leaving the chip entirely: Root_PointerExited clears both.
     }
 
     private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -870,8 +934,14 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Keep _pressed chrome for tap; never CapturePointer while CanDrag — that
+        // steals the gesture from WinUI DnD so DragStarting never fires (Wimbly).
         _pressed = true;
-        CapturePointer(e.Pointer);
+        if (TagDragUi.ShouldCapturePointerForPressChrome(CanDrag))
+        {
+            CapturePointer(e.Pointer);
+        }
+
         ApplyChrome();
     }
 
@@ -890,6 +960,7 @@ public sealed partial class TagChip : UserControl
     {
         _pressed = false;
         _pointerOver = false;
+        _starPointerOver = false;
         ApplyChrome();
     }
 }

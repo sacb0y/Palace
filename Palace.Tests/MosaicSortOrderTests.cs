@@ -136,4 +136,17 @@ public sealed class MosaicSortOrderTests
         Assert.Equal("Date modified · Newest", MosaicSortOrder.CompactButtonLabel(MosaicSort.DateNewest));
         Assert.Equal("Sort: Date modified · Newest first", MosaicSortOrder.ButtonLabel(MosaicSort.DateNewest));
     }
+
+    [Fact]
+    public void SanitizeForTags_RemapsDateModifiedToDateTaken()
+    {
+        Assert.Equal(MosaicSort.DateTakenNewest, MosaicSortOrder.SanitizeForTags(MosaicSort.DateNewest));
+        Assert.Equal(MosaicSort.DateTakenOldest, MosaicSortOrder.SanitizeForTags(MosaicSort.DateOldest));
+        Assert.Equal(MosaicSort.DateAdded, MosaicSortOrder.SanitizeForTags(MosaicSort.DateAdded));
+        Assert.Equal(MosaicSort.Name, MosaicSortOrder.SanitizeForTags(MosaicSort.Name));
+        Assert.DoesNotContain(
+            MosaicSortOrder.TagsFieldChoices,
+            c => c.Field == MosaicSortField.DateModified);
+        Assert.DoesNotContain(MosaicSortOrder.TagsFieldLabels, l => l.Contains("Date modified", StringComparison.Ordinal));
+    }
 }

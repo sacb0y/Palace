@@ -654,12 +654,12 @@ public sealed partial class CatalogService
 
             if (parentId is not null)
             {
-                var hadEdge = MembershipExists(conn, parentId, tag.Id, tx);
-                if (!TryAddMembership(conn, parentId, tag.Id, tx))
+                var addResult = TryAddMembership(conn, parentId, tag.Id, tx);
+                if (addResult == MembershipAddResult.CycleRefuse)
                 {
                     rejected++;
                 }
-                else if (!hadEdge)
+                else if (addResult == MembershipAddResult.Added)
                 {
                     membershipAdded++;
                     journal?.Add(new FileOpItem
@@ -870,8 +870,17 @@ public sealed partial class CatalogService
         return ancestor is null ? "No color" : $"Inherited from {ancestor}";
     }
 
-    public Task<bool> AddMembershipAsync(string parentId, string childId) =>
-        _db.WriteAsync(conn => TryAddMembership(conn, parentId, childId));
+    public Task<MembershipAddResult> AddMembershipAsync(string parentId, string childId) =>
+        _db.WriteAsync(conn =>
+        {
+            var result = TryAddMembership(conn, parentId, childId);
+            if (result == MembershipAddResult.Added)
+            {
+                InvalidateGraphCaches();
+            }
+
+            return result;
+        });
 
     public Task RemoveMembershipAsync(string parentId, string childId) =>
         _db.WriteAsync(conn =>
@@ -1446,15 +1455,18 @@ public sealed partial class CatalogService
             cmd.ExecuteNonQuery();
         });
 
-    private static bool TryAddMembership(
+    private static MembershipAddResult TryAddMembership(
         SqliteConnection conn,
         string parentId,
         string childId,
         SqliteTransaction? tx = null)
     {
-        if (string.Equals(parentId, childId, StringComparison.Ordinal) || WouldCycle(conn, parentId, childId, tx))
+        if (string.IsNullOrEmpty(parentId)
+            || string.IsNullOrEmpty(childId)
+            || string.Equals(parentId, childId, StringComparison.Ordinal)
+            || WouldCycle(conn, parentId, childId, tx))
         {
-            return false;
+            return MembershipAddResult.CycleRefuse;
         }
 
         using var cmd = conn.CreateCommand();
@@ -1462,8 +1474,8 @@ public sealed partial class CatalogService
         cmd.CommandText = "INSERT OR IGNORE INTO TagMembership (ParentId, ChildId) VALUES ($p, $c)";
         cmd.Parameters.AddWithValue("$p", parentId);
         cmd.Parameters.AddWithValue("$c", childId);
-        cmd.ExecuteNonQuery();
-        return true;
+        var changes = cmd.ExecuteNonQuery();
+        return changes > 0 ? MembershipAddResult.Added : MembershipAddResult.AlreadyMember;
     }
 
     private static bool WouldCycle(

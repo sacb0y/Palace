@@ -15,6 +15,15 @@ public static class TagChipVisual
 {
     public const int HeightDip = 32;
 
+    /// <summary>Board / wrap chip horizontal padding (Thickness left/right).</summary>
+    public const int BoardPaddingXDip = 10;
+
+    /// <summary>Board / wrap chip vertical padding (Thickness top/bottom).</summary>
+    public const int BoardPaddingYDip = 4;
+
+    /// <summary>Theme Control/ButtonMinWidth must not apply — chips size to text.</summary>
+    public const int BoardMinWidthDip = 0;
+
     /// <summary>Pending chips inside the Add tags box (T8 mockup: 26px).</summary>
     public const int CompactHeightDip = 26;
 
@@ -30,13 +39,24 @@ public static class TagChipVisual
 
     public const int StarButtonDip = 24;
 
+    /// <summary>
+    /// Tags board <c>ChipWrapLayout</c> horizontal spacing / star slot width (~24–28)
+    /// so the HA=Right star sits in the gap without overlaying label text.
+    /// </summary>
+    public const int BoardStarWrapSpacingDip = 26;
+
     public const double PartialBorderThickness = 1.5;
 
-    /// <summary>Star fill on Dark / Default chrome.</summary>
-    public const string StarGoldDarkHex = "#F2B600";
+    /// <summary>
+    /// Filled star gold — same as Tags sidebar Starred icon (<c>Foreground="#F2B600"</c>).
+    /// </summary>
+    public const string StarGoldSidebarHex = "#F2B600";
 
-    /// <summary>Star fill on Light chrome (deeper gold for contrast on pale panes).</summary>
-    public const string StarGoldLightHex = "#B8860B";
+    /// <summary>Alias of <see cref="StarGoldSidebarHex"/> (legacy Dark name).</summary>
+    public const string StarGoldDarkHex = StarGoldSidebarHex;
+
+    /// <summary>Kept for callers; filled stars always use sidebar gold now.</summary>
+    public const string StarGoldLightHex = StarGoldSidebarHex;
 
     /// <summary>
     /// Light-theme Palace pink fill floor. Raw <c>#E05A8C</c> fails text-on-accent AA;
@@ -131,8 +151,8 @@ public static class TagChipVisual
 
     public static bool IsLightChrome(bool isLightTheme) => isLightTheme;
 
-    public static string StarGoldHex(bool isLightTheme) =>
-        isLightTheme ? StarGoldLightHex : StarGoldDarkHex;
+    /// <summary>Filled star gold (theme-independent — matches sidebar Starred).</summary>
+    public static string StarGoldHex(bool isLightTheme) => StarGoldSidebarHex;
 
     private static string TrimName(string? name) =>
         string.IsNullOrWhiteSpace(name) ? "tag" : name.Trim();

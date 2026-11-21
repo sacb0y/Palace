@@ -6,7 +6,8 @@ namespace Palace.Helpers;
 /// </summary>
 public static class TagChipChrome
 {
-    public const int HorizontalPaddingDip = 16;
+    /// <summary>Left + right board padding (<see cref="TagChipVisual.BoardPaddingXDip"/> × 2).</summary>
+    public const int HorizontalPaddingDip = TagChipVisual.BoardPaddingXDip * 2;
 
     public const int CharacterDip = 7;
 
@@ -28,13 +29,24 @@ public static class TagChipChrome
     /// <summary>No DIP cap / ellipsis on the face name; wrap items size to content.</summary>
     public static bool CapsNameWidth => false;
 
-    /// <summary>Relative wrap width from the name (plus chrome), not a shared tile slot.</summary>
-    public static int WrapWidth(string? name, bool starred = false, bool filterSelected = false, bool hasColor = false)
+    /// <summary>
+    /// Relative wrap width from the name (plus visible chrome only). Collapsed
+    /// leading glyphs must not reserve ColumnSpacing / slot width (Doktor #197).
+    /// </summary>
+    public static int WrapWidth(
+        string? name,
+        bool starred = false,
+        bool filterSelected = false,
+        bool hasColor = false,
+        bool showStateGlyph = false)
     {
         var text = name ?? "";
-        var width = HorizontalPaddingDip
-            + LeadingStateSlotDip
-            + (text.Length * CharacterDip);
+        var width = HorizontalPaddingDip + (text.Length * CharacterDip);
+        if (showStateGlyph || filterSelected)
+        {
+            width += LeadingStateSlotDip;
+        }
+
         if (hasColor)
         {
             width += ColorDotSlotDip;
@@ -45,8 +57,6 @@ public static class TagChipChrome
             width += StarGlyphDip;
         }
 
-        // filterSelected used to add the "On" word; state glyph already reserved above.
-        _ = filterSelected;
         return width;
     }
 }

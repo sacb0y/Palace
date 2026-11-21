@@ -26,6 +26,8 @@ public partial class TagsViewModel : ObservableObject
     private string? _renameBaseline;
     private string? _renameBaselineTagId;
     private string _boardSelectionKey = "all";
+    /// <summary>Session-only collapsed A–Z letter keys (<c>boardKey\nLetter</c>).</summary>
+    private readonly HashSet<string> _collapsedLetterKeys = new(StringComparer.Ordinal);
     private const int MosaicChunkSize = 80;
 
     public TagsViewModel(
@@ -117,6 +119,12 @@ public partial class TagsViewModel : ObservableObject
     [ObservableProperty]
     public partial int AssetCount { get; set; }
 
+    /// <summary>Board mosaic row collapses when the selected tag has no assets.</summary>
+    public bool HasTagAssets => AssetCount > 0;
+
+    partial void OnAssetCountChanged(int value) =>
+        OnPropertyChanged(nameof(HasTagAssets));
+
     [ObservableProperty]
     public partial string AssetCountLabel { get; set; } = "0 items with this tag";
 
@@ -131,10 +139,11 @@ public partial class TagsViewModel : ObservableObject
     public partial bool IncludeNested { get; set; } = true;
 
     [ObservableProperty]
-    public partial MosaicSort MosaicSort { get; set; } = MosaicSortOrder.Default;
+    public partial MosaicSort MosaicSort { get; set; } =
+        MosaicSortOrder.SanitizeForTags(MosaicSortOrder.Default);
 
     /// <summary>Sort field choices (the direction is <see cref="ToggleSortDirectionCommand"/>).</summary>
-    public IReadOnlyList<string> SortLabels => MosaicSortOrder.FieldLabels;
+    public IReadOnlyList<string> SortLabels => MosaicSortOrder.TagsFieldLabels;
 
     /// <summary>Index into <see cref="SortLabels"/>; picking a field starts in its natural direction.</summary>
     public int MosaicSortIndex
@@ -170,7 +179,8 @@ public partial class TagsViewModel : ObservableObject
     [RelayCommand]
     private void SetMosaicSortField(string? fieldName)
     {
-        if (!Enum.TryParse<MosaicSortField>(fieldName, ignoreCase: true, out var field))
+        if (!Enum.TryParse<MosaicSortField>(fieldName, ignoreCase: true, out var field)
+            || field == MosaicSortField.DateModified)
         {
             return;
         }
@@ -332,7 +342,8 @@ public partial class TagsViewModel : ObservableObject
         }
 
         var settings = ApplicationData.Current.LocalSettings.Values;
-        var next = MosaicSortOrder.Load(key => settings.TryGetValue(key, out var v) ? v : null, projectId, MosaicSortView.Tags);
+        var next = MosaicSortOrder.SanitizeForTags(
+            MosaicSortOrder.Load(key => settings.TryGetValue(key, out var v) ? v : null, projectId, MosaicSortView.Tags));
         _suppressMosaicSort = true;
         MosaicSort = next;
         _suppressMosaicSort = false;
@@ -564,22 +575,46 @@ public partial class TagsViewModel : ObservableObject
             await CreateNewTagsAsync();
         });
 
+    /// <summary>
+    /// Expand every A–Z letter section on the selected board (not sidebar groups).
+    /// </summary>
     [RelayCommand]
-    private void ExpandAllBoardGroups()
+    private void ExpandAllBoardGroups() => SetAllLetterSectionsExpanded(true);
+
+    /// <summary>
+    /// Collapse every A–Z letter section on the selected board (not sidebar groups).
+    /// </summary>
+    [RelayCommand]
+    private void CollapseAllBoardGroups() => SetAllLetterSectionsExpanded(false);
+
+    private void SetAllLetterSectionsExpanded(bool expanded)
     {
-        foreach (var group in Board.Where(g => g.ScopeKind is null && !g.IsUngrouped))
+        if (SelectedBoard is null)
         {
-            group.IsExpanded = true;
+            return;
+        }
+
+        var boardKey = BoardKey(SelectedBoard);
+        foreach (var letter in SelectedBoard.Letters)
+        {
+            letter.IsExpanded = expanded;
+            TagLetterFold.RememberExpanded(_collapsedLetterKeys, boardKey, letter.Letter, expanded);
         }
     }
 
-    [RelayCommand]
-    private void CollapseAllBoardGroups()
+    public void ToggleLetterSection(TagLetterSection section)
     {
-        foreach (var group in Board.Where(g => g.ScopeKind is null && !g.IsUngrouped))
+        section.IsExpanded = !section.IsExpanded;
+        if (SelectedBoard is null)
         {
-            group.IsExpanded = false;
+            return;
         }
+
+        TagLetterFold.RememberExpanded(
+            _collapsedLetterKeys,
+            BoardKey(SelectedBoard),
+            section.Letter,
+            section.IsExpanded);
     }
 
     [RelayCommand]
@@ -823,16 +858,8 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
-            StatusText = ok
-                ? $"Also grouped under {move.GroupName}."
-                : "That membership would create a cycle.";
-            if (ok)
-            {
-                _reorderParentId = move.GroupId;
-            }
-
-            await RefreshAsync();
+            var ids = ChipPayloadIds(move.Chip);
+            await AddTagsToGroupCoreAsync(ids, move.GroupId);
         });
 
     [RelayCommand]
@@ -859,7 +886,8 @@ public partial class TagsViewModel : ObservableObject
                 }
             }
 
-            var ok = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+            var result = await _catalog.AddMembershipAsync(move.GroupId, move.Chip.TagId);
+            var ok = result != MembershipAddResult.CycleRefuse;
             StatusText = ok
                 ? $"Moved to {move.GroupName}."
                 : "Removed from this group, but that destination would create a cycle.";
@@ -878,7 +906,97 @@ public partial class TagsViewModel : ObservableObject
             .ToList();
     }
 
-    public void SelectChip(TagChipItem? chip)
+    /// <summary>dg-05 Add to group › picks (colour + checked/disabled existing).</summary>
+    public IReadOnlyList<TagGroupMenuPick> AddGroupMenuPicks(TagChipItem chip) =>
+        TagMembershipAdd.AddMenuPicks(_tags, _memberships, chip.TagId);
+
+    /// <summary>Drag/drop preview against live memberships (Shift-drag is still add).</summary>
+    public (int Added, int AlreadyMember, int CycleRefuse) PreviewAddToGroup(
+        string groupId,
+        IReadOnlyList<string> tagIds) =>
+        TagMembershipAdd.CountResults(groupId, tagIds, _memberships);
+
+    public IReadOnlyList<string> ChipPayloadIds(TagChipItem chip) =>
+        TagMembershipAdd.PayloadIds(
+            chip.TagId,
+            chip.IsSelected,
+            SelectedChipIds);
+
+    public IReadOnlyList<string> SelectedChipIds =>
+        SelectedBoard?.Letters
+            .SelectMany(letter => letter.Chips)
+            .Where(chip => chip.IsSelected)
+            .Select(chip => chip.TagId)
+            .Distinct(StringComparer.Ordinal)
+            .ToList()
+        ?? [];
+
+    public async Task AddTagsToGroupCoreAsync(IReadOnlyList<string> tagIds, string groupId)
+    {
+        var projectId = AppServices.CurrentProject?.Id;
+        if (string.IsNullOrEmpty(projectId) || string.IsNullOrEmpty(groupId) || tagIds.Count == 0)
+        {
+            return;
+        }
+
+        var result = await _fileOps.AddTagsToGroupAsync(tagIds, groupId, projectId);
+        StatusText = result.Message;
+        ShowStatusUndo = result.Ok && result.BatchId is not null && AppServices.Library.CanUndoFileOp;
+        if (result.Added > 0)
+        {
+            _reorderParentId = groupId;
+        }
+
+        await RefreshAsync();
+        if (AppServices.Library is { } library)
+        {
+            await library.RefreshUndoStateAsync();
+            ShowStatusUndo = result.Ok && result.BatchId is not null && library.CanUndoFileOp;
+        }
+    }
+
+    [RelayCommand]
+    private Task CreateGroupAndAddChipsAsync(TagChipItem? chip) =>
+        ErrorReporter.RunAsync("New group and add", Notify, async () =>
+        {
+            if (chip?.TagId is null)
+            {
+                return;
+            }
+
+            var projectId = AppServices.CurrentProject?.Id;
+            if (string.IsNullOrEmpty(projectId))
+            {
+                return;
+            }
+
+            var ids = ChipPayloadIds(chip);
+            var result = await _fileOps.CreateGroupAndAddTagsAsync(ids, projectId);
+            StatusText = result.Message;
+            ShowStatusUndo = result.Ok && result.BatchId is not null && AppServices.Library.CanUndoFileOp;
+            if (!string.IsNullOrEmpty(result.GroupId))
+            {
+                _reorderParentId = result.GroupId;
+                if (!string.IsNullOrEmpty(result.CreatedGroupId))
+                {
+                    _pendingEmptyGroupIds.Remove(result.CreatedGroupId);
+                }
+            }
+
+            await RefreshAsync();
+            if (!string.IsNullOrEmpty(result.GroupId))
+            {
+                SelectCreated(result.GroupId);
+            }
+
+            if (AppServices.Library is { } library)
+            {
+                await library.RefreshUndoStateAsync();
+                ShowStatusUndo = result.Ok && result.BatchId is not null && library.CanUndoFileOp;
+            }
+        });
+
+    public void SelectChip(TagChipItem? chip, bool toggle = false, bool extend = false)
     {
         if (chip?.TagId is null)
         {
@@ -890,11 +1008,85 @@ public partial class TagsViewModel : ObservableObject
             _boardSelectionKey = chip.BoardKey;
         }
 
+        if (toggle)
+        {
+            chip.IsSelected = !chip.IsSelected;
+        }
+        else if (extend)
+        {
+            chip.IsSelected = true;
+        }
+        else
+        {
+            ClearChipSelection();
+            chip.IsSelected = true;
+        }
+
         _reorderParentId = string.IsNullOrEmpty(chip.ParentGroupId) ? null : chip.ParentGroupId;
         var node = TagTreeBuilder.Find(TagTree, chip.TagId)
             ?? new TagTreeNode { TagId = chip.TagId, Name = chip.Name, EffectiveColor = chip.EffectiveColor, IsStarred = chip.IsStarred };
         SelectNode(node);
     }
+
+    public void ClearChipSelection()
+    {
+        if (SelectedBoard is null)
+        {
+            return;
+        }
+
+        foreach (var letter in SelectedBoard.Letters)
+        {
+            foreach (var chip in letter.Chips)
+            {
+                chip.IsSelected = false;
+            }
+        }
+    }
+
+    public void ClearGroupDropChrome()
+    {
+        foreach (var group in Board)
+        {
+            group.IsDropTargetValid = false;
+            group.IsDropTargetRefuse = false;
+        }
+    }
+
+    public void SetGroupDropChrome(string? groupId, bool valid)
+    {
+        foreach (var group in Board)
+        {
+            var hit = !string.IsNullOrEmpty(groupId)
+                && string.Equals(group.GroupId, groupId, StringComparison.Ordinal);
+            group.IsDropTargetValid = hit && valid;
+            group.IsDropTargetRefuse = hit && !valid;
+        }
+    }
+
+    /// <summary>dg-01a/b: dim every chip in the drag payload until DropCompleted.</summary>
+    public void SetChipDragSources(IReadOnlyList<string> tagIds)
+    {
+        var set = tagIds
+            .Where(id => !string.IsNullOrEmpty(id))
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var chip in BoardChips())
+        {
+            chip.IsDragSource = set.Contains(chip.TagId);
+        }
+    }
+
+    public void ClearChipDragSources()
+    {
+        foreach (var chip in BoardChips())
+        {
+            chip.IsDragSource = false;
+        }
+    }
+
+    private IEnumerable<TagChipItem> BoardChips() =>
+        SelectedBoard?.Letters.SelectMany(letter => letter.Chips)
+        ?? Enumerable.Empty<TagChipItem>();
 
     [RelayCommand]
     private void OpenAsset(AssetItem? item)
@@ -1077,14 +1269,7 @@ public partial class TagsViewModel : ObservableObject
                 return;
             }
 
-            var ok = await _catalog.AddMembershipAsync(SelectedAvailableGroup.TagId, SelectedNode.TagId);
-            StatusText = ok ? $"Also grouped under {SelectedAvailableGroup.Name}." : "That membership would create a cycle.";
-            if (ok)
-            {
-                _reorderParentId = SelectedAvailableGroup.TagId;
-            }
-
-            await RefreshAsync();
+            await AddTagsToGroupCoreAsync([SelectedNode.TagId], SelectedAvailableGroup.TagId);
         });
 
     [RelayCommand]
@@ -1412,13 +1597,23 @@ public partial class TagsViewModel : ObservableObject
             ParentGroups.Clear();
             foreach (var parent in parents)
             {
-                ParentGroups.Add(new TagGroupPick { TagId = parent.Id, Name = parent.Name });
+                ParentGroups.Add(new TagGroupPick
+                {
+                    TagId = parent.Id,
+                    Name = parent.Name,
+                    Color = colors.GetValueOrDefault(parent.Id) ?? parent.Color
+                });
             }
 
             AvailableGroups.Clear();
             foreach (var candidate in available)
             {
-                AvailableGroups.Add(new TagGroupPick { TagId = candidate.Id, Name = candidate.Name });
+                AvailableGroups.Add(new TagGroupPick
+                {
+                    TagId = candidate.Id,
+                    Name = candidate.Name,
+                    Color = colors.GetValueOrDefault(candidate.Id) ?? candidate.Color
+                });
             }
 
             ImpliedTags.Clear();
@@ -1531,9 +1726,17 @@ public partial class TagsViewModel : ObservableObject
                 });
             }
 
+            var boardKey = BoardKey(item);
             foreach (var letter in TagAlphaIndex.GroupByLetter(item.Chips, chip => chip.Name))
             {
-                var section = new TagLetterSection { Letter = letter.Letter };
+                var section = new TagLetterSection
+                {
+                    Letter = letter.Letter,
+                    IsExpanded = TagLetterFold.IsExpandedDefault(
+                        _collapsedLetterKeys,
+                        boardKey,
+                        letter.Letter)
+                };
                 foreach (var chip in letter.Items)
                 {
                     section.Chips.Add(chip);

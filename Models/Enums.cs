@@ -129,6 +129,11 @@ public enum FileOpKind
     /// optional <see cref="FileOpStep.AddMembership"/>; Undo reverses membership then unused creates.
     /// </summary>
     TagCreate,
+    /// <summary>
+    /// Tags-page drag / Add to group: journals only new <see cref="FileOpStep.AddMembership"/>
+    /// edges (and optional CreateTag when New group…). Undo strips Added edges only.
+    /// </summary>
+    TagMembership,
     /// <summary>Add a TagAlias edge (+ AssetTag rewrite); Undo restores alias assignments.</summary>
     TagAliasAdd,
     /// <summary>Delete a TagAlias edge; Undo re-inserts it.</summary>
@@ -140,6 +145,17 @@ public enum FileOpKind
     /// Recycle Bin / trash and reinserts catalog rows. Permanent delete is not journaled.
     /// </summary>
     DeleteRejected
+}
+
+/// <summary>
+/// Outcome of adding a tag to a group (<c>TagMembership</c>). Distinct from a bool so
+/// AlreadyMember is never journaled (Undo must not strip a pre-existing edge).
+/// </summary>
+public enum MembershipAddResult
+{
+    Added = 0,
+    AlreadyMember = 1,
+    CycleRefuse = 2
 }
 
 /// <summary>One step inside a <see cref="FileOpKind"/> batch. Undo replays steps in reverse.</summary>

@@ -180,6 +180,10 @@ public sealed partial class FileOpService
             FileOpKind.TagRemove => $"Undo remove tag from {Items(batch.Items.Count(i => i.Step == FileOpStep.RemoveTag))}",
             FileOpKind.TagDelete => $"Undo delete of “{TagDeleteName(batch)}”",
             FileOpKind.TagCreate => $"Undo create of {Items(batch.Items.Count(i => i.Step == FileOpStep.CreateTag))}",
+            FileOpKind.TagMembership =>
+                batch.Items.Any(i => i.Step == FileOpStep.CreateTag)
+                    ? $"Undo create group and add of {Items(batch.Items.Count(i => i.Step == FileOpStep.AddMembership))}"
+                    : $"Undo add of {Items(batch.Items.Count(i => i.Step == FileOpStep.AddMembership))} to group",
             FileOpKind.TagAliasAdd => "Undo tag alias",
             FileOpKind.TagAliasRemove => "Undo remove alias",
             FileOpKind.TagAliasRepoint => "Undo move alias",
@@ -978,7 +982,7 @@ public sealed partial class FileOpService
             return FileOpResult.Fail("Nothing to redo.");
         }
 
-        if (batch.Kind is not (FileOpKind.TagAssign or FileOpKind.TagCreate))
+        if (batch.Kind is not (FileOpKind.TagAssign or FileOpKind.TagCreate or FileOpKind.TagMembership))
         {
             return FileOpResult.Fail("Redo for this operation isn't available yet.");
         }

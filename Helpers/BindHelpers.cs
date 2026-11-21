@@ -79,6 +79,67 @@ public static class BindHelpers
     public static Visibility FilterRowCheckVisibility(bool selected) =>
         selected ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>dg-02: left accent bar when the group is selected or a valid drop target.</summary>
+    public static Visibility TagGroupAccentVisibility(bool selected, bool dropValid) =>
+        selected || dropValid ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// dg-02/03 group row fill while dragging tags onto GROUPS.
+    /// <paramref name="dropChromeRevision"/> is ignored for paint but keeps x:Bind
+    /// listening so mid-drag flag flips re-evaluate the brush.
+    /// </summary>
+    public static Brush TagGroupDropBackground(
+        bool selected,
+        bool dropValid,
+        bool dropRefuse,
+        int dropChromeRevision = 0)
+    {
+        _ = dropChromeRevision;
+        if (dropValid)
+        {
+            return FilterRowBackground(true);
+        }
+
+        if (dropRefuse)
+        {
+            return new SolidColorBrush(Windows.UI.Color.FromArgb(0x33, 0xFF, 0x99, 0xA4));
+        }
+
+        return FilterRowBackground(selected);
+    }
+
+    public static Brush TagGroupDropBorder(
+        bool dropValid,
+        bool dropRefuse,
+        int dropChromeRevision = 0)
+    {
+        _ = dropChromeRevision;
+        if (dropValid
+            && Application.Current?.Resources.TryGetValue("AccentFillColorDefaultBrush", out var accent) == true
+            && accent is Brush accentBrush)
+        {
+            return accentBrush;
+        }
+
+        if (dropRefuse)
+        {
+            return new SolidColorBrush(Windows.UI.Color.FromArgb(0xCC, 0xFF, 0x99, 0xA4));
+        }
+
+        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    public static Thickness TagGroupDropThickness(
+        bool dropValid,
+        bool dropRefuse,
+        int dropChromeRevision = 0)
+    {
+        _ = dropChromeRevision;
+        return dropValid || dropRefuse
+            ? new Thickness(1, 1, 1, 1)
+            : new Thickness(0, 0, 0, 0);
+    }
+
     /// <summary>T2 assigned-chip fill: accent when selected for Remove from all.</summary>
     public static Brush AssignedChipBackground(bool selected)
     {
