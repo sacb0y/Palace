@@ -1,0 +1,1 @@
+﻿Tip f4470c6 / 0.3.107 FENRIR-STUDIO. Capture=CopyFromScreen after SetProcessDpiAwarenessContext(-4/PerMonitorV2) src=DWMWA_EXTENDED_FRAME_BOUNDS. ASSERT cap=1518x1191 phys=1518x1191 dpi=144 clamped=False. wrap-1024 outer ~1024x800 DIP. Chip=Character. Gate: Tags+details. Star-in-gap preferred.
