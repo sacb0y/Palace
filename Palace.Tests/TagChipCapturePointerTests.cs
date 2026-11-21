@@ -64,6 +64,7 @@ public sealed class TagChipCapturePointerTests
     [Fact]
     public void Probe_LogDragStarting_Increments()
     {
+        TagDragUi.ProbeEnabledOverride = true;
         TagDragUi.ResetProbe();
         var lines = new List<string>();
         TagDragUi.LogSink = lines.Add;
@@ -83,6 +84,50 @@ public sealed class TagChipCapturePointerTests
         {
             TagDragUi.LogSink = null;
             TagDragUi.ResetProbe();
+            TagDragUi.ProbeEnabledOverride = null;
         }
+    }
+
+    [Fact]
+    public void Probe_Disabled_NoOpsCountersAndSink()
+    {
+        TagDragUi.ProbeEnabledOverride = false;
+        TagDragUi.ResetProbe();
+        var lines = new List<string>();
+        TagDragUi.LogSink = lines.Add;
+        try
+        {
+            Assert.False(TagDragUi.IsProbeEnabled);
+            TagDragUi.LogDragStarting("knight", 1);
+            TagDragUi.LogDragOver("character", "Character", allow: true, caption: "x");
+            TagDragUi.LogDrop("character", "Character", added: 1);
+            Assert.Equal(0, TagDragUi.DragStartingCount);
+            Assert.Equal(0, TagDragUi.DragOverCount);
+            Assert.Equal(0, TagDragUi.DropCount);
+            Assert.Empty(lines);
+            Assert.Null(TagDragUi.LogSink);
+        }
+        finally
+        {
+            TagDragUi.LogSink = null;
+            TagDragUi.ResetProbe();
+            TagDragUi.ProbeEnabledOverride = null;
+        }
+    }
+
+    [Fact]
+    public void TagChip_StarOutsideFace_MeasureOverrideExcludesStar()
+    {
+        var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "Controls", "TagChip.xaml"));
+        var cs = TagChipCode();
+        // Star is a GrdRoot sibling of BrdChip — not inside the face StackPanel.
+        var stack = xaml.IndexOf("<StackPanel", StringComparison.Ordinal);
+        var stackEnd = xaml.IndexOf("</StackPanel>", stack, StringComparison.Ordinal);
+        Assert.True(stack > 0 && stackEnd > stack);
+        Assert.DoesNotContain("x:Name=\"BtnStar\"", xaml[stack..stackEnd], StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"BtnStar\"", xaml[stackEnd..], StringComparison.Ordinal);
+        Assert.Contains("MeasureOverride", cs, StringComparison.Ordinal);
+        Assert.Contains("StarArrangeX", cs, StringComparison.Ordinal);
+        Assert.Contains("Desired size is the chip face only", cs, StringComparison.Ordinal);
     }
 }

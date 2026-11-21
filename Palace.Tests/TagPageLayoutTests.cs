@@ -46,6 +46,10 @@ public sealed class TagPageLayoutTests
         Assert.Equal(6, TagPageLayout.ChipWrapSpacingDip);
 
     [Fact]
+    public void BoardChipWrapSpacing_FitsStarInGap() =>
+        Assert.Equal(26, TagPageLayout.BoardChipWrapSpacingDip);
+
+    [Fact]
     public void BoardHeaderCompact_Below400() =>
         Assert.Equal(400, TagPageLayout.BoardHeaderCompactBelowDip);
 

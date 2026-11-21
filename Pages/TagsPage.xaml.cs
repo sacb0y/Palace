@@ -533,7 +533,11 @@ public sealed partial class TagsPage : Page
     {
         if (sender is not FrameworkElement { Tag: TagChipItem chip } || string.IsNullOrEmpty(chip.TagId))
         {
-            TagDragUi.LogDragStarting(null, 0);
+            if (TagDragUi.IsProbeEnabled)
+            {
+                TagDragUi.LogDragStarting(null, 0);
+            }
+
             args.Cancel = true;
             return;
         }
@@ -544,7 +548,10 @@ public sealed partial class TagsPage : Page
         }
 
         var ids = ViewModel.ChipPayloadIds(chip);
-        TagDragUi.LogDragStarting(chip.TagId, ids.Count);
+        if (TagDragUi.IsProbeEnabled)
+        {
+            TagDragUi.LogDragStarting(chip.TagId, ids.Count);
+        }
         if (ids.Count == 0)
         {
             args.Cancel = true;
@@ -779,7 +786,11 @@ public sealed partial class TagsPage : Page
         {
             e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
             ViewModel.ClearGroupDropChrome();
-            TagDragUi.LogDragOver(null, null, allow: false, caption: "refuse-non-group");
+            if (TagDragUi.IsProbeEnabled)
+            {
+                TagDragUi.LogDragOver(null, null, allow: false, caption: "refuse-non-group");
+            }
+
             return;
         }
 
@@ -795,7 +806,10 @@ public sealed partial class TagsPage : Page
         e.DragUIOverride.IsGlyphVisible = true;
         var caption = TagMembershipAdd.DragHint(group.Name, added, already, cycle);
         e.DragUIOverride.Caption = caption;
-        TagDragUi.LogDragOver(group.GroupId, group.Name, allow, caption);
+        if (TagDragUi.IsProbeEnabled)
+        {
+            TagDragUi.LogDragOver(group.GroupId, group.Name, allow, caption);
+        }
         // dg-02 left accent + fill when valid; dg-03 refuse chrome when not.
         ViewModel.SetGroupDropChrome(
             group.GroupId,
@@ -829,13 +843,20 @@ public sealed partial class TagsPage : Page
             || string.IsNullOrEmpty(group.GroupId)
             || !e.DataView.Properties.TryGetValue(TagMembershipAdd.DataKey, out var raw))
         {
-            TagDragUi.LogDrop(null, null, added: 0);
+            if (TagDragUi.IsProbeEnabled)
+            {
+                TagDragUi.LogDrop(null, null, added: 0);
+            }
+
             return;
         }
 
         var ids = TagMembershipAdd.Parse(raw);
         var (added, _, _) = ViewModel.PreviewAddToGroup(group.GroupId!, ids);
-        TagDragUi.LogDrop(group.GroupId, group.Name, added);
+        if (TagDragUi.IsProbeEnabled)
+        {
+            TagDragUi.LogDrop(group.GroupId, group.Name, added);
+        }
         if (!TagMembershipAdd.AllowsDrop(added))
         {
             return;

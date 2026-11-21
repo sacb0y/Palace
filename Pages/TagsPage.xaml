@@ -260,11 +260,12 @@
             RowSpacing="8">
             <!-- A1: one-row header Grid (* / Auto / Auto / Auto). No WrapPanel.
                  Expand/Collapse → icon-only + tooltips when board &lt;~400 DIP. -->
+            <!-- chips * · mosaic * · composer Auto at bottom (star gap needs board wrap ~26). -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <Grid
                 x:Name="GrdTagBoardHeader"
@@ -531,8 +532,9 @@
                                     VerticalAlignment="Top"
                                     ItemsSource="{x:Bind Chips, Mode=OneWay}">
                                     <ItemsRepeater.Layout>
+                                        <!-- ~26 DIP horizontal: star-in-gap past chip border (not over text). -->
                                         <helpers:ChipWrapLayout
-                                            HorizontalSpacing="6"
+                                            HorizontalSpacing="26"
                                             VerticalSpacing="6" />
                                     </ItemsRepeater.Layout>
                                     <ItemsRepeater.ItemTemplate>
@@ -643,62 +645,7 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
-            <!-- A2: chip list * fills column; composer + items count Auto docked under it. -->
-            <StackPanel
-                Grid.Row="2"
-                Spacing="6"
-                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Style="{StaticResource BodyStrongTextBlockStyle}"
-                        Text="New tags in" />
-                    <ComboBox
-                        x:Name="CmbNewTagsGroup"
-                        MinWidth="140"
-                        VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="CmbNewTagsGroup"
-                        AutomationProperties.Name="New tags group"
-                        DisplayMemberPath="Name"
-                        ItemsSource="{x:Bind ViewModel.CreateTargetGroups, Mode=OneWay}"
-                        SelectedItem="{x:Bind ViewModel.CreateTargetGroup, Mode=TwoWay}" />
-                </StackPanel>
-                <TextBox
-                    x:Name="TxtNewTagName"
-                    AcceptsReturn="True"
-                    AutomationProperties.AutomationId="TxtNewTagName"
-                    AutomationProperties.Name="{x:Bind ViewModel.NewTagsInHeader, Mode=OneWay}"
-                    KeyDown="TxtNewTagName_KeyDown"
-                    PlaceholderText="Type or paste names — comma, semicolon or one per line"
-                    Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    TextWrapping="Wrap" />
-                <TextBlock
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="Enter creates all · names that already exist are added to the group instead"
-                    TextWrapping="Wrap" />
-                <Button
-                    HorizontalAlignment="Left"
-                    AutomationProperties.AutomationId="BtnCreateNewTags"
-                    AutomationProperties.Name="Create tags"
-                    Command="{x:Bind ViewModel.CreateNewTagsCommand}"
-                    Style="{StaticResource AccentButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
-                        <TextBlock VerticalAlignment="Center" Text="Create" />
-                    </StackPanel>
-                </Button>
-                <TextBlock
-                    x:Name="TxtTagAssetCount"
-                    VerticalAlignment="Center"
-                    AutomationProperties.AutomationId="TxtTagAssetCount"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}"
-                    TextTrimming="CharacterEllipsis"
-                    TextWrapping="NoWrap" />
-            </StackPanel>
-
-            <Grid Grid.Row="3" RowSpacing="8">
+            <Grid Grid.Row="2" RowSpacing="8">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -1019,6 +966,61 @@
             </ScrollViewer>
         </Grid>
 
+            <!-- Composer + Create + items count Auto at bottom of board pane. -->
+            <StackPanel
+                Grid.Row="3"
+                Spacing="6"
+                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        Style="{StaticResource BodyStrongTextBlockStyle}"
+                        Text="New tags in" />
+                    <ComboBox
+                        x:Name="CmbNewTagsGroup"
+                        MinWidth="140"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="CmbNewTagsGroup"
+                        AutomationProperties.Name="New tags group"
+                        DisplayMemberPath="Name"
+                        ItemsSource="{x:Bind ViewModel.CreateTargetGroups, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.CreateTargetGroup, Mode=TwoWay}" />
+                </StackPanel>
+                <TextBox
+                    x:Name="TxtNewTagName"
+                    AcceptsReturn="True"
+                    AutomationProperties.AutomationId="TxtNewTagName"
+                    AutomationProperties.Name="{x:Bind ViewModel.NewTagsInHeader, Mode=OneWay}"
+                    KeyDown="TxtNewTagName_KeyDown"
+                    PlaceholderText="Type or paste names — comma, semicolon or one per line"
+                    Text="{x:Bind ViewModel.NewTagName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="Enter creates all · names that already exist are added to the group instead"
+                    TextWrapping="Wrap" />
+                <Button
+                    HorizontalAlignment="Left"
+                    AutomationProperties.AutomationId="BtnCreateNewTags"
+                    AutomationProperties.Name="Create tags"
+                    Command="{x:Bind ViewModel.CreateNewTagsCommand}"
+                    Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ic:FluentIcon Icon="Add" IconSize="Size16" IconVariant="Regular" />
+                        <TextBlock VerticalAlignment="Center" Text="Create" />
+                    </StackPanel>
+                </Button>
+                <TextBlock
+                    x:Name="TxtTagAssetCount"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="TxtTagAssetCount"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind ViewModel.AssetCountLabel, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+            </StackPanel>
+
         </Grid>
 
         <ScrollViewer
@@ -1026,13 +1028,15 @@
             Grid.Row="1"
             Grid.Column="2"
             Padding="0,0,12,0"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
             HorizontalScrollBarVisibility="Disabled"
             HorizontalScrollMode="Disabled"
             VerticalScrollBarVisibility="Auto"
             VerticalScrollMode="Enabled"
             Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDetails), Mode=OneWay}">
             <!-- Wide/Narrow: row 1 col 2. Stacked (<640 page): row 2 col 1 under board.
-                 A3: vertical scroll so color swatches aren't clipped @ 1024×800. -->
+                 A3: vertical scroll fills * to window bottom so color swatches stay reachable. -->
             <StackPanel
                 x:Name="FlyTagDetails"
                 Padding="0,0,0,12"

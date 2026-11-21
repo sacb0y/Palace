@@ -34,8 +34,14 @@ public static class TagPageLayout
     /// <summary>Details pane cap (~24% of a 1024 content strip ≈ 245–300).</summary>
     public const double DetailsMaxWidthDip = 300;
 
-    /// <summary>~6 DIP chip wrap spacing (both axes).</summary>
+    /// <summary>~6 DIP chip wrap spacing (both axes) for non-board wraps.</summary>
     public const double ChipWrapSpacingDip = 6;
+
+    /// <summary>
+    /// Tags board chip wrap horizontal spacing — room for star-in-gap (see
+    /// <see cref="TagChipVisual.BoardStarWrapSpacingDip"/>).
+    /// </summary>
+    public const double BoardChipWrapSpacingDip = TagChipVisual.BoardStarWrapSpacingDip;
 
     /// <summary>Horizontal gaps between the three Tags columns.</summary>
     public const double ColumnSpacingDip = 16;

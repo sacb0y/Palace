@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
+using Windows.Foundation;
 using Windows.System;
 using Windows.UI;
 
@@ -160,6 +161,47 @@ public sealed partial class TagChip : UserControl
         LostFocus += (_, _) => ApplyChrome();
         Loaded += (_, _) => ApplyChrome();
         IsEnabledChanged += (_, _) => ApplyChrome();
+    }
+
+    /// <summary>
+    /// Desired size is the chip face only — star sits in the wrap gap past the
+    /// right border and must not widen chips or change wrap (Wimbly / Isiac 0.3.107).
+    /// </summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        BrdChip.Measure(availableSize);
+        var chip = BrdChip.DesiredSize;
+        var height = Math.Max(chip.Height, TagChipVisual.HeightDip);
+        RectPartialDash.Measure(new Size(chip.Width, height));
+        BtnStar.Measure(new Size(TagChipVisual.StarButtonDip, TagChipVisual.StarButtonDip));
+        GrdRoot.Measure(new Size(chip.Width, height));
+        return new Size(chip.Width, height);
+    }
+
+    protected override Size ArrangeOverride(Size finalSize)
+    {
+        var chipW = BrdChip.DesiredSize.Width;
+        var chipH = Math.Max(BrdChip.DesiredSize.Height, TagChipVisual.HeightDip);
+        var w = Math.Max(finalSize.Width, chipW);
+        var h = Math.Max(finalSize.Height, chipH);
+
+        GrdRoot.Arrange(new Rect(0, 0, w, h));
+        BrdChip.Arrange(new Rect(0, 0, chipW, chipH));
+        RectPartialDash.Arrange(new Rect(0, 0, chipW, chipH));
+
+        if (ShowStar && BtnStar.Visibility == Visibility.Visible)
+        {
+            var star = (double)TagChipVisual.StarButtonDip;
+            var x = TagChipVisual.StarArrangeX(chipW);
+            var y = Math.Max(0, (chipH - star) / 2.0);
+            BtnStar.Arrange(new Rect(x, y, star, star));
+        }
+        else
+        {
+            BtnStar.Arrange(new Rect(0, 0, 0, 0));
+        }
+
+        return new Size(w, h);
     }
 
     public string Label
@@ -677,13 +719,17 @@ public sealed partial class TagChip : UserControl
         if (!ShowStar)
         {
             BtnStar.Visibility = Visibility.Collapsed;
+            InvalidateArrange();
             return;
         }
 
+        // Keep Visible when ShowStar so Opacity/hit-test can reveal without reflow;
+        // MeasureOverride still excludes the star from DesiredSize.
         BtnStar.Visibility = Visibility.Visible;
         var reveal = IsStarred || _pointerOver || FocusState != FocusState.Unfocused;
         BtnStar.Opacity = reveal ? 1 : 0;
         BtnStar.IsHitTestVisible = reveal;
+        InvalidateArrange();
 
         IcnStar.IconVariant = IsStarred
             ? FluentIcons.Common.IconVariant.Filled

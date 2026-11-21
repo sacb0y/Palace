@@ -67,7 +67,7 @@ public sealed class TagsPageXamlLayoutTests
     }
 
     [Fact]
-    public void BoardPane_ChipStar_ComposerAuto_ItemsCountDocked()
+    public void BoardPane_ChipStar_MosaicStar_ComposerAutoBottom()
     {
         var xaml = TagsPageXaml();
         var pane = xaml.IndexOf("x:Name=\"GrdTagBoardPane\"", StringComparison.Ordinal);
@@ -77,11 +77,28 @@ public sealed class TagsPageXamlLayoutTests
         var block = xaml[rows..rowsEnd];
         Assert.DoesNotContain("2*", block, StringComparison.Ordinal);
         Assert.DoesNotContain("MinHeight=\"160\"", block, StringComparison.Ordinal);
+        Assert.Equal(2, Regex.Matches(block, @"Height=""\*""").Count);
+        Assert.Equal(2, Regex.Matches(block, @"Height=""Auto""").Count);
         Assert.Contains("TxtTagAssetCount", xaml, StringComparison.Ordinal);
-        // Items count lives with the Auto composer dock, not alone in mosaic header.
-        var count = xaml.IndexOf("x:Name=\"TxtTagAssetCount\"", StringComparison.Ordinal);
+        // Composer + items count dock Auto under mosaic (bottom of board pane).
         var mosaic = xaml.IndexOf("x:Name=\"GrdTagAssets\"", StringComparison.Ordinal);
-        Assert.True(count > 0 && mosaic > count, "TxtTagAssetCount should precede GrdTagAssets");
+        var count = xaml.IndexOf("x:Name=\"TxtTagAssetCount\"", StringComparison.Ordinal);
+        Assert.True(mosaic > 0 && count > mosaic, "TxtTagAssetCount should follow GrdTagAssets (composer at bottom)");
+        var composer = xaml.IndexOf("x:Name=\"CmbNewTagsGroup\"", StringComparison.Ordinal);
+        Assert.True(composer > mosaic && composer < count);
+        Assert.Contains("Grid.Row=\"3\"", xaml[mosaic..composer], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BoardChipWrap_HorizontalSpacingFitsStarGap()
+    {
+        var xaml = TagsPageXaml();
+        var showStar = xaml.IndexOf("ShowStar=\"True\"", StringComparison.Ordinal);
+        Assert.True(showStar > 0);
+        var layout = xaml.LastIndexOf("ChipWrapLayout", showStar, StringComparison.Ordinal);
+        Assert.True(layout > 0);
+        var block = xaml[layout..showStar];
+        Assert.Contains("HorizontalSpacing=\"26\"", block, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -96,6 +113,7 @@ public sealed class TagsPageXamlLayoutTests
         var open = xaml[scr..child];
         Assert.Contains("VerticalScrollBarVisibility=\"Auto\"", open, StringComparison.Ordinal);
         Assert.Contains("VerticalScrollMode=\"Enabled\"", open, StringComparison.Ordinal);
+        Assert.Contains("VerticalAlignment=\"Stretch\"", open, StringComparison.Ordinal);
     }
 
     [Fact]

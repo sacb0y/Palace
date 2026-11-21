@@ -124,30 +124,6 @@
                     Visibility="Collapsed" />
 
                 <Button
-                    x:Name="BtnStar"
-                    Width="24"
-                    Height="24"
-                    MinWidth="24"
-                    MinHeight="24"
-                    Padding="0"
-                    VerticalAlignment="Center"
-                    AutomationProperties.Name="Star tag"
-                    Background="Transparent"
-                    BorderThickness="0"
-                    Click="BtnStar_Click"
-                    IsTabStop="False"
-                    ToolTipService.ToolTip="Star tag"
-                    Visibility="Collapsed">
-                    <ic:FluentIcon
-                        x:Name="IcnStar"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Icon="Star"
-                        IconSize="Size16"
-                        IconVariant="Regular" />
-                </Button>
-
-                <Button
                     x:Name="BtnRemove"
                     Width="24"
                     Height="24"
@@ -172,6 +148,33 @@
                 </Button>
             </StackPanel>
         </Border>
+
+        <!-- Star lives in the wrap gap past the chip border (not over label text).
+             MeasureOverride excludes it from DesiredSize so wrap/widths stay stable. -->
+        <Button
+            x:Name="BtnStar"
+            Width="24"
+            Height="24"
+            MinWidth="24"
+            MinHeight="24"
+            Padding="0"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            AutomationProperties.Name="Star tag"
+            Background="Transparent"
+            BorderThickness="0"
+            Click="BtnStar_Click"
+            IsTabStop="False"
+            ToolTipService.ToolTip="Star tag"
+            Visibility="Collapsed">
+            <ic:FluentIcon
+                x:Name="IcnStar"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Icon="Star"
+                IconSize="Size16"
+                IconVariant="Regular" />
+        </Button>
 
         <!-- Dashed accent outline for Partial (Border cannot dash). -->
         <Rectangle

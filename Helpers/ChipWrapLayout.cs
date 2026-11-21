@@ -104,7 +104,14 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
         for (var i = 0; i < children.Count && i < slots.Count; i++)
         {
             var slot = slots[i];
-            children[i].Arrange(new Rect(slot.X, slot.Y, slot.Width, slot.Height));
+            // Trailing spacing is empty between chips — include it in the arrange
+            // slot so TagChip can place a hit-testable star past the border without
+            // overlapping the next chip’s layout rect (board spacing ~26 DIP).
+            children[i].Arrange(new Rect(
+                slot.X,
+                slot.Y,
+                slot.Width + HorizontalSpacing,
+                slot.Height));
         }
 
         var height = ChipWrap.ExtentHeight(slots);

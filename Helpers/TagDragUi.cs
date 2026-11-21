@@ -60,28 +60,72 @@ public static class TagDragUi
         isUserGroupRow && !allowDrop;
 
     // --- Harness probe (Fenrir ASSERT DragStarting before dg frames) ---
+    // Gated: DEBUG builds on by default; Release needs PALACE_TAG_DRAG_LOG=1 (or tests).
+
+    public const string ProbeEnvVar = "PALACE_TAG_DRAG_LOG";
+
+    /// <summary>Test override: null = DEBUG / env; true/false force.</summary>
+    public static bool? ProbeEnabledOverride { get; set; }
 
     private static readonly object ProbeGate = new();
     private static int _dragStartingCount;
     private static int _dragOverCount;
     private static int _dropCount;
+    private static Action<string>? _logSink;
 
-    /// <summary>Optional sink (tests / harness). Default: Debug.WriteLine.</summary>
-    public static Action<string>? LogSink { get; set; }
+    /// <summary>
+    /// True when probe counters / LogSink / Log* are live.
+    /// DEBUG: on unless override/env forces off. Release: env <c>PALACE_TAG_DRAG_LOG=1</c>
+    /// (or <see cref="ProbeEnabledOverride"/>).
+    /// </summary>
+    public static bool IsProbeEnabled
+    {
+        get
+        {
+            if (ProbeEnabledOverride is { } forced)
+            {
+                return forced;
+            }
+
+            var env = Environment.GetEnvironmentVariable(ProbeEnvVar);
+            if (env is "1" or "true" or "TRUE" or "yes" or "YES")
+            {
+                return true;
+            }
+
+            if (env is "0" or "false" or "FALSE" or "no" or "NO")
+            {
+                return false;
+            }
+
+#if DEBUG
+            return true;
+#else
+            return false;
+#endif
+        }
+    }
+
+    /// <summary>Optional sink (tests / harness). Ignored when probe is off.</summary>
+    public static Action<string>? LogSink
+    {
+        get => IsProbeEnabled ? _logSink : null;
+        set => _logSink = value;
+    }
 
     public static int DragStartingCount
     {
-        get { lock (ProbeGate) { return _dragStartingCount; } }
+        get { lock (ProbeGate) { return IsProbeEnabled ? _dragStartingCount : 0; } }
     }
 
     public static int DragOverCount
     {
-        get { lock (ProbeGate) { return _dragOverCount; } }
+        get { lock (ProbeGate) { return IsProbeEnabled ? _dragOverCount : 0; } }
     }
 
     public static int DropCount
     {
-        get { lock (ProbeGate) { return _dropCount; } }
+        get { lock (ProbeGate) { return IsProbeEnabled ? _dropCount : 0; } }
     }
 
     public static void ResetProbe()
@@ -96,6 +140,11 @@ public static class TagDragUi
 
     public static void LogDragStarting(string? tagId, int payloadCount)
     {
+        if (!IsProbeEnabled)
+        {
+            return;
+        }
+
         int n;
         lock (ProbeGate)
         {
@@ -109,6 +158,11 @@ public static class TagDragUi
 
     public static void LogDragOver(string? groupId, string? groupName, bool allow, string? caption)
     {
+        if (!IsProbeEnabled)
+        {
+            return;
+        }
+
         int n;
         lock (ProbeGate)
         {
@@ -122,6 +176,11 @@ public static class TagDragUi
 
     public static void LogDrop(string? groupId, string? groupName, int added)
     {
+        if (!IsProbeEnabled)
+        {
+            return;
+        }
+
         int n;
         lock (ProbeGate)
         {
@@ -137,9 +196,9 @@ public static class TagDragUi
     {
         try
         {
-            if (LogSink is not null)
+            if (_logSink is not null)
             {
-                LogSink(line);
+                _logSink(line);
             }
             else
             {
