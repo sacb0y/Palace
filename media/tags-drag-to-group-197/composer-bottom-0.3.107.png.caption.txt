@@ -1,0 +1,1 @@
+﻿Tip f4470c6 / 0.3.107 FENRIR-STUDIO. PerMonitorV2 DWM. 1302x1431 dpi=144. Composer pinned at bottom; tall TagNN chip list above.
