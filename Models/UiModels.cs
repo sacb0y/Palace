@@ -1033,9 +1033,28 @@ public partial class TagLetterSection : ObservableObject
 {
     public string Letter { get; set; } = "";
 
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; } = true;
+
     public ObservableCollection<TagChipItem> Chips { get; } = [];
 
     public string Header => $"{Letter} ({Chips.Count})";
+
+    /// <summary>UIA name: "C, 7 tags, collapsed".</summary>
+    public string AutomationName =>
+        TagLetterFold.AutomationName(Letter, Chips.Count, IsExpanded);
+
+    /// <summary>
+    /// Chips for the repeater — empty when collapsed so items are not realized.
+    /// </summary>
+    public IEnumerable<TagChipItem> RealizedChips =>
+        TagLetterFold.RealizedChips(IsExpanded, Chips);
+
+    partial void OnIsExpandedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(AutomationName));
+        OnPropertyChanged(nameof(RealizedChips));
+    }
 
     /// <summary>Screen readers (UIA) name list / picker items by ToString(); never the type name.</summary>
     public override string ToString() => Header;

@@ -524,15 +524,50 @@
                                 HorizontalAlignment="Stretch"
                                 VerticalAlignment="Top"
                                 Spacing="6">
-                                <TextBlock
+                                <Button
+                                    Padding="0,2"
                                     HorizontalAlignment="Stretch"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Style="{StaticResource BodyStrongTextBlockStyle}"
-                                    Text="{x:Bind Header, Mode=OneWay}" />
+                                    HorizontalContentAlignment="Stretch"
+                                    AutomationProperties.Name="{x:Bind AutomationName, Mode=OneWay}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="LetterSectionHeader_Click"
+                                    Tag="{x:Bind}">
+                                    <Grid ColumnSpacing="6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid Width="16" Height="16" VerticalAlignment="Center">
+                                            <ic:FluentIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Icon="ChevronRight"
+                                                IconSize="Size16"
+                                                IconVariant="Regular"
+                                                Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(IsExpanded), Mode=OneWay}" />
+                                            <ic:FluentIcon
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Icon="ChevronDown"
+                                                IconSize="Size16"
+                                                IconVariant="Regular"
+                                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(IsExpanded), Mode=OneWay}" />
+                                        </Grid>
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                                            Text="{x:Bind Header, Mode=OneWay}" />
+                                    </Grid>
+                                </Button>
                                 <ItemsRepeater
                                     HorizontalAlignment="Stretch"
                                     VerticalAlignment="Top"
-                                    ItemsSource="{x:Bind Chips, Mode=OneWay}">
+                                    ItemsSource="{x:Bind RealizedChips, Mode=OneWay}">
                                     <ItemsRepeater.Layout>
                                         <!-- ~26 DIP horizontal + ArrangeIntoTrailingGap: star in gap via Grid HA=Right. -->
                                         <helpers:ChipWrapLayout

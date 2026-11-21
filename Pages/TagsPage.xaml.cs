@@ -186,6 +186,14 @@ public sealed partial class TagsPage : Page
         BtnCollapseAllTagBoard.Padding = compact ? new Thickness(6, 0, 6, 0) : new Thickness(8, 4, 8, 4);
     }
 
+    private void LetterSectionHeader_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: TagLetterSection section })
+        {
+            ViewModel.ToggleLetterSection(section);
+        }
+    }
+
     private void ApplyTagColumnLayout()
     {
         var host = ResolveTagHostWidthDip();

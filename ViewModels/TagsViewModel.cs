@@ -26,6 +26,8 @@ public partial class TagsViewModel : ObservableObject
     private string? _renameBaseline;
     private string? _renameBaselineTagId;
     private string _boardSelectionKey = "all";
+    /// <summary>Session-only collapsed A–Z letter keys (<c>boardKey\nLetter</c>).</summary>
+    private readonly HashSet<string> _collapsedLetterKeys = new(StringComparer.Ordinal);
     private const int MosaicChunkSize = 80;
 
     public TagsViewModel(
@@ -573,22 +575,46 @@ public partial class TagsViewModel : ObservableObject
             await CreateNewTagsAsync();
         });
 
+    /// <summary>
+    /// Expand every A–Z letter section on the selected board (not sidebar groups).
+    /// </summary>
     [RelayCommand]
-    private void ExpandAllBoardGroups()
+    private void ExpandAllBoardGroups() => SetAllLetterSectionsExpanded(true);
+
+    /// <summary>
+    /// Collapse every A–Z letter section on the selected board (not sidebar groups).
+    /// </summary>
+    [RelayCommand]
+    private void CollapseAllBoardGroups() => SetAllLetterSectionsExpanded(false);
+
+    private void SetAllLetterSectionsExpanded(bool expanded)
     {
-        foreach (var group in Board.Where(g => g.ScopeKind is null && !g.IsUngrouped))
+        if (SelectedBoard is null)
         {
-            group.IsExpanded = true;
+            return;
+        }
+
+        var boardKey = BoardKey(SelectedBoard);
+        foreach (var letter in SelectedBoard.Letters)
+        {
+            letter.IsExpanded = expanded;
+            TagLetterFold.RememberExpanded(_collapsedLetterKeys, boardKey, letter.Letter, expanded);
         }
     }
 
-    [RelayCommand]
-    private void CollapseAllBoardGroups()
+    public void ToggleLetterSection(TagLetterSection section)
     {
-        foreach (var group in Board.Where(g => g.ScopeKind is null && !g.IsUngrouped))
+        section.IsExpanded = !section.IsExpanded;
+        if (SelectedBoard is null)
         {
-            group.IsExpanded = false;
+            return;
         }
+
+        TagLetterFold.RememberExpanded(
+            _collapsedLetterKeys,
+            BoardKey(SelectedBoard),
+            section.Letter,
+            section.IsExpanded);
     }
 
     [RelayCommand]
@@ -1700,9 +1726,17 @@ public partial class TagsViewModel : ObservableObject
                 });
             }
 
+            var boardKey = BoardKey(item);
             foreach (var letter in TagAlphaIndex.GroupByLetter(item.Chips, chip => chip.Name))
             {
-                var section = new TagLetterSection { Letter = letter.Letter };
+                var section = new TagLetterSection
+                {
+                    Letter = letter.Letter,
+                    IsExpanded = TagLetterFold.IsExpandedDefault(
+                        _collapsedLetterKeys,
+                        boardKey,
+                        letter.Letter)
+                };
                 foreach (var chip in letter.Items)
                 {
                     section.Chips.Add(chip);

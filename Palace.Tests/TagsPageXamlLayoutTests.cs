@@ -67,6 +67,23 @@ public sealed class TagsPageXamlLayoutTests
     }
 
     [Fact]
+    public void LetterSection_HeaderChevron_AndRealizedChipsBind()
+    {
+        var xaml = TagsPageXaml();
+        var letter = xaml.IndexOf("x:DataType=\"models:TagLetterSection\"", StringComparison.Ordinal);
+        Assert.True(letter >= 0);
+        var end = xaml.IndexOf("</DataTemplate>", letter, StringComparison.Ordinal);
+        Assert.True(end > letter);
+        var block = xaml[letter..end];
+        Assert.Contains("LetterSectionHeader_Click", block, StringComparison.Ordinal);
+        Assert.Contains("AutomationName", block, StringComparison.Ordinal);
+        Assert.Contains("Icon=\"ChevronRight\"", block, StringComparison.Ordinal);
+        Assert.Contains("Icon=\"ChevronDown\"", block, StringComparison.Ordinal);
+        Assert.Contains("ItemsSource=\"{x:Bind RealizedChips, Mode=OneWay}\"", block, StringComparison.Ordinal);
+        Assert.DoesNotContain("ItemsSource=\"{x:Bind Chips, Mode=OneWay}\"", block, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void BoardPane_ChipStar_MosaicAuto_ComposerAutoBottom()
     {
         var xaml = TagsPageXaml();
