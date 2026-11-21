@@ -717,22 +717,17 @@ public sealed partial class TagChip : UserControl
             return;
         }
 
+        // Filled = sidebar Starred gold (#F2B600). Outline hover/focus = secondary text.
         if (IsStarred)
         {
-            if (state == TagChipApplyState.On && !IsSelected)
-            {
-                IcnStar.Foreground = ThemeBrush("TextOnAccentFillColorPrimaryBrush");
-            }
-            else if (Helpers.TagColor.TryParse(TagChipVisual.StarGoldHex(light), out var gold))
+            if (Helpers.TagColor.TryParse(TagChipVisual.StarGoldSidebarHex, out var gold))
             {
                 IcnStar.Foreground = new SolidColorBrush(gold);
             }
         }
         else
         {
-            IcnStar.Foreground = state == TagChipApplyState.On && !IsSelected
-                ? ThemeBrush("TextOnAccentFillColorPrimaryBrush")
-                : ThemeBrush("TextFillColorSecondaryBrush");
+            IcnStar.Foreground = ThemeBrush("TextFillColorSecondaryBrush");
         }
     }
 

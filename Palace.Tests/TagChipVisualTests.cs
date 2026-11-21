@@ -92,8 +92,11 @@ public sealed class TagChipVisualTests
         Assert.Equal(24, TagChipVisual.StarButtonDip);
         Assert.Equal(26, TagChipVisual.BoardStarWrapSpacingDip);
         Assert.Equal(1.5, TagChipVisual.PartialBorderThickness);
+        Assert.Equal("#F2B600", TagChipVisual.StarGoldSidebarHex);
         Assert.Equal("#F2B600", TagChipVisual.StarGoldDarkHex);
-        Assert.Equal("#B8860B", TagChipVisual.StarGoldLightHex);
+        Assert.Equal("#F2B600", TagChipVisual.StarGoldLightHex);
+        Assert.Equal("#F2B600", TagChipVisual.StarGoldHex(isLightTheme: true));
+        Assert.Equal("#F2B600", TagChipVisual.StarGoldHex(isLightTheme: false));
         Assert.Equal("#C2185B", TagChipVisual.LightAccentFillFloorHex);
         Assert.Equal("✓ all selected · – some", TagChipVisual.MultiSelectLegend);
     }
