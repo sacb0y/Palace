@@ -86,21 +86,32 @@ public sealed class MosaicLayoutCacheTests
         var cs = File.ReadAllText(
             Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"));
         Assert.Contains("ScheduleThumbPlan(\"resize\")", cs, StringComparison.Ordinal);
+        Assert.Contains("_lastThumbPlanHostWidth", cs, StringComparison.Ordinal);
+        Assert.Contains("MosaicLayoutCache.WidthEpsilon", cs, StringComparison.Ordinal);
         Assert.Contains("MinUsable", cs, StringComparison.Ordinal);
         Assert.Contains("RequestMosaicFocusAfterNav", cs, StringComparison.Ordinal);
+        Assert.Contains("ClearMosaicFocusAfterNav", cs, StringComparison.Ordinal);
+        Assert.Contains("FocusIsSearchOrSuggest", cs, StringComparison.Ordinal);
         Assert.Contains("RefreshTileMoreReveals", cs, StringComparison.Ordinal);
+        Assert.Contains("nameof(LibraryViewModel.SelectionCount)", cs, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void LibraryPage_FoldersTreeWrappedInScrollViewer()
+    public void LibraryPage_FoldersTreeDirectInStarRow_NoOuterScrollViewer()
     {
+        // Wimbly: no outer ScrollViewer (ListView virtualization). Auto header + * TreFolders.
         var xaml = File.ReadAllText(
             Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml"));
-        Assert.Contains("AutomationProperties.AutomationId=\"ScrFolders\"", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("ScrFolders", xaml, StringComparison.Ordinal);
         Assert.Contains("x:Name=\"TreFolders\"", xaml, StringComparison.Ordinal);
-        var scrIdx = xaml.IndexOf("ScrFolders", StringComparison.Ordinal);
+        Assert.Contains("AutomationProperties.AutomationId=\"TreFolders\"", xaml, StringComparison.Ordinal);
+        // TreFolders must be Grid.Row="1" of the folders pane (bounded * height).
         var treIdx = xaml.IndexOf("x:Name=\"TreFolders\"", StringComparison.Ordinal);
-        Assert.True(scrIdx >= 0 && treIdx > scrIdx, "TreFolders must sit inside ScrFolders ScrollViewer");
+        Assert.True(treIdx > 0);
+        var slice = xaml.Substring(Math.Max(0, treIdx - 120), Math.Min(200, xaml.Length - Math.Max(0, treIdx - 120)));
+        Assert.Contains("Grid.Row=\"1\"", slice, StringComparison.Ordinal);
+        // Tags browse keeps its own ScrollViewer — untouched.
+        Assert.Contains("x:Name=\"TreTagsBrowse\"", xaml, StringComparison.Ordinal);
     }
 
     private static string RepoRoot()

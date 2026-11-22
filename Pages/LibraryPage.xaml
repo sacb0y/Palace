@@ -376,7 +376,7 @@
                     <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
                 </Button>
             </Grid>
-            <!-- Auto header (All rejected) + * ScrollViewer — match TreTagsBrowse so the tree scrolls. -->
+            <!-- Auto All-rejected + * TreFolders (no outer ScrollViewer — TreeView ListView virtualizes). -->
             <Grid
                 Grid.Row="3"
                 RowSpacing="4"
@@ -426,14 +426,9 @@
                     Margin="8,0"
                     Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                 </StackPanel>
-            <ScrollViewer
-                Grid.Row="1"
-                AutomationProperties.AutomationId="ScrFolders"
-                HorizontalScrollBarVisibility="Disabled"
-                HorizontalScrollMode="Disabled"
-                VerticalScrollBarVisibility="Auto">
             <TreeView
                 x:Name="TreFolders"
+                Grid.Row="1"
                 AllowDrop="False"
                 AutomationProperties.AutomationId="TreFolders"
                 AutomationProperties.Name="Source folders"
@@ -592,7 +587,6 @@
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
-            </ScrollViewer>
             </Grid>
             <ScrollViewer
                 x:Name="TreTagsBrowse"

@@ -40,6 +40,8 @@ public sealed partial class LibraryPage : Page
     private long _lastPlanLogMs;
     /// <summary>Focus GrdAssets after folder/breadcrumb/header nav so ItemsView arrows work.</summary>
     private bool _focusMosaicAfterNav;
+    /// <summary>Last mosaic width that scheduled a resize thumb plan (WidthEpsilon gate).</summary>
+    private double _lastThumbPlanHostWidth;
     private readonly HashSet<TileMoreReveal> _tileMoreReveals = new();
     private ScrollViewer? _mosaicScrollViewer;
     private ScrollView? _mosaicScrollView;
@@ -185,7 +187,8 @@ public sealed partial class LibraryPage : Page
 
             if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode)
                 or nameof(LibraryViewModel.ShowTagSelectedCta)
-                or nameof(LibraryViewModel.HasSelection))
+                or nameof(LibraryViewModel.HasSelection)
+                or nameof(LibraryViewModel.SelectionCount))
             {
                 if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode))
                 {
@@ -210,8 +213,10 @@ public sealed partial class LibraryPage : Page
                 }
 
                 // ExitSelectMode keeps selection — re-Apply so multi ⋮ does not stick.
+                // SelectionCount (2→1) also flips CountsSelected without HasSelection changing.
                 if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode)
-                    or nameof(LibraryViewModel.HasSelection))
+                    or nameof(LibraryViewModel.HasSelection)
+                    or nameof(LibraryViewModel.SelectionCount))
                 {
                     RefreshTileMoreReveals();
                 }
@@ -1075,11 +1080,18 @@ public sealed partial class LibraryPage : Page
         var visible = VisibleMosaicColumnWidth(e.NewSize.Width);
         MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(visible));
         UpdateMosaicToolbarOverflow(visible);
-        // Chunk thumb plans no-op while ActualWidth < 1; re-schedule once usable
-        // (and on later width changes) so folder-pick thumbs are not stuck until resize.
+        // Chunk plans no-op while width unusable. ScheduleThumbPlan coalesces via
+        // _planQueued; still gate to first usable + WidthEpsilon so every layout
+        // tick after a plan completes does not re-queue.
         if (visible >= MosaicLayoutWidth.MinUsable && _thumbsMayUpgrade)
         {
-            ScheduleThumbPlan("resize");
+            var firstUsable = _lastThumbPlanHostWidth < MosaicLayoutWidth.MinUsable;
+            var widthMoved = Math.Abs(visible - _lastThumbPlanHostWidth) > MosaicLayoutCache.WidthEpsilon;
+            if (firstUsable || widthMoved)
+            {
+                _lastThumbPlanHostWidth = visible;
+                ScheduleThumbPlan("resize");
+            }
         }
     }
 
@@ -1702,6 +1714,8 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     private void RequestMosaicFocusAfterNav() => _focusMosaicAfterNav = true;
 
+    private void ClearMosaicFocusAfterNav() => _focusMosaicAfterNav = false;
+
     private void TryFocusMosaicAfterNav()
     {
         if (!_focusMosaicAfterNav || ViewModel.IsGalleryOverlayOpen)
@@ -1709,16 +1723,46 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        _focusMosaicAfterNav = false;
+        // Empty mosaic / nav complete with 0 assets — do not leave a stale request.
+        if (ViewModel.Assets.Count == 0)
+        {
+            ClearMosaicFocusAfterNav();
+            return;
+        }
+
+        ClearMosaicFocusAfterNav();
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (ViewModel.IsGalleryOverlayOpen)
+            if (ViewModel.IsGalleryOverlayOpen || FocusIsSearchOrSuggest())
             {
                 return;
             }
 
             GrdAssets.Focus(FocusState.Programmatic);
         });
+    }
+
+    /// <summary>Skip stealing focus from Library search / AutoSuggestBox chrome.</summary>
+    private bool FocusIsSearchOrSuggest()
+    {
+        if (XamlRoot is null)
+        {
+            return false;
+        }
+
+        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+        if (focused is AutoSuggestBox)
+        {
+            return true;
+        }
+
+        if (focused is DependencyObject node
+            && (IsDescendantOf(node, AsbSearch) || IsDescendantOf(node, AsbAssignTag)))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private void AsbSearch_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -3179,6 +3223,8 @@ public sealed partial class LibraryPage : Page
 
         _mosaicGeneration++;
         _thumbsMayUpgrade = false;
+        // Next usable SizeChanged must count as first-usable again.
+        _lastThumbPlanHostWidth = 0;
         _thumbSkipped.Clear();
         foreach (var id in _thumbQueue.CancelOutstanding())
         {
@@ -3206,6 +3252,7 @@ public sealed partial class LibraryPage : Page
         UpdateStickyFolderHeader();
         if (ViewModel.Assets.Count == 0)
         {
+            ClearMosaicFocusAfterNav();
             return;
         }
 
@@ -3221,10 +3268,7 @@ public sealed partial class LibraryPage : Page
             _thumbsMayUpgrade = true;
             ScheduleThumbPlan("chunk");
             // Prefer ItemsView keyboard nav: focus mosaic after folder pick once tiles exist.
-            if (ViewModel.Assets.Count > 0)
-            {
-                TryFocusMosaicAfterNav();
-            }
+            TryFocusMosaicAfterNav();
         });
     }
 
