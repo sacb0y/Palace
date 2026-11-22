@@ -22,4 +22,20 @@ public static class OwnedDelegate
             slot = null;
         }
     }
+
+    public static void ClearIfOurs<T1, T2>(ref Action<T1, T2>? slot, Action<T1, T2> ours)
+    {
+        if (slot == ours)
+        {
+            slot = null;
+        }
+    }
+
+    public static void ClearIfOurs<TResult>(ref Func<TResult>? slot, Func<TResult> ours)
+    {
+        if (slot == ours)
+        {
+            slot = null;
+        }
+    }
 }

@@ -62,6 +62,86 @@ public sealed class LifetimeHookContractTests
     }
 
     [Fact]
+    public void LibraryPage_Unloaded_ClearsMosaicDelegatesSeparately_IsLoadedAfterAwait()
+    {
+        var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"))
+            .Replace("\r\n", "\n");
+        Assert.DoesNotContain("ReferenceEquals(ViewModel.Mosaic", cs, StringComparison.Ordinal);
+        Assert.Contains("OwnedDelegate.ClearIfOurs(ref mosaicReset, OnMosaicReset)", cs, StringComparison.Ordinal);
+        Assert.Contains(
+            "OwnedDelegate.ClearIfOurs(ref mosaicChunk, OnMosaicChunkAppended)",
+            cs,
+            StringComparison.Ordinal);
+        // IsLoaded gate must sit between ReloadTagCatalogAsync await and AddHandler wiring.
+        var catalog = cs.IndexOf("ViewModel.ReloadTagCatalogAsync", StringComparison.Ordinal);
+        var loadedGate = cs.IndexOf("if (!IsLoaded)", catalog, StringComparison.Ordinal);
+        var wire = cs.IndexOf("GrdAssets.AddHandler", loadedGate, StringComparison.Ordinal);
+        Assert.True(catalog >= 0 && loadedGate > catalog && wire > loadedGate);
+    }
+
+    /// <summary>
+    /// Fresh cast + ReferenceEquals always misses — fail if any page/code-behind
+    /// clears a VM callback that way (Tags/Library MosaicReset bug class).
+    /// </summary>
+    [Fact]
+    public void CodeBehind_NoReferenceEqualsAgainstDelegateCast()
+    {
+        var root = RepoRoot();
+        var dirs = new[]
+        {
+            Path.Combine(root, "Pages"),
+            Path.Combine(root, "Controls"),
+        };
+        var files = new List<string>();
+        foreach (var dir in dirs)
+        {
+            if (!Directory.Exists(dir))
+            {
+                continue;
+            }
+
+            files.AddRange(Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories));
+        }
+
+        foreach (var name in new[] { "MainWindow.xaml.cs", "GalleryWindow.xaml.cs", "App.xaml.cs" })
+        {
+            var path = Path.Combine(root, name);
+            if (File.Exists(path))
+            {
+                files.Add(path);
+            }
+        }
+
+        // ReferenceEquals(…(Action)…) / ReferenceEquals(…(Func…)…) — either arg.
+        // One nesting level covers casts like (Action)OnFoo / (Func<int>)OnBar.
+        var rx = new Regex(
+            @"ReferenceEquals\s*\((?:[^()]|\([^()]*\))*\(\s*(?:Action|Func)\b",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+
+        var hits = new List<string>();
+        foreach (var file in files)
+        {
+            var text = File.ReadAllText(file);
+            foreach (Match m in rx.Matches(text))
+            {
+                var rel = Path.GetRelativePath(root, file).Replace('\\', '/');
+                var snippet = m.Value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+                if (snippet.Length > 120)
+                {
+                    snippet = snippet[..117] + "...";
+                }
+
+                hits.Add($"{rel}: {snippet}");
+            }
+        }
+
+        Assert.True(
+            hits.Count == 0,
+            "ReferenceEquals + delegate cast never matches the assigned slot; use OwnedDelegate.ClearIfOurs.\n"
+            + string.Join("\n", hits));
+    }
+
+    [Fact]
     public void GalleryStillSurface_RehooksWheelAndDpiOnLoaded()
     {
         var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Controls", "GalleryStillSurface.xaml.cs"));

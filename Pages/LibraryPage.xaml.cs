@@ -260,6 +260,12 @@ public sealed partial class LibraryPage : Page
             _suppressBrowseChrome = false;
             await ErrorReporter.RunAsync("Reload mosaic sort", null, ViewModel.ReloadMosaicSortAsync);
             await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
+            // Unloaded may have run during await (Settings) — do not wire a dead page.
+            if (!IsLoaded)
+            {
+                return;
+            }
+
             UpdatePreview();
             InvalidateMosaicLayout();
             HookOverlayGallery();
@@ -296,15 +302,30 @@ public sealed partial class LibraryPage : Page
             SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
             SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
             UnhookFolderTreeExpansion();
-            if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
-            {
-                ViewModel.MosaicReset = null;
-                ViewModel.MosaicChunkAppended = null;
-                ViewModel.SectionToggleStarting = null;
-                ViewModel.SectionToggleEpochArmed = null;
-                ViewModel.MosaicRestoreReady = null;
-                ViewModel.SectionToggleEnded = null;
-            }
+            // Delegate == (not ReferenceEquals) — fresh casts never match assigned slots.
+            var mosaicReset = ViewModel.MosaicReset;
+            OwnedDelegate.ClearIfOurs(ref mosaicReset, OnMosaicReset);
+            ViewModel.MosaicReset = mosaicReset;
+
+            var mosaicChunk = ViewModel.MosaicChunkAppended;
+            OwnedDelegate.ClearIfOurs(ref mosaicChunk, OnMosaicChunkAppended);
+            ViewModel.MosaicChunkAppended = mosaicChunk;
+
+            var sectionStarting = ViewModel.SectionToggleStarting;
+            OwnedDelegate.ClearIfOurs(ref sectionStarting, OnSectionToggleStarting);
+            ViewModel.SectionToggleStarting = sectionStarting;
+
+            var sectionEpoch = ViewModel.SectionToggleEpochArmed;
+            OwnedDelegate.ClearIfOurs(ref sectionEpoch, OnSectionToggleEpochArmed);
+            ViewModel.SectionToggleEpochArmed = sectionEpoch;
+
+            var mosaicRestore = ViewModel.MosaicRestoreReady;
+            OwnedDelegate.ClearIfOurs(ref mosaicRestore, OnMosaicRestoreReady);
+            ViewModel.MosaicRestoreReady = mosaicRestore;
+
+            var sectionEnded = ViewModel.SectionToggleEnded;
+            OwnedDelegate.ClearIfOurs(ref sectionEnded, OnSectionToggleEnded);
+            ViewModel.SectionToggleEnded = sectionEnded;
 
             if (_hookedOverlay is not null)
             {
