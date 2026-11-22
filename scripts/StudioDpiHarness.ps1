@@ -4,9 +4,9 @@ Canonical FENRIR-STUDIO / Windows UI harness helpers for Palace.
 
 .DESCRIPTION
 Call Enable-PalaceDpiAwareness before any GetWindowRect / SetWindowPos /
-screenshot / SendInput. Sizes windows in physical pixels for a target DIP
-size, gates on client DIP (and optional XamlRoot log), hovers to arm CanDrag,
-and runs SendInput drags.
+screenshot / SendInput. Sizes windows so the *client* area matches the
+target DIP (chrome-compensated SetWindowPos), gates on client DIP (and
+optional XamlRoot log), hovers to arm CanDrag, and runs SendInput drags.
 
 Drag QC (Blocker1): gate on Palace.TagDrag DragStarting / DragOver / Drop
 probe lines. Do NOT fail QC solely on HWND/BitBlt float=0 near the cursor -
@@ -157,24 +157,23 @@ function Get-PalaceWindowMetrics {
 function Resize-PalaceWindowDip {
     <#
     .SYNOPSIS
-    Sizes the HWND in physical pixels for the requested client/window DIP size.
-    Requires Enable-PalaceDpiAwareness first.
+    Sizes the HWND so the *client* area matches the requested DIP size
+    (chrome-compensated SetWindowPos). DipWidth/DipHeight are CLIENT DIPs,
+    matching Assert-PalaceClientDipGate / XamlRoot. Requires
+    Enable-PalaceDpiAwareness first.
     #>
     param(
         [Parameter(Mandatory)][IntPtr]$Hwnd,
         [Parameter(Mandatory)][int]$DipWidth,
         [Parameter(Mandatory)][int]$DipHeight,
-        [int]$SettleMs = 650
+        [int]$SettleMs = 650,
+        [double]$ToleranceDip = 2,
+        [int]$MaxPasses = 3
     )
     if ([PalaceStudioDpi]::IsZoomed($Hwnd)) {
         [void][PalaceStudioDpi]::ShowWindow($Hwnd, 9)
         Start-Sleep -Milliseconds 250
     }
-    $dpi = [PalaceStudioDpi]::GetDpiForWindow($Hwnd)
-    if ($dpi -le 0) { $dpi = 96 }
-    $scale = $dpi / 96.0
-    $physW = [int][math]::Round($DipWidth * $scale)
-    $physH = [int][math]::Round($DipHeight * $scale)
     $mi = New-Object PalaceStudioDpi+MONITORINFO
     $mi.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($mi)
     [void][PalaceStudioDpi]::GetMonitorInfo(
@@ -182,16 +181,42 @@ function Resize-PalaceWindowDip {
         [ref]$mi)
     $workW = $mi.rcWork.Right - $mi.rcWork.Left
     $workH = $mi.rcWork.Bottom - $mi.rcWork.Top
-    if ($physW -gt $workW - 20) { $physW = $workW - 20 }
-    if ($physH -gt $workH - 20) { $physH = $workH - 20 }
+
     Set-PalaceForeground -Hwnd $Hwnd
-    # SWP_SHOWWINDOW
-    [void][PalaceStudioDpi]::SetWindowPos(
-        $Hwnd, [IntPtr]::Zero,
-        $mi.rcWork.Left + 10, $mi.rcWork.Top + 10,
-        $physW, $physH, 0x0040)
-    Start-Sleep -Milliseconds $SettleMs
-    return Get-PalaceWindowMetrics -Hwnd $Hwnd
+    $metrics = $null
+    for ($pass = 1; $pass -le $MaxPasses; $pass++) {
+        $dpi = [PalaceStudioDpi]::GetDpiForWindow($Hwnd)
+        if ($dpi -le 0) { $dpi = 96 }
+        $scale = $dpi / 96.0
+        $metrics = Get-PalaceWindowMetrics -Hwnd $Hwnd
+        # Non-client chrome in physical px (title bar + borders). WinUI custom
+        # chrome is not always what AdjustWindowRectExForDpi returns, so measure.
+        $chromePxW = [math]::Max(0, $metrics.WindowPhysW - $metrics.ClientPxW)
+        $chromePxH = [math]::Max(0, $metrics.WindowPhysH - $metrics.ClientPxH)
+        $clientPxW = [int][math]::Round($DipWidth * $scale)
+        $clientPxH = [int][math]::Round($DipHeight * $scale)
+        $physW = $clientPxW + $chromePxW
+        $physH = $clientPxH + $chromePxH
+        if ($physW -gt $workW - 20) { $physW = $workW - 20 }
+        if ($physH -gt $workH - 20) { $physH = $workH - 20 }
+        Write-Verbose ("Resize pass {0}: targetClientDip={1}x{2} chromePx={3}x{4} outerPhys={5}x{6}" -f `
+            $pass, $DipWidth, $DipHeight, $chromePxW, $chromePxH, $physW, $physH)
+        # SWP_SHOWWINDOW
+        [void][PalaceStudioDpi]::SetWindowPos(
+            $Hwnd, [IntPtr]::Zero,
+            $mi.rcWork.Left + 10, $mi.rcWork.Top + 10,
+            $physW, $physH, 0x0040)
+        Start-Sleep -Milliseconds $SettleMs
+        $metrics = Get-PalaceWindowMetrics -Hwnd $Hwnd
+        $dw = [math]::Abs($metrics.ClientDipW - $DipWidth)
+        $dh = [math]::Abs($metrics.ClientDipH - $DipHeight)
+        if ($dw -le $ToleranceDip -and $dh -le $ToleranceDip) {
+            return $metrics
+        }
+    }
+    Write-Verbose ("Resize settled clientDip={0}x{1} (wanted {2}x{3}; gate will assert)" -f `
+        $metrics.ClientDipW, $metrics.ClientDipH, $DipWidth, $DipHeight)
+    return $metrics
 }
 
 function Read-PalaceXamlRootLog {
