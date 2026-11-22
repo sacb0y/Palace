@@ -3239,8 +3239,8 @@ public sealed partial class LibraryPage : Page
         _thumbsMayUpgrade = false;
         // Next usable SizeChanged must count as first-usable again.
         _lastThumbPlanHostWidth = 0;
-        // Reset empties the mosaic — drop a pending focus request (not only empty chunk).
-        ClearMosaicFocusAfterNav();
+        // Do NOT ClearMosaicFocusAfterNav here — RequestMosaicFocusAfterNav runs before
+        // Populate's MosaicReset; clearing would kill folder/breadcrumb arrow focus.
         _thumbSkipped.Clear();
         foreach (var id in _thumbQueue.CancelOutstanding())
         {
@@ -3268,7 +3268,6 @@ public sealed partial class LibraryPage : Page
         UpdateStickyFolderHeader();
         if (ViewModel.Assets.Count == 0)
         {
-            ClearMosaicFocusAfterNav();
             return;
         }
 
@@ -3283,9 +3282,32 @@ public sealed partial class LibraryPage : Page
             RefreshRealizedTiles();
             _thumbsMayUpgrade = true;
             ScheduleThumbPlan("chunk");
-            // Prefer ItemsView keyboard nav: focus mosaic after folder pick once tiles exist.
-            TryFocusMosaicAfterNav();
+            // Focus-after-nav settles in FinishMosaicFocusAfterPopulate (MosaicRestoreReady).
         });
+    }
+
+    /// <summary>
+    /// End of <c>PopulateMosaicAsync</c>: clear focus request when zero tiles, else try focus.
+    /// </summary>
+    private void FinishMosaicFocusAfterPopulate()
+    {
+        var hasTiles = false;
+        foreach (var asset in ViewModel.Assets)
+        {
+            if (!asset.IsFolderHeader)
+            {
+                hasTiles = true;
+                break;
+            }
+        }
+
+        if (!hasTiles)
+        {
+            ClearMosaicFocusAfterNav();
+            return;
+        }
+
+        TryFocusMosaicAfterNav();
     }
 
     private void TileImage_Loaded(object sender, RoutedEventArgs e)
@@ -3897,6 +3919,10 @@ public sealed partial class LibraryPage : Page
 
     private void OnMosaicRestoreReady(int epoch)
     {
+        // Every successful Populate ends here (including empty / folder pick) —
+        // settle mosaic focus-after-nav before section-toggle early returns.
+        FinishMosaicFocusAfterPopulate();
+
         if (epoch != _sectionToggleRestoreEpoch)
         {
             // Superseded populate — do not apply this toggle's scroll/focus.

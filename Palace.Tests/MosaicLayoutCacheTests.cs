@@ -102,17 +102,38 @@ public sealed class MosaicLayoutCacheTests
     }
 
     [Fact]
-    public void LibraryPage_ClearsFocusRequestOnMosaicReset_AndRemovesRevealOnReload()
+    public void LibraryPage_FocusAfterNav_ClearsAtPopulateEnd_NotOnMosaicReset()
     {
-        // (2) Clear on reset, not only empty MosaicChunkAppended.
-        // (4) BtnAssetMore_Loaded removes the prior TileMoreReveal from the set.
+        // BLOCKER: Clear on MosaicReset kills Request before chunks land.
+        // Clear / TryFocus only at FinishMosaicFocusAfterPopulate (MosaicRestoreReady).
         var cs = File.ReadAllText(
             Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"));
         var resetIdx = cs.IndexOf("private void OnMosaicReset()", StringComparison.Ordinal);
         Assert.True(resetIdx >= 0);
-        var resetSlice = cs.Substring(resetIdx, Math.Min(900, cs.Length - resetIdx));
-        Assert.Contains("ClearMosaicFocusAfterNav()", resetSlice, StringComparison.Ordinal);
+        var nextMethod = cs.IndexOf("private void OnMosaicChunkAppended()", resetIdx, StringComparison.Ordinal);
+        Assert.True(nextMethod > resetIdx);
+        var resetSlice = cs.Substring(resetIdx, nextMethod - resetIdx);
+        Assert.DoesNotContain("ClearMosaicFocusAfterNav()", resetSlice, StringComparison.Ordinal);
 
+        Assert.Contains("FinishMosaicFocusAfterPopulate()", cs, StringComparison.Ordinal);
+        var restoreIdx = cs.IndexOf("private void OnMosaicRestoreReady(", StringComparison.Ordinal);
+        Assert.True(restoreIdx >= 0);
+        var restoreSlice = cs.Substring(restoreIdx, Math.Min(500, cs.Length - restoreIdx));
+        Assert.Contains("FinishMosaicFocusAfterPopulate()", restoreSlice, StringComparison.Ordinal);
+
+        var finishIdx = cs.IndexOf("private void FinishMosaicFocusAfterPopulate()", StringComparison.Ordinal);
+        Assert.True(finishIdx >= 0);
+        var finishSlice = cs.Substring(finishIdx, Math.Min(600, cs.Length - finishIdx));
+        Assert.Contains("ClearMosaicFocusAfterNav()", finishSlice, StringComparison.Ordinal);
+        Assert.Contains("TryFocusMosaicAfterNav()", finishSlice, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LibraryPage_RemovesTileMoreRevealOnReload()
+    {
+        // (4) BtnAssetMore_Loaded removes the prior TileMoreReveal from the set.
+        var cs = File.ReadAllText(
+            Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"));
         var loadedIdx = cs.IndexOf("private void BtnAssetMore_Loaded", StringComparison.Ordinal);
         Assert.True(loadedIdx >= 0);
         var loadedSlice = cs.Substring(loadedIdx, Math.Min(700, cs.Length - loadedIdx));
