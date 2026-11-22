@@ -73,18 +73,22 @@ public sealed class LifetimeHookContractTests
     }
 
     [Fact]
-    public void JustifiedMosaicLayout_MeasureCachesByWidthAndCount()
+    public void JustifiedMosaicLayout_MeasureCachesWithDirty()
     {
         var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Helpers", "JustifiedMosaicLayout.cs"));
-        Assert.Contains("state.Rects.Count != context.ItemCount", cs, StringComparison.Ordinal);
-        Assert.Contains("state.LaidOutWidth - width", cs, StringComparison.Ordinal);
+        Assert.Contains("MosaicLayoutCache.NeedsRecalculate", cs, StringComparison.Ordinal);
+        Assert.Contains("_layoutDirty", cs, StringComparison.Ordinal);
         var measure = cs.IndexOf("protected override Size MeasureOverride", StringComparison.Ordinal);
         Assert.True(measure >= 0);
         var arrange = cs.IndexOf("protected override Size ArrangeOverride", measure, StringComparison.Ordinal);
         Assert.True(arrange > measure);
         var body = cs[measure..arrange];
         Assert.Contains("Recalculate(context, state, width)", body, StringComparison.Ordinal);
-        // Must be gated — not unconditional Recalculate like the pre-0.3.113 path.
-        Assert.Contains("if (state.Rects.Count != context.ItemCount", body, StringComparison.Ordinal);
+        // Must be gated via MosaicLayoutCache — not unconditional Recalculate.
+        Assert.Contains("MosaicLayoutCache.NeedsRecalculate", body, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Recalculate(context, state, width);\n        var realization",
+            body.Replace("\r\n", "\n"),
+            StringComparison.Ordinal);
     }
 }

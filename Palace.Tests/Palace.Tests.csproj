@@ -55,6 +55,7 @@
     <Compile Include="..\Helpers\MosaicDelete.cs" Link="MosaicDelete.cs" />
     <Compile Include="..\Helpers\MosaicRows.cs" Link="MosaicRows.cs" />
     <Compile Include="..\Helpers\MosaicLayoutWidth.cs" Link="MosaicLayoutWidth.cs" />
+    <Compile Include="..\Helpers\MosaicLayoutCache.cs" Link="MosaicLayoutCache.cs" />
     <Compile Include="..\Helpers\MosaicSelection.cs" Link="MosaicSelection.cs" />
     <Compile Include="..\Helpers\SectionToggleGuard.cs" Link="SectionToggleGuard.cs" />
     <Compile Include="..\Helpers\LibraryColumnLayout.cs" Link="LibraryColumnLayout.cs" />

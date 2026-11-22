@@ -686,9 +686,9 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </ScrollViewer>
+            <!-- MaxHeight only on GrdTagAssets — host MaxHeight + inner MaxHeight clipped the bottom. -->
             <Grid
                 Grid.Row="2"
-                MaxHeight="280"
                 RowSpacing="8"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasTagAssets), Mode=OneWay}">
             <Grid.RowDefinitions>
