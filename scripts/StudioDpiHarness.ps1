@@ -17,6 +17,10 @@ C1: Test-PalaceUiTestIdentity uses OpenProcess + GetPackageFullName; exact
 allowlist PalaceOrganizeTest-5E1F; refuse C20A7629; APPMODEL_ERROR_NO_PACKAGE
 (15700) / unpackaged layout exe refuse.
 
+FenrirDesktop: default refuse. Override only via -AllowDesktop with non-empty
+-OverrideReason (Assert-PalaceFenrirDesktopPolicy). DPI / SendInput helpers
+refuse on FenrirDesktop even when override is set.
+
 .EXAMPLE
 . .\scripts\StudioDpiHarness.ps1
 Enable-PalaceDpiAwareness
@@ -33,6 +37,8 @@ Assert-TagDragQcFromProbes -LogPath $env:PALACE_TAG_DRAG_LOG_FILE -RequireStarti
 
 $script:PalaceAllowedTestIdentity = 'PalaceOrganizeTest-5E1F'
 $script:PalaceReleaseIdentity = 'C20A7629-6BDE-449F-958A-5AAF8BCE88F3'
+$script:PalaceFenrirDesktopName = 'FenrirDesktop'
+$script:PalaceDesktopOverrideLogName = 'palace-ui-desktop-override.log'
 
 if (-not ('PalaceStudioDpi' -as [type])) {
     Add-Type @"
@@ -102,7 +108,135 @@ public static class PalaceStudioDpi {
 "@
 }
 
+function Assert-PalaceDpiOpsHostAllowed {
+    <#
+    .SYNOPSIS
+    Refuse DPI awareness / resize / SendInput on FenrirDesktop (even with -AllowDesktop).
+    #>
+    param([string]$ComputerName = $env:COMPUTERNAME)
+    if ($ComputerName -eq $script:PalaceFenrirDesktopName) {
+        throw 'REFUSED: DPI / SendInput harness steps must not run on FenrirDesktop (no DPI flips on desktop).'
+    }
+}
+
+function Get-PalaceDesktopOverrideLogPath {
+    param(
+        [string]$PackageFamilyName = '',
+        [string]$FallbackDir = ''
+    )
+    if ($PackageFamilyName) {
+        $localState = Join-Path $env:LOCALAPPDATA ("Packages\{0}\LocalState" -f $PackageFamilyName)
+        return (Join-Path $localState $script:PalaceDesktopOverrideLogName)
+    }
+    if ($FallbackDir) {
+        return (Join-Path $FallbackDir $script:PalaceDesktopOverrideLogName)
+    }
+    return (Join-Path (Get-Location).Path $script:PalaceDesktopOverrideLogName)
+}
+
+function Assert-PalaceFenrirDesktopPolicy {
+    <#
+    .SYNOPSIS
+    Default refuse FenrirDesktop. -AllowDesktop requires non-empty -OverrideReason.
+    On override: console warn + append audit line (timestamp, COMPUTERNAME, user, reason, args).
+    #>
+    param(
+        [switch]$AllowDesktop,
+        [string]$OverrideReason = '',
+        [string]$ComputerName = $env:COMPUTERNAME,
+        [string]$UserName = '',
+        [string]$ArgsSummary = '',
+        [string]$PackageFamilyName = '',
+        [string]$AuditLogPath = ''
+    )
+    if ($ComputerName -ne $script:PalaceFenrirDesktopName) {
+        return [pscustomobject]@{
+            DesktopOverride = $false
+            AuditLine = $null
+            AuditLogPath = $null
+        }
+    }
+
+    if (-not $AllowDesktop) {
+        throw 'REFUSED: ui-tests must not run on FenrirDesktop without -AllowDesktop -OverrideReason <non-empty>.'
+    }
+    if ([string]::IsNullOrWhiteSpace($OverrideReason)) {
+        throw 'REFUSED: -AllowDesktop requires non-empty -OverrideReason.'
+    }
+
+    if (-not $UserName) {
+        $UserName = $env:USERNAME
+        if (-not $UserName) { $UserName = [Environment]::UserName }
+    }
+    if (-not $ArgsSummary) { $ArgsSummary = '(none)' }
+
+    $ts = [DateTime]::UtcNow.ToString('o')
+    $auditLine = "timestamp=$ts`tCOMPUTERNAME=$ComputerName`tuser=$UserName`treason=$OverrideReason`targs=$ArgsSummary"
+    $path = $AuditLogPath
+    if (-not $path) {
+        $path = Get-PalaceDesktopOverrideLogPath -PackageFamilyName $PackageFamilyName
+    }
+    $dir = Split-Path -Parent $path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    }
+    Add-Content -LiteralPath $path -Value $auditLine -Encoding UTF8
+
+    Write-Warning ("FenrirDesktop override: $OverrideReason (audit: $path)")
+    Write-Host "DESKTOP OVERRIDE: $auditLine"
+
+    return [pscustomobject]@{
+        DesktopOverride = $true
+        AuditLine = $auditLine
+        AuditLogPath = $path
+        Reason = $OverrideReason
+    }
+}
+
+function Test-PalaceFenrirDesktopPolicySelfTest {
+    <#
+    .SYNOPSIS
+    Fail-closed checks: refuse without -AllowDesktop; refuse empty -OverrideReason.
+    #>
+    $failures = @()
+    try {
+        Assert-PalaceFenrirDesktopPolicy -ComputerName $script:PalaceFenrirDesktopName | Out-Null
+        $failures += 'expected refuse without -AllowDesktop'
+    } catch {
+        if ("$_" -notmatch 'REFUSED:.*FenrirDesktop') { $failures += "unexpected refuse text: $_" }
+    }
+    try {
+        Assert-PalaceFenrirDesktopPolicy -ComputerName $script:PalaceFenrirDesktopName -AllowDesktop -OverrideReason '' | Out-Null
+        $failures += 'expected refuse empty -OverrideReason'
+    } catch {
+        if ("$_" -notmatch 'OverrideReason') { $failures += "unexpected empty-reason text: $_" }
+    }
+    try {
+        Assert-PalaceDpiOpsHostAllowed -ComputerName $script:PalaceFenrirDesktopName | Out-Null
+        $failures += 'expected DPI refuse on FenrirDesktop'
+    } catch {
+        if ("$_" -notmatch 'DPI') { $failures += "unexpected DPI refuse text: $_" }
+    }
+    $tmp = Join-Path ([IO.Path]::GetTempPath()) ('palace-desktop-gate-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    try {
+        $log = Join-Path $tmp $script:PalaceDesktopOverrideLogName
+        $ok = Assert-PalaceFenrirDesktopPolicy -ComputerName $script:PalaceFenrirDesktopName `
+            -AllowDesktop -OverrideReason 'selftest' -UserName 'selftest' `
+            -ArgsSummary '-SelfTestDesktopGate' -AuditLogPath $log
+        if (-not $ok.DesktopOverride) { $failures += 'override did not set DesktopOverride' }
+        if (-not (Test-Path -LiteralPath $log)) { $failures += 'audit log missing' }
+    } finally {
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($failures.Count -gt 0) {
+        throw ("FenrirDesktop policy self-test FAIL: {0}" -f ($failures -join '; '))
+    }
+    return $true
+}
+
 function Enable-PalaceDpiAwareness {
+    Assert-PalaceDpiOpsHostAllowed
     $ctx = [PalaceStudioDpi]::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
     $ok = [PalaceStudioDpi]::SetProcessDpiAwarenessContext($ctx)
     [void][PalaceStudioDpi]::SetThreadDpiAwarenessContext($ctx)
@@ -193,6 +327,7 @@ function Resize-PalaceWindowDip {
         [double]$ToleranceDip = 2,
         [int]$MaxPasses = 3
     )
+    Assert-PalaceDpiOpsHostAllowed
     if ([PalaceStudioDpi]::IsZoomed($Hwnd)) {
         [void][PalaceStudioDpi]::ShowWindow($Hwnd, 9)
         Start-Sleep -Milliseconds 250
@@ -292,6 +427,7 @@ function Assert-PalaceClientDipGate {
         [int]$AppPid = 0,
         [bool]$RequireXamlRoot = $true
     )
+    Assert-PalaceDpiOpsHostAllowed
     if ($RequireXamlRoot -and -not $XamlRootLogPath) {
         throw 'Assert-PalaceClientDipGate -RequireXamlRoot needs -XamlRootLogPath (LocalState palace-xamlroot.log).'
     }
@@ -433,6 +569,7 @@ function Invoke-PalaceSendInputDrag {
         [int]$HoverDwellMs = 450,
         [switch]$NoRelease
     )
+    Assert-PalaceDpiOpsHostAllowed
     $hwnd = Get-PalaceMainHwnd -AppPid $AppPid
     Set-PalaceForeground -Hwnd $hwnd
     Invoke-PalaceHover -AppPid $AppPid -Selector $FromSelector -DwellMs $HoverDwellMs

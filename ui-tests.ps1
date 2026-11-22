@@ -1,4 +1,13 @@
-param([Parameter(Mandatory)][int]$AppPid)
+<#
+.SYNOPSIS
+Palace UI Automation suite. FenrirDesktop refused unless -AllowDesktop -OverrideReason <non-empty>.
+#>
+param(
+    [Parameter(Mandatory = $false)][int]$AppPid = 0,
+    [switch]$AllowDesktop,
+    [string]$OverrideReason = '',
+    [switch]$SelfTestDesktopGate
+)
 
 $ErrorActionPreference = 'Continue'
 $pass = 0
@@ -10,6 +19,7 @@ $script:TestDeletePath = $null
 $script:BackfillAssetName = $null
 $script:MainHwnd = $null
 $script:LastTestOutcome = $null
+$script:DesktopOverride = $null
 $script:BfSourceName = "BfS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:BfImpliedName = "BfI$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:UiSharedName = "UiS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
@@ -18,17 +28,32 @@ $script:UiDragChipName = "UiD$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:PalaceVersion = $null
 $script:IsFenrirStudio = ($env:COMPUTERNAME -eq 'FENRIR-STUDIO')
-
-# HARD: never drive ui-tests on FenrirDesktop (Patreon / Isiac install host).
-if ($env:COMPUTERNAME -eq 'FenrirDesktop') {
-    Write-Error 'REFUSED: ui-tests must not run on FenrirDesktop.'
-    exit 2
-}
+$script:IsFenrirDesktop = ($env:COMPUTERNAME -eq 'FenrirDesktop')
 
 # Studio DPI / SendInput / probe QC helper (Pass1 Blocker2 + S7).
 $script:StudioHarness = Join-Path $script:RepoRoot 'scripts\StudioDpiHarness.ps1'
 if (Test-Path -LiteralPath $script:StudioHarness) {
     . $script:StudioHarness
+}
+
+# Self-test: refuse without switch; refuse empty reason; DPI refuse on desktop. No AppPid.
+if ($SelfTestDesktopGate) {
+    try {
+        if (-not (Get-Command Test-PalaceFenrirDesktopPolicySelfTest -ErrorAction SilentlyContinue)) {
+            throw 'StudioDpiHarness.ps1 missing Test-PalaceFenrirDesktopPolicySelfTest'
+        }
+        Test-PalaceFenrirDesktopPolicySelfTest | Out-Null
+        Write-Host 'FenrirDesktop policy self-test OK'
+        exit 0
+    } catch {
+        Write-Error $_
+        exit 2
+    }
+}
+
+if ($AppPid -le 0) {
+    Write-Error 'AppPid is required (or pass -SelfTestDesktopGate).'
+    exit 2
 }
 
 function Get-PalaceVersionFromProps {
@@ -50,7 +75,7 @@ try {
     exit 2
 }
 
-# Pass2 C1: OpenProcess + GetPackageFullName; exact PalaceOrganizeTest-5E1F; never C20A7629.
+# Pass2 C1: identity ALWAYS (before host override). Exact PalaceOrganizeTest-5E1F; never C20A7629.
 # Unpackaged layout exe / 15700 / other errors => exit 2.
 try {
     if (-not (Get-Command Test-PalaceUiTestIdentity -ErrorAction SilentlyContinue)) {
@@ -63,6 +88,25 @@ try {
         throw "Package version '$pkgVer' must equal '$expectedPkgVer' (Directory.Build.props PalaceVersion + .0)."
     }
     Write-Host "UI test identity OK: $($script:UiTestPackage.Name) $pkgVer"
+} catch {
+    Write-Error $_
+    exit 2
+}
+
+# FenrirDesktop: default refuse. -AllowDesktop requires non-empty -OverrideReason.
+# DPI / S7 still skipped on desktop even when override is set.
+try {
+    if (-not (Get-Command Assert-PalaceFenrirDesktopPolicy -ErrorAction SilentlyContinue)) {
+        throw 'StudioDpiHarness.ps1 missing Assert-PalaceFenrirDesktopPolicy'
+    }
+    $argBits = @("-AppPid $AppPid")
+    if ($AllowDesktop) { $argBits += '-AllowDesktop' }
+    if ($OverrideReason) { $argBits += ("-OverrideReason '{0}'" -f ($OverrideReason -replace "'", "''")) }
+    $script:DesktopOverride = Assert-PalaceFenrirDesktopPolicy `
+        -AllowDesktop:$AllowDesktop `
+        -OverrideReason $OverrideReason `
+        -PackageFamilyName $script:UiTestPackage.PackageFamilyName `
+        -ArgsSummary ($argBits -join ' ')
 } catch {
     Write-Error $_
     exit 2
@@ -680,7 +724,11 @@ Test-UI 'Tags drag: hover + SendInput to group (probe/status gate)' {
     throw "Tags drag QC FAIL: Starting=$hasStarting Over=$hasOver Drop=$hasDrop Added=$addedOk status='$st'"
 }
 } else {
-    Write-Host "Skipping Tags drag S7 (COMPUTERNAME=$($env:COMPUTERNAME); need FENRIR-STUDIO)"
+    if ($script:IsFenrirDesktop) {
+        Write-Host "Skipping Tags drag S7 / DPI on FenrirDesktop (override does not enable DPI flips)"
+    } else {
+        Write-Host "Skipping Tags drag S7 (COMPUTERNAME=$($env:COMPUTERNAME); need FENRIR-STUDIO)"
+    }
 }
 
 Test-UI 'Navigate to Rooms' { winapp ui invoke 'NavRooms' -a $AppPid }
@@ -1441,13 +1489,30 @@ winapp ui screenshot -a $AppPid -o 'screenshots/03-settings.png' 2>$null
 
 Write-Host ""
 Write-Host "Passed: $pass | Partial: $partial | Failed: $fail"
+if ($script:DesktopOverride -and $script:DesktopOverride.DesktopOverride) {
+    Write-Host "Desktop override: $($script:DesktopOverride.AuditLine)" -ForegroundColor Yellow
+    Write-Host "Desktop override log: $($script:DesktopOverride.AuditLogPath)" -ForegroundColor Yellow
+}
 $results | Where-Object { $_.status -eq 'PARTIAL' } | ForEach-Object {
     Write-Host "  PARTIAL: $($_.name) - $($_.detail)" -ForegroundColor Yellow
 }
 $results | Where-Object { $_.status -eq 'FAIL' } | ForEach-Object {
     Write-Host "  FAIL: $($_.name) - $($_.detail)" -ForegroundColor Red
 }
-$results | ConvertTo-Json | Out-File 'test-results.json'
+$summaryObj = [ordered]@{
+    passed = $pass
+    partial = $partial
+    failed = $fail
+    results = $results
+}
+if ($script:DesktopOverride -and $script:DesktopOverride.DesktopOverride) {
+    $summaryObj.desktopOverride = @{
+        reason = $script:DesktopOverride.Reason
+        auditLine = $script:DesktopOverride.AuditLine
+        auditLogPath = $script:DesktopOverride.AuditLogPath
+    }
+}
+$summaryObj | ConvertTo-Json -Depth 6 | Out-File 'test-results.json'
 if ($fail -gt 0) { exit 1 }
 if ($partial -gt 0) { exit 3 }
 exit 0
