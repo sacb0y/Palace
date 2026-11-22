@@ -110,6 +110,13 @@ public sealed partial class ViewerDetailsCard : UserControl
             // ThemeShadow / Translation unavailable in some hosts.
         }
 
+        // Unloaded unsubscribes Gallery; DP value survives Settings round-trip —
+        // re-subscribe so Info / Details toggles keep working.
+        if (Gallery is not null && !ReferenceEquals(_subscribed, Gallery))
+        {
+            SubscribeGallery(Gallery);
+        }
+
         ApplyHighContrastBorder();
         CompactSectionExpanders();
         if (!_inFlow && _viewport is null)
@@ -122,6 +129,11 @@ public sealed partial class ViewerDetailsCard : UserControl
                 _viewport.SizeChanged -= Viewport_SizeChanged;
                 _viewport.SizeChanged += Viewport_SizeChanged;
             }
+        }
+        else if (_viewport is not null)
+        {
+            _viewport.SizeChanged -= Viewport_SizeChanged;
+            _viewport.SizeChanged += Viewport_SizeChanged;
         }
 
         ApplyLayout();

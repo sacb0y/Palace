@@ -262,7 +262,7 @@
             RowSpacing="8">
             <!-- A1: one-row header Grid (* / Auto / Auto / Auto). No WrapPanel.
                  Expand/Collapse → icon-only + tooltips when board &lt;~400 DIP. -->
-            <!-- header Auto · chips * · mosaic Auto (MaxHeight 280) · composer Auto. -->
+            <!-- header Auto · chips * · mosaic Auto (host MaxHeight 280, no inner *) · composer Auto. -->
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -505,12 +505,15 @@
                 </Grid>
             </Grid>
             <ScrollViewer
+                x:Name="ScrTagChildren"
                 Grid.Row="1"
                 VerticalAlignment="Stretch"
                 AutomationProperties.AutomationId="RepTagChildren"
                 AutomationProperties.Name="Tags in selected group"
                 HorizontalScrollBarVisibility="Disabled"
                 HorizontalScrollMode="Disabled"
+                PointerExited="TagBoard_PointerExited"
+                PointerMoved="TagBoard_PointerMoved"
                 VerticalContentAlignment="Top"
                 VerticalScrollBarVisibility="Auto"
                 Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsAliasesView), Mode=OneWay}">
@@ -685,12 +688,13 @@
             </ScrollViewer>
             <Grid
                 Grid.Row="2"
+                MaxHeight="280"
                 RowSpacing="8"
                 Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.HasTagAssets), Mode=OneWay}">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <TextBlock
                 x:Name="TxtTagSelectionCount"

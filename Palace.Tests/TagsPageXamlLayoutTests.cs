@@ -109,6 +109,19 @@ public sealed class TagsPageXamlLayoutTests
         var assetsOpen = xaml[mosaic..(mosaic + 400)];
         Assert.Contains("MaxHeight=\"280\"", assetsOpen, StringComparison.Ordinal);
         Assert.Contains("HasTagAssets", xaml, StringComparison.Ordinal);
+
+        // Mosaic host (Grid.Row=2 under board pane) is Auto + MaxHeight 280 — no inner *.
+        var hostMatch = Regex.Match(
+            xaml,
+            @"<Grid\s+Grid\.Row=""2""\s+MaxHeight=""280""",
+            RegexOptions.CultureInvariant);
+        Assert.True(hostMatch.Success, "mosaic host Grid Row=2 MaxHeight=280 missing");
+        var hostStart = hostMatch.Index;
+        var hostRows = xaml.IndexOf("<Grid.RowDefinitions>", hostStart, StringComparison.Ordinal);
+        var hostRowsEnd = xaml.IndexOf("</Grid.RowDefinitions>", hostRows, StringComparison.Ordinal);
+        var hostBlock = xaml[hostRows..hostRowsEnd];
+        Assert.DoesNotContain("Height=\"*\"", hostBlock, StringComparison.Ordinal);
+        Assert.Equal(3, Regex.Matches(hostBlock, @"Height=""Auto""").Count);
     }
 
     [Fact]

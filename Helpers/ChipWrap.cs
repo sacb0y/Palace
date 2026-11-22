@@ -10,7 +10,8 @@ public static class ChipWrap
         IReadOnlyList<(double Width, double Height)> sizes,
         double width,
         double horizontalSpacing,
-        double verticalSpacing)
+        double verticalSpacing,
+        bool reserveTrailingGap = false)
     {
         if (sizes.Count == 0 || width <= 0 || double.IsNaN(width))
         {
@@ -19,6 +20,7 @@ public static class ChipWrap
 
         var slots = new MosaicSlot[sizes.Count];
         var usable = Math.Max(1, width);
+        var gap = Math.Max(0, horizontalSpacing);
         var x = 0d;
         var y = 0d;
         var rowHeight = 0d;
@@ -26,7 +28,11 @@ public static class ChipWrap
         {
             var w = Math.Max(1, sizes[i].Width);
             var h = Math.Max(1, sizes[i].Height);
-            if (x > 0 && x + w > usable)
+            // When arranging into the trailing wrap gap (Tags board star), reserve
+            // that gap in the wrap test so the last chip's star is not clamped
+            // onto the face (x + w + gap would otherwise equal final − x ≈ w).
+            var need = reserveTrailingGap ? w + gap : w;
+            if (x > 0 && x + need > usable)
             {
                 y += rowHeight + verticalSpacing;
                 x = 0;
@@ -95,7 +101,8 @@ public static class ChipWrap
         IReadOnlyList<(double Width, double Height)> sizes,
         double availableWidth,
         double horizontalSpacing,
-        double verticalSpacing)
+        double verticalSpacing,
+        bool reserveTrailingGap = false)
     {
         if (sizes.Count == 0)
         {
@@ -107,7 +114,12 @@ public static class ChipWrap
             return NaturalContentWidth(sizes, horizontalSpacing);
         }
 
-        var slots = Layout(sizes, availableWidth, horizontalSpacing, verticalSpacing);
+        var slots = Layout(
+            sizes,
+            availableWidth,
+            horizontalSpacing,
+            verticalSpacing,
+            reserveTrailingGap);
         return Math.Min(availableWidth, ExtentWidth(slots));
     }
 

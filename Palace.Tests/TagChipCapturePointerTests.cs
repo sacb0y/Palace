@@ -62,6 +62,17 @@ public sealed class TagChipCapturePointerTests
     }
 
     [Fact]
+    public void TagChip_ClearsPressedWhenIsDragSourceArms()
+    {
+        var cs = TagChipCode().Replace("\r\n", "\n");
+        Assert.Contains("new PropertyMetadata(false, OnIsDragSourceChanged)", cs, StringComparison.Ordinal);
+        var method = cs.IndexOf("private static void OnIsDragSourceChanged", StringComparison.Ordinal);
+        Assert.True(method >= 0, "OnIsDragSourceChanged method missing");
+        var body = cs[method..(method + 500)];
+        Assert.Contains("_pressed = false", body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Probe_LogDragStarting_Increments()
     {
         TagDragUi.ProbeEnabledOverride = true;

@@ -84,12 +84,14 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
             }
         }
 
+        var intoGap = ArrangeIntoTrailingGap;
         var wrapWidth = finiteAvail
             ? availableSize.Width
             : Math.Max(1, ChipWrap.NaturalContentWidth(sizes, HorizontalSpacing));
-        var slots = ChipWrap.Layout(sizes, wrapWidth, HorizontalSpacing, VerticalSpacing);
+        var slots = ChipWrap.Layout(
+            sizes, wrapWidth, HorizontalSpacing, VerticalSpacing, intoGap);
         var desiredWidth = ChipWrap.MeasureDesiredWidth(
-            sizes, availableSize.Width, HorizontalSpacing, VerticalSpacing);
+            sizes, availableSize.Width, HorizontalSpacing, VerticalSpacing, intoGap);
         return new Size(desiredWidth, ChipWrap.ExtentHeight(slots));
     }
 
@@ -116,8 +118,9 @@ public sealed class ChipWrapLayout : NonVirtualizingLayout
                 sizes[i].Height);
         }
 
-        var slots = ChipWrap.Layout(sizes, width, HorizontalSpacing, VerticalSpacing);
         var intoGap = ArrangeIntoTrailingGap;
+        var slots = ChipWrap.Layout(
+            sizes, width, HorizontalSpacing, VerticalSpacing, intoGap);
         for (var i = 0; i < children.Count && i < slots.Count; i++)
         {
             var slot = slots[i];

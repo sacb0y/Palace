@@ -158,18 +158,17 @@ public sealed partial class GalleryStillSurface : UserControl
     {
         _wheelHandler = ScrStill_PointerWheelChanged;
         InitializeComponent();
-        // Hidden ScrollViewer marks wheel handled (native pan/zoom no-op with
-        // ZoomMode Disabled). Learn trackpad pinch is this event — listen even
-        // after it is handled so Ctrl+wheel still zooms.
-        ScrStill.AddHandler(UIElement.PointerWheelChangedEvent, _wheelHandler, handledEventsToo: true);
-        // DPI / composition scale changes resize physical swapchain buffers.
-        ScpHdr.CompositionScaleChanged += ScpHdr_CompositionScaleChanged;
-        // AppWindowId can be 0 before the island is ready — retry on Loaded.
-        Loaded += (_, _) => HookAdvancedColor();
+        // LibraryPage is NavigationCacheMode=Required: Unloaded tears down wheel /
+        // DPI hooks on Settings round-trip — re-hook from Loaded (idempotent).
+        Loaded += (_, _) =>
+        {
+            HookSurfaceInput();
+            HookAdvancedColor();
+            EnsurePagerExpressions();
+        };
         Unloaded += (_, _) =>
         {
-            ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
-            ScpHdr.CompositionScaleChanged -= ScpHdr_CompositionScaleChanged;
+            UnhookSurfaceInput();
             UnhookPeak();
             UnhookAdvancedColor();
             UnhookUiSettings();
@@ -180,7 +179,28 @@ public sealed partial class GalleryStillSurface : UserControl
             _presenter?.Dispose();
             _presenter = null;
         };
-        Loaded += (_, _) => EnsurePagerExpressions();
+    }
+
+    /// <summary>
+    /// Wheel (Ctrl+zoom / pinch / pan) + CompositionScaleChanged. Safe to call
+    /// from Loaded after Unloaded removed them (Settings → Library).
+    /// </summary>
+    private void HookSurfaceInput()
+    {
+        ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
+        // Hidden ScrollViewer marks wheel handled (native pan/zoom no-op with
+        // ZoomMode Disabled). Learn trackpad pinch is this event — listen even
+        // after it is handled so Ctrl+wheel still zooms.
+        ScrStill.AddHandler(UIElement.PointerWheelChangedEvent, _wheelHandler, handledEventsToo: true);
+        ScpHdr.CompositionScaleChanged -= ScpHdr_CompositionScaleChanged;
+        // DPI / composition scale changes resize physical swapchain buffers.
+        ScpHdr.CompositionScaleChanged += ScpHdr_CompositionScaleChanged;
+    }
+
+    private void UnhookSurfaceInput()
+    {
+        ScrStill.RemoveHandler(UIElement.PointerWheelChangedEvent, _wheelHandler);
+        ScpHdr.CompositionScaleChanged -= ScpHdr_CompositionScaleChanged;
     }
 
     private void ScpHdr_CompositionScaleChanged(SwapChainPanel sender, object args)

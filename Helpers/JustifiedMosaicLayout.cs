@@ -108,7 +108,12 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     {
         var state = GetState(context);
         var width = ResolveWidth(availableSize.Width);
-        Recalculate(context, state, width);
+        // Cache by width + item count — ItemsView remeasures on every scroll step.
+        // Relayout() / HostWidth / DP changes still InvalidateMeasure → fresh pass.
+        if (state.Rects.Count != context.ItemCount || Math.Abs(state.LaidOutWidth - width) > 0.5)
+        {
+            Recalculate(context, state, width);
+        }
 
         var realization = RealizationWindow(context, width);
         RecycleOutside(context, state, realization);

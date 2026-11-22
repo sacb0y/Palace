@@ -35,6 +35,11 @@ public sealed class VideoBrowseSwipeBinder
     private TimeSpan _scrubStartPosition;
     private long _lastScrubSeekMs;
     private FrameworkElement? _progressSlider;
+    private readonly PointerEventHandler _pressedHandler;
+    private readonly PointerEventHandler _movedHandler;
+    private readonly PointerEventHandler _releasedHandler;
+    private readonly PointerEventHandler _canceledHandler;
+    private readonly PointerEventHandler _captureLostHandler;
 
     public VideoBrowseSwipeBinder(
         MediaPlayerElement mpe,
@@ -48,6 +53,11 @@ public sealed class VideoBrowseSwipeBinder
         _onNavigate = onNavigate;
         _isReviewMode = isReviewMode ?? (() => false);
         _onLeavePlaying = onLeavePlaying;
+        _pressedHandler = OnPointerPressed;
+        _movedHandler = OnPointerMoved;
+        _releasedHandler = OnPointerReleased;
+        _canceledHandler = OnPointerCanceled;
+        _captureLostHandler = OnPointerCaptureLost;
     }
 
     public void Hook()
@@ -57,27 +67,29 @@ public sealed class VideoBrowseSwipeBinder
             return;
         }
 
-        _mpe.AddHandler(
-            UIElement.PointerPressedEvent,
-            new PointerEventHandler(OnPointerPressed),
-            handledEventsToo: true);
-        _mpe.AddHandler(
-            UIElement.PointerMovedEvent,
-            new PointerEventHandler(OnPointerMoved),
-            handledEventsToo: true);
-        _mpe.AddHandler(
-            UIElement.PointerReleasedEvent,
-            new PointerEventHandler(OnPointerReleased),
-            handledEventsToo: true);
-        _mpe.AddHandler(
-            UIElement.PointerCanceledEvent,
-            new PointerEventHandler(OnPointerCanceled),
-            handledEventsToo: true);
-        _mpe.AddHandler(
-            UIElement.PointerCaptureLostEvent,
-            new PointerEventHandler(OnPointerCaptureLost),
-            handledEventsToo: true);
+        _mpe.AddHandler(UIElement.PointerPressedEvent, _pressedHandler, handledEventsToo: true);
+        _mpe.AddHandler(UIElement.PointerMovedEvent, _movedHandler, handledEventsToo: true);
+        _mpe.AddHandler(UIElement.PointerReleasedEvent, _releasedHandler, handledEventsToo: true);
+        _mpe.AddHandler(UIElement.PointerCanceledEvent, _canceledHandler, handledEventsToo: true);
+        _mpe.AddHandler(UIElement.PointerCaptureLostEvent, _captureLostHandler, handledEventsToo: true);
         _hooked = true;
+    }
+
+    /// <summary>Remove pointer handlers (page Unloaded / surface dispose).</summary>
+    public void Unhook()
+    {
+        if (!_hooked)
+        {
+            return;
+        }
+
+        CancelAll();
+        _mpe.RemoveHandler(UIElement.PointerPressedEvent, _pressedHandler);
+        _mpe.RemoveHandler(UIElement.PointerMovedEvent, _movedHandler);
+        _mpe.RemoveHandler(UIElement.PointerReleasedEvent, _releasedHandler);
+        _mpe.RemoveHandler(UIElement.PointerCanceledEvent, _canceledHandler);
+        _mpe.RemoveHandler(UIElement.PointerCaptureLostEvent, _captureLostHandler);
+        _hooked = false;
     }
 
     public void SyncAllowed()
