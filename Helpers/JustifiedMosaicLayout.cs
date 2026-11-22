@@ -97,7 +97,14 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         }
         else if (!double.IsFinite(HostWidth) || HostWidth <= 0)
         {
+            // First usable width must dirty+measure — stamping alone left empty thumbs
+            // until a later resize crossed WidthEpsilon.
             HostWidth = double.IsFinite(width) && width > 0 ? width : 0;
+            if (HostWidth > 0)
+            {
+                _layoutDirty = true;
+                InvalidateMeasure();
+            }
         }
     }
 

@@ -58,6 +58,9 @@ public sealed class TileMoreRevealXamlTests
 
         var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"));
         Assert.Contains("TileMoreChrome.ShouldShow", cs, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.IsSelectMode", cs, StringComparison.Ordinal);
+        Assert.Contains("ViewModel.SelectionCount", cs, StringComparison.Ordinal);
+        Assert.Contains("RefreshTileMoreReveals", cs, StringComparison.Ordinal);
         Assert.Contains("ApplyRevealVisual", cs, StringComparison.Ordinal);
         Assert.Contains("TileMoreChrome.Opacity", cs, StringComparison.Ordinal);
         Assert.Contains("BottomEdgeAlignedRight", cs, StringComparison.Ordinal);

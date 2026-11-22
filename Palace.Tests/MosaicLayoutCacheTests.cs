@@ -76,6 +76,31 @@ public sealed class MosaicLayoutCacheTests
         Assert.Contains("MosaicLayoutCache.NeedsRecalculate", cs, StringComparison.Ordinal);
         Assert.Contains("MosaicLayoutCache.MarksDirtyOnItemsChange", cs, StringComparison.Ordinal);
         Assert.Contains("base.OnItemsChangedCore", cs, StringComparison.Ordinal);
+        // First usable HostWidth must dirty+InvalidateMeasure (not stamp-only).
+        Assert.Contains("First usable width must dirty", cs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LibraryPage_SchedulesThumbsOnUsableWidth()
+    {
+        var cs = File.ReadAllText(
+            Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"));
+        Assert.Contains("ScheduleThumbPlan(\"resize\")", cs, StringComparison.Ordinal);
+        Assert.Contains("MinUsable", cs, StringComparison.Ordinal);
+        Assert.Contains("RequestMosaicFocusAfterNav", cs, StringComparison.Ordinal);
+        Assert.Contains("RefreshTileMoreReveals", cs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void LibraryPage_FoldersTreeWrappedInScrollViewer()
+    {
+        var xaml = File.ReadAllText(
+            Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml"));
+        Assert.Contains("AutomationProperties.AutomationId=\"ScrFolders\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("x:Name=\"TreFolders\"", xaml, StringComparison.Ordinal);
+        var scrIdx = xaml.IndexOf("ScrFolders", StringComparison.Ordinal);
+        var treIdx = xaml.IndexOf("x:Name=\"TreFolders\"", StringComparison.Ordinal);
+        Assert.True(scrIdx >= 0 && treIdx > scrIdx, "TreFolders must sit inside ScrFolders ScrollViewer");
     }
 
     private static string RepoRoot()
