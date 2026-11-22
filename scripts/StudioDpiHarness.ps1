@@ -5,31 +5,56 @@ Canonical FENRIR-STUDIO / Windows UI harness helpers for Palace.
 .DESCRIPTION
 Call Enable-PalaceDpiAwareness before any GetWindowRect / SetWindowPos /
 screenshot / SendInput. Sizes windows so the *client* area matches the
-target DIP (chrome-compensated SetWindowPos), gates on client DIP (and
-optional XamlRoot log), hovers to arm CanDrag, and runs SendInput drags.
+target DIP (chrome-compensated SetWindowPos), gates on client DIP + required
+XamlRoot LocalState probe, hovers to arm CanDrag, and runs absolute SendInput
+drags (MOVE|ABSOLUTE|VIRTUALDESK past SM_CXDRAG + wiggle).
 
 Drag QC (Blocker1): gate on Palace.TagDrag DragStarting / DragOver / Drop
 probe lines. Do NOT fail QC solely on HWND/BitBlt float=0 near the cursor -
 layered DragUI is out-of-band for single-HWND CAPTUREBLT.
 
+C1: Test-PalaceUiTestIdentity uses OpenProcess + GetPackageFullName; exact
+allowlist PalaceOrganizeTest-5E1F; refuse C20A7629; APPMODEL_ERROR_NO_PACKAGE
+(15700) / unpackaged layout exe refuse.
+
 .EXAMPLE
 . .\scripts\StudioDpiHarness.ps1
 Enable-PalaceDpiAwareness
 $h = Get-PalaceMainHwnd -AppPid $AppPid
+$xr = Get-PalaceXamlRootLogPath -PackageFamilyName $pkg.PackageFamilyName
+if (Test-Path $xr) { Remove-Item -LiteralPath $xr -Force }
 Resize-PalaceWindowDip -Hwnd $h -DipWidth 1280 -DipHeight 900
-Assert-PalaceClientDipGate -Hwnd $h -TargetDipWidth 1280 -ToleranceDip 2
+Assert-PalaceClientDipGate -Hwnd $h -TargetDipWidth 1280 -AppPid $AppPid -XamlRootLogPath $xr
 Invoke-PalaceSendInputDrag -AppPid $AppPid -FromSelector 'BtnTagChip_Sonic' -ToSelector 'BtnTagGroup_Character'
-Assert-TagDragQcFromProbes -LogPath $env:TEMP\palace-tagdrag.log -RequireStarting
+Assert-TagDragQcFromProbes -LogPath $env:PALACE_TAG_DRAG_LOG_FILE -RequireStarting -RequireOver -RequireDrop
 #>
 
 # Dot-source only. ASCII-only (Windows PowerShell 5.1).
+
+$script:PalaceAllowedTestIdentity = 'PalaceOrganizeTest-5E1F'
+$script:PalaceReleaseIdentity = 'C20A7629-6BDE-449F-958A-5AAF8BCE88F3'
 
 if (-not ('PalaceStudioDpi' -as [type])) {
     Add-Type @"
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 public static class PalaceStudioDpi {
   public static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = (IntPtr)(-4);
+  public const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+  public const int APPMODEL_ERROR_NO_PACKAGE = 15700;
+  public const int ERROR_INSUFFICIENT_BUFFER = 122;
+  public const int ERROR_SUCCESS = 0;
+  public const uint MOUSEEVENTF_MOVE = 0x0001;
+  public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
+  public const uint MOUSEEVENTF_LEFTUP = 0x0004;
+  public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
+  public const uint MOUSEEVENTF_VIRTUALDESK = 0x4000;
+  public const int SM_CXDRAG = 68;
+  public const int SM_XVIRTUALSCREEN = 76;
+  public const int SM_YVIRTUALSCREEN = 77;
+  public const int SM_CXVIRTUALSCREEN = 78;
+  public const int SM_CYVIRTUALSCREEN = 79;
   [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
   [DllImport("user32.dll")] public static extern IntPtr GetThreadDpiAwarenessContext();
   [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
@@ -51,6 +76,11 @@ public static class PalaceStudioDpi {
   [DllImport("user32.dll", CharSet = CharSet.Auto)] public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, int dwProcessId);
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool CloseHandle(IntPtr hObject);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  public static extern int GetPackageFullName(IntPtr hProcess, ref uint packageFullNameLength, StringBuilder packageFullName);
   public struct RECT { public int Left, Top, Right, Bottom; }
   public struct POINT { public int X, Y; }
   [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
@@ -73,11 +103,6 @@ public static class PalaceStudioDpi {
 }
 
 function Enable-PalaceDpiAwareness {
-    <#
-    .SYNOPSIS
-    Sets PER_MONITOR_AWARE_V2 on the current process (and thread) before any
-    window math / SendInput. Safe to call more than once.
-    #>
     $ctx = [PalaceStudioDpi]::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
     $ok = [PalaceStudioDpi]::SetProcessDpiAwarenessContext($ctx)
     [void][PalaceStudioDpi]::SetThreadDpiAwarenessContext($ctx)
@@ -91,9 +116,7 @@ function Enable-PalaceDpiAwareness {
 }
 
 function Get-PalaceMainHwnd {
-    param(
-        [Parameter(Mandatory)][int]$AppPid
-    )
+    param([Parameter(Mandatory)][int]$AppPid)
     $raw = winapp ui list-windows -a $AppPid --json 2>$null
     $windows = $raw | ConvertFrom-Json
     $main = @($windows) | Where-Object {
@@ -139,17 +162,19 @@ function Get-PalaceWindowMetrics {
     [void][PalaceStudioDpi]::GetClientRect($Hwnd, [ref]$cr)
     $clientPxW = $cr.Right - $cr.Left
     $clientPxH = $cr.Bottom - $cr.Top
-    $clientDipW = $clientPxW / $scale
-    $clientDipH = $clientPxH / $scale
     return [pscustomobject]@{
         Dpi = [int]$dpi
         Scale = [double]$scale
         WindowPhysW = ($wr.Right - $wr.Left)
         WindowPhysH = ($wr.Bottom - $wr.Top)
+        WindowLeft = $wr.Left
+        WindowTop = $wr.Top
+        WindowRight = $wr.Right
+        WindowBottom = $wr.Bottom
         ClientPxW = [int]$clientPxW
         ClientPxH = [int]$clientPxH
-        ClientDipW = [double]$clientDipW
-        ClientDipH = [double]$clientDipH
+        ClientDipW = [double]($clientPxW / $scale)
+        ClientDipH = [double]($clientPxH / $scale)
         Zoomed = [bool][PalaceStudioDpi]::IsZoomed($Hwnd)
     }
 }
@@ -158,9 +183,7 @@ function Resize-PalaceWindowDip {
     <#
     .SYNOPSIS
     Sizes the HWND so the *client* area matches the requested DIP size
-    (chrome-compensated SetWindowPos). DipWidth/DipHeight are CLIENT DIPs,
-    matching Assert-PalaceClientDipGate / XamlRoot. Requires
-    Enable-PalaceDpiAwareness first.
+    (chrome-compensated SetWindowPos).
     #>
     param(
         [Parameter(Mandatory)][IntPtr]$Hwnd,
@@ -189,8 +212,6 @@ function Resize-PalaceWindowDip {
         if ($dpi -le 0) { $dpi = 96 }
         $scale = $dpi / 96.0
         $metrics = Get-PalaceWindowMetrics -Hwnd $Hwnd
-        # Non-client chrome in physical px (title bar + borders). WinUI custom
-        # chrome is not always what AdjustWindowRectExForDpi returns, so measure.
         $chromePxW = [math]::Max(0, $metrics.WindowPhysW - $metrics.ClientPxW)
         $chromePxH = [math]::Max(0, $metrics.WindowPhysH - $metrics.ClientPxH)
         $clientPxW = [int][math]::Round($DipWidth * $scale)
@@ -201,7 +222,6 @@ function Resize-PalaceWindowDip {
         if ($physH -gt $workH - 20) { $physH = $workH - 20 }
         Write-Verbose ("Resize pass {0}: targetClientDip={1}x{2} chromePx={3}x{4} outerPhys={5}x{6}" -f `
             $pass, $DipWidth, $DipHeight, $chromePxW, $chromePxH, $physW, $physH)
-        # SWP_SHOWWINDOW
         [void][PalaceStudioDpi]::SetWindowPos(
             $Hwnd, [IntPtr]::Zero,
             $mi.rcWork.Left + 10, $mi.rcWork.Top + 10,
@@ -214,41 +234,43 @@ function Resize-PalaceWindowDip {
             return $metrics
         }
     }
-    Write-Verbose ("Resize settled clientDip={0}x{1} (wanted {2}x{3}; gate will assert)" -f `
-        $metrics.ClientDipW, $metrics.ClientDipH, $DipWidth, $DipHeight)
     return $metrics
 }
 
+function Get-PalaceXamlRootLogPath {
+    param(
+        [Parameter(Mandatory)][string]$PackageFamilyName
+    )
+    $localState = Join-Path $env:LOCALAPPDATA ("Packages\{0}\LocalState" -f $PackageFamilyName)
+    return (Join-Path $localState 'palace-xamlroot.log')
+}
+
 function Read-PalaceXamlRootLog {
-    <#
-    .SYNOPSIS
-    Reads the latest XamlRoot.Size / RasterizationScale line from an optional
-    app probe log (PALACE_XAMLROOT_LOG or %TEMP%\palace-xamlroot.log).
-    #>
-    param([string]$LogPath = '')
-    if (-not $LogPath) {
-        if ($env:PALACE_XAMLROOT_LOG) { $LogPath = $env:PALACE_XAMLROOT_LOG }
-        else { $LogPath = Join-Path $env:TEMP 'palace-xamlroot.log' }
-    }
+    param(
+        [Parameter(Mandatory)][string]$LogPath,
+        [int]$ExpectedPid = 0
+    )
     if (-not (Test-Path -LiteralPath $LogPath)) { return $null }
-    $lines = Get-Content -LiteralPath $LogPath -ErrorAction SilentlyContinue
-    if (-not $lines) { return $null }
+    $text = Get-Content -LiteralPath $LogPath -Raw -ErrorAction Stop
+    if (-not $text) { return $null }
+    $lines = $text -split "`r?`n" | Where-Object { $_ }
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
         $line = $lines[$i]
-        if ($line -match 'XamlRoot\.Size\s*=\s*([0-9.]+)\s*x\s*([0-9.]+)') {
-            $w = [double]$Matches[1]
-            $h = [double]$Matches[2]
-            $scale = $null
-            if ($line -match 'RasterizationScale\s*=\s*([0-9.]+)') {
-                $scale = [double]$Matches[1]
-            }
-            return [pscustomobject]@{
-                Width = $w
-                Height = $h
-                Scale = $scale
-                Raw = $line
-                Path = $LogPath
-            }
+        if ($line -notmatch 'XamlRoot\.Size=([0-9.]+)x([0-9.]+)') { continue }
+        $w = [double]$Matches[1]
+        $h = [double]$Matches[2]
+        if ($line -notmatch 'RasterizationScale=([0-9.]+)') { continue }
+        $scale = [double]$Matches[1]
+        if ($line -notmatch 'pid=([0-9]+)') { continue }
+        $pid = [int]$Matches[1]
+        if ($ExpectedPid -gt 0 -and $pid -ne $ExpectedPid) { continue }
+        return [pscustomobject]@{
+            Width = $w
+            Height = $h
+            Scale = $scale
+            Pid = $pid
+            Raw = $line
+            Path = $LogPath
         }
     }
     return $null
@@ -257,33 +279,46 @@ function Read-PalaceXamlRootLog {
 function Assert-PalaceClientDipGate {
     <#
     .SYNOPSIS
-    Waits until client DIP (GetClientRect px / GetDpiForWindow scale) is within
-    ToleranceDip of TargetDipWidth. When a XamlRoot log is present, also require
-    |XamlRoot.Width - clientDip| <= ToleranceDip (the Studio smoking-gun gate).
+    Waits until client DIP matches TargetDipWidth and (by default) a XamlRoot
+    LocalState probe line matches client DIP and AppPid.
     #>
     param(
         [Parameter(Mandatory)][IntPtr]$Hwnd,
         [double]$TargetDipWidth = 0,
         [double]$ToleranceDip = 2,
         [int]$TimeoutMs = 8000,
-        [string]$XamlRootLogPath = ''
+        [string]$XamlRootLogPath = '',
+        [int]$AppPid = 0,
+        [bool]$RequireXamlRoot = $true
     )
+    if ($RequireXamlRoot -and -not $XamlRootLogPath) {
+        throw 'Assert-PalaceClientDipGate -RequireXamlRoot needs -XamlRootLogPath (LocalState palace-xamlroot.log).'
+    }
+    if ($RequireXamlRoot -and $AppPid -le 0) {
+        throw 'Assert-PalaceClientDipGate -RequireXamlRoot needs -AppPid to match probe pid.'
+    }
+
     $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
     $last = $null
+    $xamlDelta = $null
+    $xr = $null
     do {
         $last = Get-PalaceWindowMetrics -Hwnd $Hwnd
         $okTarget = $true
         if ($TargetDipWidth -gt 0) {
             $okTarget = [math]::Abs($last.ClientDipW - $TargetDipWidth) -le $ToleranceDip
         }
-        $xr = Read-PalaceXamlRootLog -LogPath $XamlRootLogPath
-        $okXaml = $true
-        $xamlDelta = $null
-        if ($xr) {
-            $xamlDelta = [math]::Abs($xr.Width - $last.ClientDipW)
-            $okXaml = $xamlDelta -le $ToleranceDip
-            Write-Verbose ("GATE: |XamlRoot.Width {0} - clientPx/{1} {2}| = {3} (need le {4})" -f `
-                $xr.Width, $last.Scale, $last.ClientDipW, $xamlDelta, $ToleranceDip)
+        $okXaml = -not $RequireXamlRoot
+        if ($RequireXamlRoot -or $XamlRootLogPath) {
+            $xr = Read-PalaceXamlRootLog -LogPath $XamlRootLogPath -ExpectedPid $AppPid
+            if ($xr) {
+                $xamlDelta = [math]::Abs($xr.Width - $last.ClientDipW)
+                $okXaml = $xamlDelta -le $ToleranceDip
+                Write-Verbose ("GATE: |XamlRoot.Width {0} - clientDip {1}| = {2} pid={3} (need le {4})" -f `
+                    $xr.Width, $last.ClientDipW, $xamlDelta, $xr.Pid, $ToleranceDip)
+            } elseif ($RequireXamlRoot) {
+                $okXaml = $false
+            }
         }
         if ($okTarget -and $okXaml -and -not $last.Zoomed) {
             return [pscustomobject]@{
@@ -297,6 +332,9 @@ function Assert-PalaceClientDipGate {
     } while ((Get-Date) -lt $deadline)
 
     $msg = "XamlRoot/client DIP gate FAIL: clientDipW=$($last.ClientDipW) target=$TargetDipWidth"
+    if ($RequireXamlRoot -and -not $xr) {
+        $msg += " (missing XamlRoot probe for pid=$AppPid at $XamlRootLogPath)"
+    }
     if ($null -ne $xamlDelta) { $msg += " xamlDelta=$xamlDelta" }
     throw $msg
 }
@@ -304,24 +342,30 @@ function Assert-PalaceClientDipGate {
 function Get-PalaceUiCenter {
     param(
         [Parameter(Mandatory)][int]$AppPid,
-        [Parameter(Mandatory)][string]$Selector
+        [Parameter(Mandatory)][string]$Selector,
+        [IntPtr]$Hwnd = [IntPtr]::Zero
     )
     $raw = winapp ui get-property $Selector -a $AppPid --json 2>$null
     $json = $raw | ConvertFrom-Json
     $e = $json.element
     if (-not $e -or [int]$e.width -lt 5) { throw "Element unsized: $Selector" }
+    $x = [int]($e.x + $e.width / 2)
+    $y = [int]($e.y + $e.height / 2)
+    if ($Hwnd -ne [IntPtr]::Zero) {
+        $m = Get-PalaceWindowMetrics -Hwnd $Hwnd
+        if ($x -lt $m.WindowLeft + 2) { $x = $m.WindowLeft + 2 }
+        if ($x -gt $m.WindowRight - 3) { $x = $m.WindowRight - 3 }
+        if ($y -lt $m.WindowTop + 2) { $y = $m.WindowTop + 2 }
+        if ($y -gt $m.WindowBottom - 3) { $y = $m.WindowBottom - 3 }
+    }
     return [pscustomobject]@{
-        X = [int]($e.x + $e.width / 2)
-        Y = [int]($e.y + $e.height / 2)
+        X = $x
+        Y = $y
         Element = $e
     }
 }
 
 function Invoke-PalaceHover {
-    <#
-    .SYNOPSIS
-    Real hover dwell so Tags/Library CanDrag can arm (PointerEntered).
-    #>
     param(
         [Parameter(Mandatory)][int]$AppPid,
         [Parameter(Mandatory)][string]$Selector,
@@ -331,34 +375,53 @@ function Invoke-PalaceHover {
     if ($LASTEXITCODE -ne 0) { throw "hover failed for $Selector" }
 }
 
-function Send-PalaceMouseMove {
+function Send-PalaceMouseMoveAbsolute {
     param([int]$X, [int]$Y)
-    [void][PalaceStudioDpi]::SetCursorPos($X, $Y)
+    $vx = [PalaceStudioDpi]::GetSystemMetrics([PalaceStudioDpi]::SM_XVIRTUALSCREEN)
+    $vy = [PalaceStudioDpi]::GetSystemMetrics([PalaceStudioDpi]::SM_YVIRTUALSCREEN)
+    $vw = [PalaceStudioDpi]::GetSystemMetrics([PalaceStudioDpi]::SM_CXVIRTUALSCREEN)
+    $vh = [PalaceStudioDpi]::GetSystemMetrics([PalaceStudioDpi]::SM_CYVIRTUALSCREEN)
+    if ($vw -le 1) { $vw = 2 }
+    if ($vh -le 1) { $vh = 2 }
+    $normX = [int][math]::Round(($X - $vx) * 65535.0 / ($vw - 1))
+    $normY = [int][math]::Round(($Y - $vy) * 65535.0 / ($vh - 1))
+    if ($normX -lt 0) { $normX = 0 }
+    if ($normY -lt 0) { $normY = 0 }
+    if ($normX -gt 65535) { $normX = 65535 }
+    if ($normY -gt 65535) { $normY = 65535 }
+    $i = New-Object PalaceStudioDpi+INPUT
+    $i.type = 0
+    $i.mi = New-Object PalaceStudioDpi+MOUSEINPUT
+    $i.mi.dx = $normX
+    $i.mi.dy = $normY
+    $i.mi.dwFlags = [PalaceStudioDpi]::MOUSEEVENTF_MOVE -bor [PalaceStudioDpi]::MOUSEEVENTF_ABSOLUTE -bor [PalaceStudioDpi]::MOUSEEVENTF_VIRTUALDESK
+    [void][PalaceStudioDpi]::SendInput(1, @($i), [Runtime.InteropServices.Marshal]::SizeOf([type][PalaceStudioDpi+INPUT]))
 }
 
-function Send-PalaceMouseDown {
+function Send-PalaceMouseDownAbsolute {
     param([int]$X, [int]$Y)
-    [void][PalaceStudioDpi]::SetCursorPos($X, $Y)
+    Send-PalaceMouseMoveAbsolute -X $X -Y $Y
     Start-Sleep -Milliseconds 40
     $i = New-Object PalaceStudioDpi+INPUT
     $i.type = 0
     $i.mi = New-Object PalaceStudioDpi+MOUSEINPUT
-    $i.mi.dwFlags = 2 # MOUSEEVENTF_LEFTDOWN
+    $i.mi.dwFlags = [PalaceStudioDpi]::MOUSEEVENTF_LEFTDOWN
     [void][PalaceStudioDpi]::SendInput(1, @($i), [Runtime.InteropServices.Marshal]::SizeOf([type][PalaceStudioDpi+INPUT]))
 }
 
-function Send-PalaceMouseUp {
+function Send-PalaceMouseUpAbsolute {
     $i = New-Object PalaceStudioDpi+INPUT
     $i.type = 0
     $i.mi = New-Object PalaceStudioDpi+MOUSEINPUT
-    $i.mi.dwFlags = 4 # MOUSEEVENTF_LEFTUP
+    $i.mi.dwFlags = [PalaceStudioDpi]::MOUSEEVENTF_LEFTUP
     [void][PalaceStudioDpi]::SendInput(1, @($i), [Runtime.InteropServices.Marshal]::SizeOf([type][PalaceStudioDpi+INPUT]))
 }
 
 function Invoke-PalaceSendInputDrag {
     <#
     .SYNOPSIS
-    Hover-arm CanDrag, then SendInput press / move / optional hold / release.
+    Hover-arm CanDrag, then absolute SendInput drag past SM_CXDRAG with a
+    target wiggle so DragOver can fire. Points clamped to the main window rect.
     #>
     param(
         [Parameter(Mandatory)][int]$AppPid,
@@ -372,20 +435,39 @@ function Invoke-PalaceSendInputDrag {
     $hwnd = Get-PalaceMainHwnd -AppPid $AppPid
     Set-PalaceForeground -Hwnd $hwnd
     Invoke-PalaceHover -AppPid $AppPid -Selector $FromSelector -DwellMs $HoverDwellMs
-    $from = Get-PalaceUiCenter -AppPid $AppPid -Selector $FromSelector
-    $to = Get-PalaceUiCenter -AppPid $AppPid -Selector $ToSelector
-    Send-PalaceMouseDown -X $from.X -Y $from.Y
-    Start-Sleep -Milliseconds 120
+    $from = Get-PalaceUiCenter -AppPid $AppPid -Selector $FromSelector -Hwnd $hwnd
+    $to = Get-PalaceUiCenter -AppPid $AppPid -Selector $ToSelector -Hwnd $hwnd
+    $dragThresh = [PalaceStudioDpi]::GetSystemMetrics([PalaceStudioDpi]::SM_CXDRAG)
+    if ($dragThresh -lt 4) { $dragThresh = 4 }
+
+    Send-PalaceMouseDownAbsolute -X $from.X -Y $from.Y
+    Start-Sleep -Milliseconds 80
+    # Cross SM_CXDRAG before the rest of the path so WinUI starts DnD.
+    $dx = $to.X - $from.X
+    $dy = $to.Y - $from.Y
+    $len = [math]::Sqrt(($dx * $dx) + ($dy * $dy))
+    if ($len -lt 1) { $len = 1 }
+    $thresh = $dragThresh + 2
+    $tx = [int]($from.X + ($dx / $len) * $thresh)
+    $ty = [int]($from.Y + ($dy / $len) * $thresh)
+    Send-PalaceMouseMoveAbsolute -X $tx -Y $ty
+    Start-Sleep -Milliseconds 40
+
     for ($i = 1; $i -le $Steps; $i++) {
         $t = $i / [double]$Steps
         $x = [int]($from.X + ($to.X - $from.X) * $t)
         $y = [int]($from.Y + ($to.Y - $from.Y) * $t)
-        Send-PalaceMouseMove -X $x -Y $y
+        Send-PalaceMouseMoveAbsolute -X $x -Y $y
         Start-Sleep -Milliseconds 22
+    }
+    # Wiggle on the drop target so DragOver can sample.
+    foreach ($w in @(@(4, 0), @(-4, 2), @(0, -3), @(0, 0))) {
+        Send-PalaceMouseMoveAbsolute -X ($to.X + $w[0]) -Y ($to.Y + $w[1])
+        Start-Sleep -Milliseconds 30
     }
     if ($HoldMs -gt 0) { Start-Sleep -Milliseconds $HoldMs }
     if (-not $NoRelease) {
-        Send-PalaceMouseUp
+        Send-PalaceMouseUpAbsolute
         Start-Sleep -Milliseconds 700
     }
     return [pscustomobject]@{ From = $from; To = $to }
@@ -395,15 +477,7 @@ function Assert-TagDragQcFromProbes {
     <#
     .SYNOPSIS
     Merge-gate QC for Tags drag: require probe lines, NEVER float=0 HWND capture.
-
-    Pass -LogText or -LogPath containing lines like:
-      Palace.TagDrag DragStarting n=1 ...
-      Palace.TagDrag DragOver n=1 ...
-      Palace.TagDrag Drop n=1 ...
-
-    Visual float=0 near cursor is ignored on purpose (layered DragUI is not in
-    PrintWindow / single-HWND CAPTUREBLT). Optional -FloatNearCursor is logged
-    only; it cannot fail this assert.
+    Missing log path / file => 'probe sink missing'.
     #>
     param(
         [string]$LogPath = '',
@@ -415,20 +489,24 @@ function Assert-TagDragQcFromProbes {
     )
     if (-not $LogText) {
         if (-not $LogPath) {
-            if ($env:PALACE_TAG_DRAG_LOG_FILE) { $LogPath = $env:PALACE_TAG_DRAG_LOG_FILE }
-            else { $LogPath = Join-Path $env:TEMP 'palace-tagdrag.log' }
+            $LogPath = $env:PALACE_TAG_DRAG_LOG_FILE
         }
-        if (Test-Path -LiteralPath $LogPath) {
-            $LogText = Get-Content -LiteralPath $LogPath -Raw -ErrorAction SilentlyContinue
+        if (-not $LogPath) {
+            throw 'probe sink missing'
         }
+        if (-not (Test-Path -LiteralPath $LogPath)) {
+            throw 'probe sink missing'
+        }
+        $LogText = Get-Content -LiteralPath $LogPath -Raw -ErrorAction Stop
     }
-    if (-not $LogText) { $LogText = '' }
+    if (-not $LogText) {
+        throw 'probe sink missing'
+    }
 
     $hasStarting = $LogText -match 'Palace\.TagDrag\s+DragStarting'
     $hasOver = $LogText -match 'Palace\.TagDrag\s+DragOver'
     $hasDrop = $LogText -match 'Palace\.TagDrag\s+Drop'
 
-    # Informational only - never a fail gate.
     if ($FloatNearCursor -ge 0) {
         Write-Verbose ("QC visual float={0} (ignored; probes are the gate)" -f $FloatNearCursor)
     }
@@ -444,7 +522,6 @@ function Assert-TagDragQcFromProbes {
         $failures += 'missing Palace.TagDrag Drop probe'
     }
     if (-not $RequireStarting -and -not $RequireOver -and -not $RequireDrop) {
-        # Default: DragStarting is the minimum merge gate.
         if (-not $hasStarting) {
             $failures += 'missing Palace.TagDrag DragStarting probe (default gate)'
         }
@@ -464,28 +541,54 @@ function Assert-TagDragQcFromProbes {
 function Test-PalaceUiTestIdentity {
     <#
     .SYNOPSIS
-    Resolves the AppX package for a running PID. Refuses release C20A7629 and
-    any package whose Name is not Palace*Test*.
+    OpenProcess + GetPackageFullName for the PID. Exact allowlist
+    PalaceOrganizeTest-5E1F. Refuse C20A7629. APPMODEL_ERROR_NO_PACKAGE (15700)
+    and other errors refuse (unpackaged layout exe must fail).
     #>
     param([Parameter(Mandatory)][int]$AppPid)
-    $ReleaseIdentity = 'C20A7629-6BDE-449F-958A-5AAF8BCE88F3'
-    $proc = Get-Process -Id $AppPid -ErrorAction Stop
-    $exe = $null
-    try { $exe = $proc.Path } catch { }
-    if (-not $exe) {
-        throw "Could not resolve Path for PID $AppPid - refuse to run UI tests without a package identity check."
+    $h = [PalaceStudioDpi]::OpenProcess([PalaceStudioDpi]::PROCESS_QUERY_LIMITED_INFORMATION, $false, $AppPid)
+    if ($h -eq [IntPtr]::Zero) {
+        $err = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "REFUSED: OpenProcess PID $AppPid failed (Win32 $err). Need a packaged PalaceOrganizeTest-5E1F process."
     }
-    $pkg = Get-AppxPackage | Where-Object {
-        $_.InstallLocation -and ($exe.StartsWith($_.InstallLocation, [StringComparison]::OrdinalIgnoreCase))
-    } | Select-Object -First 1
+    try {
+        [uint32]$len = 0
+        $sb = New-Object System.Text.StringBuilder 0
+        $rc = [PalaceStudioDpi]::GetPackageFullName($h, [ref]$len, $sb)
+        if ($rc -eq [PalaceStudioDpi]::APPMODEL_ERROR_NO_PACKAGE) {
+            throw "REFUSED: PID $AppPid has no package (GetPackageFullName 15700). Unpackaged layout exe must fail."
+        }
+        if ($rc -ne [PalaceStudioDpi]::ERROR_INSUFFICIENT_BUFFER -and $rc -ne [PalaceStudioDpi]::ERROR_SUCCESS) {
+            throw "REFUSED: GetPackageFullName PID $AppPid failed (Win32 $rc)."
+        }
+        if ($len -eq 0) {
+            throw "REFUSED: GetPackageFullName PID $AppPid returned empty length."
+        }
+        $sb = New-Object System.Text.StringBuilder ([int]$len)
+        $rc = [PalaceStudioDpi]::GetPackageFullName($h, [ref]$len, $sb)
+        if ($rc -eq [PalaceStudioDpi]::APPMODEL_ERROR_NO_PACKAGE) {
+            throw "REFUSED: PID $AppPid has no package (GetPackageFullName 15700). Unpackaged layout exe must fail."
+        }
+        if ($rc -ne [PalaceStudioDpi]::ERROR_SUCCESS) {
+            throw "REFUSED: GetPackageFullName PID $AppPid failed (Win32 $rc)."
+        }
+        $fullName = $sb.ToString()
+        if ([string]::IsNullOrWhiteSpace($fullName)) {
+            throw "REFUSED: GetPackageFullName PID $AppPid returned empty name."
+        }
+    } finally {
+        [void][PalaceStudioDpi]::CloseHandle($h)
+    }
+
+    $pkg = Get-AppxPackage | Where-Object { $_.PackageFullName -eq $fullName } | Select-Object -First 1
     if (-not $pkg) {
-        throw "No AppxPackage owns '$exe' - refuse UI tests (need a packaged test identity)."
+        throw "REFUSED: no Get-AppxPackage match for '$fullName'."
     }
-    if ($pkg.Name -like 'C20A7629*' -or $pkg.Name -eq $ReleaseIdentity) {
+    if ($pkg.Name -eq $script:PalaceReleaseIdentity -or $pkg.Name -like 'C20A7629*') {
         throw "REFUSED: PID $AppPid is release identity $($pkg.Name). Never drive ui-tests against C20A7629."
     }
-    if ($pkg.Name -notlike 'Palace*Test*') {
-        throw "REFUSED: package Name '$($pkg.Name)' is not a Palace*Test* identity."
+    if ($pkg.Name -ne $script:PalaceAllowedTestIdentity) {
+        throw "REFUSED: package Name '$($pkg.Name)' is not exact allowlist '$($script:PalaceAllowedTestIdentity)'."
     }
     return $pkg
 }

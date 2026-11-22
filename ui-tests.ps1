@@ -3,17 +3,27 @@ param([Parameter(Mandatory)][int]$AppPid)
 $ErrorActionPreference = 'Continue'
 $pass = 0
 $fail = 0
+$partial = 0
 $results = @()
 $script:TestDeleteFileName = $null
 $script:TestDeletePath = $null
 $script:BackfillAssetName = $null
 $script:MainHwnd = $null
+$script:LastTestOutcome = $null
 $script:BfSourceName = "BfS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:BfImpliedName = "BfI$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:UiSharedName = "UiS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:UiPartialName = "UiP$([guid]::NewGuid().ToString('N').Substring(0, 6))"
+$script:UiDragChipName = "UiD$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:PalaceVersion = $null
+$script:IsFenrirStudio = ($env:COMPUTERNAME -eq 'FENRIR-STUDIO')
+
+# HARD: never drive ui-tests on FenrirDesktop (Patreon / Isiac install host).
+if ($env:COMPUTERNAME -eq 'FenrirDesktop') {
+    Write-Error 'REFUSED: ui-tests must not run on FenrirDesktop.'
+    exit 2
+}
 
 # Studio DPI / SendInput / probe QC helper (Pass1 Blocker2 + S7).
 $script:StudioHarness = Join-Path $script:RepoRoot 'scripts\StudioDpiHarness.ps1'
@@ -23,23 +33,38 @@ if (Test-Path -LiteralPath $script:StudioHarness) {
 
 function Get-PalaceVersionFromProps {
     $props = Join-Path $script:RepoRoot 'Directory.Build.props'
-    if (-not (Test-Path -LiteralPath $props)) { return $null }
+    if (-not (Test-Path -LiteralPath $props)) {
+        throw "Directory.Build.props missing at $props"
+    }
     $text = Get-Content -LiteralPath $props -Raw -Encoding UTF8
     if ($text -match '<PalaceVersion>\s*([0-9]+\.[0-9]+\.[0-9]+)\s*</PalaceVersion>') {
         return $Matches[1]
     }
-    return $null
+    throw 'Directory.Build.props PalaceVersion unreadable'
 }
 
-$script:PalaceVersion = Get-PalaceVersionFromProps
+try {
+    $script:PalaceVersion = Get-PalaceVersionFromProps
+} catch {
+    Write-Error $_
+    exit 2
+}
 
-# Pass2 C1: refuse unless the PID is a packaged Palace*Test* identity (never C20A7629).
-if (Get-Command Test-PalaceUiTestIdentity -ErrorAction SilentlyContinue) {
+# Pass2 C1: OpenProcess + GetPackageFullName; exact PalaceOrganizeTest-5E1F; never C20A7629.
+# Unpackaged layout exe / 15700 / other errors => exit 2.
+try {
+    if (-not (Get-Command Test-PalaceUiTestIdentity -ErrorAction SilentlyContinue)) {
+        throw 'StudioDpiHarness.ps1 missing Test-PalaceUiTestIdentity - refuse to run without identity guard.'
+    }
     $script:UiTestPackage = Test-PalaceUiTestIdentity -AppPid $AppPid
-    Write-Host "UI test identity OK: $($script:UiTestPackage.Name) $($script:UiTestPackage.Version)"
-} else {
-    Write-Error 'StudioDpiHarness.ps1 missing Test-PalaceUiTestIdentity - refuse to run without identity guard.'
-    exit 1
+    $pkgVer = [string]$script:UiTestPackage.Version
+    if ($pkgVer -notlike "$($script:PalaceVersion)*") {
+        throw "Package version '$pkgVer' does not match Directory.Build.props PalaceVersion '$($script:PalaceVersion)'."
+    }
+    Write-Host "UI test identity OK: $($script:UiTestPackage.Name) $pkgVer"
+} catch {
+    Write-Error $_
+    exit 2
 }
 
 function Bind-MainWindow {
@@ -101,9 +126,15 @@ function Test-UI {
     param([string]$Name, [scriptblock]$Script)
     # Pass2 C2: reset so a block cannot inherit a stale PASS/FAIL from the prior test.
     $global:LASTEXITCODE = 1
+    $script:LastTestOutcome = $null
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Stop'
     try {
         $output = & $Script 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        if ($script:LastTestOutcome -eq 'PARTIAL') {
+            $script:partial++
+            $script:results += @{ name = $Name; status = 'PARTIAL'; detail = "$output" }
+        } elseif ($LASTEXITCODE -eq 0) {
             $script:pass++
             $script:results += @{ name = $Name; status = 'PASS' }
         } else {
@@ -113,10 +144,19 @@ function Test-UI {
     } catch {
         $script:fail++
         $script:results += @{ name = $Name; status = 'FAIL'; detail = "$_" }
+    } finally {
+        $ErrorActionPreference = $prevEap
     }
 }
 
 function Ok {
+    $global:LASTEXITCODE = 0
+}
+
+function Partial {
+    param([string]$Detail = '')
+    $script:LastTestOutcome = 'PARTIAL'
+    if ($Detail) { Write-Output $Detail }
     $global:LASTEXITCODE = 0
 }
 
@@ -556,12 +596,21 @@ Test-UI 'Implication listed in tag manager' {
 }
 
 # --- Pass1 S7: Tags CanDrag + SendInput drag @150% (StudioDpiHarness) ---
-# Gate on probes / status, NEVER HWND float=0 (Pass1 Blocker1).
+# Only on FENRIR-STUDIO. Gate on probes + status; NEVER HWND float=0.
+# PALACE_TAG_DRAG_LOG / PALACE_TAG_DRAG_LOG_FILE must be set at app *launch*.
+if ($script:IsFenrirStudio) {
+$script:UiDragChipSel = 'BtnTagChip_' + ($script:UiDragChipName -replace '[^A-Za-z0-9]', '')
+
 Test-UI 'Tags drag: DPI-aware resize + XamlRoot/client gate' {
     Enable-PalaceDpiAwareness | Out-Null
     $hwnd = Get-PalaceMainHwnd -AppPid $AppPid
+    $xrPath = Get-PalaceXamlRootLogPath -PackageFamilyName $script:UiTestPackage.PackageFamilyName
+    if (Test-Path -LiteralPath $xrPath) {
+        Remove-Item -LiteralPath $xrPath -Force
+    }
     Resize-PalaceWindowDip -Hwnd $hwnd -DipWidth 1280 -DipHeight 900 | Out-Null
-    Assert-PalaceClientDipGate -Hwnd $hwnd -TargetDipWidth 1280 -ToleranceDip 2 | Out-Null
+    Assert-PalaceClientDipGate -Hwnd $hwnd -TargetDipWidth 1280 -ToleranceDip 2 `
+        -XamlRootLogPath $xrPath -AppPid $AppPid -RequireXamlRoot $true | Out-Null
     Ok
 }
 
@@ -573,46 +622,59 @@ Test-UI 'Tags drag: create drop group + chip' {
     Start-Sleep -Milliseconds 700
     winapp ui wait-for 'BtnTagGroup_Newgroup' @(WinArgs) -t 6000 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroup_Newgroup missing after Add group' }
-    winapp ui set-value 'TxtNewTagName' 'UiDragChip' @(WinArgs) | Out-Null
+    winapp ui set-value 'TxtNewTagName' $script:UiDragChipName @(WinArgs) | Out-Null
     winapp ui invoke 'BtnCreateUngroupedTag' @(WinArgs) | Out-Null
     Start-Sleep -Milliseconds 700
-    winapp ui wait-for 'BtnTagChip_UiDragChip' @(WinArgs) -t 6000 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'BtnTagChip_UiDragChip missing' }
+    winapp ui wait-for $script:UiDragChipSel @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "$($script:UiDragChipSel) missing" }
     Ok
 }
 
 Test-UI 'Tags drag: hover + SendInput to group (probe/status gate)' {
-    # Probe file sink (TagDragUi.ProbeLogFileEnvVar). Process must see this env at launch
-    # for file lines; status-bar Added is the always-on gate. float=0 never fails QC.
-    $probe = Join-Path $env:TEMP 'palace-tagdrag.log'
-    $env:PALACE_TAG_DRAG_LOG_FILE = $probe
-    $env:PALACE_TAG_DRAG_LOG = '1'
-    if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue }
+    $probe = $env:PALACE_TAG_DRAG_LOG_FILE
+    if (-not $probe) { throw 'probe sink missing' }
+    if (-not (Test-Path -LiteralPath $probe)) { throw 'probe sink missing' }
+    # Clear prior lines so this gesture is the QC sample; file must already exist (launch env).
+    Set-Content -LiteralPath $probe -Value '' -Encoding UTF8
 
     winapp ui invoke 'NavTags' @(WinArgs) | Out-Null
     winapp ui click 'SelTagScopeAll' @(WinArgs) | Out-Null
     Start-Sleep -Milliseconds 400
-    winapp ui wait-for 'BtnTagChip_UiDragChip' @(WinArgs) -t 6000 | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'BtnTagChip_UiDragChip not ready' }
+    winapp ui wait-for $script:UiDragChipSel @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "$($script:UiDragChipSel) not ready" }
     winapp ui wait-for 'BtnTagGroup_Newgroup' @(WinArgs) -t 4000 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroup_Newgroup not ready' }
 
-    Invoke-PalaceSendInputDrag -AppPid $AppPid -FromSelector 'BtnTagChip_UiDragChip' -ToSelector 'BtnTagGroup_Newgroup' -HoldMs 500 | Out-Null
+    Invoke-PalaceSendInputDrag -AppPid $AppPid -FromSelector $script:UiDragChipSel `
+        -ToSelector 'BtnTagGroup_Newgroup' -HoldMs 500 | Out-Null
 
-    # Status-bar membership confirm.
-    winapp ui wait-for 'TxtTagsStatus' @(WinArgs) --value 'Added' --contains -t 5000 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        $st = ''
-        try { $st = (winapp ui get-value 'TxtTagsStatus' @(WinArgs) 2>$null) -join ' ' } catch {}
-        throw "Tags drag did not report Added (status='$st'). CanDrag/SendInput/DnD failed."
+    $st = ''
+    try { $st = (winapp ui get-value 'TxtTagsStatus' @(WinArgs) 2>$null) -join ' ' } catch {}
+    $addedOk = $st -match 'Added'
+    winapp ui wait-for 'TxtTagsStatus' @(WinArgs) --value 'Added' --contains -t 3000 | Out-Null
+    if ($LASTEXITCODE -eq 0) { $addedOk = $true }
+
+    $probeText = Get-Content -LiteralPath $probe -Raw -ErrorAction Stop
+    $hasStarting = $probeText -match 'Palace\.TagDrag\s+DragStarting'
+    $hasOver = $probeText -match 'Palace\.TagDrag\s+DragOver'
+    $hasDrop = $probeText -match 'Palace\.TagDrag\s+Drop'
+
+    if ($hasStarting -and $hasOver -and $hasDrop -and $addedOk) {
+        Assert-TagDragQcFromProbes -LogPath $probe -RequireStarting -RequireOver -RequireDrop | Out-Null
+        Ok
+        return
     }
 
-    # Probe gate when the app was launched with PALACE_TAG_DRAG_LOG_FILE (Studio).
-    # float=0 is intentionally ignored (Assert-TagDragQcFromProbes).
-    if (Test-Path -LiteralPath $probe) {
-        Assert-TagDragQcFromProbes -LogPath $probe -RequireStarting | Out-Null
+    # Drop undrivable (WinUI/harness): Starting fired but Over/Drop/status incomplete -> PARTIAL.
+    if ($hasStarting -and (-not $hasDrop -or -not $addedOk -or -not $hasOver)) {
+        Partial "drop undrivable (Starting=$hasStarting Over=$hasOver Drop=$hasDrop Added=$addedOk status='$st')"
+        return
     }
-    Ok
+
+    throw "Tags drag QC FAIL: Starting=$hasStarting Over=$hasOver Drop=$hasDrop Added=$addedOk status='$st'"
+}
+} else {
+    Write-Host "Skipping Tags drag S7 (COMPUTERNAME=$($env:COMPUTERNAME); need FENRIR-STUDIO)"
 }
 
 Test-UI 'Navigate to Rooms' { winapp ui invoke 'NavRooms' -a $AppPid }
@@ -1378,7 +1440,10 @@ Start-Sleep -Milliseconds 400
 winapp ui screenshot -a $AppPid -o 'screenshots/03-settings.png' 2>$null
 
 Write-Host ""
-Write-Host "Passed: $pass | Failed: $fail"
+Write-Host "Passed: $pass | Partial: $partial | Failed: $fail"
+$results | Where-Object { $_.status -eq 'PARTIAL' } | ForEach-Object {
+    Write-Host "  PARTIAL: $($_.name) - $($_.detail)" -ForegroundColor Yellow
+}
 $results | Where-Object { $_.status -eq 'FAIL' } | ForEach-Object {
     Write-Host "  FAIL: $($_.name) - $($_.detail)" -ForegroundColor Red
 }

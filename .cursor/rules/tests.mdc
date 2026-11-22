@@ -11,8 +11,13 @@ dotnet test .\Palace.Tests\Palace.Tests.csproj
 # Windows UI — HARD: never release Identity C20A7629 (see local-test-identity.mdc)
 .\scripts\Prepare-TestIdentity.ps1 -IdentityName PalaceOrganizeTest-5E1F
 $env:PALACE_DATA_DIR = Join-Path $env:TEMP 'palace-agent-data-organize'
+# S7 (FENRIR-STUDIO only): set probe env at launch — no Temp fallback
+$env:PALACE_TAG_DRAG_LOG = '1'
+$env:PALACE_TAG_DRAG_LOG_FILE = Join-Path $env:PALACE_DATA_DIR 'palace-tagdrag.log'
+New-Item -ItemType Directory -Force -Path $env:PALACE_DATA_DIR | Out-Null
+New-Item -ItemType File -Force -Path $env:PALACE_TAG_DRAG_LOG_FILE | Out-Null
 .\BuildAndRun.ps1 . --arch x64
-# after launch, with the packaged PID (ui-tests refuses non-Palace*Test* / C20A7629):
+# after launch, with the packaged PID (exact PalaceOrganizeTest-5E1F; refuses C20A7629 / FenrirDesktop / unpackaged):
 .\ui-tests.ps1 -AppPid <pid>
 # Studio DPI / Tags SendInput drag: . .\scripts\StudioDpiHarness.ps1
 # restore repo Package.appxmanifest from backup/git — do not winapp unregister C20A7629

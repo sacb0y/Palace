@@ -3,6 +3,7 @@ using Xunit;
 
 namespace Palace.Tests;
 
+[Collection(TagDragUiCollection.Name)]
 public sealed class TagDragUiTests
 {
     [Fact]
