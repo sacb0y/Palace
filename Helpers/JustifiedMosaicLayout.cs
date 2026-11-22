@@ -11,6 +11,7 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     /// <summary>
     /// Set by <see cref="Relayout"/> / items-changed / DP / host width so Measure
     /// recomputes even when item count and width are unchanged (sort, aspect, headers).
+    /// Instance-level (rects live per LayoutState) — do not share one layout across ItemsViews.
     /// </summary>
     private bool _layoutDirty = true;
 
