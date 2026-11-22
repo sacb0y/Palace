@@ -112,6 +112,12 @@ public sealed partial class TagsPage : Page
         RefreshRealizedTiles();
         HookOverlayGallery();
         await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
+        // Navigated away during await — Unloaded already cleared hooks; do not re-arm.
+        if (!IsLoaded)
+        {
+            return;
+        }
+
         _priorityArmed = true;
     }
 
@@ -126,13 +132,15 @@ public sealed partial class TagsPage : Page
         _videoBrowseSwipe?.Unhook();
         ReleaseOverlayMediaPlayer();
 
-        if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
-        {
-            ViewModel.MosaicReset = null;
-            ViewModel.MosaicChunkAppended = null;
-        }
-
         // Delegate == compares target+method (ReferenceEquals fails across cast instances).
+        var mosaicReset = ViewModel.MosaicReset;
+        OwnedDelegate.ClearIfOurs(ref mosaicReset, OnMosaicReset);
+        ViewModel.MosaicReset = mosaicReset;
+
+        var mosaicChunk = ViewModel.MosaicChunkAppended;
+        OwnedDelegate.ClearIfOurs(ref mosaicChunk, OnMosaicChunkAppended);
+        ViewModel.MosaicChunkAppended = mosaicChunk;
+
         if (ViewModel.RequestOrganizeChoice
             == (Func<IReadOnlyList<TagPath>, Task<OrganizeChoice?>>)AskOrganizeChoiceAsync)
         {

@@ -65,6 +65,7 @@
     <Compile Include="..\Helpers\PreviewPaneSettings.cs" Link="PreviewPaneSettings.cs" />
     <Compile Include="..\Helpers\FolderSectionPrefs.cs" Link="FolderSectionPrefs.cs" />
     <Compile Include="..\Helpers\ChipWrap.cs" Link="ChipWrap.cs" />
+    <Compile Include="..\Helpers\OwnedDelegate.cs" Link="OwnedDelegate.cs" />
     <Compile Include="..\Helpers\PreviewPersist.cs" Link="PreviewPersist.cs" />
     <Compile Include="..\Helpers\AvifFile.cs" Link="AvifFile.cs" />
     <Compile Include="..\Helpers\HdrFile.cs" Link="HdrFile.cs" />

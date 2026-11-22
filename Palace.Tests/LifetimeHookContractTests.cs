@@ -42,6 +42,26 @@ public sealed class LifetimeHookContractTests
     }
 
     [Fact]
+    public void TagsPage_Unloaded_ClearsMosaicDelegatesSeparately_NotReferenceEquals()
+    {
+        var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "TagsPage.xaml.cs"))
+            .Replace("\r\n", "\n");
+        Assert.DoesNotContain("ReferenceEquals(ViewModel.Mosaic", cs, StringComparison.Ordinal);
+        Assert.Contains("OwnedDelegate.ClearIfOurs(ref mosaicReset, OnMosaicReset)", cs, StringComparison.Ordinal);
+        Assert.Contains(
+            "OwnedDelegate.ClearIfOurs(ref mosaicChunk, OnMosaicChunkAppended)",
+            cs,
+            StringComparison.Ordinal);
+        Assert.Contains("if (!IsLoaded)", cs, StringComparison.Ordinal);
+        Assert.Contains("_priorityArmed = true", cs, StringComparison.Ordinal);
+        // IsLoaded gate must sit between RefreshAsync await and _priorityArmed.
+        var refresh = cs.IndexOf("ViewModel.RefreshAsync", StringComparison.Ordinal);
+        var loadedGate = cs.IndexOf("if (!IsLoaded)", refresh, StringComparison.Ordinal);
+        var armed = cs.IndexOf("_priorityArmed = true", loadedGate, StringComparison.Ordinal);
+        Assert.True(refresh >= 0 && loadedGate > refresh && armed > loadedGate);
+    }
+
+    [Fact]
     public void GalleryStillSurface_RehooksWheelAndDpiOnLoaded()
     {
         var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Controls", "GalleryStillSurface.xaml.cs"));
