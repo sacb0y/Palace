@@ -159,7 +159,8 @@ function Assert-PalaceFenrirDesktopPolicy {
         [string]$UserName = '',
         [string]$ArgsSummary = '',
         [string]$PackageFamilyName = '',
-        [string]$AuditLogPath = ''
+        [string]$AuditLogPath = '',
+        [string]$SharedAuditLogPath = ''
     )
     if ($ComputerName -ne $script:PalaceFenrirDesktopName) {
         return [pscustomobject]@{
@@ -193,7 +194,11 @@ function Assert-PalaceFenrirDesktopPolicy {
     if (-not $localPath) {
         $localPath = Get-PalaceDesktopOverrideLogPath -PackageFamilyName $PackageFamilyName
     }
-    $sharedPath = Get-PalaceDesktopOverrideSharedLogPath
+    # Self-test passes -SharedAuditLogPath under temp; real runs use LOCALAPPDATA\PalaceTestAudit.
+    $sharedPath = $SharedAuditLogPath
+    if (-not $sharedPath) {
+        $sharedPath = Get-PalaceDesktopOverrideSharedLogPath
+    }
     foreach ($path in @($localPath, $sharedPath)) {
         $dir = Split-Path -Parent $path
         if ($dir -and -not (Test-Path -LiteralPath $dir)) {
@@ -242,20 +247,25 @@ function Test-PalaceFenrirDesktopPolicySelfTest {
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
     try {
         $log = Join-Path $tmp $script:PalaceDesktopOverrideLogName
+        $sharedTmp = Join-Path $tmp 'PalaceTestAudit-desktop-override.log'
         $ok = Assert-PalaceFenrirDesktopPolicy -ComputerName $script:PalaceFenrirDesktopName `
             -AllowDesktop -OverrideReason ("self`ttest`r`nmore") -UserName 'selftest' `
-            -ArgsSummary ("-SelfTest`tDesktopGate") -AuditLogPath $log
+            -ArgsSummary ("-SelfTest`tDesktopGate") -AuditLogPath $log `
+            -SharedAuditLogPath $sharedTmp
         if (-not $ok.DesktopOverride) { $failures += 'override did not set DesktopOverride' }
         if (-not (Test-Path -LiteralPath $log)) { $failures += 'LocalState audit log missing' }
+        if (-not (Test-Path -LiteralPath $sharedTmp)) { $failures += 'temp shared audit log missing' }
+        if ($ok.SharedAuditLogPath -ne $sharedTmp) { $failures += 'SharedAuditLogPath was not the temp path' }
+        $realShared = Get-PalaceDesktopOverrideSharedLogPath
+        if ($ok.SharedAuditLogPath -eq $realShared) {
+            $failures += 'SelfTest must not use real PalaceTestAudit path'
+        }
         if ($ok.Reason -match "[\t\r\n]") { $failures += 'Reason still has tab/CR/LF' }
         if ($ok.AuditLine -notmatch 'reason=self test more') {
             $failures += "sanitized reason missing in audit: $($ok.AuditLine)"
         }
         if ($ok.AuditLine -notmatch 'args=-SelfTest DesktopGate') {
             $failures += "sanitized args missing in audit: $($ok.AuditLine)"
-        }
-        if ($env:LOCALAPPDATA -and $ok.SharedAuditLogPath -and -not (Test-Path -LiteralPath $ok.SharedAuditLogPath)) {
-            $failures += 'shared PalaceTestAudit log missing'
         }
     } finally {
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
