@@ -1,0 +1,207 @@
+2026-11-22T18:36:54.0380164-05:00 === START AppPid=15048 tip=7c2cafa ===
+2026-11-22T18:36:55.1991573-05:00 title=Palace 0.3.115 dpi=144 size=1782x1191
+2026-11-22T18:36:56.3391134-05:00 SetWindowPos DIP=1200x800 phys=1800x1200 dpi=144
+2026-11-22T18:37:01.5538848-05:00 onscreen folders: folder-000, 40 items; folder-001, 40 items; folder-002, 40 items; folder-003, 40 items; folder-004, 40 items; folder-005, 40 items; folder-006, 40 items; folder-007, 40 items; folder-008, 40 items; folder-009, 40 items
+2026-11-22T18:37:02.6292472-05:00 click 'tri-folder00440item-6197' code=0 err=
+2026-11-22T18:37:06.7437830-05:00 GrdAssets={"type":"List","name":"Assets","automationId":"GrdAssets","className":"Microsoft.UI.Xaml.Controls.ItemsView","isEnabled":true,"isOffscreen":false,"x":821,"y":327,"width":941,"height":787,"selector":"GrdAssets","isInvokable":false}
+2026-11-22T18:37:10.4163447-05:00 03-tree focus-before={
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0001.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 390,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-img0001jpg-6313",
+    "isInvokable": true
+  }
+}
+2026-11-22T18:37:13.1278024-05:00 SHOT 03-tree-before-arrows.png len=472439 md5=85D71531
+2026-11-22T18:37:16.0281547-05:00 03-tree focus-after={
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0008.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 1298,
+    "y": 623,
+    "width": 221,
+    "height": 221,
+    "selector": "itm-img0008jpg-632b",
+    "isInvokable": true
+  }
+}
+2026-11-22T18:37:18.6160589-05:00 SHOT 03-tree-after-arrows.png len=472926 md5=E89E41B5
+2026-11-22T18:37:18.6160589-05:00 03-tree VERDICT=PASS ({
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0001.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 390,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-img0001jpg-6313",
+    "isInvokable": true
+  }
+} -> {
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0008.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 1298,
+    "y": 623,
+    "width": 221,
+    "height": 221,
+    "selector": "itm-img0008jpg-632b",
+    "isInvokable": true
+  }
+})
+2026-11-22T18:37:21.7837181-05:00 click 'tri-folder00740item-61ab' code=0 err=
+2026-11-22T18:37:24.8763018-05:00 BcrPath search={"matchCount":1,"hasMore":false,"matches":[{"type":"Group","automationId":"BcrPath","className":"LandmarkTarget","isEnabled":true,"isOffscreen":false,"x":821,"y":206,"width":406,"height":36,"selector":"BcrPath","isInvokable":false}]}
+2026-11-22T18:37:26.9854165-05:00 Library search matches types=ListItem:Library:NavLibrary | Button:Library:btn-library-63d4 | Text:Library:lbl-library-63d1
+2026-11-22T18:37:27.0243159-05:00 breadcrumb click target=Library selector=NavLibrary
+2026-11-22T18:37:28.1015414-05:00 click 'NavLibrary' code=0 err=
+2026-11-22T18:37:34.2551428-05:00 click 'tri-folder00840item-61b0' code=0 err=
+2026-11-22T18:37:38.3492206-05:00 breadcrumb nav click NavLibrary
+2026-11-22T18:37:39.4563733-05:00 click 'NavLibrary' code=0 err=
+2026-11-22T18:37:43.5461255-05:00 GrdAssets={"type":"List","name":"Assets","automationId":"GrdAssets","className":"Microsoft.UI.Xaml.Controls.ItemsView","isEnabled":true,"isOffscreen":false,"x":821,"y":327,"width":941,"height":787,"selector":"GrdAssets","isInvokable":false}
+2026-11-22T18:37:47.1979276-05:00 03-breadcrumb focus-before={
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0001.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 390,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-img0001jpg-630f",
+    "isInvokable": true
+  }
+}
+2026-11-22T18:37:49.7876098-05:00 SHOT 03-breadcrumb-before-arrows.png len=472650 md5=D06C1688
+2026-11-22T18:37:52.6567915-05:00 03-breadcrumb focus-after={
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0008.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 1298,
+    "y": 623,
+    "width": 221,
+    "height": 221,
+    "selector": "itm-img0008jpg-6327",
+    "isInvokable": true
+  }
+}
+2026-11-22T18:37:55.2673793-05:00 SHOT 03-breadcrumb-after-arrows.png len=473167 md5=4563680B
+2026-11-22T18:37:55.2852856-05:00 03-breadcrumb VERDICT=PASS ({
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0001.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 390,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-img0001jpg-630f",
+    "isInvokable": true
+  }
+} -> {
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0008.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 1298,
+    "y": 623,
+    "width": 221,
+    "height": 221,
+    "selector": "itm-img0008jpg-6327",
+    "isInvokable": true
+  }
+})
+2026-11-22T18:37:55.2933098-05:00 # Arrow gate tip 7c2cafa (0.3.115) |  | | Path | Before | After | Verdict | | |------|--------|-------|---------| | | TREE click | {
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0001.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 390,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-img0001jpg-6313",
+    "isInvokable": true
+  }
+} | {
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0008.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 1298,
+    "y": 623,
+    "width": 221,
+    "height": 221,
+    "selector": "itm-img0008jpg-632b",
+    "isInvokable": true
+  }
+} | PASS | | | Breadcrumb | {
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0001.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 390,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-img0001jpg-630f",
+    "isInvokable": true
+  }
+} | {
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0008.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 1298,
+    "y": 623,
+    "width": 221,
+    "height": 221,
+    "selector": "itm-img0008jpg-6327",
+    "isInvokable": true
+  }
+} | PASS | |  | **GATE: PASS** — Fenrir/C20A not touched.
+2026-11-22T18:37:55.2933098-05:00 === DONE gate=PASS ===

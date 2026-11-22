@@ -1,0 +1,17 @@
+﻿{
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "img-0001.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 390,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-img0001jpg-6313",
+    "isInvokable": true
+  }
+}
+

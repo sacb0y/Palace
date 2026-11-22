@@ -15,3 +15,12 @@
 | 4 | Exit select: no idle more-menu | PASS | 04-after-drag-select.png -> 04-exit-select-no-more.png |
 
 Synced via .cursor/stores + AgentStores files/media (same layout as pr2-bugs-polish-199).
+
+## Arrow recheck tip 7c2cafa (blocker fix)
+
+| Path | Verdict | Evidence |
+|------|---------|----------|
+| TREE click then arrows | PASS (img-0001 -> img-0008) | 03-tree-before/after-arrows.png |
+| BreadcrumbBarItem then arrows | PASS (art-a -> img-0000) | 03-breadcrumb-before/after-arrows.png |
+
+**GATE: PASS** for Fenrir C20A7629 #201 install (Studio did not touch Fenrir/C20A).

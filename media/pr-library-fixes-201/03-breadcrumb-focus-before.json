@@ -1,0 +1,17 @@
+﻿{
+  "hasFocus": true,
+  "element": {
+    "type": "ListItem",
+    "name": "art-a.jpg",
+    "className": "Microsoft.UI.Xaml.Controls.ItemContainer",
+    "isEnabled": true,
+    "isOffscreen": false,
+    "x": 833,
+    "y": 327,
+    "width": 220,
+    "height": 221,
+    "selector": "itm-artajpg-63be",
+    "isInvokable": true
+  }
+}
+
