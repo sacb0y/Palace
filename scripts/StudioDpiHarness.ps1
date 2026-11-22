@@ -262,13 +262,14 @@ function Read-PalaceXamlRootLog {
         if ($line -notmatch 'RasterizationScale=([0-9.]+)') { continue }
         $scale = [double]$Matches[1]
         if ($line -notmatch 'pid=([0-9]+)') { continue }
-        $pid = [int]$Matches[1]
-        if ($ExpectedPid -gt 0 -and $pid -ne $ExpectedPid) { continue }
+        # Never assign $pid — that aliases PowerShell automatic $PID.
+        $probePid = [int]$Matches[1]
+        if ($ExpectedPid -gt 0 -and $probePid -ne $ExpectedPid) { continue }
         return [pscustomobject]@{
             Width = $w
             Height = $h
             Scale = $scale
-            Pid = $pid
+            Pid = $probePid
             Raw = $line
             Path = $LogPath
         }

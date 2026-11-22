@@ -58,8 +58,9 @@ try {
     }
     $script:UiTestPackage = Test-PalaceUiTestIdentity -AppPid $AppPid
     $pkgVer = [string]$script:UiTestPackage.Version
-    if ($pkgVer -notlike "$($script:PalaceVersion)*") {
-        throw "Package version '$pkgVer' does not match Directory.Build.props PalaceVersion '$($script:PalaceVersion)'."
+    $expectedPkgVer = "$($script:PalaceVersion).0"
+    if ($pkgVer -ne $expectedPkgVer) {
+        throw "Package version '$pkgVer' must equal '$expectedPkgVer' (Directory.Build.props PalaceVersion + .0)."
     }
     Write-Host "UI test identity OK: $($script:UiTestPackage.Name) $pkgVer"
 } catch {
@@ -128,8 +129,11 @@ function Test-UI {
     $global:LASTEXITCODE = 1
     $script:LastTestOutcome = $null
     $prevEap = $ErrorActionPreference
-    $ErrorActionPreference = 'Stop'
     try {
+        # Continue (not Stop) while capturing 2>&1: on Windows PowerShell 5.1, winapp
+        # stderr becomes ErrorRecords that Stop would treat as terminating and
+        # false-FAIL a green LASTEXITCODE=0. Explicit throw still terminates.
+        $ErrorActionPreference = 'Continue'
         $output = & $Script 2>&1
         if ($script:LastTestOutcome -eq 'PARTIAL') {
             $script:partial++
@@ -608,6 +612,8 @@ Test-UI 'Tags drag: DPI-aware resize + XamlRoot/client gate' {
     if (Test-Path -LiteralPath $xrPath) {
         Remove-Item -LiteralPath $xrPath -Force
     }
+    # Nudge 1200 then 1280 so XamlRoot.Changed writes a fresh LocalState probe.
+    Resize-PalaceWindowDip -Hwnd $hwnd -DipWidth 1200 -DipHeight 900 | Out-Null
     Resize-PalaceWindowDip -Hwnd $hwnd -DipWidth 1280 -DipHeight 900 | Out-Null
     Assert-PalaceClientDipGate -Hwnd $hwnd -TargetDipWidth 1280 -ToleranceDip 2 `
         -XamlRootLogPath $xrPath -AppPid $AppPid -RequireXamlRoot $true | Out-Null
@@ -1302,10 +1308,7 @@ Test-UI 'Scan lists stamped online-only file without changing size' {
     winapp ui wait-for 'GrdAssets' @(WinArgs) -t 4000
     $root = @($folders | Where-Object { $_ -match 'PalaceUiTest' } | Select-Object -First 1)
     if (-not $root) {
-        $root = @($folders | Where-Object { $_ -match '\\Temp\\' } | Select-Object -First 1)
-    }
-    if (-not $root) {
-        Write-Host 'Note: skipped online-only scan fixture; no PalaceUiTest/Temp watched folder'
+        Write-Host 'Note: skipped online-only scan fixture; no PalaceUiTest watched folder'
         Ok
         return
     }
@@ -1362,10 +1365,7 @@ Test-UI 'Delete test file goes to Recycle and leaves mosaic' {
 
     $root = @($folders | Where-Object { $_ -match 'PalaceUiTest' } | Select-Object -First 1)
     if (-not $root) {
-        $root = @($folders | Where-Object { $_ -match '\\Temp\\' } | Select-Object -First 1)
-    }
-    if (-not $root) {
-        throw 'No dedicated PalaceUiTest/Temp watched folder; refusing to delete from the user library'
+        throw 'No dedicated PalaceUiTest watched folder; refusing to delete from the user library'
     }
     $root = $root[0]
     $name = "palace-ui-del-$([guid]::NewGuid().ToString('N').Substring(0, 8)).png"
@@ -1448,4 +1448,6 @@ $results | Where-Object { $_.status -eq 'FAIL' } | ForEach-Object {
     Write-Host "  FAIL: $($_.name) - $($_.detail)" -ForegroundColor Red
 }
 $results | ConvertTo-Json | Out-File 'test-results.json'
-if ($fail -gt 0) { exit 1 } else { exit 0 }
+if ($fail -gt 0) { exit 1 }
+if ($partial -gt 0) { exit 3 }
+exit 0
