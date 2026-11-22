@@ -1080,10 +1080,15 @@ public sealed partial class LibraryPage : Page
         var visible = VisibleMosaicColumnWidth(e.NewSize.Width);
         MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(visible));
         UpdateMosaicToolbarOverflow(visible);
-        // Chunk plans no-op while width unusable. ScheduleThumbPlan coalesces via
-        // _planQueued; still gate to first usable + WidthEpsilon so every layout
-        // tick after a plan completes does not re-queue.
-        if (visible >= MosaicLayoutWidth.MinUsable && _thumbsMayUpgrade)
+        // Below MinUsable: reset so the next usable width is "first usable" again.
+        if (visible < MosaicLayoutWidth.MinUsable)
+        {
+            _lastThumbPlanHostWidth = 0;
+            return;
+        }
+
+        // ScheduleThumbPlan coalesces via _planQueued; gate first usable + WidthEpsilon.
+        if (_thumbsMayUpgrade)
         {
             var firstUsable = _lastThumbPlanHostWidth < MosaicLayoutWidth.MinUsable;
             var widthMoved = Math.Abs(visible - _lastThumbPlanHostWidth) > MosaicLayoutCache.WidthEpsilon;
@@ -1733,7 +1738,14 @@ public sealed partial class LibraryPage : Page
         ClearMosaicFocusAfterNav();
         DispatcherQueue.TryEnqueue(() =>
         {
-            if (ViewModel.IsGalleryOverlayOpen || FocusIsSearchOrSuggest())
+            if (ViewModel.IsGalleryOverlayOpen || XamlRoot is null)
+            {
+                return;
+            }
+
+            var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+            // Reuse FocusIsTextInput (search / AutoSuggest / text boxes); skip open dialogs.
+            if (FocusIsTextInput(focused) || HasOpenContentDialog())
             {
                 return;
             }
@@ -1742,24 +1754,25 @@ public sealed partial class LibraryPage : Page
         });
     }
 
-    /// <summary>Skip stealing focus from Library search / AutoSuggestBox chrome.</summary>
-    private bool FocusIsSearchOrSuggest()
+    /// <summary>True when a ContentDialog (or similar) popup is open over this root.</summary>
+    private bool HasOpenContentDialog()
     {
         if (XamlRoot is null)
         {
             return false;
         }
 
-        var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
-        if (focused is AutoSuggestBox)
+        foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
         {
-            return true;
-        }
+            if (popup.Child is ContentDialog)
+            {
+                return true;
+            }
 
-        if (focused is DependencyObject node
-            && (IsDescendantOf(node, AsbSearch) || IsDescendantOf(node, AsbAssignTag)))
-        {
-            return true;
+            if (popup.Child is DependencyObject root && FindDescendant<ContentDialog>(root) is not null)
+            {
+                return true;
+            }
         }
 
         return false;
@@ -2326,6 +2339,7 @@ public sealed partial class LibraryPage : Page
         if (button.Tag is TileMoreReveal existing)
         {
             existing.Detach();
+            _tileMoreReveals.Remove(existing);
         }
 
         var tile = FindAncestor<Grid>(button);
@@ -3225,6 +3239,8 @@ public sealed partial class LibraryPage : Page
         _thumbsMayUpgrade = false;
         // Next usable SizeChanged must count as first-usable again.
         _lastThumbPlanHostWidth = 0;
+        // Reset empties the mosaic — drop a pending focus request (not only empty chunk).
+        ClearMosaicFocusAfterNav();
         _thumbSkipped.Clear();
         foreach (var id in _thumbQueue.CancelOutstanding())
         {
