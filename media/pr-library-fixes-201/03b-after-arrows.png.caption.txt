@@ -1,0 +1,1 @@
+﻿Tip 1cdad86 / 0.3.115 FENRIR-STUDIO PalaceOrganizeTest-5E1F @150%. Item3 PASS: after SendInput Right/Right/Down focus moved img-0000.jpg -> img-0006.jpg (see 03b-focus-*.json).

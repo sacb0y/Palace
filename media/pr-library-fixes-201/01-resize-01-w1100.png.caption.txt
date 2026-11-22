@@ -1,0 +1,1 @@
+﻿Tip 1cdad86 / 0.3.115 FENRIR-STUDIO PalaceOrganizeTest-5E1F. PerMonitorV2 DWM 1632x1191 dpi=144 (~150%). Item1: resize to ~1100 DIP width - thumbs must not vanish.

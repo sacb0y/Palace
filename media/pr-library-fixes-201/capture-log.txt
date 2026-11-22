@@ -1,0 +1,74 @@
+2026-11-22T18:05:51.9344738-05:00 === START AppPid=3724 ===
+2026-11-22T18:05:53.1161215-05:00 title=Palace 0.3.115 dpi=144 size=1782x1191
+2026-11-22T18:05:54.2191251-05:00 SetWindowPos DIP=1200x800 phys=1800x1200 dpi=144
+2026-11-22T18:05:57.3771574-05:00 SHOT 00-startup.png len=467932 md5=B4D9C9D6
+2026-11-22T18:05:59.4918712-05:00 onscreen folders: folder-000, 40 items; folder-001, 40 items; folder-002, 40 items; folder-003, 40 items; folder-004, 40 items; folder-005, 40 items; folder-006, 40 items; folder-007, 40 items; folder-008, 40 items; folder-009, 40 items; folder-010, 40 items
+2026-11-22T18:06:00.5508254-05:00 click 'tri-folder00240item-6b97' code=0 err=
+2026-11-22T18:06:05.0734051-05:00 SHOT 01-thumbs-after-folder-pick.png len=467944 md5=7624EF13
+2026-11-22T18:06:08.5963860-05:00 SHOT 01b-thumbs-settled-no-resize.png len=467932 md5=B4D9C9D6
+2026-11-22T18:06:10.7238640-05:00 scroll-into-view tri-folder01040item-6bc9 code=0 out=[WARNING] - Element position unchanged after ScrollIntoView — the element may 
+already be visible or the container didn't respond.
+Scrolled tri-folder01040item-6bc9 into view
+
+2026-11-22T18:06:12.1936159-05:00 click 'tri-folder01040item-6bc9' code=0 err=
+2026-11-22T18:06:16.7333053-05:00 SHOT 01c-thumbs-folder-010.png len=468118 md5=68007C66
+2026-11-22T18:06:17.8013946-05:00 SetWindowPos DIP=1100x800 phys=1650x1200 dpi=144
+2026-11-22T18:06:21.8016626-05:00 SHOT 01-resize-01-w1100.png len=458593 md5=2D84E146
+2026-11-22T18:06:22.8676702-05:00 SetWindowPos DIP=1000x800 phys=1500x1200 dpi=144
+2026-11-22T18:06:26.8847329-05:00 SHOT 01-resize-02-w1000.png len=439497 md5=7BC824A0
+2026-11-22T18:06:27.9377451-05:00 SetWindowPos DIP=1300x800 phys=1950x1200 dpi=144
+2026-11-22T18:06:31.9773880-05:00 SHOT 01-resize-03-w1300.png len=468587 md5=1C20E8D2
+2026-11-22T18:06:33.0437027-05:00 SetWindowPos DIP=1400x800 phys=2100x1200 dpi=144
+2026-11-22T18:06:37.1064647-05:00 SHOT 01-resize-04-w1400.png len=500258 md5=E09372C7
+2026-11-22T18:06:38.1732189-05:00 SetWindowPos DIP=900x800 phys=1350x1200 dpi=144
+2026-11-22T18:06:42.1702720-05:00 SHOT 01-resize-05-w900.png len=430491 md5=F2CA04EB
+2026-11-22T18:06:43.2321253-05:00 SetWindowPos DIP=1250x800 phys=1875x1200 dpi=144
+2026-11-22T18:06:47.2618197-05:00 SHOT 01-resize-06-w1250.png len=468489 md5=86A8B833
+2026-11-22T18:06:48.3306714-05:00 SetWindowPos DIP=1200x800 phys=1800x1200 dpi=144
+2026-11-22T18:06:53.5160060-05:00 tree before wheel: folder-000,folder-001,folder-002,folder-003,folder-004,folder-005,folder-006,folder-007,folder-008,folder-009,folder-010
+2026-11-22T18:06:55.0871357-05:00 SHOT 02-tree-before-wheel.png len=468099 md5=85A0CBF6
+2026-11-22T18:06:56.1628826-05:00 wheel TreFolders code=0 out=Scrolled TreFolders
+ err=
+2026-11-22T18:06:58.8773825-05:00 tree after wheel: folder-021,folder-022,folder-023,folder-024,folder-025,folder-026,folder-027,folder-028,folder-029,folder-030,folder-031,folder-032,folder-033
+2026-11-22T18:07:00.4014386-05:00 SHOT 02-tree-after-wheel.png len=467042 md5=AB55931C
+2026-11-22T18:07:03.5829271-05:00 click 'tri-folder02140item-6c0f' code=0 err=
+2026-11-22T18:07:06.6942015-05:00 GrdAssets={"type":"List","name":"Assets","automationId":"GrdAssets","className":"Microsoft.UI.Xaml.Controls.ItemsView","isEnabled":true,"isOffscreen":false,"x":821,"y":327,"width":941,"height":787,"selector":"GrdAssets","isInvokable":false}
+2026-11-22T18:07:11.8168395-05:00 SHOT 03-before-arrows.png len=468671 md5=62C4205B
+2026-11-22T18:07:12.9003246-05:00 arrows code=1 out='down' was not matched. Did you mean one of the following?
+-w
+
+Description:
+  Send synthetic keyboard input to a window. Supports named keys (down, enter, tab), modifier combos (ctrl+shift+t), raw virtual keys (vk=0xNN), and literal text. Use --verbatim to type the whole argument literally, or --target to focus an element first. Two transports via --via: post-message (default, HWND-targeted, bypasses UIPI) or send-input (OS-wide). For per-keystroke KeyDown on typed text (e.g. a WinUI 3/WPF TextBox), use --via send-input.
+
+Usage:
+  winapp ui send-keys [<keys>] [options]
+
+Arguments:
+  <keys>  Keys to send. Whitespace-separated tokens: named keys (down, enter, tab, esc, f5), modifier combos (ctrl+shift+t, alt+f4), raw virtual keys (vk=0x42), or literal text (hello). Use text=<literal> to type a single value verbatim when it would otherwise be read as a key name or combo (text=enter types "enter"; text=ctrl+a types "ctrl+a"); backslash escapes \s \t \n \r \\ are supported (text=a\s\sb types "a  b"). To type the whole argument literally without escaping each token, pass --verbatim instead. Quote multi-token strings, e.g. "ctrl+a delete".
+
+Options:
+  -a, --app <app>        Target app (process name, window title, or PID). Lists windows if ambiguous.
+  -w, --window <window>  Target window by HWND (stable handle from list output). Takes precedence over --app.
+  --target <target>      Optional selector (slug or text) to focus before sending keys.
+  --via <via>            Transport: post-message (default, HWND-targeted, bypasses UIPI; typed text raises TextChanged but not a per-character KeyDown) or send-input (OS-wide; typed text raises a real per-character KeyDown + TextChanged). Named keys and combos raise KeyDown on both, but keyboard accelerators/shortcuts (KeyboardAccelerator, e.g. ctrl+t) only fire via send-input. post-message targets the focused child control and works for classic Win32/WinForms controls, but WinUI 3 / UWP / XAML controls are windowless and ignore posted messages — use send-input for those (a warning is emitted when the target looks like a XAML app). [default: post-message]
+  --verbatim             Type the entire keys argument as literal text — no named-key, combo, or vk= interpretation, and exact whitespace preserved. The whole-argument form of the per-token text= escape: --verbatim "down down enter" types the words instead of pressing Down, Down, Enter.
+  --allow-system-keys    Allow synthesizing system-/shell-reserved combos (win+<key>, alt+f4, alt+tab, ctrl+esc, …) via --via send-input, which are refused by default because they act on the OS/shell beyond the target app. Opt in to drive global hotkeys (e.g. PowerToys' win+shift+v, win+r). No effect on --via post-message (already window-scoped; a warning is emitted if set without send-input). Note: win+l and ctrl+alt+del stay blocked even with this flag — win+l locks the workstation (LockWorkStation() via the shell hook), which is unrecoverable from automation, and ctrl+alt+del is a Secure Attention Sequence (SAS) that Windows drops from injected input regardless of this flag, so it can never take effect.
+  --json                 Format output as JSON
+  -v, --verbose          Enable verbose output
+  -q, --quiet            Suppress progress messages
+  -?, -h, --help         Show help and usage information
+  --cli-schema           Output the complete CLI command structure as JSON for tooling, scripting, and LLM integration. Includes all commands, options, arguments, and their descriptions.
+  --on <on>              Run this command on the named execution target instead of this machine. Supported: 'sandbox' (the Windows Sandbox winapp manages) and 'local' (the default). There is no fallback: if the target cannot be prepared, the command fails rather than running here.
+
+ err=Unrecognized command or argument 'right'.
+Unrecognized command or argument 'down'.
+
+
+2026-11-22T18:07:15.9338489-05:00 SHOT 03-after-arrows.png len=468495 md5=54251979
+2026-11-22T18:07:17.0197052-05:00 click 'TglSelectMode' code=0 err=
+2026-11-22T18:07:19.0522898-05:00 SHOT 04-select-mode-on.png len=482442 md5=A7A95383
+2026-11-22T18:07:22.3040375-05:00 drag 861,382 -> 1339,622 code=0 err=
+2026-11-22T18:07:24.5571054-05:00 SHOT 04-after-drag-select.png len=484538 md5=5CCF9113
+2026-11-22T18:07:25.6211533-05:00 BtnSelectDone code=0 err=
+2026-11-22T18:07:29.3386815-05:00 SHOT 04-exit-select-no-more.png len=470504 md5=87856412
+2026-11-22T18:07:29.3483030-05:00 === DONE ===

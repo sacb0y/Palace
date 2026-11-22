@@ -1,0 +1,1 @@
+﻿Tip 1cdad86 / 0.3.115 FENRIR-STUDIO PalaceOrganizeTest-5E1F. PerMonitorV2 DWM 1782x1191 dpi=144 (~150%). Item3: after Right/Right/Down - mosaic selection/focus should move between tiles.

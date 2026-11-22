@@ -1,0 +1,1 @@
+﻿Tip 1cdad86 / 0.3.115 FENRIR-STUDIO PalaceOrganizeTest-5E1F @150%. Item4 PASS: exited select after drag (7 selected); idle previously-selected tiles have no more-menu; only focused tile may show it.
