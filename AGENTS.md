@@ -19,7 +19,7 @@ This file is the always-loaded core. Topic rules live in `.cursor/rules/*.mdc` a
 | `icons-automation.mdc` | FluentIcons, AutomationIds, badges |
 | `code-map.mdc` | Which file owns which area |
 | `versioning-release.mdc` | `PalaceVersion`, bump rules, PR summary, MSIX, trim |
-| `local-test-identity.mdc` | HARD: never touch release Identity `C20A7629` |
+| `local-test-identity.mdc` | HARD: never touch release Identity `C20A7629`; ui-tests + CI identity gates; StudioDpiHarness |
 | `tests.mdc` | Test commands and `Palace.Tests` coverage |
 
 ## Versioning and changelog

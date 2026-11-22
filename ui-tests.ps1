@@ -12,10 +12,42 @@ $script:BfSourceName = "BfS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:BfImpliedName = "BfI$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:UiSharedName = "UiS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:UiPartialName = "UiP$([guid]::NewGuid().ToString('N').Substring(0, 6))"
+$script:RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:PalaceVersion = $null
+
+# Studio DPI / SendInput / probe QC helper (Pass1 Blocker2 + S7).
+$script:StudioHarness = Join-Path $script:RepoRoot 'scripts\StudioDpiHarness.ps1'
+if (Test-Path -LiteralPath $script:StudioHarness) {
+    . $script:StudioHarness
+}
+
+function Get-PalaceVersionFromProps {
+    $props = Join-Path $script:RepoRoot 'Directory.Build.props'
+    if (-not (Test-Path -LiteralPath $props)) { return $null }
+    $text = Get-Content -LiteralPath $props -Raw -Encoding UTF8
+    if ($text -match '<PalaceVersion>\s*([0-9]+\.[0-9]+\.[0-9]+)\s*</PalaceVersion>') {
+        return $Matches[1]
+    }
+    return $null
+}
+
+$script:PalaceVersion = Get-PalaceVersionFromProps
+
+# Pass2 C1: refuse unless the PID is a packaged Palace*Test* identity (never C20A7629).
+if (Get-Command Test-PalaceUiTestIdentity -ErrorAction SilentlyContinue) {
+    $script:UiTestPackage = Test-PalaceUiTestIdentity -AppPid $AppPid
+    Write-Host "UI test identity OK: $($script:UiTestPackage.Name) $($script:UiTestPackage.Version)"
+} else {
+    Write-Error 'StudioDpiHarness.ps1 missing Test-PalaceUiTestIdentity - refuse to run without identity guard.'
+    exit 1
+}
 
 function Bind-MainWindow {
     $windows = winapp ui list-windows -a $AppPid --json 2>$null | ConvertFrom-Json
-    $main = @($windows) | Where-Object { $_.title -eq 'Palace' } | Select-Object -First 1
+    # Title bar is "Palace {version}" (and test DisplayName may differ); match prefix + PID filter.
+    $main = @($windows) | Where-Object {
+        $_.title -and ($_.title -like 'Palace*') -and $_.title -ne 'PopupHost'
+    } | Select-Object -First 1
     if ($main) { $script:MainHwnd = $main.hwnd }
 }
 
@@ -67,6 +99,8 @@ function Wait-LibraryReady {
 
 function Test-UI {
     param([string]$Name, [scriptblock]$Script)
+    # Pass2 C2: reset so a block cannot inherit a stale PASS/FAIL from the prior test.
+    $global:LASTEXITCODE = 1
     try {
         $output = & $Script 2>&1
         if ($LASTEXITCODE -eq 0) {
@@ -521,6 +555,66 @@ Test-UI 'Implication listed in tag manager' {
     winapp ui wait-for 'TxtImpliedTags' -a $AppPid --value 'ImpHedgehog' --contains -t 4000
 }
 
+# --- Pass1 S7: Tags CanDrag + SendInput drag @150% (StudioDpiHarness) ---
+# Gate on probes / status, NEVER HWND float=0 (Pass1 Blocker1).
+Test-UI 'Tags drag: DPI-aware resize + XamlRoot/client gate' {
+    Enable-PalaceDpiAwareness | Out-Null
+    $hwnd = Get-PalaceMainHwnd -AppPid $AppPid
+    Resize-PalaceWindowDip -Hwnd $hwnd -DipWidth 1280 -DipHeight 900 | Out-Null
+    Assert-PalaceClientDipGate -Hwnd $hwnd -TargetDipWidth 1280 -ToleranceDip 2 | Out-Null
+    Ok
+}
+
+Test-UI 'Tags drag: create drop group + chip' {
+    winapp ui invoke 'NavTags' @(WinArgs) | Out-Null
+    winapp ui wait-for 'BtnTagGroupsHeader' @(WinArgs) -t 8000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroupsHeader missing' }
+    winapp ui invoke 'BtnTagGroupsHeader' @(WinArgs) | Out-Null
+    Start-Sleep -Milliseconds 700
+    winapp ui wait-for 'BtnTagGroup_Newgroup' @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroup_Newgroup missing after Add group' }
+    winapp ui set-value 'TxtNewTagName' 'UiDragChip' @(WinArgs) | Out-Null
+    winapp ui invoke 'BtnCreateUngroupedTag' @(WinArgs) | Out-Null
+    Start-Sleep -Milliseconds 700
+    winapp ui wait-for 'BtnTagChip_UiDragChip' @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagChip_UiDragChip missing' }
+    Ok
+}
+
+Test-UI 'Tags drag: hover + SendInput to group (probe/status gate)' {
+    # Probe file sink (TagDragUi.ProbeLogFileEnvVar). Process must see this env at launch
+    # for file lines; status-bar Added is the always-on gate. float=0 never fails QC.
+    $probe = Join-Path $env:TEMP 'palace-tagdrag.log'
+    $env:PALACE_TAG_DRAG_LOG_FILE = $probe
+    $env:PALACE_TAG_DRAG_LOG = '1'
+    if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue }
+
+    winapp ui invoke 'NavTags' @(WinArgs) | Out-Null
+    winapp ui click 'SelTagScopeAll' @(WinArgs) | Out-Null
+    Start-Sleep -Milliseconds 400
+    winapp ui wait-for 'BtnTagChip_UiDragChip' @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagChip_UiDragChip not ready' }
+    winapp ui wait-for 'BtnTagGroup_Newgroup' @(WinArgs) -t 4000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroup_Newgroup not ready' }
+
+    Invoke-PalaceSendInputDrag -AppPid $AppPid -FromSelector 'BtnTagChip_UiDragChip' -ToSelector 'BtnTagGroup_Newgroup' -HoldMs 500 | Out-Null
+
+    # Status-bar membership confirm.
+    winapp ui wait-for 'TxtTagsStatus' @(WinArgs) --value 'Added' --contains -t 5000 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        $st = ''
+        try { $st = (winapp ui get-value 'TxtTagsStatus' @(WinArgs) 2>$null) -join ' ' } catch {}
+        throw "Tags drag did not report Added (status='$st'). CanDrag/SendInput/DnD failed."
+    }
+
+    # Probe gate when the app was launched with PALACE_TAG_DRAG_LOG_FILE (Studio).
+    # float=0 is intentionally ignored (Assert-TagDragQcFromProbes).
+    if (Test-Path -LiteralPath $probe) {
+        Assert-TagDragQcFromProbes -LogPath $probe -RequireStarting | Out-Null
+    }
+    Ok
+}
+
 Test-UI 'Navigate to Rooms' { winapp ui invoke 'NavRooms' -a $AppPid }
 Test-UI 'Rooms list loaded' { winapp ui wait-for 'LstRooms' -a $AppPid -t 4000 }
 Test-UI 'Room icon picker exists' { winapp ui wait-for 'GrdRoomIcons' -a $AppPid -t 3000 }
@@ -547,7 +641,11 @@ Test-UI 'Wallpaper blur exists' { winapp ui wait-for 'SldShellBlur' -a $AppPid -
 Test-UI 'Wallpaper tint toggle exists' { winapp ui wait-for 'TglShellTint' -a $AppPid -t 4000 }
 Test-UI 'HDR peak override exists' { winapp ui wait-for 'TglHdrPeakOverride' -a $AppPid -t 4000 }
 Test-UI 'Media cache toggle exists' { winapp ui wait-for 'TglMediaCache' -a $AppPid -t 4000 }
-Test-UI 'App version is shown' { winapp ui wait-for 'TxtAppVersion' -a $AppPid --value '0.0.4' --contains -t 4000 }
+Test-UI 'App version is shown' {
+    # Pass2 C2: stale '0.0.4' assert; About shows "Palace {PalaceVersion} ...".
+    $expect = if ($script:PalaceVersion) { "Palace $($script:PalaceVersion)" } else { 'Palace ' }
+    winapp ui wait-for 'TxtAppVersion' -a $AppPid --value $expect --contains -t 4000
+}
 Test-UI 'Shortcut cheatsheet lists 1:1' { winapp ui wait-for 'TxtShortcutActual' -a $AppPid --value 'Ctrl+1' --contains -t 4000 }
 Test-UI 'Shortcut cheatsheet lists Fit' { winapp ui wait-for 'TxtShortcutFit' -a $AppPid --value 'Ctrl+2' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Fill' { winapp ui wait-for 'TxtShortcutFill' -a $AppPid --value 'Ctrl+3' --contains -t 3000 }

@@ -56,4 +56,37 @@ public sealed class TagDragUiTests
         Assert.Equal("", TagMembershipAdd.MultiBadge(1));
         Assert.Equal("3 tags", TagMembershipAdd.MultiBadge(3));
     }
+
+    [Fact]
+    public void ProbeLogFileEnvVar_IsStableForHarness()
+    {
+        Assert.Equal("PALACE_TAG_DRAG_LOG_FILE", TagDragUi.ProbeLogFileEnvVar);
+        Assert.Equal("PALACE_TAG_DRAG_LOG", TagDragUi.ProbeEnvVar);
+    }
+
+    [Fact]
+    public void WriteProbe_AppendsToLogFileWhenEnvSet()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "palace-tagdrag-test-" + Guid.NewGuid().ToString("N") + ".log");
+        try
+        {
+            Environment.SetEnvironmentVariable(TagDragUi.ProbeLogFileEnvVar, path);
+            TagDragUi.ProbeEnabledOverride = true;
+            TagDragUi.ResetProbe();
+            TagDragUi.LogDragStarting("chip1", 2);
+            Assert.True(File.Exists(path));
+            var text = File.ReadAllText(path);
+            Assert.Contains("Palace.TagDrag DragStarting", text, StringComparison.Ordinal);
+            Assert.Contains("count=2", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            TagDragUi.ProbeEnabledOverride = null;
+            Environment.SetEnvironmentVariable(TagDragUi.ProbeLogFileEnvVar, null);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
 }
