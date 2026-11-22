@@ -72,11 +72,56 @@ public sealed class LifetimeHookContractTests
             "OwnedDelegate.ClearIfOurs(ref mosaicChunk, OnMosaicChunkAppended)",
             cs,
             StringComparison.Ordinal);
-        // IsLoaded gate must sit between ReloadTagCatalogAsync await and AddHandler wiring.
+        // One-time grid handlers before IsLoaded gate; re-hookables after.
+        var catalog = cs.IndexOf("ViewModel.ReloadTagCatalogAsync", StringComparison.Ordinal);
+        var ensure = cs.IndexOf("EnsureGridAssetHandlers()", catalog, StringComparison.Ordinal);
+        var loadedGate = cs.IndexOf("if (!IsLoaded)", catalog, StringComparison.Ordinal);
+        Assert.True(
+            catalog >= 0 && ensure > catalog && loadedGate > ensure,
+            "EnsureGridAssetHandlers must run after ReloadTagCatalogAsync and before if (!IsLoaded)");
+        // Reuse branch also calls the idempotent method.
+        var shellReady = cs.IndexOf("if (_shellReady)", StringComparison.Ordinal);
+        var reuseEnsure = cs.IndexOf("EnsureGridAssetHandlers()", shellReady, StringComparison.Ordinal);
+        Assert.True(shellReady >= 0 && reuseEnsure > shellReady && reuseEnsure < catalog);
+    }
+
+    [Fact]
+    public void LibraryPage_GridHandlers_IdempotentMethod_NotAfterIsLoadedReturn()
+    {
+        var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"))
+            .Replace("\r\n", "\n");
+        Assert.Contains("private bool _gridHandlersAdded", cs, StringComparison.Ordinal);
+        Assert.Contains("private void EnsureGridAssetHandlers()", cs, StringComparison.Ordinal);
+
+        // All GrdAssets.AddHandler calls live inside EnsureGridAssetHandlers — not the
+        // Loaded lambda after if (!IsLoaded) (that path is skipped on Unloaded-during-await).
+        var method = cs.IndexOf("private void EnsureGridAssetHandlers()", StringComparison.Ordinal);
+        Assert.True(method >= 0);
+        var methodEnd = cs.IndexOf("\n    private void ", method + 1, StringComparison.Ordinal);
+        if (methodEnd < 0)
+        {
+            methodEnd = cs.IndexOf("\n    private ", method + 1, StringComparison.Ordinal);
+        }
+
+        Assert.True(methodEnd > method);
+        var body = cs[method..methodEnd];
+        Assert.Contains("if (_gridHandlersAdded)", body, StringComparison.Ordinal);
+        Assert.Contains("GrdAssets.AddHandler(DoubleTappedEvent", body, StringComparison.Ordinal);
+        Assert.Contains("_gridHandlersAdded = true", body, StringComparison.Ordinal);
+
+        // Loaded lambda must not inline GrdAssets.AddHandler after the IsLoaded gate.
         var catalog = cs.IndexOf("ViewModel.ReloadTagCatalogAsync", StringComparison.Ordinal);
         var loadedGate = cs.IndexOf("if (!IsLoaded)", catalog, StringComparison.Ordinal);
-        var wire = cs.IndexOf("GrdAssets.AddHandler", loadedGate, StringComparison.Ordinal);
-        Assert.True(catalog >= 0 && loadedGate > catalog && wire > loadedGate);
+        var afterGate = cs[loadedGate..];
+        var nextHandler = afterGate.IndexOf("GrdAssets.AddHandler", StringComparison.Ordinal);
+        // EnsureGridAssetHandlers method appears later in the file — only fail if AddHandler
+        // appears before that method definition in the post-gate slice of Loaded.
+        var ensureMethodInSlice = afterGate.IndexOf(
+            "private void EnsureGridAssetHandlers()",
+            StringComparison.Ordinal);
+        Assert.True(
+            nextHandler < 0 || (ensureMethodInSlice >= 0 && nextHandler > ensureMethodInSlice),
+            "GrdAssets.AddHandler must not sit after if (!IsLoaded) in Loaded — use EnsureGridAssetHandlers first");
     }
 
     /// <summary>

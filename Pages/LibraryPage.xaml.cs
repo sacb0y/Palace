@@ -28,6 +28,12 @@ public sealed partial class LibraryPage : Page
     private int _mosaicGeneration;
     private bool _thumbsMayUpgrade;
     private bool _shellReady;
+    /// <summary>
+    /// One-time GrdAssets routed handlers (DoubleTapped / KeyDown / Range*).
+    /// NavigationCacheMode=Required keeps the page — must survive Unloaded during
+    /// first-load awaits and be reachable from the reuse Loaded branch.
+    /// </summary>
+    private bool _gridHandlersAdded;
     private bool _scrollHooked;
     private bool _planQueued;
     private string _planReason = "realize";
@@ -217,7 +223,10 @@ public sealed partial class LibraryPage : Page
             // or the overlay still on that return.
             if (_shellReady)
             {
-                // NavigationCacheMode=Required: Unloaded dropped handlers — re-hook.
+                // NavigationCacheMode=Required: Unloaded dropped re-hookables — restore.
+                // Also ensure one-time GrdAssets handlers (idempotent) if first Loaded
+                // returned early after awaits with !IsLoaded before they were added.
+                EnsureGridAssetHandlers();
                 HookOverlayStillGestures();
                 PerformanceSettings.Changed -= PerformanceSettings_Changed;
                 PerformanceSettings.Changed += PerformanceSettings_Changed;
@@ -260,7 +269,10 @@ public sealed partial class LibraryPage : Page
             _suppressBrowseChrome = false;
             await ErrorReporter.RunAsync("Reload mosaic sort", null, ViewModel.ReloadMosaicSortAsync);
             await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
-            // Unloaded may have run during await (Settings) — do not wire a dead page.
+            // One-time grid handlers must run even if Unloaded fired during await —
+            // reuse Loaded never reaches this first-load body (_shellReady already true).
+            EnsureGridAssetHandlers();
+            // Re-hookable VM / Performance / overlay only while still in the tree.
             if (!IsLoaded)
             {
                 return;
@@ -269,14 +281,6 @@ public sealed partial class LibraryPage : Page
             UpdatePreview();
             InvalidateMosaicLayout();
             HookOverlayGallery();
-            GrdAssets.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(GrdAssets_DoubleTapped), true);
-            GrdAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdAssets_KeyDown), true);
-            GrdAssets.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(GrdAssets_RangePressed), true);
-            GrdAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdAssets_RangeMoved), true);
-            GrdAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdAssets_RangeReleased), true);
-            GrdAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdAssets_RangeCaptureLost), true);
-            GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
-            GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
             RefreshRealizedTiles();
             HookFolderTreeExpansion();
             TryHookMosaicScroll();
@@ -348,6 +352,29 @@ public sealed partial class LibraryPage : Page
         SrfOverlayStill.ReviewSwipeCommitted += OnOverlayReviewSwipe;
         SrfOverlayStill.ChipCrossFadeRequested += OnOverlayChipCrossFade;
         SrfOverlayStill.LongPressCommitted += OnOverlayStillLongPress;
+    }
+
+    /// <summary>
+    /// One-time GrdAssets routed handlers. Idempotent via <see cref="_gridHandlersAdded"/>.
+    /// Must run after first-load awaits even when <c>!IsLoaded</c>, and from the
+    /// reuse Loaded branch — never gate behind the IsLoaded early return.
+    /// </summary>
+    private void EnsureGridAssetHandlers()
+    {
+        if (_gridHandlersAdded)
+        {
+            return;
+        }
+
+        GrdAssets.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(GrdAssets_DoubleTapped), true);
+        GrdAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdAssets_KeyDown), true);
+        GrdAssets.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(GrdAssets_RangePressed), true);
+        GrdAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdAssets_RangeMoved), true);
+        GrdAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdAssets_RangeReleased), true);
+        GrdAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdAssets_RangeCaptureLost), true);
+        GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
+        GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
+        _gridHandlersAdded = true;
     }
 
     private void PerformanceSettings_Changed(object? sender, EventArgs e)
