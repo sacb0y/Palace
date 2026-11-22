@@ -1,0 +1,1 @@
+Tags: chip row with star affordances visible; trailing gap reservation

@@ -1,0 +1,1 @@
+A1: overlay after Ctrl+wheel from 1:1 post-Settings path; zoom should change scale

@@ -1,0 +1,1 @@
+A1: overlay after pinch/stretch gesture post-Settings; zoom gestures still hooked

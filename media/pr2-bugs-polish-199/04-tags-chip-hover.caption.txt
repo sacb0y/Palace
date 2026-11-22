@@ -1,0 +1,1 @@
+Tags: hover dwell on BtnTagChip_Character before drag (CanDrag pre-arm)

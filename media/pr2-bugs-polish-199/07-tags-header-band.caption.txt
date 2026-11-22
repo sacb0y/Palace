@@ -1,0 +1,1 @@
+Tags board header chrome after expand; no tall empty header band

@@ -1,0 +1,1 @@
+Overlay opened on keep-a.jpg after Settings round-trip; before Ctrl+wheel zoom

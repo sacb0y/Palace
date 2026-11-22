@@ -1,0 +1,1 @@
+Tags: after drag BtnTagChip_Character -> BtnTagGroup_Subject; check drop + no stuck pressed chrome
