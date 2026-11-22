@@ -1491,7 +1491,8 @@ Write-Host ""
 Write-Host "Passed: $pass | Partial: $partial | Failed: $fail"
 if ($script:DesktopOverride -and $script:DesktopOverride.DesktopOverride) {
     Write-Host "Desktop override: $($script:DesktopOverride.AuditLine)" -ForegroundColor Yellow
-    Write-Host "Desktop override log: $($script:DesktopOverride.AuditLogPath)" -ForegroundColor Yellow
+    Write-Host "Desktop override LocalState log: $($script:DesktopOverride.AuditLogPath)" -ForegroundColor Yellow
+    Write-Host "Desktop override shared log: $($script:DesktopOverride.SharedAuditLogPath)" -ForegroundColor Yellow
 }
 $results | Where-Object { $_.status -eq 'PARTIAL' } | ForEach-Object {
     Write-Host "  PARTIAL: $($_.name) - $($_.detail)" -ForegroundColor Yellow
@@ -1510,6 +1511,7 @@ if ($script:DesktopOverride -and $script:DesktopOverride.DesktopOverride) {
         reason = $script:DesktopOverride.Reason
         auditLine = $script:DesktopOverride.AuditLine
         auditLogPath = $script:DesktopOverride.AuditLogPath
+        sharedAuditLogPath = $script:DesktopOverride.SharedAuditLogPath
     }
 }
 $summaryObj | ConvertTo-Json -Depth 6 | Out-File 'test-results.json'

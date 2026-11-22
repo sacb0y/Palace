@@ -39,6 +39,17 @@ $script:PalaceAllowedTestIdentity = 'PalaceOrganizeTest-5E1F'
 $script:PalaceReleaseIdentity = 'C20A7629-6BDE-449F-958A-5AAF8BCE88F3'
 $script:PalaceFenrirDesktopName = 'FenrirDesktop'
 $script:PalaceDesktopOverrideLogName = 'palace-ui-desktop-override.log'
+$script:PalaceDesktopOverrideSharedRel = 'PalaceTestAudit\desktop-override.log'
+
+function Sanitize-PalaceDesktopAuditField {
+    param([string]$Value = '')
+    if ($null -eq $Value) { return '' }
+    return (($Value -replace '[\t\r\n]+', ' ').Trim())
+}
+
+function Get-PalaceDesktopOverrideSharedLogPath {
+    return (Join-Path $env:LOCALAPPDATA $script:PalaceDesktopOverrideSharedRel)
+}
 
 if (-not ('PalaceStudioDpi' -as [type])) {
     Add-Type @"
@@ -138,7 +149,8 @@ function Assert-PalaceFenrirDesktopPolicy {
     <#
     .SYNOPSIS
     Default refuse FenrirDesktop. -AllowDesktop requires non-empty -OverrideReason.
-    On override: console warn + append audit line (timestamp, COMPUTERNAME, user, reason, args).
+    On override: console warn + append TSV audit to LocalState and
+    %LOCALAPPDATA%\PalaceTestAudit\desktop-override.log (tabs/CR/LF stripped from reason/args).
     #>
     param(
         [switch]$AllowDesktop,
@@ -154,13 +166,15 @@ function Assert-PalaceFenrirDesktopPolicy {
             DesktopOverride = $false
             AuditLine = $null
             AuditLogPath = $null
+            SharedAuditLogPath = $null
         }
     }
 
     if (-not $AllowDesktop) {
         throw 'REFUSED: ui-tests must not run on FenrirDesktop without -AllowDesktop -OverrideReason <non-empty>.'
     }
-    if ([string]::IsNullOrWhiteSpace($OverrideReason)) {
+    $reasonClean = Sanitize-PalaceDesktopAuditField $OverrideReason
+    if ([string]::IsNullOrWhiteSpace($reasonClean)) {
         throw 'REFUSED: -AllowDesktop requires non-empty -OverrideReason.'
     }
 
@@ -168,28 +182,35 @@ function Assert-PalaceFenrirDesktopPolicy {
         $UserName = $env:USERNAME
         if (-not $UserName) { $UserName = [Environment]::UserName }
     }
-    if (-not $ArgsSummary) { $ArgsSummary = '(none)' }
+    $userClean = Sanitize-PalaceDesktopAuditField $UserName
+    $argsClean = Sanitize-PalaceDesktopAuditField $ArgsSummary
+    if (-not $argsClean) { $argsClean = '(none)' }
 
     $ts = [DateTime]::UtcNow.ToString('o')
-    $auditLine = "timestamp=$ts`tCOMPUTERNAME=$ComputerName`tuser=$UserName`treason=$OverrideReason`targs=$ArgsSummary"
-    $path = $AuditLogPath
-    if (-not $path) {
-        $path = Get-PalaceDesktopOverrideLogPath -PackageFamilyName $PackageFamilyName
-    }
-    $dir = Split-Path -Parent $path
-    if ($dir -and -not (Test-Path -LiteralPath $dir)) {
-        New-Item -ItemType Directory -Force -Path $dir | Out-Null
-    }
-    Add-Content -LiteralPath $path -Value $auditLine -Encoding UTF8
+    $auditLine = "timestamp=$ts`tCOMPUTERNAME=$ComputerName`tuser=$userClean`treason=$reasonClean`targs=$argsClean"
 
-    Write-Warning ("FenrirDesktop override: $OverrideReason (audit: $path)")
+    $localPath = $AuditLogPath
+    if (-not $localPath) {
+        $localPath = Get-PalaceDesktopOverrideLogPath -PackageFamilyName $PackageFamilyName
+    }
+    $sharedPath = Get-PalaceDesktopOverrideSharedLogPath
+    foreach ($path in @($localPath, $sharedPath)) {
+        $dir = Split-Path -Parent $path
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        }
+        Add-Content -LiteralPath $path -Value $auditLine -Encoding UTF8
+    }
+
+    Write-Warning ("FenrirDesktop override: $reasonClean (audit: $localPath ; $sharedPath)")
     Write-Host "DESKTOP OVERRIDE: $auditLine"
 
     return [pscustomobject]@{
         DesktopOverride = $true
         AuditLine = $auditLine
-        AuditLogPath = $path
-        Reason = $OverrideReason
+        AuditLogPath = $localPath
+        SharedAuditLogPath = $sharedPath
+        Reason = $reasonClean
     }
 }
 
@@ -222,10 +243,20 @@ function Test-PalaceFenrirDesktopPolicySelfTest {
     try {
         $log = Join-Path $tmp $script:PalaceDesktopOverrideLogName
         $ok = Assert-PalaceFenrirDesktopPolicy -ComputerName $script:PalaceFenrirDesktopName `
-            -AllowDesktop -OverrideReason 'selftest' -UserName 'selftest' `
-            -ArgsSummary '-SelfTestDesktopGate' -AuditLogPath $log
+            -AllowDesktop -OverrideReason ("self`ttest`r`nmore") -UserName 'selftest' `
+            -ArgsSummary ("-SelfTest`tDesktopGate") -AuditLogPath $log
         if (-not $ok.DesktopOverride) { $failures += 'override did not set DesktopOverride' }
-        if (-not (Test-Path -LiteralPath $log)) { $failures += 'audit log missing' }
+        if (-not (Test-Path -LiteralPath $log)) { $failures += 'LocalState audit log missing' }
+        if ($ok.Reason -match "[\t\r\n]") { $failures += 'Reason still has tab/CR/LF' }
+        if ($ok.AuditLine -notmatch 'reason=self test more') {
+            $failures += "sanitized reason missing in audit: $($ok.AuditLine)"
+        }
+        if ($ok.AuditLine -notmatch 'args=-SelfTest DesktopGate') {
+            $failures += "sanitized args missing in audit: $($ok.AuditLine)"
+        }
+        if ($env:LOCALAPPDATA -and $ok.SharedAuditLogPath -and -not (Test-Path -LiteralPath $ok.SharedAuditLogPath)) {
+            $failures += 'shared PalaceTestAudit log missing'
+        }
     } finally {
         Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }

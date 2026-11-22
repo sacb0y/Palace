@@ -119,6 +119,33 @@ def check_release_identity() -> None:
     print(
         f"OK identity: Name={name}, PhoneProductId={phone}, DisplayName={display}"
     )
+    check_ui_tests_identity_before_desktop_policy()
+
+
+def check_ui_tests_identity_before_desktop_policy() -> None:
+    """Contract: ui-tests calls Test-PalaceUiTestIdentity before Assert-PalaceFenrirDesktopPolicy."""
+    path = ROOT / "ui-tests.ps1"
+    text = path.read_text(encoding="utf-8")
+    # Prefer the real call sites (not Get-Command name checks).
+    id_idx = text.find("Test-PalaceUiTestIdentity -AppPid")
+    desk_idx = text.find("Assert-PalaceFenrirDesktopPolicy `")
+    if desk_idx < 0:
+        desk_idx = text.find("Assert-PalaceFenrirDesktopPolicy")
+    if id_idx < 0:
+        raise SystemExit(
+            "ui-tests.ps1 missing Test-PalaceUiTestIdentity -AppPid call "
+            "(identity guard must run before FenrirDesktop policy)"
+        )
+    if desk_idx < 0:
+        raise SystemExit(
+            "ui-tests.ps1 missing Assert-PalaceFenrirDesktopPolicy call"
+        )
+    if id_idx > desk_idx:
+        raise SystemExit(
+            "ui-tests.ps1 contract: Test-PalaceUiTestIdentity must appear "
+            "before Assert-PalaceFenrirDesktopPolicy (fail closed)"
+        )
+    print("OK ui-tests order: Test-PalaceUiTestIdentity before Assert-PalaceFenrirDesktopPolicy")
 
 
 def parse_semver(v: str) -> tuple[int, int, int]:
@@ -217,7 +244,7 @@ def main() -> int:
     ap.add_argument(
         "--check-identity",
         action="store_true",
-        help="only assert Package.appxmanifest is the release Store identity",
+        help="assert release Store identity + ui-tests identity-before-desktop-policy order",
     )
     args = ap.parse_args()
 
