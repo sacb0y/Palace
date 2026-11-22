@@ -109,6 +109,28 @@ public sealed class TagsPageXamlLayoutTests
         var assetsOpen = xaml[mosaic..(mosaic + 400)];
         Assert.Contains("MaxHeight=\"280\"", assetsOpen, StringComparison.Ordinal);
         Assert.Contains("HasTagAssets", xaml, StringComparison.Ordinal);
+
+        // MaxHeight only on GrdTagAssets ScrollViewer — not on the Auto host Grid
+        // (host+inner MaxHeight clipped the mosaic bottom).
+        Assert.False(
+            Regex.IsMatch(
+                xaml,
+                @"<Grid\s+Grid\.Row=""2""\s+MaxHeight=""280""",
+                RegexOptions.CultureInvariant),
+            "mosaic host must not set MaxHeight=280 (keep only on GrdTagAssets)");
+
+        var hostMatch = Regex.Match(
+            xaml,
+            @"<!-- MaxHeight only on GrdTagAssets[\s\S]*?<Grid\s+Grid\.Row=""2""",
+            RegexOptions.CultureInvariant);
+        Assert.True(hostMatch.Success, "mosaic host Grid.Row=2 after MaxHeight comment missing");
+        var hostStart = xaml.IndexOf("<Grid", hostMatch.Index, StringComparison.Ordinal);
+        Assert.True(hostStart >= 0);
+        var hostRows = xaml.IndexOf("<Grid.RowDefinitions>", hostStart, StringComparison.Ordinal);
+        var hostRowsEnd = xaml.IndexOf("</Grid.RowDefinitions>", hostRows, StringComparison.Ordinal);
+        var hostBlock = xaml[hostRows..hostRowsEnd];
+        Assert.DoesNotContain("Height=\"*\"", hostBlock, StringComparison.Ordinal);
+        Assert.Equal(3, Regex.Matches(hostBlock, @"Height=""Auto""").Count);
     }
 
     [Fact]

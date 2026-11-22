@@ -26,6 +26,13 @@ public static class TagDragUi
     /// </summary>
     public static bool ShouldCapturePointerForPressChrome(bool canDrag) => !canDrag;
 
+    /// <summary>
+    /// Mirror Library <c>AssetDrag.PreArmsCanDragOnMouseHover</c>: WinUI samples
+    /// CanDrag at pointer-down, so Tags must pre-arm on mouse hover / move.
+    /// Touch / pen leave CanDrag false so the chip ScrollViewer still pans.
+    /// </summary>
+    public static bool PreArmsCanDragOnMouseHover(bool isMouse) => isMouse;
+
     public static string GhostCacheKey(string? tagId, int payloadCount) =>
         $"{tagId ?? ""}\n{Math.Max(0, payloadCount)}";
 

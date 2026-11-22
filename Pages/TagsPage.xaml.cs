@@ -59,10 +59,35 @@ public sealed partial class TagsPage : Page
     private BitmapImage? _tagDragGhost;
     private string? _tagDragGhostKey;
     private int _tagDragGhostEpoch;
+    private UIElement? _canDragArmed;
+    private bool _surfaceHandlersHooked;
+    private readonly KeyEventHandler _tagAssetsKeyDown;
+    private readonly PointerEventHandler _tagAssetsRangeMoved;
+    private readonly PointerEventHandler _tagAssetsRangeReleased;
+    private readonly PointerEventHandler _tagAssetsRangeCaptureLost;
+    private readonly HoldingEventHandler _tagAssetsRangeHolding;
 
     public TagsPage()
     {
+        _tagAssetsKeyDown = GrdTagAssets_KeyDown;
+        _tagAssetsRangeMoved = GrdTagAssets_RangeMoved;
+        _tagAssetsRangeReleased = GrdTagAssets_RangeReleased;
+        _tagAssetsRangeCaptureLost = GrdTagAssets_RangeCaptureLost;
+        _tagAssetsRangeHolding = GrdTagAssets_RangeHolding;
         InitializeComponent();
+        SizeChanged += TagsPage_SizeChanged;
+        Loaded += TagsPage_Loaded;
+        Unloaded += TagsPage_Unloaded;
+    }
+
+    private void TagsPage_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RefreshTagColumnLayout();
+
+    private async void TagsPage_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Singleton Tags VM — subscribe only while this page is live (D4).
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         ViewModel.RequestOrganizeChoice = AskOrganizeChoiceAsync;
         ViewModel.RequestConfirm = AskConfirmAsync;
         ViewModel.RequestOpenGallery = GalleryWindow.Show;
@@ -71,68 +96,158 @@ public sealed partial class TagsPage : Page
         ViewModel.RequestFocusImplies = FocusImpliesSection;
         ViewModel.MosaicReset = OnMosaicReset;
         ViewModel.MosaicChunkAppended = OnMosaicChunkAppended;
-        ViewModel.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(TagsViewModel.OverlayGallery) or nameof(TagsViewModel.IsGalleryOverlayOpen))
-            {
-                HookOverlayGallery();
-                UpdateOverlayMedia();
-                SyncViewerOverlayAutoHide();
-                if (ViewModel.IsGalleryOverlayOpen)
-                {
-                    GrdGalleryOverlay.Focus(FocusState.Programmatic);
-                }
-            }
 
-            if (e.PropertyName is nameof(TagsViewModel.ShowDetails))
-            {
-                RefreshTagColumnLayout();
-            }
-        };
-        SizeChanged += (_, _) => RefreshTagColumnLayout();
-        Loaded += async (_, _) =>
+        HookShellNavLayoutTracking();
+        RefreshTagColumnLayout();
+        HookTagAssetsSurfaceHandlers();
+        CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
+        ViewerMediaElement.SuppressFullWindow(MpeOverlay);
+        SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayStillSwipe;
+        SrfOverlayStill.ReviewSwipeCommitted += OnOverlayStillSwipe;
+        _videoBrowseSwipe ??= new VideoBrowseSwipeBinder(
+            MpeOverlay,
+            VideoBrowseSwipeAllowedNow,
+            OnOverlayStillSwipe);
+        _videoBrowseSwipe.Hook();
+        RefreshRealizedTiles();
+        HookOverlayGallery();
+        await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
+        // Navigated away during await — Unloaded already cleared hooks; do not re-arm.
+        if (!IsLoaded)
         {
-            HookShellNavLayoutTracking();
-            RefreshTagColumnLayout();
-            GrdTagAssets.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(GrdTagAssets_KeyDown), true);
-            GrdTagAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdTagAssets_RangeMoved), true);
-            GrdTagAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdTagAssets_RangeReleased), true);
-            GrdTagAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdTagAssets_RangeCaptureLost), true);
-            GrdTagAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdTagAssets_RangeHolding), true);
-            CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
-            ViewerMediaElement.SuppressFullWindow(MpeOverlay);
-            SrfOverlayStill.ReviewSwipeCommitted += OnOverlayStillSwipe;
-            _videoBrowseSwipe = new VideoBrowseSwipeBinder(
-                MpeOverlay,
-                VideoBrowseSwipeAllowedNow,
-                OnOverlayStillSwipe);
-            _videoBrowseSwipe.Hook();
-            RefreshRealizedTiles();
+            return;
+        }
+
+        _priorityArmed = true;
+    }
+
+    private void TagsPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+        UnhookShellNavLayoutTracking();
+        _shellContentFrame = null;
+        DisarmCanDrag();
+        UnhookTagAssetsSurfaceHandlers();
+        SrfOverlayStill.ReviewSwipeCommitted -= OnOverlayStillSwipe;
+        _videoBrowseSwipe?.Unhook();
+        ReleaseOverlayMediaPlayer();
+
+        // Delegate == compares target+method (ReferenceEquals fails across cast instances).
+        var mosaicReset = ViewModel.MosaicReset;
+        OwnedDelegate.ClearIfOurs(ref mosaicReset, OnMosaicReset);
+        ViewModel.MosaicReset = mosaicReset;
+
+        var mosaicChunk = ViewModel.MosaicChunkAppended;
+        OwnedDelegate.ClearIfOurs(ref mosaicChunk, OnMosaicChunkAppended);
+        ViewModel.MosaicChunkAppended = mosaicChunk;
+
+        if (ViewModel.RequestOrganizeChoice
+            == (Func<IReadOnlyList<TagPath>, Task<OrganizeChoice?>>)AskOrganizeChoiceAsync)
+        {
+            ViewModel.RequestOrganizeChoice = null;
+        }
+
+        if (ViewModel.RequestConfirm
+            == (Func<string, string, string, Task<bool>>)AskConfirmAsync)
+        {
+            ViewModel.RequestConfirm = null;
+        }
+
+        if (ViewModel.RequestOpenGallery == (Action<GalleryViewModel>)GalleryWindow.Show)
+        {
+            ViewModel.RequestOpenGallery = null;
+        }
+
+        if (ViewModel.RequestFocusRename == (Action)FocusRenameBox)
+        {
+            ViewModel.RequestFocusRename = null;
+        }
+
+        if (ViewModel.RequestFocusAliasAdd == (Action)FocusAliasAddBox)
+        {
+            ViewModel.RequestFocusAliasAdd = null;
+        }
+
+        if (ViewModel.RequestFocusImplies == (Action<string?>)FocusImpliesSection)
+        {
+            ViewModel.RequestFocusImplies = null;
+        }
+
+        if (_hookedOverlay is not null)
+        {
+            _hookedOverlay.PropertyChanged -= OverlayGallery_PropertyChanged;
+            _hookedOverlay = null;
+        }
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TagsViewModel.OverlayGallery) or nameof(TagsViewModel.IsGalleryOverlayOpen))
+        {
             HookOverlayGallery();
-            await ErrorReporter.RunAsync("Load tags", null, ViewModel.RefreshAsync);
-            _priorityArmed = true;
-        };
-        Unloaded += (_, _) =>
+            UpdateOverlayMedia();
+            SyncViewerOverlayAutoHide();
+            if (ViewModel.IsGalleryOverlayOpen)
+            {
+                GrdGalleryOverlay.Focus(FocusState.Programmatic);
+            }
+        }
+
+        if (e.PropertyName is nameof(TagsViewModel.ShowDetails))
         {
-            UnhookShellNavLayoutTracking();
-            _shellContentFrame = null;
-            if (ReferenceEquals(ViewModel.MosaicReset, (Action)OnMosaicReset))
-            {
-                ViewModel.MosaicReset = null;
-                ViewModel.MosaicChunkAppended = null;
-            }
+            RefreshTagColumnLayout();
+        }
 
-            if (ReferenceEquals(ViewModel.RequestFocusImplies, (Action<string?>)FocusImpliesSection))
-            {
-                ViewModel.RequestFocusImplies = null;
-            }
+        if (e.PropertyName is nameof(TagsViewModel.SelectedBoard)
+            or nameof(TagsViewModel.ChildrenHeader))
+        {
+            PrefetchGhostsForSelection();
+        }
+    }
 
-            if (_hookedOverlay is not null)
-            {
-                _hookedOverlay.PropertyChanged -= OverlayGallery_PropertyChanged;
-                _hookedOverlay = null;
-            }
-        };
+    private void HookTagAssetsSurfaceHandlers()
+    {
+        if (_surfaceHandlersHooked)
+        {
+            return;
+        }
+
+        GrdTagAssets.AddHandler(UIElement.KeyDownEvent, _tagAssetsKeyDown, true);
+        GrdTagAssets.AddHandler(UIElement.PointerMovedEvent, _tagAssetsRangeMoved, true);
+        GrdTagAssets.AddHandler(UIElement.PointerReleasedEvent, _tagAssetsRangeReleased, true);
+        GrdTagAssets.AddHandler(UIElement.PointerCaptureLostEvent, _tagAssetsRangeCaptureLost, true);
+        GrdTagAssets.AddHandler(UIElement.HoldingEvent, _tagAssetsRangeHolding, true);
+        _surfaceHandlersHooked = true;
+    }
+
+    private void UnhookTagAssetsSurfaceHandlers()
+    {
+        if (!_surfaceHandlersHooked)
+        {
+            return;
+        }
+
+        GrdTagAssets.RemoveHandler(UIElement.KeyDownEvent, _tagAssetsKeyDown);
+        GrdTagAssets.RemoveHandler(UIElement.PointerMovedEvent, _tagAssetsRangeMoved);
+        GrdTagAssets.RemoveHandler(UIElement.PointerReleasedEvent, _tagAssetsRangeReleased);
+        GrdTagAssets.RemoveHandler(UIElement.PointerCaptureLostEvent, _tagAssetsRangeCaptureLost);
+        GrdTagAssets.RemoveHandler(UIElement.HoldingEvent, _tagAssetsRangeHolding);
+        _surfaceHandlersHooked = false;
+    }
+
+    private void ReleaseOverlayMediaPlayer()
+    {
+        try
+        {
+            var player = MpeOverlay.MediaPlayer;
+            MpeOverlay.SetMediaPlayer(null);
+            MpeOverlay.Source = null;
+            player?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("TagsPage ReleaseOverlayMediaPlayer", ex);
+        }
     }
 
     /// <summary>
@@ -493,22 +608,24 @@ public sealed partial class TagsPage : Page
         var ctrl = IsKeyDown(VirtualKey.Control) || IsKeyDown(VirtualKey.LeftControl) || IsKeyDown(VirtualKey.RightControl);
         var shift = IsKeyDown(VirtualKey.Shift) || IsKeyDown(VirtualKey.LeftShift) || IsKeyDown(VirtualKey.RightShift);
         ViewModel.SelectChip(chip, toggle: ctrl, extend: shift && !ctrl);
+        PrefetchGhostsForSelection();
     }
 
     private static bool IsKeyDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
 
+    private void TagBoard_PointerMoved(object sender, PointerRoutedEventArgs e) =>
+        SyncMouseCanDragArm(e);
+
+    private void TagBoard_PointerExited(object sender, PointerRoutedEventArgs e) =>
+        DisarmCanDrag();
+
     private void TagChip_PointerEntered(object sender, PointerRoutedEventArgs e)
     {
         // Mouse-only CanDrag so touch/pen still pans the chip ScrollViewer (AssetDrag pattern).
-        if (sender is not UIElement el
-            || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
-        {
-            return;
-        }
-
-        el.CanDrag = true;
-        if (sender is FrameworkElement { Tag: TagChipItem chip })
+        SyncMouseCanDragArm(e);
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse
+            && sender is FrameworkElement { Tag: TagChipItem chip })
         {
             PrefetchTagDragGhost(chip);
         }
@@ -527,9 +644,76 @@ public sealed partial class TagsPage : Page
 
     private void TagChip_PointerExited(object sender, PointerRoutedEventArgs e)
     {
-        if (sender is UIElement el)
+        // Board PointerMoved re-arms the hovered chip; leave alone if still armed.
+        if (sender is UIElement el && ReferenceEquals(_canDragArmed, el))
         {
-            el.CanDrag = false;
+            DisarmCanDrag();
+        }
+    }
+
+    private void SyncMouseCanDragArm(PointerRoutedEventArgs e)
+    {
+        if (!TagDragUi.PreArmsCanDragOnMouseHover(
+                e.Pointer.PointerDeviceType == PointerDeviceType.Mouse))
+        {
+            DisarmCanDrag();
+            return;
+        }
+
+        var chip = FindAncestor<Controls.TagChip>(e.OriginalSource as DependencyObject);
+        if (chip is null)
+        {
+            DisarmCanDrag();
+            return;
+        }
+
+        if (ReferenceEquals(_canDragArmed, chip))
+        {
+            return;
+        }
+
+        DisarmCanDrag();
+        chip.CanDrag = true;
+        _canDragArmed = chip;
+    }
+
+    private void DisarmCanDrag()
+    {
+        if (_canDragArmed is null)
+        {
+            return;
+        }
+
+        _canDragArmed.CanDrag = false;
+        _canDragArmed = null;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? start)
+        where T : DependencyObject
+    {
+        for (var cur = start; cur is not null; cur = VisualTreeHelper.GetParent(cur))
+        {
+            if (cur is T match)
+            {
+                return match;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Warm DragUI ghost for the current selection so fast multi-select SendInput
+    /// does not miss the custom pill on the next DragStarting.
+    /// </summary>
+    private void PrefetchGhostsForSelection()
+    {
+        var chip = ViewModel.SelectedBoard?.Letters
+            .SelectMany(letter => letter.Chips)
+            .FirstOrDefault(c => c.IsSelected);
+        if (chip is not null)
+        {
+            PrefetchTagDragGhost(chip);
         }
     }
 
@@ -594,6 +778,7 @@ public sealed partial class TagsPage : Page
     {
         ViewModel.ClearChipDragSources();
         ViewModel.ClearGroupDropChrome();
+        DisarmCanDrag();
     }
 
     private void PrefetchTagDragGhost(TagChipItem chip)

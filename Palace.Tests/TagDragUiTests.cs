@@ -25,6 +25,13 @@ public sealed class TagDragUiTests
     }
 
     [Fact]
+    public void PreArmsCanDragOnMouseHover_MouseOnly()
+    {
+        Assert.True(TagDragUi.PreArmsCanDragOnMouseHover(isMouse: true));
+        Assert.False(TagDragUi.PreArmsCanDragOnMouseHover(isMouse: false));
+    }
+
+    [Fact]
     public void DropChrome_ValidVsRefuse()
     {
         Assert.True(TagDragUi.ShowsValidDropChrome(isUserGroupRow: true, allowDrop: true));

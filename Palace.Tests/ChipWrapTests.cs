@@ -111,4 +111,42 @@ public sealed class ChipWrapTests
                 finalSizeWidth: 400,
                 arrangeIntoTrailingGap: true));
     }
+
+    [Fact]
+    public void Layout_ReserveTrailingGap_WrapsBeforeStarWouldClamp()
+    {
+        // Face 80 + gap 26 needs 106. At width 100, second chip must wrap so
+        // ArrangeIntoTrailingGap can place the star in empty margin (not on face).
+        var slots = ChipWrap.Layout(
+            [(80, 24), (80, 24)],
+            width: 100,
+            horizontalSpacing: 26,
+            verticalSpacing: 6,
+            reserveTrailingGap: true);
+
+        Assert.Equal(2, slots.Count);
+        Assert.Equal(0, slots[0].Y);
+        Assert.True(slots[1].Y > slots[0].Y);
+        Assert.Equal(0, slots[1].X);
+
+        // Without reserve, both fit on one row (80+26+80 = 186 needs wrap at 100 anyway
+        // for the second chip's face alone). Use a width where face fits but face+gap does not.
+        var faceFits = ChipWrap.Layout(
+            [(80, 24), (80, 24)],
+            width: 186,
+            horizontalSpacing: 26,
+            verticalSpacing: 6,
+            reserveTrailingGap: false);
+        Assert.All(faceFits, s => Assert.Equal(0, s.Y));
+
+        var gapReserved = ChipWrap.Layout(
+            [(80, 24), (80, 24)],
+            width: 186,
+            horizontalSpacing: 26,
+            verticalSpacing: 6,
+            reserveTrailingGap: true);
+        // First chip at 0 needs 80+26=106; second at 106 needs 106+80=186 OK for face,
+        // but reserve checks 106+80+26=212 > 186 → wrap.
+        Assert.True(gapReserved[1].Y > gapReserved[0].Y);
+    }
 }

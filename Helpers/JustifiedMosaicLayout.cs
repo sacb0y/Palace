@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Palace.Models;
@@ -7,6 +8,13 @@ namespace Palace.Helpers;
 
 public sealed class JustifiedMosaicLayout : VirtualizingLayout
 {
+    /// <summary>
+    /// Set by <see cref="Relayout"/> / items-changed / DP / host width so Measure
+    /// recomputes even when item count and width are unchanged (sort, aspect, headers).
+    /// Instance-level (rects live per LayoutState) — do not share one layout across ItemsViews.
+    /// </summary>
+    private bool _layoutDirty = true;
+
     public static readonly DependencyProperty RowHeightProperty = DependencyProperty.Register(
         nameof(RowHeight),
         typeof(double),
@@ -70,15 +78,21 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     /// <summary>
     /// WASDK 2.4 keeps Layout.InvalidateMeasure protected.
     /// LibraryPage calls this instead of reaching into Layout.
+    /// Marks dirty so a same-count/width InvalidateMeasure still recalculates.
     /// </summary>
-    public void Relayout() => InvalidateMeasure();
+    public void Relayout()
+    {
+        _layoutDirty = true;
+        InvalidateMeasure();
+    }
 
     /// <summary>Stamp the host ActualWidth and invalidate when it changes.</summary>
     public void SetHostWidth(double width)
     {
-        if (double.IsFinite(width) && width > 0 && Math.Abs(HostWidth - width) > 0.5)
+        if (double.IsFinite(width) && width > 0 && Math.Abs(HostWidth - width) > MosaicLayoutCache.WidthEpsilon)
         {
             HostWidth = width;
+            _layoutDirty = true;
             InvalidateMeasure();
         }
         else if (!double.IsFinite(HostWidth) || HostWidth <= 0)
@@ -104,11 +118,41 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         LastLaidOutWidth = 0;
     }
 
+    protected override void OnItemsChangedCore(
+        VirtualizingLayoutContext context,
+        object source,
+        NotifyCollectionChangedEventArgs args)
+    {
+        if (MosaicLayoutCache.MarksDirtyOnItemsChange(args.Action))
+        {
+            _layoutDirty = true;
+            if (context.LayoutState is MosaicState state
+                && args.Action == NotifyCollectionChangedAction.Reset)
+            {
+                // Clear+Add leaves Realized indices stale at the same count.
+                state.Realized.Clear();
+            }
+        }
+
+        base.OnItemsChangedCore(context, source, args);
+    }
+
     protected override Size MeasureOverride(VirtualizingLayoutContext context, Size availableSize)
     {
         var state = GetState(context);
         var width = ResolveWidth(availableSize.Width);
-        Recalculate(context, state, width);
+        // Cache by dirty + width + item count — scroll remasures stay cheap;
+        // Relayout / Reset / DP / host width flip dirty for same-count refreshes.
+        if (MosaicLayoutCache.NeedsRecalculate(
+                _layoutDirty,
+                state.Rects.Count,
+                context.ItemCount,
+                state.LaidOutWidth,
+                width))
+        {
+            Recalculate(context, state, width);
+            _layoutDirty = false;
+        }
 
         var realization = RealizationWindow(context, width);
         RecycleOutside(context, state, realization);
@@ -133,9 +177,15 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     {
         var state = GetState(context);
         var width = ResolveWidth(finalSize.Width);
-        if (state.Rects.Count != context.ItemCount || Math.Abs(state.LaidOutWidth - width) > 0.5)
+        if (MosaicLayoutCache.NeedsRecalculate(
+                _layoutDirty,
+                state.Rects.Count,
+                context.ItemCount,
+                state.LaidOutWidth,
+                width))
         {
             Recalculate(context, state, width);
+            _layoutDirty = false;
         }
 
         // Mutate IsPacked only here — Measure must not flip templates mid-pass.
@@ -314,6 +364,7 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
     {
         if (d is JustifiedMosaicLayout layout)
         {
+            layout._layoutDirty = true;
             layout.InvalidateMeasure();
         }
     }

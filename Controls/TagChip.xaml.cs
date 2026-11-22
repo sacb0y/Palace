@@ -35,7 +35,7 @@ public sealed partial class TagChip : UserControl
 
     public static readonly DependencyProperty IsDragSourceProperty = DependencyProperty.Register(
         nameof(IsDragSource), typeof(bool), typeof(TagChip),
-        new PropertyMetadata(false, OnChromeChanged));
+        new PropertyMetadata(false, OnIsDragSourceChanged));
 
     public static readonly DependencyProperty IsStarredProperty = DependencyProperty.Register(
         nameof(IsStarred), typeof(bool), typeof(TagChip),
@@ -365,6 +365,25 @@ public sealed partial class TagChip : UserControl
         {
             chip.ApplyChrome();
         }
+    }
+
+    /// <summary>
+    /// WinUI DnD often never delivers PointerReleased on the source. Clear stuck
+    /// press chrome when IsDragSource arms (CanDrag path skips CapturePointer).
+    /// </summary>
+    private static void OnIsDragSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not TagChip chip)
+        {
+            return;
+        }
+
+        if (e.NewValue is true)
+        {
+            chip._pressed = false;
+        }
+
+        chip.ApplyChrome();
     }
 
     private void ApplyChrome()
