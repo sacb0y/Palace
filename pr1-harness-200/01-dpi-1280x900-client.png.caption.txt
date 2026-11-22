@@ -1,0 +1,1 @@
+﻿PR#200 c766d02: client DIP x @150% after chrome compensation. Shipped Resize-PalaceWindowDip alone left clientDipW=1265.33333333333 (gate FAIL vs 1280±2). Identity PalaceOrganizeTest-5E1F.
