@@ -242,6 +242,7 @@ public sealed partial class LibraryPage : Page
                 HookLibraryLayoutTracking();
                 HookShellNavPaneTracking();
                 HookPreviewPaneSettings();
+                HookFolderTreeExpansion(); // Unloaded UnhookFolderTreeExpansion — idempotent _treeSyncHooked
                 RefreshLibraryLayout();
                 RefreshMosaicToolbarOverflow();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);

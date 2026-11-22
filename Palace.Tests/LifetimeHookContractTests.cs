@@ -124,6 +124,40 @@ public sealed class LifetimeHookContractTests
             "GrdAssets.AddHandler must not sit after if (!IsLoaded) in Loaded — use EnsureGridAssetHandlers first");
     }
 
+    [Fact]
+    public void LibraryPage_ReuseLoaded_RehooksEverythingUnloadedUnhooks()
+    {
+        var cs = File.ReadAllText(Path.Combine(RepoRoot(), "Pages", "LibraryPage.xaml.cs"))
+            .Replace("\r\n", "\n");
+        var unloaded = cs.IndexOf("Unloaded += ", StringComparison.Ordinal);
+        var sizeChanged = cs.IndexOf("SizeChanged += ", unloaded, StringComparison.Ordinal);
+        Assert.True(unloaded >= 0 && sizeChanged > unloaded);
+        var unloadedBody = cs[unloaded..sizeChanged];
+
+        var shellReady = cs.IndexOf("if (_shellReady)", StringComparison.Ordinal);
+        var firstLoad = cs.IndexOf("_shellReady = true;", shellReady, StringComparison.Ordinal);
+        Assert.True(shellReady >= 0 && firstLoad > shellReady);
+        var reuseBody = cs[shellReady..firstLoad];
+
+        var missing = new List<string>();
+        foreach (Match m in Regex.Matches(unloadedBody, @"Unhook(\w+)\s*\("))
+        {
+            var hookCall = "Hook" + m.Groups[1].Value + "()";
+            if (!reuseBody.Contains(hookCall, StringComparison.Ordinal))
+            {
+                missing.Add(hookCall);
+            }
+        }
+
+        Assert.True(
+            missing.Count == 0,
+            "NavigationCacheMode reuse Loaded must re-hook every Unhook* from Unloaded: "
+            + string.Join(", ", missing));
+        Assert.Contains("HookFolderTreeExpansion()", reuseBody, StringComparison.Ordinal);
+        Assert.Contains("UnhookFolderTreeExpansion()", unloadedBody, StringComparison.Ordinal);
+        Assert.Contains("_treeSyncHooked", cs, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// Fresh cast + ReferenceEquals always misses — fail if any page/code-behind
     /// clears a VM callback that way (Tags/Library MosaicReset bug class).
