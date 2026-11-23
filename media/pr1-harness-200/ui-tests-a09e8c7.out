@@ -1,0 +1,59 @@
+UI test identity OK: PalaceOrganizeTest-5E1F 0.3.114.0
+  SKIP: Tags drag: hover + SendInput to group (probe/status gate) - tag chip reports zero size under UIA; tracked for ui-tests catch-up PR
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\07-overlay.png (1924x1352, 679KB)
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\09-tag-color.png (1924x1352, 622KB)
+Note: skipped online-only scan fixture; no PalaceUiTest watched folder
+Auto-selected HWND 3670962 (foreground) from 2 windows for '8572' — pass -w 
+3670962 to target this window explicitly.
+Invoked itm-navlibrary-5945 via SelectionItemPattern
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\01-library.png (1924x1352, 610KB)
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\06-mosaic.png (1924x1352, 610KB)
+Invoked itm-seltags-5974 via SelectionItemPattern
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\05-library-tags.png (1924x1352, 602KB)
+Invoked itm-navtags-594e via SelectionItemPattern
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\04-tags.png (1924x1352, 1289KB)
+Invoked itm-navrooms-5951 via SelectionItemPattern
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\02-rooms.png (1924x1352, 504KB)
+Invoked itm-navsettings-5954 via SelectionItemPattern
+Screenshot of "Palace 0.3.114" (PID 8572) saved to C:\Users\iadag\wkspaces\Palace-200\screenshots\03-settings.png (1924x1352, 537KB)
+
+Passed: 81 | Skipped: 1 | Partial: 0 | Failed: 38
+  SKIP: Tags drag: hover + SendInput to group (probe/status gate) - tag chip reports zero size under UIA; tracked for ui-tests catch-up PR
+  FAIL: Shell wallpaper layer exists - [ERROR] - 'GrdShellBackdrop' not found after 4000ms
+  FAIL: Tag mosaic exists - [ERROR] - 'GrdTagAssets' not found after 4000ms
+  FAIL: Tag mosaic sort button exists - [ERROR] - 'BtnTagMosaicSort' not found after 4000ms
+  FAIL: Tags select-mode toggle exists - [ERROR] - 'TglTagSelectMode' not found after 4000ms
+  FAIL: Batch-create comma tags - Set value on txt-txtnewtagname-5b73 Invoked btn-btncreatenewtag-5b77 via InvokePattern [ERROR] - 'TxtTagsStatus' not found after 4000ms
+  FAIL: Wallpaper picker exists - [ERROR] - 'BtnPickWallpaper' not found after 4000ms
+  FAIL: HDR peak override exists - [ERROR] - 'TglHdrPeakOverride' not found after 4000ms
+  FAIL: Media cache toggle exists - [ERROR] - 'TglMediaCache' not found after 4000ms
+  FAIL: App version is shown - [ERROR] - 'TxtAppVersion' not found after 4000ms
+  FAIL: Shortcut cheatsheet lists 1:1 - [ERROR] - 'TxtShortcutActual' not found after 4000ms
+  FAIL: Shortcut cheatsheet lists Fit - [ERROR] - 'TxtShortcutFit' not found after 3000ms
+  FAIL: Shortcut cheatsheet lists Fill - [ERROR] - 'TxtShortcutFill' not found after 3000ms
+  FAIL: Shortcut cheatsheet lists Info - [ERROR] - 'TxtShortcutInfo' not found after 3000ms
+  FAIL: Shortcut cheatsheet lists Details - [ERROR] - 'TxtShortcutDetails' not found after 3000ms
+  FAIL: Shortcut cheatsheet lists Space - [ERROR] - 'TxtShortcutSpace' not found after 3000ms
+  FAIL: Shortcut cheatsheet lists Esc - [ERROR] - 'TxtShortcutEsc' not found after 3000ms
+  FAIL: Sources list exists - [ERROR] - 'LstSources' not found after 3000ms
+  FAIL: Auto-organize toggle exists - [ERROR] - 'TglAutoOrganize' not found after 3000ms
+  FAIL: Connect OneDrive exists - [ERROR] - 'BtnConnectOneDrive' not found after 4000ms
+  FAIL: Connect Dropbox exists - [ERROR] - 'BtnConnectDropbox' not found after 4000ms
+  FAIL: Tag typeahead exists - [ERROR] - 'AsbAssignTag' not found after 4000ms
+  FAIL: Suggestion summary exists - [ERROR] - 'TxtTagSuggestions' not found after 3000ms
+  FAIL: Typeahead shows newly created tag - Expected ImpSonic in filtered suggestions, got: ''
+  FAIL: Typeahead filter hides non-matches - Filter leaked ImpHedgehog or query was empty: suggestions=''
+  FAIL: Created tag assigned immediately - [ERROR] - 'TxtAssignedTags' not found after 5000ms
+  FAIL: Implicit tag applied on assign - [ERROR] - 'TxtAssignedTags' not found after 4000ms
+  FAIL: Double-click opens gallery overlay - TxtGalleryOverlayDetails missing
+  FAIL: Space opens overlay on focused mosaic tile - GrdGalleryBackdrop missing after Space overlay
+  FAIL: Open in new window then close - MnuOpenInNewWindow failed
+  FAIL: Multi-select assign applies to both tiles - Union summary missing UiSf712de: No tags assigned
+  FAIL: Select mode toggles tiles without modifier keys - Expected '2 selected' after two plain selects, got '1 selected'
+  FAIL: Remove partial tag only from tiles that have it - Partial tag missing from union: No tags assigned
+  FAIL: Sonic inherits Character blue - Sonic should inherit Character color, got: No color
+  FAIL: Set Sonic color green stays custom - PkrTagColor missing
+  FAIL: Backfill finishes after adding implicit - Backfill did not finish in time: ''
+  FAIL: Library shows backfilled Implied tag - BfId6cd38 missing after backfill
+  FAIL: Sonic chip appears on assigned image - TxtAssignedTags missing Sonic
+  FAIL: Delete test file goes to Recycle and leaves mosaic - No watched folder available for a safe delete fixture

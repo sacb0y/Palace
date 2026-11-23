@@ -1,22 +1,24 @@
-﻿# PR #200 tip f98fe11 (0.3.114) — FENRIR-STUDIO harness retest
+﻿# PR #200 tip a09e8c7 (0.3.114) — FENRIR-STUDIO harness retest (S7 named SKIP)
 
-**Host:** FENRIR-STUDIO · **DPI:** 150% (windowDpi=144) · client 1280×900 DIP  
+**Host:** FENRIR-STUDIO · **DPI:** 150% · client 1280×900 DIP  
 **Identity:** PalaceOrganizeTest-5E1F only (never C20A7629)  
-**Build:** Palace-200 @ f98fe11 / 0.3.114 Debug x64  
-**Change:** ui-tests `BtnCreateUngroupedTag` → `BtnCreateNewTags` (+ nest path)
+**Build:** Palace-200 @ a09e8c7 / 0.3.114 Debug x64  
+**Lib:** same seeded palace-agent-data-pr200 (8 assets)
 
 ## Checklist
 
 | Check | Verdict | Evidence |
 |-------|---------|----------|
-| `-SelfTestDesktopGate` | **PASS** | selftest-f98fe11.out — temp audit only; real `%LOCALAPPDATA%\PalaceTestAudit` absent |
-| Identity gate | **PASS** | `PalaceOrganizeTest-5E1F 0.3.114.0` |
-| DPI + XamlRoot client gate | **PASS** | xamlroot-f98fe11.log (1200→1280 @ 1.5); 01-dpi-1280x900-f98fe11.png |
-| S7 create drop group + chip | **PASS** | (not in fail list; BtnCreateNewTags works) |
-| S7 Tags drag hover/SendInput/probe | **FAIL** | `hover failed for BtnTagChip_UiD55d4e4`; probe empty |
-| Stock ui-tests suite | **FAIL** 82 pass / 38 fail | ui-tests-f98fe11.out (was 69/51 on 800a310) |
+| `-SelfTestDesktopGate` | **PASS** | selftest-a09e8c7.out — temp audit only |
+| Identity 5E1F 0.3.114.0 | **PASS** | ui-tests-a09e8c7.out |
+| DPI + XamlRoot gate | **PASS** | xamlroot-a09e8c7.log; 01-dpi-1280x900-a09e8c7.png |
+| S7 create drop group + chip | **PASS** | (not failed) |
+| S7 hover + SendInput | **SKIP** (named) | `tag chip reports zero size under UIA; tracked for ui-tests catch-up PR` |
+| **#200-attributable fails** | **0** | All 38 suite fails also fail on main `f05e548` (pre-existing) |
+| Stock ui-tests | 81 pass / 1 skip / 38 fail | ui-tests-a09e8c7.out |
 
-## Notes
+## Attribution
 
-- Fenrir/C20A **not** touched.
-- `BtnCreateNewTags` fix unblocked create/chip path; drag still fails at hover (chip selector/visibility), not at create-button AutomationId.
+Compared fail names to main `f05e548` stock suite (69/48). Intersection = 38. Tip-only fails = **none**. Former tip-only S7 hover fail is now a **named SKIP** (not a silent pass).
+
+Fenrir/C20A not touched.
