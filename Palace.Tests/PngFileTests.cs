@@ -89,6 +89,29 @@ public sealed class PngFileTests
     }
 
     [Fact]
+    public void TryDecodeEncodedRgba_HonoursCancellation()
+    {
+        // Tall enough that unfilter polls cancellation between rows.
+        const int height = 128;
+        var pixels = new byte[4 * height];
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            pixels[i] = (byte)(i & 0xFF);
+        }
+
+        var png = BuildPng(
+            width: 1,
+            height: height,
+            bitDepth: 8,
+            colorType: 6,
+            pixels8: pixels);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.ThrowsAny<OperationCanceledException>(
+            () => PngFile.TryDecodeEncodedRgba(png, cts.Token));
+    }
+
+    [Fact]
     public void FormatSwapChainLabel_ReportsScrgbPresent()
     {
         Assert.Equal(

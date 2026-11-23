@@ -94,13 +94,48 @@ public static class HdrPresentLog
         string? detail = null) =>
         TryAppend(path, wantW, wantH, 0, 0, 0, 0, "DecodeStart", detail: detail);
 
-    /// <summary>Decode cancelled (navigate / superseded / settle cancel).</summary>
+    /// <summary>Decode cancelled (navigate / settle cancel).</summary>
     public static void TryAppendDecodeCancel(
         string? path,
         int wantW,
         int wantH,
         string? detail = null) =>
         TryAppend(path, wantW, wantH, 0, 0, 0, 0, "DecodeCancelled", detail: detail);
+
+    /// <summary>
+    /// In-flight decode dropped because a newer zoom/navigate superseded it.
+    /// Distinct from <see cref="TryAppendDecodeCancel"/> for Fenrir QC.
+    /// </summary>
+    public static void TryAppendDecodeSuperseded(
+        string? path,
+        int wantW,
+        int wantH,
+        string? detail = null) =>
+        TryAppend(path, wantW, wantH, 0, 0, 0, 0, "DecodeSuperseded", detail: detail);
+
+    /// <summary>
+    /// Present log outcome when Cancelled because a newer present won
+    /// (<c>stillCurrent</c> false) vs a same-request cancel/oversize.
+    /// </summary>
+    public static string PresentOutcomeLabel(bool presented, bool cancelled, bool stillCurrent)
+    {
+        if (presented)
+        {
+            return "Presented";
+        }
+
+        if (cancelled && !stillCurrent)
+        {
+            return "Superseded";
+        }
+
+        if (cancelled)
+        {
+            return "Cancelled";
+        }
+
+        return "Failed";
+    }
 
     public static string FormatLine(
         string? path,

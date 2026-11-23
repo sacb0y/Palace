@@ -60,8 +60,13 @@ public static class PngFile
     /// <see cref="HdrPackedFormat.Rgba8"/> / <see cref="HdrPackedFormat.Rgba16"/>.
     /// Samples stay encoded (PQ/HLG/sRGB codes) — callers run
     /// <see cref="GalleryPresent.PngEncodedToScrgb"/>.
+    /// Honors <paramref name="cancellation"/> so a newer zoom settle can
+    /// supersede an in-flight full-size decode (throws
+    /// <see cref="OperationCanceledException"/>).
     /// </summary>
-    public static EncodedFrame? TryDecodeEncodedRgba(string? path)
+    public static EncodedFrame? TryDecodeEncodedRgba(
+        string? path,
+        CancellationToken cancellation = default)
     {
         if (string.IsNullOrWhiteSpace(path)
             || !CloudFile.Exists(path)
@@ -70,9 +75,14 @@ public static class PngFile
             return null;
         }
 
+        cancellation.ThrowIfCancellationRequested();
         try
         {
-            return TryDecodeEncodedRgba(File.ReadAllBytes(path));
+            return TryDecodeEncodedRgba(File.ReadAllBytes(path), cancellation);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -80,8 +90,11 @@ public static class PngFile
         }
     }
 
-    public static EncodedFrame? TryDecodeEncodedRgba(ReadOnlySpan<byte> data)
+    public static EncodedFrame? TryDecodeEncodedRgba(
+        ReadOnlySpan<byte> data,
+        CancellationToken cancellation = default)
     {
+        cancellation.ThrowIfCancellationRequested();
         var ihdr = TryReadIhdr(data);
         if (ihdr is null || ihdr.Value.Interlaced)
         {
@@ -104,12 +117,13 @@ public static class PngFile
             return null;
         }
 
-        if (!TryInflateIdat(data, (int)rawBytes, out var inflated) || inflated.Length < rawBytes)
+        if (!TryInflateIdat(data, (int)rawBytes, out var inflated, cancellation)
+            || inflated.Length < rawBytes)
         {
             return null;
         }
 
-        var raw = Unfilter(inflated, width, height, channels, bytesPerSample);
+        var raw = Unfilter(inflated, width, height, channels, bytesPerSample, cancellation);
         if (raw is null)
         {
             return null;
@@ -117,11 +131,11 @@ public static class PngFile
 
         if (bitDepth == 16)
         {
-            var rgba = PackRgba16(raw, width, height, channels);
+            var rgba = PackRgba16(raw, width, height, channels, cancellation);
             return new EncodedFrame(rgba, HdrPackedFormat.Rgba16, width, height, bitDepth, colorType);
         }
 
-        var rgba8 = PackRgba8(raw, width, height, channels);
+        var rgba8 = PackRgba8(raw, width, height, channels, cancellation);
         return new EncodedFrame(rgba8, HdrPackedFormat.Rgba8, width, height, bitDepth, colorType);
     }
 
@@ -163,13 +177,23 @@ public static class PngFile
         return false;
     }
 
-    private static bool TryInflateIdat(ReadOnlySpan<byte> data, int expected, out byte[] inflated)
+    private static bool TryInflateIdat(
+        ReadOnlySpan<byte> data,
+        int expected,
+        out byte[] inflated,
+        CancellationToken cancellation = default)
     {
         inflated = [];
         using var zlib = new MemoryStream();
         var i = 8;
+        var chunks = 0;
         while (i + 12 <= data.Length)
         {
+            if ((++chunks & 0x3F) == 0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+            }
+
             var len = ReadBe32(data, i);
             if (len < 0 || i + 12 + len > data.Length)
             {
@@ -196,12 +220,18 @@ public static class PngFile
 
         try
         {
+            cancellation.ThrowIfCancellationRequested();
             zlib.Position = 0;
             using var inflater = new ZLibStream(zlib, CompressionMode.Decompress, leaveOpen: true);
             using var outMs = new MemoryStream(expected);
             inflater.CopyTo(outMs);
+            cancellation.ThrowIfCancellationRequested();
             inflated = outMs.ToArray();
             return inflated.Length >= expected;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -214,7 +244,8 @@ public static class PngFile
         int width,
         int height,
         int channels,
-        int bytesPerSample)
+        int bytesPerSample,
+        CancellationToken cancellation = default)
     {
         var bpp = channels * bytesPerSample;
         var stride = width * bpp;
@@ -227,6 +258,11 @@ public static class PngFile
         var raw = new byte[stride * height];
         for (var y = 0; y < height; y++)
         {
+            if ((y & 0x3F) == 0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+            }
+
             var src = y * rowBytes;
             var dst = y * stride;
             var filter = filtered[src];
@@ -295,12 +331,22 @@ public static class PngFile
         return pb <= pc ? b : c;
     }
 
-    private static byte[] PackRgba8(byte[] raw, int width, int height, int channels)
+    private static byte[] PackRgba8(
+        byte[] raw,
+        int width,
+        int height,
+        int channels,
+        CancellationToken cancellation = default)
     {
         var count = width * height;
         var dest = new byte[count * 4];
         for (var i = 0; i < count; i++)
         {
+            if ((i & 0x3FFF) == 0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+            }
+
             var s = i * channels;
             var d = i * 4;
             dest[d] = raw[s];
@@ -312,12 +358,22 @@ public static class PngFile
         return dest;
     }
 
-    private static byte[] PackRgba16(byte[] raw, int width, int height, int channels)
+    private static byte[] PackRgba16(
+        byte[] raw,
+        int width,
+        int height,
+        int channels,
+        CancellationToken cancellation = default)
     {
         var count = width * height;
         var dest = new byte[count * 8];
         for (var i = 0; i < count; i++)
         {
+            if ((i & 0x3FFF) == 0)
+            {
+                cancellation.ThrowIfCancellationRequested();
+            }
+
             var s = i * channels * 2;
             var d = i * 8;
             // PNG stores 16-bit samples big-endian; WIC Rgba16 is little-endian.

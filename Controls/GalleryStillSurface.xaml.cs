@@ -739,7 +739,18 @@ public sealed partial class GalleryStillSurface : UserControl
                 // Quick Next/Prev or a newer zoom settle cancels decode — not an
                 // error. Keep a visible HDR frame (quality upgrade / oversize);
                 // only collapse an Opacity-0 arm that never presented.
-                HdrPresentLog.TryAppendDecodeCancel(still, logWantW, logWantH, detail: "refresh");
+                // Newer Refresh/zoom already bumped epoch → superseded.
+                if (epoch != Volatile.Read(ref _epoch))
+                {
+                    HdrPresentLog.TryAppendDecodeSuperseded(
+                        still, logWantW, logWantH, detail: "refresh");
+                }
+                else
+                {
+                    HdrPresentLog.TryAppendDecodeCancel(
+                        still, logWantW, logWantH, detail: "refresh");
+                }
+
                 await UiDispatch.RunAsync(() =>
                 {
                     // Clear pending only when it still matches this cancelled want.
@@ -1190,6 +1201,7 @@ public sealed partial class GalleryStillSurface : UserControl
 
         var presented = outcome == HdrPresentOutcome.Presented;
         var cancelled = outcome == HdrPresentOutcome.Cancelled;
+        var stillCurrent = StillCurrent();
         HdrPresentLog.TryAppend(
             frameRef.SourcePath,
             frameRef.Width,
@@ -1198,10 +1210,10 @@ public sealed partial class GalleryStillSurface : UserControl
             dipH,
             presenterRef.LastBufferPxW,
             presenterRef.LastBufferPxH,
-            outcome.ToString(),
+            HdrPresentLog.PresentOutcomeLabel(presented, cancelled, stillCurrent),
             presenterRef.LastPresentScaleX,
             presenterRef.LastPresentScaleY);
-        if (!presented || !StillCurrent())
+        if (!presented || !stillCurrent)
         {
             // Failed: HideHdr while still current. Cancelled / oversize: keep
             // last good HDR; only collapse an Opacity-0 arm that never presented.
@@ -1226,10 +1238,12 @@ public sealed partial class GalleryStillSurface : UserControl
                 }
             });
             // Still upgrade decode after settle even when oversize cancelled.
-            if (needsBetterDecode && StillCurrent())
-            {
-                _ = RefreshAsync();
-            }
+            // RefreshAsync touches XAML — must marshal onto the UI dispatcher.
+            await GalleryPresent.QueueSettleRefreshAsync(
+                needsBetterDecode,
+                StillCurrent(),
+                UiDispatch.RunAsync,
+                () => { _ = RefreshAsync(); });
 
             return;
         }
@@ -1273,10 +1287,11 @@ public sealed partial class GalleryStillSurface : UserControl
         });
 
         // After settle present: upgrade decode while current HDR stays visible.
-        if (needsBetterDecode && StillCurrent())
-        {
-            _ = RefreshAsync();
-        }
+        await GalleryPresent.QueueSettleRefreshAsync(
+            needsBetterDecode,
+            StillCurrent(),
+            UiDispatch.RunAsync,
+            () => { _ = RefreshAsync(); });
     }
     private (double Width, double Height) HdrPanelDips() =>
         GalleryPresent.ResolveHdrPanelDips(

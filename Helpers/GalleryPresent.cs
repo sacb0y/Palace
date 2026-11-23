@@ -1366,6 +1366,31 @@ public static class GalleryPresent
         IsSameSettleDecodeKey(path, wantW, wantH, memoPath, memoWantW, memoWantH);
 
     /// <summary>
+    /// Whether PresentOnce should queue a settle <c>RefreshAsync</c>.
+    /// That kick must run on the UI dispatcher (WinUI apartment).
+    /// </summary>
+    public static bool ShouldQueueSettleRefresh(bool needsBetterDecode, bool stillCurrent) =>
+        needsBetterDecode && stillCurrent;
+
+    /// <summary>
+    /// Queue settle Refresh on the UI thread via <paramref name="runOnUi"/>.
+    /// Pure seam for tests — production passes <c>UiDispatch.RunAsync</c>.
+    /// </summary>
+    public static async Task QueueSettleRefreshAsync(
+        bool needsBetterDecode,
+        bool stillCurrent,
+        Func<Action, Task> runOnUi,
+        Action startRefresh)
+    {
+        if (!ShouldQueueSettleRefresh(needsBetterDecode, stillCurrent))
+        {
+            return;
+        }
+
+        await runOnUi(startRefresh).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Whether zoom-settle should kick a better decode. Skips when the same
     /// path+want is already in flight (pending) or memoized after success —
     /// otherwise every present cancels the running decode (starvation).
