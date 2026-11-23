@@ -158,6 +158,20 @@ public static class GalleryScale
     public static bool FitSwipeUsesViewportPanel(bool scrolls) => !scrolls;
 
     /// <summary>
+    /// Per-axis start (Left/Top) vs center when zoomed content may still be
+    /// smaller than the viewport on one axis (e.g. 1.1× portrait Fit).
+    /// Start only when that axis overflows the viewport.
+    /// </summary>
+    public static (bool AlignStartHorizontal, bool AlignStartVertical) ContentEdgeAlign(
+        double contentWidth,
+        double contentHeight,
+        double viewportWidth,
+        double viewportHeight) =>
+        (
+            contentWidth > viewportWidth + 0.0001,
+            contentHeight > viewportHeight + 0.0001);
+
+    /// <summary>
     /// Layout size so one image pixel is one device pixel. At 150% DPI a
     /// 200×100 image is ~133×67 DIPs, not 200×100 DIPs (which stretches).
     /// </summary>
@@ -326,11 +340,20 @@ public static class GalleryScale
             : ViewerSettings.NormalizeZoom(defaultZoom);
 
     /// <summary>
-    /// On-screen scale for the current still. HDR presentable stills show Fit
-    /// without overwriting the sticky kept zoom.
+    /// On-screen scale for the current still. When
+    /// <paramref name="hdrForcesDisplayFit"/> is set (HDR Fit-on-open), show Fit
+    /// without overwriting sticky kept zoom. Callers clear that flag after an
+    /// explicit Actual/Fill so HDR can present native 1:1.
     /// </summary>
-    public static ImageScaling DisplayScaling(ImageScaling sticky, bool hdrPresentable) =>
-        hdrPresentable ? ImageScaling.Fit : sticky;
+    public static ImageScaling DisplayScaling(ImageScaling sticky, bool hdrForcesDisplayFit) =>
+        hdrForcesDisplayFit ? ImageScaling.Fit : sticky;
+
+    /// <summary>
+    /// Explicit Actual/Fill clears HDR Fit-on-open so DisplayScaling honors the
+    /// user’s choice (native 1:1 decode). Fit leaves the force flag alone.
+    /// </summary>
+    public static bool ClearsHdrDisplayFitForce(ImageScaling userChoice) =>
+        userChoice is ImageScaling.Actual or ImageScaling.Fill;
 
     /// <summary>
     /// Fit at pinch 1 must clear translation (content equals viewport). Actual/Fill

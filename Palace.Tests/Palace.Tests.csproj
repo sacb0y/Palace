@@ -76,6 +76,7 @@
     <Compile Include="..\Helpers\ImagingHdrPresentToneMap.cs" Link="ImagingHdrPresentToneMap.cs" />
     <Compile Include="..\Helpers\ExrPresentWorking.cs" Link="ExrPresentWorking.cs" />
     <Compile Include="..\Helpers\SdrTonemapLog.cs" Link="SdrTonemapLog.cs" />
+    <Compile Include="..\Helpers\HdrPresentLog.cs" Link="HdrPresentLog.cs" />
     <Compile Include="..\Services\JxlDecode.cs" Link="JxlDecode.cs" />
     <Compile Include="..\Helpers\PngFile.cs" Link="PngFile.cs" />
     <Compile Include="..\Helpers\IccProfile.cs" Link="IccProfile.cs" />

@@ -76,15 +76,18 @@ public partial class GalleryViewModel : ObservableObject
     public partial bool CanOpenInExplorer { get; set; }
 
     /// <summary>
-    /// Sticky Fit / Fill / 1:1 the user chose (toolbar + keep-zoom). HDR stills
-    /// show Fit via <see cref="DisplayScaling"/> without overwriting this.
+    /// Sticky Fit / Fill / 1:1 the user chose (toolbar + keep-zoom). HDR open
+    /// forces on-screen Fit via <see cref="DisplayScaling"/> without overwriting
+    /// this; explicit Actual/Fill clears that force.
     /// </summary>
     [ObservableProperty]
     public partial ImageScaling Scaling { get; set; } = ImageScaling.Fit;
 
     private bool _hdrForcesDisplayFit;
 
-    /// <summary>On-screen scale — Fit while the current still is HDR presentable.</summary>
+    /// <summary>
+    /// On-screen scale — Fit on HDR open until the user picks Actual/Fill.
+    /// </summary>
     public ImageScaling DisplayScaling =>
         GalleryScale.DisplayScaling(Scaling, _hdrForcesDisplayFit);
 
@@ -421,7 +424,11 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void SetScaleActual() => Scaling = ImageScaling.Actual;
+    private void SetScaleActual()
+    {
+        ClearHdrDisplayFitForceIfNeeded(ImageScaling.Actual);
+        Scaling = ImageScaling.Actual;
+    }
 
     /// <summary>
     /// Fit toolbar / shortcut. Pinch keeps <see cref="Scaling"/> at Fit while
@@ -441,7 +448,24 @@ public partial class GalleryViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void SetScaleFill() => Scaling = ImageScaling.Fill;
+    private void SetScaleFill()
+    {
+        ClearHdrDisplayFitForceIfNeeded(ImageScaling.Fill);
+        Scaling = ImageScaling.Fill;
+    }
+
+    /// <summary>
+    /// HDR Fit-on-open only — explicit Actual/Fill must present at that scale
+    /// (native 1:1 decode). Call before assigning <see cref="Scaling"/>.
+    /// </summary>
+    private void ClearHdrDisplayFitForceIfNeeded(ImageScaling userChoice)
+    {
+        if (_hdrForcesDisplayFit
+            && GalleryScale.ClearsHdrDisplayFitForce(userChoice))
+        {
+            SetHdrForcesDisplayFit(false);
+        }
+    }
 
     public bool TryHandleScaleShortcut(bool controlDown, int keyCode)
     {
@@ -462,6 +486,7 @@ public partial class GalleryViewModel : ObservableObject
         }
         else
         {
+            ClearHdrDisplayFitForceIfNeeded(next.Value);
             Scaling = next.Value;
         }
 

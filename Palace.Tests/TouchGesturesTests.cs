@@ -188,6 +188,11 @@ public sealed class TouchGesturesTests
         Assert.Equal(2.0, TouchGestures.ClampPinchHard(8, 2, baseLongEdgeDip: 4096), 3);
         var (cw, ch) = TouchGestures.CapStillPanelSize(16000, 9000);
         Assert.True(Math.Max(cw, ch) <= TouchGestures.MaxStillPanelLongEdgeDip + 0.001);
+        // At 150% DPI, DIP cap = 8192/1.5 so physical px ≤ 8192.
+        Assert.Equal(8192 / 1.5, TouchGestures.MaxStillPanelDipForScale(1.5), 3);
+        var scaled = TouchGestures.CapStillPanelSize(16000, 9000, rasterScale: 1.5);
+        Assert.True(Math.Max(scaled.Width, scaled.Height) <= TouchGestures.MaxStillPanelDipForScale(1.5) + 0.001);
+        Assert.True(Math.Max(scaled.Width, scaled.Height) * 1.5 <= TouchGestures.MaxStillPanelLongEdgeDip + 0.5);
         Assert.False(TouchGestures.AllowsSwipe(zoomed: true, fingerCount: 1, afterPinchAwaitingLift: false));
         Assert.False(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 2, afterPinchAwaitingLift: false));
         Assert.True(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 1, afterPinchAwaitingLift: false));
@@ -339,6 +344,49 @@ public sealed class TouchGesturesTests
         // New width still < viewport → centered (offset 0). Y scrolls; mid stays.
         Assert.Equal(0, h, 3);
         Assert.Equal(100, v, 3); // contentY 100 × 2 − 100
+    }
+
+    [Fact]
+    public void ZoomAroundPoint_PortraitFitAt1_1x_StaysHorizontallyCentered()
+    {
+        // Bug C: 1.1× portrait Fit — width still < viewport, height overflows.
+        const double viewW = 800;
+        const double viewH = 800;
+        const double fitW = 450;
+        const double fitH = 800;
+        const double zoomedW = fitW * 1.1;
+        const double zoomedH = fitH * 1.1;
+        Assert.True(zoomedW < viewW);
+        Assert.True(zoomedH > viewH);
+        var (alignH, alignV) = GalleryScale.ContentEdgeAlign(zoomedW, zoomedH, viewW, viewH);
+        Assert.False(alignH);
+        Assert.True(alignV);
+        var (h, v) = TouchGestures.ZoomAroundPoint(
+            tapX: viewW / 2,
+            tapY: viewH / 2,
+            oldContentWidth: fitW,
+            oldContentHeight: fitH,
+            oldOffsetX: 0,
+            oldOffsetY: 0,
+            newContentWidth: zoomedW,
+            newContentHeight: zoomedH,
+            viewportWidth: viewW,
+            viewportHeight: viewH);
+        Assert.Equal(0, h, 3);
+        Assert.InRange(v, 0, zoomedH - viewH);
+        // Zoom-at-cursor: a point near the center stays under the cursor.
+        const double tapX = 400;
+        const double tapY = 200;
+        var oldContentX = TouchGestures.ContentCoordFromViewport(tapX, 0, fitW, viewW);
+        var oldContentY = TouchGestures.ContentCoordFromViewport(tapY, 0, fitH, viewH);
+        var around = TouchGestures.ZoomAroundPoint(
+            tapX, tapY, fitW, fitH, 0, 0, zoomedW, zoomedH, viewW, viewH);
+        var newContentX = TouchGestures.ContentCoordFromViewport(
+            tapX, around.Horizontal, zoomedW, viewW);
+        var newContentY = TouchGestures.ContentCoordFromViewport(
+            tapY, around.Vertical, zoomedH, viewH);
+        Assert.Equal(oldContentX * 1.1, newContentX, 3);
+        Assert.Equal(oldContentY * 1.1, newContentY, 3);
     }
 
     [Fact]

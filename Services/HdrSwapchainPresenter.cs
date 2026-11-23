@@ -44,6 +44,18 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     /// <summary>P6: always 0 — sticky Reinhard Analyze removed.</summary>
     public float LastSdrReinhardWhite { get; private set; }
 
+    /// <summary>Last computed swapchain buffer width (0 if layout/scale not ready).</summary>
+    public int LastBufferPxW { get; private set; }
+
+    /// <summary>Last computed swapchain buffer height (0 if layout/scale not ready).</summary>
+    public int LastBufferPxH { get; private set; }
+
+    /// <summary>Resolved present scale X used for <see cref="LastBufferPxW"/>.</summary>
+    public float LastPresentScaleX { get; private set; }
+
+    /// <summary>Resolved present scale Y used for <see cref="LastBufferPxH"/>.</summary>
+    public float LastPresentScaleY { get; private set; }
+
     public async Task<HdrPresentOutcome> TryPresentAsync(
         HdrFrame frame,
         ImageScaling scaling,
@@ -64,6 +76,10 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         // Imaging owns the curve (P6) so sticky Reinhard is ignored.
         _ = sdrExposure;
         _ = sdrReinhardWhite;
+        LastBufferPxW = 0;
+        LastBufferPxH = 0;
+        LastPresentScaleX = 0;
+        LastPresentScaleY = 0;
         // UI thread only for COM / XAML: layout, device, DXGI probe, resize,
         // upload and Present. The half-float raster runs on the thread pool
         // and a stale result is dropped before it touches the swapchain.
@@ -73,67 +89,88 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             return HdrPresentOutcome.Cancelled;
         }
 
-        if (dipW < 2 || dipH < 2)
-        {
-            dipW = _panel.ActualWidth;
-            dipH = _panel.ActualHeight;
-        }
-
-        if ((dipW < 2 || dipH < 2)
-            && !double.IsNaN(_panel.Width) && !double.IsNaN(_panel.Height))
-        {
-            dipW = _panel.Width;
-            dipH = _panel.Height;
-        }
-
-        // Prefer CompositionScale when the panel is laid out (what DXGI uses).
-        // Collapsed / never-shown SwapChainPanel often reports 1.0 even at
-        // 125%/150% DPI — GalleryStillSurface may arm Opacity=0 first, but
-        // same-frame Actual can still be 0, so fall back to XamlRoot
-        // RasterizationScale via ResolveHdrPanelScale.
-        var panelReliable = GalleryPresent.HdrPanelCompositionScaleReliable(
-            _panel.Visibility == Microsoft.UI.Xaml.Visibility.Visible,
-            _panel.ActualWidth,
-            _panel.ActualHeight);
-        var scaleX = GalleryPresent.ResolveHdrPanelScale(
-            _panel.CompositionScaleX, rasterScale, panelReliable);
-        var scaleY = GalleryPresent.ResolveHdrPanelScale(
-            _panel.CompositionScaleY, rasterScale, panelReliable);
-
-        if (dipW < 2 || dipH < 2)
-        {
-            // Layout not ready yet — skip, do not count as present failure.
-            return HdrPresentOutcome.Cancelled;
-        }
-
-        if (scaleX <= 0 || scaleY <= 0)
-        {
-            return HdrPresentOutcome.Failed;
-        }
-
-        _compositionScaleX = scaleX;
-        _compositionScaleY = scaleY;
-        var (vw, vh) = GalleryPresent.SwapchainPhysicalSize(dipW, dipH, scaleX, scaleY);
-        if (vw > 8192 || vh > 8192)
-        {
-            return HdrPresentOutcome.Failed;
-        }
-
+        // All SwapChainPanel property reads must run on the UI thread.
+        // GalleryStillSurface may resume after Task.Delay off-apartment
+        // (ConfigureAwait or pool hop) — reading Actual/CompositionScale here
+        // throws RPC_E_WRONG_THREAD and collapses HDR to the SDR thumb.
+        double resolvedDipW = 0;
+        double resolvedDipH = 0;
+        float scaleX = 0;
+        float scaleY = 0;
+        HdrPresentMap map = default;
+        var displayHdr = false;
+        ushort[]? half = null;
+        int vw = 0;
+        int vh = 0;
+        var layoutReady = false;
+        var scaleOk = false;
+        var sizeOk = false;
         try
         {
             // Device / DXGI probe / buffer acquire need the UI apartment.
             // Re-check _disposed inside the callback: Unloaded may Dispose after
             // the opening guard and before this runs; EnsureDevice must not
             // recreate COM objects that Dispose will not release again.
-            HdrPresentMap map = default;
-            var displayHdr = false;
-            ushort[]? half = null;
             await UiDispatch.RunAsync(() =>
             {
                 if (_disposed)
                 {
                     return;
                 }
+
+                resolvedDipW = dipW;
+                resolvedDipH = dipH;
+                // Prefer assigned Width/Height over Actual (prior still size).
+                if (resolvedDipW < 2 || resolvedDipH < 2)
+                {
+                    (resolvedDipW, resolvedDipH) = GalleryPresent.ResolveHdrPanelDips(
+                        _panel.Width,
+                        _panel.Height,
+                        _panel.ActualWidth,
+                        _panel.ActualHeight);
+                }
+
+                if (resolvedDipW < 2 || resolvedDipH < 2)
+                {
+                    return;
+                }
+
+                layoutReady = true;
+
+                // Prefer CompositionScale when the panel is laid out (what DXGI uses).
+                // Collapsed / never-shown SwapChainPanel often reports 1.0 even at
+                // 125%/150% DPI — GalleryStillSurface may arm Opacity=0 first, but
+                // same-frame Actual can still be 0, so fall back to XamlRoot
+                // RasterizationScale via ResolveHdrPanelScale.
+                var panelReliable = GalleryPresent.HdrPanelCompositionScaleReliable(
+                    _panel.Visibility == Microsoft.UI.Xaml.Visibility.Visible,
+                    _panel.ActualWidth,
+                    _panel.ActualHeight);
+                scaleX = GalleryPresent.ResolveHdrPanelScale(
+                    _panel.CompositionScaleX, rasterScale, panelReliable);
+                scaleY = GalleryPresent.ResolveHdrPanelScale(
+                    _panel.CompositionScaleY, rasterScale, panelReliable);
+                if (scaleX <= 0 || scaleY <= 0)
+                {
+                    return;
+                }
+
+                scaleOk = true;
+                _compositionScaleX = scaleX;
+                _compositionScaleY = scaleY;
+                LastPresentScaleX = scaleX;
+                LastPresentScaleY = scaleY;
+                (vw, vh) = GalleryPresent.SwapchainPhysicalSize(
+                    resolvedDipW, resolvedDipH, scaleX, scaleY);
+                LastBufferPxW = vw;
+                LastBufferPxH = vh;
+                // Oversize → Cancelled (keep last good HDR), never Failed/HideHdr.
+                if (GalleryPresent.IsSwapchainBufferOversize(vw, vh))
+                {
+                    return;
+                }
+
+                sizeOk = true;
 
                 EnsureDevice();
                 ProbeDisplay(contentProbe);
@@ -162,6 +199,28 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 displayHdr = DisplayIsHdr;
                 half = _halfBuffer.Acquire(HdrRasterize.HalfLength(vw, vh));
             });
+
+            if (_disposed)
+            {
+                return HdrPresentOutcome.Cancelled;
+            }
+
+            if (!layoutReady)
+            {
+                // Layout not ready yet — skip, do not count as present failure.
+                return HdrPresentOutcome.Cancelled;
+            }
+
+            if (!sizeOk && scaleOk)
+            {
+                // Physical buffer > 8192 (4K × high zoom). Keep last good frame.
+                return HdrPresentOutcome.Cancelled;
+            }
+
+            if (!scaleOk || !sizeOk)
+            {
+                return HdrPresentOutcome.Failed;
+            }
 
             float outcomeExposure = 0f;
             float outcomeWhite = 0f;

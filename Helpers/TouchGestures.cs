@@ -469,9 +469,10 @@ public static class TouchGestures
     }
 
     /// <summary>
-    /// Further cap so baseLongEdge × zoom ≤ <see cref="MaxStillPanelLongEdgeDip"/>.
+    /// Further cap so baseLongEdge × zoom ≤ DIP max for
+    /// <paramref name="rasterScale"/> (physical ≤ 8192).
     /// </summary>
-    public static double MaxPinchForBaseSize(double baseLongEdgeDip)
+    public static double MaxPinchForBaseSize(double baseLongEdgeDip, double rasterScale = 1.0)
     {
         var layoutMax = GalleryScale.MaxPinchZoom;
         if (baseLongEdgeDip <= 0)
@@ -479,19 +480,20 @@ public static class TouchGestures
             return layoutMax;
         }
 
-        var panelMax = MaxStillPanelLongEdgeDip / baseLongEdgeDip;
+        var panelMax = MaxStillPanelDipForScale(rasterScale) / baseLongEdgeDip;
         return Math.Min(layoutMax, Math.Max(1.0, panelMax));
     }
 
     public static double ClampPinchHard(
         double fitFactor,
         double fitToActualRatio,
-        double baseLongEdgeDip = 0)
+        double baseLongEdgeDip = 0,
+        double rasterScale = 1.0)
     {
         var max = MaxPinchFitFactor(fitToActualRatio);
         if (baseLongEdgeDip > 0)
         {
-            max = Math.Min(max, MaxPinchForBaseSize(baseLongEdgeDip));
+            max = Math.Min(max, MaxPinchForBaseSize(baseLongEdgeDip, rasterScale));
         }
 
         if (fitFactor < PinchMinFitFactor)
@@ -505,13 +507,14 @@ public static class TouchGestures
     public static double ClampPinchSoft(
         double fitFactor,
         double fitToActualRatio,
-        double baseLongEdgeDip = 0)
+        double baseLongEdgeDip = 0,
+        double rasterScale = 1.0)
     {
         // Soft ceiling from the hard max (not from an uncapped fitFactor).
         var hardMax = MaxPinchFitFactor(fitToActualRatio);
         if (baseLongEdgeDip > 0)
         {
-            hardMax = Math.Min(hardMax, MaxPinchForBaseSize(baseLongEdgeDip));
+            hardMax = Math.Min(hardMax, MaxPinchForBaseSize(baseLongEdgeDip, rasterScale));
         }
 
         var softMax = hardMax * PinchSoftOvershoot;
@@ -523,20 +526,39 @@ public static class TouchGestures
         return fitFactor > softMax ? softMax : fitFactor;
     }
 
-    public static (double Width, double Height) CapStillPanelSize(double width, double height)
+    /// <summary>
+    /// Max layout DIPs so physical px = DIPs × rasterScale ≤
+    /// <see cref="MaxStillPanelLongEdgeDip"/> (DXGI 8192). At 150% DPI the
+    /// DIP cap is 8192/1.5 — oversize Cancelled stays a safety net only.
+    /// </summary>
+    public static double MaxStillPanelDipForScale(double rasterScale)
+    {
+        if (rasterScale > 0 && double.IsFinite(rasterScale))
+        {
+            return MaxStillPanelLongEdgeDip / rasterScale;
+        }
+
+        return MaxStillPanelLongEdgeDip;
+    }
+
+    public static (double Width, double Height) CapStillPanelSize(
+        double width,
+        double height,
+        double rasterScale = 1.0)
     {
         if (double.IsNaN(width) || double.IsNaN(height) || width <= 0 || height <= 0)
         {
             return (width, height);
         }
 
+        var maxDip = MaxStillPanelDipForScale(rasterScale);
         var longEdge = Math.Max(width, height);
-        if (longEdge <= MaxStillPanelLongEdgeDip)
+        if (longEdge <= maxDip)
         {
             return (width, height);
         }
 
-        var scale = MaxStillPanelLongEdgeDip / longEdge;
+        var scale = maxDip / longEdge;
         return (width * scale, height * scale);
     }
 

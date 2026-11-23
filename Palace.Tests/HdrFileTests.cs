@@ -591,6 +591,51 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: false, stillCurrent: true));
         Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: false, stillCurrent: false));
         Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: true, stillCurrent: false));
+        // Cancelled while a good HDR frame is showing must keep it (Bug A).
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false, stillCurrent: true, cancelled: true, hadVisibleHdrFrame: true));
+        // Cancelled Opacity-0 arm with no prior frame still collapses.
+        Assert.True(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false, stillCurrent: true, cancelled: true, hadVisibleHdrFrame: false));
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false, stillCurrent: false, cancelled: true, hadVisibleHdrFrame: true));
+        // Buffer oversize (4K × 8×): never HideHdr over a good frame.
+        Assert.True(GalleryPresent.IsSwapchainBufferOversize(8193, 100));
+        Assert.True(GalleryPresent.IsSwapchainBufferOversize(100, 8193));
+        Assert.False(GalleryPresent.IsSwapchainBufferOversize(8192, 8192));
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false,
+            stillCurrent: true,
+            cancelled: false,
+            hadVisibleHdrFrame: true,
+            bufferOversize: true));
+        Assert.True(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false,
+            stillCurrent: true,
+            cancelled: false,
+            hadVisibleHdrFrame: false,
+            bufferOversize: true));
+        // Oversize modelled as Cancelled outcome also preserves.
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false,
+            stillCurrent: true,
+            cancelled: true,
+            hadVisibleHdrFrame: true,
+            bufferOversize: true));
+
+        // Bug B: assigned size wins over stale Actual from the previous still.
+        var stillB = GalleryPresent.ResolveHdrPanelDips(
+            assignedWidth: 400, assignedHeight: 800,
+            actualWidth: 1200, actualHeight: 600);
+        Assert.Equal((400.0, 800.0), stillB);
+        Assert.Equal(
+            (1200.0, 600.0),
+            GalleryPresent.ResolveHdrPanelDips(
+                assignedWidth: double.NaN, assignedHeight: double.NaN,
+                actualWidth: 1200, actualHeight: 600));
+        Assert.True(GalleryPresent.HdrPanelSizeNeedsRepresent(400, 800, 1200, 600));
+        Assert.False(GalleryPresent.HdrPanelSizeNeedsRepresent(400, 800, 400, 800));
+        Assert.False(GalleryPresent.HdrPanelSizeNeedsRepresent(1, 1, 400, 800));
 
         // Collapsed / never-shown SwapChainPanel: CompositionScale 1.0 is not
         // trustworthy — use RasterizationScale (125%/150% DPI Fit).
@@ -641,13 +686,134 @@ public sealed class HdrFileTests
         Assert.Equal(fit, GalleryPresent.MeasureDecodeSize(3840, 2160, 1280, 720));
         var measureHuge = GalleryPresent.MeasureDecodeSize(16384, 16384, 0, 0);
         Assert.True(Math.Max(measureHuge.Width, measureHuge.Height) <= GalleryPresent.FastPresentLongEdge);
+        // Exact NeedsBetterDecode: 1:1 / Actual requires native (shared path).
         Assert.True(GalleryPresent.NeedsBetterDecode(1280, 720, 3840, 2160));
         Assert.False(GalleryPresent.NeedsBetterDecode(3840, 2160, 1280, 720));
+        Assert.True(GalleryPresent.NeedsBetterDecode(1000, 1000, 1001, 1001));
+        var actualWant = GalleryPresent.PresentDecodeSize(3840, 2160, 1280, 720, ImageScaling.Actual);
+        Assert.Equal((3840, 2160), actualWant);
+        Assert.True(GalleryPresent.NeedsBetterDecode(1280, 720, actualWant.Width, actualWant.Height));
+        Assert.False(GalleryPresent.NeedsBetterDecode(3840, 2160, actualWant.Width, actualWant.Height));
+        // Settle hysteresis is a separate API — 1px must not thrash; 25%+ upgrades.
+        Assert.False(GalleryPresent.NeedsBetterDecodeSettle(1000, 1000, 1001, 1001));
+        Assert.False(GalleryPresent.NeedsBetterDecodeSettle(1000, 1000, 1249, 1249));
+        Assert.True(GalleryPresent.NeedsBetterDecodeSettle(1000, 1000, 1251, 1000));
+        Assert.Equal(1.25, GalleryPresent.BetterDecodeSettleHysteresis, 3);
+        // Max-pixels clamp (JXL present ~64 MP).
+        var clamped = GalleryPresent.ClampDecodeToMaxPixels(16000, 16000, 64_000_000);
+        Assert.True((long)clamped.Width * clamped.Height <= 64_000_000);
+        Assert.Equal((3840, 2160), GalleryPresent.ClampDecodeToMaxPixels(3840, 2160, 64_000_000));
+        // Settle clamp is JXL-only — Radiance / EXR keep the requested want.
+        Assert.Equal(
+            clamped,
+            GalleryPresent.ClampSettleDecodeWant(16000, 16000, HdrKind.HdrJxl));
+        Assert.Equal(
+            (16000, 16000),
+            GalleryPresent.ClampSettleDecodeWant(16000, 16000, HdrKind.HdrRadiance));
+        Assert.Equal(
+            (16000, 16000),
+            GalleryPresent.ClampSettleDecodeWant(16000, 16000, HdrKind.HdrExr));
+        // Memo gates settle request: same path+want after success → no retry;
+        // cancel/fail never set memo so retry stays open.
+        Assert.True(GalleryPresent.ShouldRequestSettleDecode(
+            "a.hdr", 1000, 1000, 2000, 2000, memoPath: null, 0, 0));
+        Assert.False(GalleryPresent.ShouldRequestSettleDecode(
+            "a.hdr", 1000, 1000, 2000, 2000, "a.hdr", 2000, 2000));
+        Assert.True(GalleryPresent.ShouldRequestSettleDecode(
+            "a.hdr", 1000, 1000, 2000, 2000, "a.hdr", 1999, 2000));
+        Assert.True(GalleryPresent.IsSameSettleDecodeMemo(
+            "a.hdr", 2000, 2000, "a.hdr", 2000, 2000));
+        Assert.False(GalleryPresent.IsSameSettleDecodeMemo(
+            "a.hdr", 2000, 2000, null, 2000, 2000));
+        // In-flight pending (same path+want) must not kick another RefreshAsync —
+        // that cancelled the running decode (portrait PQ settle starvation).
+        Assert.False(GalleryPresent.ShouldRequestSettleDecode(
+            "a.hdr",
+            1000,
+            1000,
+            2000,
+            2000,
+            memoPath: null,
+            0,
+            0,
+            pendingPath: "a.hdr",
+            pendingWantW: 2000,
+            pendingWantH: 2000));
+        Assert.True(GalleryPresent.ShouldRequestSettleDecode(
+            "a.hdr",
+            1000,
+            1000,
+            2500,
+            2500,
+            memoPath: null,
+            0,
+            0,
+            pendingPath: "a.hdr",
+            pendingWantW: 2000,
+            pendingWantH: 2000));
+        Assert.True(GalleryPresent.IsSameSettleDecodeKey(
+            "a.hdr", 2000, 2000, "a.hdr", 2000, 2000));
+        Assert.False(GalleryPresent.IsSameSettleDecodeKey(
+            "a.hdr", 2000, 2000, "a.hdr", 1999, 2000));
+        // PanelCapScale prefers CompositionScale when reliable.
+        Assert.Equal(
+            1.5f,
+            GalleryPresent.PanelCapScale(1.5f, 1.5f, rasterizationScale: 1f, panelCompositionScaleReliable: true));
+        Assert.Equal(
+            1.25f,
+            GalleryPresent.PanelCapScale(1f, 1f, rasterizationScale: 1.25f, panelCompositionScaleReliable: false));
         Assert.True(GalleryPresent.IsNativeDecode(3840, 2160, 3840, 2160));
         Assert.False(GalleryPresent.IsNativeDecode(1280, 720, 3840, 2160));
         Assert.True(GalleryPresent.ReplaceHdrStats(false, false));
         Assert.False(GalleryPresent.ReplaceHdrStats(true, false));
         Assert.True(GalleryPresent.ReplaceHdrStats(true, true));
+    }
+
+    [Fact]
+    public void HdrPresentLog_OffByDefault_WritesWhenEnabled()
+    {
+        var prior = HdrPresentLog.EnabledOverride;
+        var priorPath = HdrPresentLog.PathOverride;
+        var dir = Path.Combine(Path.GetTempPath(), "palace-hdr-present-log-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(dir);
+            HdrPresentLog.EnabledOverride = false;
+            HdrPresentLog.PathOverride = Path.Combine(dir, HdrPresentLog.FileName);
+            HdrPresentLog.TryAppend("a.hdr", 3840, 2160, 800, 450, 1000, 562, "Presented", 1.25, 1.25);
+            Assert.False(File.Exists(HdrPresentLog.PathOverride));
+
+            HdrPresentLog.EnabledOverride = true;
+            HdrPresentLog.TryAppend(
+                "zoom.hdr", 7680, 4320, 4096, 2304, 5120, 2880, "Cancelled", 1.25, 1.25, "oversize");
+            HdrPresentLog.TryAppendDecodeStart("zoom.hdr", 2160, 3840, detail: "refresh");
+            HdrPresentLog.TryAppendDecodeCancel("zoom.hdr", 2160, 3840, detail: "refresh");
+            var text = File.ReadAllText(HdrPresentLog.PathOverride!);
+            Assert.Contains("decode=7680x4320", text);
+            Assert.Contains("panelDip=4096x2304", text);
+            Assert.Contains("bufferPx=5120x2880", text);
+            Assert.Contains("result=Cancelled", text);
+            Assert.Contains("result=DecodeStart", text);
+            Assert.Contains("result=DecodeCancelled", text);
+            Assert.Contains("decode=2160x3840", text);
+            Assert.Contains(
+                HdrPresentLog.FormatLine(
+                    "zoom.hdr", 7680, 4320, 4096, 2304, 5120, 2880, "Cancelled", 1.25, 1.25),
+                text);
+        }
+        finally
+        {
+            HdrPresentLog.EnabledOverride = prior;
+            HdrPresentLog.PathOverride = priorPath;
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+                // ignore
+            }
+        }
     }
 
     [Fact]

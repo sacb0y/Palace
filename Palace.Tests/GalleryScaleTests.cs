@@ -87,6 +87,16 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.Scrolls(ImageScaling.Fit, 1.5));
         Assert.False(GalleryScale.Scrolls(ImageScaling.Fit, 1.0));
         Assert.Equal("1:1", GalleryScale.Label(ImageScaling.Actual));
+        // Bug C: 1.1× portrait — center X, start Y only when that axis overflows.
+        var (h, v) = GalleryScale.ContentEdgeAlign(495, 880, 800, 800);
+        Assert.False(h);
+        Assert.True(v);
+        var both = GalleryScale.ContentEdgeAlign(400, 400, 800, 800);
+        Assert.False(both.AlignStartHorizontal);
+        Assert.False(both.AlignStartVertical);
+        var overflow = GalleryScale.ContentEdgeAlign(1600, 1600, 800, 800);
+        Assert.True(overflow.AlignStartHorizontal);
+        Assert.True(overflow.AlignStartVertical);
     }
 
     [Fact]
@@ -160,23 +170,29 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: true));
         Assert.False(GalleryScale.ShouldResetView(stillChanged: false, scalingChanged: false, viewportChanged: false));
 
-        // Keep-zoom sticky must survive HDR; DisplayScaling is Fit only on screen.
+        // Keep-zoom sticky must survive HDR Fit-on-open; force Fit until user
+        // picks Actual/Fill (then force clears and DisplayScaling honors sticky).
         var sticky = ImageScaling.Actual;
         sticky = GalleryScale.StickyScalingAfterStillOpen(
             sticky, keepZoomBetweenImages: true, ImageScaling.Fit);
         Assert.Equal(ImageScaling.Actual, sticky);
-        Assert.Equal(ImageScaling.Fit, GalleryScale.DisplayScaling(sticky, hdrPresentable: true));
+        Assert.Equal(ImageScaling.Fit, GalleryScale.DisplayScaling(sticky, hdrForcesDisplayFit: true));
+        Assert.True(GalleryScale.ClearsHdrDisplayFitForce(ImageScaling.Actual));
+        Assert.True(GalleryScale.ClearsHdrDisplayFitForce(ImageScaling.Fill));
+        Assert.False(GalleryScale.ClearsHdrDisplayFitForce(ImageScaling.Fit));
+        // After explicit Actual: force cleared → native 1:1 on HDR.
+        Assert.Equal(ImageScaling.Actual, GalleryScale.DisplayScaling(sticky, hdrForcesDisplayFit: false));
         // 1:1 → HDR → normal stays 1:1
         sticky = GalleryScale.StickyScalingAfterStillOpen(
             sticky, keepZoomBetweenImages: true, ImageScaling.Fit);
         Assert.Equal(ImageScaling.Actual, sticky);
-        Assert.Equal(ImageScaling.Actual, GalleryScale.DisplayScaling(sticky, hdrPresentable: false));
-        // Keep-zoom off + Fill default: sticky becomes Fill; HDR still displays Fit.
+        Assert.Equal(ImageScaling.Actual, GalleryScale.DisplayScaling(sticky, hdrForcesDisplayFit: false));
+        // Keep-zoom off + Fill default: sticky becomes Fill; HDR open still Fit.
         sticky = GalleryScale.StickyScalingAfterStillOpen(
             ImageScaling.Actual, keepZoomBetweenImages: false, ImageScaling.Fill);
         Assert.Equal(ImageScaling.Fill, sticky);
-        Assert.Equal(ImageScaling.Fit, GalleryScale.DisplayScaling(sticky, hdrPresentable: true));
-        Assert.Equal(ImageScaling.Fill, GalleryScale.DisplayScaling(sticky, hdrPresentable: false));
+        Assert.Equal(ImageScaling.Fit, GalleryScale.DisplayScaling(sticky, hdrForcesDisplayFit: true));
+        Assert.Equal(ImageScaling.Fill, GalleryScale.DisplayScaling(sticky, hdrForcesDisplayFit: false));
 
         // Fit pinch-1 clears scroll; Actual does not (no ChangeView 0,0 snap).
         Assert.True(GalleryScale.ClearsScrollOnPinchRelease(ImageScaling.Fit, 1.0));

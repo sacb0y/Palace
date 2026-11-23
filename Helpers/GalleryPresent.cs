@@ -1032,17 +1032,109 @@ public static class GalleryPresent
         return !string.Equals(previousHdrPath, nextStillPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>DXGI swapchain long-edge cap (physical px).</summary>
+    public const int MaxSwapchainLongEdgePx = 8192;
+
     /// <summary>
-    /// After arming <c>ScpHdr</c> at Opacity 0 + Visible, Failed or Cancelled
-    /// must HideHdr while the surface is still current — otherwise the panel
-    /// stays Visible at Opacity 0 and can catch pointer input. Superseded
-    /// presents (<paramref name="stillCurrent"/> false) leave the panel alone
-    /// for the newer Refresh.
+    /// After arming <c>ScpHdr</c> at Opacity 0 + Visible:
+    /// <list type="bullet">
+    /// <item>Failed + still current → HideHdr (real present error).</item>
+    /// <item>Cancelled / buffer-oversize + still current → HideHdr only when no
+    /// prior good HDR frame was showing (collapse the Opacity-0 arm). A
+    /// cancelled / superseded / oversize zoom settle must keep the last good
+    /// HDR frame — never drop to SDR on 4K × 8×.</item>
+    /// <item>Superseded (<paramref name="stillCurrent"/> false) → leave alone.</item>
+    /// </list>
     /// </summary>
     public static bool ShouldHideHdrAfterPresentOutcome(
         bool presented,
-        bool stillCurrent) =>
-        stillCurrent && !presented;
+        bool stillCurrent,
+        bool cancelled = false,
+        bool hadVisibleHdrFrame = false,
+        bool bufferOversize = false)
+    {
+        if (!stillCurrent || presented)
+        {
+            return false;
+        }
+
+        // Oversize and Cancelled both preserve a visible HDR frame.
+        if (cancelled || bufferOversize)
+        {
+            return !hadVisibleHdrFrame;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// True when physical swapchain size exceeds DXGI ResizeBuffers limit.
+    /// Present must Cancelled (keep last good), never Failed → HideHdr.
+    /// </summary>
+    public static bool IsSwapchainBufferOversize(
+        int physicalWidth,
+        int physicalHeight,
+        int maxLongEdgePx = MaxSwapchainLongEdgePx) =>
+        physicalWidth > maxLongEdgePx || physicalHeight > maxLongEdgePx;
+
+    /// <summary>
+    /// DIP size for an HDR swapchain present. Prefer assigned Width/Height
+    /// (just set by <c>ApplyScaleLayout</c>) over Actual — Actual can still
+    /// hold the previous still's size when layout has not run yet (Bug B).
+    /// </summary>
+    public static (double Width, double Height) ResolveHdrPanelDips(
+        double assignedWidth,
+        double assignedHeight,
+        double actualWidth,
+        double actualHeight,
+        double contentActualWidth = 0,
+        double contentActualHeight = 0,
+        double scrollActualWidth = 0,
+        double scrollActualHeight = 0)
+    {
+        if (!double.IsNaN(assignedWidth) && !double.IsNaN(assignedHeight)
+            && assignedWidth >= 2 && assignedHeight >= 2)
+        {
+            return (assignedWidth, assignedHeight);
+        }
+
+        if (actualWidth >= 2 && actualHeight >= 2)
+        {
+            return (actualWidth, actualHeight);
+        }
+
+        if (contentActualWidth >= 2 && contentActualHeight >= 2)
+        {
+            return (contentActualWidth, contentActualHeight);
+        }
+
+        return (scrollActualWidth, scrollActualHeight);
+    }
+
+    /// <summary>
+    /// True when a SizeChanged on ScpHdr should re-present: laid-out size
+    /// differs from the last buffer DIP size (aspect change A→B).
+    /// </summary>
+    public static bool HdrPanelSizeNeedsRepresent(
+        double panelWidth,
+        double panelHeight,
+        double lastBufferDipW,
+        double lastBufferDipH,
+        double epsilon = 0.5)
+    {
+        if (panelWidth < 2 || panelHeight < 2)
+        {
+            return false;
+        }
+
+        if (lastBufferDipW < 2 || lastBufferDipH < 2)
+        {
+            return true;
+        }
+
+        return Math.Abs(panelWidth - lastBufferDipW) > epsilon
+            || Math.Abs(panelHeight - lastBufferDipH) > epsilon;
+    }
 
     public static float TonemapScale(float contentMaxNits, float displayPeakNits)
     {
@@ -1178,8 +1270,139 @@ public static class GalleryPresent
         int viewportH) =>
         PresentDecodeSize(imageW, imageH, viewportW, viewportH, ImageScaling.Fit);
 
+    /// <summary>
+    /// Exact size check for 1:1 / cache / resize — Actual must require native.
+    /// </summary>
     public static bool NeedsBetterDecode(int haveW, int haveH, int wantW, int wantH) =>
         wantW > 0 && wantH > 0 && (haveW < wantW || haveH < wantH);
+
+    /// <summary>
+    /// Zoom-settle re-decode only: want must exceed have by this factor so a
+    /// 1px PresentDecodeSize edge does not thrash. Do not use for 1:1/cache.
+    /// </summary>
+    public const double BetterDecodeSettleHysteresis = 1.25;
+
+    public static bool NeedsBetterDecodeSettle(int haveW, int haveH, int wantW, int wantH)
+    {
+        if (wantW <= 0 || wantH <= 0 || haveW <= 0 || haveH <= 0)
+        {
+            return false;
+        }
+
+        if (haveW >= wantW && haveH >= wantH)
+        {
+            return false;
+        }
+
+        return wantW > haveW * BetterDecodeSettleHysteresis
+            || wantH > haveH * BetterDecodeSettleHysteresis;
+    }
+
+    /// <summary>
+    /// Cap decode dimensions so width×height ≤ maxPixels (JXL present ~64 MP).
+    /// </summary>
+    public static (int Width, int Height) ClampDecodeToMaxPixels(
+        int width,
+        int height,
+        int maxPixels)
+    {
+        if (width <= 0 || height <= 0 || maxPixels <= 0)
+        {
+            return (width, height);
+        }
+
+        var pixels = (long)width * height;
+        if (pixels <= maxPixels)
+        {
+            return (width, height);
+        }
+
+        var scale = Math.Sqrt(maxPixels / (double)pixels);
+        return (
+            Math.Max(1, (int)Math.Floor(width * scale)),
+            Math.Max(1, (int)Math.Floor(height * scale)));
+    }
+
+    /// <summary>
+    /// JXL present caps at <see cref="HdrJxlPresent.PresentMaxPixels"/>; other
+    /// formats keep the requested size (no silent 64 MP clamp).
+    /// </summary>
+    public static (int Width, int Height) ClampSettleDecodeWant(
+        int width,
+        int height,
+        HdrKind kind) =>
+        kind == HdrKind.HdrJxl
+            ? ClampDecodeToMaxPixels(width, height, HdrJxlPresent.PresentMaxPixels)
+            : (width, height);
+
+    /// <summary>
+    /// True when path+want matches a settle key (success memo or in-flight pending).
+    /// </summary>
+    public static bool IsSameSettleDecodeKey(
+        string? path,
+        int wantW,
+        int wantH,
+        string? keyPath,
+        int keyWantW,
+        int keyWantH) =>
+        !string.IsNullOrEmpty(path)
+        && wantW > 0
+        && wantH > 0
+        && string.Equals(keyPath, path, StringComparison.OrdinalIgnoreCase)
+        && keyWantW == wantW
+        && keyWantH == wantH;
+
+    /// <summary>
+    /// True when a settle re-decode for this path+want was already recorded
+    /// (successful decode). Cancel/fail must not set the memo.
+    /// </summary>
+    public static bool IsSameSettleDecodeMemo(
+        string? path,
+        int wantW,
+        int wantH,
+        string? memoPath,
+        int memoWantW,
+        int memoWantH) =>
+        IsSameSettleDecodeKey(path, wantW, wantH, memoPath, memoWantW, memoWantH);
+
+    /// <summary>
+    /// Whether zoom-settle should kick a better decode. Skips when the same
+    /// path+want is already in flight (pending) or memoized after success —
+    /// otherwise every present cancels the running decode (starvation).
+    /// </summary>
+    public static bool ShouldRequestSettleDecode(
+        string? path,
+        int haveW,
+        int haveH,
+        int wantW,
+        int wantH,
+        string? memoPath,
+        int memoWantW,
+        int memoWantH,
+        string? pendingPath = null,
+        int pendingWantW = 0,
+        int pendingWantH = 0) =>
+        !IsSameSettleDecodeKey(path, wantW, wantH, memoPath, memoWantW, memoWantH)
+        && !IsSameSettleDecodeKey(path, wantW, wantH, pendingPath, pendingWantW, pendingWantH)
+        && NeedsBetterDecodeSettle(haveW, haveH, wantW, wantH);
+
+    /// <summary>
+    /// Scale used for DIP panel caps so physical px = DIPs × scale ≤ 8192.
+    /// Prefer CompositionScale when the panel is reliable (same as DXGI
+    /// present); otherwise RasterizationScale.
+    /// </summary>
+    public static float PanelCapScale(
+        float compositionScaleX,
+        float compositionScaleY,
+        float rasterizationScale,
+        bool panelCompositionScaleReliable)
+    {
+        var sx = ResolveHdrPanelScale(
+            compositionScaleX, rasterizationScale, panelCompositionScaleReliable);
+        var sy = ResolveHdrPanelScale(
+            compositionScaleY, rasterizationScale, panelCompositionScaleReliable);
+        return Math.Max(sx, sy);
+    }
 
     public static bool IsNativeDecode(int decodedW, int decodedH, int nativeW, int nativeH) =>
         nativeW > 0 && nativeH > 0 && decodedW >= nativeW && decodedH >= nativeH;
