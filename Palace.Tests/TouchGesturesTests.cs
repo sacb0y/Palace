@@ -188,6 +188,11 @@ public sealed class TouchGesturesTests
         Assert.Equal(2.0, TouchGestures.ClampPinchHard(8, 2, baseLongEdgeDip: 4096), 3);
         var (cw, ch) = TouchGestures.CapStillPanelSize(16000, 9000);
         Assert.True(Math.Max(cw, ch) <= TouchGestures.MaxStillPanelLongEdgeDip + 0.001);
+        // At 150% DPI, DIP cap = 8192/1.5 so physical px ≤ 8192.
+        Assert.Equal(8192 / 1.5, TouchGestures.MaxStillPanelDipForScale(1.5), 3);
+        var scaled = TouchGestures.CapStillPanelSize(16000, 9000, rasterScale: 1.5);
+        Assert.True(Math.Max(scaled.Width, scaled.Height) <= TouchGestures.MaxStillPanelDipForScale(1.5) + 0.001);
+        Assert.True(Math.Max(scaled.Width, scaled.Height) * 1.5 <= TouchGestures.MaxStillPanelLongEdgeDip + 0.5);
         Assert.False(TouchGestures.AllowsSwipe(zoomed: true, fingerCount: 1, afterPinchAwaitingLift: false));
         Assert.False(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 2, afterPinchAwaitingLift: false));
         Assert.True(TouchGestures.AllowsSwipe(zoomed: false, fingerCount: 1, afterPinchAwaitingLift: false));

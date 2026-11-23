@@ -686,13 +686,23 @@ public sealed class HdrFileTests
         Assert.Equal(fit, GalleryPresent.MeasureDecodeSize(3840, 2160, 1280, 720));
         var measureHuge = GalleryPresent.MeasureDecodeSize(16384, 16384, 0, 0);
         Assert.True(Math.Max(measureHuge.Width, measureHuge.Height) <= GalleryPresent.FastPresentLongEdge);
+        // Exact NeedsBetterDecode: 1:1 / Actual requires native (shared path).
         Assert.True(GalleryPresent.NeedsBetterDecode(1280, 720, 3840, 2160));
         Assert.False(GalleryPresent.NeedsBetterDecode(3840, 2160, 1280, 720));
-        // Hysteresis: 1px over have must not thrash; 25%+ over must upgrade.
-        Assert.False(GalleryPresent.NeedsBetterDecode(1000, 1000, 1001, 1001));
-        Assert.False(GalleryPresent.NeedsBetterDecode(1000, 1000, 1249, 1249));
-        Assert.True(GalleryPresent.NeedsBetterDecode(1000, 1000, 1251, 1000));
-        Assert.Equal(1.25, GalleryPresent.BetterDecodeHysteresis, 3);
+        Assert.True(GalleryPresent.NeedsBetterDecode(1000, 1000, 1001, 1001));
+        var actualWant = GalleryPresent.PresentDecodeSize(3840, 2160, 1280, 720, ImageScaling.Actual);
+        Assert.Equal((3840, 2160), actualWant);
+        Assert.True(GalleryPresent.NeedsBetterDecode(1280, 720, actualWant.Width, actualWant.Height));
+        Assert.False(GalleryPresent.NeedsBetterDecode(3840, 2160, actualWant.Width, actualWant.Height));
+        // Settle hysteresis is a separate API — 1px must not thrash; 25%+ upgrades.
+        Assert.False(GalleryPresent.NeedsBetterDecodeSettle(1000, 1000, 1001, 1001));
+        Assert.False(GalleryPresent.NeedsBetterDecodeSettle(1000, 1000, 1249, 1249));
+        Assert.True(GalleryPresent.NeedsBetterDecodeSettle(1000, 1000, 1251, 1000));
+        Assert.Equal(1.25, GalleryPresent.BetterDecodeSettleHysteresis, 3);
+        // Max-pixels clamp (JXL present ~64 MP).
+        var clamped = GalleryPresent.ClampDecodeToMaxPixels(16000, 16000, 64_000_000);
+        Assert.True((long)clamped.Width * clamped.Height <= 64_000_000);
+        Assert.Equal((3840, 2160), GalleryPresent.ClampDecodeToMaxPixels(3840, 2160, 64_000_000));
         Assert.True(GalleryPresent.IsNativeDecode(3840, 2160, 3840, 2160));
         Assert.False(GalleryPresent.IsNativeDecode(1280, 720, 3840, 2160));
         Assert.True(GalleryPresent.ReplaceHdrStats(false, false));

@@ -1271,12 +1271,18 @@ public static class GalleryPresent
         PresentDecodeSize(imageW, imageH, viewportW, viewportH, ImageScaling.Fit);
 
     /// <summary>
-    /// Re-decode only when want exceeds have by this factor on either axis.
-    /// Prevents thrash at the PresentDecodeSize threshold during zoom settle.
+    /// Exact size check for 1:1 / cache / resize — Actual must require native.
     /// </summary>
-    public const double BetterDecodeHysteresis = 1.25;
+    public static bool NeedsBetterDecode(int haveW, int haveH, int wantW, int wantH) =>
+        wantW > 0 && wantH > 0 && (haveW < wantW || haveH < wantH);
 
-    public static bool NeedsBetterDecode(int haveW, int haveH, int wantW, int wantH)
+    /// <summary>
+    /// Zoom-settle re-decode only: want must exceed have by this factor so a
+    /// 1px PresentDecodeSize edge does not thrash. Do not use for 1:1/cache.
+    /// </summary>
+    public const double BetterDecodeSettleHysteresis = 1.25;
+
+    public static bool NeedsBetterDecodeSettle(int haveW, int haveH, int wantW, int wantH)
     {
         if (wantW <= 0 || wantH <= 0 || haveW <= 0 || haveH <= 0)
         {
@@ -1288,8 +1294,33 @@ public static class GalleryPresent
             return false;
         }
 
-        return wantW > haveW * BetterDecodeHysteresis
-            || wantH > haveH * BetterDecodeHysteresis;
+        return wantW > haveW * BetterDecodeSettleHysteresis
+            || wantH > haveH * BetterDecodeSettleHysteresis;
+    }
+
+    /// <summary>
+    /// Cap decode dimensions so width×height ≤ maxPixels (JXL present ~64 MP).
+    /// </summary>
+    public static (int Width, int Height) ClampDecodeToMaxPixels(
+        int width,
+        int height,
+        int maxPixels)
+    {
+        if (width <= 0 || height <= 0 || maxPixels <= 0)
+        {
+            return (width, height);
+        }
+
+        var pixels = (long)width * height;
+        if (pixels <= maxPixels)
+        {
+            return (width, height);
+        }
+
+        var scale = Math.Sqrt(maxPixels / (double)pixels);
+        return (
+            Math.Max(1, (int)Math.Floor(width * scale)),
+            Math.Max(1, (int)Math.Floor(height * scale)));
     }
 
     public static bool IsNativeDecode(int decodedW, int decodedH, int nativeW, int nativeH) =>
