@@ -158,6 +158,20 @@ public static class GalleryScale
     public static bool FitSwipeUsesViewportPanel(bool scrolls) => !scrolls;
 
     /// <summary>
+    /// Per-axis start (Left/Top) vs center when zoomed content may still be
+    /// smaller than the viewport on one axis (e.g. 1.1× portrait Fit).
+    /// Start only when that axis overflows the viewport.
+    /// </summary>
+    public static (bool AlignStartHorizontal, bool AlignStartVertical) ContentEdgeAlign(
+        double contentWidth,
+        double contentHeight,
+        double viewportWidth,
+        double viewportHeight) =>
+        (
+            contentWidth > viewportWidth + 0.0001,
+            contentHeight > viewportHeight + 0.0001);
+
+    /// <summary>
     /// Layout size so one image pixel is one device pixel. At 150% DPI a
     /// 200×100 image is ~133×67 DIPs, not 200×100 DIPs (which stretches).
     /// </summary>

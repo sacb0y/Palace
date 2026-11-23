@@ -342,6 +342,49 @@ public sealed class TouchGesturesTests
     }
 
     [Fact]
+    public void ZoomAroundPoint_PortraitFitAt1_1x_StaysHorizontallyCentered()
+    {
+        // Bug C: 1.1× portrait Fit — width still < viewport, height overflows.
+        const double viewW = 800;
+        const double viewH = 800;
+        const double fitW = 450;
+        const double fitH = 800;
+        const double zoomedW = fitW * 1.1;
+        const double zoomedH = fitH * 1.1;
+        Assert.True(zoomedW < viewW);
+        Assert.True(zoomedH > viewH);
+        var (alignH, alignV) = GalleryScale.ContentEdgeAlign(zoomedW, zoomedH, viewW, viewH);
+        Assert.False(alignH);
+        Assert.True(alignV);
+        var (h, v) = TouchGestures.ZoomAroundPoint(
+            tapX: viewW / 2,
+            tapY: viewH / 2,
+            oldContentWidth: fitW,
+            oldContentHeight: fitH,
+            oldOffsetX: 0,
+            oldOffsetY: 0,
+            newContentWidth: zoomedW,
+            newContentHeight: zoomedH,
+            viewportWidth: viewW,
+            viewportHeight: viewH);
+        Assert.Equal(0, h, 3);
+        Assert.InRange(v, 0, zoomedH - viewH);
+        // Zoom-at-cursor: a point near the center stays under the cursor.
+        const double tapX = 400;
+        const double tapY = 200;
+        var oldContentX = TouchGestures.ContentCoordFromViewport(tapX, 0, fitW, viewW);
+        var oldContentY = TouchGestures.ContentCoordFromViewport(tapY, 0, fitH, viewH);
+        var around = TouchGestures.ZoomAroundPoint(
+            tapX, tapY, fitW, fitH, 0, 0, zoomedW, zoomedH, viewW, viewH);
+        var newContentX = TouchGestures.ContentCoordFromViewport(
+            tapX, around.Horizontal, zoomedW, viewW);
+        var newContentY = TouchGestures.ContentCoordFromViewport(
+            tapY, around.Vertical, zoomedH, viewH);
+        Assert.Equal(oldContentX * 1.1, newContentX, 3);
+        Assert.Equal(oldContentY * 1.1, newContentY, 3);
+    }
+
+    [Fact]
     public void IsTouchOnly_GatesGestures()
     {
         Assert.True(TouchGestures.IsTouchOnly(true));

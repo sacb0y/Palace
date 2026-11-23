@@ -1033,16 +1033,92 @@ public static class GalleryPresent
     }
 
     /// <summary>
-    /// After arming <c>ScpHdr</c> at Opacity 0 + Visible, Failed or Cancelled
-    /// must HideHdr while the surface is still current — otherwise the panel
-    /// stays Visible at Opacity 0 and can catch pointer input. Superseded
-    /// presents (<paramref name="stillCurrent"/> false) leave the panel alone
-    /// for the newer Refresh.
+    /// After arming <c>ScpHdr</c> at Opacity 0 + Visible:
+    /// <list type="bullet">
+    /// <item>Failed + still current → HideHdr (real present error).</item>
+    /// <item>Cancelled + still current → HideHdr only when no prior good HDR
+    /// frame was showing (collapse the Opacity-0 arm). A cancelled / superseded
+    /// zoom settle must keep the last good HDR frame.</item>
+    /// <item>Superseded (<paramref name="stillCurrent"/> false) → leave alone.</item>
+    /// </list>
     /// </summary>
     public static bool ShouldHideHdrAfterPresentOutcome(
         bool presented,
-        bool stillCurrent) =>
-        stillCurrent && !presented;
+        bool stillCurrent,
+        bool cancelled = false,
+        bool hadVisibleHdrFrame = false)
+    {
+        if (!stillCurrent || presented)
+        {
+            return false;
+        }
+
+        if (cancelled)
+        {
+            return !hadVisibleHdrFrame;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// DIP size for an HDR swapchain present. Prefer assigned Width/Height
+    /// (just set by <c>ApplyScaleLayout</c>) over Actual — Actual can still
+    /// hold the previous still's size when layout has not run yet (Bug B).
+    /// </summary>
+    public static (double Width, double Height) ResolveHdrPanelDips(
+        double assignedWidth,
+        double assignedHeight,
+        double actualWidth,
+        double actualHeight,
+        double contentActualWidth = 0,
+        double contentActualHeight = 0,
+        double scrollActualWidth = 0,
+        double scrollActualHeight = 0)
+    {
+        if (!double.IsNaN(assignedWidth) && !double.IsNaN(assignedHeight)
+            && assignedWidth >= 2 && assignedHeight >= 2)
+        {
+            return (assignedWidth, assignedHeight);
+        }
+
+        if (actualWidth >= 2 && actualHeight >= 2)
+        {
+            return (actualWidth, actualHeight);
+        }
+
+        if (contentActualWidth >= 2 && contentActualHeight >= 2)
+        {
+            return (contentActualWidth, contentActualHeight);
+        }
+
+        return (scrollActualWidth, scrollActualHeight);
+    }
+
+    /// <summary>
+    /// True when a SizeChanged on ScpHdr should re-present: laid-out size
+    /// differs from the last buffer DIP size (aspect change A→B).
+    /// </summary>
+    public static bool HdrPanelSizeNeedsRepresent(
+        double panelWidth,
+        double panelHeight,
+        double lastBufferDipW,
+        double lastBufferDipH,
+        double epsilon = 0.5)
+    {
+        if (panelWidth < 2 || panelHeight < 2)
+        {
+            return false;
+        }
+
+        if (lastBufferDipW < 2 || lastBufferDipH < 2)
+        {
+            return true;
+        }
+
+        return Math.Abs(panelWidth - lastBufferDipW) > epsilon
+            || Math.Abs(panelHeight - lastBufferDipH) > epsilon;
+    }
 
     public static float TonemapScale(float contentMaxNits, float displayPeakNits)
     {

@@ -591,6 +591,28 @@ public sealed class HdrFileTests
         Assert.True(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: false, stillCurrent: true));
         Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: false, stillCurrent: false));
         Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(presented: true, stillCurrent: false));
+        // Cancelled while a good HDR frame is showing must keep it (Bug A).
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false, stillCurrent: true, cancelled: true, hadVisibleHdrFrame: true));
+        // Cancelled Opacity-0 arm with no prior frame still collapses.
+        Assert.True(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false, stillCurrent: true, cancelled: true, hadVisibleHdrFrame: false));
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false, stillCurrent: false, cancelled: true, hadVisibleHdrFrame: true));
+
+        // Bug B: assigned size wins over stale Actual from the previous still.
+        var stillB = GalleryPresent.ResolveHdrPanelDips(
+            assignedWidth: 400, assignedHeight: 800,
+            actualWidth: 1200, actualHeight: 600);
+        Assert.Equal((400.0, 800.0), stillB);
+        Assert.Equal(
+            (1200.0, 600.0),
+            GalleryPresent.ResolveHdrPanelDips(
+                assignedWidth: double.NaN, assignedHeight: double.NaN,
+                actualWidth: 1200, actualHeight: 600));
+        Assert.True(GalleryPresent.HdrPanelSizeNeedsRepresent(400, 800, 1200, 600));
+        Assert.False(GalleryPresent.HdrPanelSizeNeedsRepresent(400, 800, 400, 800));
+        Assert.False(GalleryPresent.HdrPanelSizeNeedsRepresent(1, 1, 400, 800));
 
         // Collapsed / never-shown SwapChainPanel: CompositionScale 1.0 is not
         // trustworthy — use RasterizationScale (125%/150% DPI Fit).

@@ -87,6 +87,16 @@ public sealed class GalleryScaleTests
         Assert.True(GalleryScale.Scrolls(ImageScaling.Fit, 1.5));
         Assert.False(GalleryScale.Scrolls(ImageScaling.Fit, 1.0));
         Assert.Equal("1:1", GalleryScale.Label(ImageScaling.Actual));
+        // Bug C: 1.1× portrait — center X, start Y only when that axis overflows.
+        var (h, v) = GalleryScale.ContentEdgeAlign(495, 880, 800, 800);
+        Assert.False(h);
+        Assert.True(v);
+        var both = GalleryScale.ContentEdgeAlign(400, 400, 800, 800);
+        Assert.False(both.AlignStartHorizontal);
+        Assert.False(both.AlignStartVertical);
+        var overflow = GalleryScale.ContentEdgeAlign(1600, 1600, 800, 800);
+        Assert.True(overflow.AlignStartHorizontal);
+        Assert.True(overflow.AlignStartVertical);
     }
 
     [Fact]
