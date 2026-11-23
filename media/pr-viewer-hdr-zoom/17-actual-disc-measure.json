@@ -1,0 +1,45 @@
+{
+  "diam_radial": 673,
+  "expected": 720,
+  "centroid": [
+    2045.0,
+    1091.5
+  ],
+  "present_decodes": [
+    [
+      "3591",
+      "2020"
+    ],
+    [
+      "3591",
+      "2020"
+    ],
+    [
+      "3591",
+      "2020"
+    ]
+  ],
+  "present_panels": [
+    [
+      "3591",
+      "2019.94"
+    ],
+    [
+      "3591",
+      "2019.94"
+    ],
+    [
+      "3591",
+      "2019.94"
+    ]
+  ],
+  "present_results": [
+    "Presented",
+    "Cancelled",
+    "Presented"
+  ],
+  "native_decode_3840x2160": false,
+  "hdr_forces_display_fit": true,
+  "note": "GalleryScale.DisplayScaling forces Fit when HDR presentable; Actual sticky may not yield native 1:1 present.",
+  "verdict": "FAIL"
+}

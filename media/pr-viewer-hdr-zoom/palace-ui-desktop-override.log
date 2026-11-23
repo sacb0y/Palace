@@ -1,0 +1,4 @@
+﻿timestamp=2026-11-23T03:12:36.5686358Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac t527u: reproduce 4 viewer/mosaic bugs from 0.3.115 hand test; 5E1F only; synthetic temp HDR fixtures; no DPI changes	args=manual viewer repro (no ui-tests run); pkg PalaceOrganizeTest-5E1F
+timestamp=2026-11-23T03:43:11.8365282Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=FenrirDesktop capture tip 96ad839 media/pr-viewer-hdr-zoom
+timestamp=2026-11-23T04:07:50.7087365Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=edde086 Fenrir HDR zoom expanded capture
+timestamp=2026-11-23T04:30:42.4679138Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=fabb4c5 Fenrir HDR zoom integrity recapture

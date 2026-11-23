@@ -1,0 +1,21 @@
+{
+  "cursor_in_shot": [
+    2040,
+    954
+  ],
+  "cursor_rgb": [
+    255,
+    255,
+    255
+  ],
+  "white_frac_r40": 1.0,
+  "centroid": [
+    2071.9,
+    1066.1
+  ],
+  "dist_cursor_to_centroid": 116.5,
+  "diam_h": 1503,
+  "fit_diam_h": 605,
+  "zoom_factor_vs_fit_by_disc": 2.484,
+  "frac_white_tl": 0.0056
+}

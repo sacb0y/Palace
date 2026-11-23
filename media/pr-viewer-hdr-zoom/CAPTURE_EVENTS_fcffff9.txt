@@ -1,0 +1,14 @@
+2026-11-22T23:41:26.4484841-05:00 status Scanning synth_land_1920x1536.hdr
+2026-11-22T23:41:28.6620713-05:00 status Scanning synth_land_3840x2160.hdr
+2026-11-22T23:41:30.8888161-05:00 status Scanning synth_pano_2048x1024.exr
+2026-11-22T23:41:33.1052275-05:00 status Scanning synth_port_1080x1920.hdr
+2026-11-22T23:41:35.3408676-05:00 status Scanning synth_port_1600x2600.exr
+2026-11-22T23:41:37.5806041-05:00 status Indexed 9 new, 0 updated, 0 unchanged, 0 missing.
+2026-11-22T23:41:40.2734408-05:00 maximized=True dpi=96 scale=1
+2026-11-22T23:41:41.7235985-05:00 li=  itm-synthland3840x2-a253 ListItem "synth_land_3840x2160.hdr" (633,208 249x140)
+2026-11-22T23:41:54.8652334-05:00 SHOT 30-land4k-fit-before-actual.png bytes=536156 sha=11A1C751C6999167
+2026-11-22T23:41:54.8693767-05:00 BEGIN Actual
+2026-11-22T23:42:03.9544037-05:00 SHOT 31-land4k-actual-1to1.png bytes=470098 sha=FC356CDA6B9B66A6
+2026-11-22T23:42:03.9594184-05:00 ACTUAL_HDRLOG 2026-11-23T04:41:57.017Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Cancelled
+2026-11-22T23:42:03.9624412-05:00 ACTUAL_HDRLOG 2026-11-23T04:41:59.304Z file=synth_land_3840x2160.hdr decode=3840x2160 panelDip=3840x2160 bufferPx=3840x2160 scale=1x1 result=Presented
+2026-11-22T23:42:05.3474159-05:00 actual recheck done

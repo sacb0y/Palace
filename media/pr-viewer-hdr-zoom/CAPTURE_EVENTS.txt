@@ -1,0 +1,49 @@
+2026-11-22T23:32:41.1468083-05:00 status Scanning synth_jxl_port_1600x2600.jxl
+2026-11-22T23:32:43.3798618-05:00 status Scanning synth_land_1920x1536.hdr
+2026-11-22T23:32:45.6015244-05:00 status Scanning synth_land_3840x2160.hdr
+2026-11-22T23:32:47.8190785-05:00 status Scanning synth_port_1080x1920.hdr
+2026-11-22T23:32:50.0311574-05:00 status Scanning synth_port_1600x2600.exr
+2026-11-22T23:32:52.2424877-05:00 status Indexed 9 new, 0 updated, 0 unchanged, 0 missing.
+2026-11-22T23:32:55.9181906-05:00 maximized=True dpi=96 scale=1 client=3840x2112 origin=0,0 dipCap=8192 maxPinchVsFitApprox=2.133
+2026-11-22T23:32:56.9268766-05:00 SHOT 01-folder-viewer-hdr.png bytes=741020
+2026-11-22T23:32:58.3694547-05:00 li=  itm-synthland3840x2-85c7 ListItem "synth_land_3840x2160.hdr" (633,208 249x140)
+2026-11-22T23:33:11.4254365-05:00 SHOT 10-land4k-hdr-fit.png bytes=536036
+2026-11-22T23:33:11.8844649-05:00 fit_disc_centroid_shot=2040,954 diam_h=605 diam_v=861 screen=2032,946
+2026-11-22T23:33:12.0569868-05:00 cursor_on_disc=2032,946
+2026-11-22T23:33:12.0605085-05:00 BEGIN max-zoom wheel from fit (honest: DIP cap ~2.13x fit, not 8x visual)
+2026-11-22T23:33:20.3507366-05:00 cursor_after_maxzoom=2032,946
+2026-11-22T23:33:21.1057600-05:00 SHOT 14-land4k-hdr-maxzoom.png bytes=463420
+2026-11-22T23:33:21.1130875-05:00 hdr-present.log bytes=285
+2026-11-22T23:33:21.1264407-05:00 HDRLOG 2026-11-23T04:33:14.769Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=5257.58x2957.39 bufferPx=5258x2957 scale=1x1 result=Presented
+2026-11-22T23:33:21.1279462-05:00 HDRLOG 2026-11-23T04:33:17.700Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=8192x4608 bufferPx=8192x4608 scale=1x1 result=Presented
+2026-11-22T23:33:21.5603640-05:00 LAND maxzoom block done
+2026-11-22T23:33:48.7611981-05:00 BEGIN rapid-notch (separate from maxzoom)
+2026-11-22T23:33:52.9344845-05:00 SHOT 15-land4k-pre-rapid-fit.png bytes=536963
+2026-11-22T23:33:53.0710595-05:00 rapid_cursor_start=,
+2026-11-22T23:33:58.6083742-05:00 rapid_cursor_end=,
+2026-11-22T23:33:59.4739599-05:00 SHOT 16-land4k-rapid-notch-maxzoom.png bytes=536963
+2026-11-22T23:33:59.8855002-05:00 BEGIN Actual 1:1
+2026-11-22T23:34:09.3477482-05:00 SHOT 17-land4k-actual-1to1.png bytes=536338
+2026-11-22T23:34:09.3598159-05:00 ACTUAL_HDRLOG 2026-11-23T04:34:04.199Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Cancelled
+2026-11-22T23:34:09.3621055-05:00 ACTUAL_HDRLOG 2026-11-23T04:34:06.208Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Presented
+2026-11-22T23:34:10.8229864-05:00 phase2 done
+2026-11-22T23:35:28.7014224-05:00 disc_v2 shot=2045,1092 diam=673 screen=2037,1084
+2026-11-22T23:35:28.7107667-05:00 BEGIN rapid-notch REDO
+2026-11-22T23:35:33.1858109-05:00 SHOT 15-land4k-pre-rapid-fit.png bytes=537016 sha=3517BFD90A10
+2026-11-22T23:35:33.1980419-05:00 rapid_cursor=2037,1084
+2026-11-22T23:35:39.5286944-05:00 SHOT 16-land4k-rapid-notch-maxzoom.png bytes=462731 sha=899DEB64252C
+2026-11-22T23:35:39.5442803-05:00 RAPID_HDRLOG 2026-11-23T04:35:36.312Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=8192x4608 bufferPx=8192x4608 scale=1x1 result=Presented
+2026-11-22T23:35:39.5452865-05:00 RAPID_HDRLOG 2026-11-23T04:35:38.863Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=8192x4608 bufferPx=8192x4608 scale=1x1 result=Presented
+2026-11-22T23:35:39.9851722-05:00 BEGIN Actual 1:1 retry
+2026-11-22T23:35:51.4667735-05:00 SHOT 17-land4k-actual-1to1.png bytes=536345 sha=C186C013EA24
+2026-11-22T23:35:51.4713070-05:00 ACTUAL_HDRLOG 2026-11-23T04:35:42.296Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Presented
+2026-11-22T23:35:51.4748385-05:00 ACTUAL_HDRLOG 2026-11-23T04:35:44.206Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Cancelled
+2026-11-22T23:35:51.4803255-05:00 ACTUAL_HDRLOG 2026-11-23T04:35:46.137Z file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Presented
+2026-11-22T23:35:52.7398140-05:00 maxzoom log present
+2026-11-22T23:35:52.7398140-05:00 BEGIN portrait PQ
+2026-11-22T23:36:05.9712279-05:00 SHOT 20-port4k-pq-fit.png bytes=2775444 sha=95B87FE68A80
+2026-11-22T23:36:14.0374047-05:00 SHOT 24-port4k-pq-maxzoom.png bytes=600476 sha=4BCB403DE765
+2026-11-22T23:36:14.0514711-05:00 PORT_HDRLOG 2026-11-23T04:36:07.454Z file=synth_pq_port_2160x3840.png decode=1169x2079 panelDip=1712.17x3043.86 bufferPx=1712x3044 scale=1x1 result=Presented
+2026-11-22T23:36:14.0524752-05:00 PORT_HDRLOG 2026-11-23T04:36:09.158Z file=synth_pq_port_2160x3840.png decode=1169x2079 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:36:14.0592647-05:00 PORT_HDRLOG 2026-11-23T04:36:10.882Z file=synth_pq_port_2160x3840.png decode=1169x2079 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:36:14.2664306-05:00 phase2+3 complete

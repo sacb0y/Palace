@@ -1,0 +1,23 @@
+{
+  "sha_pre": "3517bfd90a105cfafdf67cff8509520ba44f9c10e9b87486674db0489908ce5d",
+  "sha_rapid": "899deb64252c27a96a9e09349ff2f052d4e5ed592bdeff8e9420cfdaf7dbac11",
+  "sha_maxzoom": "3decd41d646dd7b10c1f9242cdbb1bb6dbc0da27fbf0d84363e55daf173bf81e",
+  "distinct_from_pre": true,
+  "distinct_from_slow_maxzoom": true,
+  "cursor": [
+    2045,
+    1092
+  ],
+  "cursor_rgb": [
+    255,
+    255,
+    255
+  ],
+  "white_frac_r40": 1.0,
+  "centroid_disc": [
+    1919.8,
+    1055.1
+  ],
+  "dist": 130.6,
+  "frac_tl": 0.0004
+}

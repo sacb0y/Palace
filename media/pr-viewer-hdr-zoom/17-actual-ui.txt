@@ -1,0 +1,22 @@
+SCALE:
+Auto-selected HWND 3740614 (foreground) from 2 windows for '191100' — pass -w 
+3740614 to target this window explicitly.
+  BtnGalleryScaleActual Button "Actual size" (457,53 58x30)
+  BtnGalleryScaleFit Button "Fit" (523,53 59x30)
+  BtnGalleryScaleFill Button "Fill" (590,53 62x30)
+Found 3 matches
+
+META:
+Auto-selected HWND 3740614 (foreground) from 2 windows for '191100' — pass -w 
+3740614 to target this window explicitly.
+  itm-synthpqport2160-85c0 ListItem "synth_pq_port_2160x3840.png" (541,208 
+84x140)
+  itm-synthland3840x2-85c7 ListItem "synth_land_3840x2160.hdr" (633,208 249x140)
+  TxtPreviewFileName Text "synth_land_3840x2160.hdr" (3508,353 304x19)
+Found 3 matches
+
+PRESENTING:
+Auto-selected HWND 3740614 (foreground) from 2 windows for '191100' — pass -w 
+3740614 to target this window explicitly.
+Found 0 matches
+

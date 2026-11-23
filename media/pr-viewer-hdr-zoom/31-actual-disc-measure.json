@@ -1,0 +1,41 @@
+{
+  "tip": "fcffff9e52786dad0d17714a83dad7c60a441494",
+  "actual_diam_radial": 717,
+  "expected": 720,
+  "fit_diam_radial": 673,
+  "centroid": [
+    2169.0,
+    1109.3
+  ],
+  "present_decodes": [
+    [
+      "3591",
+      "2020"
+    ],
+    [
+      "3840",
+      "2160"
+    ]
+  ],
+  "present_panels": [
+    [
+      "3591",
+      "2019.94"
+    ],
+    [
+      "3840",
+      "2160"
+    ]
+  ],
+  "present_results": [
+    "Cancelled",
+    "Presented"
+  ],
+  "native_decode_3840x2160": true,
+  "diam_ok": true,
+  "verdict": "PASS",
+  "shot_wh": [
+    3931,
+    2140
+  ]
+}

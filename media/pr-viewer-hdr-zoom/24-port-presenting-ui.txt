@@ -1,0 +1,4 @@
+  lbl-hdrpngpresentin-8649 Text "HDR PNG · presenting scRGB" (304,238 166x16)
+        ^ invoke via: btn-expdetailscolor-8658 "Color & HDR"
+Found 1 matches
+
