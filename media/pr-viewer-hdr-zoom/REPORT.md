@@ -76,3 +76,5 @@ file=synth_land_3840x2160.hdr decode=3840x2160 panelDip=3840x2160 bufferPx=3840x
 
 Shots: `30-land4k-fit-before-actual.png`, `31-land4k-actual-1to1.png`.
 
+
+**Media branch SHA:** `af80a42bf963b8b2fcaaac16122ab6cdf57b17d1` (`af80a42`) on `media/pr-viewer-hdr-zoom`.
