@@ -340,11 +340,20 @@ public static class GalleryScale
             : ViewerSettings.NormalizeZoom(defaultZoom);
 
     /// <summary>
-    /// On-screen scale for the current still. HDR presentable stills show Fit
-    /// without overwriting the sticky kept zoom.
+    /// On-screen scale for the current still. When
+    /// <paramref name="hdrForcesDisplayFit"/> is set (HDR Fit-on-open), show Fit
+    /// without overwriting sticky kept zoom. Callers clear that flag after an
+    /// explicit Actual/Fill so HDR can present native 1:1.
     /// </summary>
-    public static ImageScaling DisplayScaling(ImageScaling sticky, bool hdrPresentable) =>
-        hdrPresentable ? ImageScaling.Fit : sticky;
+    public static ImageScaling DisplayScaling(ImageScaling sticky, bool hdrForcesDisplayFit) =>
+        hdrForcesDisplayFit ? ImageScaling.Fit : sticky;
+
+    /// <summary>
+    /// Explicit Actual/Fill clears HDR Fit-on-open so DisplayScaling honors the
+    /// user’s choice (native 1:1 decode). Fit leaves the force flag alone.
+    /// </summary>
+    public static bool ClearsHdrDisplayFitForce(ImageScaling userChoice) =>
+        userChoice is ImageScaling.Actual or ImageScaling.Fill;
 
     /// <summary>
     /// Fit at pinch 1 must clear translation (content equals viewport). Actual/Fill
