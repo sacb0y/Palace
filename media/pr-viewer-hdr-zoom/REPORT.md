@@ -70,3 +70,6 @@ Hold ≥10s after max-zoom settle. Must show native decode Presented (not stuck 
 - Wheel ramps toward 8×; DIP cap clamps panel to 8192 → portrait max `panelDip=4608x8192`
 - Fit scale **0.935** = ScrStill width 3591 / native land width 3840
 - No DPI flips; 5E1F packaged only; catalog restored after capture
+
+**Media branch SHA:** `622c7f2` (`622c7f232189600f9d8eb32a52af1e79f21fa8d4`) on `media/pr-viewer-hdr-zoom`.
+
