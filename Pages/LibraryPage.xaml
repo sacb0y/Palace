@@ -376,10 +376,16 @@
                     <ic:FluentIcon Icon="FolderAdd" IconSize="Size16" IconVariant="Regular" />
                 </Button>
             </Grid>
-            <StackPanel
+            <!-- Auto All-rejected + * TreFolders (no outer ScrollViewer — TreeView ListView virtualizes). -->
+            <Grid
                 Grid.Row="3"
-                Spacing="4"
+                RowSpacing="4"
                 Visibility="{x:Bind helpers:BindHelpers.InvertBoolToVisibility(ViewModel.IsTagBrowse), Mode=OneWay}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Spacing="4">
                 <Button
                     x:Name="BtnAllRejected"
                     HorizontalAlignment="Stretch"
@@ -419,8 +425,10 @@
                     Height="1"
                     Margin="8,0"
                     Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                </StackPanel>
             <TreeView
                 x:Name="TreFolders"
+                Grid.Row="1"
                 AllowDrop="False"
                 AutomationProperties.AutomationId="TreFolders"
                 AutomationProperties.Name="Source folders"
@@ -579,7 +587,7 @@
                     </DataTemplate>
                 </TreeView.ItemTemplate>
             </TreeView>
-            </StackPanel>
+            </Grid>
             <ScrollViewer
                 x:Name="TreTagsBrowse"
                 Grid.Row="3"

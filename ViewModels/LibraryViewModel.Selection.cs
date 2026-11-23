@@ -27,6 +27,8 @@ public partial class LibraryViewModel
         IsMultiSelectPreview = SelectCommandBar.ShowMultiSelectPreview(_selection.Count);
         ShowSinglePreviewFileName = _selection.Count == 1;
         AddTagButtonLabel = IsMultiSelectPreview ? "Add tags to all" : "Add tags";
+        // Computed SelectionCount is not [ObservableProperty] — notify for ⋮ reveal.
+        OnPropertyChanged(nameof(SelectionCount));
         RebuildMultiSelectThumbs();
     }
 

@@ -38,6 +38,11 @@ public sealed partial class LibraryPage : Page
     private bool _planQueued;
     private string _planReason = "realize";
     private long _lastPlanLogMs;
+    /// <summary>Focus GrdAssets after folder/breadcrumb/header nav so ItemsView arrows work.</summary>
+    private bool _focusMosaicAfterNav;
+    /// <summary>Last mosaic width that scheduled a resize thumb plan (WidthEpsilon gate).</summary>
+    private double _lastThumbPlanHostWidth;
+    private readonly HashSet<TileMoreReveal> _tileMoreReveals = new();
     private ScrollViewer? _mosaicScrollViewer;
     private ScrollView? _mosaicScrollView;
     private AssetItem? _stickySection;
@@ -182,7 +187,8 @@ public sealed partial class LibraryPage : Page
 
             if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode)
                 or nameof(LibraryViewModel.ShowTagSelectedCta)
-                or nameof(LibraryViewModel.HasSelection))
+                or nameof(LibraryViewModel.HasSelection)
+                or nameof(LibraryViewModel.SelectionCount))
             {
                 if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode))
                 {
@@ -204,6 +210,15 @@ public sealed partial class LibraryPage : Page
                     {
                         _suppressMosaicSelection = false;
                     }
+                }
+
+                // ExitSelectMode keeps selection — re-Apply so multi ⋮ does not stick.
+                // SelectionCount (2→1) also flips CountsSelected without HasSelection changing.
+                if (e.PropertyName is nameof(LibraryViewModel.IsSelectMode)
+                    or nameof(LibraryViewModel.HasSelection)
+                    or nameof(LibraryViewModel.SelectionCount))
+                {
+                    RefreshTileMoreReveals();
                 }
 
                 ApplySelectBarOverflow(GrdSelectBar.ActualWidth);
@@ -545,6 +560,7 @@ public sealed partial class LibraryPage : Page
     {
         if (args.InvokedItem is FolderNode node)
         {
+            RequestMosaicFocusAfterNav();
             ViewModel.SelectedFolder = node;
         }
     }
@@ -1064,6 +1080,24 @@ public sealed partial class LibraryPage : Page
         var visible = VisibleMosaicColumnWidth(e.NewSize.Width);
         MosaicLayout.SetHostWidth(MosaicLayoutWidth.ApplyViewportGutter(visible));
         UpdateMosaicToolbarOverflow(visible);
+        // Below MinUsable: reset so the next usable width is "first usable" again.
+        if (visible < MosaicLayoutWidth.MinUsable)
+        {
+            _lastThumbPlanHostWidth = 0;
+            return;
+        }
+
+        // ScheduleThumbPlan coalesces via _planQueued; gate first usable + WidthEpsilon.
+        if (_thumbsMayUpgrade)
+        {
+            var firstUsable = _lastThumbPlanHostWidth < MosaicLayoutWidth.MinUsable;
+            var widthMoved = Math.Abs(visible - _lastThumbPlanHostWidth) > MosaicLayoutCache.WidthEpsilon;
+            if (firstUsable || widthMoved)
+            {
+                _lastThumbPlanHostWidth = visible;
+                ScheduleThumbPlan("resize");
+            }
+        }
     }
 
     /// <summary>
@@ -1660,6 +1694,7 @@ public sealed partial class LibraryPage : Page
         }
 
         NoteHeaderGesture();
+        RequestMosaicFocusAfterNav();
         ViewModel.SelectFolderGroup(header);
         e.Handled = true;
     }
@@ -1673,8 +1708,74 @@ public sealed partial class LibraryPage : Page
     {
         if (args.Item is PathCrumb crumb)
         {
+            RequestMosaicFocusAfterNav();
             ViewModel.NavigateBreadcrumb(crumb);
         }
+    }
+
+    /// <summary>
+    /// After folder / breadcrumb / section nav, prefer ItemsView built-in arrow
+    /// selection — focus must leave TreFolders so GrdAssets receives keys.
+    /// </summary>
+    private void RequestMosaicFocusAfterNav() => _focusMosaicAfterNav = true;
+
+    private void ClearMosaicFocusAfterNav() => _focusMosaicAfterNav = false;
+
+    private void TryFocusMosaicAfterNav()
+    {
+        if (!_focusMosaicAfterNav || ViewModel.IsGalleryOverlayOpen)
+        {
+            return;
+        }
+
+        // Empty mosaic / nav complete with 0 assets — do not leave a stale request.
+        if (ViewModel.Assets.Count == 0)
+        {
+            ClearMosaicFocusAfterNav();
+            return;
+        }
+
+        ClearMosaicFocusAfterNav();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (ViewModel.IsGalleryOverlayOpen || XamlRoot is null)
+            {
+                return;
+            }
+
+            var focused = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(XamlRoot);
+            // Reuse FocusIsTextInput (search / AutoSuggest / text boxes); skip open dialogs.
+            if (FocusIsTextInput(focused) || HasOpenContentDialog())
+            {
+                return;
+            }
+
+            GrdAssets.Focus(FocusState.Programmatic);
+        });
+    }
+
+    /// <summary>True when a ContentDialog (or similar) popup is open over this root.</summary>
+    private bool HasOpenContentDialog()
+    {
+        if (XamlRoot is null)
+        {
+            return false;
+        }
+
+        foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot))
+        {
+            if (popup.Child is ContentDialog)
+            {
+                return true;
+            }
+
+            if (popup.Child is DependencyObject root && FindDescendant<ContentDialog>(root) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void AsbSearch_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -1858,6 +1959,7 @@ public sealed partial class LibraryPage : Page
             && !ViewModel.IsGalleryOverlayOpen
             && !typing)
         {
+            RequestMosaicFocusAfterNav();
             ViewModel.SelectFolderGroup(item);
             e.Handled = true;
             return;
@@ -1923,6 +2025,7 @@ public sealed partial class LibraryPage : Page
 
         if (item.IsFolderHeader)
         {
+            RequestMosaicFocusAfterNav();
             ViewModel.SelectFolderGroup(item);
             return;
         }
@@ -2236,6 +2339,7 @@ public sealed partial class LibraryPage : Page
         if (button.Tag is TileMoreReveal existing)
         {
             existing.Detach();
+            _tileMoreReveals.Remove(existing);
         }
 
         var tile = FindAncestor<Grid>(button);
@@ -2253,6 +2357,7 @@ public sealed partial class LibraryPage : Page
 
         var reveal = new TileMoreReveal(this, button, container);
         button.Tag = reveal;
+        _tileMoreReveals.Add(reveal);
         reveal.Attach();
         reveal.Apply();
     }
@@ -2265,9 +2370,18 @@ public sealed partial class LibraryPage : Page
         }
 
         reveal.Detach();
+        _tileMoreReveals.Remove(reveal);
         if (ReferenceEquals(button.Tag, reveal))
         {
             button.Tag = null;
+        }
+    }
+
+    private void RefreshTileMoreReveals()
+    {
+        foreach (var reveal in _tileMoreReveals.ToArray())
+        {
+            reveal.Apply();
         }
     }
 
@@ -2355,7 +2469,9 @@ public sealed partial class LibraryPage : Page
                 _pointerOver,
                 _focused,
                 selected,
-                _flyoutOpen);
+                _flyoutOpen,
+                _page.ViewModel.IsSelectMode,
+                _page.ViewModel.SelectionCount);
             if (show == _shown
                 && _button.Opacity == (show ? 1 : 0)
                 && _button.IsHitTestVisible == show
@@ -3121,6 +3237,10 @@ public sealed partial class LibraryPage : Page
 
         _mosaicGeneration++;
         _thumbsMayUpgrade = false;
+        // Next usable SizeChanged must count as first-usable again.
+        _lastThumbPlanHostWidth = 0;
+        // Do NOT ClearMosaicFocusAfterNav here — RequestMosaicFocusAfterNav runs before
+        // Populate's MosaicReset; clearing would kill folder/breadcrumb arrow focus.
         _thumbSkipped.Clear();
         foreach (var id in _thumbQueue.CancelOutstanding())
         {
@@ -3162,7 +3282,32 @@ public sealed partial class LibraryPage : Page
             RefreshRealizedTiles();
             _thumbsMayUpgrade = true;
             ScheduleThumbPlan("chunk");
+            // Focus-after-nav settles in FinishMosaicFocusAfterPopulate (MosaicRestoreReady).
         });
+    }
+
+    /// <summary>
+    /// End of <c>PopulateMosaicAsync</c>: clear focus request when zero tiles, else try focus.
+    /// </summary>
+    private void FinishMosaicFocusAfterPopulate()
+    {
+        var hasTiles = false;
+        foreach (var asset in ViewModel.Assets)
+        {
+            if (!asset.IsFolderHeader)
+            {
+                hasTiles = true;
+                break;
+            }
+        }
+
+        if (!hasTiles)
+        {
+            ClearMosaicFocusAfterNav();
+            return;
+        }
+
+        TryFocusMosaicAfterNav();
     }
 
     private void TileImage_Loaded(object sender, RoutedEventArgs e)
@@ -3774,6 +3919,10 @@ public sealed partial class LibraryPage : Page
 
     private void OnMosaicRestoreReady(int epoch)
     {
+        // Every successful Populate ends here (including empty / folder pick) —
+        // settle mosaic focus-after-nav before section-toggle early returns.
+        FinishMosaicFocusAfterPopulate();
+
         if (epoch != _sectionToggleRestoreEpoch)
         {
             // Superseded populate — do not apply this toggle's scroll/focus.
@@ -3995,6 +4144,7 @@ public sealed partial class LibraryPage : Page
     {
         if (_stickySection is not null)
         {
+            RequestMosaicFocusAfterNav();
             ViewModel.SelectFolderGroup(_stickySection);
         }
     }
