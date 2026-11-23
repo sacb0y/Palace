@@ -1,80 +1,72 @@
-﻿# FenrirDesktop HDR zoom integrity capture — PR #202
+# FenrirDesktop HDR zoom integrity capture — PR #202
 
-**Tip (integrity base):** `fabb4c526a7a8b0c44f305cd92d2cd0cc301fb77` (`fabb4c5`)
-**Tip (Actual recheck):** `fcffff9e52786dad0d17714a83dad7c60a441494` (`fcffff9`)  
+**Tip (settle upgrade):** `51044e0059409118eba2b10e19d8c93d2c7733e5` (`51044e0`) — HDR settle: pending path+want prevents decode starvation  
+**Prior tips:** `fcffff9` (Actual PASS; portrait HOLD), `fabb4c5` (integrity base; Actual FAIL)  
 **Branch:** `cursor/viewer-hdr-zoom-fixes-1b82`  
-**Discard prior media** (edde086 / 5d86906 integrity FAIL — do not count)  
 **Package:** PalaceOrganizeTest-5E1F `0.3.114.0`  
-**Host:** FenrirDesktop 3840×2160 @ 96 DPI (scale=1.0); maximized client 3840×2112  
+**Host:** FenrirDesktop 3840×2160 @ 96 DPI (scale=1.0); maximized; ScrStill client **3591×2079** (preview pane on)  
+**Fit scale:** **0.935** (= 3591/3840 for landscape Fit present decode width)  
 **Override:** `-AllowDesktop` + `Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)`  
 **Env:** `PALACE_HDR_PRESENT_LOG=1` → `{PALACE_DATA_DIR}/hdr-present.log`  
-**Data:** LocalState `palace-data` SourceFolder → `%TEMP%\palace-pr202-hdr-fabb4c5\viewer-hdr` (synthetic only; no DPI; no C20A)
+**Data:** LocalState `palace-data` SourceFolder → `%TEMP%\palace-pr202-hdr-51044e0\viewer-hdr` (synthetic only; no DPI; no C20A)
 
 ## Integrity
 
 | Check | Result |
 |---|---|
-| All PNGs distinct sha256 | **PASS** — see `MANIFEST.json` (8 PNGs, no duplicate hashes); sizes match disk |
-| Separate rapid-notch shot | **PASS** — `16-land4k-rapid-notch-maxzoom.png` sha ≠ pre-fit and ≠ slow maxzoom |
-| Cursor + disc-under-cursor | **PASS** — cursor logged; maxzoom/rapid `cursor_rgb=[255,255,255]` `white_frac_r40=1.0` |
-| Honest DIP-cap zoom (not ~8×) | **PASS** — present log `panelDip=8192x4608` (cap); effective zoom ≈ 8192/3591 ≈ **2.28×** Fit panel |
-| Real app present logs | **PASS** — `hdr-present-*.log` from `PALACE_HDR_PRESENT_LOG` (decode/panelDip/bufferPx/scale/result) |
-| Actual disc Ø720 | **FAIL** — measured diam_radial=673; present log decode stays `3591x2020` (not native `3840x2160`). HDR forces `DisplayScaling=Fit` when presentable (`GalleryScale.DisplayScaling`); Actual sticky does not yield native 1:1 present on this tip. |
-| Clean error-log | **PASS** — empty / no `GalleryStillSurface HDR present` |
+| All PNGs distinct sha256 | **PASS** — see `MANIFEST.json` |
+| Real app present logs | **PASS** — `hdr-present-portrait-maxzoom.log` / `hdr-present-portrait-actual-51044e0.log` from `PALACE_HDR_PRESENT_LOG` |
+| Clean error-log | **PASS** — `error-log-51044e0.txt` empty |
+| FenrirDesktop policy | **PASS** — override audit in `palace-ui-desktop-override.log` |
 
-## Verdicts (functional)
+## Portrait PQ settle upgrade — tip `51044e0` (required)
+
+Hold ≥10s after max-zoom settle. Must show native decode Presented (not stuck at ~1169×2079).
 
 | Check | Result |
 |---|---|
-| Maximized + Fit land HDR present | **PASS** — Info + present path; fit disc diam_radial≈673 (native disc=720; Fit scale ≈0.98) |
-| Max zoom under DIP cap + new present | **PASS** — `result=Presented` at `panelDip=8192x4608` `bufferPx=8192x4608` |
-| Rapid-notch no collapse to 0,0 | **PASS** — `frac_tl=0.0004`; disc still under cursor white |
-| Portrait PQ max zoom present | **PASS** — `HDR PNG` path; `panelDip=4608x8192` `result=Presented` |
+| Portrait PQ max zoom → native decode | **PASS** — after 12.0s hold: `decode=2160x3840 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented` |
+| Not stuck at intermediate | **PASS** — intermediate `1152x2048` / Fit-sized presents superseded by native Present |
+| Double-tap 1:1 (touch simulated) | **PASS** — `winapp ui touch --at x,y -g double-tap`; 1st → Fit panel (`1169×2079`); 2nd → Actual `panelDip=2160x3840` |
+| Fit scale reported | **0.935** |
 
-## Key present-log lines (verbatim from app)
+### Verbatim present-log (portrait maxzoom settle)
 
 ```
-# land maxzoom
-file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=8192x4608 bufferPx=8192x4608 scale=1x1 result=Presented
-
-# rapid
-file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=8192x4608 bufferPx=8192x4608 scale=1x1 result=Presented
-
-# actual (FAIL native 1:1)
-file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Presented
-
-# portrait maxzoom
-file=synth_pq_port_2160x3840.png decode=1169x2079 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-23T04:57:22.214Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=1712.17x3043.86 bufferPx=1712x3044 scale=1x1 result=Presented
+2026-11-23T04:57:23.932Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-23T04:57:23.933Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-23T04:57:25.557Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-23T04:57:32.362Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
 ```
+
+### Verbatim present-log (double-tap → Actual 1:1)
+
+```
+2026-11-23T04:57:41.668Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=1169.44x2079 bufferPx=1169x2079 scale=1x1 result=Presented
+2026-11-23T04:58:12.865Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=2160x3840 bufferPx=2160x3840 scale=1x1 result=Presented
+```
+
+### Shots (this tip)
+
+| File | Role |
+|---|---|
+| `20-port4k-pq-fit.png` | Portrait PQ Fit open |
+| `24-port4k-pq-maxzoom.png` | Max zoom after ≥10s settle (native present) |
+| `42-port4k-pq-doubletap-fit-51044e0.png` | After 1st double-tap (Fit panel) |
+| `43-port4k-pq-actual-1to1-51044e0.png` | After 2nd double-tap (Actual 2160×3840) |
+| `CAPTURE_EVENTS_51044e0.txt` | Timed event log |
+| `hdr-present-portrait-maxzoom.log` | Settle proof log |
+| `hdr-present-portrait-actual-51044e0.log` | Double-tap / Actual proof log |
+
+## Prior (still in package)
+
+- `fabb4c5` integrity land maxzoom / rapid-notch / disc measures — kept
+- `fcffff9` land Actual native `decode=3840x2160` + Ø720 — kept (`30`/`31` shots)
+- Portrait PASS on `fcffff9` remains **discarded** (never upgraded); superseded by `51044e0` proof above
 
 ## Notes
 
-- Fixture disc diameter at native = `2*(min(w,h)/6)` = **720** px for 3840×2160.
-- Wheel still ramps `_pinchZoom` toward 8, but `CapStillPanelSize` clamps panel DIPs so physical ≤8192 → **~2.28×** Fit, not 8× visual.
-- No reused/hand-written logs; all `hdr-present-*.log` copied from DataDir after the action.
-
----
-
-## Actual recheck — tip `fcffff9` (2026-11-23)
-
-**Tip:** `fcffff9e52786dad0d17714a83dad7c60a441494` — HDR Actual clears Fit-on-open force for explicit Actual/Fill.
-
-Prior tip `fabb4c5` Actual Ø720 was **FAIL** (HDR forced DisplayScaling=Fit; decode stayed 3591×2020).
-
-| Check | Result |
-|---|---|
-| After Actual: present-log `decode=3840x2160` | **PASS** — `hdr-present-actual-fcffff9.log`: `decode=3840x2160 panelDip=3840x2160 bufferPx=3840x2160 result=Presented` |
-| Disc Ø720 | **PASS** — measured diam_radial=**717** (fit baseline 673); see `31-actual-disc-measure.json` |
-| New shots distinct sha256 | **PASS** — appended to `MANIFEST.json` |
-| Clean error-log (recheck) | **PASS** — `error-log-fcffff9.txt` |
-
-Verbatim present lines:
-```
-file=synth_land_3840x2160.hdr decode=3591x2020 panelDip=3591x2019.94 bufferPx=3591x2020 scale=1x1 result=Cancelled
-file=synth_land_3840x2160.hdr decode=3840x2160 panelDip=3840x2160 bufferPx=3840x2160 scale=1x1 result=Presented
-```
-
-Shots: `30-land4k-fit-before-actual.png`, `31-land4k-actual-1to1.png`.
-
-
-**Media branch SHA:** `af80a42bf963b8b2fcaaac16122ab6cdf57b17d1` (`af80a42`) on `media/pr-viewer-hdr-zoom`.
+- Wheel ramps toward 8×; DIP cap clamps panel to 8192 → portrait max `panelDip=4608x8192`
+- Fit scale **0.935** = ScrStill width 3591 / native land width 3840
+- No DPI flips; 5E1F packaged only; catalog restored after capture

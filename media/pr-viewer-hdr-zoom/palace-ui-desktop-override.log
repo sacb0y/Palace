@@ -2,3 +2,6 @@
 timestamp=2026-11-23T03:43:11.8365282Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=FenrirDesktop capture tip 96ad839 media/pr-viewer-hdr-zoom
 timestamp=2026-11-23T04:07:50.7087365Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=edde086 Fenrir HDR zoom expanded capture
 timestamp=2026-11-23T04:30:42.4679138Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=fabb4c5 Fenrir HDR zoom integrity recapture
+timestamp=2026-11-23T04:40:40.6498004Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=fcffff9 Fenrir Actual native decode recheck
+timestamp=2026-11-23T04:53:30.9445838Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=51044e0 Fenrir portrait settle native decode
+timestamp=2026-11-23T04:55:32.5678940Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=51044e0 Fenrir portrait settle native decode

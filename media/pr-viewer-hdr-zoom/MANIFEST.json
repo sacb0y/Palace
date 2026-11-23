@@ -1,99 +1,72 @@
 {
-  "tip_capture_base": "fabb4c526a7a8b0c44f305cd92d2cd0cc301fb77",
-  "tip_actual_recheck": "fcffff9e52786dad0d17714a83dad7c60a441494",
+  "tip": "51044e0059409118eba2b10e19d8c93d2c7733e5",
+  "tip_short": "51044e0",
+  "branch": "cursor/viewer-hdr-zoom-fixes-1b82",
+  "package": "PalaceOrganizeTest-5E1F",
+  "host": "FenrirDesktop",
+  "distinct_sha256": true,
+  "duplicate_sha256": {},
+  "png_count": 12,
   "files": [
     {
       "file": "01-folder-viewer-hdr.png",
-      "sha256": "581867a7e647c33212ff2a5ae97ad83ad8eb8ab249658b9a46eb3ec9290a9ae9",
-      "size": 741020
+      "bytes": 741020,
+      "sha256": "581867a7e647c33212ff2a5ae97ad83ad8eb8ab249658b9a46eb3ec9290a9ae9"
     },
     {
       "file": "10-land4k-hdr-fit.png",
-      "sha256": "00d70bd609b28c2492058af9135ae2c3d71a7eddb939eaf53b33a0a2c10e6030",
-      "size": 536036
+      "bytes": 536036,
+      "sha256": "00d70bd609b28c2492058af9135ae2c3d71a7eddb939eaf53b33a0a2c10e6030"
     },
     {
       "file": "14-land4k-hdr-maxzoom.png",
-      "sha256": "3decd41d646dd7b10c1f9242cdbb1bb6dbc0da27fbf0d84363e55daf173bf81e",
-      "size": 463420
+      "bytes": 463420,
+      "sha256": "3decd41d646dd7b10c1f9242cdbb1bb6dbc0da27fbf0d84363e55daf173bf81e"
     },
     {
       "file": "15-land4k-pre-rapid-fit.png",
-      "sha256": "3517bfd90a105cfafdf67cff8509520ba44f9c10e9b87486674db0489908ce5d",
-      "size": 537016
+      "bytes": 537016,
+      "sha256": "3517bfd90a105cfafdf67cff8509520ba44f9c10e9b87486674db0489908ce5d"
     },
     {
       "file": "16-land4k-rapid-notch-maxzoom.png",
-      "sha256": "899deb64252c27a96a9e09349ff2f052d4e5ed592bdeff8e9420cfdaf7dbac11",
-      "size": 462731
+      "bytes": 462731,
+      "sha256": "899deb64252c27a96a9e09349ff2f052d4e5ed592bdeff8e9420cfdaf7dbac11"
     },
     {
       "file": "17-land4k-actual-1to1.png",
-      "sha256": "c186c013ea2427d1419ba46527f04fc2be6d64c1a396fe46a4319cca87970712",
-      "size": 536345
+      "bytes": 536345,
+      "sha256": "c186c013ea2427d1419ba46527f04fc2be6d64c1a396fe46a4319cca87970712"
     },
     {
       "file": "20-port4k-pq-fit.png",
-      "sha256": "95b87fe68a80cfae5553e5d29ac87f86a549b09d0d0a7316e70ab71a1ce6c494",
-      "size": 2775444
+      "bytes": 2709355,
+      "sha256": "4f669fdb574a4c568e31917c6bd76a6d2d847adefda751fbd13a185a886638ad"
     },
     {
       "file": "24-port4k-pq-maxzoom.png",
-      "sha256": "4bcb403de76531d3b0ab926bb4a22af75a80a989942832110ffe366b94c6d21d",
-      "size": 600476
+      "bytes": 562526,
+      "sha256": "504591f7d1725cbddf7ea47ff6a37a1180eaff93eacff685e95326e7d35bc2a2"
     },
     {
       "file": "30-land4k-fit-before-actual.png",
-      "sha256": "11a1c751c699916768d8387679d97e0074b95378283f8d45071b3cf0005cd085",
-      "size": 536156
+      "bytes": 536156,
+      "sha256": "11a1c751c699916768d8387679d97e0074b95378283f8d45071b3cf0005cd085"
     },
     {
       "file": "31-land4k-actual-1to1.png",
-      "sha256": "fc356cda6b9b66a6aee6d0d9d0c8746e26e369269b4002345e2aae8bf171adea",
-      "size": 470098
+      "bytes": 470098,
+      "sha256": "fc356cda6b9b66a6aee6d0d9d0c8746e26e369269b4002345e2aae8bf171adea"
+    },
+    {
+      "file": "42-port4k-pq-doubletap-fit-51044e0.png",
+      "bytes": 2701269,
+      "sha256": "ecb4ed10ea56ea3da63641875e7a714d0085a28755cb80033a33d47e5321119f"
+    },
+    {
+      "file": "43-port4k-pq-actual-1to1-51044e0.png",
+      "bytes": 2165213,
+      "sha256": "70127f6968134665258cc52bb28eece3b297750f80d3ba62a3cb94c762e481fb"
     }
-  ],
-  "duplicate_sha256": {},
-  "all_png_distinct": true,
-  "actual_recheck": {
-    "tip": "fcffff9e52786dad0d17714a83dad7c60a441494",
-    "actual_diam_radial": 717,
-    "expected": 720,
-    "fit_diam_radial": 673,
-    "centroid": [
-      2169.0,
-      1109.3
-    ],
-    "present_decodes": [
-      [
-        "3591",
-        "2020"
-      ],
-      [
-        "3840",
-        "2160"
-      ]
-    ],
-    "present_panels": [
-      [
-        "3591",
-        "2019.94"
-      ],
-      [
-        "3840",
-        "2160"
-      ]
-    ],
-    "present_results": [
-      "Cancelled",
-      "Presented"
-    ],
-    "native_decode_3840x2160": true,
-    "diam_ok": true,
-    "verdict": "PASS",
-    "shot_wh": [
-      3931,
-      2140
-    ]
-  }
+  ]
 }

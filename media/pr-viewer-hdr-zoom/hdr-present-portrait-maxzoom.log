@@ -1,3 +1,6 @@
-﻿2026-11-23T04:36:07.454Z file=synth_pq_port_2160x3840.png decode=1169x2079 panelDip=1712.17x3043.86 bufferPx=1712x3044 scale=1x1 result=Presented
-2026-11-23T04:36:09.158Z file=synth_pq_port_2160x3840.png decode=1169x2079 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
-2026-11-23T04:36:10.882Z file=synth_pq_port_2160x3840.png decode=1169x2079 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+﻿2026-11-23T04:57:22.214Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=1712.17x3043.86 bufferPx=1712x3044 scale=1x1 result=Presented
+2026-11-23T04:57:22.215Z file=synth_pq_port_2160x3840.png decode=1712x3044 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-23T04:57:23.932Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-23T04:57:23.933Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-23T04:57:25.557Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-23T04:57:32.362Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented

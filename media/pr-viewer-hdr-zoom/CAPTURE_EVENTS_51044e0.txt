@@ -1,0 +1,65 @@
+2026-11-22T23:57:05.6844894-05:00 tip=51044e0 pid=183584
+2026-11-22T23:57:08.9045954-05:00 li=  itm-synthpqport2160-c1cd ListItem "synth_pq_port_2160x3840.png" (541,208 
+2026-11-22T23:57:17.0184138-05:00 SHOT 01-port4k-pq-fit.png bytes=2709355
+2026-11-22T23:57:17.5810206-05:00 viewer=  PART_SubtitleText Text "0.3.114 Debug · preview" (126,8 126x16)   TglPreviewPane Button "Preview pane" [on] (3784,41 44x33)   ScrPreviewPane Pane (3492,86 336x1970)   lbl-preview-c198 Text "Preview" (3508,102 304x27)   ImgPreview Image (3509,142 302x535)
+2026-11-22T23:57:18.1117161-05:00 surf=  ScrStill Pane (249,33 3591x2079)
+2026-11-22T23:57:18.3999537-05:00 GrdStill=Found 0 matches
+2026-11-22T23:57:18.6470692-05:00 Presenter=  pn-partscrollprese-c16e Pane "PART_ScrollPresenter" (261,86 121x47)   pn-partscrollprese-c196 Pane "PART_ScrollPresenter" (533,208 2943x1848) Found 2 matches
+2026-11-22T23:57:20.0456836-05:00 win shot json keys ok
+2026-11-22T23:57:20.2663243-05:00 preview=  TxtPreviewFileName Text "synth_pq_port_2160x3840.png" (3508,691 304x19)
+2026-11-22T23:57:20.5376605-05:00 GrdStillContent raw len=17
+2026-11-22T23:57:20.5460709-05:00 BEGIN max-zoom wheel from fit; center=1920,1000
+2026-11-22T23:57:25.5610671-05:00 wheel notches done; HOLD >=10s for settle
+2026-11-22T23:57:37.5793557-05:00 HOLD done 12.0117579s
+2026-11-22T23:57:37.5944235-05:00 PORT_HDRLOG 2026-11-23T04:57:22.214Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=1712.17x3043.86 bufferPx=1712x3044 scale=1x1 result=Presented
+2026-11-22T23:57:37.5959330-05:00 PORT_HDRLOG 2026-11-23T04:57:22.215Z file=synth_pq_port_2160x3840.png decode=1712x3044 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-22T23:57:37.6025610-05:00 PORT_HDRLOG 2026-11-23T04:57:23.932Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:57:37.6080925-05:00 PORT_HDRLOG 2026-11-23T04:57:23.933Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-22T23:57:37.6136153-05:00 PORT_HDRLOG 2026-11-23T04:57:25.557Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:57:37.6186295-05:00 PORT_HDRLOG 2026-11-23T04:57:32.362Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:57:38.4050110-05:00 SHOT 02-port4k-pq-maxzoom.png bytes=562526
+2026-11-22T23:57:38.4085474-05:00 UPGRADE_NATIVE=True
+2026-11-22T23:57:38.4125798-05:00 BEGIN double-tap 1:1 (touch)
+2026-11-22T23:57:39.0408849-05:00 touch_at=? double-tap at (1920, 1000) with 1 finger(s)
+
+2026-11-22T23:57:45.3601611-05:00 SHOT 03-port4k-pq-doubletap-1to1.png bytes=2701269
+2026-11-22T23:57:45.3719920-05:00 DT_HDRLOG 2026-11-23T04:57:22.214Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=1712.17x3043.86 bufferPx=1712x3044 scale=1x1 result=Presented
+2026-11-22T23:57:45.3734952-05:00 DT_HDRLOG 2026-11-23T04:57:22.215Z file=synth_pq_port_2160x3840.png decode=1712x3044 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-22T23:57:45.3801473-05:00 DT_HDRLOG 2026-11-23T04:57:23.932Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:57:45.3858215-05:00 DT_HDRLOG 2026-11-23T04:57:23.933Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-22T23:57:45.3913459-05:00 DT_HDRLOG 2026-11-23T04:57:25.557Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:57:45.3966152-05:00 DT_HDRLOG 2026-11-23T04:57:32.362Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:57:45.4026324-05:00 DT_HDRLOG 2026-11-23T04:57:41.668Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=1169.44x2079 bufferPx=1169x2079 scale=1x1 result=Presented
+2026-11-22T23:57:45.9170775-05:00 capture block done
+2026-11-22T23:58:05.1451966-05:00 ActualUI=  BtnGalleryScaleActual Button "Actual size" (457,53 58x30)
+Found 1 matches
+
+2026-11-22T23:58:05.3247294-05:00 OneToOneUI=  lbl-11-c21c Text "1:1" (492,59 14x19)
+        ^ invoke via: btn-btngalleryscale-c21d "Actual size"
+Found 1 matches
+
+2026-11-22T23:58:05.5528628-05:00 FitUI=  BtnGalleryScaleFit Button "Fit" (523,53 59x30)
+  lbl-fit-c21f Text "Fit" (558,59 15x19)
+        ^ invoke via: btn-btngalleryscale-c220 "Fit"
+Found 2 matches
+
+2026-11-22T23:58:05.7912812-05:00 ScaleUI=  BtnGalleryScaleActual Button "Actual size" (457,53 58x30)
+  BtnGalleryScaleFit Button "Fit" (523,53 59x30)
+  BtnGalleryScaleFill Button "Fill" (590,53 62x30)
+Found 3 matches
+
+2026-11-22T23:58:06.0713551-05:00 ZoomUI=Found 0 matches
+
+2026-11-22T23:58:07.7597156-05:00 BEGIN second double-tap for Actual 1:1
+2026-11-22T23:58:07.9573243-05:00 ScrStill=  ScrStill Pane (249,33 3591x2079)
+Found 1 matches
+
+2026-11-22T23:58:14.2774435-05:00 DT2 2026-11-23T04:57:22.215Z file=synth_pq_port_2160x3840.png decode=1712x3044 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-22T23:58:14.2788165-05:00 DT2 2026-11-23T04:57:23.932Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:58:14.2840660-05:00 DT2 2026-11-23T04:57:23.933Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-22T23:58:14.2907969-05:00 DT2 2026-11-23T04:57:25.557Z file=synth_pq_port_2160x3840.png decode=1152x2048 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:58:14.2961386-05:00 DT2 2026-11-23T04:57:32.362Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=4608x8192 bufferPx=4608x8192 scale=1x1 result=Presented
+2026-11-22T23:58:14.3006726-05:00 DT2 2026-11-23T04:57:41.668Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=1169.44x2079 bufferPx=1169x2079 scale=1x1 result=Presented
+2026-11-22T23:58:14.3064998-05:00 DT2 2026-11-23T04:58:10.394Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=1169.44x2079 bufferPx=1169x2079 scale=1x1 result=Cancelled
+2026-11-22T23:58:14.3120474-05:00 DT2 2026-11-23T04:58:12.865Z file=synth_pq_port_2160x3840.png decode=2160x3840 panelDip=2160x3840 bufferPx=2160x3840 scale=1x1 result=Presented
+2026-11-22T23:58:15.5455874-05:00 SHOT 04 bytes=2165213
