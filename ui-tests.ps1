@@ -589,9 +589,9 @@ Test-UI 'Tags select-mode toggle exists' { winapp ui wait-for 'TglTagSelectMode'
 Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000 }
 Test-UI 'Set tag name' { winapp ui set-value 'TxtNewTagName' 'Sonic' -a $AppPid }
 Test-UI 'Create ungrouped tag' {
-    winapp ui wait-for 'BtnCreateUngroupedTag' -a $AppPid -t 4000
-    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateUngroupedTag missing' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui wait-for 'BtnCreateNewTags' -a $AppPid -t 4000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateNewTags missing' }
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
 }
 Start-Sleep -Milliseconds 500
 Test-UI 'Ungrouped board group exists' { winapp ui wait-for 'BtnTagGroup_Ungrouped' -a $AppPid -t 4000 }
@@ -602,7 +602,7 @@ Test-UI 'Star toggle exists' { winapp ui wait-for 'TglStarTag' -a $AppPid -t 400
 Test-UI 'Batch-create comma tags' {
     winapp ui set-value 'TxtNewTagName' 'BatchOne, BatchTwo' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set batch tag names' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
     Start-Sleep -Milliseconds 600
     winapp ui wait-for 'TxtTagsStatus' -a $AppPid --value 'Created' --contains -t 4000
 }
@@ -619,13 +619,13 @@ Test-UI 'Implied controls exist' {
 Test-UI 'Create ImpHedgehog' {
     winapp ui set-value 'TxtNewTagName' 'ImpHedgehog' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set ImpHedgehog' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
 }
 Start-Sleep -Milliseconds 800
 Test-UI 'Create ImpSonic' {
     winapp ui set-value 'TxtNewTagName' 'ImpSonic' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set ImpSonic' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
 }
 Start-Sleep -Milliseconds 700
 Test-UI 'ImpSonic is selected' {
@@ -673,7 +673,7 @@ Test-UI 'Tags drag: create drop group + chip' {
     winapp ui wait-for 'BtnTagGroup_Newgroup' @(WinArgs) -t 6000 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroup_Newgroup missing after Add group' }
     winapp ui set-value 'TxtNewTagName' $script:UiDragChipName @(WinArgs) | Out-Null
-    winapp ui invoke 'BtnCreateUngroupedTag' @(WinArgs) | Out-Null
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs) | Out-Null
     Start-Sleep -Milliseconds 700
     winapp ui wait-for $script:UiDragChipSel @(WinArgs) -t 6000 | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "$($script:UiDragChipSel) missing" }
@@ -1205,7 +1205,7 @@ Test-UI 'Create Character group' {
     winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 4000
     winapp ui set-value 'TxtNewTagName' 'Character' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set Character' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
     Start-Sleep -Milliseconds 600
     Invoke-TagTree 'Character'
     winapp ui wait-for 'TxtRenameTag' -a $AppPid --value 'Character' --contains -t 4000
@@ -1234,8 +1234,9 @@ Test-UI 'Nest Sonic under Character' {
         Invoke-TagTree 'Character'
     }
     winapp ui set-value 'TxtNewTagName' 'Sonic' @(WinArgs)
-    winapp ui invoke 'BtnCreateChildTag' @(WinArgs)
-    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateChildTag failed' }
+    # Post-#199: single create control BtnCreateNewTags (target = selected group / CmbNewTagsGroup).
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs)
+    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateNewTags failed (nest Sonic under Character)' }
     Start-Sleep -Milliseconds 800
 }
 
@@ -1275,10 +1276,10 @@ winapp ui screenshot -a $AppPid -o 'screenshots/09-tag-color.png' 2>$null
 Test-UI 'Create BfImplied and add implicit on BfSource' {
     Start-Sleep -Milliseconds 400
     winapp ui set-value 'TxtNewTagName' $script:BfImpliedName @(WinArgs)
-    winapp ui invoke 'BtnCreateUngroupedTag' @(WinArgs)
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs)
     Start-Sleep -Milliseconds 700
     winapp ui set-value 'TxtNewTagName' $script:BfSourceName @(WinArgs)
-    winapp ui invoke 'BtnCreateUngroupedTag' @(WinArgs)
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs)
     Start-Sleep -Milliseconds 700
     winapp ui wait-for 'TxtRenameTag' @(WinArgs) --value $script:BfSourceName --contains -t 4000
     if ($LASTEXITCODE -ne 0) {
