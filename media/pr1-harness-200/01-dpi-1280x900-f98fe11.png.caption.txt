@@ -1,0 +1,1 @@
+﻿Tip f98fe11 / 0.3.114 FENRIR-STUDIO PalaceOrganizeTest-5E1F. Client 1280x900 DIP @150%. DPI/XamlRoot PASS; S7 create PASS; S7 drag hover FAIL.

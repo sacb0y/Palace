@@ -1,22 +1,22 @@
-﻿# PR #200 tip 800a310 (0.3.114) — FENRIR-STUDIO harness evidence
+﻿# PR #200 tip f98fe11 (0.3.114) — FENRIR-STUDIO harness retest
 
 **Host:** FENRIR-STUDIO · **DPI:** 150% (windowDpi=144) · client 1280×900 DIP  
 **Identity:** PalaceOrganizeTest-5E1F only (never C20A7629)  
-**Build:** Palace-200 @ 800a310 / 0.3.114 Debug x64  
-**Data:** seeded LocalState from %TEMP%\palace-agent-data-pr200 (8 assets / 38 tags)
+**Build:** Palace-200 @ f98fe11 / 0.3.114 Debug x64  
+**Change:** ui-tests `BtnCreateUngroupedTag` → `BtnCreateNewTags` (+ nest path)
 
 ## Checklist
 
 | Check | Verdict | Evidence |
 |-------|---------|----------|
-| `-SelfTestDesktopGate` | **PASS** | selftest-800a310.out — shared audit under `%TEMP%\palace-desktop-gate-…` only; `%LOCALAPPDATA%\PalaceTestAudit` absent |
-| Identity gate (`Test-PalaceUiTestIdentity`) | **PASS** | ui-tests: `PalaceOrganizeTest-5E1F 0.3.114.0` |
-| DPI + XamlRoot client gate (S7 prelude) | **PASS** | xamlroot-800a310.log (1200→1280 @ RasterizationScale=1.5); 01-dpi-1280x900-800a310.png |
-| Stock `ui-tests.ps1` suite | **FAIL** (69 pass / 51 fail) | ui-tests-800a310.out |
-| Stock S7 Tags drag (probe/status) | **FAIL** | ui-tests still targets `BtnCreateUngroupedTag`; tip TagsPage AutomationId is `BtnCreateNewTags` (post-#199 rename). Create/chip steps fail; drag probe empty. |
+| `-SelfTestDesktopGate` | **PASS** | selftest-f98fe11.out — temp audit only; real `%LOCALAPPDATA%\PalaceTestAudit` absent |
+| Identity gate | **PASS** | `PalaceOrganizeTest-5E1F 0.3.114.0` |
+| DPI + XamlRoot client gate | **PASS** | xamlroot-f98fe11.log (1200→1280 @ 1.5); 01-dpi-1280x900-f98fe11.png |
+| S7 create drop group + chip | **PASS** | (not in fail list; BtnCreateNewTags works) |
+| S7 Tags drag hover/SendInput/probe | **FAIL** | `hover failed for BtnTagChip_UiD55d4e4`; probe empty |
+| Stock ui-tests suite | **FAIL** 82 pass / 38 fail | ui-tests-f98fe11.out (was 69/51 on 800a310) |
 
 ## Notes
 
-- Fenrir/C20A **not** touched (release package still `C20A7629…` 0.3.58.0).
-- Harness DPI/XamlRoot path works on Studio at tip 800a310.
-- S7 blocked by **ui-tests selector drift** vs product Tags create button — tip fix needed (`BtnCreateUngroupedTag` → `BtnCreateNewTags`) before stock S7 can PASS; not a FenrirDesktop policy issue.
+- Fenrir/C20A **not** touched.
+- `BtnCreateNewTags` fix unblocked create/chip path; drag still fails at hover (chip selector/visibility), not at create-button AutomationId.
