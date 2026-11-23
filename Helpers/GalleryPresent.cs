@@ -1032,13 +1032,17 @@ public static class GalleryPresent
         return !string.Equals(previousHdrPath, nextStillPath, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>DXGI swapchain long-edge cap (physical px).</summary>
+    public const int MaxSwapchainLongEdgePx = 8192;
+
     /// <summary>
     /// After arming <c>ScpHdr</c> at Opacity 0 + Visible:
     /// <list type="bullet">
     /// <item>Failed + still current → HideHdr (real present error).</item>
-    /// <item>Cancelled + still current → HideHdr only when no prior good HDR
-    /// frame was showing (collapse the Opacity-0 arm). A cancelled / superseded
-    /// zoom settle must keep the last good HDR frame.</item>
+    /// <item>Cancelled / buffer-oversize + still current → HideHdr only when no
+    /// prior good HDR frame was showing (collapse the Opacity-0 arm). A
+    /// cancelled / superseded / oversize zoom settle must keep the last good
+    /// HDR frame — never drop to SDR on 4K × 8×.</item>
     /// <item>Superseded (<paramref name="stillCurrent"/> false) → leave alone.</item>
     /// </list>
     /// </summary>
@@ -1046,20 +1050,32 @@ public static class GalleryPresent
         bool presented,
         bool stillCurrent,
         bool cancelled = false,
-        bool hadVisibleHdrFrame = false)
+        bool hadVisibleHdrFrame = false,
+        bool bufferOversize = false)
     {
         if (!stillCurrent || presented)
         {
             return false;
         }
 
-        if (cancelled)
+        // Oversize and Cancelled both preserve a visible HDR frame.
+        if (cancelled || bufferOversize)
         {
             return !hadVisibleHdrFrame;
         }
 
         return true;
     }
+
+    /// <summary>
+    /// True when physical swapchain size exceeds DXGI ResizeBuffers limit.
+    /// Present must Cancelled (keep last good), never Failed → HideHdr.
+    /// </summary>
+    public static bool IsSwapchainBufferOversize(
+        int physicalWidth,
+        int physicalHeight,
+        int maxLongEdgePx = MaxSwapchainLongEdgePx) =>
+        physicalWidth > maxLongEdgePx || physicalHeight > maxLongEdgePx;
 
     /// <summary>
     /// DIP size for an HDR swapchain present. Prefer assigned Width/Height
@@ -1254,8 +1270,27 @@ public static class GalleryPresent
         int viewportH) =>
         PresentDecodeSize(imageW, imageH, viewportW, viewportH, ImageScaling.Fit);
 
-    public static bool NeedsBetterDecode(int haveW, int haveH, int wantW, int wantH) =>
-        wantW > 0 && wantH > 0 && (haveW < wantW || haveH < wantH);
+    /// <summary>
+    /// Re-decode only when want exceeds have by this factor on either axis.
+    /// Prevents thrash at the PresentDecodeSize threshold during zoom settle.
+    /// </summary>
+    public const double BetterDecodeHysteresis = 1.25;
+
+    public static bool NeedsBetterDecode(int haveW, int haveH, int wantW, int wantH)
+    {
+        if (wantW <= 0 || wantH <= 0 || haveW <= 0 || haveH <= 0)
+        {
+            return false;
+        }
+
+        if (haveW >= wantW && haveH >= wantH)
+        {
+            return false;
+        }
+
+        return wantW > haveW * BetterDecodeHysteresis
+            || wantH > haveH * BetterDecodeHysteresis;
+    }
 
     public static bool IsNativeDecode(int decodedW, int decodedH, int nativeW, int nativeH) =>
         nativeW > 0 && nativeH > 0 && decodedW >= nativeW && decodedH >= nativeH;

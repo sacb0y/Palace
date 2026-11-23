@@ -144,7 +144,8 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 _compositionScaleY = scaleY;
                 (vw, vh) = GalleryPresent.SwapchainPhysicalSize(
                     resolvedDipW, resolvedDipH, scaleX, scaleY);
-                if (vw > 8192 || vh > 8192)
+                // Oversize → Cancelled (keep last good HDR), never Failed/HideHdr.
+                if (GalleryPresent.IsSwapchainBufferOversize(vw, vh))
                 {
                     return;
                 }
@@ -187,6 +188,12 @@ internal sealed class HdrSwapchainPresenter : IDisposable
             if (!layoutReady)
             {
                 // Layout not ready yet — skip, do not count as present failure.
+                return HdrPresentOutcome.Cancelled;
+            }
+
+            if (!sizeOk && scaleOk)
+            {
+                // Physical buffer > 8192 (4K × high zoom). Keep last good frame.
                 return HdrPresentOutcome.Cancelled;
             }
 

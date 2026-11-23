@@ -599,6 +599,29 @@ public sealed class HdrFileTests
             presented: false, stillCurrent: true, cancelled: true, hadVisibleHdrFrame: false));
         Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
             presented: false, stillCurrent: false, cancelled: true, hadVisibleHdrFrame: true));
+        // Buffer oversize (4K × 8×): never HideHdr over a good frame.
+        Assert.True(GalleryPresent.IsSwapchainBufferOversize(8193, 100));
+        Assert.True(GalleryPresent.IsSwapchainBufferOversize(100, 8193));
+        Assert.False(GalleryPresent.IsSwapchainBufferOversize(8192, 8192));
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false,
+            stillCurrent: true,
+            cancelled: false,
+            hadVisibleHdrFrame: true,
+            bufferOversize: true));
+        Assert.True(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false,
+            stillCurrent: true,
+            cancelled: false,
+            hadVisibleHdrFrame: false,
+            bufferOversize: true));
+        // Oversize modelled as Cancelled outcome also preserves.
+        Assert.False(GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+            presented: false,
+            stillCurrent: true,
+            cancelled: true,
+            hadVisibleHdrFrame: true,
+            bufferOversize: true));
 
         // Bug B: assigned size wins over stale Actual from the previous still.
         var stillB = GalleryPresent.ResolveHdrPanelDips(
@@ -665,6 +688,11 @@ public sealed class HdrFileTests
         Assert.True(Math.Max(measureHuge.Width, measureHuge.Height) <= GalleryPresent.FastPresentLongEdge);
         Assert.True(GalleryPresent.NeedsBetterDecode(1280, 720, 3840, 2160));
         Assert.False(GalleryPresent.NeedsBetterDecode(3840, 2160, 1280, 720));
+        // Hysteresis: 1px over have must not thrash; 25%+ over must upgrade.
+        Assert.False(GalleryPresent.NeedsBetterDecode(1000, 1000, 1001, 1001));
+        Assert.False(GalleryPresent.NeedsBetterDecode(1000, 1000, 1249, 1249));
+        Assert.True(GalleryPresent.NeedsBetterDecode(1000, 1000, 1251, 1000));
+        Assert.Equal(1.25, GalleryPresent.BetterDecodeHysteresis, 3);
         Assert.True(GalleryPresent.IsNativeDecode(3840, 2160, 3840, 2160));
         Assert.False(GalleryPresent.IsNativeDecode(1280, 720, 3840, 2160));
         Assert.True(GalleryPresent.ReplaceHdrStats(false, false));

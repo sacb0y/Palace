@@ -724,14 +724,24 @@ public sealed partial class GalleryStillSurface : UserControl
             }
             catch (OperationCanceledException)
             {
-                // Quick Next/Prev cancels the in-flight decode — not an error.
-                // If this surface is still current, collapse any Opacity-0 armed
-                // ScpHdr so it cannot catch input while invisible.
+                // Quick Next/Prev or a newer zoom settle cancels decode — not an
+                // error. Keep a visible HDR frame (quality upgrade / oversize);
+                // only collapse an Opacity-0 arm that never presented.
                 if (epoch == _epoch && ReferenceEquals(_gallery, gallery))
                 {
                     await UiDispatch.RunAsync(() =>
                     {
-                        if (epoch == _epoch && ReferenceEquals(_gallery, gallery))
+                        if (epoch != _epoch || !ReferenceEquals(_gallery, gallery))
+                        {
+                            return;
+                        }
+
+                        var had = ScpHdr.Visibility == Visibility.Visible && ScpHdr.Opacity > 0;
+                        if (GalleryPresent.ShouldHideHdrAfterPresentOutcome(
+                                presented: false,
+                                stillCurrent: true,
+                                cancelled: true,
+                                hadVisibleHdrFrame: had))
                         {
                             HideHdr();
                             gallery.SetHdrPresentResult(false, false);
@@ -986,6 +996,8 @@ public sealed partial class GalleryStillSurface : UserControl
         int? vizPrimaries = null;
         ImageScaling scaling = ImageScaling.Fit;
         var contentProbe = HdrProbe.None;
+        var hadVisibleHdr = false;
+        var needsBetterDecode = false;
         await UiDispatch.RunAsync(() =>
         {
             if (_gallery is not { IsImage: true } g || _hdrFrame is not { } f)
@@ -1006,12 +1018,16 @@ public sealed partial class GalleryStillSurface : UserControl
             _presenter ??= new HdrSwapchainPresenter(ScpHdr);
             presenter = _presenter;
             ApplyScaleLayout();
+            // Snapshot before Opacity-0 arm — zoom re-present must not read
+            // false after Arm and then HideHdr on Cancelled/oversize.
+            hadVisibleHdr = ScpHdr.Visibility == Visibility.Visible && ScpHdr.Opacity > 0;
             // Arm ScpHdr at Opacity 0 before Present so CompositionScale can
             // settle to real DPI (Collapsed panels often report 1.0). Do not
             // raise Opacity until Present succeeds — that would flash the
             // previous still's swapchain (flicker / wrong-aspect letterbox).
             // Size still comes from assigned Width/Height via HdrPanelDips when
             // Actual is 0. Presenter also falls back to RasterizationScale.
+            // Already-visible HDR: Arm is a no-op (keeps Opacity 1).
             ArmHdrPanelForPresent();
             ImgStill.Visibility = Visibility.Visible;
             (dipW, dipH) = HdrPanelDips();
@@ -1027,6 +1043,16 @@ public sealed partial class GalleryStillSurface : UserControl
                     GalleryPresent.ContentMaxNits(g.ContentMaxScrgb, g.ContentMaxNits),
                     _hdrMapMaxNits));
             _hdrMapMaxNits = mapMaxNits;
+            // Re-decode only after coalescer settle (this PresentOnce), not every
+            // pinch frame — hysteresis avoids thrash at the threshold.
+            var want = GalleryPresent.PresentDecodeSize(
+                f.NativeWidth,
+                f.NativeHeight,
+                (int)Math.Round(Math.Max(dipW, 0) * scale),
+                (int)Math.Round(Math.Max(dipH, 0) * scale),
+                g.DisplayScaling);
+            needsBetterDecode = GalleryPresent.NeedsBetterDecode(
+                f.Width, f.Height, want.Width, want.Height);
         });
 
         if (gallery is null || frame is null || presenter is null)
@@ -1063,9 +1089,6 @@ public sealed partial class GalleryStillSurface : UserControl
                 stickyWhite = _sdrToneWhite;
             }
         });
-        var hadVisibleHdr = false;
-        await UiDispatch.RunAsync(() =>
-            hadVisibleHdr = ScpHdr.Visibility == Visibility.Visible && ScpHdr.Opacity > 0);
 
         HdrPresentOutcome outcome;
         try
@@ -1109,9 +1132,9 @@ public sealed partial class GalleryStillSurface : UserControl
         var cancelled = outcome == HdrPresentOutcome.Cancelled;
         if (!presented || !StillCurrent())
         {
-            // Failed: HideHdr while still current. Cancelled: keep last good HDR;
-            // only collapse an Opacity-0 arm that never presented. Superseded:
-            // leave the panel for the newer Refresh.
+            // Failed: HideHdr while still current. Cancelled / oversize: keep
+            // last good HDR; only collapse an Opacity-0 arm that never presented.
+            // Superseded: leave the panel for the newer Refresh.
             await UiDispatch.RunAsync(() =>
             {
                 if (GalleryPresent.ShouldHideHdrAfterPresentOutcome(
@@ -1124,6 +1147,12 @@ public sealed partial class GalleryStillSurface : UserControl
                     galleryRef.SetHdrPresentResult(false, presenterRef.DisplayIsHdr);
                 }
             });
+            // Still upgrade decode after settle even when oversize cancelled.
+            if (needsBetterDecode && StillCurrent())
+            {
+                _ = RefreshAsync();
+            }
+
             return;
         }
 
@@ -1164,6 +1193,12 @@ public sealed partial class GalleryStillSurface : UserControl
                     frameRef.Width, frameRef.Height, frameRef.NativeWidth, frameRef.NativeHeight),
                 maxScrgbChannel: frameRef.MaxScrgbChannel);
         });
+
+        // After settle present: upgrade decode while current HDR stays visible.
+        if (needsBetterDecode && StillCurrent())
+        {
+            _ = RefreshAsync();
+        }
     }
     private (double Width, double Height) HdrPanelDips() =>
         GalleryPresent.ResolveHdrPanelDips(
@@ -1718,25 +1753,11 @@ public sealed partial class GalleryStillSurface : UserControl
         _coalescedPanX = panX;
         _coalescedPanY = panY;
         ApplyScaleLayout();
-        // Re-present HDR after layout so the swapchain matches the new size.
-        // Re-decode when zoomed DIPs exceed the cached PresentDecodeSize.
-        if (_hdrFrame is not null && _gallery is { } g)
+        // Re-present after coalescer settle only — never RefreshAsync per pinch
+        // frame (SDR flash / thrash). PresentOnceAsync upgrades decode after
+        // settle when NeedsBetterDecode (with hysteresis).
+        if (_hdrFrame is not null)
         {
-            var raster = XamlRoot?.RasterizationScale ?? 1.0;
-            var (dipW, dipH) = HdrPanelDips();
-            var want = GalleryPresent.PresentDecodeSize(
-                _hdrFrame.NativeWidth,
-                _hdrFrame.NativeHeight,
-                (int)Math.Round(Math.Max(dipW, 0) * raster),
-                (int)Math.Round(Math.Max(dipH, 0) * raster),
-                g.DisplayScaling);
-            if (GalleryPresent.NeedsBetterDecode(
-                    _hdrFrame.Width, _hdrFrame.Height, want.Width, want.Height))
-            {
-                _ = RefreshAsync();
-                return;
-            }
-
             PresentCached(HdrPresentCoalescer.SettleMs);
         }
     }
