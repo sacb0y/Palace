@@ -1,21 +1,124 @@
-param([Parameter(Mandatory)][int]$AppPid)
+<#
+.SYNOPSIS
+Palace UI Automation suite. FenrirDesktop refused unless -AllowDesktop -OverrideReason <non-empty>.
+#>
+param(
+    [Parameter(Mandatory = $false)][int]$AppPid = 0,
+    [switch]$AllowDesktop,
+    [string]$OverrideReason = '',
+    [switch]$SelfTestDesktopGate
+)
 
 $ErrorActionPreference = 'Continue'
 $pass = 0
 $fail = 0
+$partial = 0
+$skip = 0
 $results = @()
 $script:TestDeleteFileName = $null
 $script:TestDeletePath = $null
 $script:BackfillAssetName = $null
 $script:MainHwnd = $null
+$script:LastTestOutcome = $null
+$script:DesktopOverride = $null
 $script:BfSourceName = "BfS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:BfImpliedName = "BfI$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:UiSharedName = "UiS$([guid]::NewGuid().ToString('N').Substring(0, 6))"
 $script:UiPartialName = "UiP$([guid]::NewGuid().ToString('N').Substring(0, 6))"
+$script:UiDragChipName = "UiD$([guid]::NewGuid().ToString('N').Substring(0, 6))"
+$script:RepoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:PalaceVersion = $null
+$script:IsFenrirStudio = ($env:COMPUTERNAME -eq 'FENRIR-STUDIO')
+$script:IsFenrirDesktop = ($env:COMPUTERNAME -eq 'FenrirDesktop')
+
+# Studio DPI / SendInput / probe QC helper (Pass1 Blocker2 + S7).
+$script:StudioHarness = Join-Path $script:RepoRoot 'scripts\StudioDpiHarness.ps1'
+if (Test-Path -LiteralPath $script:StudioHarness) {
+    . $script:StudioHarness
+}
+
+# Self-test: refuse without switch; refuse empty reason; DPI refuse on desktop. No AppPid.
+if ($SelfTestDesktopGate) {
+    try {
+        if (-not (Get-Command Test-PalaceFenrirDesktopPolicySelfTest -ErrorAction SilentlyContinue)) {
+            throw 'StudioDpiHarness.ps1 missing Test-PalaceFenrirDesktopPolicySelfTest'
+        }
+        Test-PalaceFenrirDesktopPolicySelfTest | Out-Null
+        Write-Host 'FenrirDesktop policy self-test OK'
+        exit 0
+    } catch {
+        Write-Error $_
+        exit 2
+    }
+}
+
+if ($AppPid -le 0) {
+    Write-Error 'AppPid is required (or pass -SelfTestDesktopGate).'
+    exit 2
+}
+
+function Get-PalaceVersionFromProps {
+    $props = Join-Path $script:RepoRoot 'Directory.Build.props'
+    if (-not (Test-Path -LiteralPath $props)) {
+        throw "Directory.Build.props missing at $props"
+    }
+    $text = Get-Content -LiteralPath $props -Raw -Encoding UTF8
+    if ($text -match '<PalaceVersion>\s*([0-9]+\.[0-9]+\.[0-9]+)\s*</PalaceVersion>') {
+        return $Matches[1]
+    }
+    throw 'Directory.Build.props PalaceVersion unreadable'
+}
+
+try {
+    $script:PalaceVersion = Get-PalaceVersionFromProps
+} catch {
+    Write-Error $_
+    exit 2
+}
+
+# Pass2 C1: identity ALWAYS (before host override). Exact PalaceOrganizeTest-5E1F; never C20A7629.
+# Unpackaged layout exe / 15700 / other errors => exit 2.
+try {
+    if (-not (Get-Command Test-PalaceUiTestIdentity -ErrorAction SilentlyContinue)) {
+        throw 'StudioDpiHarness.ps1 missing Test-PalaceUiTestIdentity - refuse to run without identity guard.'
+    }
+    $script:UiTestPackage = Test-PalaceUiTestIdentity -AppPid $AppPid
+    $pkgVer = [string]$script:UiTestPackage.Version
+    $expectedPkgVer = "$($script:PalaceVersion).0"
+    if ($pkgVer -ne $expectedPkgVer) {
+        throw "Package version '$pkgVer' must equal '$expectedPkgVer' (Directory.Build.props PalaceVersion + .0)."
+    }
+    Write-Host "UI test identity OK: $($script:UiTestPackage.Name) $pkgVer"
+} catch {
+    Write-Error $_
+    exit 2
+}
+
+# FenrirDesktop: default refuse. -AllowDesktop requires non-empty -OverrideReason.
+# DPI / S7 still skipped on desktop even when override is set.
+try {
+    if (-not (Get-Command Assert-PalaceFenrirDesktopPolicy -ErrorAction SilentlyContinue)) {
+        throw 'StudioDpiHarness.ps1 missing Assert-PalaceFenrirDesktopPolicy'
+    }
+    $argBits = @("-AppPid $AppPid")
+    if ($AllowDesktop) { $argBits += '-AllowDesktop' }
+    if ($OverrideReason) { $argBits += ("-OverrideReason '{0}'" -f ($OverrideReason -replace "'", "''")) }
+    $script:DesktopOverride = Assert-PalaceFenrirDesktopPolicy `
+        -AllowDesktop:$AllowDesktop `
+        -OverrideReason $OverrideReason `
+        -PackageFamilyName $script:UiTestPackage.PackageFamilyName `
+        -ArgsSummary ($argBits -join ' ')
+} catch {
+    Write-Error $_
+    exit 2
+}
 
 function Bind-MainWindow {
     $windows = winapp ui list-windows -a $AppPid --json 2>$null | ConvertFrom-Json
-    $main = @($windows) | Where-Object { $_.title -eq 'Palace' } | Select-Object -First 1
+    # Title bar is "Palace {version}" (and test DisplayName may differ); match prefix + PID filter.
+    $main = @($windows) | Where-Object {
+        $_.title -and ($_.title -like 'Palace*') -and $_.title -ne 'PopupHost'
+    } | Select-Object -First 1
     if ($main) { $script:MainHwnd = $main.hwnd }
 }
 
@@ -67,9 +170,24 @@ function Wait-LibraryReady {
 
 function Test-UI {
     param([string]$Name, [scriptblock]$Script)
+    # Pass2 C2: reset so a block cannot inherit a stale PASS/FAIL from the prior test.
+    $global:LASTEXITCODE = 1
+    $script:LastTestOutcome = $null
+    $prevEap = $ErrorActionPreference
     try {
+        # Continue (not Stop) while capturing 2>&1: on Windows PowerShell 5.1, winapp
+        # stderr becomes ErrorRecords that Stop would treat as terminating and
+        # false-FAIL a green LASTEXITCODE=0. Explicit throw still terminates.
+        $ErrorActionPreference = 'Continue'
         $output = & $Script 2>&1
-        if ($LASTEXITCODE -eq 0) {
+        if ($script:LastTestOutcome -eq 'SKIP') {
+            $script:skip++
+            $script:results += @{ name = $Name; status = 'SKIP'; detail = "$output" }
+            Write-Host "  SKIP: $Name - $output" -ForegroundColor Cyan
+        } elseif ($script:LastTestOutcome -eq 'PARTIAL') {
+            $script:partial++
+            $script:results += @{ name = $Name; status = 'PARTIAL'; detail = "$output" }
+        } elseif ($LASTEXITCODE -eq 0) {
             $script:pass++
             $script:results += @{ name = $Name; status = 'PASS' }
         } else {
@@ -79,10 +197,26 @@ function Test-UI {
     } catch {
         $script:fail++
         $script:results += @{ name = $Name; status = 'FAIL'; detail = "$_" }
+    } finally {
+        $ErrorActionPreference = $prevEap
     }
 }
 
 function Ok {
+    $global:LASTEXITCODE = 0
+}
+
+function Partial {
+    param([string]$Detail = '')
+    $script:LastTestOutcome = 'PARTIAL'
+    if ($Detail) { Write-Output $Detail }
+    $global:LASTEXITCODE = 0
+}
+
+function Skip {
+    param([Parameter(Mandatory)][string]$Detail)
+    $script:LastTestOutcome = 'SKIP'
+    Write-Output $Detail
     $global:LASTEXITCODE = 0
 }
 
@@ -467,9 +601,9 @@ Test-UI 'Tags select-mode toggle exists' { winapp ui wait-for 'TglTagSelectMode'
 Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000 }
 Test-UI 'Set tag name' { winapp ui set-value 'TxtNewTagName' 'Sonic' -a $AppPid }
 Test-UI 'Create ungrouped tag' {
-    winapp ui wait-for 'BtnCreateUngroupedTag' -a $AppPid -t 4000
-    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateUngroupedTag missing' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui wait-for 'BtnCreateNewTags' -a $AppPid -t 4000
+    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateNewTags missing' }
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
 }
 Start-Sleep -Milliseconds 500
 Test-UI 'Ungrouped board group exists' { winapp ui wait-for 'BtnTagGroup_Ungrouped' -a $AppPid -t 4000 }
@@ -480,7 +614,7 @@ Test-UI 'Star toggle exists' { winapp ui wait-for 'TglStarTag' -a $AppPid -t 400
 Test-UI 'Batch-create comma tags' {
     winapp ui set-value 'TxtNewTagName' 'BatchOne, BatchTwo' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set batch tag names' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
     Start-Sleep -Milliseconds 600
     winapp ui wait-for 'TxtTagsStatus' -a $AppPid --value 'Created' --contains -t 4000
 }
@@ -497,13 +631,13 @@ Test-UI 'Implied controls exist' {
 Test-UI 'Create ImpHedgehog' {
     winapp ui set-value 'TxtNewTagName' 'ImpHedgehog' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set ImpHedgehog' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
 }
 Start-Sleep -Milliseconds 800
 Test-UI 'Create ImpSonic' {
     winapp ui set-value 'TxtNewTagName' 'ImpSonic' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set ImpSonic' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
 }
 Start-Sleep -Milliseconds 700
 Test-UI 'ImpSonic is selected' {
@@ -519,6 +653,56 @@ Test-UI 'Configure ImpSonic implies ImpHedgehog' {
 Start-Sleep -Milliseconds 700
 Test-UI 'Implication listed in tag manager' {
     winapp ui wait-for 'TxtImpliedTags' -a $AppPid --value 'ImpHedgehog' --contains -t 4000
+}
+
+# --- Pass1 S7: Tags CanDrag + SendInput drag @150% (StudioDpiHarness) ---
+# Only on FENRIR-STUDIO. Gate on probes + status; NEVER HWND float=0.
+# PALACE_TAG_DRAG_LOG / PALACE_TAG_DRAG_LOG_FILE must be set at app *launch*.
+if ($script:IsFenrirStudio) {
+$script:UiDragChipSel = 'BtnTagChip_' + ($script:UiDragChipName -replace '[^A-Za-z0-9]', '')
+
+Test-UI 'Tags drag: DPI-aware resize + XamlRoot/client gate' {
+    Enable-PalaceDpiAwareness | Out-Null
+    $hwnd = Get-PalaceMainHwnd -AppPid $AppPid
+    $xrPath = Get-PalaceXamlRootLogPath -PackageFamilyName $script:UiTestPackage.PackageFamilyName
+    if (Test-Path -LiteralPath $xrPath) {
+        Remove-Item -LiteralPath $xrPath -Force
+    }
+    # Nudge 1200 then 1280 so XamlRoot.Changed writes a fresh LocalState probe.
+    Resize-PalaceWindowDip -Hwnd $hwnd -DipWidth 1200 -DipHeight 900 | Out-Null
+    Resize-PalaceWindowDip -Hwnd $hwnd -DipWidth 1280 -DipHeight 900 | Out-Null
+    Assert-PalaceClientDipGate -Hwnd $hwnd -TargetDipWidth 1280 -ToleranceDip 2 `
+        -XamlRootLogPath $xrPath -AppPid $AppPid -RequireXamlRoot $true | Out-Null
+    Ok
+}
+
+Test-UI 'Tags drag: create drop group + chip' {
+    winapp ui invoke 'NavTags' @(WinArgs) | Out-Null
+    winapp ui wait-for 'BtnTagGroupsHeader' @(WinArgs) -t 8000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroupsHeader missing' }
+    winapp ui invoke 'BtnTagGroupsHeader' @(WinArgs) | Out-Null
+    Start-Sleep -Milliseconds 700
+    winapp ui wait-for 'BtnTagGroup_Newgroup' @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroup_Newgroup missing after Add group' }
+    winapp ui set-value 'TxtNewTagName' $script:UiDragChipName @(WinArgs) | Out-Null
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs) | Out-Null
+    Start-Sleep -Milliseconds 700
+    winapp ui wait-for $script:UiDragChipSel @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "$($script:UiDragChipSel) missing" }
+    Ok
+}
+
+Test-UI 'Tags drag: hover + SendInput to group (probe/status gate)' {
+    # Named known-skip (not silent pass): UIA reports zero-size TagChip bounding rect
+    # so hover/SendInput cannot arm CanDrag. Tracked for a ui-tests catch-up PR.
+    Skip 'tag chip reports zero size under UIA; tracked for ui-tests catch-up PR'
+}
+} else {
+    if ($script:IsFenrirDesktop) {
+        Write-Host "Skipping Tags drag S7 / DPI on FenrirDesktop (override does not enable DPI flips)"
+    } else {
+        Write-Host "Skipping Tags drag S7 (COMPUTERNAME=$($env:COMPUTERNAME); need FENRIR-STUDIO)"
+    }
 }
 
 Test-UI 'Navigate to Rooms' { winapp ui invoke 'NavRooms' -a $AppPid }
@@ -547,7 +731,11 @@ Test-UI 'Wallpaper blur exists' { winapp ui wait-for 'SldShellBlur' -a $AppPid -
 Test-UI 'Wallpaper tint toggle exists' { winapp ui wait-for 'TglShellTint' -a $AppPid -t 4000 }
 Test-UI 'HDR peak override exists' { winapp ui wait-for 'TglHdrPeakOverride' -a $AppPid -t 4000 }
 Test-UI 'Media cache toggle exists' { winapp ui wait-for 'TglMediaCache' -a $AppPid -t 4000 }
-Test-UI 'App version is shown' { winapp ui wait-for 'TxtAppVersion' -a $AppPid --value '0.0.4' --contains -t 4000 }
+Test-UI 'App version is shown' {
+    # Pass2 C2: stale '0.0.4' assert; About shows "Palace {PalaceVersion} ...".
+    $expect = if ($script:PalaceVersion) { "Palace $($script:PalaceVersion)" } else { 'Palace ' }
+    winapp ui wait-for 'TxtAppVersion' -a $AppPid --value $expect --contains -t 4000
+}
 Test-UI 'Shortcut cheatsheet lists 1:1' { winapp ui wait-for 'TxtShortcutActual' -a $AppPid --value 'Ctrl+1' --contains -t 4000 }
 Test-UI 'Shortcut cheatsheet lists Fit' { winapp ui wait-for 'TxtShortcutFit' -a $AppPid --value 'Ctrl+2' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Fill' { winapp ui wait-for 'TxtShortcutFill' -a $AppPid --value 'Ctrl+3' --contains -t 3000 }
@@ -991,7 +1179,7 @@ Test-UI 'Create Character group' {
     winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 4000
     winapp ui set-value 'TxtNewTagName' 'Character' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set Character' }
-    winapp ui invoke 'BtnCreateUngroupedTag' -a $AppPid
+    winapp ui invoke 'BtnCreateNewTags' -a $AppPid
     Start-Sleep -Milliseconds 600
     Invoke-TagTree 'Character'
     winapp ui wait-for 'TxtRenameTag' -a $AppPid --value 'Character' --contains -t 4000
@@ -1020,8 +1208,9 @@ Test-UI 'Nest Sonic under Character' {
         Invoke-TagTree 'Character'
     }
     winapp ui set-value 'TxtNewTagName' 'Sonic' @(WinArgs)
-    winapp ui invoke 'BtnCreateChildTag' @(WinArgs)
-    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateChildTag failed' }
+    # Post-#199: single create control BtnCreateNewTags (target = selected group / CmbNewTagsGroup).
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs)
+    if ($LASTEXITCODE -ne 0) { throw 'BtnCreateNewTags failed (nest Sonic under Character)' }
     Start-Sleep -Milliseconds 800
 }
 
@@ -1061,10 +1250,10 @@ winapp ui screenshot -a $AppPid -o 'screenshots/09-tag-color.png' 2>$null
 Test-UI 'Create BfImplied and add implicit on BfSource' {
     Start-Sleep -Milliseconds 400
     winapp ui set-value 'TxtNewTagName' $script:BfImpliedName @(WinArgs)
-    winapp ui invoke 'BtnCreateUngroupedTag' @(WinArgs)
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs)
     Start-Sleep -Milliseconds 700
     winapp ui set-value 'TxtNewTagName' $script:BfSourceName @(WinArgs)
-    winapp ui invoke 'BtnCreateUngroupedTag' @(WinArgs)
+    winapp ui invoke 'BtnCreateNewTags' @(WinArgs)
     Start-Sleep -Milliseconds 700
     winapp ui wait-for 'TxtRenameTag' @(WinArgs) --value $script:BfSourceName --contains -t 4000
     if ($LASTEXITCODE -ne 0) {
@@ -1142,10 +1331,7 @@ Test-UI 'Scan lists stamped online-only file without changing size' {
     winapp ui wait-for 'GrdAssets' @(WinArgs) -t 4000
     $root = @($folders | Where-Object { $_ -match 'PalaceUiTest' } | Select-Object -First 1)
     if (-not $root) {
-        $root = @($folders | Where-Object { $_ -match '\\Temp\\' } | Select-Object -First 1)
-    }
-    if (-not $root) {
-        Write-Host 'Note: skipped online-only scan fixture; no PalaceUiTest/Temp watched folder'
+        Write-Host 'Note: skipped online-only scan fixture; no PalaceUiTest watched folder'
         Ok
         return
     }
@@ -1202,10 +1388,7 @@ Test-UI 'Delete test file goes to Recycle and leaves mosaic' {
 
     $root = @($folders | Where-Object { $_ -match 'PalaceUiTest' } | Select-Object -First 1)
     if (-not $root) {
-        $root = @($folders | Where-Object { $_ -match '\\Temp\\' } | Select-Object -First 1)
-    }
-    if (-not $root) {
-        throw 'No dedicated PalaceUiTest/Temp watched folder; refusing to delete from the user library'
+        throw 'No dedicated PalaceUiTest watched folder; refusing to delete from the user library'
     }
     $root = $root[0]
     $name = "palace-ui-del-$([guid]::NewGuid().ToString('N').Substring(0, 8)).png"
@@ -1280,9 +1463,37 @@ Start-Sleep -Milliseconds 400
 winapp ui screenshot -a $AppPid -o 'screenshots/03-settings.png' 2>$null
 
 Write-Host ""
-Write-Host "Passed: $pass | Failed: $fail"
+Write-Host "Passed: $pass | Skipped: $skip | Partial: $partial | Failed: $fail"
+if ($script:DesktopOverride -and $script:DesktopOverride.DesktopOverride) {
+    Write-Host "Desktop override: $($script:DesktopOverride.AuditLine)" -ForegroundColor Yellow
+    Write-Host "Desktop override LocalState log: $($script:DesktopOverride.AuditLogPath)" -ForegroundColor Yellow
+    Write-Host "Desktop override shared log: $($script:DesktopOverride.SharedAuditLogPath)" -ForegroundColor Yellow
+}
+$results | Where-Object { $_.status -eq 'SKIP' } | ForEach-Object {
+    Write-Host "  SKIP: $($_.name) - $($_.detail)" -ForegroundColor Cyan
+}
+$results | Where-Object { $_.status -eq 'PARTIAL' } | ForEach-Object {
+    Write-Host "  PARTIAL: $($_.name) - $($_.detail)" -ForegroundColor Yellow
+}
 $results | Where-Object { $_.status -eq 'FAIL' } | ForEach-Object {
     Write-Host "  FAIL: $($_.name) - $($_.detail)" -ForegroundColor Red
 }
-$results | ConvertTo-Json | Out-File 'test-results.json'
-if ($fail -gt 0) { exit 1 } else { exit 0 }
+$summaryObj = [ordered]@{
+    passed = $pass
+    skipped = $skip
+    partial = $partial
+    failed = $fail
+    results = $results
+}
+if ($script:DesktopOverride -and $script:DesktopOverride.DesktopOverride) {
+    $summaryObj.desktopOverride = @{
+        reason = $script:DesktopOverride.Reason
+        auditLine = $script:DesktopOverride.AuditLine
+        auditLogPath = $script:DesktopOverride.AuditLogPath
+        sharedAuditLogPath = $script:DesktopOverride.SharedAuditLogPath
+    }
+}
+$summaryObj | ConvertTo-Json -Depth 6 | Out-File 'test-results.json'
+if ($fail -gt 0) { exit 1 }
+if ($partial -gt 0) { exit 3 }
+exit 0

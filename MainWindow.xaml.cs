@@ -7,7 +7,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Palace.Helpers;
 using Palace.Models;
+using Windows.ApplicationModel;
 using Windows.Graphics;
+using Windows.Storage;
 using Windows.UI.ViewManagement;
 
 namespace Palace;
@@ -106,10 +108,52 @@ public sealed partial class MainWindow : Window
         _minSizeXamlRoot = root.XamlRoot;
         _minSizeXamlRoot.Changed += XamlRoot_ChangedForMinSize;
         ApplyPreferredMinimumSize(_minSizeXamlRoot.RasterizationScale);
+        WriteXamlRootProbe(_minSizeXamlRoot);
     }
 
-    private void XamlRoot_ChangedForMinSize(XamlRoot sender, XamlRootChangedEventArgs args) =>
+    private void XamlRoot_ChangedForMinSize(XamlRoot sender, XamlRootChangedEventArgs args)
+    {
         ApplyPreferredMinimumSize(sender.RasterizationScale);
+        WriteXamlRootProbe(sender);
+    }
+
+    /// <summary>
+    /// Test-identity LocalState probe for StudioDpiHarness Assert-PalaceClientDipGate
+    /// -RequireXamlRoot (Size, RasterizationScale, pid). Never writes for C20A7629.
+    /// </summary>
+    private static void WriteXamlRootProbe(XamlRoot root)
+    {
+        try
+        {
+            string? packageName;
+            try
+            {
+                packageName = Package.Current.Id.Name;
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+
+            if (!XamlRootProbe.ShouldWrite(packageName))
+            {
+                return;
+            }
+
+            var path = XamlRootProbe.ResolvePath(ApplicationData.Current.LocalFolder.Path);
+            File.AppendAllText(
+                path,
+                XamlRootProbe.FormatLine(
+                    root.Size.Width,
+                    root.Size.Height,
+                    root.RasterizationScale,
+                    Environment.ProcessId) + Environment.NewLine);
+        }
+        catch
+        {
+            // Probe must never break the shell.
+        }
+    }
 
     /// <summary>
     /// PreferredMinimum* are physical pixels — convert DIPs with the current scale.

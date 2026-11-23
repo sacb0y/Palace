@@ -199,6 +199,12 @@ public static class TagDragUi
             $"Palace.TagDrag Drop n={n} group={groupId ?? ""} name={groupName ?? ""} added={added}"));
     }
 
+    /// <summary>
+    /// Optional file path for harness QC (<c>PALACE_TAG_DRAG_LOG_FILE</c>).
+    /// Studio asserts DragStarting/DragOver/Drop from this file — not HWND float=0.
+    /// </summary>
+    public const string ProbeLogFileEnvVar = "PALACE_TAG_DRAG_LOG_FILE";
+
     private static void WriteProbe(string line)
     {
         try
@@ -210,6 +216,13 @@ public static class TagDragUi
             else
             {
                 System.Diagnostics.Debug.WriteLine(line);
+            }
+
+            // Harness file sink (FENRIR-STUDIO / ui-tests). Env path only — never default.
+            var path = Environment.GetEnvironmentVariable(ProbeLogFileEnvVar);
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                File.AppendAllText(path, line + Environment.NewLine);
             }
         }
         catch
