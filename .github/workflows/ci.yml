@@ -24,6 +24,9 @@ jobs:
       - name: Check PowerShell scripts are ASCII
         run: python3 scripts/check-ps1-ascii.py
 
+      - name: Check release package identity
+        run: python3 scripts/check-version.py --check-identity
+
       - name: Check version identity
         env:
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
