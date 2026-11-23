@@ -1,0 +1,1 @@
+﻿Tip 800a310 / 0.3.114 FENRIR-STUDIO PalaceOrganizeTest-5E1F. Client DIP 1280x900 @150%. DPI/XamlRoot gate PASS.

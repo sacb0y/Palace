@@ -1,0 +1,1 @@
+﻿Before drag: UiDragChip + Newgroup. createBtn=BtnCreateNewTags. Tip 7864f58 @ client 1280x900/150%.

@@ -1,0 +1,1 @@
+﻿PR#200 tip 7864f58 — Resize-PalaceWindowDip chrome-compensated: client DIP 1280x900 @150%; Assert-PalaceClientDipGate PASS. Identity PalaceOrganizeTest-5E1F.

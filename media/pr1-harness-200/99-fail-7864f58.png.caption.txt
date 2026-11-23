@@ -1,0 +1,1 @@
+﻿FAIL tip 7864f58: Tags drag did not report Added (status='✓ Created 1 tag in Ungrouped: UiDragChip')
