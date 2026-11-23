@@ -86,7 +86,10 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
         InvalidateMeasure();
     }
 
-    /// <summary>Stamp the host ActualWidth and invalidate when it changes.</summary>
+    /// <summary>
+    /// Stamp the host ActualWidth and invalidate when it changes.
+    /// First usable width (HostWidth 0 → positive) already dirties via WidthEpsilon.
+    /// </summary>
     public void SetHostWidth(double width)
     {
         if (double.IsFinite(width) && width > 0 && Math.Abs(HostWidth - width) > MosaicLayoutCache.WidthEpsilon)
@@ -94,10 +97,6 @@ public sealed class JustifiedMosaicLayout : VirtualizingLayout
             HostWidth = width;
             _layoutDirty = true;
             InvalidateMeasure();
-        }
-        else if (!double.IsFinite(HostWidth) || HostWidth <= 0)
-        {
-            HostWidth = double.IsFinite(width) && width > 0 ? width : 0;
         }
     }
 

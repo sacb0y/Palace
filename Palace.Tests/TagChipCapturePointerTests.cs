@@ -7,6 +7,7 @@ namespace Palace.Tests;
 /// <summary>
 /// Wimbly / Isiac: CapturePointer while CanDrag kills WinUI DnD (DragStarting never fires).
 /// </summary>
+[Collection(TagDragUiCollection.Name)]
 public sealed class TagChipCapturePointerTests
 {
     private static string RepoRoot()

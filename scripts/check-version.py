@@ -7,12 +7,16 @@ Fails unless:
   2. PR version is greater than main's, unless exempt:
        - label `no-version-bump`, or
        - all changed files match the docs/CI/tests-only path filter
+  3. Package.appxmanifest keeps the release Store identity (never a test identity)
 
 Usage (PR):
   python3 scripts/check-version.py --base-ref origin/main
 
 Usage (local / push to main):
   python3 scripts/check-version.py --match-only
+
+Identity-only:
+  python3 scripts/check-version.py --check-identity
 """
 from __future__ import annotations
 
@@ -24,6 +28,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# HARD: committed Package.appxmanifest must stay the Store / Sacb0y release identity.
+# Prepare-TestIdentity.ps1 rewrites this file in place for local runs; CI must refuse
+# a test Name / PhoneProductId / DisplayName reaching main.
+RELEASE_IDENTITY_NAME = "C20A7629-6BDE-449F-958A-5AAF8BCE88F3"
+RELEASE_DISPLAY_NAME = "Palace"
 
 EXEMPT_PATH_PREFIXES = (
     ".cursor/",
@@ -64,6 +74,78 @@ def read_manifest_version(text: str) -> str | None:
         return m.group(1)
     m = re.search(r'\bVersion="([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)"', text)
     return m.group(1) if m else None
+
+
+def read_identity_name(text: str) -> str | None:
+    m = re.search(r'<Identity\b[^>]*\bName="([^"]+)"', text)
+    return m.group(1) if m else None
+
+
+def read_phone_product_id(text: str) -> str | None:
+    m = re.search(r'<mp:PhoneIdentity\b[^>]*\bPhoneProductId="([^"]+)"', text)
+    return m.group(1) if m else None
+
+
+def read_display_name(text: str) -> str | None:
+    m = re.search(r"<DisplayName>\s*([^<]+?)\s*</DisplayName>", text)
+    return m.group(1).strip() if m else None
+
+
+def check_release_identity() -> None:
+    """Refuse a test-identity Package.appxmanifest (Prepare-TestIdentity leftover)."""
+    manifest_text = (ROOT / "Package.appxmanifest").read_text(encoding="utf-8")
+    name = read_identity_name(manifest_text)
+    phone = read_phone_product_id(manifest_text)
+    display = read_display_name(manifest_text)
+    problems: list[str] = []
+    if name != RELEASE_IDENTITY_NAME:
+        problems.append(
+            f"Identity Name is {name!r} (need {RELEASE_IDENTITY_NAME!r})"
+        )
+    if phone != RELEASE_IDENTITY_NAME:
+        problems.append(
+            f"PhoneProductId is {phone!r} (need {RELEASE_IDENTITY_NAME!r})"
+        )
+    if display != RELEASE_DISPLAY_NAME:
+        problems.append(
+            f"DisplayName is {display!r} (need {RELEASE_DISPLAY_NAME!r})"
+        )
+    if problems:
+        raise SystemExit(
+            "Package.appxmanifest must keep the release Store identity "
+            "(never commit a Prepare-TestIdentity rewrite):\n  - "
+            + "\n  - ".join(problems)
+        )
+    print(
+        f"OK identity: Name={name}, PhoneProductId={phone}, DisplayName={display}"
+    )
+    check_ui_tests_identity_before_desktop_policy()
+
+
+def check_ui_tests_identity_before_desktop_policy() -> None:
+    """Contract: ui-tests calls Test-PalaceUiTestIdentity before Assert-PalaceFenrirDesktopPolicy."""
+    path = ROOT / "ui-tests.ps1"
+    text = path.read_text(encoding="utf-8")
+    # Prefer the real call sites (not Get-Command name checks).
+    id_idx = text.find("Test-PalaceUiTestIdentity -AppPid")
+    desk_idx = text.find("Assert-PalaceFenrirDesktopPolicy `")
+    if desk_idx < 0:
+        desk_idx = text.find("Assert-PalaceFenrirDesktopPolicy")
+    if id_idx < 0:
+        raise SystemExit(
+            "ui-tests.ps1 missing Test-PalaceUiTestIdentity -AppPid call "
+            "(identity guard must run before FenrirDesktop policy)"
+        )
+    if desk_idx < 0:
+        raise SystemExit(
+            "ui-tests.ps1 missing Assert-PalaceFenrirDesktopPolicy call"
+        )
+    if id_idx > desk_idx:
+        raise SystemExit(
+            "ui-tests.ps1 contract: Test-PalaceUiTestIdentity must appear "
+            "before Assert-PalaceFenrirDesktopPolicy (fail closed)"
+        )
+    print("OK ui-tests order: Test-PalaceUiTestIdentity before Assert-PalaceFenrirDesktopPolicy")
 
 
 def parse_semver(v: str) -> tuple[int, int, int]:
@@ -159,8 +241,18 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base-ref", default="", help="git ref for main (e.g. origin/main)")
     ap.add_argument("--match-only", action="store_true", help="only check props/manifest sync")
+    ap.add_argument(
+        "--check-identity",
+        action="store_true",
+        help="assert release Store identity + ui-tests identity-before-desktop-policy order",
+    )
     args = ap.parse_args()
 
+    if args.check_identity:
+        check_release_identity()
+        return 0
+
+    check_release_identity()
     palace = check_match()
 
     if args.match_only or not args.base_ref:
