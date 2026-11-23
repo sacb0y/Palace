@@ -1323,6 +1323,70 @@ public static class GalleryPresent
             Math.Max(1, (int)Math.Floor(height * scale)));
     }
 
+    /// <summary>
+    /// JXL present caps at <see cref="HdrJxlPresent.PresentMaxPixels"/>; other
+    /// formats keep the requested size (no silent 64 MP clamp).
+    /// </summary>
+    public static (int Width, int Height) ClampSettleDecodeWant(
+        int width,
+        int height,
+        HdrKind kind) =>
+        kind == HdrKind.HdrJxl
+            ? ClampDecodeToMaxPixels(width, height, HdrJxlPresent.PresentMaxPixels)
+            : (width, height);
+
+    /// <summary>
+    /// True when a settle re-decode for this path+want was already recorded
+    /// (successful decode). Cancel/fail must not set the memo.
+    /// </summary>
+    public static bool IsSameSettleDecodeMemo(
+        string? path,
+        int wantW,
+        int wantH,
+        string? memoPath,
+        int memoWantW,
+        int memoWantH) =>
+        !string.IsNullOrEmpty(path)
+        && wantW > 0
+        && wantH > 0
+        && string.Equals(memoPath, path, StringComparison.OrdinalIgnoreCase)
+        && memoWantW == wantW
+        && memoWantH == wantH;
+
+    /// <summary>
+    /// Whether zoom-settle should kick a better decode. Does not record memo —
+    /// callers record only after a successful decode.
+    /// </summary>
+    public static bool ShouldRequestSettleDecode(
+        string? path,
+        int haveW,
+        int haveH,
+        int wantW,
+        int wantH,
+        string? memoPath,
+        int memoWantW,
+        int memoWantH) =>
+        !IsSameSettleDecodeMemo(path, wantW, wantH, memoPath, memoWantW, memoWantH)
+        && NeedsBetterDecodeSettle(haveW, haveH, wantW, wantH);
+
+    /// <summary>
+    /// Scale used for DIP panel caps so physical px = DIPs × scale ≤ 8192.
+    /// Prefer CompositionScale when the panel is reliable (same as DXGI
+    /// present); otherwise RasterizationScale.
+    /// </summary>
+    public static float PanelCapScale(
+        float compositionScaleX,
+        float compositionScaleY,
+        float rasterizationScale,
+        bool panelCompositionScaleReliable)
+    {
+        var sx = ResolveHdrPanelScale(
+            compositionScaleX, rasterizationScale, panelCompositionScaleReliable);
+        var sy = ResolveHdrPanelScale(
+            compositionScaleY, rasterizationScale, panelCompositionScaleReliable);
+        return Math.Max(sx, sy);
+    }
+
     public static bool IsNativeDecode(int decodedW, int decodedH, int nativeW, int nativeH) =>
         nativeW > 0 && nativeH > 0 && decodedW >= nativeW && decodedH >= nativeH;
 

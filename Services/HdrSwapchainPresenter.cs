@@ -44,6 +44,18 @@ internal sealed class HdrSwapchainPresenter : IDisposable
     /// <summary>P6: always 0 — sticky Reinhard Analyze removed.</summary>
     public float LastSdrReinhardWhite { get; private set; }
 
+    /// <summary>Last computed swapchain buffer width (0 if layout/scale not ready).</summary>
+    public int LastBufferPxW { get; private set; }
+
+    /// <summary>Last computed swapchain buffer height (0 if layout/scale not ready).</summary>
+    public int LastBufferPxH { get; private set; }
+
+    /// <summary>Resolved present scale X used for <see cref="LastBufferPxW"/>.</summary>
+    public float LastPresentScaleX { get; private set; }
+
+    /// <summary>Resolved present scale Y used for <see cref="LastBufferPxH"/>.</summary>
+    public float LastPresentScaleY { get; private set; }
+
     public async Task<HdrPresentOutcome> TryPresentAsync(
         HdrFrame frame,
         ImageScaling scaling,
@@ -64,6 +76,10 @@ internal sealed class HdrSwapchainPresenter : IDisposable
         // Imaging owns the curve (P6) so sticky Reinhard is ignored.
         _ = sdrExposure;
         _ = sdrReinhardWhite;
+        LastBufferPxW = 0;
+        LastBufferPxH = 0;
+        LastPresentScaleX = 0;
+        LastPresentScaleY = 0;
         // UI thread only for COM / XAML: layout, device, DXGI probe, resize,
         // upload and Present. The half-float raster runs on the thread pool
         // and a stale result is dropped before it touches the swapchain.
@@ -142,8 +158,12 @@ internal sealed class HdrSwapchainPresenter : IDisposable
                 scaleOk = true;
                 _compositionScaleX = scaleX;
                 _compositionScaleY = scaleY;
+                LastPresentScaleX = scaleX;
+                LastPresentScaleY = scaleY;
                 (vw, vh) = GalleryPresent.SwapchainPhysicalSize(
                     resolvedDipW, resolvedDipH, scaleX, scaleY);
+                LastBufferPxW = vw;
+                LastBufferPxH = vh;
                 // Oversize → Cancelled (keep last good HDR), never Failed/HideHdr.
                 if (GalleryPresent.IsSwapchainBufferOversize(vw, vh))
                 {

@@ -800,6 +800,8 @@ public sealed partial class GalleryStillSurface : UserControl
 
             if (frame is null)
             {
+                // Failed settle decode must not leave a memo that blocks retry.
+                ClearSettleDecodeMemo();
                 ClearHdrCache();
                 HideHdr();
                 // Pipeline preview only (mosaic thumb / large-preview) — never
@@ -840,6 +842,16 @@ public sealed partial class GalleryStillSurface : UserControl
             _hdrFramePath = still;
             _hdrFrameProbe = gallery.CurrentProbe;
             _sdrIsPipelinePreview = false;
+            // Record settle memo only after a successful decode (never before
+            // RefreshAsync / on cancel) so a failed upgrade can retry.
+            RecordSettleDecodeMemo(
+                still,
+                frame.NativeWidth,
+                frame.NativeHeight,
+                viewPxW,
+                viewPxH,
+                gallery.DisplayScaling,
+                gallery.CurrentProbe.Kind);
             ApplyScaleLayout();
             QueueHistogram(gallery, frame, gallery.CurrentProbe, hdr: true);
             RequestPresent(HdrPresentCoalescer.ImmediateMs);
@@ -1033,12 +1045,23 @@ public sealed partial class GalleryStillSurface : UserControl
             // Actual is 0. Presenter also falls back to RasterizationScale.
             // Already-visible HDR: Arm is a no-op (keeps Opacity 1).
             ArmHdrPanelForPresent();
-            // Keep SDR thumb collapsed while a good HDR frame is showing —
-            // Cancelled/oversize must not leave ImgStill visible under a stale buffer.
-            ImgStill.Visibility = hadVisibleHdr
-                ? Visibility.Collapsed
-                : Visibility.Visible;
             (dipW, dipH) = HdrPanelDips();
+            // Do not collapse ImgStill before Present succeeds when the panel
+            // DIP size changed — that leaves transparent margins around the
+            // last buffer until upload. Same size: keep SDR collapsed under HDR.
+            if (hadVisibleHdr)
+            {
+                var sizeChanged = Math.Abs(dipW - _lastHdrPresentDipW) > 0.5
+                    || Math.Abs(dipH - _lastHdrPresentDipH) > 0.5;
+                ImgStill.Visibility = sizeChanged
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+            else
+            {
+                ImgStill.Visibility = Visibility.Visible;
+            }
+
             scale = XamlRoot?.RasterizationScale ?? 1.0;
             peakOverride = GalleryPeak.PresentOverrideNits;
             mapMaxNits = GalleryPresent.StickyContentMaxNitsForStill(
@@ -1051,29 +1074,26 @@ public sealed partial class GalleryStillSurface : UserControl
                     GalleryPresent.ContentMaxNits(g.ContentMaxScrgb, g.ContentMaxNits),
                     _hdrMapMaxNits));
             _hdrMapMaxNits = mapMaxNits;
-            // Settle-only upgrade (hysteresis + max-pixels clamp). Exact
-            // NeedsBetterDecode stays for 1:1 / cache / resize.
+            // Settle-only upgrade (hysteresis + JXL-only max-pixels clamp).
+            // Exact NeedsBetterDecode stays for 1:1 / cache / resize.
+            // Memo is recorded only after a successful decode (FinishHdrLoad).
             var want = GalleryPresent.PresentDecodeSize(
                 f.NativeWidth,
                 f.NativeHeight,
                 (int)Math.Round(Math.Max(dipW, 0) * scale),
                 (int)Math.Round(Math.Max(dipH, 0) * scale),
                 g.DisplayScaling);
-            want = GalleryPresent.ClampDecodeToMaxPixels(
-                want.Width, want.Height, HdrJxlPresent.PresentMaxPixels);
-            var path = _hdrFramePath ?? "";
-            var sameWant = string.Equals(_hdrSettleDecodePath, path, StringComparison.OrdinalIgnoreCase)
-                && _hdrSettleDecodeWantW == want.Width
-                && _hdrSettleDecodeWantH == want.Height;
-            needsBetterDecode = !sameWant
-                && GalleryPresent.NeedsBetterDecodeSettle(
-                    f.Width, f.Height, want.Width, want.Height);
-            if (needsBetterDecode)
-            {
-                _hdrSettleDecodePath = path;
-                _hdrSettleDecodeWantW = want.Width;
-                _hdrSettleDecodeWantH = want.Height;
-            }
+            want = GalleryPresent.ClampSettleDecodeWant(
+                want.Width, want.Height, contentProbe.Kind);
+            needsBetterDecode = GalleryPresent.ShouldRequestSettleDecode(
+                _hdrFramePath,
+                f.Width,
+                f.Height,
+                want.Width,
+                want.Height,
+                _hdrSettleDecodePath,
+                _hdrSettleDecodeWantW,
+                _hdrSettleDecodeWantH);
         });
 
         if (gallery is null || frame is null || presenter is null)
@@ -1151,6 +1171,19 @@ public sealed partial class GalleryStillSurface : UserControl
 
         var presented = outcome == HdrPresentOutcome.Presented;
         var cancelled = outcome == HdrPresentOutcome.Cancelled;
+        // Presenter also appends when enabled; this covers surface-known dips
+        // if LastBuffer was never set (layout-not-ready early exit).
+        HdrPresentLog.TryAppend(
+            frameRef.SourcePath,
+            frameRef.Width,
+            frameRef.Height,
+            dipW,
+            dipH,
+            presenterRef.LastBufferPxW,
+            presenterRef.LastBufferPxH,
+            outcome.ToString(),
+            presenterRef.LastPresentScaleX,
+            presenterRef.LastPresentScaleY);
         if (!presented || !StillCurrent())
         {
             // Failed: HideHdr while still current. Cancelled / oversize: keep
@@ -1457,9 +1490,35 @@ public sealed partial class GalleryStillSurface : UserControl
         _hdrFrameProbe = HdrProbe.None;
         _lastHdrPresentDipW = 0;
         _lastHdrPresentDipH = 0;
+        ClearSettleDecodeMemo();
+    }
+
+    private void ClearSettleDecodeMemo()
+    {
         _hdrSettleDecodePath = null;
         _hdrSettleDecodeWantW = 0;
         _hdrSettleDecodeWantH = 0;
+    }
+
+    /// <summary>
+    /// Remember a successful settle decode want so PresentOnce does not thrash
+    /// RefreshAsync for the same path+size. Call only after decode succeeds.
+    /// </summary>
+    private void RecordSettleDecodeMemo(
+        string path,
+        int nativeW,
+        int nativeH,
+        int viewPxW,
+        int viewPxH,
+        ImageScaling scaling,
+        HdrKind kind)
+    {
+        var want = GalleryPresent.PresentDecodeSize(
+            nativeW, nativeH, viewPxW, viewPxH, scaling);
+        want = GalleryPresent.ClampSettleDecodeWant(want.Width, want.Height, kind);
+        _hdrSettleDecodePath = path;
+        _hdrSettleDecodeWantW = want.Width;
+        _hdrSettleDecodeWantH = want.Height;
     }
 
     /// <summary>
@@ -1520,9 +1579,19 @@ public sealed partial class GalleryStillSurface : UserControl
         }
 
         (width, height) = GalleryScale.ApplyPinchZoom(width, height, _pinchZoom);
-        // Cap DIPs so physical px ≤ 8192 (DIP cap = 8192 / rasterScale).
-        var panelRaster = XamlRoot?.RasterizationScale ?? 1.0;
-        (width, height) = TouchGestures.CapStillPanelSize(width, height, panelRaster);
+        // Cap DIPs so physical px ≤ 8192 using the same scale DXGI present uses
+        // (CompositionScale when reliable; else RasterizationScale).
+        var panelRaster = (float)(XamlRoot?.RasterizationScale ?? 1.0);
+        var panelReliable = GalleryPresent.HdrPanelCompositionScaleReliable(
+            ScpHdr.Visibility == Visibility.Visible,
+            ScpHdr.ActualWidth,
+            ScpHdr.ActualHeight);
+        var capScale = GalleryPresent.PanelCapScale(
+            ScpHdr.CompositionScaleX,
+            ScpHdr.CompositionScaleY,
+            panelRaster,
+            panelReliable);
+        (width, height) = TouchGestures.CapStillPanelSize(width, height, capScale);
 
         // Fit at 1×: panel = viewport (swipe on image AND letterbox); image
         // letterboxed inside. Zoomed / Actual / Fill: panel = image content.
