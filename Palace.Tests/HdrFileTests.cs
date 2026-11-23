@@ -725,6 +725,36 @@ public sealed class HdrFileTests
             "a.hdr", 2000, 2000, "a.hdr", 2000, 2000));
         Assert.False(GalleryPresent.IsSameSettleDecodeMemo(
             "a.hdr", 2000, 2000, null, 2000, 2000));
+        // In-flight pending (same path+want) must not kick another RefreshAsync —
+        // that cancelled the running decode (portrait PQ settle starvation).
+        Assert.False(GalleryPresent.ShouldRequestSettleDecode(
+            "a.hdr",
+            1000,
+            1000,
+            2000,
+            2000,
+            memoPath: null,
+            0,
+            0,
+            pendingPath: "a.hdr",
+            pendingWantW: 2000,
+            pendingWantH: 2000));
+        Assert.True(GalleryPresent.ShouldRequestSettleDecode(
+            "a.hdr",
+            1000,
+            1000,
+            2500,
+            2500,
+            memoPath: null,
+            0,
+            0,
+            pendingPath: "a.hdr",
+            pendingWantW: 2000,
+            pendingWantH: 2000));
+        Assert.True(GalleryPresent.IsSameSettleDecodeKey(
+            "a.hdr", 2000, 2000, "a.hdr", 2000, 2000));
+        Assert.False(GalleryPresent.IsSameSettleDecodeKey(
+            "a.hdr", 2000, 2000, "a.hdr", 1999, 2000));
         // PanelCapScale prefers CompositionScale when reliable.
         Assert.Equal(
             1.5f,
@@ -756,11 +786,16 @@ public sealed class HdrFileTests
             HdrPresentLog.EnabledOverride = true;
             HdrPresentLog.TryAppend(
                 "zoom.hdr", 7680, 4320, 4096, 2304, 5120, 2880, "Cancelled", 1.25, 1.25, "oversize");
+            HdrPresentLog.TryAppendDecodeStart("zoom.hdr", 2160, 3840, detail: "refresh");
+            HdrPresentLog.TryAppendDecodeCancel("zoom.hdr", 2160, 3840, detail: "refresh");
             var text = File.ReadAllText(HdrPresentLog.PathOverride!);
             Assert.Contains("decode=7680x4320", text);
             Assert.Contains("panelDip=4096x2304", text);
             Assert.Contains("bufferPx=5120x2880", text);
             Assert.Contains("result=Cancelled", text);
+            Assert.Contains("result=DecodeStart", text);
+            Assert.Contains("result=DecodeCancelled", text);
+            Assert.Contains("decode=2160x3840", text);
             Assert.Contains(
                 HdrPresentLog.FormatLine(
                     "zoom.hdr", 7680, 4320, 4096, 2304, 5120, 2880, "Cancelled", 1.25, 1.25),

@@ -86,6 +86,22 @@ public static class HdrPresentLog
         }
     }
 
+    /// <summary>Decode kick (settle or initial) — want size in decode= fields.</summary>
+    public static void TryAppendDecodeStart(
+        string? path,
+        int wantW,
+        int wantH,
+        string? detail = null) =>
+        TryAppend(path, wantW, wantH, 0, 0, 0, 0, "DecodeStart", detail: detail);
+
+    /// <summary>Decode cancelled (navigate / superseded / settle cancel).</summary>
+    public static void TryAppendDecodeCancel(
+        string? path,
+        int wantW,
+        int wantH,
+        string? detail = null) =>
+        TryAppend(path, wantW, wantH, 0, 0, 0, 0, "DecodeCancelled", detail: detail);
+
     public static string FormatLine(
         string? path,
         int decodeW,

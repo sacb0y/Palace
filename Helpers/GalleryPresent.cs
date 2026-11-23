@@ -1336,6 +1336,23 @@ public static class GalleryPresent
             : (width, height);
 
     /// <summary>
+    /// True when path+want matches a settle key (success memo or in-flight pending).
+    /// </summary>
+    public static bool IsSameSettleDecodeKey(
+        string? path,
+        int wantW,
+        int wantH,
+        string? keyPath,
+        int keyWantW,
+        int keyWantH) =>
+        !string.IsNullOrEmpty(path)
+        && wantW > 0
+        && wantH > 0
+        && string.Equals(keyPath, path, StringComparison.OrdinalIgnoreCase)
+        && keyWantW == wantW
+        && keyWantH == wantH;
+
+    /// <summary>
     /// True when a settle re-decode for this path+want was already recorded
     /// (successful decode). Cancel/fail must not set the memo.
     /// </summary>
@@ -1346,16 +1363,12 @@ public static class GalleryPresent
         string? memoPath,
         int memoWantW,
         int memoWantH) =>
-        !string.IsNullOrEmpty(path)
-        && wantW > 0
-        && wantH > 0
-        && string.Equals(memoPath, path, StringComparison.OrdinalIgnoreCase)
-        && memoWantW == wantW
-        && memoWantH == wantH;
+        IsSameSettleDecodeKey(path, wantW, wantH, memoPath, memoWantW, memoWantH);
 
     /// <summary>
-    /// Whether zoom-settle should kick a better decode. Does not record memo —
-    /// callers record only after a successful decode.
+    /// Whether zoom-settle should kick a better decode. Skips when the same
+    /// path+want is already in flight (pending) or memoized after success —
+    /// otherwise every present cancels the running decode (starvation).
     /// </summary>
     public static bool ShouldRequestSettleDecode(
         string? path,
@@ -1365,8 +1378,12 @@ public static class GalleryPresent
         int wantH,
         string? memoPath,
         int memoWantW,
-        int memoWantH) =>
-        !IsSameSettleDecodeMemo(path, wantW, wantH, memoPath, memoWantW, memoWantH)
+        int memoWantH,
+        string? pendingPath = null,
+        int pendingWantW = 0,
+        int pendingWantH = 0) =>
+        !IsSameSettleDecodeKey(path, wantW, wantH, memoPath, memoWantW, memoWantH)
+        && !IsSameSettleDecodeKey(path, wantW, wantH, pendingPath, pendingWantW, pendingWantH)
         && NeedsBetterDecodeSettle(haveW, haveH, wantW, wantH);
 
     /// <summary>
