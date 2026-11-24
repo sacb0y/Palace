@@ -1,0 +1,5 @@
+﻿2026-11-24T21:51:10.172Z file=synth_pq_land_1920x1080.png decode=0x0 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-24T21:51:10.192Z file=synth_pq_land_1920x1080.png decode=0x0 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeStart detail=refresh
+2026-11-24T21:51:10.194Z file=synth_pq_land_1920x1080.png decode=0x0 panelDip=0x0 bufferPx=0x0 scale=0x0 result=DecodeSuperseded detail=refresh
+2026-11-24T21:51:11.933Z file=synth_pq_land_1920x1080.png decode=1920x1080 panelDip=1030.67x579.75 bufferPx=1546x870 scale=1.5x1.5 result=Presented
+2026-11-24T21:51:12.631Z file=synth_pq_land_1920x1080.png decode=1920x1080 panelDip=1030.67x579.75 bufferPx=1546x870 scale=1.5x1.5 result=Presented

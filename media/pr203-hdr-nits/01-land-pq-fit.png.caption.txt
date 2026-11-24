@@ -1,0 +1,1 @@
+﻿01 Fit: synth_pq_land_1920x1080.png HDR PQ PNG in viewer; not maximized; 1280x900 client DIP @150%

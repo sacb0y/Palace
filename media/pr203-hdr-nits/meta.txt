@@ -1,0 +1,8 @@
+﻿hostname=FENRIR-STUDIO
+tip=87b59629605eaff43dc706639ba1d3feef8d6954
+version=0.3.117
+identity=PalaceOrganizeTest-5E1F
+dpi=144
+scale=1.5
+clientDip=1280x900
+maximized=false

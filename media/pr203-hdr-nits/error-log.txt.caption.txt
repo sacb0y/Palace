@@ -1,0 +1,1 @@
+﻿No error-log.txt produced under test LocalState/data during HDR scenarios; no RPC_E_WRONG_THREAD observed.
