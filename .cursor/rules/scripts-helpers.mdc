@@ -16,7 +16,7 @@ Isiac rule (2026-11-21): **Do not** add a script or helper when the app, repo, o
 | `BuildAndRun.ps1` | Build/run under test identity only; refuses release Identity |
 | `ui-tests.ps1` | Live UI Automation suite against a running PID; FenrirDesktop gate; Studio S7 |
 | `scripts/StudioDpiHarness.ps1` | **Canonical** FENRIR-STUDIO DPI / client-DIP resize / XamlRoot gate / SendInput drag library — dot-source this; do not invent sibling capture harnesses |
-| `scripts/wt-list-prune-safe.ps1` | List/prune clean **merged** Palace worktrees above cap (byte-identical with hub/core); dry-run default |
+| `scripts/wt-list-prune-safe.ps1` | List/prune clean Palace worktrees above cap (byte-identical with hub/core). **Always pass `-Repo palace`** (script default is `momoirosoft`). Dry-run by default; `-Apply` removes only clean candidates whose PR is **MERGED**, or clean **detached** tips already on a remote (no-PR / OPEN / CLOSED never pruned) |
 | `scripts/sync-appx-version.py` | Sync `Package.appxmanifest` Identity Version from `PalaceVersion` |
 | `scripts/check-version.py` | CI version / identity gates |
 | `scripts/check-ps1-ascii.py` | ASCII-only check for PowerShell (Windows PowerShell 5.1) |

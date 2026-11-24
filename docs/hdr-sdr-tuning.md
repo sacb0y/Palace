@@ -1,9 +1,9 @@
 # HDR imaging rewrite (P1)
 
-> **Status:** P1 `Palace.Imaging` path landed via [#137](https://github.com/sacb0y/Palace/pull/137) and later imaging slices. Keep this file as the in-repo pipeline notes; do not re-open P1 from scratch. Store plan: Project `docs/hdr-imaging-rewrite.md`.
+> **Status:** P1 `Palace.Imaging` path landed via [#137](https://github.com/sacb0y/Palace/pull/137) and later imaging slices. Keep this file as the in-repo pipeline notes; do not re-open P1 from scratch.
 
-Isiac-approved Doktor plan v2. **Source of truth (store):**
-`docs/hdr-imaging-rewrite.md`.
+Isiac-approved Doktor plan v2. **Source of truth (Project store, not this repo):**
+`docs/hdr-imaging-rewrite.md` in the Palace Project Agent Store (there is no in-repo `docs/hdr-imaging-rewrite.md`).
 
 **PR:** [#137](https://github.com/sacb0y/Palace/pull/137) — pure `Palace.Imaging`
 + tests. **No UI.** Doktor reviews; no Bugbot.

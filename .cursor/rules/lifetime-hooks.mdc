@@ -22,4 +22,7 @@ A tiny `LifetimeHooks` `(hook, unhook)` list helper is **optional**. Named Loade
 
 ### Tests
 
-`Palace.Tests/LifetimeHookContractTests` source-scans Pages/Controls for these contracts. Keep that green when touching hook sites.
+- `Palace.Tests/LifetimeHookContractTests` — source-scans Pages/Controls for these contracts.
+- `Palace.Tests/OwnedDelegateTests` — behaviour tests for `OwnedDelegate.ClearIfOurs` (keeps foreign delegates; clears ours).
+
+Keep both green when touching hook sites.
