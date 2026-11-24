@@ -556,6 +556,10 @@ PSV_API void psv_destroy(void* host_ptr)
     if (!host) {
         return;
     }
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    /* Unbind RTs + WaitForIdle before RefCntAutoPtr teardown (same as resize). */
+    UnbindAndIdleDiligent(host);
+#endif
     ReleaseWaitable(host);
     delete host;
 }
