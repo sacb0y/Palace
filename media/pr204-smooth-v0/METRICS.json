@@ -1,0 +1,13 @@
+﻿{
+    "tip":  "0bc99df99644841d76e02ebd0dd9984d63853034",
+    "resize_buffers_failures":  0,
+    "log_lines":  1729,
+    "full_size_wxh":  "3840x2034",
+    "full_size_frame_count":  807,
+    "total_ms_p50":  0.655,
+    "total_ms_p95":  0.963,
+    "total_ms_p99":  1.202,
+    "total_ms_mean":  0.67,
+    "pattern_presented":  true,
+    "verdict_pass":  true
+}

@@ -1,0 +1,102 @@
+﻿{
+    "tip":  "0bc99df99644841d76e02ebd0dd9984d63853034",
+    "tip_short":  "0bc99df",
+    "branch":  "cursor/smooth-viewer-v0-diligent-990d",
+    "package":  "PalaceOrganizeTest-5E1F",
+    "package_version":  "0.3.118.0",
+    "host":  "FenrirDesktop",
+    "pattern_presented":  true,
+    "resize_buffers_failures":  0,
+    "full_size_wxh":  "3840x2034",
+    "full_size_frame_count":  807,
+    "total_ms_p50":  0.655,
+    "total_ms_p95":  0.963,
+    "total_ms_p99":  1.202,
+    "total_ms_mean":  0.67,
+    "verdict":  "PASS",
+    "captured_at_america_new_york":  "2026-11-24 18:40:20 -05:00 America/New_York",
+    "files":  [
+                  {
+                      "name":  "00-settings-smooth-on.png",
+                      "bytes":  14794,
+                      "sha256":  "b04e2144a82a9fbce6cb4739a32663ec76b8875d2683b500ebd9ad9e8eb7104d"
+                  },
+                  {
+                      "name":  "01-open-default.png",
+                      "bytes":  707940,
+                      "sha256":  "11f62dbcf03e53db58e24cc4e940db3ae90296f759800f956cd2e5059981f159"
+                  },
+                  {
+                      "name":  "02-resize-1280x720.png",
+                      "bytes":  199071,
+                      "sha256":  "40828f07b499ff5f075a2b67d68e8dbece8a23a26997dd6b258e69872bd51583"
+                  },
+                  {
+                      "name":  "03-resize-1600x900.png",
+                      "bytes":  280013,
+                      "sha256":  "1ee2d9de932aa8c323800bfcdb7d001fd4b882a0cf12d2dc199174814dc2f43b"
+                  },
+                  {
+                      "name":  "04-resize-1920x1080.png",
+                      "bytes":  377068,
+                      "sha256":  "23d7e493436a3b6ee9528a5502fb1371e0e5d88b699aad9ba77a3b2fbc2c9e26"
+                  },
+                  {
+                      "name":  "05-resize-1024x768.png",
+                      "bytes":  179538,
+                      "sha256":  "efd07574b77f8aced7886a965b4f5606e846384fd236c781db66fb6bf14df8ed"
+                  },
+                  {
+                      "name":  "06-resize-1440x900.png",
+                      "bytes":  257939,
+                      "sha256":  "49371c86199722580a4599de41b414da58dbc57beb2f80c2966e2fcaba9b0f08"
+                  },
+                  {
+                      "name":  "10-maximized.png",
+                      "bytes":  1094218,
+                      "sha256":  "c7046496a84ba98c0fc1b2df13c94e4764ee1e4400d548a2e071c83cb706c4ad"
+                  },
+                  {
+                      "name":  "11-restore-after-max.png",
+                      "bytes":  258048,
+                      "sha256":  "f77af4ae19cf0dfe9f89e769855a80159c732070c411d1b888c0bd664bf49c70"
+                  },
+                  {
+                      "name":  "12-restore-after-min.png",
+                      "bytes":  257997,
+                      "sha256":  "4fe55ab0f5070871f2a37f5f0a91241bbb1ce9a2aafe8ec92b2367a1b37ccd92"
+                  },
+                  {
+                      "name":  "13-maximized-hold.png",
+                      "bytes":  1094429,
+                      "sha256":  "762db778e4086ff77e66d0a9f5de05a2fac7ff2290a66fc19e13d11a97f1f63a"
+                  },
+                  {
+                      "name":  "CAPTURE_EVENTS.txt",
+                      "bytes":  3070,
+                      "sha256":  "1bd7c31fd0b2b6138b3fd6b2da1d90b4734f2b54cf765df2f684802c1bc4c62f"
+                  },
+                  {
+                      "name":  "desktop-override-shared.log",
+                      "bytes":  2013,
+                      "sha256":  "914a6c5d101595e145e3855d6ff7a36a7688cce78210276fca888c3d3b5ee59b"
+                  },
+                  {
+                      "name":  "METRICS.json",
+                      "bytes":  375,
+                      "sha256":  "fb7326c999f716be1d9f26482b18c68481c5e96c2fd805e3f16fcb518cac6997"
+                  },
+                  {
+                      "name":  "palace-ui-desktop-override.log",
+                      "bytes":  471,
+                      "sha256":  "d1afc6b6195499584922002d5d2f40494731190e916993636994363dc55c1fab"
+                  },
+                  {
+                      "name":  "smooth-presenter-frames.log",
+                      "bytes":  212773,
+                      "sha256":  "d79352e334a78c41505ab117ff00d56c94441ff7694deef6b26cb0b2fef4c604"
+                  }
+              ],
+    "media_branch_sha":  "920009ac74dc0c9abe0f63638eacec71f2a7b6ec",
+    "media_branch":  "media/pr204-smooth-v0"
+}
