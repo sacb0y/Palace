@@ -13,7 +13,7 @@
 |---|---|
 | HDR scRGB pattern presented | **YES** — fills client after resize (see `13-maximized-hold.png`) |
 | Real client sizes in log | **YES** — sizes include 2864×1469, 1264×626 … **3840×2034** (maximized) |
-| ResizeBuffers failures | **0** / 1707 lines |
+| ResizeBuffers failures | **0** / 1729 lines |
 | Maximize / restore / minimize / restore | **PASS** — events in `CAPTURE_EVENTS.txt` |
 | Full-size frame times (3840×2034, N=807) | **p50=0.655 ms · p95=0.963 ms · p99=1.202 ms** (mean 0.67 ms) |
 
@@ -38,6 +38,6 @@
 2026-11-24T23:39:27.9331083+00:00 frame=645 d3d12 3840x2034 wait_ms=0.001 render_ms=0.000 present_ms=0.000 total_ms=0.001 note=frame latency not ready — skipped
 ```
 
-**Media branch SHA:** (filled after push) on `media/pr204-smooth-v0`.
+**Media branch SHA:** `5f45ab2` (`5f45ab2ea3c4536febeb539407f5943fdcad40bb`) on `media/pr204-smooth-v0`.
 
 
