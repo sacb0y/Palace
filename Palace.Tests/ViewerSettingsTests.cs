@@ -61,6 +61,22 @@ public sealed class ViewerSettingsTests
     }
 
     [Fact]
+    public void SmoothPresenter_DefaultsOffAndPersistsKey()
+    {
+        Assert.False(ViewerSettings.DefaultSmoothPresenter);
+        Assert.False(ViewerSettings.SmoothPresenterEnabled);
+        Assert.Equal("ViewerSmoothPresenter", ViewerSettings.SmoothPresenterKey);
+        Assert.Contains("Diligent", ViewerSettings.SmoothPresenterCaption, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Default off", ViewerSettings.SmoothPresenterCaption, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(ViewerSettings.SmoothPresenterKey, SettingsPortable.ExportKeys);
+
+        ViewerSettings.Apply(ImageScaling.Fit, touchGestures: true, keepZoomBetweenImages: true, smoothPresenter: true);
+        Assert.True(ViewerSettings.SmoothPresenterEnabled);
+        ViewerSettings.Apply(ImageScaling.Fit, touchGestures: true, keepZoomBetweenImages: true, smoothPresenter: false);
+        Assert.False(ViewerSettings.SmoothPresenterEnabled);
+    }
+
+    [Fact]
     public void Captions_MentionTonemapAndSlideshow()
     {
         Assert.Contains("80 nits", ViewerSettings.SdrTonemapCaption, StringComparison.OrdinalIgnoreCase);

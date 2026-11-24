@@ -286,7 +286,10 @@ public static class AppServices
             ViewerSettings.ParseBool(values[ViewerSettings.TouchGesturesKey], ViewerSettings.DefaultTouchGestures),
             ViewerSettings.ParseBool(
                 values[ViewerSettings.KeepZoomBetweenImagesKey],
-                ViewerSettings.DefaultKeepZoomBetweenImages));
+                ViewerSettings.DefaultKeepZoomBetweenImages),
+            ViewerSettings.ParseBool(
+                values[ViewerSettings.SmoothPresenterKey],
+                ViewerSettings.DefaultSmoothPresenter));
     }
 
     internal static void LoadPerformanceSettings()

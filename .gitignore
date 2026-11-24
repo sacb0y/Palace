@@ -85,3 +85,7 @@ Package.appxmanifest.release-backup
 
 # Fetched by tools/Get-Ffmpeg.ps1 (large, not committed)
 ThirdParty/ffmpeg/
+
+# Smooth Viewer Diligent CMake / FetchContent outputs (DLL committed under win-x64 when built)
+Native/smooth/build/
+Native/smooth/out/

@@ -12,10 +12,12 @@ public static class ViewerSettings
     public const string DefaultZoomKey = "ViewerDefaultZoom";
     public const string TouchGesturesKey = "ViewerTouchGestures";
     public const string KeepZoomBetweenImagesKey = "ViewerKeepZoomBetweenImages";
+    public const string SmoothPresenterKey = "ViewerSmoothPresenter";
 
     public const ImageScaling DefaultZoom = ImageScaling.Fit;
     public const bool DefaultTouchGestures = true;
     public const bool DefaultKeepZoomBetweenImages = true;
+    public const bool DefaultSmoothPresenter = false;
 
     public static readonly string[] ZoomOptions =
     [
@@ -30,13 +32,30 @@ public static class ViewerSettings
 
     public static bool KeepZoomBetweenImages { get; private set; } = DefaultKeepZoomBetweenImages;
 
+    /// <summary>
+    /// Experimental Diligent SwapChainPanel presenter (V0). Default off —
+    /// current viewer unchanged when false.
+    /// </summary>
+    public static bool SmoothPresenterEnabled { get; private set; } = DefaultSmoothPresenter;
+
     public static event EventHandler? Changed;
 
-    public static void Apply(ImageScaling defaultZoom, bool touchGestures, bool keepZoomBetweenImages)
+    public static void Apply(
+        ImageScaling defaultZoom,
+        bool touchGestures,
+        bool keepZoomBetweenImages)
+        => Apply(defaultZoom, touchGestures, keepZoomBetweenImages, SmoothPresenterEnabled);
+
+    public static void Apply(
+        ImageScaling defaultZoom,
+        bool touchGestures,
+        bool keepZoomBetweenImages,
+        bool smoothPresenter)
     {
         if (DefaultZoomMode == defaultZoom
             && TouchGesturesEnabled == touchGestures
-            && KeepZoomBetweenImages == keepZoomBetweenImages)
+            && KeepZoomBetweenImages == keepZoomBetweenImages
+            && SmoothPresenterEnabled == smoothPresenter)
         {
             return;
         }
@@ -44,6 +63,7 @@ public static class ViewerSettings
         DefaultZoomMode = defaultZoom;
         TouchGesturesEnabled = touchGestures;
         KeepZoomBetweenImages = keepZoomBetweenImages;
+        SmoothPresenterEnabled = smoothPresenter;
         Changed?.Invoke(null, EventArgs.Empty);
     }
 
@@ -118,4 +138,7 @@ public static class ViewerSettings
 
     public static string KeepZoomBetweenImagesCaption { get; } =
         "When on, Fit / Fill / 1:1 carries to the next image. When off, each image opens at Default zoom. HDR stills always show at Fit on screen; your kept zoom returns on the next normal image.";
+
+    public static string SmoothPresenterCaption { get; } =
+        "Experimental Diligent GPU presenter (clear + HDR scRGB test pattern). Default off — today's viewer is unchanged. Open the presenter window from this card.";
 }

@@ -36,6 +36,7 @@ public static class SettingsPortable
         ViewerSettings.DefaultZoomKey,
         ViewerSettings.TouchGesturesKey,
         ViewerSettings.KeepZoomBetweenImagesKey,
+        ViewerSettings.SmoothPresenterKey,
         GalleryChrome.ShowDetailsKey,
         GalleryChrome.LoopVideoKey,
         GalleryPeak.EnabledKey,

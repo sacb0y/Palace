@@ -52,6 +52,19 @@ jobs:
           dotnet restore Palace.csproj -p:Platform=x64 -r win-x64
           dotnet restore Palace.Tests/Palace.Tests.csproj
 
+      # Smooth Viewer V0: Diligent presenter DLL (FetchContent DiligentCore).
+      # Same cmake invoke FENRIR-STUDIO uses — no redundant helper script.
+      - name: Build palace_smooth.dll (Diligent)
+        shell: pwsh
+        run: |
+          cmake -S Native/smooth -B Native/smooth/build -A x64 -DCMAKE_BUILD_TYPE=Release -DPALACE_SMOOTH_WITH_DILIGENT=ON
+          cmake --build Native/smooth/build --config Release --parallel
+          New-Item -ItemType Directory -Force -Path Native/smooth/win-x64 | Out-Null
+          $dll = Get-ChildItem -Path Native/smooth/build -Recurse -Filter palace_smooth.dll | Select-Object -First 1
+          if (-not $dll) { throw "palace_smooth.dll not found after cmake build" }
+          Copy-Item -Force $dll.FullName Native/smooth/win-x64/palace_smooth.dll
+          Write-Host "Packaged $($dll.FullName) -> Native/smooth/win-x64/palace_smooth.dll"
+
       # Full MarkupCompile with RID (same XAML path as winapp run / packaged Debug).
       # --no-incremental forces a clean XAML pass so WMC9999-class failures are not skipped.
       - name: Build Palace (Debug x64, packaged TFM/RID)
