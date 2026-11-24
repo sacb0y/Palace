@@ -31,7 +31,11 @@ public sealed class SmoothPresenterLifecycleTests
         Assert.Equal(600u, life.Height);
 
         Assert.True(life.TryResize(1024, 768));
+        Assert.Equal(0, life.ResizeCount);
+        Assert.Equal(800u, life.Width);
+        life.CommitResize(1024, 768);
         Assert.Equal(1, life.ResizeCount);
+        Assert.Equal(1024u, life.Width);
         Assert.False(life.TryResize(1024, 768));
 
         Assert.True(life.TrySetDpi(1.25f, 1.25f));
@@ -54,6 +58,28 @@ public sealed class SmoothPresenterLifecycleTests
         life.MarkDisposed();
         Assert.Equal(SmoothPresenterPhase.Disposed, life.Phase);
         Assert.Throws<ObjectDisposedException>(() => life.MarkCreated());
+    }
+
+    [Fact]
+    public void FailedResize_DoesNotCommitSize()
+    {
+        var life = new SmoothPresenterLifecycle();
+        life.MarkCreated();
+        life.MarkAttached(800, 600);
+
+        Assert.True(life.TryResize(1920, 1080));
+        // Simulate native ResizeBuffers failure: never CommitResize.
+        Assert.Equal(800u, life.Width);
+        Assert.Equal(600u, life.Height);
+        Assert.Equal(0, life.ResizeCount);
+
+        // Same target still needed — retry possible.
+        Assert.True(life.TryResize(1920, 1080));
+        life.CommitResize(1920, 1080);
+        Assert.Equal(1920u, life.Width);
+        Assert.Equal(1080u, life.Height);
+        Assert.Equal(1, life.ResizeCount);
+        Assert.False(life.TryResize(1920, 1080));
     }
 
     [Fact]

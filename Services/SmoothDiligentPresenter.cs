@@ -110,6 +110,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _status = $"dpi {_life.DpiScaleX:F2}x{_life.DpiScaleY:F2}";
         }
 
+        if (dipW < 2 || dipH < 2)
+        {
+            // Minimize / zero-size: skip resize; keep last good buffers.
+            return;
+        }
+
         var (w, h) = SmoothPresenterLifecycle.PhysicalSize(dipW, dipH, scaleX, scaleY);
         if (!_life.TryResize(w, h))
         {
@@ -125,10 +131,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         if (resize != SmoothPresenterNative.StatusCode.Ok)
         {
+            // Do not CommitResize — lifecycle size stays at last good so we retry.
             _status = $"resize failed ({resize}): {SmoothPresenterNative.LastError(_host)}";
             return;
         }
 
+        _life.CommitResize(w, h);
         _ = Tick();
     }
 
@@ -155,7 +163,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         if (SmoothPresenterNative.TryLastFrameStats(_host, out var stats))
         {
             LastStats = stats;
-            SmoothPresenterLog.AppendStats(_logDataDir, stats, SmoothPresenterNative.LastError(_host));
+            // lastError cleared natively after a good present — note is empty unless skip/wait.
+            var note = SmoothPresenterNative.LastError(_host);
+            SmoothPresenterLog.AppendStats(_logDataDir, stats, note);
             _status =
                 $"frame {stats.FrameIndex} {stats.Width}x{stats.Height} " +
                 $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}";
@@ -205,6 +215,19 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     {
         _life.MarkDeviceLost();
         _status = "device lost — recreate required";
+        try
+        {
+            if (_swapChain != 0)
+            {
+                var native = _panel.As<ISwapChainPanelNative>();
+                _ = native.SetSwapChain(IntPtr.Zero);
+            }
+        }
+        catch
+        {
+            // panel may already be gone
+        }
+
         DestroyHost();
     }
 

@@ -14,7 +14,8 @@ public sealed partial class SmoothPresenterWindow : Window
 {
     private SmoothDiligentPresenter? _presenter;
     private DispatcherQueueTimer? _timer;
-    private bool _started;
+    private bool _activated;
+    private bool _hostStarted;
 
     public SmoothPresenterWindow()
     {
@@ -26,27 +27,21 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
-        if (_started || args.WindowActivationState == WindowActivationState.Deactivated)
+        if (_activated || args.WindowActivationState == WindowActivationState.Deactivated)
         {
             return;
         }
 
-        _started = true;
-        StartPresenter();
+        _activated = true;
+        PreparePresenter();
     }
 
-    private void StartPresenter()
+    private void PreparePresenter()
     {
         var dataDir = CatalogStore.DataDir();
         _presenter = new SmoothDiligentPresenter(ScpSmooth, dataDir);
-        var (dipW, dipH, sx, sy) = PanelMetrics();
-        if (!_presenter.TryStart(dipW, dipH, sx, sy))
-        {
-            TxtSmoothStatus.Text = _presenter.Status;
-            return;
-        }
+        TryStartWhenPanelSized();
 
-        TxtSmoothStatus.Text = _presenter.Status;
         _timer = DispatcherQueue.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
         _timer.Tick += (_, _) =>
@@ -56,10 +51,20 @@ public sealed partial class SmoothPresenterWindow : Window
                 return;
             }
 
+            if (!_hostStarted)
+            {
+                TryStartWhenPanelSized();
+                TxtSmoothStatus.Text = _presenter.Status;
+                return;
+            }
+
             if (_presenter.Lifecycle.NeedsRecreate)
             {
                 var m = PanelMetrics();
-                _ = _presenter.TryRecreateAfterDeviceLost(m.DipW, m.DipH, m.Sx, m.Sy);
+                if (m.DipW >= 2 && m.DipH >= 2)
+                {
+                    _ = _presenter.TryRecreateAfterDeviceLost(m.DipW, m.DipH, m.Sx, m.Sy);
+                }
             }
             else
             {
@@ -71,6 +76,30 @@ public sealed partial class SmoothPresenterWindow : Window
         _timer.Start();
     }
 
+    private void TryStartWhenPanelSized()
+    {
+        if (_presenter is null || _hostStarted)
+        {
+            return;
+        }
+
+        var (dipW, dipH, sx, sy) = PanelMetrics();
+        if (dipW < 2 || dipH < 2)
+        {
+            TxtSmoothStatus.Text = "waiting for panel size…";
+            return;
+        }
+
+        if (!_presenter.TryStart(dipW, dipH, sx, sy))
+        {
+            TxtSmoothStatus.Text = _presenter.Status;
+            return;
+        }
+
+        _hostStarted = true;
+        TxtSmoothStatus.Text = _presenter.Status;
+    }
+
     private void ScpSmooth_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (_presenter is null)
@@ -79,35 +108,44 @@ public sealed partial class SmoothPresenterWindow : Window
         }
 
         var (dipW, dipH, sx, sy) = PanelMetrics();
+        if (dipW < 2 || dipH < 2)
+        {
+            // Minimize / collapse: skip resize.
+            return;
+        }
+
+        if (!_hostStarted)
+        {
+            TryStartWhenPanelSized();
+            return;
+        }
+
         _presenter.Resize(dipW, dipH, sx, sy);
         TxtSmoothStatus.Text = _presenter.Status;
     }
 
     private void ScpSmooth_CompositionScaleChanged(SwapChainPanel sender, object args)
     {
-        if (_presenter is null)
+        if (_presenter is null || !_hostStarted)
         {
             return;
         }
 
         var (dipW, dipH, sx, sy) = PanelMetrics();
+        if (dipW < 2 || dipH < 2)
+        {
+            return;
+        }
+
         _presenter.Resize(dipW, dipH, sx, sy);
         TxtSmoothStatus.Text = _presenter.Status;
     }
 
     private (double DipW, double DipH, float Sx, float Sy) PanelMetrics()
     {
+        // No 640×480 bootstrap — defer start until ActualWidth/Height >= 2.
         var dipW = ScpSmooth.ActualWidth;
         var dipH = ScpSmooth.ActualHeight;
-        if (dipW < 2)
-        {
-            dipW = 640;
-        }
-
-        if (dipH < 2)
-        {
-            dipH = 480;
-        }
 
         var sx = ScpSmooth.CompositionScaleX;
         var sy = ScpSmooth.CompositionScaleY;
@@ -130,5 +168,6 @@ public sealed partial class SmoothPresenterWindow : Window
         _timer = null;
         _presenter?.Dispose();
         _presenter = null;
+        _hostStarted = false;
     }
 }

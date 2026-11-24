@@ -72,6 +72,11 @@ public sealed class SmoothPresenterLifecycle
         Phase = SmoothPresenterPhase.Running;
     }
 
+    /// <summary>
+    /// Returns true when a resize is needed. Does <b>not</b> commit <see cref="Width"/> /
+    /// <see cref="Height"/> — call <see cref="CommitResize"/> only after native resize succeeds
+    /// so a failed resize can be retried with the same target size.
+    /// </summary>
     public bool TryResize(uint width, uint height)
     {
         EnsureNotDisposed();
@@ -82,15 +87,30 @@ public sealed class SmoothPresenterLifecycle
 
         width = Math.Max(2, width);
         height = Math.Max(2, height);
+        return width != Width || height != Height;
+    }
+
+    /// <summary>
+    /// Commits panel size after a successful native <c>psv_resize</c>.
+    /// </summary>
+    public void CommitResize(uint width, uint height)
+    {
+        EnsureNotDisposed();
+        if (Phase is not (SmoothPresenterPhase.Attached or SmoothPresenterPhase.Running))
+        {
+            throw new InvalidOperationException($"Cannot commit resize from {Phase}");
+        }
+
+        width = Math.Max(2, width);
+        height = Math.Max(2, height);
         if (width == Width && height == Height)
         {
-            return false;
+            return;
         }
 
         Width = width;
         Height = height;
         ResizeCount++;
-        return true;
     }
 
     public bool TrySetDpi(float scaleX, float scaleY)

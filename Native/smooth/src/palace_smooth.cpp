@@ -17,6 +17,7 @@
 #include <wrl/client.h>
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -343,6 +344,17 @@ bool InitDiligent(Host* host, int prefer)
     return InitDiligentD3D11(host);
 }
 
+void UnbindAndIdleDiligent(Host* host)
+{
+    if (!host->diligentContext) {
+        return;
+    }
+    /* Drop RT binds so DXGI ResizeBuffers can reclaim the backbuffer. */
+    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    host->diligentContext->Flush();
+    host->diligentContext->WaitForIdle();
+}
+
 HRESULT BindAndDrawPattern(Host* host)
 {
     if (!host->diligentReady || !host->swapChain) {
@@ -379,6 +391,7 @@ HRESULT BindAndDrawPattern(Host* host)
     auto* rtv = backTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
     if (!rtv) {
         SetError(host, "GetDefaultView RTV failed");
+        backTex.Release();
         return E_FAIL;
     }
 
@@ -401,6 +414,9 @@ HRESULT BindAndDrawPattern(Host* host)
     draw.NumVertices = 3;
     host->diligentContext->Draw(draw);
     host->diligentContext->Flush();
+    /* Unbind + release wrap so the next psv_resize can ResizeBuffers. */
+    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    backTex.Release();
     return S_OK;
 }
 
@@ -583,9 +599,20 @@ PSV_API int psv_resize(void* host_ptr, unsigned width, unsigned height)
         return PSV_OK;
     }
 
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    /* Must drop Diligent RT wraps before DXGI will allow ResizeBuffers. */
+    UnbindAndIdleDiligent(host);
+#endif
+    if (host->backend == PSV_BACKEND_D3D11 && host->d3d11Context) {
+        host->d3d11Context->OMSetRenderTargets(0, nullptr, nullptr);
+        host->d3d11Context->Flush();
+    }
+
     HRESULT hr = host->swapChain->ResizeBuffers(kBufferCount, width, height, kScrgbFormat, kLatencyFlags);
     if (FAILED(hr)) {
-        SetError(host, "ResizeBuffers failed");
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "ResizeBuffers failed hr=0x%08X", static_cast<unsigned>(hr));
+        SetError(host, buf);
         return PSV_RESIZE_FAILED;
     }
     host->width = width;
@@ -625,8 +652,21 @@ PSV_API int psv_render_frame(void* host_ptr)
     LARGE_INTEGER t0{}, tWait{}, tRender{}, tPresent{};
     QueryPerformanceCounter(&t0);
 
+    /* Non-alertable, non-blocking: skip the frame if the waitable is not ready. */
     if (host->frameLatencyWaitable) {
-        WaitForSingleObjectEx(host->frameLatencyWaitable, 2000, TRUE);
+        const DWORD wait = WaitForSingleObjectEx(host->frameLatencyWaitable, 0, FALSE);
+        if (wait == WAIT_TIMEOUT) {
+            QueryPerformanceCounter(&tWait);
+            host->lastStats.wait_ms = ElapsedMs(host->qpcFreq, t0, tWait);
+            host->lastStats.render_ms = 0.0;
+            host->lastStats.present_ms = 0.0;
+            host->lastStats.total_ms = host->lastStats.wait_ms;
+            host->lastStats.width = host->width;
+            host->lastStats.height = host->height;
+            host->lastStats.backend = host->backend;
+            SetError(host, "frame latency not ready — skipped");
+            return PSV_OK;
+        }
     }
     QueryPerformanceCounter(&tWait);
 
@@ -657,6 +697,8 @@ PSV_API int psv_render_frame(void* host_ptr)
     host->lastStats.width = host->width;
     host->lastStats.height = host->height;
     host->lastStats.backend = host->backend;
+    /* Clear sticky lastError so frame logs stay clean after a good present. */
+    SetError(host, "");
     return PSV_OK;
 }
 
