@@ -46,7 +46,12 @@ if(PALACE_SMOOTH_WITH_DILIGENT)
   FetchContent_MakeAvailable(DiligentCore)
 
   target_compile_definitions(palace_smooth PRIVATE PALACE_SMOOTH_WITH_DILIGENT=1)
+  # GraphicsEngineD3D*-static link Diligent-Common as PRIVATE, so Common/Primitives
+  # interface headers (RefCntAutoPtr.hpp, etc.) do not propagate. Link them here.
   target_link_libraries(palace_smooth PRIVATE
+    Diligent-BuildSettings
+    Diligent-Common
+    Diligent-Primitives
     Diligent-GraphicsEngineD3D12-static
     Diligent-GraphicsEngineD3D11-static
   )
