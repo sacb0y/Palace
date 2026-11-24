@@ -124,26 +124,35 @@ jobs:
           /p:AppxPackageDir=Artifacts\Msix\
           /restore
 
+      # SideloadOnly writes Palace_*.msix (zip), not an expanded AppX folder.
       - name: Verify palace_smooth.dll at Appx package root
         shell: pwsh
         run: |
-          $hits = Get-ChildItem -Path Artifacts\Msix -Recurse -Filter palace_smooth.dll -ErrorAction SilentlyContinue
-          if (-not $hits) { throw "palace_smooth.dll missing from Artifacts\Msix" }
-          $ok = $false
-          foreach ($f in $hits) {
-            Write-Host "Found $($f.FullName)"
-            # Package root: ...\Palace_*\palace_smooth.dll (not nested under smooth\)
-            if ($f.Directory.Name -match '^Palace' -or $f.Directory.Name -eq 'AppX' -or (Test-Path (Join-Path $f.DirectoryName 'Palace.exe'))) {
-              $ok = $true
+          $msix = Get-ChildItem -Path Artifacts\Msix -Recurse -Filter *.msix -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'Palace_*.msix' -and $_.FullName -notmatch '\\Dependencies\\' } |
+            Select-Object -First 1
+          if (-not $msix) { throw "Palace_*.msix missing under Artifacts\Msix" }
+          Write-Host "Inspecting $($msix.FullName)"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($msix.FullName)
+          try {
+            $names = @($zip.Entries | ForEach-Object { ($_.FullName -replace '\\', '/').TrimStart('/') })
+            $dlls = $names | Where-Object { $_ -match '\.dll$' }
+            Write-Host "MSIX root-ish DLLs:"; $dlls | Where-Object { $_ -notmatch '/' } | ForEach-Object { Write-Host "  $_" }
+            $root = $names | Where-Object { $_ -eq 'palace_smooth.dll' }
+            if (-not $root) {
+              $any = $names | Where-Object { $_ -match '(^|/)palace_smooth\.dll$' }
+              throw "palace_smooth.dll not at MSIX package root. Found: $($any -join '; ')"
             }
-            # Also accept layout where DLL sits beside AppxManifest.xml
-            if (Test-Path (Join-Path $f.DirectoryName 'AppxManifest.xml')) {
-              $ok = $true
-            }
+            Write-Host "OK: palace_smooth.dll at MSIX package root"
+          } finally {
+            $zip.Dispose()
           }
-          if (-not $ok) {
-            throw "palace_smooth.dll not at package root (beside AppxManifest / Palace.exe). Hits: $($hits.FullName -join '; ')"
-          }
+          $binDll = Get-ChildItem -Path bin -Recurse -Filter palace_smooth.dll -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.DirectoryName 'Palace.exe') } |
+            Select-Object -First 1
+          if (-not $binDll) { throw "palace_smooth.dll missing from bin output beside Palace.exe" }
+          Write-Host "OK: $($binDll.FullName)"
 
       - name: Test
         run: dotnet test Palace.Tests/Palace.Tests.csproj -c Debug --no-restore --logger "trx;LogFileName=results.trx"

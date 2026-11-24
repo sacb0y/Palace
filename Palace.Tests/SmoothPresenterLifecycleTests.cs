@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Palace.Helpers;
 using Xunit;
 
@@ -166,6 +167,35 @@ public sealed class SmoothPresenterPackagingTests
             Assert.False(SmoothPresenterPackaging.LayoutContainsDll(dir));
             File.WriteAllText(Path.Combine(dir, SmoothPresenterPackaging.DllFileName), "dll");
             Assert.True(SmoothPresenterPackaging.LayoutContainsDll(dir));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void MsixContainsDllAtPackageRoot_RequiresRootEntry()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "palace-smooth-msix-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var nested = Path.Combine(dir, "nested.zip");
+        var root = Path.Combine(dir, "root.zip");
+        try
+        {
+            using (var z = ZipFile.Open(nested, ZipArchiveMode.Create))
+            {
+                z.CreateEntry("smooth/" + SmoothPresenterPackaging.DllFileName);
+            }
+
+            using (var z = ZipFile.Open(root, ZipArchiveMode.Create))
+            {
+                z.CreateEntry(SmoothPresenterPackaging.DllFileName);
+            }
+
+            Assert.False(SmoothPresenterPackaging.MsixContainsDllAtPackageRoot(nested));
+            Assert.True(SmoothPresenterPackaging.MsixContainsDllAtPackageRoot(root));
+            Assert.False(SmoothPresenterPackaging.MsixContainsDllAtPackageRoot(null));
         }
         finally
         {

@@ -1,3 +1,5 @@
+using System.IO.Compression;
+
 namespace Palace.Helpers;
 
 /// <summary>
@@ -38,5 +40,35 @@ public static class SmoothPresenterPackaging
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// SideloadOnly MSIX is a zip; package root means <c>palace_smooth.dll</c> with no directory prefix.
+    /// </summary>
+    public static bool MsixContainsDllAtPackageRoot(string? msixPath)
+    {
+        if (string.IsNullOrWhiteSpace(msixPath) || !File.Exists(msixPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var zip = ZipFile.OpenRead(msixPath);
+            foreach (var entry in zip.Entries)
+            {
+                var name = entry.FullName.Replace('\\', '/').TrimStart('/');
+                if (string.Equals(name, DllFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 }
