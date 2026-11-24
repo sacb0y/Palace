@@ -32,6 +32,8 @@
     <Content Include="Native\smooth\win-x64\palace_smooth.dll" Link="palace_smooth.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Native\smooth\win-x64\palace_smooth.dll')" />
     <Content Include="Native\smooth\win-x64\SOURCE.txt" Link="smooth\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Native\smooth\win-x64\THIRD_PARTY.md" Link="smooth\THIRD_PARTY.md" CopyToOutputDirectory="PreserveNewest" />
+    <!-- DiligentCore Apache-2.0 full LICENSE (upstream License.txt @ v2.5.6; no NOTICE in that tag). -->
+    <Content Include="Native\smooth\win-x64\ThirdParty\DiligentCore\LICENSE" Link="ThirdParty\DiligentCore\LICENSE" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
