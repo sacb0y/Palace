@@ -8,9 +8,11 @@ alwaysApply: false
 
 Sacb0y’s installed Palace uses Identity **Name** `C20A7629-6BDE-449F-958A-5AAF8BCE88F3` (see `CatalogStore.ReleasePackageName` and committed `Package.appxmanifest`). Agents must **never** touch that install.
 
+**Host:** **FENRIR-STUDIO** is the primary for UI retests/captures. Exact Identity Name for UI tests: **`PalaceOrganizeTest-5E1F`**. **FenrirDesktop** is HDR / rare authorized desktop only — never the default UI host.
+
 ### Always
 
-1. **Separate test identity.** Before any register/launch, use a **copied** `Package.appxmanifest` whose Identity **Name**, `PhoneProductId`, and `DisplayName` are **not** the release package (Name and PhoneProductId must not be `C20A7629-…`; DisplayName must not stay `Palace`). Prefer `.\scripts\Prepare-TestIdentity.ps1 -IdentityName <Name>` (rewrites all three). `.ps1` files stay ASCII-only so Windows PowerShell 5.1 can parse them.
+1. **Separate test identity.** Before any register/launch, run `.\scripts\Prepare-TestIdentity.ps1 -IdentityName PalaceOrganizeTest-5E1F`: it copies `Package.appxmanifest` to `Package.appxmanifest.release-backup` once, then **patches the repo manifest in place** (Identity **Name**, `PhoneProductId`, `DisplayName`). Name and PhoneProductId must not be `C20A7629-…`; DisplayName must not stay `Palace`. `.ps1` files stay ASCII-only so Windows PowerShell 5.1 can parse them.
 2. **Launch guard.** `.\BuildAndRun.ps1` **refuses** Identity `C20A7629-…` and exits non-zero. Do not bypass the guard. Do not call `winapp run` / `Add-AppxPackage` yourself against the release manifest.
 2b. **UI-test guard.** `ui-tests.ps1` uses `OpenProcess` + `GetPackageFullName` and refuses unless `-AppPid` is exact packaged Identity **Name** `PalaceOrganizeTest-5E1F` (never `C20A7629`, never unpackaged layout exe / Win32 15700). Identity always runs first (fail closed, exit **2**) before FenrirDesktop policy. `COMPUTERNAME=FenrirDesktop` refused by default; override only with `-AllowDesktop -OverrideReason <non-empty>` (console warn + LocalState `palace-ui-desktop-override.log` **and** `%LOCALAPPDATA%\PalaceTestAudit\desktop-override.log`; tabs/CR/LF stripped from reason/args; still **no DPI flips** on desktop). Self-check: `.\ui-tests.ps1 -SelfTestDesktopGate` (shared audit goes to a **temp** path — never the real `%LOCALAPPDATA%\PalaceTestAudit\desktop-override.log`). CI `scripts/check-version.py --check-identity` refuses a test-identity `Package.appxmanifest` and asserts `Test-PalaceUiTestIdentity` appears before `Assert-PalaceFenrirDesktopPolicy` in `ui-tests.ps1`.
 2c. **Studio harness (FENRIR-STUDIO only for S7).** Before GetWindowRect / SetWindowPos / screenshot / SendInput, dot-source `scripts/StudioDpiHarness.ps1`, call `Enable-PalaceDpiAwareness` (PER_MONITOR_AWARE_V2), chrome-compensate so **client** DIP matches target, delete LocalState `palace-xamlroot.log` then `Assert-PalaceClientDipGate -RequireXamlRoot` (match pid). Set `PALACE_TAG_DRAG_LOG=1` and `PALACE_TAG_DRAG_LOG_FILE` at **launch** (no Temp fallback). Tags drag QC requires DragStarting + DragOver + Drop + status Added — missing probe file fails `probe sink missing`; drop undrivable → PARTIAL; never fail on HWND `float=0` alone. DPI helpers refuse on FenrirDesktop even when `-AllowDesktop` is set.
@@ -27,7 +29,7 @@ Sacb0y’s installed Palace uses Identity **Name** `C20A7629-6BDE-449F-958A-5AAF
 | `winapp run --no-launch` to register any identity (including a test name) | Copies the source `Package.appxmanifest` (no WindowsAppRuntime dependency) → **REGDB_E_CLASSNOTREG**. Register `bin\...\AppxManifest.xml` instead |
 | `Add-AppxPackage` of a build `AppxManifest.xml` whose Identity Name is still `C20A7629-…` | Same overwrite as registering the release manifest |
 | `winapp unregister` (or Remove-AppxPackage) on his `C20A7629-…` install | Destroys his install; **agents do not restore it — Sacb0y owns that** |
-| Real catalog, Unity trees, `%TEMP%\palace-vss` | Not agent test data |
+| Real catalog / `palace.db`, Unity / Our Apartment, MOMOCore / momoirosoft-core live trees, `%TEMP%\palace-vss`, Isiac personal and 3D test assets (exact list in Project store `docs/forbidden-personal-assets.md`), Palace-Dev as a live library | Not agent test data — see `AGENTS.md` Safety |
 
 ### Sacb0y owns C20A7629
 

@@ -1,0 +1,30 @@
+---
+description: "Existing scripts/helpers map; search first; new-script justification in PR body"
+globs: scripts/**,BuildAndRun.ps1,ui-tests.ps1,Helpers/**
+alwaysApply: false
+---
+
+## Scripts and helpers (no redundant tools)
+
+Isiac rule (2026-11-21): **Do not** add a script or helper when the app, repo, or platform already covers it. Search first (`rg` / codebase search). Each **new** `scripts/*.ps1` (or harness helper) in a PR must state in the PR body **why existing paths are insufficient**.
+
+### Existing map (repo `main`)
+
+| Path | Role |
+|---|---|
+| `scripts/Prepare-TestIdentity.ps1` | Rewrites manifest to a **test** Identity (never `C20A7629`) |
+| `BuildAndRun.ps1` | Build/run under test identity only; refuses release Identity |
+| `ui-tests.ps1` | Live UI Automation suite against a running PID; FenrirDesktop gate; Studio S7 |
+| `scripts/StudioDpiHarness.ps1` | **Canonical** FENRIR-STUDIO DPI / client-DIP resize / XamlRoot gate / SendInput drag library — dot-source this; do not invent sibling capture harnesses |
+| `scripts/wt-list-prune-safe.ps1` | List/prune clean Palace worktrees above cap (byte-identical with hub/core). **Always pass `-Repo palace`** (script default is `momoirosoft`). Dry-run by default; `-Apply` removes only clean candidates whose PR is **MERGED**, or clean **detached** tips already on a remote (no-PR / OPEN / CLOSED never pruned) |
+| `scripts/sync-appx-version.py` | Sync `Package.appxmanifest` Identity Version from `PalaceVersion` |
+| `scripts/check-version.py` | CI version / identity gates |
+| `scripts/check-ps1-ascii.py` | ASCII-only check for PowerShell (Windows PowerShell 5.1) |
+| `scripts/gen-imaging-fixtures.py` | Imaging test fixtures |
+
+### Fold discipline
+
+- Future Fenrir/Studio captures **dot-source** `StudioDpiHarness.ps1` and keep only scenario shot loops elsewhere. Prefer extending StudioDpi over new harness files.
+- Do **not** revive store media one-shots (`capture-196*`, `capture-197*`) as living owners.
+- App behaviors for tests = real UI/app code only — never side scripts writing the catalog DB.
+- `.ps1` files stay ASCII-only so Windows PowerShell 5.1 can parse them.

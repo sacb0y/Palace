@@ -1,7 +1,9 @@
 # N8 — Tag alias export/import + library filter expand (design)
 
-**Status:** Doktor wording OK @ tip `5f9a5d2f` (notes folded in). **Engine implemented** on this branch as **0.3.25** — park for Doktor **code** review; do not merge. (#156 is 0.3.24 parked — do not collide.)  
-**Against tip:** `main` @ `8cffefe` (**0.3.23**). Alias engine (T4), applied-only Implied (T5), portable tags (`palace-tags/1`); N8 adds `aliasOf` + library filter alias expand.
+> **Status (historical):** Design record for N8. Alias export/import (`aliasOf`) and library filter alias expand **shipped** on `main` after the parked tips below. Do not re-implement from this doc’s “Gap” section without checking current `TagPortable` / `TagFilter` code.
+
+**Status (at authoring):** Doktor wording OK @ tip `5f9a5d2f` (notes folded in). **Engine implemented** on that branch as **0.3.25** — park for Doktor **code** review; do not merge. (#156 is 0.3.24 parked — do not collide.)  
+**Against tip (at authoring):** `main` @ `8cffefe` (**0.3.23**). Alias engine (T4), applied-only Implied (T5), portable tags (`palace-tags/1`); N8 adds `aliasOf` + library filter alias expand.
 
 No UI inventing. No Bugbot. No T2/T8 board work.
 

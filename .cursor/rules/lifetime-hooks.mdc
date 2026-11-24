@@ -1,0 +1,28 @@
+---
+description: "Page/control lifetime: Loaded hook / Unloaded unhook; OwnedDelegate; domain-reload mindset"
+globs: Pages/**,Controls/**,MainWindow.xaml.cs,GalleryWindow.xaml.cs,App.xaml.cs
+alwaysApply: false
+---
+
+## Lifetime hooks (WinUI pages / controls)
+
+Write UI code as if the page or control can be torn down and rebuilt at any time (same mindset as Unity **domain reload disabled**: no permanent ctor subscriptions onto long-lived singletons).
+
+### Required pattern
+
+1. **Hook on `Loaded`**, **unhook on `Unloaded`** (named handlers — not ctor lambdas onto a singleton ViewModel).
+2. After any `await` in Loaded, gate with `if (!IsLoaded) return;` before mutating the visual tree or arming handlers.
+3. Clear owned mosaic / request delegates with `OwnedDelegate.ClearIfOurs` — **never** `ReferenceEquals(…, (Action)…)` / `ReferenceEquals(…, (Func…)…)` (fresh cast never matches the assigned slot).
+4. Cached pages (`NavigationCacheMode`) must **re-hook everything Unloaded unhooks** on the next Loaded.
+5. Surfaces that present media (`GalleryStillSurface`, `ViewerDetailsCard`, future 3D): re-subscribe input / gallery / DPI on Loaded after Unloaded cleared them.
+
+### Optional helper
+
+A tiny `LifetimeHooks` `(hook, unhook)` list helper is **optional**. Named Loaded/Unloaded methods are enough when contracts stay clear. Prefer the named pattern unless several surfaces share identical pair lists.
+
+### Tests
+
+- `Palace.Tests/LifetimeHookContractTests` — source-scans Pages/Controls for these contracts.
+- `Palace.Tests/OwnedDelegateTests` — behaviour tests for `OwnedDelegate.ClearIfOurs` (keeps foreign delegates; clears ours).
+
+Keep both green when touching hook sites.

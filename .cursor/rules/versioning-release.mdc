@@ -32,11 +32,15 @@ Stay on **0.x** until the first public Store release (**1.0.0**).
 
 Stacked / parallel PRs: rebase onto `main` and **re-bump** in merge order so each tip stays greater than `main`.
 
+**Version at merge:** set / confirm the shipped PATCH (or MINOR) when merging. Long-lived drafts may carry `no-version-bump` while open; **they must be re-bumped at merge** (props + synced manifest + title) before landing. The **PR title must match** the version that actually ships (do not leave an outdated version in the title after a re-bump).
+
+Open-PR cap (process): keep **≤2–3** open **non-draft** Palace PRs — see `AGENTS.md` (parked drafts do not count).
+
 Do **not** jump to `1.0.0` because something “feels ready.” Opening a new milestone requires Sacb0y.
 
 ### Every bumping PR description must include
 
-1. **New version** (e.g. `0.2.3`)
+1. **New version** (e.g. `0.2.3`) — must match the PR title
 2. **One-line user-facing summary** (plain wording for Isiac to pass on — changelog is owned elsewhere)
 
 Template fields live in `.github/PULL_REQUEST_TEMPLATE.md`.
@@ -44,7 +48,8 @@ Template fields live in `.github/PULL_REQUEST_TEMPLATE.md`.
 | Version | Milestone | Notes |
 |---|---|---|
 | **0.2.x** | Library + viewer polish | Details/Info merge, overlay chrome, blur, tags. |
-| **0.3.0** *(now)* | Settings restructure | Two-pane Settings, search filter, density, Narrator polish. |
+| **0.3.0** *(shipped)* | Settings restructure | Two-pane Settings, search filter, density, Narrator polish. |
+| **0.3.x now** | Library / viewer / Smooth V0–V4 | HDR present polish; Smooth GPU viewer then 3D. |
 | **bonus** | Cloud | Not a numbered main slice. On-Demand + OAuth already in 0.x; do not download originals. |
 | **later 0.x** | Rooms / gamedev / AI | Only when Sacb0y opens them. |
 | **1.0.0** | First public Store | Release/trim fixed, Store packaging. |
