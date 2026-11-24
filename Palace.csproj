@@ -17,8 +17,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Version / AssemblyVersion / FileVersion / InformationalVersion come from Directory.Build.props (PalaceVersion). -->
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <!-- Native/smooth/build is Diligent FetchContent — must not compile its .NET / SPIRV .cs into WinUI. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**;Native\smooth\build\**</DefaultItemExcludes>
+    <!-- Native/smooth/build|out is Diligent FetchContent — must not compile its .NET / SPIRV .cs into WinUI.
+         Do not add SharpGen or build Diligent's .NET projects. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**;Native\smooth\build\**;Native\smooth\out\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

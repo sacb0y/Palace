@@ -1,9 +1,9 @@
 palace_smooth.dll is built on Windows (CI / FENRIR-STUDIO):
 
-  cmake -S Native/smooth -B %TEMP%\palace-smooth-build -A x64 -DCMAKE_BUILD_TYPE=Release
-  cmake --build %TEMP%\palace-smooth-build --config Release
-  copy %TEMP%\palace-smooth-build\Release\palace_smooth.dll Native\smooth\win-x64\
+  cmake -S Native/smooth -B Native/smooth/build -A x64 -DCMAKE_BUILD_TYPE=Release
+  cmake --build Native/smooth/build --config Release
+  copy Native\smooth\build\Release\palace_smooth.dll Native\smooth\win-x64\
 
-Build outside the repo (or under Native/smooth/build, which is gitignored and
-DefaultItemExcluded) so Diligent FetchContent .cs files are not compiled by
-Palace.csproj. FetchContent pulls DiligentCore v2.5.6. See SOURCE.txt / THIRD_PARTY.md.
+Native/smooth/build is gitignored and DefaultItemExcluded (with out\) so Diligent
+FetchContent .cs are not compiled by Palace.csproj. Static Diligent link; runtime
+HLSL via D3DCompile — no dxcompiler/dxil DLLs. See SOURCE.txt / THIRD_PARTY.md.

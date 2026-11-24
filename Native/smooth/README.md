@@ -11,16 +11,17 @@ Native Diligent presenter for WinUI `SwapChainPanel`:
 ## Build (Windows x64)
 
 ```powershell
-# Prefer a build dir outside the repo (Diligent FetchContent ships .cs that
-# SDK-style Palace.csproj would otherwise compile). In-tree Native/smooth/build
-# is gitignored and DefaultItemExcluded.
-cmake -S Native/smooth -B $env:TEMP\palace-smooth-build -A x64 -DCMAKE_BUILD_TYPE=Release
-cmake --build $env:TEMP\palace-smooth-build --config Release
-Copy-Item $env:TEMP\palace-smooth-build\Release\palace_smooth.dll Native\smooth\win-x64\ -Force
+# In-tree build is fine: Palace.csproj DefaultItemExcludes Native\smooth\build\**
+# and Native\smooth\out\** so Diligent FetchContent .cs are never compiled into WinUI.
+# Do not add SharpGen or build Diligent's .NET projects.
+cmake -S Native/smooth -B Native/smooth/build -A x64 -DCMAKE_BUILD_TYPE=Release
+cmake --build Native/smooth/build --config Release
+Copy-Item Native\smooth\build\Release\palace_smooth.dll Native\smooth\win-x64\ -Force
 ```
 
-CI uses `$RUNNER_TEMP\palace-smooth-build`. Do not add redundant helper scripts —
-invoke cmake directly (Isiac 2026-11-21).
+Runtime HLSL uses Diligent + `D3DCompile` (system `d3dcompiler`); no `dxcompiler` / `dxil` package.
+CI caches `Native/smooth/build/_deps` on Diligent tag v2.5.6 + Native/smooth sources.
+Do not add redundant helper scripts — invoke cmake directly (Isiac 2026-11-21).
 
 ## Product setting
 

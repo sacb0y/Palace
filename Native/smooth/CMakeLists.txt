@@ -6,7 +6,15 @@ if(NOT WIN32)
 endif()
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-  message(FATAL_ERROR "palace_smooth is x64-only")
+  message(FATAL_ERROR "palace_smooth is x64-only (CMAKE_SIZEOF_VOID_P=${CMAKE_SIZEOF_VOID_P})")
+endif()
+
+# VS -A Win32 / arm64 must not silently produce a non-x64 DLL.
+if(DEFINED CMAKE_GENERATOR_PLATFORM AND NOT "${CMAKE_GENERATOR_PLATFORM}" STREQUAL "")
+  string(TOUPPER "${CMAKE_GENERATOR_PLATFORM}" _palace_smooth_plat)
+  if(NOT _palace_smooth_plat STREQUAL "X64" AND NOT _palace_smooth_plat STREQUAL "AMD64")
+    message(FATAL_ERROR "palace_smooth rejects non-x64 generator platform '${CMAKE_GENERATOR_PLATFORM}'")
+  endif()
 endif()
 
 set(CMAKE_CXX_STANDARD 17)
