@@ -32,11 +32,15 @@ Stay on **0.x** until the first public Store release (**1.0.0**).
 
 Stacked / parallel PRs: rebase onto `main` and **re-bump** in merge order so each tip stays greater than `main`.
 
+**Version at merge:** set / confirm the shipped PATCH (or MINOR) when merging. Long-lived drafts may carry `no-version-bump` until merge time, then re-bump. The **PR title must match** the version that actually ships (do not leave an outdated version in the title after a re-bump).
+
+Open-PR cap (process): keep **≤2–3** Palace PRs open at once — see `AGENTS.md`.
+
 Do **not** jump to `1.0.0` because something “feels ready.” Opening a new milestone requires Sacb0y.
 
 ### Every bumping PR description must include
 
-1. **New version** (e.g. `0.2.3`)
+1. **New version** (e.g. `0.2.3`) — must match the PR title
 2. **One-line user-facing summary** (plain wording for Isiac to pass on — changelog is owned elsewhere)
 
 Template fields live in `.github/PULL_REQUEST_TEMPLATE.md`.

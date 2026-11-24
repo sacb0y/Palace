@@ -1,5 +1,7 @@
 # Imaging P7 scope (B0 — docs only)
 
+> **Status:** Shipped docs-only B0 decision record (P7). Not an implementation checklist for new work. Desat A1–A4 remain deferred until Isiac A/B.
+
 Isiac via Constructor (2026-11-10). Last numbered imaging-rewrite slice.
 
 ## Decision

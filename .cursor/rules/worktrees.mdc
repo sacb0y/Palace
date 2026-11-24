@@ -1,0 +1,15 @@
+---
+description: "FENRIR-STUDIO git worktrees: one checkout; palace ≤8; prune with wt-list-prune-safe.ps1"
+globs: scripts/wt-list-prune-safe.ps1
+alwaysApply: false
+---
+
+## Git worktrees (FENRIR-STUDIO)
+
+Isiac HARD (2026-11-22):
+
+- Default: **one** working Palace checkout per machine. Switch branches there only when porcelain is empty and HEAD is not detached (prefer commit+push over stash; never `checkout -f` / `reset --hard` / `clean` as a shortcut).
+- Extra worktree **only** for truly concurrent jobs on different branches. Reuse one worktree per branch. Create extras under `source\repos\palace-wt\<slug>` (not new random trees for retests).
+- Cap: **≤8** Palace extras (excluding the main checkout). Remove yours when the PR merges/closes or the job ends.
+- Cap hygiene: `scripts/wt-list-prune-safe.ps1` — **byte-identical** with hub `.agents/scripts/` and core `scripts/` (pass `-Repo palace`). Dry-run by default; `-Apply` only for clean + **MERGED** PR + tip on remote (no-PR / OPEN / CLOSED never pruned; skips protected / Unity-held paths).
+- Never touch `MOMOCore-Dev`, `Palace-Dev`, main checkouts, `hub-post-merge*`, Our Apartment, or `E:\` for prune/remove.
