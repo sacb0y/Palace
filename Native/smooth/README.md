@@ -11,12 +11,15 @@ Native Diligent presenter for WinUI `SwapChainPanel`:
 ## Build (Windows x64)
 
 ```powershell
-cmake -S Native/smooth -B Native/smooth/build -A x64 -DCMAKE_BUILD_TYPE=Release
-cmake --build Native/smooth/build --config Release
-Copy-Item Native\smooth\build\Release\palace_smooth.dll Native\smooth\win-x64\ -Force
+# Prefer a build dir outside the repo (Diligent FetchContent ships .cs that
+# SDK-style Palace.csproj would otherwise compile). In-tree Native/smooth/build
+# is gitignored and DefaultItemExcluded.
+cmake -S Native/smooth -B $env:TEMP\palace-smooth-build -A x64 -DCMAKE_BUILD_TYPE=Release
+cmake --build $env:TEMP\palace-smooth-build --config Release
+Copy-Item $env:TEMP\palace-smooth-build\Release\palace_smooth.dll Native\smooth\win-x64\ -Force
 ```
 
-CI runs the same steps before packaging. Do not add redundant helper scripts —
+CI uses `$RUNNER_TEMP\palace-smooth-build`. Do not add redundant helper scripts —
 invoke cmake directly (Isiac 2026-11-21).
 
 ## Product setting

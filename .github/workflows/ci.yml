@@ -53,14 +53,16 @@ jobs:
           dotnet restore Palace.Tests/Palace.Tests.csproj
 
       # Smooth Viewer V0: Diligent presenter DLL (FetchContent DiligentCore).
-      # Same cmake invoke FENRIR-STUDIO uses — no redundant helper script.
+      # Build tree stays under $RUNNER_TEMP so Diligent .NET / SPIRV .cs never
+      # sit under Palace.csproj (SDK globs would compile them into WinUI).
       - name: Build palace_smooth.dll (Diligent)
         shell: pwsh
         run: |
-          cmake -S Native/smooth -B Native/smooth/build -A x64 -DCMAKE_BUILD_TYPE=Release -DPALACE_SMOOTH_WITH_DILIGENT=ON
-          cmake --build Native/smooth/build --config Release --parallel
+          $build = Join-Path $env:RUNNER_TEMP "palace-smooth-build"
+          cmake -S Native/smooth -B $build -A x64 -DCMAKE_BUILD_TYPE=Release -DPALACE_SMOOTH_WITH_DILIGENT=ON
+          cmake --build $build --config Release --parallel
           New-Item -ItemType Directory -Force -Path Native/smooth/win-x64 | Out-Null
-          $dll = Get-ChildItem -Path Native/smooth/build -Recurse -Filter palace_smooth.dll | Select-Object -First 1
+          $dll = Get-ChildItem -Path $build -Recurse -Filter palace_smooth.dll | Select-Object -First 1
           if (-not $dll) { throw "palace_smooth.dll not found after cmake build" }
           Copy-Item -Force $dll.FullName Native/smooth/win-x64/palace_smooth.dll
           Write-Host "Packaged $($dll.FullName) -> Native/smooth/win-x64/palace_smooth.dll"

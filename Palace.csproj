@@ -17,7 +17,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Version / AssemblyVersion / FileVersion / InformationalVersion come from Directory.Build.props (PalaceVersion). -->
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**</DefaultItemExcludes>
+    <!-- Native/smooth/build is Diligent FetchContent — must not compile its .NET / SPIRV .cs into WinUI. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**;Native\smooth\build\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
