@@ -19,6 +19,7 @@ using Microsoft::WRL::ComPtr;
 #  include "CommandQueueD3D12.h"
 #  include "EngineFactoryD3D11.h"
 #  include "RenderDeviceD3D11.h"
+#  include "EngineFactory.h"
 #  include "RenderDevice.h"
 #  include "DeviceContext.h"
 #  include "PipelineState.h"
@@ -42,6 +43,7 @@ struct Host {
 
     ComPtr<IDXGIFactory2> factory;
     ComPtr<IDXGISwapChain3> swapChain;
+    ComPtr<IDXGIAdapter3> adapter3;
     HANDLE frameLatencyWaitable = nullptr;
 
     ComPtr<ID3D12Device> d3d12Device;
@@ -59,14 +61,15 @@ struct Host {
 
     /* V1 tile pool (RGBA16F Working, SMOOTH_SRGB8=0). */
     RefCntAutoPtr<ITexture> tileArray;
-    RefCntAutoPtr<ITexture> mipScratch; /* 512² single-slice; never SRV+UAV same resource */
+    RefCntAutoPtr<ITexture> mipScratch; /* TEX_2D_ARRAY ArraySize=1; never SRV+UAV same as pool */
     RefCntAutoPtr<IPipelineState> mipPso;
     RefCntAutoPtr<IShaderResourceBinding> mipSrb;
     RefCntAutoPtr<IBuffer> mipCb;
+    RefCntAutoPtr<IShaderSourceInputStreamFactory> shaderFactory;
     unsigned tileCapacity = 0;
     bool tilePoolReady = false;
     bool mipReady = false;
-    /* Semicolon-separated dirs for SmoothMipDownsample.hlsl (and later ToneMap includes). */
+    /* Semicolon-separated dirs for SmoothMipDownsample.hlsl (+ ToneMap includes). */
     char shaderSearchDirs[512]{};
 #endif
 
@@ -74,4 +77,6 @@ struct Host {
 };
 
 void SetError(Host* host, const char* msg);
+void ClearError(Host* host);
 void UnbindAndIdleDiligent(Host* host);
+bool BindDxgiAdapter3(Host* host);

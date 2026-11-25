@@ -72,6 +72,16 @@ PSV_API int psv_backend(void* host);
 /* Semicolon-separated search dirs for HLSL (SmoothMipDownsample.hlsl + ToneMap.hlsl). */
 PSV_API int psv_set_shader_search_dirs(void* host, const char* utf8_dirs);
 
+/*
+ * Local-segment VRAM via IDXGIAdapter3::QueryVideoMemoryInfo.
+ * available = Budget − CurrentUsage (clamped at 0).
+ */
+PSV_API int psv_query_video_memory(
+    void* host,
+    unsigned long long* out_budget_bytes,
+    unsigned long long* out_current_usage_bytes,
+    unsigned long long* out_available_bytes);
+
 /* Creates Texture2DArray pool (capacity slices, 512² RGBA16F) + mip scratch + CS. */
 PSV_API int psv_tile_pool_create(void* host, unsigned capacity);
 
@@ -84,7 +94,8 @@ PSV_API int psv_tile_upload(void* host, unsigned slice, const void* rgba16f_byte
  * Box-filter mip one parent slot via SmoothMipDownsampleCS.
  * slices4x4: 16 uints row-major child ring (-1..2); 0xFFFFFFFF = outside.
  * parent_content_origin_l1: content origin at L+1 (Origin = 2 * that at L).
- * Writes scratch then CopyTexture into dst_slice.
+ * Writes scratch then CopyTexture into dst_slice. Does not Flush — call psv_flush
+ * after a level batch.
  */
 PSV_API int psv_tile_mip_box(
     void* host,
@@ -97,6 +108,9 @@ PSV_API int psv_tile_mip_box(
 
 /* True when mip CS compiled (FXC/D3DCompile cs_5_0 path via Diligent). */
 PSV_API int psv_tile_mip_ready(void* host);
+
+/* Flush Diligent context (after a mip level batch). */
+PSV_API int psv_flush(void* host);
 
 #ifdef __cplusplus
 }

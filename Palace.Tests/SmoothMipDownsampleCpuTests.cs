@@ -70,4 +70,37 @@ public sealed class SmoothMipDownsampleCpuTests
         Assert.False(SmoothTileDecodeGate.MayDecodePath("/no/such/palace-v1-tile-file.bin"));
         Assert.False(SmoothTileDecodeGate.BakeExifRotationIntoTiles);
     }
+
+    [Fact]
+    public void GpuVsCpu_BoxDownsampleTileSlot_MatchesFullCrop()
+    {
+        // Reference: full-image box then crop content vs TileSlot path (CPU stand-in
+        // for SmoothMipDownsampleCS; Fenrir compares the same against real GPU).
+        const int w = 32;
+        const int h = 32;
+        var src = new float[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var i = (y * w + x) * 4;
+                src[i] = x * 0.01f;
+                src[i + 1] = y * 0.01f;
+                src[i + 2] = 0.5f;
+                src[i + 3] = 1f;
+            }
+        }
+
+        var full = SmoothMipDownsampleCpu.BoxDownsampleFull(src, w, h, out var dw, out var dh);
+        var slot = SmoothMipDownsampleCpu.BoxDownsampleTileSlot(src, w, h, parentContentOriginX: 0, parentContentOriginY: 0);
+        Assert.Equal((w + 1) / 2, dw);
+        Assert.Equal((h + 1) / 2, dh);
+
+        // Content (0,0) at L+1 lives at slot (Border,Border)
+        var so = (2 * 512 + 2) * 4;
+        Assert.Equal(full[0], slot[so], 5);
+        Assert.Equal(full[1], slot[so + 1], 5);
+        Assert.Equal(full[2], slot[so + 2], 5);
+        Assert.Equal(full[3], slot[so + 3], 5);
+    }
 }

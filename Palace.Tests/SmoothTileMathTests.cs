@@ -79,4 +79,30 @@ public sealed class SmoothTileMathTests
         var h = SmoothTileMath.LevelHeight(8000, max);
         Assert.True(w <= 508 && h <= 508);
     }
+
+    [Theory]
+    [InlineData(1, 1000)]
+    [InlineData(1000, 1)]
+    [InlineData(1, 508)]
+    [InlineData(509, 1)]
+    public void TilesAlong_And_MaxLevel_OnStrip(int w, int h)
+    {
+        Assert.Equal(SmoothTileMath.TilesAlong(w), SmoothTileMath.TileCounts(w, h).TilesX);
+        Assert.Equal(SmoothTileMath.TilesAlong(h), SmoothTileMath.TileCounts(w, h).TilesY);
+        var max = SmoothTileMath.MaxLevel(w, h);
+        Assert.True(SmoothTileMath.LevelWidth(w, max) <= 508);
+        Assert.True(SmoothTileMath.LevelHeight(h, max) <= 508);
+        Assert.True(SmoothTileMath.CoarseTileCount(w, h) >= 1);
+    }
+
+    [Fact]
+    public void ChildRing4x4_MarksOutside()
+    {
+        var ring = new SmoothTileId?[16];
+        SmoothTileMath.FillChildRing4x4(0, 0, childTilesX: 2, childTilesY: 2, ring);
+        Assert.Null(ring[0]); // (-1,-1)
+        Assert.NotNull(ring[5]); // (0,0) first child
+        Assert.Equal(0, ring[5]!.Value.TileX);
+        Assert.Equal(0, ring[5]!.Value.TileY);
+    }
 }

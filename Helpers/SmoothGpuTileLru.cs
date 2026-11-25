@@ -1,9 +1,9 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// GPU tile-slot LRU. Coarse-level tiles (level ≥ coarse pin) are never
-/// evicted so the view never goes blank. Capacity is derived from available
-/// VRAM (default 128–192 slots).
+/// GPU tile-slot LRU. Coarse-level tiles (level ≥ coarse pin) and temporary
+/// pins are never evicted. Capacity is derived from available VRAM, clamped
+/// down to budget with floor = coarse-set size (never inflated to 128).
 /// </summary>
 public sealed class SmoothGpuTileLru
 {
@@ -14,6 +14,7 @@ public sealed class SmoothGpuTileLru
     private readonly LinkedList<SmoothTileId> _order = new();
     private readonly Dictionary<SmoothTileId, LinkedListNode<SmoothTileId>> _nodes = new();
     private readonly Stack<int> _free = new();
+    private readonly HashSet<SmoothTileId> _tempPins = new();
 
     public SmoothGpuTileLru(int capacity, int coarsePinLevel)
     {
@@ -37,20 +38,32 @@ public sealed class SmoothGpuTileLru
 
     public int FreeCount => _free.Count;
 
-    public static int CapacityFromVramBytes(long availableVramBytes, int min = 128, int max = 192)
+    public int CoarsePinLevel => _coarsePinLevel;
+
+    /// <summary>
+    /// Pool size from free VRAM. Clamps down to budget/8 ÷ bytes-per-tile,
+    /// never below <paramref name="coarseTileCount"/>, never above <paramref name="max"/>.
+    /// Does not bump a tiny budget up to 128.
+    /// </summary>
+    public static int CapacityFromVramBytes(long availableVramBytes, int coarseTileCount, int max = 192)
     {
-        if (min < 1 || max < min)
+        if (coarseTileCount < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(min));
+            throw new ArgumentOutOfRangeException(nameof(coarseTileCount));
         }
 
+        if (max < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(max));
+        }
+
+        var floor = Math.Min(max, coarseTileCount);
         var per = SmoothTileMath.BytesPerTileRgba16F();
-        // Cap pool to ~1/8 of reported VRAM so other present work has headroom.
         var budget = Math.Max(0L, availableVramBytes / 8);
         var fromBudget = (int)Math.Min(int.MaxValue, budget / Math.Max(1L, per));
-        if (fromBudget < min)
+        if (fromBudget < floor)
         {
-            return min;
+            return floor;
         }
 
         return Math.Min(max, fromBudget);
@@ -71,7 +84,7 @@ public sealed class SmoothGpuTileLru
     /// <summary>
     /// Reserves a slot for <paramref name="id"/>, evicting an unpinned LRU
     /// entry when the pool is full. Returns false only when every resident
-    /// tile is coarse-pinned (should not happen if capacity ≥ coarse set).
+    /// tile is pinned (coarse or temp).
     /// </summary>
     public bool TryInsert(SmoothTileId id, out int slot, out SmoothTileId? evicted)
     {
@@ -102,7 +115,41 @@ public sealed class SmoothGpuTileLru
         return true;
     }
 
-    public bool IsPinned(SmoothTileId id) => id.Level >= _coarsePinLevel;
+    public bool IsPinned(SmoothTileId id) =>
+        id.Level >= _coarsePinLevel || _tempPins.Contains(id);
+
+    public void SetTempPin(SmoothTileId id, bool pinned)
+    {
+        if (pinned)
+        {
+            _tempPins.Add(id);
+        }
+        else
+        {
+            _tempPins.Remove(id);
+        }
+    }
+
+    public void ClearTempPins() => _tempPins.Clear();
+
+    /// <summary>Drop residency after device lost; free all slots for re-upload.</summary>
+    public void Reset()
+    {
+        _idToSlot.Clear();
+        _order.Clear();
+        _nodes.Clear();
+        _tempPins.Clear();
+        _free.Clear();
+        for (var i = 0; i < _capacity; i++)
+        {
+            _slotToId[i] = null;
+        }
+
+        for (var i = _capacity - 1; i >= 0; i--)
+        {
+            _free.Push(i);
+        }
+    }
 
     private void Touch(SmoothTileId id)
     {

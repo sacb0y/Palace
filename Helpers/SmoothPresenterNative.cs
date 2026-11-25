@@ -288,6 +288,47 @@ public static class SmoothPresenterNative
         }
     }
 
+    public static StatusCode QueryVideoMemory(
+        nint host,
+        out ulong budgetBytes,
+        out ulong currentUsageBytes,
+        out ulong availableBytes)
+    {
+        budgetBytes = 0;
+        currentUsageBytes = 0;
+        availableBytes = 0;
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeQueryVideoMemory(host, out budgetBytes, out currentUsageBytes, out availableBytes);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static StatusCode Flush(nint host)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeFlush(host);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
     public static StatusCode TilePoolCreate(nint host, uint capacity)
     {
         if (host == 0 || !IsAvailable)
@@ -390,6 +431,13 @@ public static class SmoothPresenterNative
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_set_shader_search_dirs")]
     private static extern int NativeSetShaderSearchDirs(nint host, [MarshalAs(UnmanagedType.LPUTF8Str)] string? utf8Dirs);
 
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_query_video_memory")]
+    private static extern int NativeQueryVideoMemory(
+        nint host,
+        out ulong budgetBytes,
+        out ulong currentUsageBytes,
+        out ulong availableBytes);
+
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_pool_create")]
     private static extern int NativeTilePoolCreate(nint host, uint capacity);
 
@@ -411,4 +459,7 @@ public static class SmoothPresenterNative
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_mip_ready")]
     private static extern int NativeTileMipReady(nint host);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_flush")]
+    private static extern int NativeFlush(nint host);
 }

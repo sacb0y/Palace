@@ -13,6 +13,9 @@ public static class SmoothTileMath
 
     public const int CoarseMaxExtent = 2048;
 
+    /// <summary>Outside-image sentinel for SmoothMipDownsampleCS Slices[].</summary>
+    public const uint SliceOutside = 0xFFFFFFFFu;
+
     /// <summary>Number of content tiles along one axis at the given level size.</summary>
     public static int TilesAlong(int levelPixels)
     {
@@ -26,6 +29,15 @@ public static class SmoothTileMath
 
     public static (int TilesX, int TilesY) TileCounts(int levelWidth, int levelHeight) =>
         (TilesAlong(levelWidth), TilesAlong(levelHeight));
+
+    public static int CoarseTileCount(int fullWidth, int fullHeight)
+    {
+        var level = CoarseLevelIndex(fullWidth, fullHeight);
+        var lw = LevelWidth(fullWidth, level);
+        var lh = LevelHeight(fullHeight, level);
+        var (nx, ny) = TileCounts(lw, lh);
+        return Math.Max(1, nx * ny);
+    }
 
     /// <summary>
     /// Content origin (level image px) of tile (tx, ty). May sit past the image
@@ -115,6 +127,43 @@ public static class SmoothTileMath
         }
 
         return level;
+    }
+
+    /// <summary>
+    /// 4×4 child-tile ring for parent (px,py) at L+1: child tiles relative
+    /// −1..2 from the parent's first child (2·px, 2·py) at level L.
+    /// </summary>
+    public static void FillChildRing4x4(
+        int parentTileX,
+        int parentTileY,
+        int childTilesX,
+        int childTilesY,
+        Span<SmoothTileId?> childIds)
+    {
+        if (childIds.Length < 16)
+        {
+            throw new ArgumentException("Need 16 slots.", nameof(childIds));
+        }
+
+        var firstChildX = parentTileX * 2;
+        var firstChildY = parentTileY * 2;
+        for (var ry = 0; ry < 4; ry++)
+        {
+            for (var rx = 0; rx < 4; rx++)
+            {
+                var cx = firstChildX + (rx - 1);
+                var cy = firstChildY + (ry - 1);
+                var i = ry * 4 + rx;
+                if (cx < 0 || cy < 0 || cx >= childTilesX || cy >= childTilesY)
+                {
+                    childIds[i] = null;
+                }
+                else
+                {
+                    childIds[i] = new SmoothTileId(0, cx, cy); // level filled by caller
+                }
+            }
+        }
     }
 
     public static long BytesPerTileRgba16F() => SlotSize * SlotSize * 8L; // 4 × float16

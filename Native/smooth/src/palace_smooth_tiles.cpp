@@ -7,10 +7,6 @@
 
 #include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <vector>
 
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
 
@@ -19,68 +15,44 @@ namespace {
 constexpr unsigned kSlot = 512;
 constexpr unsigned kBorder = 2;
 
-/* Avoid Diligent GraphicsTools DefaultShaderSourceStreamFactory (not on our link set).
- * SmoothMipDownsample.hlsl has no #includes — load bytes and compile as Source. */
-bool TryLoadShaderFile(Host* host, const char* fileName, std::string& out)
+bool EnsureShaderFactory(Host* host)
 {
-    out.clear();
-    std::vector<std::string> dirs;
-    const char* raw = host->shaderSearchDirs[0] ? host->shaderSearchDirs : ".";
-    std::string cur;
-    for (const char* p = raw;; ++p) {
-        if (*p == ';' || *p == '\0') {
-            if (!cur.empty()) {
-                dirs.push_back(cur);
-                cur.clear();
-            }
-            if (*p == '\0') {
-                break;
-            }
-            continue;
-        }
-        cur.push_back(*p);
+    if (host->shaderFactory) {
+        return true;
     }
-    if (dirs.empty()) {
-        dirs.emplace_back(".");
+    if (!host->diligentDevice) {
+        SetError(host, "Diligent device missing for shader factory");
+        return false;
     }
-
-    for (const auto& dir : dirs) {
-        const std::string path = dir + "\\" + fileName;
-        std::ifstream in(path, std::ios::binary);
-        if (!in) {
-            const std::string pathFwd = dir + "/" + fileName;
-            in.open(pathFwd, std::ios::binary);
-            if (!in) {
-                continue;
-            }
-        }
-        std::ostringstream ss;
-        ss << in.rdbuf();
-        out = ss.str();
-        if (!out.empty()) {
-            return true;
-        }
+    auto* engFactory = host->diligentDevice->GetEngineFactory();
+    if (!engFactory) {
+        SetError(host, "GetEngineFactory failed");
+        return false;
     }
-    SetError(host, "SmoothMipDownsample.hlsl not found in shader search dirs");
-    return false;
+    const char* dirs = host->shaderSearchDirs[0] ? host->shaderSearchDirs : ".";
+    engFactory->CreateDefaultShaderSourceStreamFactory(dirs, &host->shaderFactory);
+    if (!host->shaderFactory) {
+        SetError(host, "CreateDefaultShaderSourceStreamFactory failed");
+        return false;
+    }
+    return true;
 }
 
 bool CreateMipPipeline(Host* host)
 {
-    std::string hlsl;
-    if (!TryLoadShaderFile(host, "SmoothMipDownsample.hlsl", hlsl)) {
+    if (!EnsureShaderFactory(host)) {
         return false;
     }
-    /* SMOOTH_SRGB8=0 for RGBA16F Working (Geo); define before source for FXC/Diligent. */
-    const std::string source = std::string("#define SMOOTH_SRGB8 0\n") + hlsl;
 
     ShaderCreateInfo sci{};
     sci.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
     sci.Desc.ShaderType = SHADER_TYPE_COMPUTE;
     sci.EntryPoint = "SmoothMipDownsampleCS";
     sci.Desc.Name = "SmoothMipDownsampleCS";
-    sci.Source = source.c_str();
-    sci.SourceLength = source.size();
+    sci.FilePath = "SmoothMipDownsample.hlsl";
+    sci.pShaderSourceStreamFactory = host->shaderFactory;
+    static const ShaderMacro kMacros[] = { { "SMOOTH_SRGB8", "0" } };
+    sci.Macros = { kMacros, _countof(kMacros) };
 
     RefCntAutoPtr<IShader> cs;
     host->diligentDevice->CreateShader(sci, &cs);
@@ -92,6 +64,7 @@ bool CreateMipPipeline(Host* host)
     ComputePipelineStateCreateInfo psoCI{};
     psoCI.PSODesc.Name = "SmoothMipDownsamplePSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_COMPUTE;
+    psoCI.PSODesc.ResourceLayout.DefaultVariableType = SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE;
     psoCI.pCS = cs;
     host->diligentDevice->CreateComputePipelineState(psoCI, &host->mipPso);
     if (!host->mipPso) {
@@ -106,7 +79,6 @@ bool CreateMipPipeline(Host* host)
 
     BufferDesc cbd{};
     cbd.Name = "SmoothMipCB";
-    cbd.Size = sizeof(psv_downsample_cb) < 128 ? 256 : sizeof(uint32_t) * 24; /* SmoothMipCB ≈ Params+Level+Origin+Slices[4] */
     cbd.Size = 256;
     cbd.Usage = USAGE_DYNAMIC;
     cbd.BindFlags = BIND_UNIFORM_BUFFER;
@@ -118,7 +90,7 @@ bool CreateMipPipeline(Host* host)
     }
 
     host->mipReady = true;
-    SetError(host, "SmoothMipDownsampleCS ready (SMOOTH_SRGB8=0)");
+    ClearError(host);
     return true;
 }
 
@@ -142,17 +114,63 @@ PSV_API int psv_set_shader_search_dirs(void* host_ptr, const char* utf8_dirs)
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (host->deviceLost) {
+        return PSV_DEVICE_LOST;
+    }
     if (!utf8_dirs) {
         host->shaderSearchDirs[0] = '\0';
     } else {
         std::snprintf(host->shaderSearchDirs, sizeof(host->shaderSearchDirs), "%s", utf8_dirs);
+        if (std::strlen(utf8_dirs) >= sizeof(host->shaderSearchDirs)) {
+            SetError(host, "shaderSearchDirs truncated (max 511 chars)");
+        }
     }
+    /* Dirs changed — rebuild factory on next mip pipeline create. */
+    host->shaderFactory.Release();
     return PSV_OK;
 #else
     (void)utf8_dirs;
     SetError(host, "Diligent required for shader dirs");
     return PSV_MISSING_DILIGENT;
 #endif
+}
+
+PSV_API int psv_query_video_memory(
+    void* host_ptr,
+    unsigned long long* out_budget_bytes,
+    unsigned long long* out_current_usage_bytes,
+    unsigned long long* out_available_bytes)
+{
+    auto* host = static_cast<Host*>(host_ptr);
+    if (!host || !out_budget_bytes || !out_current_usage_bytes || !out_available_bytes) {
+        return PSV_BAD_ARGUMENT;
+    }
+    *out_budget_bytes = 0;
+    *out_current_usage_bytes = 0;
+    *out_available_bytes = 0;
+
+    if (host->deviceLost) {
+        SetError(host, "device lost");
+        return PSV_DEVICE_LOST;
+    }
+
+    if (!host->adapter3 && !BindDxgiAdapter3(host)) {
+        SetError(host, "IDXGIAdapter3 unavailable for QueryVideoMemoryInfo");
+        return PSV_FAILED;
+    }
+
+    DXGI_QUERY_VIDEO_MEMORY_INFO info{};
+    HRESULT hr = host->adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info);
+    if (FAILED(hr)) {
+        SetError(host, "QueryVideoMemoryInfo failed");
+        return PSV_FAILED;
+    }
+
+    *out_budget_bytes = info.Budget;
+    *out_current_usage_bytes = info.CurrentUsage;
+    *out_available_bytes = info.Budget > info.CurrentUsage ? (info.Budget - info.CurrentUsage) : 0ull;
+    ClearError(host);
+    return PSV_OK;
 }
 
 PSV_API int psv_tile_pool_create(void* host_ptr, unsigned capacity)
@@ -162,6 +180,10 @@ PSV_API int psv_tile_pool_create(void* host_ptr, unsigned capacity)
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (host->deviceLost) {
+        SetError(host, "device lost");
+        return PSV_DEVICE_LOST;
+    }
     if (!host->diligentReady || !host->diligentDevice) {
         SetError(host, "Diligent not ready for tile pool");
         return PSV_FAILED;
@@ -177,7 +199,8 @@ PSV_API int psv_tile_pool_create(void* host_ptr, unsigned capacity)
     td.ArraySize = capacity;
     td.Format = TEX_FORMAT_RGBA16_FLOAT;
     td.MipLevels = 1;
-    td.BindFlags = BIND_SHADER_RESOURCE | BIND_UNORDERED_ACCESS;
+    /* SRV + CopyTexture dest only — UAV lives on scratch. */
+    td.BindFlags = BIND_SHADER_RESOURCE;
     td.Usage = USAGE_DEFAULT;
     host->diligentDevice->CreateTexture(td, nullptr, &host->tileArray);
     if (!host->tileArray) {
@@ -187,9 +210,10 @@ PSV_API int psv_tile_pool_create(void* host_ptr, unsigned capacity)
 
     TextureDesc sd{};
     sd.Name = "SmoothMipScratch";
-    sd.Type = RESOURCE_DIM_TEX_2D;
+    sd.Type = RESOURCE_DIM_TEX_2D_ARRAY;
     sd.Width = kSlot;
     sd.Height = kSlot;
+    sd.ArraySize = 1;
     sd.Format = TEX_FORMAT_RGBA16_FLOAT;
     sd.MipLevels = 1;
     sd.BindFlags = BIND_SHADER_RESOURCE | BIND_UNORDERED_ACCESS;
@@ -209,9 +233,7 @@ PSV_API int psv_tile_pool_create(void* host_ptr, unsigned capacity)
 
     host->tileCapacity = capacity;
     host->tilePoolReady = true;
-    char buf[96];
-    std::snprintf(buf, sizeof(buf), "tile pool %u x 512² RGBA16F Working Border=%u", capacity, kBorder);
-    SetError(host, buf);
+    ClearError(host);
     return PSV_OK;
 #else
     (void)capacity;
@@ -248,6 +270,10 @@ PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (host->deviceLost) {
+        SetError(host, "device lost");
+        return PSV_DEVICE_LOST;
+    }
     if (!host->tilePoolReady || !host->tileArray) {
         SetError(host, "tile pool not created");
         return PSV_NOT_ATTACHED;
@@ -280,6 +306,7 @@ PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_
         sub,
         RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
         RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    ClearError(host);
     return PSV_OK;
 #else
     (void)slice;
@@ -302,7 +329,11 @@ PSV_API int psv_tile_mip_box(
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (!host->tilePoolReady || !host->mipReady || !host->mipPso) {
+    if (host->deviceLost) {
+        SetError(host, "device lost");
+        return PSV_DEVICE_LOST;
+    }
+    if (!host->tilePoolReady || !host->mipReady || !host->mipPso || !host->mipSrb || !host->mipCb) {
         SetError(host, "mip pipeline not ready");
         return PSV_FAILED;
     }
@@ -341,33 +372,32 @@ PSV_API int psv_tile_mip_box(
         return PSV_FAILED;
     }
 
-    host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Src")->Set(srcSrv);
-    host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Dst")->Set(dstUav);
-    if (auto* v = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "SmoothMipCB")) {
-        v->Set(host->mipCb);
-    } else if (auto* v0 = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Constants")) {
-        v0->Set(host->mipCb);
-    } else {
-        /* cbuffer register(b0) — Diligent often exposes as buffer name from HLSL */
-        host->mipSrb->GetVariableByIndex(SHADER_TYPE_COMPUTE, 0)->Set(host->mipCb);
+    auto* vSrc = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Src");
+    auto* vDst = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Dst");
+    auto* vCb = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "SmoothMipCB");
+    if (!vSrc || !vDst || !vCb) {
+        SetError(host, "mip SRB missing Src/Dst/SmoothMipCB (need MUTABLE layout)");
+        return PSV_FAILED;
     }
+    vSrc->Set(srcSrv);
+    vDst->Set(dstUav);
+    vCb->Set(host->mipCb);
 
     host->diligentContext->SetPipelineState(host->mipPso);
     host->diligentContext->CommitShaderResources(host->mipSrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     DispatchComputeAttribs disp{ (kSlot + 7) / 8, (kSlot + 7) / 8, 1 };
     host->diligentContext->DispatchCompute(disp);
-    host->diligentContext->Flush();
+    /* No Flush here — batch per level; caller / present path submits. */
 
-    /* Never bind same array SRV+UAV: copy scratch → dst slice. */
     CopyTextureAttribs copy{};
     copy.pSrcTexture = host->mipScratch;
+    copy.SrcSlice = 0;
     copy.pDstTexture = host->tileArray;
     copy.DstSlice = dst_slice;
     copy.SrcTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     copy.DstTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     host->diligentContext->CopyTexture(copy);
-    host->diligentContext->Flush();
-    SetError(host, "mip box dispatch + CopyTexture ok");
+    ClearError(host);
     return PSV_OK;
 #else
     (void)level_l_w;
@@ -386,9 +416,28 @@ PSV_API int psv_tile_mip_ready(void* host_ptr)
         return 0;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    return host->mipReady ? 1 : 0;
+    return (!host->deviceLost && host->mipReady) ? 1 : 0;
 #else
     return 0;
+#endif
+}
+
+PSV_API int psv_flush(void* host_ptr)
+{
+    auto* host = static_cast<Host*>(host_ptr);
+    if (!host) {
+        return PSV_BAD_ARGUMENT;
+    }
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (host->deviceLost) {
+        return PSV_DEVICE_LOST;
+    }
+    if (host->diligentContext) {
+        host->diligentContext->Flush();
+    }
+    return PSV_OK;
+#else
+    return PSV_MISSING_DILIGENT;
 #endif
 }
 

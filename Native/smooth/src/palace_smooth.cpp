@@ -21,6 +21,61 @@ void SetError(Host* host, const char* msg)
     }
 }
 
+void ClearError(Host* host)
+{
+    if (host) {
+        host->lastError.clear();
+    }
+}
+
+bool BindDxgiAdapter3(Host* host)
+{
+    if (!host) {
+        return false;
+    }
+    if (host->adapter3) {
+        return true;
+    }
+
+    LUID want{};
+    bool haveLuid = false;
+    if (host->d3d12Device) {
+        want = host->d3d12Device->GetAdapterLuid();
+        haveLuid = true;
+    } else if (host->d3d11Device) {
+        ComPtr<IDXGIDevice> dxgiDev;
+        if (SUCCEEDED(host->d3d11Device.As(&dxgiDev)) && dxgiDev) {
+            ComPtr<IDXGIAdapter> ad;
+            if (SUCCEEDED(dxgiDev->GetAdapter(&ad)) && ad) {
+                return SUCCEEDED(ad.As(&host->adapter3)) && host->adapter3;
+            }
+        }
+        return false;
+    }
+
+    if (!haveLuid || !host->factory) {
+        return false;
+    }
+
+    for (UINT i = 0;; ++i) {
+        ComPtr<IDXGIAdapter1> ad1;
+        if (host->factory->EnumAdapters1(i, &ad1) == DXGI_ERROR_NOT_FOUND) {
+            break;
+        }
+        if (!ad1) {
+            continue;
+        }
+        DXGI_ADAPTER_DESC1 desc{};
+        if (FAILED(ad1->GetDesc1(&desc))) {
+            continue;
+        }
+        if (desc.AdapterLuid.LowPart == want.LowPart && desc.AdapterLuid.HighPart == want.HighPart) {
+            return SUCCEEDED(ad1.As(&host->adapter3)) && host->adapter3;
+        }
+    }
+    return false;
+}
+
 namespace {
 
 constexpr char kVersion[] = "0.2.0-smooth-v1";
@@ -218,11 +273,15 @@ bool InitDiligentD3D12(Host* host)
     host->diligentContext.Attach(contexts[0]);
 
     host->backend = PSV_BACKEND_D3D12;
+    if (!BindDxgiAdapter3(host)) {
+        SetError(host, "BindDxgiAdapter3 failed after D3D12 init");
+        /* Non-fatal for present; VRAM query will fail until rebound. */
+    }
     if (!CreatePatternPipeline(host)) {
         return false;
     }
     host->diligentReady = true;
-    SetError(host, "Diligent D3D12 ready (AttachToD3D12Device)");
+    ClearError(host);
     return true;
 }
 
@@ -259,11 +318,14 @@ bool InitDiligentD3D11(Host* host)
     host->d3d11Device->GetImmediateContext(&host->d3d11Context);
 
     host->backend = PSV_BACKEND_D3D11;
+    if (!BindDxgiAdapter3(host)) {
+        SetError(host, "BindDxgiAdapter3 failed after D3D11 init");
+    }
     if (!CreatePatternPipeline(host)) {
         return false;
     }
     host->diligentReady = true;
-    SetError(host, "Diligent D3D11 ready");
+    ClearError(host);
     return true;
 }
 
