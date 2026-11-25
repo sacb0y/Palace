@@ -268,7 +268,7 @@ HRESULT BindAndDrawImage(Host* host)
         SetError(host, "CreateTextureFromD3DResource failed");
         return E_FAIL;
     }
-    backTex->SetName("SmoothSwapchainBB");
+    /* Diligent v2.5.6: no ITexture::SetName — native ID3D12Resource::SetName above. */
 
     auto* rtv = backTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
     if (!rtv) {
