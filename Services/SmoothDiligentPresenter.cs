@@ -184,7 +184,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             }
 
             // >1 half-ULP at the larger magnitude (approx via nextafter-ish bit delta).
-            if (c != g && Math.Abs(c - g) > 1)
+            // ±0 (0x0000 vs 0x8000) is equal, not 32768 ULP apart.
+            if (c != g && cf != gf && Math.Abs(c - g) > 1)
             {
                 over++;
             }
@@ -202,32 +203,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             $"gpu-vs-cpu mip#{_gpuMipCount} maxAbs={maxAbs:G6} over1ulp={over}");
     }
 
-    private static float HalfBitsToFloat(ushort h)
-    {
-        var sign = (h >> 15) & 1;
-        var exp = (h >> 10) & 0x1f;
-        var mant = h & 0x3ff;
-        if (exp == 0)
-        {
-            if (mant == 0)
-            {
-                return sign == 0 ? 0f : -0f;
-            }
-
-            var f = mant / 1024f * MathF.Pow(2, -14);
-            return sign == 0 ? f : -f;
-        }
-
-        if (exp == 31)
-        {
-            return mant == 0
-                ? (sign == 0 ? float.PositiveInfinity : float.NegativeInfinity)
-                : float.NaN;
-        }
-
-        var val = (1f + mant / 1024f) * MathF.Pow(2, exp - 15);
-        return sign == 0 ? val : -val;
-    }
+    private static float HalfBitsToFloat(ushort h) => (float)BitConverter.UInt16BitsToHalf(h);
 
     public void FlushGpu()
     {

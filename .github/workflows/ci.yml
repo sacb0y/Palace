@@ -198,7 +198,8 @@ jobs:
           Write-Host "OK: $($binDll.FullName)"
 
       - name: Test
-        run: dotnet test Palace.Tests/Palace.Tests.csproj -c Debug --no-restore --logger "trx;LogFileName=results.trx"
+        # Skip FenrirPerf (e.g. 12k×8k wall timing); per-parent GPU emulation still runs.
+        run: dotnet test Palace.Tests/Palace.Tests.csproj -c Debug --no-restore --filter "Category!=FenrirPerf" --logger "trx;LogFileName=results.trx"
 
       # Same Appx publish path as `winapp package --no-sign` (Release + PublishAppxPackage).
       # Catches XAML/compiler breaks that only surface when packaging MSIX.

@@ -42,11 +42,15 @@ public sealed class SmoothTileSession
         Lru = new SmoothGpuTileLru(PoolCapacity, CoarseLevel);
     }
 
+    /// <summary>GPU slot → tile whose CPU bytes were last uploaded there (upload dedup).</summary>
+    private readonly Dictionary<int, SmoothTileId> _gpuSlotHoldsCpu = new();
+
     public void ApplyVramBudget(long availableVramBytes)
     {
         AvailableVramBytes = Math.Max(0, availableVramBytes);
         PoolCapacity = SmoothGpuTileLru.CapacityFromVramBytes(AvailableVramBytes, CoarseTileCount);
         Lru = new SmoothGpuTileLru(PoolCapacity, CoarseLevel);
+        _gpuSlotHoldsCpu.Clear();
     }
 
     /// <summary>
@@ -89,6 +93,7 @@ public sealed class SmoothTileSession
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Cpu.Clear();
         Lru.Reset();
+        _gpuSlotHoldsCpu.Clear();
 
         if (CoarseLevel == 0)
         {
@@ -124,6 +129,7 @@ public sealed class SmoothTileSession
         var (nx, ny) = SmoothTileMath.TileCounts(lw, lh);
         // V1 authoritative path is CPU parents; rematerialize coarse residency for upload.
         Lru.Reset();
+        _gpuSlotHoldsCpu.Clear();
         var count = 0;
         for (var y = 0; y < ny; y++)
         {
@@ -179,12 +185,17 @@ public sealed class SmoothTileSession
                     out var patchOriginY,
                     out var patchW,
                     out var patchH);
+                // BoxDownsampleTileSlot doubles its origin argument into child (level-L)
+                // px, and the patch starts at child px patchOrigin. So pass the parent
+                // origin relative to the patch in PARENT px: (2*ox - patchOrigin) / 2.
+                // (The old `ox - patchOriginX` mixed parent and child px and was only
+                // right for px == 0 / py == 0 — every other CPU parent was misread.)
                 var f32 = SmoothMipDownsampleCpu.BoxDownsampleTileSlot(
                     src,
                     patchW,
                     patchH,
-                    ox - patchOriginX,
-                    oy - patchOriginY);
+                    ox - (patchOriginX / 2),
+                    oy - (patchOriginY / 2));
                 var parentId = new SmoothTileId(parentLevel, px, py);
                 var bytes = Float32SlotToRgba16F(f32);
                 Cpu.Set(parentId, bytes);
@@ -225,11 +236,25 @@ public sealed class SmoothTileSession
                     Lru.SetTempPin(childId, true);
                     tempPinned.Add(childId);
                     slices[i] = (uint)childSlot;
-                    childUploads.Add((childId, (uint)childSlot, childBytes));
+                    // Neighbouring parents share 12 of 16 ring children; only upload a
+                    // child when its slot does not already hold this child's CPU bytes.
+                    if (!_gpuSlotHoldsCpu.TryGetValue(childSlot, out var resident) || resident != childId)
+                    {
+                        childUploads.Add((childId, (uint)childSlot, childBytes));
+                    }
                 }
 
                 if (!childMissing && Lru.TryInsert(parentId, out var parentSlot, out _))
                 {
+                    // The parent slot now holds GPU output (not CPU bytes): force a CPU
+                    // upload when it is used as a child next level, so each level's GPU
+                    // input stays byte-identical to the CPU reference input.
+                    _gpuSlotHoldsCpu.Remove(parentSlot);
+                    foreach (var (upId, upSlot, _) in childUploads)
+                    {
+                        _gpuSlotHoldsCpu[(int)upSlot] = upId;
+                    }
+
                     gpuMip?.Invoke(new SmoothGpuMipRequest(
                         ChildLevelWidth: childW,
                         ChildLevelHeight: childH,
@@ -409,33 +434,10 @@ public sealed class SmoothTileSession
         dest[offset + 1] = (byte)(h >> 8);
     }
 
-    private static float HalfBitsToFloat32(byte lo, byte hi)
-    {
-        var h = (ushort)(lo | (hi << 8));
-        var sign = (h >> 15) & 1;
-        var exp = (h >> 10) & 0x1f;
-        var mant = h & 0x3ff;
-        if (exp == 0)
-        {
-            if (mant == 0)
-            {
-                return sign == 0 ? 0f : -0f;
-            }
-
-            var f = mant / 1024f * MathF.Pow(2, -14);
-            return sign == 0 ? f : -f;
-        }
-
-        if (exp == 31)
-        {
-            return mant == 0
-                ? (sign == 0 ? float.PositiveInfinity : float.NegativeInfinity)
-                : float.NaN;
-        }
-
-        var val = (1f + mant / 1024f) * MathF.Pow(2, exp - 15);
-        return sign == 0 ? val : -val;
-    }
+    // Exact half→float (hardware/BCL path). The old MathF.Pow-per-channel version
+    // was the hottest loop in the pyramid build (~4M calls per parent tile).
+    private static float HalfBitsToFloat32(byte lo, byte hi) =>
+        (float)BitConverter.UInt16BitsToHalf((ushort)(lo | (hi << 8)));
 
     /// <summary>IEEE float16 bit pattern with round-to-nearest-even.</summary>
     public static ushort Float32ToFloat16Bits(float value)
