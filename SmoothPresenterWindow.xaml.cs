@@ -532,18 +532,12 @@ public sealed partial class SmoothPresenterWindow : Window
             eased = _targetZoom;
         }
 
-        var (nz, ntx, nty) = SmoothViewport.ZoomAbout(_zoom, _tx, _ty, eased, _lastPan.X, _lastPan.Y);
-        // When not actively wheeling about a cursor, keep current pan pivot via last pan.
-        _ = nz;
-        var scale = eased / Math.Max(_zoom, 1e-6f);
-        // Re-zoom about panel center when no recent wheel point — use last pan as cursor.
-        var about = SmoothViewport.ZoomAbout(_zoom, _tx, _ty, eased, (float)_lastPan.X, (float)_lastPan.Y);
+        // Ease toward target about last cursor (device px); Point is double.
+        var about = SmoothViewport.ZoomAbout(
+            _zoom, _tx, _ty, eased, (float)_lastPan.X, (float)_lastPan.Y);
         _zoom = about.Zoom;
         _tx = about.Tx;
         _ty = about.Ty;
-        _ = scale;
-        _ = ntx;
-        _ = nty;
         _transformDirty = true;
     }
 
