@@ -755,6 +755,10 @@ public sealed class HdrFileTests
             "a.hdr", 2000, 2000, "a.hdr", 2000, 2000));
         Assert.False(GalleryPresent.IsSameSettleDecodeKey(
             "a.hdr", 2000, 2000, "a.hdr", 1999, 2000));
+        // PresentOnce settle Refresh must be gated + UI-marshalled (Doktor).
+        Assert.True(GalleryPresent.ShouldQueueSettleRefresh(true, true));
+        Assert.False(GalleryPresent.ShouldQueueSettleRefresh(true, false));
+        Assert.False(GalleryPresent.ShouldQueueSettleRefresh(false, true));
         // PanelCapScale prefers CompositionScale when reliable.
         Assert.Equal(
             1.5f,
@@ -788,6 +792,8 @@ public sealed class HdrFileTests
                 "zoom.hdr", 7680, 4320, 4096, 2304, 5120, 2880, "Cancelled", 1.25, 1.25, "oversize");
             HdrPresentLog.TryAppendDecodeStart("zoom.hdr", 2160, 3840, detail: "refresh");
             HdrPresentLog.TryAppendDecodeCancel("zoom.hdr", 2160, 3840, detail: "refresh");
+            HdrPresentLog.TryAppendDecodeSuperseded(
+                "zoom.hdr", 2160, 3840, detail: "refresh");
             var text = File.ReadAllText(HdrPresentLog.PathOverride!);
             Assert.Contains("decode=7680x4320", text);
             Assert.Contains("panelDip=4096x2304", text);
@@ -795,7 +801,12 @@ public sealed class HdrFileTests
             Assert.Contains("result=Cancelled", text);
             Assert.Contains("result=DecodeStart", text);
             Assert.Contains("result=DecodeCancelled", text);
+            Assert.Contains("result=DecodeSuperseded", text);
             Assert.Contains("decode=2160x3840", text);
+            Assert.Equal("Presented", HdrPresentLog.PresentOutcomeLabel(true, false, true));
+            Assert.Equal("Cancelled", HdrPresentLog.PresentOutcomeLabel(false, true, true));
+            Assert.Equal("Superseded", HdrPresentLog.PresentOutcomeLabel(false, true, false));
+            Assert.Equal("Failed", HdrPresentLog.PresentOutcomeLabel(false, false, true));
             Assert.Contains(
                 HdrPresentLog.FormatLine(
                     "zoom.hdr", 7680, 4320, 4096, 2304, 5120, 2880, "Cancelled", 1.25, 1.25),
@@ -830,6 +841,33 @@ public sealed class HdrFileTests
 
         using var minted = GalleryPresent.LiveTokenSource(null);
         Assert.False(minted.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task QueueSettleRefreshAsync_MarshalsOntoUiCallback()
+    {
+        var ranOnUi = 0;
+        var started = 0;
+        await GalleryPresent.QueueSettleRefreshAsync(
+            needsBetterDecode: true,
+            stillCurrent: true,
+            runOnUi: action =>
+            {
+                ranOnUi++;
+                action();
+                return Task.CompletedTask;
+            },
+            startRefresh: () => started++);
+        Assert.Equal(1, ranOnUi);
+        Assert.Equal(1, started);
+
+        await GalleryPresent.QueueSettleRefreshAsync(
+            needsBetterDecode: true,
+            stillCurrent: false,
+            runOnUi: _ => throw new InvalidOperationException("must not marshal"),
+            startRefresh: () => started++);
+        Assert.Equal(1, ranOnUi);
+        Assert.Equal(1, started);
     }
 
     [Fact]

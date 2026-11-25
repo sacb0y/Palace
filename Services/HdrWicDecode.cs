@@ -185,7 +185,8 @@ internal static class HdrWicDecode
             {
                 var png = await Task.Run(
                     () => FromManagedPng(
-                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, buildWorking),
+                        path, probe, viewportPixelWidth, viewportPixelHeight, scaling, buildWorking,
+                        cancellation),
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
@@ -469,7 +470,8 @@ internal static class HdrWicDecode
                         viewportPixelWidth,
                         viewportPixelHeight,
                         ImageScaling.Fit,
-                        buildWorking: false),
+                        buildWorking: false,
+                        cancellation),
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
@@ -1381,13 +1383,16 @@ internal static class HdrWicDecode
         int viewportPixelWidth,
         int viewportPixelHeight,
         ImageScaling scaling,
-        bool buildWorking)
+        bool buildWorking,
+        CancellationToken cancellation = default)
     {
-        var encoded = PngFile.TryDecodeEncodedRgba(path);
+        var encoded = PngFile.TryDecodeEncodedRgba(path, cancellation);
         if (encoded is null)
         {
             return null;
         }
+
+        cancellation.ThrowIfCancellationRequested();
 
         var nativeW = encoded.Value.Width;
         var nativeH = encoded.Value.Height;
