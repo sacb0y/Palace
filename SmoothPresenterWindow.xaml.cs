@@ -41,6 +41,9 @@ public sealed partial class SmoothPresenterWindow : Window
     private float _lastPanX;
     private float _lastPanY;
     private bool _transformDirty;
+    /// <summary>Last panel size used for fit/pan (device px) — SizeChanged preserve.</summary>
+    private float _panelDevW = 1f;
+    private float _panelDevH = 1f;
     private int _exifOrientation = 1;
     private int _storedW = 1;
     private int _storedH = 1;
@@ -538,6 +541,43 @@ public sealed partial class SmoothPresenterWindow : Window
         _targetZoom = fit.Zoom;
         _tx = fit.Tx;
         _ty = fit.Ty;
+        _panelDevW = panelW;
+        _panelDevH = panelH;
+        _presenter.SetViewportTransform(_zoom, _tx, _ty);
+        _transformDirty = false;
+    }
+
+    /// <summary>
+    /// SizeChanged while armed: refit only when at fit; else keep zoom/pan about
+    /// the image point under the old panel center (Wimbly blocker on tip 8356b5d).
+    /// </summary>
+    private void ApplyPanelResizeTransform(float newPanelW, float newPanelH)
+    {
+        if (_presenter is null)
+        {
+            return;
+        }
+
+        ApplyOrientationToPresenter();
+        var orient = SmoothViewport.ExifOrient.FromExif(_exifOrientation, _storedW, _storedH);
+        var next = SmoothViewportArmPolicy.AfterPanelResize(
+            _panelDevW,
+            _panelDevH,
+            newPanelW,
+            newPanelH,
+            _zoom,
+            _tx,
+            _ty,
+            _fitZoom,
+            orient.OrientedWidth,
+            orient.OrientedHeight);
+        _fitZoom = next.FitZoom;
+        _zoom = next.Zoom;
+        _targetZoom = next.Zoom;
+        _tx = next.Tx;
+        _ty = next.Ty;
+        _panelDevW = newPanelW;
+        _panelDevH = newPanelH;
         _presenter.SetViewportTransform(_zoom, _tx, _ty);
         _transformDirty = false;
     }
@@ -696,7 +736,7 @@ public sealed partial class SmoothPresenterWindow : Window
         _presenter.Resize(dipW, dipH, sx, sy);
         if (_presenter.IsViewportArmed)
         {
-            ApplyFitTransformFromPanel();
+            ApplyPanelResizeTransform((float)(dipW * sx), (float)(dipH * sy));
         }
 
         TxtSmoothStatus.Text = _presenter.Status;
@@ -715,11 +755,11 @@ public sealed partial class SmoothPresenterWindow : Window
             return;
         }
 
-        // ResizeBuffers + fit only — never rebuild pyramid.
+        // ResizeBuffers + preserve zoom/pan (or refit if at fit) — never rebuild pyramid.
         _presenter.Resize(dipW, dipH, sx, sy);
         if (_presenter.IsViewportArmed)
         {
-            ApplyFitTransformFromPanel();
+            ApplyPanelResizeTransform((float)(dipW * sx), (float)(dipH * sy));
         }
 
         TxtSmoothStatus.Text = _presenter.Status;

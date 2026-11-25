@@ -137,9 +137,9 @@ PSV_API int psv_viewport_set_instances(
 PSV_API int psv_viewport_ready(void* host);
 
 /*
- * Debug evidence: ID3D12Device5::RemoveDevice when built as _DEBUG.
- * Release builds compile to a stub that returns PSV_FAILED (no RemoveDevice).
- * Driven by PALACE_SMOOTH_TEST_REMOVE_DEVICE=1 from the managed host.
+ * Evidence: ID3D12Device5::RemoveDevice when built with PSV_TEST_HOOKS
+ * (CMake Debug config). Release / CI DLLs stub to PSV_FAILED — no RemoveDevice
+ * in the binary. Driven by PALACE_SMOOTH_TEST_REMOVE_DEVICE=1 from managed host.
  */
 PSV_API int psv_debug_remove_device(void* host);
 

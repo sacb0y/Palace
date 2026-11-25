@@ -69,4 +69,47 @@ public sealed class SmoothViewportArmPolicyTests
         Assert.Contains("gpuEvidence=OFF", session.StatusLine(gpuEvidenceOn: false), StringComparison.Ordinal);
         Assert.Contains("gpuEvidence=ON", session.StatusLine(gpuEvidenceOn: true), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void AfterPanelResize_AtFit_RefitsCentered()
+    {
+        var fit = SmoothViewportArmPolicy.FitCentered(800, 600, 100, 50);
+        var next = SmoothViewportArmPolicy.AfterPanelResize(
+            oldPanelW: 800, oldPanelH: 600,
+            newPanelW: 400, newPanelH: 300,
+            zoom: fit.Zoom, tx: fit.Tx, ty: fit.Ty,
+            previousFitZoom: fit.FitZoom,
+            orientedWidth: 100, orientedHeight: 50);
+        var expect = SmoothViewportArmPolicy.FitCentered(400, 300, 100, 50);
+        Assert.Equal(expect.Zoom, next.Zoom, precision: 4);
+        Assert.Equal(expect.Tx, next.Tx, precision: 3);
+        Assert.Equal(expect.Ty, next.Ty, precision: 3);
+        Assert.True(SmoothViewportArmPolicy.IsAtFit(next.Zoom, next.FitZoom));
+    }
+
+    [Fact]
+    public void AfterPanelResize_Zoomed_KeepsZoomAndCenterImagePoint()
+    {
+        // Start fit, then zoom about panel center to 2× (still within max).
+        var fit = SmoothViewportArmPolicy.FitCentered(800, 600, 100, 50);
+        var zoomed = SmoothViewport.ZoomAbout(
+            fit.Zoom, fit.Tx, fit.Ty, newZoom: 2f, cx: 400f, cy: 300f);
+        Assert.False(SmoothViewportArmPolicy.IsAtFit(zoomed.Zoom, fit.FitZoom));
+
+        var next = SmoothViewportArmPolicy.AfterPanelResize(
+            oldPanelW: 800, oldPanelH: 600,
+            newPanelW: 1000, newPanelH: 700,
+            zoom: zoomed.Zoom, tx: zoomed.Tx, ty: zoomed.Ty,
+            previousFitZoom: fit.FitZoom,
+            orientedWidth: 100, orientedHeight: 50);
+
+        Assert.Equal(2f, next.Zoom, precision: 4);
+        // Image point under old center stays under new center.
+        var oldImgX = (400f - zoomed.Tx) / zoomed.Zoom;
+        var oldImgY = (300f - zoomed.Ty) / zoomed.Zoom;
+        var newImgX = (500f - next.Tx) / next.Zoom;
+        var newImgY = (350f - next.Ty) / next.Zoom;
+        Assert.Equal(oldImgX, newImgX, precision: 3);
+        Assert.Equal(oldImgY, newImgY, precision: 3);
+    }
 }

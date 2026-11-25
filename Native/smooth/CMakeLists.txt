@@ -60,6 +60,8 @@ target_compile_definitions(palace_smooth PRIVATE
   _UNICODE
   NOMINMAX
   WIN32_LEAN_AND_MEAN
+  # Fenrir evidence hooks (RemoveDevice). Debug config only — Release CI/DLL stubs.
+  $<$<CONFIG:Debug>:PSV_TEST_HOOKS=1>
 )
 target_link_libraries(palace_smooth PRIVATE d3d12 d3d11 dxgi d3dcompiler)
 

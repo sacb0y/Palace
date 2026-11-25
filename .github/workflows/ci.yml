@@ -146,6 +146,12 @@ jobs:
               Write-Warning "Expected system dep hint '$need' not seen (may be delay-loaded); continuing"
             }
           }
+          # Release must not contain RemoveDevice evidence hooks (PSV_TEST_HOOKS is Debug-only).
+          $strings = & $dumpbin.FullName /STRINGS $dll.Path 2>&1 | Out-String
+          if ($strings -match 'RemoveDevice invoked') {
+            throw "Release palace_smooth.dll must not contain RemoveDevice hook strings (PSV_TEST_HOOKS leak)"
+          }
+          Write-Host "OK: Release DLL has no RemoveDevice hook strings"
 
       # Full MarkupCompile with RID (same XAML path as winapp run / packaged Debug).
       # --no-incremental forces a clean XAML pass so WMC9999-class failures are not skipped.

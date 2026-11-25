@@ -770,7 +770,7 @@ PSV_API int psv_backend(void* host_ptr)
 
 PSV_API int psv_debug_remove_device(void* host_ptr)
 {
-#if !defined(_DEBUG)
+#if !defined(PSV_TEST_HOOKS)
     (void)host_ptr;
     return PSV_FAILED;
 #else

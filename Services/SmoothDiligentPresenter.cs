@@ -49,6 +49,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private readonly Func<SmoothTileId, uint?> _trySlice;
     private long _lastTickQpc;
     private int _lastUploads;
+    private bool _testRemoveDeviceFired;
     private const int MaxUploadsPerFrame = 4;
 
     /// <summary>True while a background pyramid build owns the session.</summary>
@@ -384,20 +385,19 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         _life.MarkAttached(w, h);
         _status = $"attached {w}x{h} {SmoothPresenterNative.GetBackend(_host)}";
-#if DEBUG
-        MaybeInvokeTestRemoveDevice();
-#endif
         return Tick();
     }
 
 #if DEBUG
     /// <summary>
-    /// Fenrir evidence: <c>PALACE_SMOOTH_TEST_REMOVE_DEVICE=1</c> → native
-    /// <c>ID3D12Device5::RemoveDevice</c> (compiled out of Release).
+    /// Fenrir evidence: fire once on the first armed frame (not at attach) so
+    /// recreate + coarse re-upload + re-arm are exercised.
+    /// Env <c>PALACE_SMOOTH_TEST_REMOVE_DEVICE=1</c>. Native needs CMake Debug
+    /// (<c>PSV_TEST_HOOKS</c>); Release/CI DLL stubs without calling RemoveDevice.
     /// </summary>
-    private void MaybeInvokeTestRemoveDevice()
+    private void MaybeInvokeTestRemoveDeviceOnceArmed()
     {
-        if (_host == 0)
+        if (_testRemoveDeviceFired || !_viewportArmed || _host == 0)
         {
             return;
         }
@@ -410,6 +410,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
+        _testRemoveDeviceFired = true;
         var st = SmoothPresenterNative.DebugRemoveDevice(_host);
         _status = $"test RemoveDevice → {st}";
         if (st == SmoothPresenterNative.StatusCode.DeviceLost)
@@ -534,6 +535,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         PushV2FrameIfArmed();
+#if DEBUG
+        // After first armed push — exercises recreate/re-upload/re-arm (not attach).
+        MaybeInvokeTestRemoveDeviceOnceArmed();
+#endif
 
         var result = SmoothPresenterNative.RenderFrame(_host);
         if (result == SmoothPresenterNative.StatusCode.DeviceLost)
