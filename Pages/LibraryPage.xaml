@@ -210,13 +210,16 @@
                                 Text="Review"
                                 ToolTipService.ToolTip="Review selection or this folder (swipe left reject, right keep, up skip)"
                                 Visibility="Collapsed" />
+                            <!-- Face Delete rejected stays visible; a bound twin would
+                                 duplicate in More whenever compact/tight (same rule as
+                                 Organize / Review). Ctrl+Shift+Del is handled on the page. -->
                             <MenuFlyoutItem
                                 x:Name="MnuToolbarDeleteRejected"
                                 AutomationProperties.AutomationId="MnuToolbarDeleteRejected"
                                 Command="{x:Bind ViewModel.DeleteRejectedFromToolbarCommand}"
                                 KeyboardAcceleratorTextOverride="Ctrl+Shift+Del"
                                 Text="Delete rejected…"
-                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDeleteRejectedToolbar), Mode=OneWay}" />
+                                Visibility="Collapsed" />
                             <MenuFlyoutSeparator
                                 x:Name="SepToolbarTight"
                                 Visibility="Collapsed" />
