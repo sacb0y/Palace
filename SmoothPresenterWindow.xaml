@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Palace.SmoothPresenterWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Palace Smooth Presenter (V0)">
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <StackPanel
+            Padding="12,8"
+            Spacing="4"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+            <TextBlock
+                x:Name="TxtSmoothStatus"
+                AutomationProperties.AutomationId="TxtSmoothStatus"
+                Style="{StaticResource BodyTextBlockStyle}"
+                Text="Starting Diligent presenter…"
+                TextWrapping="WrapWholeWords" />
+            <TextBlock
+                x:Name="TxtSmoothHint"
+                AutomationProperties.AutomationId="TxtSmoothHint"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="RGBA16F scRGB · latency 1 · HDR test pattern. Frame times → smooth-presenter-frames.log"
+                TextWrapping="WrapWholeWords" />
+        </StackPanel>
+        <SwapChainPanel
+            x:Name="ScpSmooth"
+            Grid.Row="1"
+            AutomationProperties.AutomationId="ScpSmooth"
+            CompositionScaleChanged="ScpSmooth_CompositionScaleChanged"
+            SizeChanged="ScpSmooth_SizeChanged" />
+    </Grid>
+</Window>

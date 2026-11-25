@@ -103,6 +103,8 @@ public partial class SettingsViewModel : ObservableObject
 
     public string KeepZoomBetweenImagesCaption { get; } = ViewerSettings.KeepZoomBetweenImagesCaption;
 
+    public string SmoothPresenterCaption { get; } = ViewerSettings.SmoothPresenterCaption;
+
     [ObservableProperty]
     public partial string SelectedDefaultZoom { get; set; } = ViewerSettings.ZoomLabel(ViewerSettings.DefaultZoom);
 
@@ -117,6 +119,9 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool KeepZoomBetweenImages { get; set; } = ViewerSettings.DefaultKeepZoomBetweenImages;
+
+    [ObservableProperty]
+    public partial bool SmoothPresenterEnabled { get; set; } = ViewerSettings.DefaultSmoothPresenter;
 
     [ObservableProperty]
     public partial SourceFolderItem? SelectedSource { get; set; }
@@ -521,6 +526,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedDefaultZoom = ViewerSettings.ZoomLabel(ViewerSettings.DefaultZoomMode);
         TouchGesturesEnabled = ViewerSettings.TouchGesturesEnabled;
         KeepZoomBetweenImages = ViewerSettings.KeepZoomBetweenImages;
+        SmoothPresenterEnabled = ViewerSettings.SmoothPresenterEnabled;
         var values = ApplicationData.Current.LocalSettings.Values;
         ShowDetailsByDefault = GalleryChrome.ParseShowDetails(values[GalleryChrome.ShowDetailsKey]);
         LoopVideo = GalleryChrome.ParseLoopVideo(values[GalleryChrome.LoopVideoKey]);
@@ -533,9 +539,10 @@ public partial class SettingsViewModel : ObservableObject
         values[ViewerSettings.DefaultZoomKey] = ViewerSettings.PersistZoom(zoom);
         values[ViewerSettings.TouchGesturesKey] = TouchGesturesEnabled;
         values[ViewerSettings.KeepZoomBetweenImagesKey] = KeepZoomBetweenImages;
+        values[ViewerSettings.SmoothPresenterKey] = SmoothPresenterEnabled;
         values[GalleryChrome.ShowDetailsKey] = ShowDetailsByDefault;
         values[GalleryChrome.LoopVideoKey] = LoopVideo;
-        ViewerSettings.Apply(zoom, TouchGesturesEnabled, KeepZoomBetweenImages);
+        ViewerSettings.Apply(zoom, TouchGesturesEnabled, KeepZoomBetweenImages, SmoothPresenterEnabled);
     }
 
     private void LoadPerformanceChrome()
@@ -728,6 +735,43 @@ public partial class SettingsViewModel : ObservableObject
         StatusText = value
             ? "Keep zoom between images on."
             : "Keep zoom off — each image opens at Default zoom.";
+    }
+
+    partial void OnSmoothPresenterEnabledChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistViewerChrome();
+        StatusText = value
+            ? "Smooth GPU presenter on (experimental)."
+            : "Smooth GPU presenter off — current viewer unchanged.";
+    }
+
+    /// <summary>
+    /// Opens the Diligent SwapChainPanel presenter window when the setting is on.
+    /// </summary>
+    public Action? RequestOpenSmoothPresenter { get; set; }
+
+    [RelayCommand]
+    private void OpenSmoothPresenter()
+    {
+        if (!SmoothPresenterEnabled)
+        {
+            StatusText = "Turn on Smooth GPU presenter first.";
+            return;
+        }
+
+        if (RequestOpenSmoothPresenter is null)
+        {
+            StatusText = "Presenter host not wired.";
+            return;
+        }
+
+        RequestOpenSmoothPresenter.Invoke();
+        StatusText = "Opened smooth presenter window.";
     }
 
     partial void OnSelectedSourceChanged(SourceFolderItem? value) => SyncSourceSelection();

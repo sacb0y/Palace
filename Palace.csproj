@@ -17,7 +17,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Version / AssemblyVersion / FileVersion / InformationalVersion come from Directory.Build.props (PalaceVersion). -->
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**</DefaultItemExcludes>
+    <!-- Native/smooth/build|out is Diligent FetchContent — must not compile its .NET / SPIRV .cs into WinUI.
+         Do not add SharpGen or build Diligent's .NET projects. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**;Native\smooth\build\**;Native\smooth\out\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,6 +28,12 @@
     <Content Include="Native\openexr\win-x64\palace_exr.dll" Link="palace_exr.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Native\openexr\win-x64\LICENSE.txt" Link="openexr\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Native\openexr\win-x64\SOURCE.txt" Link="openexr\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Smooth Viewer V0 Diligent presenter (CI / FENRIR-STUDIO cmake Native/smooth). -->
+    <Content Include="Native\smooth\win-x64\palace_smooth.dll" Link="palace_smooth.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('Native\smooth\win-x64\palace_smooth.dll')" />
+    <Content Include="Native\smooth\win-x64\SOURCE.txt" Link="smooth\SOURCE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Native\smooth\win-x64\THIRD_PARTY.md" Link="smooth\THIRD_PARTY.md" CopyToOutputDirectory="PreserveNewest" />
+    <!-- DiligentCore Apache-2.0 full LICENSE (upstream License.txt @ v2.5.6; no NOTICE in that tag). -->
+    <Content Include="Native\smooth\win-x64\ThirdParty\DiligentCore\LICENSE" Link="ThirdParty\DiligentCore\LICENSE" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

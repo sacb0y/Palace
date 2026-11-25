@@ -1,0 +1,3 @@
+palace_smooth — Palace Smooth Viewer V0 Diligent presenter (D3D12 / D3D11).
+Built from Native/smooth in this repository. DiligentCore is fetched at build time
+(see THIRD_PARTY.md); it is not vendored in-tree.

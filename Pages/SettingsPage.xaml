@@ -1113,6 +1113,29 @@
                                 OffContent="Off"
                                 OnContent="On" />
                         </controls:SettingsCard>
+                        <controls:SettingsCard
+                            x:Name="CardSmoothPresenter"
+                            AutomationProperties.AutomationId="CardSmoothPresenter"
+                            Description="{x:Bind ViewModel.SmoothPresenterCaption, Mode=OneWay}"
+                            Header="Smooth GPU presenter (experimental)"
+                            Style="{StaticResource PalaceSettingsCardStyle}">
+                            <StackPanel Orientation="Horizontal" Spacing="12">
+                                <ToggleSwitch
+                                    x:Name="TglSmoothPresenter"
+                                    AutomationProperties.AutomationId="TglSmoothPresenter"
+                                    AutomationProperties.Name="Smooth GPU presenter"
+                                    IsOn="{x:Bind ViewModel.SmoothPresenterEnabled, Mode=TwoWay}"
+                                    OffContent="Off"
+                                    OnContent="On" />
+                                <Button
+                                    x:Name="BtnOpenSmoothPresenter"
+                                    AutomationProperties.AutomationId="BtnOpenSmoothPresenter"
+                                    AutomationProperties.Name="Open smooth presenter"
+                                    Command="{x:Bind ViewModel.OpenSmoothPresenterCommand, Mode=OneWay}"
+                                    Content="Open presenter"
+                                    IsEnabled="{x:Bind ViewModel.SmoothPresenterEnabled, Mode=OneWay}" />
+                            </StackPanel>
+                        </controls:SettingsCard>
                         <controls:SettingsExpander
                             x:Name="CardHdr"
                             HorizontalContentAlignment="Stretch"

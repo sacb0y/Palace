@@ -66,6 +66,7 @@ public sealed partial class SettingsPage : Page
         {
             ViewModel.RequestPickCloudFolder = PickCloudFolderAsync;
             ViewModel.RequestConfirm = AskConfirmAsync;
+            ViewModel.RequestOpenSmoothPresenter = OpenSmoothPresenterWindow;
             await ErrorReporter.RunAsync("Load settings", null, ViewModel.LoadAsync);
             SyncTintPicker();
             ViewModel.RefreshBackgroundPresetSwatches();
@@ -86,11 +87,18 @@ public sealed partial class SettingsPage : Page
             ShellBackdrop.DetachPreview();
             ViewModel.RequestPickCloudFolder = null;
             ViewModel.RequestConfirm = null;
+            ViewModel.RequestOpenSmoothPresenter = null;
             ViewModel.PropertyChanged -= ViewModelOnPropertyChanged;
             ClearSearchHighlight();
             _highlightTimer?.Stop();
         };
         ViewModel.PropertyChanged += ViewModelOnPropertyChanged;
+    }
+
+    private void OpenSmoothPresenterWindow()
+    {
+        var window = new SmoothPresenterWindow();
+        window.Activate();
     }
 
     private void ShellBackground_PreviewChanged(object? sender, EventArgs e) => RefreshShellPreview();

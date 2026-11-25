@@ -52,6 +52,68 @@ jobs:
           dotnet restore Palace.csproj -p:Platform=x64 -r win-x64
           dotnet restore Palace.Tests/Palace.Tests.csproj
 
+      # Diligent FetchContent source tree (~10 min cold). Split restore/save so a later
+      # step failure still persists _deps (monolithic actions/cache only saves on success).
+      # Palace.csproj DefaultItemExcludes Native\smooth\build\** so .NET / SPIRV .cs are not compiled.
+      - name: Restore DiligentCore _deps cache
+        id: cache-diligent
+        uses: actions/cache/restore@v4
+        with:
+          path: Native/smooth/build/_deps
+          key: palace-smooth-diligent-v2.5.6-mt-${{ hashFiles('Native/smooth/CMakeLists.txt', 'Native/smooth/src/**', 'Native/smooth/include/**') }}
+
+      # Smooth Viewer V0: Diligent presenter DLL (FetchContent DiligentCore).
+      # In-tree build/_deps is gitignored + DefaultItemExcluded (no SharpGen / Diligent.NET).
+      # --target palace_smooth: static engines only (shared Diligent DLLs EXCLUDE_FROM_ALL).
+      - name: Build palace_smooth.dll (Diligent)
+        id: build-smooth
+        shell: pwsh
+        run: |
+          $build = "Native/smooth/build"
+          cmake -S Native/smooth -B $build -A x64 -DCMAKE_BUILD_TYPE=Release -DPALACE_SMOOTH_WITH_DILIGENT=ON
+          cmake --build $build --config Release --parallel --target palace_smooth
+          New-Item -ItemType Directory -Force -Path Native/smooth/win-x64 | Out-Null
+          $dll = Get-ChildItem -Path $build -Recurse -Filter palace_smooth.dll | Select-Object -First 1
+          if (-not $dll) { throw "palace_smooth.dll not found after cmake build" }
+          Copy-Item -Force $dll.FullName Native/smooth/win-x64/palace_smooth.dll
+          Write-Host "Packaged $($dll.FullName) -> Native/smooth/win-x64/palace_smooth.dll"
+
+      - name: Save DiligentCore _deps cache
+        if: always() && steps.cache-diligent.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: Native/smooth/build/_deps
+          key: ${{ steps.cache-diligent.outputs.cache-primary-key }}
+
+      # Runtime HLSL uses D3DCompile (d3dcompiler) / Diligent FXC path — no dxcompiler/dxil package.
+      # Static CRT: refuse MSVCP140 / VCRUNTIME140*; also refuse Diligent shared / DXC DLLs.
+      - name: Verify palace_smooth.dll dependents
+        shell: pwsh
+        run: |
+          $dll = Resolve-Path "Native/smooth/win-x64/palace_smooth.dll"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $dumpbin = Get-ChildItem -Path $vs -Recurse -Filter dumpbin.exe |
+            Where-Object { $_.FullName -match '\\Hostx64\\x64\\dumpbin\.exe$' } |
+            Select-Object -First 1
+          if (-not $dumpbin) { throw "dumpbin.exe not found under $vs" }
+          $out = & $dumpbin.FullName /DEPENDENTS $dll.Path 2>&1 | Out-String
+          Write-Host $out
+          $bad = @(
+            'dxcompiler', 'dxil', 'GraphicsEngineD3D', 'Diligent', 'glslang', 'SPIRV',
+            'MSVCP140', 'VCRUNTIME140'
+          )
+          foreach ($name in $bad) {
+            if ($out -match [regex]::Escape($name)) {
+              throw "palace_smooth.dll must not depend on $name (got: matched in dumpbin output)"
+            }
+          }
+          foreach ($need in @('d3d12.dll', 'dxgi.dll', 'd3dcompiler')) {
+            if ($out -notmatch [regex]::Escape($need)) {
+              Write-Warning "Expected system dep hint '$need' not seen (may be delay-loaded); continuing"
+            }
+          }
+
       # Full MarkupCompile with RID (same XAML path as winapp run / packaged Debug).
       # --no-incremental forces a clean XAML pass so WMC9999-class failures are not skipped.
       - name: Build Palace (Debug x64, packaged TFM/RID)
@@ -75,6 +137,36 @@ jobs:
           /p:UapAppxPackageBuildMode=SideloadOnly
           /p:AppxPackageDir=Artifacts\Msix\
           /restore
+
+      # SideloadOnly writes Palace_*.msix (zip), not an expanded AppX folder.
+      - name: Verify palace_smooth.dll at Appx package root
+        shell: pwsh
+        run: |
+          $msix = Get-ChildItem -Path Artifacts\Msix -Recurse -Filter *.msix -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'Palace_*.msix' -and $_.FullName -notmatch '\\Dependencies\\' } |
+            Select-Object -First 1
+          if (-not $msix) { throw "Palace_*.msix missing under Artifacts\Msix" }
+          Write-Host "Inspecting $($msix.FullName)"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($msix.FullName)
+          try {
+            $names = @($zip.Entries | ForEach-Object { ($_.FullName -replace '\\', '/').TrimStart('/') })
+            $dlls = $names | Where-Object { $_ -match '\.dll$' }
+            Write-Host "MSIX root-ish DLLs:"; $dlls | Where-Object { $_ -notmatch '/' } | ForEach-Object { Write-Host "  $_" }
+            $root = $names | Where-Object { $_ -eq 'palace_smooth.dll' }
+            if (-not $root) {
+              $any = $names | Where-Object { $_ -match '(^|/)palace_smooth\.dll$' }
+              throw "palace_smooth.dll not at MSIX package root. Found: $($any -join '; ')"
+            }
+            Write-Host "OK: palace_smooth.dll at MSIX package root"
+          } finally {
+            $zip.Dispose()
+          }
+          $binDll = Get-ChildItem -Path bin -Recurse -Filter palace_smooth.dll -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.DirectoryName 'Palace.exe') } |
+            Select-Object -First 1
+          if (-not $binDll) { throw "palace_smooth.dll missing from bin output beside Palace.exe" }
+          Write-Host "OK: $($binDll.FullName)"
 
       - name: Test
         run: dotnet test Palace.Tests/Palace.Tests.csproj -c Debug --no-restore --logger "trx;LogFileName=results.trx"
