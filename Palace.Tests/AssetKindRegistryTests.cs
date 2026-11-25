@@ -42,10 +42,28 @@ public sealed class AssetKindRegistryTests
     {
         Assert.True(PathSafe.IsCatalogExt(".glb"));
         Assert.Equal(AssetKind.Model3D, PathSafe.KindFromExt(".fbx"));
-        LibrarySettings.Apply(true, true, true, true, indexModel3D: false);
-        Assert.False(LibrarySettings.IsIndexedExt(".glb"));
-        LibrarySettings.Apply(true, true, true, true, indexModel3D: true);
-        Assert.True(LibrarySettings.IsIndexedExt("hero.gltf"));
+        LibrarySettings.Apply(
+            LibrarySettings.DefaultWatchForChanges,
+            LibrarySettings.DefaultIndexImages,
+            LibrarySettings.DefaultIndexVideo,
+            LibrarySettings.DefaultGenerateThumbsOnScan,
+            LibrarySettings.DefaultIndexModel3D);
+        try
+        {
+            LibrarySettings.Apply(true, true, true, true, indexModel3D: false);
+            Assert.False(LibrarySettings.IsIndexedExt(".glb"));
+            LibrarySettings.Apply(true, true, true, true, indexModel3D: true);
+            Assert.True(LibrarySettings.IsIndexedExt("hero.gltf"));
+        }
+        finally
+        {
+            LibrarySettings.Apply(
+                LibrarySettings.DefaultWatchForChanges,
+                LibrarySettings.DefaultIndexImages,
+                LibrarySettings.DefaultIndexVideo,
+                LibrarySettings.DefaultGenerateThumbsOnScan,
+                LibrarySettings.DefaultIndexModel3D);
+        }
     }
 
     [Fact]

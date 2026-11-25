@@ -2541,7 +2541,28 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         StatusText = "Scanning " + picked.Name + "…";
-        await _scan.ScanSourceAsync(folder);
+        var ct = AppServices.Library.BeginBusyCancelable("Scanning " + picked.Name + "…");
+        try
+        {
+            await _scan.ScanSourceAsync(
+                folder,
+                new Progress<ScanProgress>(p =>
+                {
+                    var name = string.IsNullOrEmpty(p.FileName) ? p.Phase : p.FileName;
+                    StatusText = "Scanning " + name;
+                }),
+                ct);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Scan cancelled.";
+            return;
+        }
+        finally
+        {
+            AppServices.Library.EndBusyCancelable();
+        }
+
         await _watchers.RestartAsync();
         await LoadAsync();
         await AppServices.Library.LoadAsync();

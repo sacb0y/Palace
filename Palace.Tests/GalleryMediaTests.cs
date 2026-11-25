@@ -223,6 +223,11 @@ public sealed class GalleryMediaTests
         Assert.True(GalleryMedia.ShowGifBadge(false, false, AssetKind.Gif));
         Assert.False(GalleryMedia.ShowGifBadge(false, false, AssetKind.Video));
         Assert.False(GalleryMedia.ShowGifBadge(true, false, AssetKind.Gif));
+        Assert.True(GalleryMedia.ShowModel3DBadge(false, false, AssetKind.Model3D));
+        Assert.False(GalleryMedia.ShowModel3DBadge(false, false, AssetKind.Image));
+        Assert.False(GalleryMedia.ShowModel3DBadge(true, false, AssetKind.Model3D));
+        Assert.False(GalleryMedia.ShowModel3DBadge(false, true, AssetKind.Model3D));
+        Assert.True(GalleryMedia.KindBadge(false, false, AssetKind.Model3D));
         Assert.True(GalleryMedia.ShowHdrBadge(false, false, @"D:\shots\sky.hdr", false));
         Assert.True(GalleryMedia.ShowHdrBadge(false, false, @"D:\shots\a.jpg", true));
         Assert.True(GalleryMedia.ShowHdrBadge(false, false, null, true));

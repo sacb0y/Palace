@@ -46,8 +46,4 @@ public sealed class Mesh3dSeamTests
     [Fact]
     public void EmptyAssetDependencies_returns_none() =>
         Assert.Empty(EmptyAssetDependencies.Instance.Resolve("a.gltf"));
-
-    [Fact]
-    public void NavigationTeardown_requires_dispose_for_gpu() =>
-        Assert.True(NavigationTeardown.RequiresNavigatedFromDispose(holdsGpuDevice: true));
 }

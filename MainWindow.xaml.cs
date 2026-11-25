@@ -69,7 +69,7 @@ public sealed partial class MainWindow : Window
         }
 
         ApplyShellBackdrop();
-        Closed += (_, _) =>
+        Closed += async (_, _) =>
         {
             ShellBackground.Changed -= ShellBackground_Changed;
             ShellBackground.LiveAmountsChanged -= ShellBackground_LiveAmountsChanged;
@@ -86,7 +86,21 @@ public sealed partial class MainWindow : Window
             }
 
             GalleryWindow.CloseAll();
-            _ = Services.AppServices.ShutdownAsync();
+            // D10: await cancel/drain with a short bound — never fire-and-forget.
+            try
+            {
+                await Services.AppServices.ShutdownAsync()
+                    .WaitAsync(TimeSpan.FromSeconds(2))
+                    .ConfigureAwait(true);
+            }
+            catch (TimeoutException)
+            {
+                // Window is closing; leftover work is abandoned.
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when busy cancel races close.
+            }
         };
     }
 

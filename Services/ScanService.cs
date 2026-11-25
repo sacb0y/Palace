@@ -131,10 +131,8 @@ public sealed class ScanService
             var ext = Path.GetExtension(file);
             if (!LibrarySettings.IsIndexedExt(ext))
             {
-                // Present on disk ≠ indexed. Keep catalog-known format paths in
-                // found so turning off a format toggle (or an older build) does
-                // not orphan 3D / video rows whose files are still there.
-                if (PathSafe.IsCatalogExt(ext))
+                // Present on disk ≠ indexed (D3).
+                if (ScanPresent.RetainWhenNotIndexed(ext))
                 {
                     found?.Add(file);
                 }
@@ -149,7 +147,7 @@ public sealed class ScanService
             found?.Add(file);
             if (progress is not null && ScanFastPath.ShouldReport(ref lastProgress, Environment.TickCount64))
             {
-                progress.Report(ScanProgress.File(file, phase: "index"));
+                progress.Report(ScanProgress.File(file));
             }
             try
             {
@@ -270,7 +268,15 @@ public sealed class ScanService
             asset.NegativePrompt = meta.NegativePrompt;
             asset.MetadataJson = meta.RawJson;
             asset.DateTaken = meta.DateTaken;
-            if (LibrarySettings.GenerateThumbsOnScan
+            if (ScanFastPath.SkipsPixelSize(kind))
+            {
+                // Model3D: no still-thumb pipeline (D1 parked). Keep Width/Height null;
+                // missing mesh thumb must not mark Undecodable.
+                asset.Width = null;
+                asset.Height = null;
+                decoded = true;
+            }
+            else if (LibrarySettings.GenerateThumbsOnScan
                 && ScanContent.MayGenerateScanThumbnail(attrs))
             {
                 var thumb = await _thumbs.EnsureThumbnailAsync(
@@ -387,9 +393,7 @@ public sealed class ScanService
 
             if (!LibrarySettings.IsIndexedExt(Path.GetExtension(child.Name)))
             {
-                // Present ≠ indexed (D3): keep catalog formats in found so a
-                // format toggle off does not orphan cloud rows still listed.
-                if (PathSafe.IsCatalogExt(Path.GetExtension(child.Name)))
+                if (ScanPresent.RetainWhenNotIndexed(child.Name))
                 {
                     found.Add(child.Id);
                 }
@@ -402,7 +406,7 @@ public sealed class ScanService
             }
 
             found.Add(child.Id);
-            progress?.Report(ScanProgress.File(display, phase: "index"));
+            progress?.Report(ScanProgress.File(display));
             try
             {
                 report.NoteIndexed(await IndexCloudItemAsync(source, library, child, display, ct).ConfigureAwait(false));

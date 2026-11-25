@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Shapes;
+using Palace.Controls;
 using Palace.Helpers;
 using Palace.Models;
 using Palace.Services;
@@ -26,6 +27,10 @@ public sealed partial class TagsPage : Page
     public TagsViewModel ViewModel => AppServices.Tags;
 
     public LibraryViewModel Library => AppServices.Library;
+
+    // ViewerSurfaceHost owns Still / Video / Mesh (D6); keep call-site names.
+    private GalleryStillSurface SrfOverlayStill => SrfViewer.Still;
+    private MediaPlayerElement MpeOverlay => SrfViewer.Player;
 
     private bool _ignoreColorChanges;
     private bool _colorDirty;

@@ -24,6 +24,10 @@ namespace Palace.Pages;
 
 public sealed partial class LibraryPage : Page
 {
+    // ViewerSurfaceHost owns Still / Video / Mesh (D6); keep call-site names.
+    private GalleryStillSurface SrfOverlayStill => SrfViewer.Still;
+    private MediaPlayerElement MpeOverlay => SrfViewer.Player;
+
     private GalleryViewModel? _hookedOverlay;
     private int _mosaicGeneration;
     private bool _thumbsMayUpgrade;
@@ -134,6 +138,9 @@ public sealed partial class LibraryPage : Page
         // Same ContextFlyout for long-press, right-click, and … (Select is a menu item).
         SrfOverlayStill.ContextFlyout = FlyOverlayAsset;
         MpeOverlay.ContextFlyout = FlyOverlayAsset;
+        MpeOverlay.IsDoubleTapEnabled = true;
+        MpeOverlay.DoubleTapped -= GalleryOverlayVideo_DoubleTapped;
+        MpeOverlay.DoubleTapped += GalleryOverlayVideo_DoubleTapped;
         _videoBrowseSwipe = new VideoBrowseSwipeBinder(
             MpeOverlay,
             VideoBrowseSwipeAllowedNow,

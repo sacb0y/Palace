@@ -60,6 +60,9 @@ public partial class GalleryViewModel : ObservableObject
 
     public bool IsMesh => Surface == GallerySurface.Mesh;
 
+    partial void OnSurfaceChanged(GallerySurface value) =>
+        OnPropertyChanged(nameof(IsMesh));
+
     [ObservableProperty]
     public partial bool IsMissing { get; set; }
 
@@ -1301,7 +1304,6 @@ public partial class GalleryViewModel : ObservableObject
                 IsImage = false;
                 IsVideo = false;
                 IsMissing = false;
-                OnPropertyChanged(nameof(IsMesh));
                 IsCloudPreview = false;
                 PreviewStatus = "";
                 CanDownloadOriginal = false;
@@ -1445,7 +1447,6 @@ public partial class GalleryViewModel : ObservableObject
             IsMissing = Surface == GallerySurface.None
                 && CurrentPath is null
                 && string.IsNullOrEmpty(PreviewImageUri);
-            OnPropertyChanged(nameof(IsMesh));
             CanDownloadOriginal = apiOnly && !string.IsNullOrEmpty(item.CloudItemId);
             CanOpenInExplorer = onDisk && !apiOnly;
             CanGoPrevious = FindNavigableIndex(CurrentIndex, -1) is not null;

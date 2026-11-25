@@ -63,9 +63,8 @@ public partial class LibraryViewModel
                     new Progress<ScanProgress>(p =>
                     {
                         var name = string.IsNullOrEmpty(p.FileName) ? p.Phase : p.FileName;
-                        StatusText = p.Total > 0
-                            ? $"Scanning {name} ({p.Done}/{p.Total})"
-                            : $"Scanning {name}";
+                        // Done/Total stay optional until IndexTree can pre-count cheaply.
+                        StatusText = $"Scanning {name}";
                     }),
                     ct,
                     projectId: AppServices.CurrentProject.Id);
@@ -82,10 +81,6 @@ public partial class LibraryViewModel
                 EndBusyCancelable();
             }
         });
-
-    /// <summary>Same as CancelBusy — exposed for D7 / command bar naming.</summary>
-    [RelayCommand]
-    private void CancelScan() => CancelBusy();
 
     private async Task ScanFolderAsync(SourceFolder source)
     {

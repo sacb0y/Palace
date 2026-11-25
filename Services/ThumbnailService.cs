@@ -174,7 +174,9 @@ public sealed class ThumbnailService
     /// unchanged file still regenerates a stale thumbnail.
     /// </summary>
     public bool IsCachedThumbCurrent(string filePath, string hash, Models.AssetKind kind) =>
-        kind == Models.AssetKind.Other || IsCachedCurrent(PathForHash(hash), filePath, kind);
+        kind == Models.AssetKind.Other
+        || ScanFastPath.SkipsPixelSize(kind)
+        || IsCachedCurrent(PathForHash(hash), filePath, kind);
 
     private bool IsCachedCurrent(string dest, string filePath, Models.AssetKind kind) =>
         File.Exists(dest) && !ShouldRegenerate(dest, filePath)
@@ -257,7 +259,9 @@ public sealed class ThumbnailService
         }
 
         var onlineOnly = CloudFile.IsOnlineOnly(attrs);
-        if (onlineOnly || kind == Models.AssetKind.Other)
+        // Model3D (and later Audio): no still/WIC/shell pipeline — out-of-proc
+        // mesh thumbs are D1 (parked). Same early exit as Other.
+        if (onlineOnly || kind == Models.AssetKind.Other || ScanFastPath.SkipsPixelSize(kind))
         {
             return ReadCached(hash);
         }

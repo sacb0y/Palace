@@ -245,9 +245,15 @@ public static class GalleryMedia
     public static bool UsesShellThumbnail(AssetKind kind, string? path) =>
         kind == AssetKind.Video || PathSafe.UsesShellStillThumb(path);
 
-    /// <summary>WIC decode of the original — never online-only, never AVIF.</summary>
+    /// <summary>
+    /// WIC decode of the original — never online-only, never AVIF/shell stills,
+    /// never Model3D (mesh thumbs are out-of-proc later; D1 parked).
+    /// </summary>
     public static bool MayOpenOriginalForThumb(bool isOnlineOnly, AssetKind kind, string? path) =>
-        !isOnlineOnly && !UsesShellThumbnail(kind, path) && kind != AssetKind.Other;
+        !isOnlineOnly
+        && !UsesShellThumbnail(kind, path)
+        && kind != AssetKind.Other
+        && !ScanFastPath.SkipsPixelSize(kind);
 
     /// <summary>
     /// Never <c>ImageDimensions.TryRead</c> / <c>AvifFile</c> the original to

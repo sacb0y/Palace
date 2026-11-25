@@ -928,6 +928,19 @@
                                                             IconVariant="Regular" />
                                                     </Border>
                                                     <Border
+                                                        Padding="4"
+                                                        AutomationProperties.AutomationId="{x:Bind Model3DBadgeAutomationId, Mode=OneWay}"
+                                                        AutomationProperties.Name="3D"
+                                                        Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                                        CornerRadius="4"
+                                                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowModel3DBadge), Mode=OneWay}">
+                                                        <ic:FluentIcon
+                                                            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                            Icon="Cube"
+                                                            IconSize="Size16"
+                                                            IconVariant="Regular" />
+                                                    </Border>
+                                                    <Border
                                                         Padding="8,5"
                                                         AutomationProperties.AutomationId="{x:Bind HdrBadgeAutomationId, Mode=OneWay}"
                                                         AutomationProperties.Name="HDR"
@@ -1612,41 +1625,11 @@
                     Opacity="0.28" />
             </Grid>
             <Grid>
-                    <controls:GalleryStillSurface
-                        x:Name="SrfOverlayStill"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
-                    <MediaPlayerElement
-                        x:Name="MpeOverlay"
-                        AreTransportControlsEnabled="True"
-                        AutoPlay="False"
-                        AutomationProperties.AutomationId="MpeGalleryOverlay"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
-                        <MediaPlayerElement.TransportControls>
-                            <MediaTransportControls IsVolumeButtonVisible="False" />
-                        </MediaPlayerElement.TransportControls>
-                    </MediaPlayerElement>
-                    <Border
-                        x:Name="BrdOverlayMesh"
-                        AutomationProperties.AutomationId="BrdGalleryOverlayMesh"
-                        Background="#E01C1C1C"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMesh), Mode=OneWay, FallbackValue=Collapsed}">
-                        <StackPanel
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Spacing="8">
-                            <ic:FluentIcon
-                                HorizontalAlignment="Center"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Icon="Cube"
-                                IconSize="48"
-                                IconVariant="Regular" />
-                            <TextBlock
-                                HorizontalAlignment="Center"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Style="{StaticResource BodyTextBlockStyle}"
-                                Text="3D preview" />
-                        </StackPanel>
-                    </Border>
+                    <controls:ViewerSurfaceHost
+                        x:Name="SrfViewer"
+                        MediaAutomationId="MpeGalleryOverlay"
+                        MeshAutomationId="BrdTagsOverlayMesh"
+                        Surface="{x:Bind ViewModel.OverlayGallery.Surface, Mode=OneWay}" />
                     <controls:VolumeControl
                         x:Name="VolOverlay"
                         Canvas.ZIndex="2"

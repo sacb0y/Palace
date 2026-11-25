@@ -17,12 +17,11 @@ namespace Palace.Helpers;
 /// Version 4 fixes EXIF UserComment UNICODE decode. Unchanged version 2–3 rows refresh generation
 /// metadata (and DateTaken when still on version 2) via <see cref="NeedsMetadataRefreshOnly"/> —
 /// no re-hash, and Rating / Notes / tags are not written.
-/// Version 5 adds <see cref="AssetKind.Model3D"/> kind mapping + kind-aware fast path (3D rows
-/// keep Width/Height null; content hash + IndexVersion is enough).
+/// <see cref="AssetKind.Model3D"/> skips Width/Height on the fast path (hash + IndexVersion only).
 /// </summary>
 public static class ScanFastPath
 {
-    public const int IndexVersion = 5;
+    public const int IndexVersion = 4;
 
     /// <summary>Last version before Date taken; such rows take the light backfill.</summary>
     public const int DateTakenBackfillFrom = 2;
@@ -86,12 +85,12 @@ public static class ScanFastPath
 
     /// <summary>
     /// The fast path also needs a current cached thumbnail, except for a file already recorded as
-    /// undecodable: re-decoding the same bytes cannot succeed, and some (videos with no shell or
-    /// ffmpeg thumbnail) have no cached placeholder or size, so they were re-hashed and counted
-    /// "updated" on every rescan. Such a file is retried once it changes or
-    /// <see cref="IndexVersion"/> is bumped.
+    /// undecodable (re-decoding the same bytes cannot succeed; videos with no shell/ffmpeg thumb
+    /// have neither size nor JPEG) or a <see cref="SkipsPixelSize"/> kind (Model3D — no still
+    /// thumb until D1). Such a file is retried once it changes or <see cref="IndexVersion"/> bumps.
     /// </summary>
-    public static bool NeedsCurrentThumb(Asset existing) => !existing.Undecodable;
+    public static bool NeedsCurrentThumb(Asset existing) =>
+        !existing.Undecodable && !SkipsPixelSize(existing.Kind);
 
     /// <summary>
     /// Cloud API rescan: the item's size and modified time match its row, so the rescan only
