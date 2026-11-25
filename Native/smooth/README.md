@@ -1,11 +1,11 @@
-# palace_smooth (Smooth Viewer V0 presenter + V1 tiles)
+# palace_smooth (Smooth Viewer V0–V2)
 
 Native Diligent presenter for WinUI `SwapChainPanel`:
 
 - D3D12 preferred, D3D11 fallback
-- RGBA16F scRGB composition swap chain
+- RGBA16F scRGB composition swap chain (**panel-sized** — zoom is a transform; no 8192 DIP cap)
 - Max frame latency 1 + waitable object
-- Clear + HDR scRGB test pattern (V0); V1 adds tile pool + mip CS
+- Clear + HDR scRGB test pattern (V0); V1 tile pool + mip CS; **V2 SmoothImage viewport**
 - Real frame-time stats (`psv_last_frame_stats`)
 
 ## V1 tiles
@@ -16,6 +16,14 @@ Native Diligent presenter for WinUI `SwapChainPanel`:
 - Scratch 512² then `CopyTexture` into array slot (never same SRV+UAV)
 - Coarse levels ≤2048 pinned in LRU (C#)
 - `ToneMap.hlsl` included from `Palace.Imaging/Shaders` (no copy); `linear`→`v` patch applied in-repo
+
+## V2 viewport
+
+- `SmoothImageVS` / `SmoothImagePS` (`shaders/SmoothImage.hlsl` + `include/smooth_image_cb.h`)
+- Per-frame view affine, filter-by-zoom, tile instances with 80–120 ms sharpen cross-fade
+- Tone map **only** in the final PS (repo `ToneMap.hlsl`); LUT + present params fixed per image
+- C#: `SmoothViewport`, `SmoothViewportFrame`, `SmoothTileCrossfade`, `SmoothWorkingDecode`
+- Real Palace.Imaging Working decode on a background Task; cancel on image change
 
 ## Build (Windows x64)
 

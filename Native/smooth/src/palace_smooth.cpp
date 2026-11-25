@@ -78,7 +78,7 @@ bool BindDxgiAdapter3(Host* host)
 
 namespace {
 
-constexpr char kVersion[] = "0.2.0-smooth-v1";
+constexpr char kVersion[] = "0.3.0-smooth-v2";
 constexpr DXGI_FORMAT kScrgbFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr UINT kBufferCount = 2;
 constexpr UINT kLatencyFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
@@ -571,6 +571,7 @@ PSV_API void psv_destroy(void* host_ptr)
         return;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    DestroyImagePass(host);
     psv_tile_pool_destroy(host);
     /* Unbind RTs + WaitForIdle before RefCntAutoPtr teardown (same as resize). */
     UnbindAndIdleDiligent(host);
@@ -689,7 +690,19 @@ PSV_API int psv_render_frame(void* host_ptr)
     }
     QueryPerformanceCounter(&tWait);
 
-    HRESULT hr = BindAndDrawPattern(host);
+    HRESULT hr = E_FAIL;
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (host->viewportEnabled && host->instanceCount > 0) {
+        hr = BindAndDrawImage(host);
+        if (hr == S_FALSE) {
+            hr = BindAndDrawPattern(host);
+        }
+    } else {
+        hr = BindAndDrawPattern(host);
+    }
+#else
+    hr = BindAndDrawPattern(host);
+#endif
     QueryPerformanceCounter(&tRender);
     if (FAILED(hr)) {
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)

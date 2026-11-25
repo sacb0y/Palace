@@ -70,8 +70,22 @@ struct Host {
     unsigned tileCapacity = 0;
     bool tilePoolReady = false;
     bool mipReady = false;
-    /* Semicolon-separated dirs for SmoothMipDownsample.hlsl (+ ToneMap includes). */
+    /* Semicolon-separated dirs for SmoothMipDownsample / SmoothImage + ToneMap. */
     char shaderSearchDirs[512]{};
+
+    /* V2 SmoothImage viewport pass. */
+    RefCntAutoPtr<IPipelineState> imagePso;
+    RefCntAutoPtr<IShaderResourceBinding> imageSrb;
+    RefCntAutoPtr<IBuffer> viewCb;
+    RefCntAutoPtr<IBuffer> toneCb;
+    RefCntAutoPtr<IBuffer> instanceBuf;
+    RefCntAutoPtr<ITexture> toneLut;
+    psv_view_cb viewCpu{};
+    psv_tone_cb toneCpu{};
+    unsigned instanceCount = 0;
+    unsigned toneLutSize = 0;
+    bool imageReady = false;
+    bool viewportEnabled = false;
 #endif
 
     LARGE_INTEGER qpcFreq{};
@@ -81,3 +95,9 @@ void SetError(Host* host, const char* msg);
 void ClearError(Host* host);
 void UnbindAndIdleDiligent(Host* host);
 bool BindDxgiAdapter3(Host* host);
+
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+bool EnsureImagePipeline(Host* host);
+HRESULT BindAndDrawImage(Host* host);
+void DestroyImagePass(Host* host);
+#endif

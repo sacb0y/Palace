@@ -1,15 +1,18 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// V1 tile session: builds Working-space tiles on a background task, mips
+/// Tile session: builds Working-space tiles on a background task, mips
 /// L→L+1 via <see cref="SmoothMipDownsampleCpu.BoxDownsampleTileSlot"/> (and
 /// optional GPU <c>TileMipBox</c>), pins the coarse set, and never retains every
-/// L0 tile in managed memory. V1 decode is synthetic procedural Working;
-/// Palace.Imaging Working decode is V2. EXIF is never baked; cloud online-only
-/// paths are refused via <see cref="SmoothTileDecodeGate"/>.
+/// L0 tile in managed memory. V2 feeds Palace.Imaging Working L0 tiles
+/// (<see cref="BuildFromWorkingAsync"/>); synthetic procedural remains for
+/// tests. EXIF is never baked; cloud online-only paths are refused via
+/// <see cref="SmoothTileDecodeGate"/>.
 /// </summary>
 public sealed class SmoothTileSession
 {
+    private IReadOnlyDictionary<SmoothTileId, byte[]>? _level0Override;
+
     public int FullWidth { get; }
     public int FullHeight { get; }
     public int CoarseLevel { get; }
@@ -21,6 +24,7 @@ public sealed class SmoothTileSession
     public int CoarseTileCount { get; private set; }
     public string WorkingFormat { get; } = SmoothTileWorkingSpace.GpuFormat;
     public long AvailableVramBytes { get; private set; }
+    public bool UsedWorkingDecode { get; private set; }
 
     public SmoothTileSession(int fullWidth, int fullHeight, long availableVramBytes = 0)
     {
@@ -81,9 +85,42 @@ public sealed class SmoothTileSession
     }
 
     public string StatusLine() =>
-        $"V1 tiles {FullWidth}x{FullHeight} coarse=L{CoarseLevel} " +
+        $"{(UsedWorkingDecode ? "V2" : "V1")} tiles {FullWidth}x{FullHeight} coarse=L{CoarseLevel} " +
         $"coarseTiles={CoarseTileCount} pool={PoolCapacity} resident={Lru.ResidentCount} " +
         $"cpuTiles={Cpu.Count} firstCoarseMs={FirstCoarseFrameMs} fmt={WorkingFormat} Border={SmoothTileMath.Border}";
+
+    /// <summary>
+    /// V2: build the pyramid from Palace.Imaging Working L0 tiles (cancel-aware).
+    /// </summary>
+    public Task<long> BuildFromWorkingAsync(
+        SmoothWorkingDecodeResult working,
+        CancellationToken cancellationToken,
+        Action<SmoothGpuMipRequest>? gpuMip = null,
+        Action? afterLevel = null)
+    {
+        if (working.Width != FullWidth || working.Height != FullHeight)
+        {
+            throw new ArgumentException(
+                $"Working size {working.Width}x{working.Height} != session {FullWidth}x{FullHeight}.",
+                nameof(working));
+        }
+
+        _level0Override = working.Level0Tiles;
+        UsedWorkingDecode = true;
+        return Task.Run(
+            () =>
+            {
+                try
+                {
+                    return BuildPyramidCore(cancellationToken, gpuMip, afterLevel);
+                }
+                finally
+                {
+                    _level0Override = null;
+                }
+            },
+            cancellationToken);
+    }
 
     private long BuildPyramidCore(
         CancellationToken cancellationToken,
@@ -303,6 +340,13 @@ public sealed class SmoothTileSession
 
         if (id.Level == 0)
         {
+            if (_level0Override is not null
+                && _level0Override.TryGetValue(id, out var workingBytes))
+            {
+                Cpu.Set(id, workingBytes);
+                return;
+            }
+
             Cpu.Set(id, MakeProceduralTile(id));
             return;
         }

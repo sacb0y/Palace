@@ -49,6 +49,7 @@ set(PALACE_SMOOTH_DILIGENT_TAG "v2.5.6" CACHE STRING "DiligentCore git tag")
 add_library(palace_smooth SHARED
   src/palace_smooth.cpp
   src/palace_smooth_tiles.cpp
+  src/palace_smooth_image.cpp
 )
 set_property(TARGET palace_smooth PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

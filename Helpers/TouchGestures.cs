@@ -34,6 +34,11 @@ public static class TouchGestures
     /// Layout long-edge cap (DIPs). Past this, DXGI ResizeBuffers fails and HDR
     /// present collapses to a blank still — Sacb0y pinch-out black on 4K.
     /// </summary>
+    /// <summary>
+    /// Legacy DXGI / XAML still-panel long-edge cap. Smooth Viewer V2 removes
+    /// this for the GPU viewport (<see cref="SmoothViewport.RemovesDipPanelCap"/>)
+    /// — swap chain stays panel-sized; zoom is a transform.
+    /// </summary>
     public const double MaxStillPanelLongEdgeDip = 8192;
     public const double DoubleTapActualMinFit = 1.25;
     public const double DoubleTapFallbackFit = 2.5;
@@ -541,11 +546,21 @@ public static class TouchGestures
         return MaxStillPanelLongEdgeDip;
     }
 
+    /// <param name="removeDipCap">
+    /// True for the Smooth GPU viewport (panel-sized swap chain + transform).
+    /// Leave false for the legacy still panel — DXGI still rejects &gt;8192 px.
+    /// </param>
     public static (double Width, double Height) CapStillPanelSize(
         double width,
         double height,
-        double rasterScale = 1.0)
+        double rasterScale = 1.0,
+        bool removeDipCap = false)
     {
+        if (removeDipCap)
+        {
+            return (width, height);
+        }
+
         if (double.IsNaN(width) || double.IsNaN(height) || width <= 0 || height <= 0)
         {
             return (width, height);

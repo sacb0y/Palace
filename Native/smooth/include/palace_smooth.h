@@ -115,6 +115,27 @@ PSV_API int psv_tile_mip_ready(void* host);
 /* Flush Diligent context (after a mip level batch). */
 PSV_API int psv_flush(void* host);
 
+/* --- V2 viewport image pass (SmoothImageVS/PS, panel-sized SC, no 8192 zoom) --- */
+
+/* Enable/disable image pass (when off, V0 pattern still draws). */
+PSV_API int psv_viewport_enable(void* host, int enabled);
+
+PSV_API int psv_viewport_set_view(void* host, const struct psv_view_cb* view);
+
+PSV_API int psv_viewport_set_tone(void* host, const struct psv_tone_cb* tone);
+
+/* R32F LutSize×1 samples (ToneMapLut). */
+PSV_API int psv_viewport_set_lut(void* host, const float* samples, unsigned count);
+
+/* StructuredBuffer of psv_tile_instance (max 4096). */
+PSV_API int psv_viewport_set_instances(
+    void* host,
+    const struct psv_tile_instance* instances,
+    unsigned count);
+
+/* Non-zero when image PSO is ready and viewport is enabled. */
+PSV_API int psv_viewport_ready(void* host);
+
 #ifdef __cplusplus
 }
 #endif

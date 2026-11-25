@@ -9,13 +9,15 @@ namespace Palace.Services;
 /// Diligent D3D12/D3D11 host attached to a WinUI <see cref="SwapChainPanel"/>
 /// for Smooth Viewer. Creates a composition DXGI swapchain (RGBA16F scRGB,
 /// latency 1), binds via <c>ISwapChainPanelNative</c>, draws the HDR test
-/// pattern, and hosts the V1 tile pool / mip path.
+/// pattern / V2 SmoothImage viewport, and hosts the V1 tile pool / mip path.
+/// Behind <see cref="ViewerSettings.SmoothPresenterEnabled"/> (default off).
 /// </summary>
 internal sealed class SmoothDiligentPresenter : IDisposable
 {
     private readonly SwapChainPanel _panel;
     private readonly SmoothPresenterLifecycle _life = new();
     private readonly string? _logDataDir;
+    private readonly SmoothTileCrossfade _crossfade = new();
     private nint _host;
     private nint _swapChain;
     private bool _disposed;
@@ -27,6 +29,13 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private int _readbackOverUlpCount;
     private int _readbackCompared;
     private readonly byte[] _readbackScratch = new byte[SmoothTileMath.BytesPerTileRgba16F()];
+    private float _zoom = 1f;
+    private float _tx;
+    private float _ty;
+    private bool _viewportArmed;
+    private readonly float[] _viewPack = new float[32];
+    private readonly List<(int Tx, int Ty)> _visibleScratch = new();
+    private long _lastTickQpc;
 
     public SmoothDiligentPresenter(SwapChainPanel panel, string? logDataDir = null)
     {
@@ -384,12 +393,57 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _ = Tick();
     }
 
+    /// <summary>
+    /// Arm V2 SmoothImage pass with fit zoom + tone LUT. No-op when the setting
+    /// is off or the tile pool is missing. Panel-sized SC — no 8192 DIP zoom.
+    /// </summary>
+    public bool TryArmV2Viewport(
+        float zoom,
+        float tx,
+        float ty,
+        float[]? toneCb16,
+        float[]? lutSamples)
+    {
+        if (_disposed || _host == 0 || _session is null || !ViewerSettings.SmoothPresenterEnabled)
+        {
+            return false;
+        }
+
+        _zoom = zoom;
+        _tx = tx;
+        _ty = ty;
+        if (toneCb16 is { Length: >= 16 })
+        {
+            _ = SmoothPresenterNative.ViewportSetTone(
+                _host,
+                SmoothPresenterNative.ToneCb.FromPacked(toneCb16));
+        }
+
+        if (lutSamples is { Length: >= 2 })
+        {
+            _ = SmoothPresenterNative.ViewportSetLut(_host, lutSamples);
+        }
+
+        var enable = SmoothPresenterNative.ViewportEnable(_host, true);
+        _viewportArmed = enable == SmoothPresenterNative.StatusCode.Ok;
+        return _viewportArmed;
+    }
+
+    public void SetViewportTransform(float zoom, float tx, float ty)
+    {
+        _zoom = zoom;
+        _tx = tx;
+        _ty = ty;
+    }
+
     public bool Tick()
     {
         if (_disposed || _host == 0)
         {
             return false;
         }
+
+        PushV2FrameIfArmed();
 
         var result = SmoothPresenterNative.RenderFrame(_host);
         if (result == SmoothPresenterNative.StatusCode.DeviceLost)
@@ -411,11 +465,103 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             SmoothPresenterLog.AppendStats(_logDataDir, stats, note);
             _status =
                 $"frame {stats.FrameIndex} {stats.Width}x{stats.Height} " +
-                $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}";
+                $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}" +
+                (_viewportArmed ? $" z={_zoom:F2}" : "");
         }
 
         _life.MarkRunning();
         return true;
+    }
+
+    private void PushV2FrameIfArmed()
+    {
+        if (!_viewportArmed || _session is null || _host == 0)
+        {
+            return;
+        }
+
+        var w = _life.Width;
+        var h = _life.Height;
+        if (w < 2 || h < 2)
+        {
+            return;
+        }
+
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var dtMs = _lastTickQpc == 0
+            ? 16f
+            : (float)((now - _lastTickQpc) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+        _lastTickQpc = now;
+        dtMs = Math.Clamp(dtMs, 1f, 100f);
+
+        var imgToDev = SmoothViewport.Affine2x3.FromZoomPan(_zoom, _tx, _ty);
+        SmoothViewport.PackViewCb(_viewPack, imgToDev, w, h, _zoom);
+        _ = SmoothPresenterNative.ViewportSetView(
+            _host,
+            SmoothPresenterNative.ViewCb.FromPacked(_viewPack));
+
+        // Stream visible tiles into the GPU LRU (cross-fade on first residency).
+        var level = SmoothViewport.LevelForZoom(_zoom, _session.MaxLevel);
+        SmoothViewport.CollectVisibleTiles(
+            imgToDev, w, h, level, _session.FullWidth, _session.FullHeight, _visibleScratch);
+        foreach (var (tx, ty) in _visibleScratch)
+        {
+            var id = new SmoothTileId(level, tx, ty);
+            if (_session.Lru.TryGetSlot(id, out _))
+            {
+                continue;
+            }
+
+            if (!_session.Cpu.TryGet(id, out var bytes))
+            {
+                continue;
+            }
+
+            if (!_session.Lru.TryInsert(id, out var slot, out _))
+            {
+                continue;
+            }
+
+            _ = SmoothPresenterNative.TileUpload(_host, (uint)slot, bytes);
+        }
+
+        uint? TrySlice(SmoothTileId id) =>
+            _session.Lru.TryGetSlot(id, out var s) ? (uint)s : null;
+
+        var draws = SmoothViewportFrame.Build(
+            imgToDev,
+            w,
+            h,
+            _zoom,
+            _session.FullWidth,
+            _session.FullHeight,
+            _session.MaxLevel,
+            TrySlice,
+            _crossfade,
+            dtMs);
+
+        var instances = new SmoothPresenterNative.TileInstance[draws.Count];
+        for (var i = 0; i < draws.Count; i++)
+        {
+            var d = draws[i];
+            instances[i] = new SmoothPresenterNative.TileInstance
+            {
+                ImgOriginX = d.ImgOriginX,
+                ImgOriginY = d.ImgOriginY,
+                ImgSizeX = d.ImgSizeX,
+                ImgSizeY = d.ImgSizeY,
+                ParentOriginX = d.ParentOriginX,
+                ParentOriginY = d.ParentOriginY,
+                LevelScale = d.LevelScale,
+                Level = d.Level,
+                Slice = d.Slice,
+                ParentSlice = d.ParentSlice,
+                Opacity = d.Opacity,
+                Pad = 0
+            };
+        }
+
+        _ = SmoothPresenterNative.ViewportSetInstances(_host, instances);
     }
 
     public bool TryRecreateAfterDeviceLost(

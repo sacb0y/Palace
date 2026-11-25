@@ -136,6 +136,11 @@
     <Compile Include="..\Helpers\SmoothTileDecodeGate.cs" Link="SmoothTileDecodeGate.cs" />
     <Compile Include="..\Helpers\SmoothMipDownsampleCpu.cs" Link="SmoothMipDownsampleCpu.cs" />
     <Compile Include="..\Helpers\SmoothTileSession.cs" Link="SmoothTileSession.cs" />
+    <Compile Include="..\Helpers\SmoothViewport.cs" Link="SmoothViewport.cs" />
+    <Compile Include="..\Helpers\SmoothViewportFrame.cs" Link="SmoothViewportFrame.cs" />
+    <Compile Include="..\Helpers\SmoothTileCrossfade.cs" Link="SmoothTileCrossfade.cs" />
+    <Compile Include="..\Helpers\SmoothWorkingDecode.cs" Link="SmoothWorkingDecode.cs" />
+    <Compile Include="..\Helpers\SmoothToneGpu.cs" Link="SmoothToneGpu.cs" />
     <Compile Include="..\Helpers\PerformanceSettings.cs" Link="PerformanceSettings.cs" />
     <Compile Include="..\Helpers\SettingsPortable.cs" Link="SettingsPortable.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />

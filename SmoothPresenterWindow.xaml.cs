@@ -7,8 +7,8 @@ using Palace.Services;
 namespace Palace;
 
 /// <summary>
-/// Experimental Diligent SwapChainPanel host for Smooth Viewer V1.
-/// Opened from Settings when the smooth presenter toggle is on.
+/// Experimental Diligent SwapChainPanel host for Smooth Viewer V1/V2.
+/// Opened from Settings when the smooth presenter toggle is on (default off).
 /// </summary>
 public sealed partial class SmoothPresenterWindow : Window
 {
@@ -273,12 +273,51 @@ public sealed partial class SmoothPresenterWindow : Window
                     }
 
                     presenter.FinalizeV1CoarseUploads(session);
+                    ArmV2Viewport(session, presenter);
                     TxtSmoothTiles.Text = session.StatusLine() + " · " + presenter.TileStatus;
                 });
             },
             CancellationToken.None,
             TaskContinuationOptions.None,
             TaskScheduler.Default);
+    }
+
+    private void ArmV2Viewport(SmoothTileSession session, SmoothDiligentPresenter presenter)
+    {
+        if (!ViewerSettings.SmoothPresenterEnabled)
+        {
+            return;
+        }
+
+        var (dipW, dipH, sx, sy) = PanelMetrics();
+        var panelW = (float)(dipW * sx);
+        var panelH = (float)(dipH * sy);
+        var fit = SmoothViewport.FitZoom(panelW, panelH, session.FullWidth, session.FullHeight);
+        var zoom = SmoothViewport.ClampZoom(fit, fit);
+        // Center image in the panel (device px).
+        var tx = (panelW - (session.FullWidth * zoom)) * 0.5f;
+        var ty = (panelH - (session.FullHeight * zoom)) * 0.5f;
+
+        // Default SDR tone until a real Working decode supplies ImageStats.
+        var tone = new float[16];
+        tone[0] = 1f; // Lc
+        tone[1] = 0.5f; // P50
+        tone[2] = 1f; // Peak
+        tone[3] = 1f; // Ld
+        tone[4] = 0f; // EV
+        tone[5] = 1f; // gain
+        tone[6] = 0f; // SDR path
+        tone[7] = 1f; // output limit
+        tone[8] = 0f;
+        tone[9] = 1f;
+        tone[10] = 2f;
+        tone[11] = 0f; // no LUT yet
+        tone[12] = 1f; // OutputScale
+        tone[13] = 1f; // ClipScrgb
+        tone[14] = 0f; // SoftNegatives off for SDR
+        tone[15] = 1f; // PaperScrgb
+
+        _ = presenter.TryArmV2Viewport(zoom, tx, ty, tone, lutSamples: null);
     }
 
     private void ScpSmooth_SizeChanged(object sender, SizeChangedEventArgs e)

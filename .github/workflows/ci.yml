@@ -85,8 +85,8 @@ jobs:
           path: Native/smooth/build/_deps
           key: ${{ steps.cache-diligent.outputs.cache-primary-key }}
 
-      # V1 evidence: FXC cs_5_0 SmoothMipDownsample + ps_5_0 SmoothImage (ToneMap include).
-      - name: FXC compile SmoothMipDownsampleCS (cs_5_0) and SmoothImagePS (ps_5_0)
+      # V1/V2 evidence: FXC cs_5_0 mip + vs/ps_5_0 SmoothImage (ToneMap include).
+      - name: FXC compile SmoothMipDownsampleCS + SmoothImage VS/PS
         shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -109,7 +109,11 @@ jobs:
           Write-Host "OK: FXC cs_5_0 SmoothMipDownsampleCS ($($fxc.FullName))"
           $img = Resolve-Path "Native/smooth/shaders/SmoothImage.hlsl"
           $imgOut = Join-Path $env:RUNNER_TEMP "SmoothImage.psob"
+          $vsOut = Join-Path $env:RUNNER_TEMP "SmoothImage.vsob"
           $inc = Resolve-Path "Palace.Imaging/Shaders"
+          & $fxc.FullName /T vs_5_0 /E SmoothImageVS /I $inc.Path /Fo $vsOut $img.Path
+          if ($LASTEXITCODE -ne 0) { throw "fxc vs_5_0 SmoothImageVS failed" }
+          Write-Host "OK: FXC vs_5_0 SmoothImageVS"
           & $fxc.FullName /T ps_5_0 /E SmoothImagePS /I $inc.Path /Fo $imgOut $img.Path
           if ($LASTEXITCODE -ne 0) { throw "fxc ps_5_0 SmoothImagePS failed (ToneMap.hlsl include?)" }
           Write-Host "OK: FXC ps_5_0 SmoothImagePS with /I Palace.Imaging/Shaders"

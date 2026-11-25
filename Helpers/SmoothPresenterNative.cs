@@ -44,6 +44,81 @@ public static class SmoothPresenterNative
         public int Backend;
     }
 
+    /// <summary>Matches <c>psv_view_cb</c> (128 bytes).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ViewCb
+    {
+        public float ImgToDev0A, ImgToDev0B, ImgToDev0Tx, ImgToDev0W;
+        public float ImgToDev1C, ImgToDev1D, ImgToDev1Ty, ImgToDev1W;
+        public float DevToImg0A, DevToImg0B, DevToImg0Tx, DevToImg0W;
+        public float DevToImg1C, DevToImg1D, DevToImg1Ty, DevToImg1W;
+        public float ViewportX, ViewportY, ViewportZ, ViewportW;
+        public float FilterX, FilterY, FilterZ, FilterW;
+        public float GridX, GridY, GridZ, GridW;
+        public float TileX, TileY, TileZ, TileW;
+
+        public static ViewCb FromPacked(ReadOnlySpan<float> packed)
+        {
+            if (packed.Length < 32)
+            {
+                throw new ArgumentException("Need 32 floats.", nameof(packed));
+            }
+
+            return new ViewCb
+            {
+                ImgToDev0A = packed[0], ImgToDev0B = packed[1], ImgToDev0Tx = packed[2], ImgToDev0W = packed[3],
+                ImgToDev1C = packed[4], ImgToDev1D = packed[5], ImgToDev1Ty = packed[6], ImgToDev1W = packed[7],
+                DevToImg0A = packed[8], DevToImg0B = packed[9], DevToImg0Tx = packed[10], DevToImg0W = packed[11],
+                DevToImg1C = packed[12], DevToImg1D = packed[13], DevToImg1Ty = packed[14], DevToImg1W = packed[15],
+                ViewportX = packed[16], ViewportY = packed[17], ViewportZ = packed[18], ViewportW = packed[19],
+                FilterX = packed[20], FilterY = packed[21], FilterZ = packed[22], FilterW = packed[23],
+                GridX = packed[24], GridY = packed[25], GridZ = packed[26], GridW = packed[27],
+                TileX = packed[28], TileY = packed[29], TileZ = packed[30], TileW = packed[31],
+            };
+        }
+    }
+
+    /// <summary>Matches <c>psv_tone_cb</c> (64 bytes).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct ToneCb
+    {
+        public float ToneA0, ToneA1, ToneA2, ToneA3;
+        public float ToneB0, ToneB1, ToneB2, ToneB3;
+        public float Lut0, Lut1, Lut2, Lut3;
+        public float Present0, Present1, Present2, Present3;
+
+        public static ToneCb FromPacked(ReadOnlySpan<float> packed)
+        {
+            if (packed.Length < 16)
+            {
+                throw new ArgumentException("Need 16 floats.", nameof(packed));
+            }
+
+            return new ToneCb
+            {
+                ToneA0 = packed[0], ToneA1 = packed[1], ToneA2 = packed[2], ToneA3 = packed[3],
+                ToneB0 = packed[4], ToneB1 = packed[5], ToneB2 = packed[6], ToneB3 = packed[7],
+                Lut0 = packed[8], Lut1 = packed[9], Lut2 = packed[10], Lut3 = packed[11],
+                Present0 = packed[12], Present1 = packed[13], Present2 = packed[14], Present3 = packed[15],
+            };
+        }
+    }
+
+    /// <summary>Matches <c>psv_tile_instance</c> (48 bytes).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TileInstance
+    {
+        public float ImgOriginX, ImgOriginY;
+        public float ImgSizeX, ImgSizeY;
+        public float ParentOriginX, ParentOriginY;
+        public float LevelScale;
+        public float Level;
+        public uint Slice;
+        public uint ParentSlice;
+        public float Opacity;
+        public float Pad;
+    }
+
     private static readonly Lazy<string?> LoadedVersion = new(TryLoadVersion);
 
     public static bool IsAvailable => LoadedVersion.Value is not null;
@@ -482,4 +557,129 @@ public static class SmoothPresenterNative
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_flush")]
     private static extern int NativeFlush(nint host);
+
+    public static StatusCode ViewportEnable(nint host, bool enabled)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeViewportEnable(host, enabled ? 1 : 0);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static StatusCode ViewportSetView(nint host, in ViewCb view)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeViewportSetView(host, in view);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static StatusCode ViewportSetTone(nint host, in ToneCb tone)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeViewportSetTone(host, in tone);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static StatusCode ViewportSetLut(nint host, float[] samples)
+    {
+        if (host == 0 || !IsAvailable || samples is null || samples.Length < 2)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeViewportSetLut(host, samples, (uint)samples.Length);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static StatusCode ViewportSetInstances(nint host, TileInstance[] instances)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            if (instances is null || instances.Length == 0)
+            {
+                return (StatusCode)NativeViewportSetInstances(host, null, 0);
+            }
+
+            return (StatusCode)NativeViewportSetInstances(host, instances, (uint)instances.Length);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static bool ViewportReady(nint host)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return false;
+        }
+
+        try
+        {
+            return NativeViewportReady(host) != 0;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return false;
+        }
+    }
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_viewport_enable")]
+    private static extern int NativeViewportEnable(nint host, int enabled);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_viewport_set_view")]
+    private static extern int NativeViewportSetView(nint host, in ViewCb view);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_viewport_set_tone")]
+    private static extern int NativeViewportSetTone(nint host, in ToneCb tone);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_viewport_set_lut")]
+    private static extern int NativeViewportSetLut(nint host, float[] samples, uint count);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_viewport_set_instances")]
+    private static extern int NativeViewportSetInstances(nint host, TileInstance[]? instances, uint count);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_viewport_ready")]
+    private static extern int NativeViewportReady(nint host);
 }

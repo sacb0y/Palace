@@ -251,6 +251,13 @@ PSV_API void psv_tile_pool_destroy(void* host_ptr)
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
     UnbindAndIdleDiligent(host);
+    /* Drop image SRB binds that reference the tile array before releasing it. */
+    if (host->imageSrb) {
+        host->imageSrb.Release();
+        if (host->imagePso) {
+            host->imagePso->CreateShaderResourceBinding(&host->imageSrb, true);
+        }
+    }
     host->mipSrb.Release();
     host->mipPso.Release();
     host->mipCb.Release();
