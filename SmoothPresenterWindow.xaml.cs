@@ -9,6 +9,7 @@ using Palace.Services;
 using Windows.Foundation;
 using Windows.System;
 using Windows.UI.Core;
+using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 
 namespace Palace;
 
@@ -47,7 +48,7 @@ public sealed partial class SmoothPresenterWindow : Window
         Activated += OnActivated;
     }
 
-    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    private void OnActivated(object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs args)
     {
         if (_activated || args.WindowActivationState == WindowActivationState.Deactivated)
         {
