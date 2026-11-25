@@ -224,7 +224,13 @@ public sealed class SmoothTileSession
             cancellationToken.ThrowIfCancellationRequested();
             BuildNextLevelFromChildren(level, cancellationToken, gpuMip);
             afterLevel?.Invoke();
-            Cpu.RemoveLevel(level);
+            // RGBA16F-only sessions (no float Working) cannot rematerialize levels
+            // 1..Coarse-1 on demand, so keep them; L0 comes back from _retainedLevel0.
+            if (level == 0 || _workingRgba is not null)
+            {
+                Cpu.RemoveLevel(level);
+            }
+
             Lru.ClearTempPins();
         }
 
@@ -383,6 +389,11 @@ public sealed class SmoothTileSession
 
     private void DropFinishedChildRows(int childLevel, int childNx, int childNy, int parentYDone)
     {
+        if (childLevel > 0 && _workingRgba is null && _retainedLevel0 is not null)
+        {
+            return; // retained for streaming (see BuildPyramidCore)
+        }
+
         var dropBefore = (parentYDone * 2) - 1;
         if (dropBefore <= 0)
         {

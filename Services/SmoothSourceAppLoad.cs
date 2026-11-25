@@ -6,7 +6,9 @@ namespace Palace.Services;
 /// <summary>
 /// App-host float RGBA loaders for Smooth V2 — wires JxlDecode / HdrAvifDecode /
 /// HdrWicDecode. Registered into <see cref="SmoothSourceLoad"/> so
-/// <c>Palace.Tests</c> stays free of WinUI/WIC.
+/// <c>Palace.Tests</c> stays free of WinUI/WIC. These decoders return upright
+/// pixels (libjxl default orientation, AVIF irot/imir, WIC EXIF rotate), so
+/// <c>Orientation</c> is 1; view rotation is applied at draw time on top.
 /// </summary>
 internal static class SmoothSourceAppLoad
 {

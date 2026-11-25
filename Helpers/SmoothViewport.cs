@@ -116,16 +116,17 @@ public static class SmoothViewport
             }
 
             var (ow, oh) = HdrPixels.OrientedSize(storedW, storedH, (uint)Math.Clamp(orientation, 1, 8));
-            // Storage (sx,sy) → upright (ux,uy). Matches HdrPixels.OrientedToSource inverse.
+            // Storage (sx,sy) → upright (ux,uy) in continuous image coords: the quad spans
+            // [0,W]×[0,H], so flips translate by W/H (not W-1/H-1, which is the pixel-index form).
             return orientation switch
             {
-                2 => new(-1, 0, storedW - 1, 0, 1, 0, ow, oh),           // flip X
-                3 => new(-1, 0, storedW - 1, 0, -1, storedH - 1, ow, oh), // 180
-                4 => new(1, 0, 0, 0, -1, storedH - 1, ow, oh),            // flip Y
+                2 => new(-1, 0, storedW, 0, 1, 0, ow, oh),           // flip X
+                3 => new(-1, 0, storedW, 0, -1, storedH, ow, oh), // 180
+                4 => new(1, 0, 0, 0, -1, storedH, ow, oh),            // flip Y
                 5 => new(0, 1, 0, 1, 0, 0, ow, oh),                       // transpose
-                6 => new(0, -1, storedH - 1, 1, 0, 0, ow, oh),            // 90 CW
-                7 => new(0, -1, storedH - 1, -1, 0, storedW - 1, ow, oh), // transverse
-                8 => new(0, 1, 0, -1, 0, storedW - 1, ow, oh),            // 90 CCW
+                6 => new(0, -1, storedH, 1, 0, 0, ow, oh),            // 90 CW
+                7 => new(0, -1, storedH, -1, 0, storedW, ow, oh), // transverse
+                8 => new(0, 1, 0, -1, 0, storedW, ow, oh),            // 90 CCW
                 _ => Identity(storedW, storedH),
             };
         }

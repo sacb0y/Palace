@@ -32,7 +32,7 @@ public sealed class SmoothExifOrientTests
     {
         var orient = SmoothViewport.ExifOrient.FromExif(6, storedW: 100, storedH: 50);
         var m = SmoothViewport.Affine2x3.FromZoomPan(2f, tx: 10f, ty: 20f, orient);
-        // zoom * R + pan; storage (0,0) → upright (49,0) at orient, then *2 + pan
+        // zoom * R + pan; storage (0,0) → upright (50,0) at orient, then *2 + pan
         var (x, y) = m.Transform(0, 0);
         Assert.Equal((2f * orient.Tx) + 10f, x, precision: 3);
         Assert.Equal((2f * orient.Ty) + 20f, y, precision: 3);

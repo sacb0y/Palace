@@ -10,6 +10,7 @@ using Windows.Foundation;
 using CoreVirtualKeyStates = Windows.UI.Core.CoreVirtualKeyStates;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using VirtualKey = Windows.System.VirtualKey;
+using VirtualKeyModifiers = Windows.System.VirtualKeyModifiers;
 
 namespace Palace;
 
@@ -50,6 +51,17 @@ public sealed partial class SmoothPresenterWindow : Window
         ExtendsContentIntoTitleBar = false;
         Closed += OnClosed;
         Activated += OnActivated;
+        // SwapChainPanel is not focusable, so its KeyDown never fires; window-scoped
+        // accelerators make R / Shift+R rotate reachable.
+        if (Content is UIElement root)
+        {
+            var cw = new KeyboardAccelerator { Key = VirtualKey.R };
+            cw.Invoked += (_, a) => { RotateView(clockwise: true); a.Handled = true; };
+            var ccw = new KeyboardAccelerator { Key = VirtualKey.R, Modifiers = VirtualKeyModifiers.Shift };
+            ccw.Invoked += (_, a) => { RotateView(clockwise: false); a.Handled = true; };
+            root.KeyboardAccelerators.Add(cw);
+            root.KeyboardAccelerators.Add(ccw);
+        }
     }
 
     private void OnActivated(object sender, Microsoft.UI.Xaml.WindowActivatedEventArgs args)
@@ -66,18 +78,17 @@ public sealed partial class SmoothPresenterWindow : Window
     private void PreparePresenter()
     {
         SmoothSourceAppLoad.Register();
-        var dataDir = Environment.GetEnvironmentVariable("PALACE_DATA_DIR");
-        if (string.IsNullOrWhiteSpace(dataDir))
-        {
-            dataDir = CatalogStore.DataDir();
-        }
+        // Source images come ONLY from PALACE_DATA_DIR (synthetic test data); never
+        // scan or write the real catalog data dir. The frame log keeps its V1 dir.
+        var sourceDir = Environment.GetEnvironmentVariable("PALACE_DATA_DIR");
+        var dataDir = string.IsNullOrWhiteSpace(sourceDir) ? CatalogStore.DataDir() : sourceDir;
 
         _workingDecode = new SmoothWorkingDecode();
         TxtSmoothTiles.Text = "decoding Working…";
 
         _presenter = new SmoothDiligentPresenter(ScpSmooth, dataDir);
         TryStartWhenPanelSized();
-        _ = StartWorkingDecodeAsync(dataDir);
+        _ = StartWorkingDecodeAsync(string.IsNullOrWhiteSpace(sourceDir) ? null : sourceDir);
 
         _timer = DispatcherQueue.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
@@ -117,7 +128,7 @@ public sealed partial class SmoothPresenterWindow : Window
         _timer.Start();
     }
 
-    private async Task StartWorkingDecodeAsync(string dataDir)
+    private async Task StartWorkingDecodeAsync(string? sourceDir)
     {
         if (_workingDecode is null)
         {
@@ -129,35 +140,32 @@ public sealed partial class SmoothPresenterWindow : Window
             SmoothWorkingDecodeResult? result = null;
             _exifOrientation = 1;
 
-            // Prefer a real file under PALACE_DATA_DIR when present.
-            _sourcePath = FindSmoothSource(dataDir);
+            // Prefer a real file under PALACE_DATA_DIR when present. JxlDecode /
+            // HdrAvifDecode / HdrWicDecode already return upright pixels (EXIF/irot
+            // applied by the decoder), so the loader's Orientation is 1 and the view
+            // orientation starts at identity; R / Shift+R rotate at draw time.
+            // Decode once, on the background task — no second LoadLocalFile here.
+            _sourcePath = sourceDir is null ? null : FindSmoothSource(sourceDir);
             if (_sourcePath is not null)
             {
                 TxtSmoothTiles.Text = "DecodePathAsync " + Path.GetFileName(_sourcePath) + "…";
                 result = await _workingDecode.DecodePathAsync(
                     _sourcePath,
                     SmoothSourceLoad.LoaderForPath(_sourcePath));
-                try
+                if (result is null)
                 {
-                    var loaded = SmoothSourceLoad.LoadLocalFile(_sourcePath);
-                    _exifOrientation = Math.Clamp(loaded.Orientation, 1, 8);
-                }
-                catch
-                {
-                    _exifOrientation = 1;
+                    // Do not silently swap in synthetic data (e.g. >64MP real file).
+                    TxtSmoothTiles.Text =
+                        "Working decode failed or over the 64MP float budget: " + Path.GetFileName(_sourcePath);
+                    return;
                 }
             }
 
             if (result is null)
             {
-                // Synthetic ≥64MP under PALACE_DATA_DIR — strip/tile RGBA16F L0 (no box downscale).
+                // No source file: in-memory synthetic ≥64MP, strip/tile RGBA16F L0 (no box downscale).
                 const int w = 10000;
                 const int h = 7000; // 70 MP
-                Directory.CreateDirectory(dataDir);
-                var marker = Path.Combine(dataDir, "smooth-v2-synth-64mp.marker");
-                await File.WriteAllTextAsync(
-                    marker,
-                    $"{w}x{h} strip RGBA16F L0 — no full float Working");
                 TxtSmoothTiles.Text = $"strip decode synthetic {w}x{h} (≥64MP)…";
                 result = await _workingDecode.DecodeStripToRgba16FAsync(
                     w,
@@ -486,9 +494,13 @@ public sealed partial class SmoothPresenterWindow : Window
         _ty = (panelH - (orient.OrientedHeight * _zoom)) * 0.5f;
 
         // Should-fix: DisplayTarget from monitor HDR when known (not hardcoded Sdr203).
+        // Same Windows HDR probe as HdrSwapchainPresenter (CCD, any path). Peak
+        // unknown → DisplayForPresent's 10000-nit default, like the gallery path.
+        var sdrWhite = DisplayHdr.TrySdrWhiteLevelNits(null);
         var display = SmoothToneGpu.ResolveDisplayTarget(
-            displayIsHdr: null,
-            displayPeakNits: 0f);
+            displayIsHdr: DisplayHdr.TryWindowsHdrEnabled(null),
+            displayPeakNits: 0f,
+            sdrWhiteNits: sdrWhite > 0f ? sdrWhite : ImagingConstants.RefWhiteNits);
         var packed = SmoothToneGpu.FromStats(working.Stats, display);
         _ = presenter.TryArmV2Viewport(_zoom, _tx, _ty, packed.ToneCb, packed.LutSamples);
     }
@@ -502,14 +514,18 @@ public sealed partial class SmoothPresenterWindow : Window
 
         var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
             .HasFlag(CoreVirtualKeyStates.Down);
-        _exifOrientation = SmoothViewport.ExifOrient.Rotate90(_exifOrientation, clockwise: !shift);
+        RotateView(clockwise: !shift);
+        e.Handled = true;
+    }
+
+    private void RotateView(bool clockwise)
+    {
+        _exifOrientation = SmoothViewport.ExifOrient.Rotate90(_exifOrientation, clockwise);
         ApplyOrientationToPresenter();
         if (_tiles is not null && _presenter is not null && _working is not null)
         {
             ArmV2Viewport(_tiles, _presenter, _working);
         }
-
-        e.Handled = true;
     }
 
     private void TickTransformEase()
