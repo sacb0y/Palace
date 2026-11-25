@@ -65,14 +65,8 @@ bool CreateMipPipeline(Host* host)
     ComputePipelineStateCreateInfo psoCI{};
     psoCI.PSODesc.Name = "SmoothMipDownsamplePSO";
     psoCI.PSODesc.PipelineType = PIPELINE_TYPE_COMPUTE;
-    /* Src/Dst must be DYNAMIC — MUTABLE forbids Set(null) after first bind
-     * (Fenrir 8bc4e7b: ShaderVariableManagerD3D12.cpp:613). */
-    ShaderResourceVariableDesc vars[] = {
-        {SHADER_TYPE_COMPUTE, "Src", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {SHADER_TYPE_COMPUTE, "Dst", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {SHADER_TYPE_COMPUTE, "SmoothMipCB", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
-    };
-    psoCI.PSODesc.ResourceLayout.Variables = {vars, _countof(vars)};
+    /* MUTABLE Src/Dst: rebind the same views each psv_tile_mip_box call.
+     * Do not Set(nullptr) / DYNAMIC / ALLOW_OVERWRITE (Wimbly). */
     psoCI.PSODesc.ResourceLayout.DefaultVariableType = SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE;
     psoCI.pCS = cs;
     host->diligentDevice->CreateComputePipelineState(psoCI, &host->mipPso);
@@ -481,9 +475,10 @@ PSV_API int psv_tile_mip_box(
     auto* vDst = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Dst");
     auto* vCb = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "SmoothMipCB");
     if (!vSrc || !vDst || !vCb) {
-        SetError(host, "mip SRB missing Src/Dst/SmoothMipCB (need DYNAMIC Src/Dst)");
+        SetError(host, "mip SRB missing Src/Dst/SmoothMipCB (need MUTABLE layout)");
         return PSV_FAILED;
     }
+    /* Rebind same views each call — no Set(nullptr) on MUTABLE vars. */
     vSrc->Set(srcSrv);
     vDst->Set(dstUav);
     vCb->Set(host->mipCb);
@@ -502,11 +497,6 @@ PSV_API int psv_tile_mip_box(
     copy.SrcTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     copy.DstTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     host->diligentContext->CopyTexture(copy);
-
-    /* Unbind tileArray from compute SRV/UAV before later UpdateTexture/readback.
-     * Valid only because Src/Dst are DYNAMIC (see CreateMipPipeline). */
-    vSrc->Set(static_cast<IDeviceObject*>(nullptr));
-    vDst->Set(static_cast<IDeviceObject*>(nullptr));
 
     ClearError(host);
     return PSV_OK;

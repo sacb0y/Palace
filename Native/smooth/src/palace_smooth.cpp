@@ -14,6 +14,10 @@
 #include <cstdio>
 #include <cstring>
 
+#if defined(PSV_TEST_HOOKS)
+#  include <d3d12sdklayers.h>
+#endif
+
 namespace {
 /* Survives psv_create failure so LastError(null) can report "device still removed". */
 char g_lastCreateError[256] = {};
@@ -222,6 +226,27 @@ HRESULT CreateCompositionSwapChainDxgi(Host* host, unsigned width, unsigned heig
     return S_OK;
 }
 
+#if defined(PSV_TEST_HOOKS)
+/* Must run before D3D12CreateDevice. Diligent EnableValidation alone is not
+ * enough when we AttachToD3D12Device on an app-owned device. Requires the
+ * Windows "Graphics Tools" optional feature — do not install system-wide here. */
+bool TryEnableD3D12DebugLayerBeforeCreate()
+{
+    ComPtr<ID3D12Debug> dbg;
+    const HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(&dbg));
+    if (FAILED(hr) || !dbg) {
+        PsvAppendDebugNote(
+            "D3D12GetDebugInterface failed — install Windows optional feature "
+            "'Graphics Tools' for Debug-layer InfoQueue (not installing here)");
+        SetError(nullptr, "D3D12 debug layer unavailable (Graphics Tools?)");
+        return false;
+    }
+    dbg->EnableDebugLayer();
+    PsvAppendDebugNote("D3D12 debug layer enabled before CreateDevice");
+    return true;
+}
+#endif
+
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
 
 bool CreatePatternPipeline(Host* host)
@@ -274,6 +299,9 @@ bool InitDiligentD3D12(Host* host)
 {
     /* Own D3D12 device + queue so CreateSwapChainForComposition can use the queue,
      * then AttachToD3D12Device so Diligent shares the same device. */
+#if defined(PSV_TEST_HOOKS)
+    TryEnableD3D12DebugLayerBeforeCreate();
+#endif
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&host->d3d12Device));
     if (FAILED(hr)) {
         SetError(host, "D3D12CreateDevice failed");
@@ -504,6 +532,9 @@ HRESULT BindAndDrawPattern(Host* host)
 
 bool InitStubD3D12(Host* host)
 {
+#if defined(PSV_TEST_HOOKS)
+    TryEnableD3D12DebugLayerBeforeCreate();
+#endif
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&host->d3d12Device));
     if (FAILED(hr)) {
         SetError(host, "stub D3D12CreateDevice failed");
