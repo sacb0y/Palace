@@ -133,21 +133,91 @@ public partial class LibraryViewModel
     }
 
     /// <summary>
-    /// Esc exits select mode without clearing the selection (matches hold/Ctrl+A entry).
-    /// Selection count stays on the bar — commands still act on <c>_selection</c>.
+    /// Done / toggle-off exits select mode without clearing the selection.
+    /// Esc uses <see cref="ClearSelectionAndExit"/> (modifier-click plan).
     /// </summary>
     [RelayCommand]
     public void ExitSelectMode()
     {
-        if (!SelectMode.ExitsSelectModeOnEscape(IsSelectMode, IsGalleryOverlayOpen))
+        if (!IsSelectMode)
         {
             return;
         }
 
         IsSelectMode = false;
+        _selectEntryKind = SelectEntryKind.None;
         // OnIsSelectModeChanged refreshes; call again so the bar still shows "N selected"
-        // after Esc (selection kept, select mode off).
+        // after Done (selection kept, select mode off).
         RefreshSelectionSummary();
+    }
+
+    /// <summary>Record how select mode was entered (modifier vs purposeful).</summary>
+    public void MarkSelectEntry(SelectEntryKind kind) => _selectEntryKind = kind;
+
+    /// <summary>Current entry kind (tests / page plain-click branch).</summary>
+    internal SelectEntryKind SelectEntryKind => _selectEntryKind;
+
+    /// <summary>Focused tile for Preview-follow and keyboard extend.</summary>
+    internal AssetItem? SelectionFocus => _selectionFocus;
+
+    /// <summary>
+    /// Enter select mode from a modifier click / purposeful path and stamp entry kind.
+    /// </summary>
+    public void EnsureSelectMode(SelectEntryKind kind)
+    {
+        if (!IsSelectMode)
+        {
+            IsSelectMode = true;
+        }
+
+        MarkSelectEntry(kind);
+    }
+
+    /// <summary>Discard the dropped-selection slot after a newer user action.</summary>
+    public void DiscardDroppedSelection() => DroppedSelection.NotifyOtherAction();
+
+    /// <summary>
+    /// Capture the current selection into the one-slot dropped buffer (folder/filter
+    /// change), then clear. No-op when empty.
+    /// </summary>
+    public void CaptureAndDropSelection()
+    {
+        if (_selection.Count > 0)
+        {
+            DroppedSelection.Capture(
+                _selection.Where(s => !s.IsFolderHeader && !string.IsNullOrEmpty(s.Id)).Select(s => s.Id));
+        }
+
+        ClearSelection();
+        if (IsSelectMode)
+        {
+            IsSelectMode = false;
+            _selectEntryKind = SelectEntryKind.None;
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+Z path: restore the one-slot dropped selection when it is still the
+    /// most recent action. Returns true when handled (caller must not FileOp undo).
+    /// Restores only ids still present in the current mosaic.
+    /// </summary>
+    public bool TryRestoreDroppedSelection()
+    {
+        var ids = DroppedSelection.TryTakeRestore();
+        if (ids is null || ids.Count == 0)
+        {
+            return false;
+        }
+
+        RestoreSelectionByIds(ids, loadPreview: true);
+        if (_selection.Count == 0)
+        {
+            return true;
+        }
+
+        EnsureSelectMode(SelectMode.EntryFromPurposeful());
+        RequestRestoreMosaicSelection?.Invoke();
+        return true;
     }
 
     /// <summary>True selection size (not loaded-chunk <c>Assets.Where(IsSelected)</c>).</summary>
@@ -200,6 +270,7 @@ public partial class LibraryViewModel
     private void ApplySelectionList(List<AssetItem> items, bool loadPreview, bool keepAnchorIfInOrder = false)
     {
         var priorAnchor = _selectionAnchor;
+        var priorFocus = _selectionFocus;
         _selection = items;
         var selected = new HashSet<AssetItem>(_selection);
         // Live drag reuses the display HashSet; end of drag / normal select rebuilds it.
@@ -227,6 +298,9 @@ public partial class LibraryViewModel
         // (often a hidden tile). Keep the prior anchor when it is still in order.
         _selectionAnchor = keepAnchorIfInOrder
             ? MosaicSelection.ResolveAnchorAfterRestore(priorAnchor, ordered, next)
+            : next;
+        _selectionFocus = keepAnchorIfInOrder
+            ? MosaicSelection.ResolveAnchorAfterRestore(priorFocus, ordered, next)
             : next;
         if (!loadPreview)
         {
@@ -275,34 +349,70 @@ public partial class LibraryViewModel
         }
     }
 
-    public void SelectAsset(AssetItem item, bool toggle, bool range = false)
+    /// <summary>
+    /// Select / toggle / range a mosaic tile. <paramref name="addRange"/> (Ctrl+Shift)
+    /// unions the anchor..item span with the existing selection and keeps the anchor.
+    /// Shift range (<paramref name="range"/> without add) replaces and keeps the anchor.
+    /// </summary>
+    public void SelectAsset(AssetItem item, bool toggle, bool range = false, bool addRange = false)
     {
         if (item.IsFolderHeader)
         {
             return;
         }
 
-        if (range && _selectionAnchor is not null)
-        {
-            var from = Assets.IndexOf(_selectionAnchor);
-            var to = Assets.IndexOf(item);
-            if (from >= 0 && to >= 0)
-            {
-                ApplyMosaicRange(from, to);
-                return;
-            }
+        DroppedSelection.NotifyOtherAction();
+        SetSelectionFocus(item);
 
-            // Anchor (or click target) is under a collapsed section — range through
-            // the full ordered mosaic the same way ApplyMosaicRange does.
+        // Shift range needs an anchor: last plain/Ctrl click, or the focused / preview tile.
+        if ((range || addRange) && _selectionAnchor is null)
+        {
+            _selectionAnchor = _selectionFocus
+                ?? SelectedAsset
+                ?? _selection.FirstOrDefault(a => !a.IsFolderHeader);
+        }
+
+        if ((range || addRange) && _selectionAnchor is not null)
+        {
             var ordered = _mosaicOrder.Count > 0 ? (IReadOnlyList<AssetItem>)_mosaicOrder : Assets;
             var fromOrdered = MosaicSelection.IndexInOrdered(ordered, _selectionAnchor);
             var toOrdered = MosaicSelection.IndexInOrdered(ordered, item);
             if (fromOrdered >= 0 && toOrdered >= 0)
             {
                 var flags = ordered.Select(asset => asset.IsFolderHeader).ToList();
-                var indexes = RangeSelect.ContiguousIndexes(flags, fromOrdered, toOrdered);
                 var priorAnchor = _selectionAnchor;
-                SetSelection(indexes.Select(i => ordered[i]));
+                if (addRange)
+                {
+                    var priorIndexes = new List<int>();
+                    for (var i = 0; i < ordered.Count; i++)
+                    {
+                        if (!ordered[i].IsFolderHeader && ordered[i].IsSelected)
+                        {
+                            priorIndexes.Add(i);
+                        }
+                    }
+
+                    // Also include anything in _selection that may be hidden.
+                    for (var i = 0; i < ordered.Count; i++)
+                    {
+                        if (!ordered[i].IsFolderHeader
+                            && _selection.Contains(ordered[i])
+                            && !priorIndexes.Contains(i))
+                        {
+                            priorIndexes.Add(i);
+                        }
+                    }
+
+                    var union = MosaicModifierSelect.UnionRange(
+                        flags, priorIndexes, fromOrdered, toOrdered);
+                    SetSelection(union.Select(i => ordered[i]));
+                }
+                else
+                {
+                    var indexes = MosaicModifierSelect.RangeIndexes(flags, fromOrdered, toOrdered);
+                    SetSelection(indexes.Select(i => ordered[i]));
+                }
+
                 _selectionAnchor = priorAnchor;
                 return;
             }
@@ -360,10 +470,77 @@ public partial class LibraryViewModel
             _selection = selected.ToList();
         }
 
+        FinishSelectionChange(loadPreview: true);
+    }
+
+    /// <summary>
+    /// Plain tile-body click while select mode is on. Modifier-entered → replace
+    /// + exit; purposeful → toggle. Checkbox callers use <see cref="SelectAsset"/> toggle.
+    /// </summary>
+    public void ApplyTileBodyClick(AssetItem item)
+    {
+        if (item.IsFolderHeader)
+        {
+            return;
+        }
+
+        if (SelectMode.TileBodyClickReplacesAndExits(_selectEntryKind))
+        {
+            SelectAsset(item, toggle: false);
+            IsSelectMode = false;
+            _selectEntryKind = SelectEntryKind.None;
+            RefreshSelectionSummary();
+            RequestRestoreMosaicSelection?.Invoke();
+            return;
+        }
+
+        SelectAsset(item, toggle: true);
+        MaybeExitWhenSelectionEmpty();
+        RequestRestoreMosaicSelection?.Invoke();
+    }
+
+    /// <summary>Update focus for Preview-follow without changing selection.</summary>
+    public void SetSelectionFocus(AssetItem? item)
+    {
+        if (item is { IsFolderHeader: true })
+        {
+            return;
+        }
+
+        _selectionFocus = item;
+        if (item is null || !IsSelectMode || _selection.Count <= 1)
+        {
+            return;
+        }
+
+        // Preview follows the focused tile while multi-select is active.
+        if (!ReferenceEquals(SelectedAsset, item))
+        {
+            SelectedAsset = item;
+        }
+        else
+        {
+            _ = LoadPreviewAsync(item);
+        }
+    }
+
+    private void FinishSelectionChange(bool loadPreview)
+    {
         HasSelection = _selection.Count > 0;
         RefreshSelectionSummary();
         CanEditNotes = _selection.Count == 1;
-        var next = _selection.Count == 1 ? _selection[0] : _selection.LastOrDefault();
+        var focus = _selectionFocus is not null && _selection.Contains(_selectionFocus)
+            ? _selectionFocus
+            : null;
+        var next = _selection.Count == 1
+            ? _selection[0]
+            : focus ?? _selection.LastOrDefault();
+        if (!loadPreview)
+        {
+            MaybeExitWhenSelectionEmpty();
+            return;
+        }
+
         if (!ReferenceEquals(SelectedAsset, next))
         {
             SelectedAsset = next;
@@ -372,6 +549,20 @@ public partial class LibraryViewModel
         {
             _ = LoadPreviewAsync(next);
         }
+
+        MaybeExitWhenSelectionEmpty();
+    }
+
+    private void MaybeExitWhenSelectionEmpty()
+    {
+        if (!SelectMode.ExitsWhenSelectionEmpty(IsSelectMode, _selection.Count))
+        {
+            return;
+        }
+
+        IsSelectMode = false;
+        _selectEntryKind = SelectEntryKind.None;
+        RefreshSelectionSummary();
     }
 
     private static int IndexInOrdered(IReadOnlyList<AssetItem> ordered, AssetItem item) =>
@@ -419,6 +610,7 @@ public partial class LibraryViewModel
 
         _selection.Clear();
         _selectionAnchor = null;
+        _selectionFocus = null;
         InvalidateDisplayedSelectionCache();
         HasSelection = false;
         RefreshSelectionSummary();
@@ -442,16 +634,18 @@ public partial class LibraryViewModel
     }
 
     /// <summary>
-    /// Clear tiles and exit select mode (batch menu companion).
-    /// Esc alone keeps the selection — see <see cref="ExitSelectMode"/>.
+    /// Clear tiles and exit select mode (batch menu Clear + Esc).
+    /// Done keeps the selection — see <see cref="ExitSelectMode"/>.
     /// </summary>
     [RelayCommand]
     private void ClearSelectionAndExit()
     {
+        DroppedSelection.NotifyOtherAction();
         ClearSelection();
         if (SelectMode.ExitsSelectModeOnClear(IsSelectMode))
         {
             IsSelectMode = false;
+            _selectEntryKind = SelectEntryKind.None;
         }
 
         RequestRestoreMosaicSelection?.Invoke();

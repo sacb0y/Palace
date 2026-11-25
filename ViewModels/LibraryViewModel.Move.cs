@@ -41,6 +41,15 @@ public partial class LibraryViewModel
     [ObservableProperty]
     public partial bool ShowUndoToast { get; set; }
 
+    partial void OnShowStatusUndoChanged(bool value)
+    {
+        if (value)
+        {
+            // Tag / status-bar undo is more recent than a dropped-selection slot.
+            DroppedSelection.NotifyOtherAction();
+        }
+    }
+
     [ObservableProperty]
     public partial string UndoToastMessage { get; set; } = "";
 
@@ -371,6 +380,12 @@ public partial class LibraryViewModel
 
     private void ShowUndoToastFor(string message, bool offerUndo = true, int dismissSeconds = 12)
     {
+        if (offerUndo)
+        {
+            // A new FileOp is more recent than a dropped-selection slot.
+            DroppedSelection.NotifyOtherAction();
+        }
+
         var epoch = Interlocked.Increment(ref _undoToastEpoch);
         _undoToastHideCts?.Cancel();
         _ = UiDispatch.RunAsync(() =>
