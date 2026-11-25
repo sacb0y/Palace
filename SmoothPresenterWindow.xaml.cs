@@ -137,6 +137,11 @@ public sealed partial class SmoothPresenterWindow : Window
             }
 
             TxtSmoothStatus.Text = _presenter.Status;
+            /* Live TILES: session StatusLine (resident/…) + presenter stream segment. */
+            if (_poolReady && _tiles is not null && !_gpuUnavailable)
+            {
+                TxtSmoothTiles.Text = TilesStatusLine() + " · " + _presenter.TileStatus;
+            }
         };
         _timer.Start();
     }

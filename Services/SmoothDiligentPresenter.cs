@@ -49,6 +49,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private readonly Func<SmoothTileId, uint?> _trySlice;
     private long _lastTickQpc;
     private int _lastUploads;
+    /// <summary>GPU stream uploads since this session's pool attach (not coarse Finalize).</summary>
+    private int _streamedUploadsSinceLoad;
     private bool _testRemoveDeviceFired;
     /// <summary>True after one successful armed present — next Tick may fire RemoveDevice.</summary>
     private bool _sawArmedPresent;
@@ -122,6 +124,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         _session = session;
         _gpuMipCount = 0;
+        _streamedUploadsSinceLoad = 0;
         _readbackMaxAbsError = 0;
         _readbackOverUlpCount = 0;
         _readbackCompared = 0;
@@ -708,6 +711,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
+        /* Visible count for LevelForZoom before parent-level stream overwrites scratch. */
+        var visibleCount = _visibleScratch.Count;
+
         var totalUploads = uploads;
         if (_zoom < 1f && level < _session.MaxLevel && uploads < MaxUploadsPerFrame)
         {
@@ -722,6 +728,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         _lastUploads = totalUploads;
+        if (totalUploads > 0)
+        {
+            _streamedUploadsSinceLoad += totalUploads;
+        }
 
         SmoothViewportFrame.BuildInto(
             imgToDev,
@@ -737,6 +747,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _visibleScratch,
             _underlayScratch,
             _drawScratch);
+
+        /* Live TILES segment — FinalizeV1CoarseUploads alone goes stale after zoom/stream. */
+        _tileStatus =
+            $"level={level} visible={visibleCount} resident={_session.Lru.ResidentCount} " +
+            $"streamPending={_streamEnsurePending.Count} streamed={_streamedUploadsSinceLoad} " +
+            $"uploads={_lastUploads} gpuMips={_gpuMipCount}";
 
         var drawCount = _drawScratch.Count;
         if (_instanceArray.Length < drawCount)
