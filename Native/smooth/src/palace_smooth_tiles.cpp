@@ -536,6 +536,8 @@ PSV_API int psv_flush(void* host_ptr)
     }
     if (host->diligentContext) {
         host->diligentContext->Flush();
+        /* Pyramid mip batches may Flush without a present — recycle here too. */
+        PsvFinishDiligentFrame(host);
         PsvDrainD3D12InfoQueue(host);
     }
     return PSV_OK;

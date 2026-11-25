@@ -459,6 +459,28 @@ void UnbindAndIdleDiligent(Host* host)
 #endif
 }
 
+void PsvFinishDiligentFrame(Host* host)
+{
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (!host || !host->diligentContext) {
+        return;
+    }
+    if (PollDeviceRemoved(host)) {
+        return;
+    }
+    /* Raw DXGI Present does not call Diligent ISwapChain::Present, so the engine
+     * never auto-FinishFrame — recycle dynamic GPU descriptors explicitly.
+     * Flush first: FinishFrame errors if the context still has outstanding cmds. */
+    host->diligentContext->Flush();
+    host->diligentContext->FinishFrame();
+    if (host->diligentDevice) {
+        host->diligentDevice->ReleaseStaleResources();
+    }
+#else
+    (void)host;
+#endif
+}
+
 namespace {
 
 HRESULT BindAndDrawPattern(Host* host)
@@ -860,6 +882,8 @@ PSV_API int psv_render_frame(void* host_ptr)
     QueryPerformanceCounter(&tRender);
     if (FAILED(hr)) {
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+        /* Draw path may have Flushed + allocated dynamic descriptors — recycle. */
+        PsvFinishDiligentFrame(host);
         return PSV_FAILED;
 #else
         /* stub may still present */
@@ -869,12 +893,17 @@ PSV_API int psv_render_frame(void* host_ptr)
     hr = PresentSwapChain(host);
     QueryPerformanceCounter(&tPresent);
     PsvDrainD3D12InfoQueue(host);
-    if (host->deviceLost) {
+    if (host->deviceLost || PollDeviceRemoved(host)) {
         return PSV_DEVICE_LOST;
     }
     if (FAILED(hr)) {
+        PsvFinishDiligentFrame(host);
         return PSV_FAILED;
     }
+
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    PsvFinishDiligentFrame(host);
+#endif
 
     host->lastStats.wait_ms = ElapsedMs(host->qpcFreq, t0, tWait);
     host->lastStats.render_ms = ElapsedMs(host->qpcFreq, tWait, tRender);

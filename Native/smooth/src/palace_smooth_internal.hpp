@@ -97,6 +97,9 @@ struct Host {
 void SetError(Host* host, const char* msg);
 void ClearError(Host* host);
 void UnbindAndIdleDiligent(Host* host);
+/* AttachToD3D12Device + raw DXGI Present — call after Flush so Diligent recycles
+ * dynamic CBV_SRV_UAV. No-op if removed / no context. */
+void PsvFinishDiligentFrame(Host* host);
 bool BindDxgiAdapter3(Host* host);
 
 /* Cheap DXGI removed poll. Sets host->deviceLost when reason != S_OK. */
