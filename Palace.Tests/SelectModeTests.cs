@@ -40,8 +40,10 @@ public sealed class SelectModeTests
         Assert.False(SelectMode.TileBodyClickToggles(SelectEntryKind.Modifier));
         Assert.False(SelectMode.TileBodyClickReplacesAndExits(SelectEntryKind.Purposeful));
         Assert.True(SelectMode.TileBodyClickToggles(SelectEntryKind.Purposeful));
-        Assert.True(SelectMode.CheckboxClickTogglesOnly(SelectEntryKind.Modifier));
-        Assert.True(SelectMode.CheckboxClickTogglesOnly(SelectEntryKind.Purposeful));
+        Assert.True(SelectMode.AppliesTileBodyClickPolicy(SelectEntryKind.Modifier, isCheckboxHit: false));
+        Assert.False(SelectMode.AppliesTileBodyClickPolicy(SelectEntryKind.Modifier, isCheckboxHit: true));
+        Assert.True(SelectMode.DefersCheckboxToItemsView(isCheckboxHit: true));
+        Assert.False(SelectMode.DefersCheckboxToItemsView(isCheckboxHit: false));
         Assert.Equal(SelectEntryKind.Modifier, SelectMode.EntryFromModifier());
         Assert.Equal(SelectEntryKind.Purposeful, SelectMode.EntryFromPurposeful());
     }

@@ -1436,18 +1436,20 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // Modifier-entered select mode: plain tile-body click replaces + exits
-        // (checkbox still toggles only that tile).
-        if (SelectMode.TileBodyClickReplacesAndExits(ViewModel.SelectEntryKind)
-            && !IsMultiSelectCheckBoxHit(e.OriginalSource as DependencyObject))
+        // Checkbox: ItemsView toggles only that tile — never start a range session
+        // and never rewrite SelectEntryKind / replace the selection.
+        if (IsMultiSelectCheckBoxHit(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+
+        // Modifier-entered select mode: plain tile-body click replaces + exits.
+        if (SelectMode.TileBodyClickReplacesAndExits(ViewModel.SelectEntryKind))
         {
             ViewModel.ApplyTileBodyClick(item);
             e.Handled = true;
             return;
         }
-
-        // Checkbox: ItemsView toggles only that tile (never replace), regardless
-        // of entry kind — do not rewrite SelectEntryKind here.
 
         if (!RangeSelect.AllowsGesture(true, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
         {
@@ -2152,7 +2154,7 @@ public sealed partial class LibraryPage : Page
 
     /// <summary>
     /// Shift/Ctrl arrows, Ctrl/Shift+Space — Explorer-style mosaic selection
-    /// without WinUI Extended mode.
+    /// without WinUI Extended mode. Up/Down use justified row stride.
     /// </summary>
     private bool TryHandleMosaicModifierKey(VirtualKey key, bool ctrl, bool shift)
     {
@@ -2193,23 +2195,42 @@ public sealed partial class LibraryPage : Page
             return true;
         }
 
+        var slots = TryBuildMosaicSlots();
+        int Step() => MosaicModifierSelect.StepFocus(flags, slots, focusIndex, keyCode);
+
         if (MosaicModifierSelect.MovesFocusOnly(shift, ctrl, keyCode))
         {
-            var next = MosaicModifierSelect.StepFocus(
-                flags, focusIndex, MosaicModifierSelect.ArrowDelta(keyCode));
+            var next = Step();
             if (next < 0)
             {
                 return true;
             }
 
-            ViewModel.SetSelectionFocus(ViewModel.Assets[next]);
+            var target = ViewModel.Assets[next];
+            ViewModel.SetSelectionFocus(target);
+            BringMosaicIndexIntoView(next);
+            return true;
+        }
+
+        if (MosaicModifierSelect.AddsRangeWithCtrlShiftArrow(shift, ctrl, keyCode))
+        {
+            var next = Step();
+            if (next < 0)
+            {
+                return true;
+            }
+
+            var target = ViewModel.Assets[next];
+            ViewModel.EnsureSelectMode(SelectMode.EntryFromModifier());
+            ViewModel.SelectAsset(target, toggle: false, range: true, addRange: true);
+            RestoreMosaicSelectionHighlights();
+            BringMosaicIndexIntoView(next);
             return true;
         }
 
         if (MosaicModifierSelect.ExtendsWithShiftArrow(shift, ctrl, keyCode))
         {
-            var next = MosaicModifierSelect.StepFocus(
-                flags, focusIndex, MosaicModifierSelect.ArrowDelta(keyCode));
+            var next = Step();
             if (next < 0)
             {
                 return true;
@@ -2218,12 +2239,69 @@ public sealed partial class LibraryPage : Page
             var target = ViewModel.Assets[next];
             ViewModel.EnsureSelectMode(SelectMode.EntryFromModifier());
             ViewModel.SelectAsset(target, toggle: false, range: true);
-            ViewModel.SetSelectionFocus(target);
             RestoreMosaicSelectionHighlights();
+            BringMosaicIndexIntoView(next);
             return true;
         }
 
         return false;
+    }
+
+    /// <summary>Justified slots for Up/Down row stride (same math as thumb plan).</summary>
+    private IReadOnlyList<MosaicSlot>? TryBuildMosaicSlots()
+    {
+        var width = GrdAssets.ActualWidth;
+        if (width < 1 || ViewModel.Assets.Count == 0)
+        {
+            return null;
+        }
+
+        var specs = new MosaicSpec[ViewModel.Assets.Count];
+        for (var i = 0; i < ViewModel.Assets.Count; i++)
+        {
+            var asset = ViewModel.Assets[i];
+            specs[i] = asset.IsFolderHeader
+                ? new MosaicSpec(
+                    MosaicSlotKind.FullHeader,
+                    0,
+                    asset.IsFolderCollapsed,
+                    MosaicRows.MiniHeaderWidth(asset.FolderGroupTitle, asset.FolderItemCount))
+                : new MosaicSpec(MosaicSlotKind.Asset, MosaicRows.ClampTileAspect(asset.AspectRatio));
+        }
+
+        return MosaicRows.Layout(
+            specs,
+            width,
+            ViewModel.MosaicRowHeight,
+            MosaicLayout.ItemSpacing,
+            MosaicLayout.HeaderHeight,
+            MosaicLayout.CaptionHeight);
+    }
+
+    private void BringMosaicIndexIntoView(int index)
+    {
+        if ((uint)index >= (uint)ViewModel.Assets.Count)
+        {
+            return;
+        }
+
+        _suppressMosaicSelection = true;
+        try
+        {
+            var tag = ViewModel.Assets[index].MosaicTag;
+            if (string.IsNullOrEmpty(tag))
+            {
+                return;
+            }
+
+            var container = FindRealizedItemContainerByTag(GrdAssets, tag);
+            container?.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+            RestoreMosaicSelectionHighlights();
+        }
     }
 
     /// <summary>

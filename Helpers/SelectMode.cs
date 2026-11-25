@@ -43,10 +43,17 @@ public static class SelectMode
         entryKind == SelectEntryKind.Purposeful;
 
     /// <summary>
-    /// Tile checkbox always toggles only that tile and never replaces the
-    /// selection, regardless of entry kind.
+    /// True when a mosaic pointer press should apply tile-body replace/toggle
+    /// policy. Checkbox hits never do — ItemsView toggles that one tile only.
     /// </summary>
-    public static bool CheckboxClickTogglesOnly(SelectEntryKind _) => true;
+    public static bool AppliesTileBodyClickPolicy(SelectEntryKind entryKind, bool isCheckboxHit) =>
+        !isCheckboxHit
+        && entryKind is SelectEntryKind.Modifier or SelectEntryKind.Purposeful;
+
+    /// <summary>
+    /// Checkbox hit: do not start range-select and do not replace the selection.
+    /// </summary>
+    public static bool DefersCheckboxToItemsView(bool isCheckboxHit) => isCheckboxHit;
 
     /// <summary>Select mode exits when the selection count reaches zero.</summary>
     public static bool ExitsWhenSelectionEmpty(bool selectMode, int selectedCount) =>

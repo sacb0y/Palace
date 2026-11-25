@@ -41,13 +41,15 @@ public sealed class MosaicModifierSelectTests
     }
 
     [Fact]
-    public void KeyboardChords_Extend_FocusOnly_Space()
+    public void KeyboardChords_Extend_FocusOnly_Space_CtrlShift()
     {
         Assert.True(MosaicModifierSelect.ExtendsWithShiftArrow(shift: true, ctrl: false, 39));
         Assert.True(MosaicModifierSelect.MovesFocusOnly(shift: false, ctrl: true, 37));
         Assert.True(MosaicModifierSelect.TogglesWithCtrlSpace(ctrl: true, shift: false, 32));
         Assert.True(MosaicModifierSelect.RangesWithShiftSpace(ctrl: false, shift: true, 32));
         Assert.False(MosaicModifierSelect.ExtendsWithShiftArrow(shift: true, ctrl: true, 39));
+        Assert.True(MosaicModifierSelect.AddsRangeWithCtrlShiftArrow(shift: true, ctrl: true, 40));
+        Assert.True(MosaicModifierSelect.MovesAnchorOnToggle(selecting: false));
     }
 
     [Fact]
@@ -58,6 +60,26 @@ public sealed class MosaicModifierSelectTests
         Assert.Equal(1, MosaicModifierSelect.StepFocus(headers, from: 3, delta: -1));
         Assert.Equal(-1, MosaicModifierSelect.StepFocus(headers, from: 1, delta: -1));
         Assert.Equal(-1, MosaicModifierSelect.StepFocus(headers, from: 4, delta: 1));
+    }
+
+    [Fact]
+    public void StepFocus_UpDown_UsesRowStride_NotReadingOrder()
+    {
+        // Two rows of two tiles: 0,1 on Y=0; 2,3 on Y=100. From index 1 (right of row0)
+        // Down should land on index 3 (nearest X), not index 2.
+        bool[] headers = [false, false, false, false];
+        MosaicSlot[] slots =
+        [
+            new(0, 0, 50, 40),
+            new(60, 0, 50, 40),
+            new(0, 100, 50, 40),
+            new(60, 100, 50, 40),
+        ];
+        Assert.Equal(3, MosaicModifierSelect.StepFocus(headers, slots, from: 1, virtualKey: 40)); // Down
+        Assert.Equal(1, MosaicModifierSelect.StepFocus(headers, slots, from: 3, virtualKey: 38)); // Up
+        // Left/Right still reading order.
+        Assert.Equal(0, MosaicModifierSelect.StepFocus(headers, slots, from: 1, virtualKey: 37));
+        Assert.Equal(2, MosaicModifierSelect.StepFocus(headers, slots, from: 1, virtualKey: 39));
     }
 
     [Fact]

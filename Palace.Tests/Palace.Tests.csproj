@@ -101,6 +101,7 @@
     <Compile Include="..\Helpers\SelectEntryKind.cs" Link="SelectEntryKind.cs" />
     <Compile Include="..\Helpers\MosaicModifierSelect.cs" Link="MosaicModifierSelect.cs" />
     <Compile Include="..\Helpers\DroppedSelectionSlot.cs" Link="DroppedSelectionSlot.cs" />
+    <Compile Include="..\Helpers\MosaicSelectHarness.cs" Link="MosaicSelectHarness.cs" />
     <Compile Include="..\Helpers\SelectCommandBar.cs" Link="SelectCommandBar.cs" />
     <Compile Include="..\Helpers\ReviewSwipe.cs" Link="ReviewSwipe.cs" />
     <Compile Include="..\Helpers\ReviewReject.cs" Link="ReviewReject.cs" />
