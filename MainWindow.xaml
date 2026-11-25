@@ -9,10 +9,13 @@
     Title="Palace"
     mc:Ignorable="d">
     <Grid Background="Transparent">
+        <!-- IsHitTestVisible stays True so UIA exposes AutomationId; content sibling
+             above receives pointer hits. False hid GrdShellBackdrop from winapp wait-for. -->
         <Grid
             x:Name="GrdShellBackdrop"
             AutomationProperties.AutomationId="GrdShellBackdrop"
-            IsHitTestVisible="False">
+            AutomationProperties.Name="Shell wallpaper"
+            IsHitTestVisible="True">
             <Border x:Name="BrdShellGradient">
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">

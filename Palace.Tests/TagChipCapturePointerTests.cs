@@ -155,4 +155,28 @@ public sealed class TagChipCapturePointerTests
         Assert.DoesNotContain("Background=", rootOpen, StringComparison.Ordinal);
         Assert.Contains("Background=\"Transparent\"", xaml, StringComparison.Ordinal); // GrdFace only
     }
+
+    [Fact]
+    public void TagChip_MeasureOverride_FaceAtInfinity_NotStretchRootAtInfinity()
+    {
+        var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "Controls", "TagChip.xaml"));
+        var cs = TagChipCode();
+        Assert.Contains("HorizontalAlignment=\"Stretch\"", xaml, StringComparison.Ordinal);
+        var measure = cs.IndexOf("protected override Size MeasureOverride", StringComparison.Ordinal);
+        Assert.True(measure >= 0);
+        var body = cs[measure..];
+        var end = body.IndexOf("\n    public string Label", StringComparison.Ordinal);
+        if (end < 0)
+        {
+            end = Math.Min(body.Length, 1200);
+        }
+
+        body = body[..end];
+        // Measure Left-aligned face unconstrained; never GrdRoot.Measure(availableSize) alone
+        // when available is Infinity (Stretch DesiredWidth=0 → UIA zero-size).
+        Assert.Contains("GrdFace.Measure", body, StringComparison.Ordinal);
+        Assert.Contains("Math.Max(1", body, StringComparison.Ordinal);
+        Assert.Contains("GrdRoot.Measure(new Size(measureW, faceH))", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("GrdRoot.Measure(availableSize)", body, StringComparison.Ordinal);
+    }
 }

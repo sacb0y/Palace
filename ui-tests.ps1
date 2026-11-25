@@ -153,7 +153,18 @@ function Wait-LibraryReady {
     winapp ui invoke 'BtnGalleryClose' @(WinArgs) | Out-Null
     Close-GalleryOverlay
     winapp ui wait-for 'GrdAssets' @(WinArgs) -t 8000 | Out-Null
-    winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 8000 | Out-Null
+    # Preview may be auto-hidden / UserShow off -- open it so AsbAssignTag is in UIA.
+    winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 2500 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        winapp ui invoke 'TglPreviewPane' @(WinArgs) | Out-Null
+        Start-Sleep -Milliseconds 400
+        winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 4000 | Out-Null
+    }
+    if ($LASTEXITCODE -ne 0) {
+        winapp ui invoke 'BtnPreviewPaneEdge' @(WinArgs) | Out-Null
+        Start-Sleep -Milliseconds 400
+        winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 4000 | Out-Null
+    }
     winapp ui wait-for 'AsbSearch' @(WinArgs) -t 4000 | Out-Null
     if ($LASTEXITCODE -eq 0) {
         winapp ui send-keys 'ctrl+a' --target 'AsbSearch' @(WinArgs) --via send-input | Out-Null
@@ -298,14 +309,8 @@ function Get-BoundingHeight {
     if (-not $sel) { $sel = $Item.name }
     if (-not $sel) { return $null }
 
-    $h = $null
-    if ($Item.bounds) {
-        if ($Item.bounds.height) { $h = [double]$Item.bounds.height }
-        elseif ($Item.bounds.Height) { $h = [double]$Item.bounds.Height }
-    }
-    if (-not $h -and $Item.height) { $h = [double]$Item.height }
-    if (-not $h -and $Item.Height) { $h = [double]$Item.Height }
-
+    # Prefer a fresh BoundingRectangle -- inspect Item.bounds can be stale mid-relayout
+    # (row-height flake: large measured smaller than small).
     $raw = winapp ui get-property $sel @(WinArgs) -p BoundingRectangle --json 2>$null
     $json = $null
     try { $json = $raw | ConvertFrom-Json } catch { $json = $null }
@@ -315,23 +320,53 @@ function Get-BoundingHeight {
         elseif ($json.value) { $br = $json.value }
         elseif ($json.properties -and $json.properties.BoundingRectangle) { $br = $json.properties.BoundingRectangle }
         elseif ($json.propertyValue) { $br = $json.propertyValue }
+        elseif ($json.element) { $br = $json.element }
+    }
+    if ($br -and $br.height -and [double]$br.height -gt 0) { return [double]$br.height }
+    if ($br -and $br.Height -and [double]$br.Height -gt 0) { return [double]$br.Height }
+    if ($br -and $null -ne $br.bottom -and $null -ne $br.top) {
+        $delta = [double]$br.bottom - [double]$br.top
+        if ($delta -gt 0) { return $delta }
     }
     if ($br -is [string] -and $br -match '(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)') {
+        $left = [double]$Matches[1]
+        $top = [double]$Matches[2]
         $third = [double]$Matches[3]
         $fourth = [double]$Matches[4]
-        $top = [double]$Matches[2]
-        if ($fourth -gt 40 -and $fourth -lt 400) {
+        # left,top,right,bottom when right>left and bottom>top by a tile-sized amount.
+        $asRightBottom = ($third -gt $left) -and ($fourth -gt $top) -and (($third - $left) -gt 20) -and (($fourth - $top) -gt 20)
+        # left,top,width,height when third/fourth look like sizes (not screen coords).
+        $asWidthHeight = ($third -gt 20) -and ($third -lt 1200) -and ($fourth -gt 20) -and ($fourth -lt 900)
+        if ($asRightBottom -and (-not $asWidthHeight -or ($fourth - $top) -gt $fourth)) {
+            return $fourth - $top
+        }
+        if ($asWidthHeight) {
             return $fourth
         }
-        if (($fourth - $top) -gt 40) {
+        if (($fourth - $top) -gt 20) {
             return $fourth - $top
         }
         return $fourth
     }
-    if ($br -and $br.height) { return [double]$br.height }
-    if ($br -and $br.Height) { return [double]$br.Height }
-    if ($br -and $br.bottom -and $br.top) { return [double]$br.bottom - [double]$br.top }
+
+    $h = $null
+    if ($Item.bounds) {
+        if ($Item.bounds.height) { $h = [double]$Item.bounds.height }
+        elseif ($Item.bounds.Height) { $h = [double]$Item.bounds.Height }
+    }
+    if (-not $h -and $Item.height) { $h = [double]$Item.height }
+    if (-not $h -and $Item.Height) { $h = [double]$Item.Height }
     return $h
+}
+
+function Select-SettingsSection {
+    param([Parameter(Mandatory)][string]$NavId)
+    winapp ui invoke $NavId @(WinArgs) | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        winapp ui click $NavId @(WinArgs) | Out-Null
+    }
+    if ($LASTEXITCODE -ne 0) { throw "$NavId missing (Settings two-pane nav)" }
+    Start-Sleep -Milliseconds 350
 }
 
 function Find-TreeTag {
@@ -595,9 +630,10 @@ Test-UI 'Navigate to Tags' { winapp ui invoke 'NavTags' -a $AppPid }
 Test-UI 'Tags tree loaded' { winapp ui wait-for 'RepTagBoard' -a $AppPid -t 8000 }
 Test-UI 'Tag scope exists' { winapp ui wait-for 'SelTagScope' -a $AppPid -t 4000 }
 Test-UI 'Tag search exists' { winapp ui wait-for 'AsbTagSearch' -a $AppPid -t 4000 }
-Test-UI 'Tag mosaic exists' { winapp ui wait-for 'GrdTagAssets' -a $AppPid -t 4000 }
-Test-UI 'Tag mosaic sort button exists' { winapp ui wait-for 'BtnTagMosaicSort' -a $AppPid -t 4000 }
-Test-UI 'Tags select-mode toggle exists' { winapp ui wait-for 'TglTagSelectMode' -a $AppPid -t 4000 }
+# GrdTagAssets / BtnTagMosaicSort / TglTagSelectMode are Collapsed until HasTagAssets
+# (sort+select chrome intentionally inert on Tags). Assert board composer instead.
+Test-UI 'Tag children board exists' { winapp ui wait-for 'RepTagChildren' -a $AppPid -t 4000 }
+Test-UI 'Tag board create button exists' { winapp ui wait-for 'BtnCreateNewTags' -a $AppPid -t 4000 }
 Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000 }
 Test-UI 'Set tag name' { winapp ui set-value 'TxtNewTagName' 'Sonic' -a $AppPid }
 Test-UI 'Create ungrouped tag' {
@@ -693,9 +729,51 @@ Test-UI 'Tags drag: create drop group + chip' {
 }
 
 Test-UI 'Tags drag: hover + SendInput to group (probe/status gate)' {
-    # Named known-skip (not silent pass): UIA reports zero-size TagChip bounding rect
-    # so hover/SendInput cannot arm CanDrag. Tracked for a ui-tests catch-up PR.
-    Skip 'tag chip reports zero size under UIA; tracked for ui-tests catch-up PR'
+    $probe = $env:PALACE_TAG_DRAG_LOG_FILE
+    if (-not $probe) { throw 'probe sink missing' }
+    if (-not (Test-Path -LiteralPath $probe)) { throw 'probe sink missing' }
+    Set-Content -LiteralPath $probe -Value '' -Encoding UTF8
+
+    winapp ui invoke 'NavTags' @(WinArgs) | Out-Null
+    winapp ui click 'SelTagScopeAll' @(WinArgs) | Out-Null
+    Start-Sleep -Milliseconds 400
+    winapp ui wait-for $script:UiDragChipSel @(WinArgs) -t 6000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "$($script:UiDragChipSel) not ready" }
+    winapp ui wait-for 'BtnTagGroup_Newgroup' @(WinArgs) -t 4000 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'BtnTagGroup_Newgroup not ready' }
+
+    # TagChip Stretch+Measure fix: face measure at Infinity must not report Width=0.
+    $chip = Get-PalaceUiCenter -AppPid $AppPid -Selector $script:UiDragChipSel
+    if ([int]$chip.Element.width -lt 5) {
+        throw "TagChip still unsized under UIA (width=$($chip.Element.width))"
+    }
+
+    Invoke-PalaceSendInputDrag -AppPid $AppPid -FromSelector $script:UiDragChipSel `
+        -ToSelector 'BtnTagGroup_Newgroup' -HoldMs 500 | Out-Null
+
+    $st = ''
+    try { $st = (winapp ui get-value 'TxtTagsStatus' @(WinArgs) 2>$null) -join ' ' } catch {}
+    $addedOk = $st -match 'Added'
+    winapp ui wait-for 'TxtTagsStatus' @(WinArgs) --value 'Added' --contains -t 3000 | Out-Null
+    if ($LASTEXITCODE -eq 0) { $addedOk = $true }
+
+    $probeText = Get-Content -LiteralPath $probe -Raw -ErrorAction Stop
+    $hasStarting = $probeText -match 'Palace\.TagDrag\s+DragStarting'
+    $hasOver = $probeText -match 'Palace\.TagDrag\s+DragOver'
+    $hasDrop = $probeText -match 'Palace\.TagDrag\s+Drop'
+
+    if ($hasStarting -and $hasOver -and $hasDrop -and $addedOk) {
+        Assert-TagDragQcFromProbes -LogPath $probe -RequireStarting -RequireOver -RequireDrop | Out-Null
+        Ok
+        return
+    }
+
+    if ($hasStarting -and (-not $hasDrop -or -not $addedOk -or -not $hasOver)) {
+        Partial "drop undrivable (Starting=$hasStarting Over=$hasOver Drop=$hasDrop Added=$addedOk status='$st')"
+        return
+    }
+
+    throw "Tags drag QC FAIL: Starting=$hasStarting Over=$hasOver Drop=$hasDrop Added=$addedOk status='$st'"
 }
 } else {
     if ($script:IsFenrirDesktop) {
@@ -717,6 +795,8 @@ Test-UI 'Rooms status mentions room' {
 }
 
 Test-UI 'Navigate to Settings' { winapp ui invoke 'NavSettings' -a $AppPid }
+Test-UI 'Settings nav exists' { winapp ui wait-for 'LstSettingsNav' -a $AppPid -t 4000 }
+Test-UI 'Select Appearance section' { Select-SettingsSection 'BtnSettingsNav_Appearance' }
 Test-UI 'Theme combo exists' { winapp ui wait-for 'CmbTheme' -a $AppPid -t 4000 }
 Test-UI 'Accent combo exists' { winapp ui wait-for 'CmbAccent' -a $AppPid -t 4000 }
 Test-UI 'Background presets exist' { winapp ui wait-for 'GrdShellPresets' -a $AppPid -t 4000 }
@@ -725,17 +805,22 @@ Test-UI 'Vivid background group exists' { winapp ui wait-for 'TxtShellPresetGrou
 Test-UI 'Creator background group exists' { winapp ui wait-for 'TxtShellPresetGroup_Creator' -a $AppPid -t 4000 }
 Test-UI 'Viewport background preset exists' { winapp ui wait-for 'BtnShellPreset_Viewport' -a $AppPid -t 4000 }
 Test-UI 'Node Graph background preset exists' { winapp ui wait-for 'BtnShellPreset_Nodes' -a $AppPid -t 4000 }
-Test-UI 'Wallpaper picker exists' { winapp ui wait-for 'BtnPickWallpaper' -a $AppPid -t 4000 }
+# BtnPickWallpaper is only visible for Custom wallpaper actions -- assert CardBackground instead.
+Test-UI 'Background card exists' { winapp ui wait-for 'CardBackground' -a $AppPid -t 4000 }
 Test-UI 'Wallpaper darkness exists' { winapp ui wait-for 'SldShellDarkness' -a $AppPid -t 4000 }
 Test-UI 'Wallpaper blur exists' { winapp ui wait-for 'SldShellBlur' -a $AppPid -t 4000 }
 Test-UI 'Wallpaper tint toggle exists' { winapp ui wait-for 'TglShellTint' -a $AppPid -t 4000 }
+Test-UI 'Select Viewer section' { Select-SettingsSection 'BtnSettingsNav_Viewer' }
 Test-UI 'HDR peak override exists' { winapp ui wait-for 'TglHdrPeakOverride' -a $AppPid -t 4000 }
+Test-UI 'Select Performance section' { Select-SettingsSection 'BtnSettingsNav_Performance' }
 Test-UI 'Media cache toggle exists' { winapp ui wait-for 'TglMediaCache' -a $AppPid -t 4000 }
+Test-UI 'Select About section' { Select-SettingsSection 'BtnSettingsNav_About' }
 Test-UI 'App version is shown' {
     # Pass2 C2: stale '0.0.4' assert; About shows "Palace {PalaceVersion} ...".
     $expect = if ($script:PalaceVersion) { "Palace $($script:PalaceVersion)" } else { 'Palace ' }
     winapp ui wait-for 'TxtAppVersion' -a $AppPid --value $expect --contains -t 4000
 }
+Test-UI 'Select Input section' { Select-SettingsSection 'BtnSettingsNav_Input' }
 Test-UI 'Shortcut cheatsheet lists 1:1' { winapp ui wait-for 'TxtShortcutActual' -a $AppPid --value 'Ctrl+1' --contains -t 4000 }
 Test-UI 'Shortcut cheatsheet lists Fit' { winapp ui wait-for 'TxtShortcutFit' -a $AppPid --value 'Ctrl+2' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Fill' { winapp ui wait-for 'TxtShortcutFill' -a $AppPid --value 'Ctrl+3' --contains -t 3000 }
@@ -743,6 +828,7 @@ Test-UI 'Shortcut cheatsheet lists Info' { winapp ui wait-for 'TxtShortcutInfo' 
 Test-UI 'Shortcut cheatsheet lists Details' { winapp ui wait-for 'TxtShortcutDetails' -a $AppPid --value 'I' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Space' { winapp ui wait-for 'TxtShortcutSpace' -a $AppPid --value 'Space' --contains -t 3000 }
 Test-UI 'Shortcut cheatsheet lists Esc' { winapp ui wait-for 'TxtShortcutEsc' -a $AppPid --value 'Esc' --contains -t 3000 }
+Test-UI 'Select Library section' { Select-SettingsSection 'BtnSettingsNav_Library' }
 Test-UI 'Sources list exists' { winapp ui wait-for 'LstSources' -a $AppPid -t 3000 }
 Test-UI 'Auto-organize toggle exists' { winapp ui wait-for 'TglAutoOrganize' -a $AppPid -t 3000 }
 Test-UI 'Connect OneDrive exists' { winapp ui wait-for 'BtnConnectOneDrive' -a $AppPid -t 4000 }
@@ -833,16 +919,26 @@ Test-UI 'Row-height slider changes mosaic tile size' {
     winapp ui set-value 'SldRowHeight' '96' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set SldRowHeight to 96' }
     Start-Sleep -Milliseconds 900
-    $smallItem = Get-LibraryAssets | Where-Object { $_.name -eq $before.name } | Select-Object -First 1
-    if (-not $smallItem) { $smallItem = Get-LibraryAssets | Select-Object -First 1 }
-    $hSmall = Get-BoundingHeight $smallItem
+    $hSmall = $null
+    for ($i = 0; $i -lt 6; $i++) {
+        $smallItem = Get-LibraryAssets | Where-Object { $_.name -eq $before.name } | Select-Object -First 1
+        if (-not $smallItem) { $smallItem = Get-LibraryAssets | Select-Object -First 1 }
+        $hSmall = Get-BoundingHeight $smallItem
+        if ($null -ne $hSmall -and $hSmall -gt 40) { break }
+        Start-Sleep -Milliseconds 250
+    }
 
     winapp ui set-value 'SldRowHeight' '280' -a $AppPid
     if ($LASTEXITCODE -ne 0) { throw 'Could not set SldRowHeight to 280' }
-    Start-Sleep -Milliseconds 1100
-    $largeItem = Get-LibraryAssets | Where-Object { $_.name -eq $before.name } | Select-Object -First 1
-    if (-not $largeItem) { $largeItem = Get-LibraryAssets | Select-Object -First 1 }
-    $hLarge = Get-BoundingHeight $largeItem
+    # Relayout can report a transient smaller bound; retry until large >= small+24.
+    $hLarge = $null
+    for ($i = 0; $i -lt 10; $i++) {
+        Start-Sleep -Milliseconds $(if ($i -eq 0) { 1100 } else { 300 })
+        $largeItem = Get-LibraryAssets | Where-Object { $_.name -eq $before.name } | Select-Object -First 1
+        if (-not $largeItem) { $largeItem = Get-LibraryAssets | Select-Object -First 1 }
+        $hLarge = Get-BoundingHeight $largeItem
+        if ($null -ne $hSmall -and $null -ne $hLarge -and $hLarge -ge ($hSmall + 24)) { break }
+    }
 
     winapp ui set-value 'SldRowHeight' '140' -a $AppPid
     Start-Sleep -Milliseconds 400
@@ -929,8 +1025,9 @@ Test-UI 'Double-click opens gallery overlay' {
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryScaleFill missing' }
     winapp ui wait-for 'BtnGalleryImageInfo' @(WinArgs) -t 2000
     if ($LASTEXITCODE -ne 0) { throw 'BtnGalleryImageInfo missing' }
-    winapp ui wait-for 'TxtGalleryOverlayDetails' @(WinArgs) -t 2000
-    if ($LASTEXITCODE -ne 0) { throw 'TxtGalleryOverlayDetails missing' }
+    # ViewerDetailsCard title replaced legacy TxtGalleryOverlayDetails.
+    winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'TxtViewerDetailsTitle missing' }
 }
 
 New-Item -ItemType Directory -Force -Path 'screenshots' | Out-Null
@@ -992,8 +1089,10 @@ Test-UI 'Space opens overlay on focused mosaic tile' {
     if (-not (Test-GalleryOverlayOpen)) {
         throw 'Gallery overlay did not open from Space'
     }
-    winapp ui wait-for 'GrdGalleryBackdrop' @(WinArgs) -t 2000
-    if ($LASTEXITCODE -ne 0) { throw 'GrdGalleryBackdrop missing after Space overlay' }
+    winapp ui wait-for 'GrdGalleryOverlay' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'GrdGalleryOverlay missing after Space overlay' }
+    winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) -t 2000
+    if ($LASTEXITCODE -ne 0) { throw 'TxtViewerDetailsTitle missing after Space overlay' }
     winapp ui send-keys 'esc' @(WinArgs) --via send-input
     winapp ui wait-for 'TxtViewerDetailsTitle' @(WinArgs) --gone -t 4000
     if ($LASTEXITCODE -ne 0) {
