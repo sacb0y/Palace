@@ -246,6 +246,13 @@ public sealed partial class LibraryPage : Page
                 SyncBrowseChromeFromViewModel();
                 _suppressBrowseChrome = false;
             }
+
+            // Delete rejected face chip changes compact overflow (~1024 clip).
+            if (e.PropertyName is nameof(LibraryViewModel.RejectedCountInView)
+                or nameof(LibraryViewModel.IsTagBrowse))
+            {
+                UpdateLibraryToolbarOverflow(ResolveWindowClientDip());
+            }
         };
         Loaded += async (_, _) =>
         {
@@ -1224,6 +1231,8 @@ public sealed partial class LibraryPage : Page
     /// Top toolbar spans all columns — at narrow widths move New folder / Undo /
     /// Add to room into the overflow menu so buttons are not clipped mid-element.
     /// Same available-width signal as Preview OnWidth (window client DIP).
+    /// When Delete rejected is on the face, compact starts earlier (~1100) so
+    /// Add to room is not clipped under the Preview toggle around ~1024.
     /// </summary>
     private void UpdateLibraryToolbarOverflow(double windowClientDip)
     {
@@ -1233,7 +1242,8 @@ public sealed partial class LibraryPage : Page
             windowDip = ResolveWindowClientDip();
         }
 
-        var compact = LibraryColumnLayout.IsLibraryToolbarCompact(windowDip);
+        var deleteRejected = ViewModel.ShowDeleteRejectedToolbar;
+        var compact = LibraryColumnLayout.IsLibraryToolbarCompact(windowDip, deleteRejected);
         var tight = LibraryColumnLayout.IsLibraryToolbarTight(windowDip);
         BtnNewFolder.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
         BtnUndo.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;

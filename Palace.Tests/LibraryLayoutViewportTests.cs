@@ -99,6 +99,37 @@ public sealed class LibraryLayoutViewportTests
     public void ToolbarCompact_UsesWindowClientDip(double clientDip, bool expectCompact) =>
         Assert.Equal(expectCompact, LibraryColumnLayout.IsLibraryToolbarCompact(clientDip));
 
+    /// <summary>
+    /// Delete rejected face chip needs a higher compact floor so Add to room is
+    /// not clipped under Preview around ~1024 client DIP (Wimbly / P-201).
+    /// </summary>
+    [Theory]
+    [InlineData(1100, false)]
+    [InlineData(1099, true)]
+    [InlineData(1024, true)]
+    [InlineData(1000, true)]
+    [InlineData(920, true)]
+    public void ToolbarCompact_WithDeleteRejected_RaisesThreshold(
+        double clientDip,
+        bool expectCompact) =>
+        Assert.Equal(
+            expectCompact,
+            LibraryColumnLayout.IsLibraryToolbarCompact(clientDip, deleteRejectedVisible: true));
+
+    [Fact]
+    public void ToolbarCompactBelowDip_TracksDeleteRejectedFace()
+    {
+        Assert.Equal(
+            LibraryColumnLayout.LibraryToolbarOverflowBelowDip,
+            LibraryColumnLayout.LibraryToolbarCompactBelowDip(deleteRejectedVisible: false));
+        Assert.Equal(
+            LibraryColumnLayout.LibraryToolbarOverflowWithDeleteRejectedBelowDip,
+            LibraryColumnLayout.LibraryToolbarCompactBelowDip(deleteRejectedVisible: true));
+        // Without Delete rejected, 1024 still shows Add to room on the face.
+        Assert.False(LibraryColumnLayout.IsLibraryToolbarCompact(1024));
+        Assert.True(LibraryColumnLayout.IsLibraryToolbarCompact(1024, deleteRejectedVisible: true));
+    }
+
     [Fact]
     public void ShellNavPane_MatchesMainPageOpenAndCompactLengths()
     {

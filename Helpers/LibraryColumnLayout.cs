@@ -51,6 +51,13 @@ public static class LibraryColumnLayout
     public const double LibraryToolbarOverflowBelowDip = 920;
 
     /// <summary>
+    /// Same compact overflow as <see cref="LibraryToolbarOverflowBelowDip"/>, but
+    /// when the face <c>Delete rejected (N)</c> button is visible. That extra chip
+    /// clips Add to room under the Preview toggle around ~1024 client DIP.
+    /// </summary>
+    public const double LibraryToolbarOverflowWithDeleteRejectedBelowDip = 1100;
+
+    /// <summary>
     /// Below this <b>window client</b> width (DIP), also park Organize / Review in
     /// More. Face buttons show at ≥800 client DIP; comparing Library grid width
     /// instead kept them collapsed (grid ≈ client − 248 when the pane is open).
@@ -70,9 +77,20 @@ public static class LibraryColumnLayout
     public static bool IsLibraryToolbarTight(double windowClientDip) =>
         windowClientDip < LibraryToolbarTightBelowDip;
 
+    /// <summary>
+    /// Compact overflow threshold for the current face toolbar. Raises when
+    /// Delete rejected is on the face so Add to room is not clipped mid-label.
+    /// </summary>
+    public static double LibraryToolbarCompactBelowDip(bool deleteRejectedVisible) =>
+        deleteRejectedVisible
+            ? LibraryToolbarOverflowWithDeleteRejectedBelowDip
+            : LibraryToolbarOverflowBelowDip;
+
     /// <summary>True when New folder / Undo / Add to room move into More.</summary>
-    public static bool IsLibraryToolbarCompact(double windowClientDip) =>
-        windowClientDip < LibraryToolbarOverflowBelowDip;
+    public static bool IsLibraryToolbarCompact(
+        double windowClientDip,
+        bool deleteRejectedVisible = false) =>
+        windowClientDip < LibraryToolbarCompactBelowDip(deleteRejectedVisible);
 
     /// <summary>
     /// Width the shell <c>NavigationView</c> currently occupies from the window

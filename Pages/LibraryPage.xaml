@@ -79,7 +79,8 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <!-- Narrow widths: New folder / Undo / Add to room move into BtnLibraryToolbarMore.
-                 Preview toggle stays far right (Isiac icon-only). -->
+                 When Delete rejected is visible, compact starts earlier (~1100 client DIP)
+                 so Add to room is not clipped under Preview. Preview toggle stays far right. -->
             <Grid>
             <StackPanel
                 HorizontalAlignment="Left"
