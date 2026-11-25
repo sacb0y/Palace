@@ -20,6 +20,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private nint _swapChain;
     private bool _disposed;
     private string _status = "idle";
+    private string _tileStatus = "tiles idle";
 
     public SmoothDiligentPresenter(SwapChainPanel panel, string? logDataDir = null)
     {
@@ -29,9 +30,70 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     public string Status => _status;
 
+    public string TileStatus => _tileStatus;
+
     public SmoothPresenterLifecycle Lifecycle => _life;
 
     public SmoothPresenterNative.FrameStats LastStats { get; private set; }
+
+    /// <summary>
+    /// V1: create GPU tile pool from session LRU capacity, set shader dirs,
+    /// upload coarse pinned tiles. Keeps V0 pattern present until V2 viewport.
+    /// </summary>
+    public bool TryInitV1TilePool(SmoothTileSession session)
+    {
+        if (_disposed || _host == 0)
+        {
+            _tileStatus = "no host";
+            return false;
+        }
+
+        var shaderDir = System.IO.Path.Combine(AppContext.BaseDirectory, "shaders");
+        _ = SmoothPresenterNative.SetShaderSearchDirs(_host, shaderDir);
+
+        var create = SmoothPresenterNative.TilePoolCreate(_host, (uint)session.PoolCapacity);
+        if (create != SmoothPresenterNative.StatusCode.Ok)
+        {
+            _tileStatus = $"tile pool failed ({create}): {SmoothPresenterNative.LastError(_host)}";
+            return false;
+        }
+
+        var uploaded = 0;
+        var lw = SmoothTileMath.LevelWidth(session.FullWidth, session.CoarseLevel);
+        var lh = SmoothTileMath.LevelHeight(session.FullHeight, session.CoarseLevel);
+        var (nx, ny) = SmoothTileMath.TileCounts(lw, lh);
+        for (var ty = 0; ty < ny; ty++)
+        {
+            for (var tx = 0; tx < nx; tx++)
+            {
+                var id = new SmoothTileId(session.CoarseLevel, tx, ty);
+                if (!session.Cpu.TryGet(id, out var bytes))
+                {
+                    continue;
+                }
+
+                if (!session.Lru.TryGetSlot(id, out var slot))
+                {
+                    if (!session.Lru.TryInsert(id, out slot, out _))
+                    {
+                        continue;
+                    }
+                }
+
+                var up = SmoothPresenterNative.TileUpload(_host, (uint)slot, bytes);
+                if (up == SmoothPresenterNative.StatusCode.Ok)
+                {
+                    uploaded++;
+                }
+            }
+        }
+
+        var mip = SmoothPresenterNative.TileMipReady(_host) ? "mipCS=yes" : "mipCS=no";
+        _tileStatus =
+            $"pool={session.PoolCapacity} uploaded={uploaded}/{session.CoarseTileCount} " +
+            $"vramSlots={session.Lru.ResidentCount} {mip} · {SmoothPresenterNative.LastError(_host)}";
+        return uploaded > 0;
+    }
 
     public bool TryStart(double dipW, double dipH, float scaleX, float scaleY)
     {
@@ -233,6 +295,11 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     private void DestroyHost()
     {
+        if (_host != 0)
+        {
+            SmoothPresenterNative.TilePoolDestroy(_host);
+        }
+
         if (_swapChain != 0)
         {
             Marshal.Release(_swapChain);

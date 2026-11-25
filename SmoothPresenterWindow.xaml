@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Palace Smooth Presenter (V0)">
+    Title="Palace Smooth Presenter (V1 tiles)">
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -23,11 +23,17 @@
                 Text="Starting Diligent presenter…"
                 TextWrapping="WrapWholeWords" />
             <TextBlock
+                x:Name="TxtSmoothTiles"
+                AutomationProperties.AutomationId="TxtSmoothTiles"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="V1 tile session: idle"
+                TextWrapping="WrapWholeWords" />
+            <TextBlock
                 x:Name="TxtSmoothHint"
                 AutomationProperties.AutomationId="TxtSmoothHint"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="RGBA16F scRGB · latency 1 · HDR test pattern. Frame times → smooth-presenter-frames.log"
+                Text="V1: 512 slots · Border=2 (508 content) · RGBA16F Working · SmoothMipDownsampleCS box. Coarse ≤2048 pinned. Frame log → smooth-presenter-frames.log"
                 TextWrapping="WrapWholeWords" />
         </StackPanel>
         <SwapChainPanel

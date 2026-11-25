@@ -85,6 +85,29 @@ jobs:
           path: Native/smooth/build/_deps
           key: ${{ steps.cache-diligent.outputs.cache-primary-key }}
 
+      # V1 evidence: FXC cs_5_0 compile of SmoothMipDownsample (SMOOTH_SRGB8=0).
+      - name: FXC compile SmoothMipDownsampleCS (cs_5_0)
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $fxc = Get-ChildItem -Path $vs -Recurse -Filter fxc.exe |
+            Where-Object { $_.FullName -match '\\x64\\fxc\.exe$' -or $_.FullName -match '\\fxc\.exe$' } |
+            Select-Object -First 1
+          if (-not $fxc) {
+            $sdk = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter fxc.exe -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match '\\x64\\fxc\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1
+            $fxc = $sdk
+          }
+          if (-not $fxc) { throw "fxc.exe not found (need Windows SDK / VS for cs_5_0 evidence)" }
+          $src = Resolve-Path "Native/smooth/shaders/SmoothMipDownsample.hlsl"
+          $out = Join-Path $env:RUNNER_TEMP "SmoothMipDownsample.csob"
+          & $fxc.FullName /T cs_5_0 /E SmoothMipDownsampleCS /D SMOOTH_SRGB8=0 /Fo $out $src.Path
+          if ($LASTEXITCODE -ne 0) { throw "fxc cs_5_0 SmoothMipDownsampleCS failed" }
+          Write-Host "OK: FXC cs_5_0 SmoothMipDownsampleCS ($($fxc.FullName))"
+
       # Runtime HLSL uses D3DCompile (d3dcompiler) / Diligent FXC path — no dxcompiler/dxil package.
       # Static CRT: refuse MSVCP140 / VCRUNTIME140*; also refuse Diligent shared / DXC DLLs.
       - name: Verify palace_smooth.dll dependents

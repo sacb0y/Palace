@@ -67,6 +67,37 @@ PSV_API int psv_last_error(void* host, char* buffer, int buffer_bytes);
 /* Backend actually created (D3D12 or D3D11). */
 PSV_API int psv_backend(void* host);
 
+/* --- V1 tile pool / mip (RGBA16F Working, Border=2, SMOOTH_SRGB8=0) --- */
+
+/* Semicolon-separated search dirs for HLSL (SmoothMipDownsample.hlsl + ToneMap.hlsl). */
+PSV_API int psv_set_shader_search_dirs(void* host, const char* utf8_dirs);
+
+/* Creates Texture2DArray pool (capacity slices, 512² RGBA16F) + mip scratch + CS. */
+PSV_API int psv_tile_pool_create(void* host, unsigned capacity);
+
+PSV_API void psv_tile_pool_destroy(void* host);
+
+/* Upload one 512² RGBA16F Working tile (row-pitch = 512*8) into array slice. */
+PSV_API int psv_tile_upload(void* host, unsigned slice, const void* rgba16f_bytes, int byte_count);
+
+/*
+ * Box-filter mip one parent slot via SmoothMipDownsampleCS.
+ * slices4x4: 16 uints row-major child ring (-1..2); 0xFFFFFFFF = outside.
+ * parent_content_origin_l1: content origin at L+1 (Origin = 2 * that at L).
+ * Writes scratch then CopyTexture into dst_slice.
+ */
+PSV_API int psv_tile_mip_box(
+    void* host,
+    unsigned level_l_w,
+    unsigned level_l_h,
+    int parent_content_origin_l1_x,
+    int parent_content_origin_l1_y,
+    unsigned dst_slice,
+    const unsigned* slices4x4);
+
+/* True when mip CS compiled (FXC/D3DCompile cs_5_0 path via Diligent). */
+PSV_API int psv_tile_mip_ready(void* host);
+
 #ifdef __cplusplus
 }
 #endif

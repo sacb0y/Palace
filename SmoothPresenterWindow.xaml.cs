@@ -13,6 +13,7 @@ namespace Palace;
 public sealed partial class SmoothPresenterWindow : Window
 {
     private SmoothDiligentPresenter? _presenter;
+    private SmoothTileSession? _tiles;
     private DispatcherQueueTimer? _timer;
     private bool _activated;
     private bool _hostStarted;
@@ -39,6 +40,11 @@ public sealed partial class SmoothPresenterWindow : Window
     private void PreparePresenter()
     {
         var dataDir = CatalogStore.DataDir();
+        // V1 debug: synthetic ~12k×8k Working image (Fenrir evidence sizes).
+        _tiles = new SmoothTileSession(12000, 8000);
+        _ = _tiles.BuildSyntheticLevel0AndCoarse();
+        TxtSmoothTiles.Text = _tiles.StatusLine();
+
         _presenter = new SmoothDiligentPresenter(ScpSmooth, dataDir);
         TryStartWhenPanelSized();
 
@@ -72,6 +78,10 @@ public sealed partial class SmoothPresenterWindow : Window
             }
 
             TxtSmoothStatus.Text = _presenter.Status;
+            if (_tiles is not null)
+            {
+                TxtSmoothTiles.Text = _tiles.StatusLine();
+            }
         };
         _timer.Start();
     }
@@ -96,8 +106,20 @@ public sealed partial class SmoothPresenterWindow : Window
             return;
         }
 
+        TryInitTilePool();
         _hostStarted = true;
         TxtSmoothStatus.Text = _presenter.Status;
+    }
+
+    private void TryInitTilePool()
+    {
+        if (_presenter is null || _tiles is null)
+        {
+            return;
+        }
+
+        _ = _presenter.TryInitV1TilePool(_tiles);
+        TxtSmoothTiles.Text = _tiles.StatusLine() + " · " + _presenter.TileStatus;
     }
 
     private void ScpSmooth_SizeChanged(object sender, SizeChangedEventArgs e)

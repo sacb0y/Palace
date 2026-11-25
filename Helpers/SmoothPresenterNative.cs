@@ -270,4 +270,145 @@ public static class SmoothPresenterNative
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_backend")]
     private static extern int NativeBackend(nint host);
+
+    public static StatusCode SetShaderSearchDirs(nint host, string? utf8Dirs)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeSetShaderSearchDirs(host, utf8Dirs);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static StatusCode TilePoolCreate(nint host, uint capacity)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeTilePoolCreate(host, capacity);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static void TilePoolDestroy(nint host)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return;
+        }
+
+        try
+        {
+            NativeTilePoolDestroy(host);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            // ignore
+        }
+    }
+
+    public static StatusCode TileUpload(nint host, uint slice, byte[] rgba16F)
+    {
+        if (host == 0 || !IsAvailable || rgba16F is null)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeTileUpload(host, slice, rgba16F, rgba16F.Length);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static StatusCode TileMipBox(
+        nint host,
+        uint levelLW,
+        uint levelLH,
+        int parentContentOriginL1X,
+        int parentContentOriginL1Y,
+        uint dstSlice,
+        uint[] slices4x4)
+    {
+        if (host == 0 || !IsAvailable || slices4x4 is null || slices4x4.Length < 16)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeTileMipBox(
+                host,
+                levelLW,
+                levelLH,
+                parentContentOriginL1X,
+                parentContentOriginL1Y,
+                dstSlice,
+                slices4x4);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    public static bool TileMipReady(nint host)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return false;
+        }
+
+        try
+        {
+            return NativeTileMipReady(host) != 0;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return false;
+        }
+    }
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_set_shader_search_dirs")]
+    private static extern int NativeSetShaderSearchDirs(nint host, [MarshalAs(UnmanagedType.LPUTF8Str)] string? utf8Dirs);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_pool_create")]
+    private static extern int NativeTilePoolCreate(nint host, uint capacity);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_pool_destroy")]
+    private static extern void NativeTilePoolDestroy(nint host);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_upload")]
+    private static extern int NativeTileUpload(nint host, uint slice, byte[] rgba16f, int byteCount);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_mip_box")]
+    private static extern int NativeTileMipBox(
+        nint host,
+        uint levelLW,
+        uint levelLH,
+        int parentOx,
+        int parentOy,
+        uint dstSlice,
+        uint[] slices4x4);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_mip_ready")]
+    private static extern int NativeTileMipReady(nint host);
 }

@@ -7,75 +7,12 @@
  * D3D12 preferred; D3D11 fallback. DiligentCore when PALACE_SMOOTH_WITH_DILIGENT.
  */
 
-#include "palace_smooth.h"
+#include "palace_smooth_internal.hpp"
 #include "pattern_hlsl.h"
-
-#include <windows.h>
-#include <d3d11.h>
-#include <d3d12.h>
-#include <dxgi1_5.h>
-#include <wrl/client.h>
 
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <string>
-
-using Microsoft::WRL::ComPtr;
-
-#if defined(PALACE_SMOOTH_WITH_DILIGENT)
-#  include "EngineFactoryD3D12.h"
-#  include "RenderDeviceD3D12.h"
-#  include "CommandQueueD3D12.h"
-#  include "EngineFactoryD3D11.h"
-#  include "RenderDeviceD3D11.h"
-#  include "RenderDevice.h"
-#  include "DeviceContext.h"
-#  include "PipelineState.h"
-#  include "Shader.h"
-#  include "RefCntAutoPtr.hpp"
-using namespace Diligent;
-#endif
-
-namespace {
-
-constexpr char kVersion[] = "0.1.0-smooth-v0";
-constexpr DXGI_FORMAT kScrgbFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-constexpr UINT kBufferCount = 2;
-constexpr UINT kLatencyFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
-
-struct Host {
-    int backend = PSV_BACKEND_D3D12;
-    unsigned width = 0;
-    unsigned height = 0;
-    float dpiScaleX = 1.f;
-    float dpiScaleY = 1.f;
-    std::string lastError;
-    psv_frame_stats lastStats{};
-    bool deviceLost = false;
-
-    ComPtr<IDXGIFactory2> factory;
-    ComPtr<IDXGISwapChain3> swapChain;
-    HANDLE frameLatencyWaitable = nullptr;
-
-    /* D3D12 path (native queue for CreateSwapChainForComposition). */
-    ComPtr<ID3D12Device> d3d12Device;
-    ComPtr<ID3D12CommandQueue> d3d12Queue;
-
-    /* D3D11 path. */
-    ComPtr<ID3D11Device> d3d11Device;
-    ComPtr<ID3D11DeviceContext> d3d11Context;
-
-#if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    RefCntAutoPtr<IRenderDevice> diligentDevice;
-    RefCntAutoPtr<IDeviceContext> diligentContext;
-    RefCntAutoPtr<IPipelineState> patternPso;
-    RefCntAutoPtr<IShaderResourceBinding> patternSrb;
-    bool diligentReady = false;
-#endif
-
-    LARGE_INTEGER qpcFreq{};
-};
 
 void SetError(Host* host, const char* msg)
 {
@@ -83,6 +20,13 @@ void SetError(Host* host, const char* msg)
         host->lastError = msg ? msg : "";
     }
 }
+
+namespace {
+
+constexpr char kVersion[] = "0.2.0-smooth-v1";
+constexpr DXGI_FORMAT kScrgbFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+constexpr UINT kBufferCount = 2;
+constexpr UINT kLatencyFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
 
 double ElapsedMs(LARGE_INTEGER freq, LARGE_INTEGER a, LARGE_INTEGER b)
 {
@@ -344,8 +288,11 @@ bool InitDiligent(Host* host, int prefer)
     return InitDiligentD3D11(host);
 }
 
+} // namespace (temp close for Unbind export)
+
 void UnbindAndIdleDiligent(Host* host)
 {
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
     if (!host->diligentContext) {
         return;
     }
@@ -353,7 +300,12 @@ void UnbindAndIdleDiligent(Host* host)
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
     host->diligentContext->Flush();
     host->diligentContext->WaitForIdle();
+#else
+    (void)host;
+#endif
 }
+
+namespace {
 
 HRESULT BindAndDrawPattern(Host* host)
 {
@@ -557,6 +509,7 @@ PSV_API void psv_destroy(void* host_ptr)
         return;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    psv_tile_pool_destroy(host);
     /* Unbind RTs + WaitForIdle before RefCntAutoPtr teardown (same as resize). */
     UnbindAndIdleDiligent(host);
 #endif
