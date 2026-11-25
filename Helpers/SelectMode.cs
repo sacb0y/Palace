@@ -55,6 +55,17 @@ public static class SelectMode
     /// </summary>
     public static bool DefersCheckboxToItemsView(bool isCheckboxHit) => isCheckboxHit;
 
+    /// <summary>
+    /// Entry-kind stamp for EnsureSelectMode: only write when entering from off
+    /// or the kind is still None — later modifier clicks must not overwrite
+    /// purposeful entry. Shared by VM + <c>MosaicSelectHarness</c>.
+    /// </summary>
+    public static SelectEntryKind NextEntryKind(
+        bool isSelectMode,
+        SelectEntryKind current,
+        SelectEntryKind requested) =>
+        !isSelectMode || current == SelectEntryKind.None ? requested : current;
+
     /// <summary>Select mode exits when the selection count reaches zero.</summary>
     public static bool ExitsWhenSelectionEmpty(bool selectMode, int selectedCount) =>
         selectMode && selectedCount <= 0;

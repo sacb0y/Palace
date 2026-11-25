@@ -1436,15 +1436,18 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // Checkbox: ItemsView toggles only that tile — never start a range session
-        // and never rewrite SelectEntryKind / replace the selection.
-        if (IsMultiSelectCheckBoxHit(e.OriginalSource as DependencyObject))
+        var checkboxHit = IsMultiSelectCheckBoxHit(e.OriginalSource as DependencyObject);
+        // Checkbox: ItemsView toggles only that tile — never start a range session.
+        if (SelectMode.DefersCheckboxToItemsView(checkboxHit))
         {
             return;
         }
 
-        // Modifier-entered select mode: plain tile-body click replaces + exits.
-        if (SelectMode.TileBodyClickReplacesAndExits(ViewModel.SelectEntryKind))
+        // Modifier-entered: plain tile-body click replaces + exits.
+        // Purposeful: body toggle is ItemsView Multiple (ApplyTileBodyClick only
+        // for replace path here — purposeful body clicks fall through).
+        if (SelectMode.AppliesTileBodyClickPolicy(ViewModel.SelectEntryKind, checkboxHit)
+            && SelectMode.TileBodyClickReplacesAndExits(ViewModel.SelectEntryKind))
         {
             ViewModel.ApplyTileBodyClick(item);
             e.Handled = true;

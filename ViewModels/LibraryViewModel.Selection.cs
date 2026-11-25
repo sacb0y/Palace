@@ -167,16 +167,13 @@ public partial class LibraryViewModel
     /// </summary>
     public void EnsureSelectMode(SelectEntryKind kind)
     {
-        var entering = !IsSelectMode;
-        if (entering)
+        var next = SelectMode.NextEntryKind(IsSelectMode, _selectEntryKind, kind);
+        if (!IsSelectMode)
         {
             IsSelectMode = true;
         }
 
-        if (entering || _selectEntryKind == SelectEntryKind.None)
-        {
-            MarkSelectEntry(kind);
-        }
+        MarkSelectEntry(next);
     }
 
     /// <summary>Discard the dropped-selection slot after a newer user action.</summary>
