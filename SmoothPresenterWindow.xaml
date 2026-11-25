@@ -6,7 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="Palace Smooth Presenter (V1 tiles)">
+    Title="Palace Smooth Presenter (V2 viewport)">
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -26,14 +26,14 @@
                 x:Name="TxtSmoothTiles"
                 AutomationProperties.AutomationId="TxtSmoothTiles"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="V1 tile session: idle"
+                Text="V2 Working decode: idle"
                 TextWrapping="WrapWholeWords" />
             <TextBlock
                 x:Name="TxtSmoothHint"
                 AutomationProperties.AutomationId="TxtSmoothHint"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="V1: 512 slots · Border=2 (508 content) · RGBA16F Working · SmoothMipDownsampleCS box. Coarse ≤2048 pinned. Frame log → smooth-presenter-frames.log"
+                Text="V2: DecodePathAsync / ≥64MP strip · wheel/Ctrl+wheel/pan · R/Shift+R rotate · ZoomAbout+EaseZoom (full feel = V3)"
                 TextWrapping="WrapWholeWords" />
         </StackPanel>
         <SwapChainPanel
@@ -41,6 +41,13 @@
             Grid.Row="1"
             AutomationProperties.AutomationId="ScpSmooth"
             CompositionScaleChanged="ScpSmooth_CompositionScaleChanged"
-            SizeChanged="ScpSmooth_SizeChanged" />
+            SizeChanged="ScpSmooth_SizeChanged"
+            PointerWheelChanged="ScpSmooth_PointerWheelChanged"
+            PointerPressed="ScpSmooth_PointerPressed"
+            PointerMoved="ScpSmooth_PointerMoved"
+            PointerReleased="ScpSmooth_PointerReleased"
+            PointerCanceled="ScpSmooth_PointerReleased"
+            PointerCaptureLost="ScpSmooth_PointerReleased"
+            KeyDown="ScpSmooth_KeyDown" />
     </Grid>
 </Window>

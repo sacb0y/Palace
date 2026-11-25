@@ -140,5 +140,5 @@ public static class ViewerSettings
         "When on, Fit / Fill / 1:1 carries to the next image. When off, each image opens at Default zoom. HDR stills always show at Fit on screen; your kept zoom returns on the next normal image.";
 
     public static string SmoothPresenterCaption { get; } =
-        "Experimental Diligent GPU presenter (clear + HDR scRGB test pattern). Default off — today's viewer is unchanged. Open the presenter window from this card.";
+        "Experimental Diligent Smooth Viewer (tiles + GPU viewport). Default off — today's viewer is unchanged. Open the presenter window from this card.";
 }

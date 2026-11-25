@@ -48,6 +48,9 @@ struct Host {
 
     ComPtr<ID3D12Device> d3d12Device;
     ComPtr<ID3D12CommandQueue> d3d12Queue;
+#if defined(PSV_TEST_HOOKS)
+    DWORD infoQueueCookie = 0;
+#endif
 
     ComPtr<ID3D11Device> d3d11Device;
     ComPtr<ID3D11DeviceContext> d3d11Context;
@@ -70,8 +73,22 @@ struct Host {
     unsigned tileCapacity = 0;
     bool tilePoolReady = false;
     bool mipReady = false;
-    /* Semicolon-separated dirs for SmoothMipDownsample.hlsl (+ ToneMap includes). */
+    /* Semicolon-separated dirs for SmoothMipDownsample / SmoothImage + ToneMap. */
     char shaderSearchDirs[512]{};
+
+    /* V2 SmoothImage viewport pass. */
+    RefCntAutoPtr<IPipelineState> imagePso;
+    RefCntAutoPtr<IShaderResourceBinding> imageSrb;
+    RefCntAutoPtr<IBuffer> viewCb;
+    RefCntAutoPtr<IBuffer> toneCb;
+    RefCntAutoPtr<IBuffer> instanceBuf;
+    RefCntAutoPtr<ITexture> toneLut;
+    psv_view_cb viewCpu{};
+    psv_tone_cb toneCpu{};
+    unsigned instanceCount = 0;
+    unsigned toneLutSize = 0;
+    bool imageReady = false;
+    bool viewportEnabled = false;
 #endif
 
     LARGE_INTEGER qpcFreq{};
@@ -80,4 +97,41 @@ struct Host {
 void SetError(Host* host, const char* msg);
 void ClearError(Host* host);
 void UnbindAndIdleDiligent(Host* host);
+/* AttachToD3D12Device + raw DXGI Present — call after Flush so Diligent recycles
+ * dynamic CBV_SRV_UAV. No-op if removed / no context. */
+void PsvFinishDiligentFrame(Host* host);
 bool BindDxgiAdapter3(Host* host);
+
+/* Cheap DXGI removed poll. Sets host->deviceLost when reason != S_OK.
+ * callSite: poll | present | create | tileUpload | tileMipBox | … */
+bool PollDeviceRemoved(Host* host, const char* callSite = "poll");
+
+/* First flip of deviceLost: log psv scope + callSite + HRESULT, then DRED dump. */
+void PsvMarkDeviceLost(Host* host, const char* callSite, HRESULT hr);
+
+/* Env PALACE_SMOOTH_DRED=1 (Release OK): auto-breadcrumbs + page-fault before CreateDevice. */
+void PsvTryEnableDredBeforeCreate();
+void PsvDumpDred(Host* host);
+
+/* Debug log / Diligent callback / D3D12 InfoQueue (palace_smooth_debug.cpp). */
+void PsvSetApiTag(const char* tag);
+const char* PsvGetApiTag();
+void PsvInstallDiligentDebugLogging();
+void PsvAppendDebugNote(const char* note);
+/* Non-Ok TileUpload / TileMipBox (and similar): status code + lastError string. */
+void PsvLogNonOkStatus(int code, const char* lastError);
+void PsvSetupD3D12InfoQueue(Host* host);
+void PsvDrainD3D12InfoQueue(Host* host);
+
+struct PsvApiScope {
+    explicit PsvApiScope(const char* tag) { PsvSetApiTag(tag); }
+    ~PsvApiScope() { PsvSetApiTag(""); }
+    PsvApiScope(const PsvApiScope&) = delete;
+    PsvApiScope& operator=(const PsvApiScope&) = delete;
+};
+
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+bool EnsureImagePipeline(Host* host);
+HRESULT BindAndDrawImage(Host* host);
+void DestroyImagePass(Host* host);
+#endif

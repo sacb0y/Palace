@@ -14,10 +14,22 @@
 #include <cstdio>
 #include <cstring>
 
+#if defined(PSV_TEST_HOOKS)
+#  include <d3d12sdklayers.h>
+#endif
+
+namespace {
+/* Survives psv_create failure so LastError(null) can report "device still removed". */
+char g_lastCreateError[256] = {};
+} // namespace
+
 void SetError(Host* host, const char* msg)
 {
     if (host) {
         host->lastError = msg ? msg : "";
+    }
+    if (msg && msg[0]) {
+        std::snprintf(g_lastCreateError, sizeof(g_lastCreateError), "%s", msg);
     }
 }
 
@@ -26,6 +38,64 @@ void ClearError(Host* host)
     if (host) {
         host->lastError.clear();
     }
+}
+
+void PsvMarkDeviceLost(Host* host, const char* callSite, HRESULT hr)
+{
+    if (!host) {
+        return;
+    }
+    const bool firstFlip = !host->deviceLost;
+    host->deviceLost = true;
+    const char* site = callSite && callSite[0] ? callSite : "unknown";
+    char err[160];
+    std::snprintf(
+        err,
+        sizeof(err),
+        "device removed hr=0x%08X site=%s",
+        static_cast<unsigned>(hr),
+        site);
+    SetError(host, err);
+    if (!firstFlip) {
+        return;
+    }
+    const char* psv = PsvGetApiTag();
+    char note[256];
+    std::snprintf(
+        note,
+        sizeof(note),
+        "deviceLost flip=true callSite=%s hr=0x%08X psv=%s",
+        site,
+        static_cast<unsigned>(hr),
+        psv && psv[0] ? psv : "-");
+    PsvAppendDebugNote(note);
+    PsvDumpDred(host);
+}
+
+bool PollDeviceRemoved(Host* host, const char* callSite)
+{
+    if (!host) {
+        return true;
+    }
+    if (host->deviceLost) {
+        return true;
+    }
+    if (host->d3d12Device) {
+        const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
+        if (reason != S_OK) {
+            PsvMarkDeviceLost(host, callSite ? callSite : "poll", reason);
+            return true;
+        }
+        return false;
+    }
+    if (host->d3d11Device) {
+        const HRESULT reason = host->d3d11Device->GetDeviceRemovedReason();
+        if (reason != S_OK) {
+            PsvMarkDeviceLost(host, callSite ? callSite : "poll", reason);
+            return true;
+        }
+    }
+    return false;
 }
 
 bool BindDxgiAdapter3(Host* host)
@@ -78,7 +148,7 @@ bool BindDxgiAdapter3(Host* host)
 
 namespace {
 
-constexpr char kVersion[] = "0.2.0-smooth-v1";
+constexpr char kVersion[] = "0.3.0-smooth-v2";
 constexpr DXGI_FORMAT kScrgbFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 constexpr UINT kBufferCount = 2;
 constexpr UINT kLatencyFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
@@ -174,6 +244,27 @@ HRESULT CreateCompositionSwapChainDxgi(Host* host, unsigned width, unsigned heig
     return S_OK;
 }
 
+#if defined(PSV_TEST_HOOKS)
+/* Must run before D3D12CreateDevice. Diligent EnableValidation alone is not
+ * enough when we AttachToD3D12Device on an app-owned device. Requires the
+ * Windows "Graphics Tools" optional feature — do not install system-wide here. */
+bool TryEnableD3D12DebugLayerBeforeCreate()
+{
+    ComPtr<ID3D12Debug> dbg;
+    const HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(&dbg));
+    if (FAILED(hr) || !dbg) {
+        PsvAppendDebugNote(
+            "D3D12GetDebugInterface failed — install Windows optional feature "
+            "'Graphics Tools' for Debug-layer InfoQueue (not installing here)");
+        SetError(nullptr, "D3D12 debug layer unavailable (Graphics Tools?)");
+        return false;
+    }
+    dbg->EnableDebugLayer();
+    PsvAppendDebugNote("D3D12 debug layer enabled before CreateDevice");
+    return true;
+}
+#endif
+
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
 
 bool CreatePatternPipeline(Host* host)
@@ -226,10 +317,25 @@ bool InitDiligentD3D12(Host* host)
 {
     /* Own D3D12 device + queue so CreateSwapChainForComposition can use the queue,
      * then AttachToD3D12Device so Diligent shares the same device. */
+#if defined(PSV_TEST_HOOKS)
+    TryEnableD3D12DebugLayerBeforeCreate();
+#endif
+    /* Release-safe: PALACE_SMOOTH_DRED=1 enables breadcrumbs + page-fault before create. */
+    PsvTryEnableDredBeforeCreate();
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&host->d3d12Device));
     if (FAILED(hr)) {
         SetError(host, "D3D12CreateDevice failed");
         return false;
+    }
+    /* TDR sticky: CreateDevice can hand back a removed device — never Diligent on it. */
+    {
+        const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
+        if (reason != S_OK) {
+            PsvMarkDeviceLost(host, "create", reason);
+            SetError(host, "device still removed");
+            host->d3d12Device.Reset();
+            return false;
+        }
     }
     D3D12_COMMAND_QUEUE_DESC qd{};
     qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -280,6 +386,8 @@ bool InitDiligentD3D12(Host* host)
     if (!CreatePatternPipeline(host)) {
         return false;
     }
+    PsvInstallDiligentDebugLogging();
+    PsvSetupD3D12InfoQueue(host);
     host->diligentReady = true;
     ClearError(host);
     return true;
@@ -355,13 +463,42 @@ bool InitDiligent(Host* host, int prefer)
 void UnbindAndIdleDiligent(Host* host)
 {
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (!host->diligentContext) {
+    if (!host || !host->diligentContext) {
+        return;
+    }
+    /* Never Flush/WaitForIdle on a removed device — that path AVs under TDR. */
+    if (PollDeviceRemoved(host, "unbind")) {
         return;
     }
     /* Drop RT binds so DXGI ResizeBuffers can reclaim the backbuffer. */
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
     host->diligentContext->Flush();
     host->diligentContext->WaitForIdle();
+    if (host->diligentDevice) {
+        host->diligentDevice->ReleaseStaleResources(true);
+    }
+#else
+    (void)host;
+#endif
+}
+
+void PsvFinishDiligentFrame(Host* host)
+{
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (!host || !host->diligentContext) {
+        return;
+    }
+    if (PollDeviceRemoved(host, "finishFrame")) {
+        return;
+    }
+    /* Raw DXGI Present does not call Diligent ISwapChain::Present, so the engine
+     * never auto-FinishFrame — recycle dynamic GPU descriptors explicitly.
+     * Flush first: FinishFrame errors if the context still has outstanding cmds. */
+    host->diligentContext->Flush();
+    host->diligentContext->FinishFrame();
+    if (host->diligentDevice) {
+        host->diligentDevice->ReleaseStaleResources();
+    }
 #else
     (void)host;
 #endif
@@ -384,6 +521,7 @@ HRESULT BindAndDrawPattern(Host* host)
             SetError(host, "GetBuffer D3D12 failed");
             return hr;
         }
+        bb->SetName(L"SmoothSwapchainBB");
         RefCntAutoPtr<IRenderDeviceD3D12> device12(host->diligentDevice, IID_RenderDeviceD3D12);
         device12->CreateTextureFromD3DResource(bb.Get(), RESOURCE_STATE_PRESENT, &backTex);
     } else {
@@ -401,6 +539,8 @@ HRESULT BindAndDrawPattern(Host* host)
         SetError(host, "CreateTextureFromD3DResource failed");
         return E_FAIL;
     }
+    /* Diligent v2.5.6: no ITexture/IDeviceObject::SetName — Name is create-time
+     * Desc only. DRED sees the native ID3D12Resource::SetName above. */
 
     auto* rtv = backTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
     if (!rtv) {
@@ -427,9 +567,20 @@ HRESULT BindAndDrawPattern(Host* host)
     DrawAttribs draw{};
     draw.NumVertices = 3;
     host->diligentContext->Draw(draw);
+    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    /* PRESENT barrier in the same submission as the draw (before Flush). */
+    if (host->backend == PSV_BACKEND_D3D12 && backTex) {
+        StateTransitionDesc barrier{
+            backTex,
+            RESOURCE_STATE_UNKNOWN,
+            RESOURCE_STATE_PRESENT,
+            STATE_TRANSITION_FLAG_UPDATE_STATE};
+        host->diligentContext->TransitionResourceStates(1, &barrier);
+    }
     host->diligentContext->Flush();
     /* Unbind + release wrap so the next psv_resize can ResizeBuffers. */
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    PsvDrainD3D12InfoQueue(host);
     backTex.Release();
     return S_OK;
 }
@@ -438,10 +589,23 @@ HRESULT BindAndDrawPattern(Host* host)
 
 bool InitStubD3D12(Host* host)
 {
+#if defined(PSV_TEST_HOOKS)
+    TryEnableD3D12DebugLayerBeforeCreate();
+#endif
+    PsvTryEnableDredBeforeCreate();
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&host->d3d12Device));
     if (FAILED(hr)) {
         SetError(host, "stub D3D12CreateDevice failed");
         return false;
+    }
+    {
+        const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
+        if (reason != S_OK) {
+            PsvMarkDeviceLost(host, "create", reason);
+            SetError(host, "device still removed");
+            host->d3d12Device.Reset();
+            return false;
+        }
     }
     D3D12_COMMAND_QUEUE_DESC qd{};
     qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -451,6 +615,7 @@ bool InitStubD3D12(Host* host)
         return false;
     }
     host->backend = PSV_BACKEND_D3D12;
+    PsvSetupD3D12InfoQueue(host);
     SetError(host, "stub D3D12 ready (Diligent not linked)");
     return true;
 }
@@ -522,8 +687,13 @@ HRESULT PresentSwapChain(Host* host)
 {
     HRESULT hr = host->swapChain->Present(1, 0);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
-        host->deviceLost = true;
-        SetError(host, "Present device lost");
+        HRESULT reason = hr;
+        if (host->d3d12Device) {
+            reason = host->d3d12Device->GetDeviceRemovedReason();
+        } else if (host->d3d11Device) {
+            reason = host->d3d11Device->GetDeviceRemovedReason();
+        }
+        PsvMarkDeviceLost(host, "present", reason);
         return hr;
     }
     if (FAILED(hr)) {
@@ -571,11 +741,43 @@ PSV_API void psv_destroy(void* host_ptr)
         return;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    /* Drop all Diligent refs before touching the D3D device (TDR-safe order). */
+    DestroyImagePass(host);
     psv_tile_pool_destroy(host);
-    /* Unbind RTs + WaitForIdle before RefCntAutoPtr teardown (same as resize). */
+    host->patternSrb.Release();
+    host->patternPso.Release();
+    host->shaderFactory.Release();
+    /* Unbind RTs + WaitForIdle / ReleaseStaleResources — skipped when already removed. */
     UnbindAndIdleDiligent(host);
+    host->diligentContext.Release();
+    host->diligentDevice.Release();
+    host->diligentReady = false;
 #endif
     ReleaseWaitable(host);
+    host->swapChain.Reset();
+    host->adapter3.Reset();
+    host->factory.Reset();
+    host->d3d11Context.Reset();
+    host->d3d11Device.Reset();
+    host->d3d12Queue.Reset();
+
+#if defined(PSV_TEST_HOOKS)
+    if (host->d3d12Device) {
+        /* AddRef/Release pair reports live refcount (expect 1 = this ComPtr only → 0 after Reset). */
+        const ULONG afterAdd = host->d3d12Device->AddRef();
+        const ULONG afterRel = host->d3d12Device->Release();
+        (void)afterAdd;
+        char buf[128];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "psv_destroy: D3D12 refcount=%lu (expect 0 after ComPtr Reset)",
+            static_cast<unsigned long>(afterRel > 0 ? afterRel - 1 : 0));
+        OutputDebugStringA(buf);
+        OutputDebugStringA("\n");
+    }
+#endif
+    host->d3d12Device.Reset();
     delete host;
 }
 
@@ -586,7 +788,11 @@ PSV_API int psv_create_composition_swapchain(void* host_ptr, unsigned width, uns
     }
     *out_dxgi_swapchain = nullptr;
     auto* host = static_cast<Host*>(host_ptr);
-    host->deviceLost = false;
+    /* Never hard-clear deviceLost — derive from GetDeviceRemovedReason. */
+    if (PollDeviceRemoved(host, "create")) {
+        SetError(host, "device still removed");
+        return PSV_DEVICE_LOST;
+    }
 
     IUnknown* deviceOrQueue = nullptr;
     if (host->backend == PSV_BACKEND_D3D12) {
@@ -595,6 +801,10 @@ PSV_API int psv_create_composition_swapchain(void* host_ptr, unsigned width, uns
         deviceOrQueue = host->d3d11Device.Get();
     }
     if (FAILED(CreateCompositionSwapChainDxgi(host, width, height, deviceOrQueue))) {
+        if (PollDeviceRemoved(host, "create")) {
+            SetError(host, "device still removed");
+            return PSV_DEVICE_LOST;
+        }
         return PSV_FAILED;
     }
     host->swapChain->AddRef();
@@ -657,6 +867,7 @@ PSV_API int psv_set_dpi_scale(void* host_ptr, float scale_x, float scale_y)
 
 PSV_API int psv_render_frame(void* host_ptr)
 {
+    PsvApiScope api("psv_render_frame");
     if (!host_ptr) {
         return PSV_BAD_ARGUMENT;
     }
@@ -664,7 +875,8 @@ PSV_API int psv_render_frame(void* host_ptr)
     if (!host->swapChain) {
         return PSV_NOT_ATTACHED;
     }
-    if (host->deviceLost) {
+    /* Cheap removed poll before any Diligent work. */
+    if (PollDeviceRemoved(host, "poll")) {
         return PSV_DEVICE_LOST;
     }
 
@@ -689,10 +901,24 @@ PSV_API int psv_render_frame(void* host_ptr)
     }
     QueryPerformanceCounter(&tWait);
 
-    HRESULT hr = BindAndDrawPattern(host);
+    HRESULT hr = E_FAIL;
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (host->viewportEnabled && host->instanceCount > 0) {
+        hr = BindAndDrawImage(host);
+        if (hr == S_FALSE) {
+            hr = BindAndDrawPattern(host);
+        }
+    } else {
+        hr = BindAndDrawPattern(host);
+    }
+#else
+    hr = BindAndDrawPattern(host);
+#endif
     QueryPerformanceCounter(&tRender);
     if (FAILED(hr)) {
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
+        /* Draw path may have Flushed + allocated dynamic descriptors — recycle. */
+        PsvFinishDiligentFrame(host);
         return PSV_FAILED;
 #else
         /* stub may still present */
@@ -701,12 +927,18 @@ PSV_API int psv_render_frame(void* host_ptr)
 
     hr = PresentSwapChain(host);
     QueryPerformanceCounter(&tPresent);
-    if (host->deviceLost) {
+    PsvDrainD3D12InfoQueue(host);
+    if (host->deviceLost || PollDeviceRemoved(host, "present")) {
         return PSV_DEVICE_LOST;
     }
     if (FAILED(hr)) {
+        PsvFinishDiligentFrame(host);
         return PSV_FAILED;
     }
+
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    PsvFinishDiligentFrame(host);
+#endif
 
     host->lastStats.wait_ms = ElapsedMs(host->qpcFreq, t0, tWait);
     host->lastStats.render_ms = ElapsedMs(host->qpcFreq, tWait, tRender);
@@ -735,6 +967,9 @@ PSV_API int psv_last_error(void* host_ptr, char* buffer, int buffer_bytes)
     const char* msg = "";
     if (host_ptr) {
         msg = static_cast<Host*>(host_ptr)->lastError.c_str();
+    } else if (g_lastCreateError[0]) {
+        /* psv_create failure path — host already deleted. */
+        msg = g_lastCreateError;
     }
     const int need = static_cast<int>(std::strlen(msg)) + 1;
     if (buffer && buffer_bytes > 0) {
@@ -753,6 +988,33 @@ PSV_API int psv_backend(void* host_ptr)
         return PSV_BACKEND_AUTO;
     }
     return static_cast<Host*>(host_ptr)->backend;
+}
+
+PSV_API int psv_debug_remove_device(void* host_ptr)
+{
+#if !defined(PSV_TEST_HOOKS)
+    (void)host_ptr;
+    return PSV_FAILED;
+#else
+    auto* host = static_cast<Host*>(host_ptr);
+    if (!host) {
+        return PSV_BAD_ARGUMENT;
+    }
+    if (!host->d3d12Device) {
+        SetError(host, "psv_debug_remove_device: no D3D12 device");
+        return PSV_FAILED;
+    }
+    ComPtr<ID3D12Device5> d5;
+    if (FAILED(host->d3d12Device.As(&d5)) || !d5) {
+        SetError(host, "psv_debug_remove_device: ID3D12Device5 unavailable");
+        return PSV_FAILED;
+    }
+    d5->RemoveDevice();
+    const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
+    PsvMarkDeviceLost(host, "removeDevice", reason != S_OK ? reason : DXGI_ERROR_DEVICE_REMOVED);
+    SetError(host, "psv_debug_remove_device: RemoveDevice invoked");
+    return PSV_DEVICE_LOST;
+#endif
 }
 
 } // extern "C"

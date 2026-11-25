@@ -115,6 +115,46 @@ PSV_API int psv_tile_mip_ready(void* host);
 /* Flush Diligent context (after a mip level batch). */
 PSV_API int psv_flush(void* host);
 
+/* --- V2 viewport image pass (SmoothImageVS/PS, panel-sized SC, no 8192 zoom) --- */
+
+/* Enable/disable image pass (when off, V0 pattern still draws). */
+PSV_API int psv_viewport_enable(void* host, int enabled);
+
+PSV_API int psv_viewport_set_view(void* host, const struct psv_view_cb* view);
+
+PSV_API int psv_viewport_set_tone(void* host, const struct psv_tone_cb* tone);
+
+/* R32F LutSize×1 samples (ToneMapLut). */
+PSV_API int psv_viewport_set_lut(void* host, const float* samples, unsigned count);
+
+/* StructuredBuffer of psv_tile_instance (max 4096). */
+PSV_API int psv_viewport_set_instances(
+    void* host,
+    const struct psv_tile_instance* instances,
+    unsigned count);
+
+/* Non-zero when image PSO is ready and viewport is enabled. */
+PSV_API int psv_viewport_ready(void* host);
+
+/*
+ * Evidence: ID3D12Device5::RemoveDevice when built with PSV_TEST_HOOKS
+ * (CMake Debug config). Release / CI DLLs stub to PSV_FAILED — no RemoveDevice
+ * in the binary. Driven by PALACE_SMOOTH_TEST_REMOVE_DEVICE=1 from managed host.
+ */
+PSV_API int psv_debug_remove_device(void* host);
+
+/*
+ * Append Diligent / D3D12 debug messages under this UTF-8 path (typically
+ * PALACE_DATA_DIR/smooth-diligent-debug-<run>.log — one file per run; never
+ * delete before harvest). Call before psv_create so DRED/create notes are kept.
+ * Installs SetDebugMessageCallback and, when PALACE_SMOOTH_NO_ASSERT_UI=1 or a
+ * path is set, SetBreakOnError(false) so AssertionFailed does not MessageBox.
+ *
+ * PALACE_SMOOTH_DRED=1 (Release OK): enable DRED auto-breadcrumbs + page-fault
+ * before CreateDevice; dump breadcrumbs / page-fault VA+names on deviceLost.
+ */
+PSV_API int psv_set_debug_log_path(const char* utf8_path);
+
 #ifdef __cplusplus
 }
 #endif

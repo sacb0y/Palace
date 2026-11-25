@@ -3,7 +3,7 @@
 | File | Role |
 |---|---|
 | `SmoothMipDownsample.hlsl` | **V1** GPU detail levels — `SmoothMipDownsampleCS` (cs_5_0). One dispatch per L+1 tile slot. |
-| `SmoothImage.hlsl` | Image pass (V1 debug at fixed zoom; full filter for V2+) |
+| `SmoothImage.hlsl` | **V2** image pass — `SmoothImageVS` / `SmoothImagePS` (filter-by-zoom, parent blend, tone, grid hooks) |
 | `README-mip-downsample.md` | Geo notes for the mip CS |
 
 ## V1 mip rules

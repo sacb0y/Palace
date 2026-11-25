@@ -1,15 +1,25 @@
 namespace Palace.Helpers;
 
 /// <summary>
-/// V1 tile session: builds Working-space tiles on a background task, mips
+/// Tile session: builds Working-space tiles on a background task, mips
 /// L→L+1 via <see cref="SmoothMipDownsampleCpu.BoxDownsampleTileSlot"/> (and
 /// optional GPU <c>TileMipBox</c>), pins the coarse set, and never retains every
-/// L0 tile in managed memory. V1 decode is synthetic procedural Working;
-/// Palace.Imaging Working decode is V2. EXIF is never baked; cloud online-only
-/// paths are refused via <see cref="SmoothTileDecodeGate"/>.
+/// L0 tile in managed memory. V2 feeds Palace.Imaging Working L0 tiles
+/// (<see cref="BuildFromWorkingAsync"/>); synthetic procedural remains for
+/// tests. EXIF is never baked; cloud online-only paths are refused via
+/// <see cref="SmoothTileDecodeGate"/>.
 /// </summary>
 public sealed class SmoothTileSession
 {
+    private IReadOnlyDictionary<SmoothTileId, byte[]>? _level0Override;
+    private IReadOnlyDictionary<SmoothTileId, byte[]>? _retainedLevel0;
+    private float[]? _workingRgba;
+    private int _workingW;
+    private int _workingH;
+    private readonly Queue<SmoothTileId> _streamCpuOrder = new();
+    private readonly object _streamGate = new();
+    private const int StreamCpuCap = 64;
+
     public int FullWidth { get; }
     public int FullHeight { get; }
     public int CoarseLevel { get; }
@@ -21,6 +31,8 @@ public sealed class SmoothTileSession
     public int CoarseTileCount { get; private set; }
     public string WorkingFormat { get; } = SmoothTileWorkingSpace.GpuFormat;
     public long AvailableVramBytes { get; private set; }
+    public bool UsedWorkingDecode { get; private set; }
+    public bool HasRetainedWorking => _workingRgba is not null;
 
     public SmoothTileSession(int fullWidth, int fullHeight, long availableVramBytes = 0)
     {
@@ -80,10 +92,132 @@ public sealed class SmoothTileSession
         return BuildPyramidCore(cts.Token, gpuMip: null, afterLevel: null);
     }
 
-    public string StatusLine() =>
-        $"V1 tiles {FullWidth}x{FullHeight} coarse=L{CoarseLevel} " +
-        $"coarseTiles={CoarseTileCount} pool={PoolCapacity} resident={Lru.ResidentCount} " +
-        $"cpuTiles={Cpu.Count} firstCoarseMs={FirstCoarseFrameMs} fmt={WorkingFormat} Border={SmoothTileMath.Border}";
+    /// <summary>True after <see cref="BuildPyramidCore"/> / Working build finished once.</summary>
+    public bool PyramidBuilt => FirstCoarseFrameMs > 0;
+
+    public string StatusLine() => StatusLine(gpuEvidenceOn: null);
+
+    /// <param name="gpuEvidenceOn">
+    /// When set, labels firstCoarseMs as OFF/ON (V1-style) so Fenrir can compare
+    /// pyramid-only vs pyramid+GPU-mip-evidence without conflating the two.
+    /// </param>
+    public string StatusLine(bool? gpuEvidenceOn)
+    {
+        var evidence = gpuEvidenceOn is null
+            ? ""
+            : gpuEvidenceOn.Value ? " gpuEvidence=ON" : " gpuEvidence=OFF";
+        return
+            $"{(UsedWorkingDecode ? "V2" : "V1")} tiles {FullWidth}x{FullHeight} coarse=L{CoarseLevel} " +
+            $"coarseTiles={CoarseTileCount} pool={PoolCapacity} resident={Lru.ResidentCount} " +
+            $"cpuTiles={Cpu.Count} firstCoarseMs={FirstCoarseFrameMs}{evidence} " +
+            $"fmt={WorkingFormat} Border={SmoothTileMath.Border}";
+    }
+
+    /// <summary>
+    /// V2: build the pyramid from Palace.Imaging Working L0 (cancel-aware).
+    /// Retains Working floats for on-demand finer-level CPU tiles after the
+    /// pyramid drops intermediate levels.
+    /// </summary>
+    public Task<long> BuildFromWorkingAsync(
+        SmoothWorkingDecodeResult working,
+        CancellationToken cancellationToken,
+        Action<SmoothGpuMipRequest>? gpuMip = null,
+        Action? afterLevel = null)
+    {
+        if (working.Width != FullWidth || working.Height != FullHeight)
+        {
+            throw new ArgumentException(
+                $"Working size {working.Width}x{working.Height} != session {FullWidth}x{FullHeight}.",
+                nameof(working));
+        }
+
+        _level0Override = working.Level0Tiles.Count > 0 ? working.Level0Tiles : null;
+        _retainedLevel0 = _level0Override;
+        _workingRgba = working.HasFloatWorking ? working.WorkingRgba : null;
+        _workingW = working.Width;
+        _workingH = working.Height;
+        UsedWorkingDecode = true;
+        working.ClearNormalizedFrame();
+        return Task.Run(
+            () =>
+            {
+                try
+                {
+                    return BuildPyramidCore(cancellationToken, gpuMip, afterLevel);
+                }
+                finally
+                {
+                    _level0Override = null;
+                }
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Ensure a CPU tile exists for streaming uploads. Uses retained Working
+    /// floats for finer levels after the pyramid has dropped them from Cpu.
+    /// Bounded LRU (~<see cref="StreamCpuCap"/>) for non-coarse tiles —
+    /// only when <paramref name="trackStreamLru"/> (streaming path only;
+    /// pyramid <c>EnsureChildTile</c> must pass false).
+    /// </summary>
+    public bool TryEnsureCpuTile(SmoothTileId id, bool trackStreamLru = true)
+    {
+        lock (_streamGate)
+        {
+            if (Cpu.TryGet(id, out _))
+            {
+                return true;
+            }
+
+            if (id.Level < 0 || id.Level > MaxLevel)
+            {
+                return false;
+            }
+
+            byte[]? bytes = null;
+            if (id.Level == 0
+                && _retainedLevel0 is not null
+                && _retainedLevel0.TryGetValue(id, out var retained))
+            {
+                bytes = retained;
+            }
+            else if (_workingRgba is not null && _workingW > 0 && _workingH > 0)
+            {
+                // One mip source: all levels from retained Working floats.
+                bytes = SmoothWorkingDecode.TileFromWorkingAtLevel(
+                    _workingRgba, _workingW, _workingH, id.Level, id.TileX, id.TileY);
+            }
+            else if (id.Level > 0
+                && _workingRgba is null
+                && _retainedLevel0 is not null)
+            {
+                // RGBA16F-only session: mid-levels retained on Cpu after build
+                // (see BuildPyramidCore); nothing to rematerialize here.
+                return false;
+            }
+
+            if (bytes is null)
+            {
+                return false;
+            }
+
+            Cpu.Set(id, bytes);
+            if (trackStreamLru && id.Level < CoarseLevel)
+            {
+                _streamCpuOrder.Enqueue(id);
+                while (_streamCpuOrder.Count > StreamCpuCap)
+                {
+                    var drop = _streamCpuOrder.Dequeue();
+                    if (drop.Level < CoarseLevel)
+                    {
+                        _ = Cpu.Remove(drop);
+                    }
+                }
+            }
+
+            return true;
+        }
+    }
 
     private long BuildPyramidCore(
         CancellationToken cancellationToken,
@@ -120,7 +254,13 @@ public sealed class SmoothTileSession
             cancellationToken.ThrowIfCancellationRequested();
             BuildNextLevelFromChildren(level, cancellationToken, gpuMip);
             afterLevel?.Invoke();
-            Cpu.RemoveLevel(level);
+            // RGBA16F-only sessions (no float Working) cannot rematerialize levels
+            // 1..Coarse-1 on demand, so keep them; L0 comes back from _retainedLevel0.
+            if (level == 0 || _workingRgba is not null)
+            {
+                Cpu.RemoveLevel(level);
+            }
+
             Lru.ClearTempPins();
         }
 
@@ -279,6 +419,11 @@ public sealed class SmoothTileSession
 
     private void DropFinishedChildRows(int childLevel, int childNx, int childNy, int parentYDone)
     {
+        if (childLevel > 0 && _workingRgba is null && _retainedLevel0 is not null)
+        {
+            return; // retained for streaming (see BuildPyramidCore)
+        }
+
         var dropBefore = (parentYDone * 2) - 1;
         if (dropBefore <= 0)
         {
@@ -301,14 +446,29 @@ public sealed class SmoothTileSession
             return;
         }
 
-        if (id.Level == 0)
+        if (_level0Override is not null
+            && id.Level == 0
+            && _level0Override.TryGetValue(id, out var workingBytes))
         {
+            Cpu.Set(id, workingBytes);
+            return;
+        }
+
+        // Pyramid build path — do not enqueue into the stream CPU LRU.
+        if (_workingRgba is not null && TryEnsureCpuTile(id, trackStreamLru: false))
+        {
+            return;
+        }
+
+        if (id.Level == 0 && !UsedWorkingDecode)
+        {
+            // Procedural fill is tests / legacy only — never the primary V2 path.
             Cpu.Set(id, MakeProceduralTile(id));
             return;
         }
 
         throw new InvalidOperationException(
-            $"Missing intermediate tile {id}; level>0 must come from prior mip, not procedural fill.");
+            $"Missing tile {id}; V2 requires retained Working, V1 level>0 must come from prior mip.");
     }
 
     private float[] AssembleParentFootprint(

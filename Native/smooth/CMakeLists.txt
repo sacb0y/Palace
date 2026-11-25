@@ -49,6 +49,8 @@ set(PALACE_SMOOTH_DILIGENT_TAG "v2.5.6" CACHE STRING "DiligentCore git tag")
 add_library(palace_smooth SHARED
   src/palace_smooth.cpp
   src/palace_smooth_tiles.cpp
+  src/palace_smooth_image.cpp
+  src/palace_smooth_debug.cpp
 )
 set_property(TARGET palace_smooth PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -59,6 +61,8 @@ target_compile_definitions(palace_smooth PRIVATE
   _UNICODE
   NOMINMAX
   WIN32_LEAN_AND_MEAN
+  # Fenrir evidence hooks (RemoveDevice). Debug config only — Release CI/DLL stubs.
+  $<$<CONFIG:Debug>:PSV_TEST_HOOKS=1>
 )
 target_link_libraries(palace_smooth PRIVATE d3d12 d3d11 dxgi d3dcompiler)
 
