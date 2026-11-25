@@ -147,6 +147,49 @@ function Close-GalleryOverlay {
     }
 }
 
+function Get-UiToggleState {
+    param([Parameter(Mandatory)][string]$Id)
+    # 'On', 'Off', or $null if UIA did not expose a readable ToggleState.
+    $blobs = @(
+        (winapp ui get-property $Id @(WinArgs) -p Toggle.ToggleState --json 2>$null)
+        (winapp ui get-property $Id @(WinArgs) --json 2>$null)
+    )
+    foreach ($raw in $blobs) {
+        if (-not $raw) { continue }
+        $json = $null
+        try { $json = $raw | ConvertFrom-Json } catch { $json = $null }
+        $vals = @()
+        if ($json) {
+            $vals += @(
+                $json.ToggleState, $json.toggleState, $json.toggle_state,
+                $json.value, $json.propertyValue, $json.state
+            )
+            if ($json.properties) {
+                $vals += @(
+                    $json.properties.'Toggle.ToggleState',
+                    $json.properties.ToggleState
+                )
+            }
+            $e = $json.element
+            if ($e) {
+                $vals += @(
+                    $e.ToggleState, $e.toggleState, $e.toggle_state,
+                    $e.checked, $e.IsChecked, $e.isChecked, $e.value, $e.state
+                )
+            }
+        } else {
+            $vals += "$raw"
+        }
+        foreach ($v in $vals) {
+            if ($null -eq $v -or "$v" -eq '') { continue }
+            $s = "$v".Trim()
+            if ($s -match '^(1|true|on|checked|toggled|ToggleState_On)$') { return 'On' }
+            if ($s -match '^(0|false|off|unchecked|untoggled|ToggleState_Off)$') { return 'Off' }
+        }
+    }
+    return $null
+}
+
 function Wait-LibraryReady {
     Bind-MainWindow
     winapp ui invoke 'NavLibrary' @(WinArgs) | Out-Null
@@ -154,16 +197,18 @@ function Wait-LibraryReady {
     Close-GalleryOverlay
     winapp ui wait-for 'GrdAssets' @(WinArgs) -t 8000 | Out-Null
     # Preview may be auto-hidden / UserShow off -- open it so AsbAssignTag is in UIA.
-    winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 2500 | Out-Null
+    # TglPreviewPane and BtnPreviewPaneEdge both flip UserShow (ApplyPreviewToggleFromUser).
+    # A short wait-for miss is not "hidden": invoking would close an already-open pane.
+    winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 8000 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        winapp ui invoke 'TglPreviewPane' @(WinArgs) | Out-Null
-        Start-Sleep -Milliseconds 400
-        winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 4000 | Out-Null
-    }
-    if ($LASTEXITCODE -ne 0) {
-        winapp ui invoke 'BtnPreviewPaneEdge' @(WinArgs) | Out-Null
-        Start-Sleep -Milliseconds 400
-        winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 4000 | Out-Null
+        $toggle = Get-UiToggleState 'TglPreviewPane'
+        if ($toggle -ne 'On') {
+            winapp ui invoke 'TglPreviewPane' @(WinArgs) | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                winapp ui invoke 'BtnPreviewPaneEdge' @(WinArgs) | Out-Null
+            }
+        }
+        winapp ui wait-for 'AsbAssignTag' @(WinArgs) -t 8000 | Out-Null
     }
     winapp ui wait-for 'AsbSearch' @(WinArgs) -t 4000 | Out-Null
     if ($LASTEXITCODE -eq 0) {
@@ -309,8 +354,19 @@ function Get-BoundingHeight {
     if (-not $sel) { $sel = $Item.name }
     if (-not $sel) { return $null }
 
-    # Prefer a fresh BoundingRectangle -- inspect Item.bounds can be stale mid-relayout
-    # (row-height flake: large measured smaller than small).
+    # Prefer a fresh element box (same get-property --json shape as Get-PalaceUiCenter).
+    # Inspect Item.bounds can be stale mid-relayout (row-height flake: large < small).
+    $rawEl = winapp ui get-property $sel @(WinArgs) --json 2>$null
+    $elJson = $null
+    try { $elJson = $rawEl | ConvertFrom-Json } catch { $elJson = $null }
+    $el = $null
+    if ($elJson) {
+        if ($elJson.element) { $el = $elJson.element }
+        elseif ($elJson.height -or $elJson.Height) { $el = $elJson }
+    }
+    if ($el -and $el.height -and [double]$el.height -gt 0) { return [double]$el.height }
+    if ($el -and $el.Height -and [double]$el.Height -gt 0) { return [double]$el.Height }
+
     $raw = winapp ui get-property $sel @(WinArgs) -p BoundingRectangle --json 2>$null
     $json = $null
     try { $json = $raw | ConvertFrom-Json } catch { $json = $null }
@@ -335,9 +391,20 @@ function Get-BoundingHeight {
         $fourth = [double]$Matches[4]
         # left,top,right,bottom when right>left and bottom>top by a tile-sized amount.
         $asRightBottom = ($third -gt $left) -and ($fourth -gt $top) -and (($third - $left) -gt 20) -and (($fourth - $top) -gt 20)
-        # left,top,width,height when third/fourth look like sizes (not screen coords).
-        $asWidthHeight = ($third -gt 20) -and ($third -lt 1200) -and ($fourth -gt 20) -and ($fourth -lt 900)
-        if ($asRightBottom -and (-not $asWidthHeight -or ($fourth - $top) -gt $fourth)) {
+        # left,top,width,height when third/fourth look like sizes. Keep the 400 cap:
+        # a 900 cap treats LTRB bottoms as heights and can invert small vs large.
+        $asWidthHeight = ($third -gt 20) -and ($third -lt 1200) -and ($fourth -gt 20) -and ($fourth -lt 400)
+        if ($asRightBottom -and $asWidthHeight) {
+            $ltrbH = $fourth - $top
+            $whH = $fourth
+            $ltrbTile = ($ltrbH -gt 40 -and $ltrbH -lt 400)
+            $whTile = ($whH -gt 40 -and $whH -lt 400)
+            if ($ltrbTile -and -not $whTile) { return $ltrbH }
+            if ($whTile -and -not $ltrbTile) { return $whH }
+            if ($third -ge 400 -or $fourth -ge 400) { return $ltrbH }
+            return $whH
+        }
+        if ($asRightBottom) {
             return $fourth - $top
         }
         if ($asWidthHeight) {
@@ -630,8 +697,8 @@ Test-UI 'Navigate to Tags' { winapp ui invoke 'NavTags' -a $AppPid }
 Test-UI 'Tags tree loaded' { winapp ui wait-for 'RepTagBoard' -a $AppPid -t 8000 }
 Test-UI 'Tag scope exists' { winapp ui wait-for 'SelTagScope' -a $AppPid -t 4000 }
 Test-UI 'Tag search exists' { winapp ui wait-for 'AsbTagSearch' -a $AppPid -t 4000 }
-# GrdTagAssets / BtnTagMosaicSort / TglTagSelectMode are Collapsed until HasTagAssets
-# (sort+select chrome intentionally inert on Tags). Assert board composer instead.
+# GrdTagAssets Collapsed when !HasTagAssets; BtnTagMosaicSort / TglTagSelectMode
+# always Collapsed (inert on Tags). Assert board composer instead.
 Test-UI 'Tag children board exists' { winapp ui wait-for 'RepTagChildren' -a $AppPid -t 4000 }
 Test-UI 'Tag board create button exists' { winapp ui wait-for 'BtnCreateNewTags' -a $AppPid -t 4000 }
 Test-UI 'New tag box exists' { winapp ui wait-for 'TxtNewTagName' -a $AppPid -t 8000 }
