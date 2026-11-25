@@ -30,7 +30,8 @@ public partial class LibraryViewModel
 
             if (clearSelection)
             {
-                ClearSelection();
+                // Folder/filter change: one-slot dropped-selection for Ctrl+Z.
+                CaptureAndDropSelection();
             }
 
             Assets.Clear();
@@ -193,12 +194,10 @@ public partial class LibraryViewModel
     /// </summary>
     public void SelectAllMosaicAssets()
     {
+        DroppedSelection.NotifyOtherAction();
         IReadOnlyList<AssetItem> source = _mosaicOrder.Count > 0 ? _mosaicOrder : Assets;
         SetSelection(MosaicDelete.OrderedNonHeaderTargets(source, a => a.IsFolderHeader));
-        if (!IsSelectMode)
-        {
-            IsSelectMode = true;
-        }
+        EnsureSelectMode(SelectMode.EntryFromPurposeful());
     }
 
     private static string? ResolveHeaderPath(AssetItem header)

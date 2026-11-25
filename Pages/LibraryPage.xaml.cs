@@ -31,7 +31,11 @@ public sealed partial class LibraryPage : Page
     private GalleryViewModel? _hookedOverlay;
     private int _mosaicGeneration;
     private bool _thumbsMayUpgrade;
-    private bool _shellReady;
+    /// <summary>
+    /// True after the first Loaded body has run (Doktor lifetime follow-up name).
+    /// NavigationCacheMode reuse takes the early branch once this is set.
+    /// </summary>
+    private bool _firstLoadCompleted;
     /// <summary>
     /// One-time GrdAssets routed handlers (DoubleTapped / KeyDown / Range*).
     /// NavigationCacheMode=Required keeps the page — must survive Unloaded during
@@ -243,7 +247,7 @@ public sealed partial class LibraryPage : Page
             // NavigationCacheMode keeps this instance. Loaded still runs when the
             // page re-enters the tree after Settings. Do not rebuild the preview
             // or the overlay still on that return.
-            if (_shellReady)
+            if (_firstLoadCompleted)
             {
                 // NavigationCacheMode=Required: Unloaded dropped re-hookables — restore.
                 // Also ensure one-time GrdAssets handlers (idempotent) if first Loaded
@@ -277,7 +281,7 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
-            _shellReady = true;
+            _firstLoadCompleted = true;
             ResetSectionToggleGuardOnLoaded();
             HookLibraryLayoutTracking();
             HookShellNavPaneTracking();
@@ -293,7 +297,7 @@ public sealed partial class LibraryPage : Page
             await ErrorReporter.RunAsync("Reload mosaic sort", null, ViewModel.ReloadMosaicSortAsync);
             await ErrorReporter.RunAsync("Load tag catalog", null, ViewModel.ReloadTagCatalogAsync);
             // One-time grid handlers must run even if Unloaded fired during await —
-            // reuse Loaded never reaches this first-load body (_shellReady already true).
+            // reuse Loaded never reaches this first-load body (_firstLoadCompleted already true).
             EnsureGridAssetHandlers();
             // Re-hookable VM / Performance / overlay only while still in the tree.
             if (!IsLoaded)
@@ -1211,6 +1215,15 @@ public sealed partial class LibraryPage : Page
     private void TglSelectMode_Changed(object sender, RoutedEventArgs e)
     {
         var on = (sender as ToggleButton)?.IsChecked == true;
+        if (on)
+        {
+            ViewModel.MarkSelectEntry(SelectMode.EntryFromPurposeful());
+        }
+        else
+        {
+            ViewModel.MarkSelectEntry(SelectEntryKind.None);
+        }
+
         _suppressMosaicSelection = true;
         try
         {
@@ -1396,7 +1409,7 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        if (!ViewModel.IsSelectMode || ViewModel.IsGalleryOverlayOpen)
+        if (ViewModel.IsGalleryOverlayOpen)
         {
             return;
         }
@@ -1408,8 +1421,42 @@ public sealed partial class LibraryPage : Page
         }
 
         var item = FindAssetItem(e.OriginalSource);
-        if (item is null
-            || !RangeSelect.AllowsGesture(true, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
+        if (item is null || item.IsFolderHeader)
+        {
+            return;
+        }
+
+        var ctrl = IsModifierKeyDown(VirtualKey.Control);
+        var shift = IsModifierKeyDown(VirtualKey.Shift);
+        if (MosaicModifierSelect.IsModifierClick(ctrl, shift))
+        {
+            if (TryHandleModifierClick(item, ctrl, shift))
+            {
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (!ViewModel.IsSelectMode)
+        {
+            return;
+        }
+
+        // Modifier-entered select mode: plain tile-body click replaces + exits
+        // (checkbox still toggles only that tile).
+        if (SelectMode.TileBodyClickReplacesAndExits(ViewModel.SelectEntryKind)
+            && !IsMultiSelectCheckBoxHit(e.OriginalSource as DependencyObject))
+        {
+            ViewModel.ApplyTileBodyClick(item);
+            e.Handled = true;
+            return;
+        }
+
+        // Checkbox: ItemsView toggles only that tile (never replace), regardless
+        // of entry kind — do not rewrite SelectEntryKind here.
+
+        if (!RangeSelect.AllowsGesture(true, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
         {
             return;
         }
@@ -1432,6 +1479,87 @@ public sealed partial class LibraryPage : Page
         _rangePointerId = e.Pointer.PointerId;
         _rangePointer = e.Pointer;
         _rangeCaptured = false;
+    }
+
+    private static bool IsModifierKeyDown(VirtualKey key) =>
+        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down)
+        || (key == VirtualKey.Control
+            && (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.LeftControl)
+                    .HasFlag(CoreVirtualKeyStates.Down)
+                || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.RightControl)
+                    .HasFlag(CoreVirtualKeyStates.Down)))
+        || (key == VirtualKey.Shift
+            && (InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.LeftShift)
+                    .HasFlag(CoreVirtualKeyStates.Down)
+                || InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.RightShift)
+                    .HasFlag(CoreVirtualKeyStates.Down)));
+
+    private static bool IsMultiSelectCheckBoxHit(DependencyObject? source)
+    {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is CheckBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Shift / Ctrl / Ctrl+Shift click — auto-enter select mode and apply
+    /// Explorer-style range / toggle / range-add. Still avoids Extended mode.
+    /// </summary>
+    private bool TryHandleModifierClick(AssetItem item, bool ctrl, bool shift)
+    {
+        if (ViewModel.IsGalleryOverlayOpen || item.IsFolderHeader)
+        {
+            return false;
+        }
+
+        if (!ViewModel.IsSelectMode
+            && !SelectMode.EnterFromModifierClick(
+                false, ViewModel.IsGalleryOverlayOpen, item.IsFolderHeader))
+        {
+            return false;
+        }
+
+        ViewModel.EnsureSelectMode(SelectMode.EntryFromModifier());
+        _suppressMosaicSelection = true;
+        try
+        {
+            GrdAssets.SelectionMode = ItemsViewSelectionMode.Multiple;
+            if (MosaicModifierSelect.AddsRangeToSelection(ctrl, shift))
+            {
+                ViewModel.SelectAsset(item, toggle: false, range: true, addRange: true);
+            }
+            else if (MosaicModifierSelect.RangesFromAnchor(ctrl, shift))
+            {
+                ViewModel.SelectAsset(item, toggle: false, range: true);
+            }
+            else if (MosaicModifierSelect.TogglesOneTile(ctrl, shift))
+            {
+                // First Ctrl+click while Single: keep the preview tile, then toggle target.
+                if (ViewModel.SelectionCount <= 1
+                    && ViewModel.SelectedAsset is { IsFolderHeader: false } one
+                    && !ReferenceEquals(one, item)
+                    && !one.IsSelected)
+                {
+                    ViewModel.SelectAsset(one, toggle: false);
+                }
+
+                ViewModel.SelectAsset(item, toggle: true);
+            }
+
+            RestoreMosaicSelectionHighlights();
+        }
+        finally
+        {
+            _suppressMosaicSelection = false;
+        }
+
+        return true;
     }
 
     private void GrdAssets_RangeMoved(object sender, PointerRoutedEventArgs e)
@@ -1493,7 +1621,7 @@ public sealed partial class LibraryPage : Page
             }
 
             ViewModel.SelectAsset(holdItem, toggle: false);
-            ViewModel.IsSelectMode = true;
+            ViewModel.EnsureSelectMode(SelectMode.EntryFromPurposeful());
             RestoreMosaicSelectionHighlights();
             // Enter-select hold: suppress system ContextRequested so the menu
             // does not open on the same press that entered select mode.
@@ -1955,7 +2083,17 @@ public sealed partial class LibraryPage : Page
             return;
         }
 
-        // Esc → ExitSelectMode is handled once on LibraryRoot_PreviewKeyDown (Organize.cs).
+        // Esc → ClearSelectionAndExit is handled once on LibraryRoot_PreviewKeyDown (Organize.cs).
+
+        var shiftDown = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        if (!typing
+            && !ViewModel.IsGalleryOverlayOpen
+            && TryHandleMosaicModifierKey(e.Key, controlDown, shiftDown))
+        {
+            e.Handled = true;
+            return;
+        }
 
         var item = FindAssetItem(e.OriginalSource)
             ?? ViewModel.SelectedAsset
@@ -2017,6 +2155,82 @@ public sealed partial class LibraryPage : Page
         {
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Shift/Ctrl arrows, Ctrl/Shift+Space — Explorer-style mosaic selection
+    /// without WinUI Extended mode.
+    /// </summary>
+    private bool TryHandleMosaicModifierKey(VirtualKey key, bool ctrl, bool shift)
+    {
+        var keyCode = (int)key;
+        var flags = ViewModel.Assets.Select(a => a.IsFolderHeader).ToList();
+        if (flags.Count == 0)
+        {
+            return false;
+        }
+
+        var focus = ViewModel.SelectionFocus
+            ?? ViewModel.SelectedAsset
+            ?? ViewModel.Assets.FirstOrDefault(a => !a.IsFolderHeader);
+        if (focus is null || focus.IsFolderHeader)
+        {
+            return false;
+        }
+
+        var focusIndex = ViewModel.Assets.IndexOf(focus);
+        if (focusIndex < 0)
+        {
+            return false;
+        }
+
+        if (MosaicModifierSelect.TogglesWithCtrlSpace(ctrl, shift, keyCode))
+        {
+            ViewModel.EnsureSelectMode(SelectMode.EntryFromModifier());
+            ViewModel.SelectAsset(focus, toggle: true);
+            RestoreMosaicSelectionHighlights();
+            return true;
+        }
+
+        if (MosaicModifierSelect.RangesWithShiftSpace(ctrl, shift, keyCode))
+        {
+            ViewModel.EnsureSelectMode(SelectMode.EntryFromModifier());
+            ViewModel.SelectAsset(focus, toggle: false, range: true);
+            RestoreMosaicSelectionHighlights();
+            return true;
+        }
+
+        if (MosaicModifierSelect.MovesFocusOnly(shift, ctrl, keyCode))
+        {
+            var next = MosaicModifierSelect.StepFocus(
+                flags, focusIndex, MosaicModifierSelect.ArrowDelta(keyCode));
+            if (next < 0)
+            {
+                return true;
+            }
+
+            ViewModel.SetSelectionFocus(ViewModel.Assets[next]);
+            return true;
+        }
+
+        if (MosaicModifierSelect.ExtendsWithShiftArrow(shift, ctrl, keyCode))
+        {
+            var next = MosaicModifierSelect.StepFocus(
+                flags, focusIndex, MosaicModifierSelect.ArrowDelta(keyCode));
+            if (next < 0)
+            {
+                return true;
+            }
+
+            var target = ViewModel.Assets[next];
+            ViewModel.EnsureSelectMode(SelectMode.EntryFromModifier());
+            ViewModel.SelectAsset(target, toggle: false, range: true);
+            ViewModel.SetSelectionFocus(target);
+            RestoreMosaicSelectionHighlights();
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

@@ -80,7 +80,7 @@ public sealed class LifetimeHookContractTests
             catalog >= 0 && ensure > catalog && loadedGate > ensure,
             "EnsureGridAssetHandlers must run after ReloadTagCatalogAsync and before if (!IsLoaded)");
         // Reuse branch also calls the idempotent method.
-        var shellReady = cs.IndexOf("if (_shellReady)", StringComparison.Ordinal);
+        var shellReady = cs.IndexOf("if (_firstLoadCompleted)", StringComparison.Ordinal);
         var reuseEnsure = cs.IndexOf("EnsureGridAssetHandlers()", shellReady, StringComparison.Ordinal);
         Assert.True(shellReady >= 0 && reuseEnsure > shellReady && reuseEnsure < catalog);
     }
@@ -134,8 +134,8 @@ public sealed class LifetimeHookContractTests
         Assert.True(unloaded >= 0 && sizeChanged > unloaded);
         var unloadedBody = cs[unloaded..sizeChanged];
 
-        var shellReady = cs.IndexOf("if (_shellReady)", StringComparison.Ordinal);
-        var firstLoad = cs.IndexOf("_shellReady = true;", shellReady, StringComparison.Ordinal);
+        var shellReady = cs.IndexOf("if (_firstLoadCompleted)", StringComparison.Ordinal);
+        var firstLoad = cs.IndexOf("_firstLoadCompleted = true;", shellReady, StringComparison.Ordinal);
         Assert.True(shellReady >= 0 && firstLoad > shellReady);
         var reuseBody = cs[shellReady..firstLoad];
 

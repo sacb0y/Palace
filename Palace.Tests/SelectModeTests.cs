@@ -25,6 +25,44 @@ public sealed class SelectModeTests
     }
 
     [Fact]
+    public void EnterFromModifierClick_WhenOff_NotOverlay_NotHeader()
+    {
+        Assert.True(SelectMode.EnterFromModifierClick(false, false, false));
+        Assert.False(SelectMode.EnterFromModifierClick(true, false, false));
+        Assert.False(SelectMode.EnterFromModifierClick(false, true, false));
+        Assert.False(SelectMode.EnterFromModifierClick(false, false, true));
+    }
+
+    [Fact]
+    public void EntryKind_DrivesPlainTileBodyClick()
+    {
+        Assert.True(SelectMode.TileBodyClickReplacesAndExits(SelectEntryKind.Modifier));
+        Assert.False(SelectMode.TileBodyClickToggles(SelectEntryKind.Modifier));
+        Assert.False(SelectMode.TileBodyClickReplacesAndExits(SelectEntryKind.Purposeful));
+        Assert.True(SelectMode.TileBodyClickToggles(SelectEntryKind.Purposeful));
+        Assert.True(SelectMode.CheckboxClickTogglesOnly(SelectEntryKind.Modifier));
+        Assert.True(SelectMode.CheckboxClickTogglesOnly(SelectEntryKind.Purposeful));
+        Assert.Equal(SelectEntryKind.Modifier, SelectMode.EntryFromModifier());
+        Assert.Equal(SelectEntryKind.Purposeful, SelectMode.EntryFromPurposeful());
+    }
+
+    [Fact]
+    public void ExitsWhenSelectionEmpty_OnlyWhileSelectModeOn()
+    {
+        Assert.True(SelectMode.ExitsWhenSelectionEmpty(true, 0));
+        Assert.False(SelectMode.ExitsWhenSelectionEmpty(true, 1));
+        Assert.False(SelectMode.ExitsWhenSelectionEmpty(false, 0));
+    }
+
+    [Fact]
+    public void Esc_ClearsAndExits()
+    {
+        Assert.True(SelectMode.ClearsSelectionOnEscape(true, overlayOpen: false));
+        Assert.False(SelectMode.ClearsSelectionOnEscape(true, overlayOpen: true));
+        Assert.False(SelectMode.ClearsSelectionOnEscape(false, overlayOpen: false));
+    }
+
+    [Fact]
     public void OpensBatchContextFromHold_OnlyInSelectMode()
     {
         Assert.False(SelectMode.OpensBatchContextFromHold(false, false, false));
@@ -79,8 +117,8 @@ public sealed class SelectModeTests
     [Theory]
     [InlineData(false, 0, "")]
     [InlineData(true, 0, "Click or drag tiles to select")]
-    [InlineData(true, 1, "1 selected")]
-    [InlineData(true, 5, "5 selected")]
+    [InlineData(true, 1, "1 selected · Esc to clear")]
+    [InlineData(true, 5, "5 selected · Esc to clear")]
     [InlineData(false, 3, "3 selected")]
     [InlineData(true, -2, "Click or drag tiles to select")]
     public void Summary_ShowsCountOrHint(bool mode, int count, string expected) =>
@@ -90,16 +128,19 @@ public sealed class SelectModeTests
     public void Summary_IncludesCollapsedSectionCount()
     {
         Assert.Equal(
-            "42 selected · 30 in collapsed sections",
+            "42 selected · 30 in collapsed sections · Esc to clear",
             SelectMode.Summary(true, 42, 30));
         Assert.Equal(" · 30 in collapsed sections", SelectMode.CollapsedClause(30));
         Assert.Equal("", SelectMode.CollapsedClause(0));
+        Assert.Equal("3 selected · Esc to clear", SelectMode.StatusSelectedLine(3));
+        Assert.Equal("", SelectMode.StatusSelectedLine(0));
     }
 
     [Fact]
     public void Summary_KeepsCountAfterSelectModeExit()
     {
-        // Esc exits select mode but keeps the selection — bar still shows N selected.
+        // Done exits select mode but keeps the selection — bar still shows N selected
+        // without the Esc hint (Esc itself clears).
         Assert.Equal("7 selected", SelectMode.Summary(selectMode: false, selectedCount: 7));
         Assert.Equal(
             "7 selected · 2 in collapsed sections",
