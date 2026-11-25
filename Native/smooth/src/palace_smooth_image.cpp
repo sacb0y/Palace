@@ -320,7 +320,8 @@ HRESULT BindAndDrawImage(Host* host)
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
     PsvDrainD3D12InfoQueue(host);
 
-    /* PRESENT transition before Present (D3D12 debug layer). */
+    /* Backbuffer must be COMMON|PRESENT before IDXGISwapChain::Present (D3D12).
+     * Flush so the barrier executes before DXGI's Present command list. */
     if (host->backend == PSV_BACKEND_D3D12 && backTex) {
         StateTransitionDesc barrier{
             backTex,
@@ -328,6 +329,7 @@ HRESULT BindAndDrawImage(Host* host)
             RESOURCE_STATE_PRESENT,
             STATE_TRANSITION_FLAG_UPDATE_STATE};
         host->diligentContext->TransitionResourceStates(1, &barrier);
+        host->diligentContext->Flush();
     }
 
     backTex.Release();

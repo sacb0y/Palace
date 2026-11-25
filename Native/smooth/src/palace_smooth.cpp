@@ -524,6 +524,18 @@ HRESULT BindAndDrawPattern(Host* host)
     /* Unbind + release wrap so the next psv_resize can ResizeBuffers. */
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
     PsvDrainD3D12InfoQueue(host);
+
+    /* Backbuffer must be COMMON|PRESENT before IDXGISwapChain::Present (D3D12). */
+    if (host->backend == PSV_BACKEND_D3D12 && backTex) {
+        StateTransitionDesc barrier{
+            backTex,
+            RESOURCE_STATE_UNKNOWN,
+            RESOURCE_STATE_PRESENT,
+            STATE_TRANSITION_FLAG_UPDATE_STATE};
+        host->diligentContext->TransitionResourceStates(1, &barrier);
+        host->diligentContext->Flush();
+    }
+
     backTex.Release();
     return S_OK;
 }
