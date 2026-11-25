@@ -112,4 +112,35 @@ public sealed class SmoothViewportArmPolicyTests
         Assert.Equal(oldImgX, newImgX, precision: 3);
         Assert.Equal(oldImgY, newImgY, precision: 3);
     }
+
+    [Theory]
+    [InlineData(0, 250)]
+    [InlineData(1, 1000)]
+    [InlineData(2, 2000)]
+    [InlineData(3, 2000)]
+    [InlineData(4, 2000)]
+    public void DeviceLostBackoff_Ms(int failedAttemptIndex, int expectedMs)
+    {
+        Assert.Equal(expectedMs, SmoothDeviceLostRecreatePolicy.BackoffMs(failedAttemptIndex));
+    }
+
+    [Fact]
+    public void DeviceLostBackoff_CapsAtFiveThenExhaustedMessage()
+    {
+        Assert.Equal(5, SmoothDeviceLostRecreatePolicy.MaxAttempts);
+        for (var n = 1; n <= 4; n++)
+        {
+            Assert.True(SmoothDeviceLostRecreatePolicy.ShouldRetry(n));
+            var keep = SmoothDeviceLostRecreatePolicy.AfterFailedAttempt(n);
+            Assert.True(keep.KeepRetrying);
+            Assert.Null(keep.ExhaustedStatus);
+            Assert.Equal(SmoothDeviceLostRecreatePolicy.BackoffMs(n - 1), keep.NextBackoffMs);
+        }
+
+        Assert.False(SmoothDeviceLostRecreatePolicy.ShouldRetry(5));
+        var done = SmoothDeviceLostRecreatePolicy.AfterFailedAttempt(5);
+        Assert.False(done.KeepRetrying);
+        Assert.Equal(SmoothDeviceLostRecreatePolicy.ExhaustedMessage, done.ExhaustedStatus);
+        Assert.Equal("GPU unavailable — reopen viewer", done.ExhaustedStatus);
+    }
 }

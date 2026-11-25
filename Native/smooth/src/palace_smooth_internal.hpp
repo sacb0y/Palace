@@ -96,6 +96,9 @@ void ClearError(Host* host);
 void UnbindAndIdleDiligent(Host* host);
 bool BindDxgiAdapter3(Host* host);
 
+/* Cheap DXGI removed poll. Sets host->deviceLost when reason != S_OK. */
+bool PollDeviceRemoved(Host* host);
+
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
 bool EnsureImagePipeline(Host* host);
 HRESULT BindAndDrawImage(Host* host);

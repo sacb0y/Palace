@@ -82,3 +82,52 @@ public static class SmoothViewportArmPolicy
         return (newZoom, newCx - (imgX * newZoom), newCy - (imgY * newZoom), newFit);
     }
 }
+
+/// <summary>
+/// Pure backoff for device-lost GPU recreate (TDR / RemoveDevice). Caps retries so
+/// a sticky removed adapter does not spin the present timer forever.
+/// </summary>
+public static class SmoothDeviceLostRecreatePolicy
+{
+    /// <summary>Max recreate attempts after device-lost before giving up.</summary>
+    public const int MaxAttempts = 5;
+
+    public const string ExhaustedMessage = "GPU unavailable — reopen viewer";
+
+    /// <summary>
+    /// Delay before the next attempt after <paramref name="failedAttemptIndex"/>
+    /// failures (0-based: after 1st fail → 250ms, 2nd → 1s, 3rd+ → 2s).
+    /// </summary>
+    public static int BackoffMs(int failedAttemptIndex)
+    {
+        if (failedAttemptIndex <= 0)
+        {
+            return 250;
+        }
+
+        if (failedAttemptIndex == 1)
+        {
+            return 1000;
+        }
+
+        return 2000;
+    }
+
+    public static bool ShouldRetry(int attemptCount) =>
+        attemptCount < MaxAttempts;
+
+    /// <summary>
+    /// After a failed recreate attempt: whether to keep polling NeedsRecreate with
+    /// backoff, or show <see cref="ExhaustedMessage"/>.
+    /// </summary>
+    public static (bool KeepRetrying, int NextBackoffMs, string? ExhaustedStatus)
+        AfterFailedAttempt(int attemptCountAfterFailure)
+    {
+        if (!ShouldRetry(attemptCountAfterFailure))
+        {
+            return (false, 0, ExhaustedMessage);
+        }
+
+        return (true, BackoffMs(attemptCountAfterFailure - 1), null);
+    }
+}

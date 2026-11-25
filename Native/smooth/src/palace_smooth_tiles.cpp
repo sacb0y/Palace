@@ -279,7 +279,8 @@ PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (host->deviceLost) {
+    /* Cheap GetDeviceRemovedReason before any Diligent call — never UpdateTexture on TDR. */
+    if (PollDeviceRemoved(host)) {
         SetError(host, "device lost");
         return PSV_DEVICE_LOST;
     }
@@ -331,7 +332,7 @@ PSV_API int psv_tile_readback(void* host_ptr, unsigned slice, void* out_rgba16f_
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (host->deviceLost) {
+    if (PollDeviceRemoved(host)) {
         SetError(host, "device lost");
         return PSV_DEVICE_LOST;
     }
@@ -522,7 +523,7 @@ PSV_API int psv_flush(void* host_ptr)
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (host->deviceLost) {
+    if (PollDeviceRemoved(host)) {
         return PSV_DEVICE_LOST;
     }
     if (host->diligentContext) {

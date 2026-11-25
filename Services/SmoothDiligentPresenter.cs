@@ -50,6 +50,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private long _lastTickQpc;
     private int _lastUploads;
     private bool _testRemoveDeviceFired;
+    /// <summary>True after one successful armed present — next Tick may fire RemoveDevice.</summary>
+    private bool _sawArmedPresent;
     private const int MaxUploadsPerFrame = 4;
 
     /// <summary>True while a background pyramid build owns the session.</summary>
@@ -82,6 +84,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     public int LastUploads => _lastUploads;
 
     public bool IsViewportArmed => _viewportArmed;
+
+    /// <summary>
+    /// True when the last <see cref="TryStart"/> failed because the adapter was
+    /// still removed (TDR sticky). Drives recreate backoff.
+    /// </summary>
+    public bool LastCreateWasDeviceLost { get; private set; }
 
     /// <summary>
     /// Debug: always on. Release: <c>PALACE_SMOOTH_GPU_EVIDENCE=1</c>.
@@ -348,16 +356,32 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _host = SmoothPresenterNative.CreateHost(SmoothPresenterNative.Backend.Auto);
         if (_host == 0)
         {
-            _status = "psv_create failed: " + SmoothPresenterNative.LastError(0);
+            var createErr = SmoothPresenterNative.LastError(0);
+            _status = "psv_create failed: " + createErr;
+            // Sticky TDR: native SetError("device still removed") before delete.
+            if (createErr.Contains("device still removed", StringComparison.Ordinal))
+            {
+                LastCreateWasDeviceLost = true;
+            }
+
             return false;
         }
 
+        LastCreateWasDeviceLost = false;
         _life.MarkCreated();
         _ = SmoothPresenterNative.SetDpiScale(_host, scaleX, scaleY);
         _life.TrySetDpi(scaleX, scaleY);
 
         var (w, h) = SmoothPresenterLifecycle.PhysicalSize(dipW, dipH, scaleX, scaleY);
         var create = SmoothPresenterNative.CreateCompositionSwapChain(_host, w, h, out _swapChain);
+        if (create == SmoothPresenterNative.StatusCode.DeviceLost)
+        {
+            LastCreateWasDeviceLost = true;
+            _status = $"composition swapchain device lost: {SmoothPresenterNative.LastError(_host)}";
+            DestroyHost();
+            return false;
+        }
+
         if (create != SmoothPresenterNative.StatusCode.Ok || _swapChain == 0)
         {
             _status = $"composition swapchain failed ({create}): {SmoothPresenterNative.LastError(_host)}";
@@ -390,16 +414,18 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
 #if DEBUG
     /// <summary>
-    /// Fenrir evidence: fire once on the first armed frame (not at attach) so
-    /// recreate + coarse re-upload + re-arm are exercised.
+    /// Fenrir evidence: fire once at Tick <b>start</b> after the first armed present
+    /// (not mid-Tick after Push, not at attach) so recreate + coarse re-upload +
+    /// re-arm run without TileUpload-on-dead-device.
     /// Env <c>PALACE_SMOOTH_TEST_REMOVE_DEVICE=1</c>. Native needs CMake Debug
-    /// (<c>PSV_TEST_HOOKS</c>); Release/CI DLL stubs without calling RemoveDevice.
+    /// (<c>PSV_TEST_HOOKS</c>); Release/CI DLLs stub without calling RemoveDevice.
+    /// Returns true when device-lost was handled (caller must skip Push/Render).
     /// </summary>
-    private void MaybeInvokeTestRemoveDeviceOnceArmed()
+    private bool MaybeInvokeTestRemoveDeviceOnceArmed()
     {
-        if (_testRemoveDeviceFired || !_viewportArmed || _host == 0)
+        if (_testRemoveDeviceFired || !_sawArmedPresent || !_viewportArmed || _host == 0)
         {
-            return;
+            return false;
         }
 
         if (!string.Equals(
@@ -407,16 +433,26 @@ internal sealed class SmoothDiligentPresenter : IDisposable
                 "1",
                 StringComparison.Ordinal))
         {
-            return;
+            return false;
         }
 
         _testRemoveDeviceFired = true;
+        QuiesceStreamEnsure();
         var st = SmoothPresenterNative.DebugRemoveDevice(_host);
         _status = $"test RemoveDevice → {st}";
-        if (st == SmoothPresenterNative.StatusCode.DeviceLost)
+        HandleDeviceLost();
+        return true;
+    }
+
+    private void QuiesceStreamEnsure()
+    {
+        Interlocked.Increment(ref _streamFrameGen);
+        while (_streamEnsureQueue.TryDequeue(out _))
         {
-            HandleDeviceLost();
         }
+
+        _streamEnsurePending.Clear();
+        _streamVisibleGen.Clear();
     }
 #endif
 
@@ -534,11 +570,19 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return false;
         }
 
-        PushV2FrameIfArmed();
 #if DEBUG
-        // After first armed push — exercises recreate/re-upload/re-arm (not attach).
-        MaybeInvokeTestRemoveDeviceOnceArmed();
+        // After one armed present: RemoveDevice at Tick start (before any native).
+        if (MaybeInvokeTestRemoveDeviceOnceArmed())
+        {
+            return false;
+        }
 #endif
+
+        PushV2FrameIfArmed();
+        if (_host == 0)
+        {
+            return false;
+        }
 
         var result = SmoothPresenterNative.RenderFrame(_host);
         if (result == SmoothPresenterNative.StatusCode.DeviceLost)
@@ -562,6 +606,11 @@ internal sealed class SmoothDiligentPresenter : IDisposable
                 $"frame {stats.FrameIndex} {stats.Width}x{stats.Height} " +
                 $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}" +
                 (_viewportArmed ? $" z={_zoom:F2} uploads={_lastUploads}" : "");
+        }
+
+        if (_viewportArmed)
+        {
+            _sawArmedPresent = true;
         }
 
         _life.MarkRunning();
@@ -817,6 +866,17 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _life.BeginRecreate();
         if (!TryStart(dipW, dipH, scaleX, scaleY))
         {
+            // Stay in DeviceLost so HandleNeedsRecreate can backoff-retry.
+            if (_life.Phase != SmoothPresenterPhase.DeviceLost)
+            {
+                _life.MarkDeviceLost();
+            }
+
+            if (LastCreateWasDeviceLost)
+            {
+                _status = "device lost — recreate deferred (device still removed)";
+            }
+
             return false;
         }
 
@@ -827,7 +887,17 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         // ApplyVramBudget inside TryPrepare recreates the LRU — no separate Reset.
-        return TryPrepareV1TilePool(target);
+        if (!TryPrepareV1TilePool(target))
+        {
+            if (_life.Phase != SmoothPresenterPhase.DeviceLost)
+            {
+                _life.MarkDeviceLost();
+            }
+
+            return false;
+        }
+
+        return true;
     }
 
     public void Dispose()
@@ -880,6 +950,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private void DestroyHost()
     {
         _viewportArmed = false;
+        _sawArmedPresent = false;
         while (_streamEnsureQueue.TryDequeue(out _))
         {
         }

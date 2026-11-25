@@ -30,6 +30,9 @@ public sealed partial class SmoothPresenterWindow : Window
     private bool _activated;
     private bool _hostStarted;
     private bool _poolReady;
+    private int _deviceLostRetryCount;
+    private long _nextRecreateDueQpc;
+    private bool _gpuUnavailable;
 
     private float _zoom = 1f;
     private float _tx;
@@ -111,6 +114,12 @@ public sealed partial class SmoothPresenterWindow : Window
             }
 
             TickTransformEase();
+
+            if (_gpuUnavailable)
+            {
+                TxtSmoothStatus.Text = SmoothDeviceLostRecreatePolicy.ExhaustedMessage;
+                return;
+            }
 
             if (_presenter.Lifecycle.NeedsRecreate)
             {
@@ -263,8 +272,15 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void HandleNeedsRecreate()
     {
-        if (_presenter is null)
+        if (_presenter is null || _gpuUnavailable)
         {
+            return;
+        }
+
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (now < _nextRecreateDueQpc)
+        {
+            TxtSmoothStatus.Text = _presenter.Status;
             return;
         }
 
@@ -288,6 +304,8 @@ public sealed partial class SmoothPresenterWindow : Window
 
         if (_presenter.TryRecreateAfterDeviceLost(m.DipW, m.DipH, m.Sx, m.Sy, _tiles))
         {
+            _deviceLostRetryCount = 0;
+            _nextRecreateDueQpc = 0;
             _poolReady = true;
             // Pyramid is image-scoped. GPU recreate re-uploads coarse + re-arms;
             // do not rebuild CPU pyramid when it already finished.
@@ -299,12 +317,31 @@ public sealed partial class SmoothPresenterWindow : Window
                 }
                 else
                 {
+                    // Finalize+Arm only after successful recreate (PyramidBuilt → no rebuild).
                     _presenter.FinalizeV1CoarseUploads(_tiles);
                     ArmV2Viewport(_tiles, _presenter, _working);
                 }
             }
+
+            TxtSmoothTiles.Text = TilesStatusLine() + " · " + _presenter.TileStatus;
+            return;
         }
 
+        _deviceLostRetryCount++;
+        var after = SmoothDeviceLostRecreatePolicy.AfterFailedAttempt(_deviceLostRetryCount);
+        if (!after.KeepRetrying)
+        {
+            _gpuUnavailable = true;
+            TxtSmoothStatus.Text = after.ExhaustedStatus ?? SmoothDeviceLostRecreatePolicy.ExhaustedMessage;
+            TxtSmoothTiles.Text = TxtSmoothStatus.Text;
+            return;
+        }
+
+        var freq = System.Diagnostics.Stopwatch.Frequency;
+        _nextRecreateDueQpc = now + (long)(after.NextBackoffMs / 1000.0 * freq);
+        TxtSmoothStatus.Text =
+            $"device lost — retry {_deviceLostRetryCount}/{SmoothDeviceLostRecreatePolicy.MaxAttempts} " +
+            $"in {after.NextBackoffMs}ms";
         TxtSmoothTiles.Text = TilesStatusLine() + " · " + _presenter.TileStatus;
     }
 
