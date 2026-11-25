@@ -43,21 +43,21 @@ float PalacePqToNits(float pq)
 }
 
 // BT.2390-8 §5.4.1 EETF. ld / lc in Working units (nits/203).
-float PalaceBt2390MapLinear(float linear, float lc, float ld)
+float PalaceBt2390MapLinear(float v, float lc, float ld)
 {
     if (lc <= ld + 1e-6)
     {
-        return min(linear, lc);
+        return min(v, lc);
     }
 
-    linear = clamp(linear, 0.0, lc);
+    v = clamp(v, 0.0, lc);
     float lb = 0.0;
     float lw = max(lc, 1e-6) * RefWhiteNits;
     float lMax = max(ld, 1e-6) * RefWhiteNits;
     float pqLb = PalaceNitsToPq(lb);
     float pqLw = PalaceNitsToPq(lw);
     float span = max(pqLw - pqLb, 1e-8);
-    float e1 = saturate((PalaceNitsToPq(linear * RefWhiteNits) - pqLb) / span);
+    float e1 = saturate((PalaceNitsToPq(v * RefWhiteNits) - pqLb) / span);
     float minLum = saturate((PalaceNitsToPq(lb) - pqLb) / span);
     float maxLum = saturate((PalaceNitsToPq(lMax) - pqLb) / span);
     float ks = 1.5 * maxLum - 0.5;

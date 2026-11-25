@@ -126,6 +126,13 @@
     <Compile Include="..\Helpers\SmoothPresenterLifecycle.cs" Link="SmoothPresenterLifecycle.cs" />
     <Compile Include="..\Helpers\SmoothPresenterLog.cs" Link="SmoothPresenterLog.cs" />
     <Compile Include="..\Helpers\SmoothPresenterPackaging.cs" Link="SmoothPresenterPackaging.cs" />
+    <Compile Include="..\Helpers\SmoothTileMath.cs" Link="SmoothTileMath.cs" />
+    <Compile Include="..\Helpers\SmoothTileWorkingSpace.cs" Link="SmoothTileWorkingSpace.cs" />
+    <Compile Include="..\Helpers\SmoothGpuTileLru.cs" Link="SmoothGpuTileLru.cs" />
+    <Compile Include="..\Helpers\SmoothCpuTileCache.cs" Link="SmoothCpuTileCache.cs" />
+    <Compile Include="..\Helpers\SmoothTileDecodeGate.cs" Link="SmoothTileDecodeGate.cs" />
+    <Compile Include="..\Helpers\SmoothMipDownsampleCpu.cs" Link="SmoothMipDownsampleCpu.cs" />
+    <Compile Include="..\Helpers\SmoothTileSession.cs" Link="SmoothTileSession.cs" />
     <Compile Include="..\Helpers\PerformanceSettings.cs" Link="PerformanceSettings.cs" />
     <Compile Include="..\Helpers\SettingsPortable.cs" Link="SettingsPortable.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />

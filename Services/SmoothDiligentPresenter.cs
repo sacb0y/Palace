@@ -7,9 +7,9 @@ namespace Palace.Services;
 
 /// <summary>
 /// Diligent D3D12/D3D11 host attached to a WinUI <see cref="SwapChainPanel"/>
-/// for Smooth Viewer V0. Creates a composition DXGI swapchain (RGBA16F scRGB,
+/// for Smooth Viewer. Creates a composition DXGI swapchain (RGBA16F scRGB,
 /// latency 1), binds via <c>ISwapChainPanelNative</c>, draws the HDR test
-/// pattern, and logs real frame times.
+/// pattern, and hosts the V1 tile pool / mip path.
 /// </summary>
 internal sealed class SmoothDiligentPresenter : IDisposable
 {
@@ -20,6 +20,13 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private nint _swapChain;
     private bool _disposed;
     private string _status = "idle";
+    private string _tileStatus = "tiles idle";
+    private SmoothTileSession? _session;
+    private int _gpuMipCount;
+    private float _readbackMaxAbsError;
+    private int _readbackOverUlpCount;
+    private int _readbackCompared;
+    private readonly byte[] _readbackScratch = new byte[SmoothTileMath.BytesPerTileRgba16F()];
 
     public SmoothDiligentPresenter(SwapChainPanel panel, string? logDataDir = null)
     {
@@ -29,9 +36,248 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     public string Status => _status;
 
+    public string TileStatus => _tileStatus;
+
     public SmoothPresenterLifecycle Lifecycle => _life;
 
     public SmoothPresenterNative.FrameStats LastStats { get; private set; }
+
+    private static bool GpuEvidenceEnabled =>
+#if DEBUG
+        true
+#else
+        string.Equals(
+            Environment.GetEnvironmentVariable("PALACE_SMOOTH_GPU_EVIDENCE"),
+            "1",
+            StringComparison.Ordinal)
+#endif
+    ;
+
+    /// <summary>
+    /// Query real VRAM, size the session pool, create the GPU tile array.
+    /// Pyramid build (with marshaled <see cref="ExecuteGpuMip"/>) follows.
+    /// ApplyVramBudget recreates the LRU — do not also call ResetLru beforehand.
+    /// </summary>
+    public bool TryPrepareV1TilePool(SmoothTileSession session)
+    {
+        if (_disposed || _host == 0)
+        {
+            _tileStatus = "no host";
+            return false;
+        }
+
+        _session = session;
+        _gpuMipCount = 0;
+        _readbackMaxAbsError = 0;
+        _readbackOverUlpCount = 0;
+        _readbackCompared = 0;
+
+        if (SmoothPresenterNative.QueryVideoMemory(_host, out _, out _, out var available) ==
+            SmoothPresenterNative.StatusCode.Ok)
+        {
+            session.ApplyVramBudget(checked((long)Math.Min(long.MaxValue, available)));
+        }
+        else
+        {
+            // Query failed — default pool of 128 (not coarse-only floor).
+            // CapacityFromVramBytes uses available/8 ÷ bytes-per-tile.
+            session.ApplyVramBudget(128L * SmoothTileMath.BytesPerTileRgba16F() * 8);
+        }
+
+        var shaderDir = System.IO.Path.Combine(AppContext.BaseDirectory, "shaders");
+        _ = SmoothPresenterNative.SetShaderSearchDirs(_host, shaderDir);
+
+        var create = SmoothPresenterNative.TilePoolCreate(_host, (uint)session.PoolCapacity);
+        if (create == SmoothPresenterNative.StatusCode.DeviceLost)
+        {
+            HandleDeviceLost();
+            _tileStatus = "tile pool device lost";
+            return false;
+        }
+
+        if (create != SmoothPresenterNative.StatusCode.Ok)
+        {
+            _tileStatus = $"tile pool failed ({create}): {SmoothPresenterNative.LastError(_host)}";
+            return false;
+        }
+
+        _tileStatus =
+            $"pool={session.PoolCapacity} vramAvail={session.AvailableVramBytes} " +
+            $"mipCS={(SmoothPresenterNative.TileMipReady(_host) ? "yes" : "no")}";
+        return true;
+    }
+
+    /// <summary>Presenter-thread GPU upload + TileMipBox (called via UI marshal).</summary>
+    public void ExecuteGpuMip(SmoothGpuMipRequest req)
+    {
+        if (_host == 0 || _disposed)
+        {
+            return;
+        }
+
+        foreach (var (_, slot, bytes) in req.ChildUploads)
+        {
+            var up = SmoothPresenterNative.TileUpload(_host, slot, bytes);
+            if (up == SmoothPresenterNative.StatusCode.DeviceLost)
+            {
+                HandleDeviceLost();
+                return;
+            }
+        }
+
+        var mip = SmoothPresenterNative.TileMipBox(
+            _host,
+            (uint)req.ChildLevelWidth,
+            (uint)req.ChildLevelHeight,
+            req.ParentContentOriginX,
+            req.ParentContentOriginY,
+            req.DstSlice,
+            req.Slices4x4);
+        if (mip == SmoothPresenterNative.StatusCode.DeviceLost)
+        {
+            HandleDeviceLost();
+            return;
+        }
+
+        if (mip != SmoothPresenterNative.StatusCode.Ok)
+        {
+            return;
+        }
+
+        _gpuMipCount++;
+
+        if (!GpuEvidenceEnabled)
+        {
+            return;
+        }
+
+        var rb = SmoothPresenterNative.TileReadback(_host, req.DstSlice, _readbackScratch);
+        if (rb == SmoothPresenterNative.StatusCode.DeviceLost)
+        {
+            HandleDeviceLost();
+            return;
+        }
+
+        if (rb != SmoothPresenterNative.StatusCode.Ok)
+        {
+            return;
+        }
+
+        CompareReadback(req.ParentBytes, _readbackScratch);
+    }
+
+    private void CompareReadback(byte[] cpuParent, byte[] gpuParent)
+    {
+        var n = Math.Min(cpuParent.Length, gpuParent.Length) / 2;
+        var over = 0;
+        var maxAbs = 0f;
+        for (var i = 0; i < n; i++)
+        {
+            var c = (ushort)(cpuParent[i * 2] | (cpuParent[i * 2 + 1] << 8));
+            var g = (ushort)(gpuParent[i * 2] | (gpuParent[i * 2 + 1] << 8));
+            var cf = HalfBitsToFloat(c);
+            var gf = HalfBitsToFloat(g);
+            var err = MathF.Abs(cf - gf);
+            if (err > maxAbs)
+            {
+                maxAbs = err;
+            }
+
+            // >1 half-ULP at the larger magnitude (approx via nextafter-ish bit delta).
+            // ±0 (0x0000 vs 0x8000) is equal, not 32768 ULP apart.
+            if (c != g && cf != gf && Math.Abs(c - g) > 1)
+            {
+                over++;
+            }
+        }
+
+        _readbackCompared++;
+        if (maxAbs > _readbackMaxAbsError)
+        {
+            _readbackMaxAbsError = maxAbs;
+        }
+
+        _readbackOverUlpCount += over;
+        SmoothPresenterLog.AppendNote(
+            _logDataDir,
+            $"gpu-vs-cpu mip#{_gpuMipCount} maxAbs={maxAbs:G6} over1ulp={over}");
+    }
+
+    private static float HalfBitsToFloat(ushort h) => (float)BitConverter.UInt16BitsToHalf(h);
+
+    public void FlushGpu()
+    {
+        if (_host == 0 || _disposed)
+        {
+            return;
+        }
+
+        var flush = SmoothPresenterNative.Flush(_host);
+        if (flush == SmoothPresenterNative.StatusCode.DeviceLost)
+        {
+            HandleDeviceLost();
+        }
+    }
+
+    /// <summary>After CPU/GPU pyramid: ensure coarse CPU tiles are resident on GPU.</summary>
+    public void FinalizeV1CoarseUploads(SmoothTileSession session)
+    {
+        if (_host == 0 || _disposed)
+        {
+            return;
+        }
+
+        // V1 authoritative path: CPU coarse parents (GPU mips verified via readback in evidence mode).
+        var uploaded = UploadCoarseTiles(session);
+        FlushGpu();
+        _tileStatus =
+            $"pool={session.PoolCapacity} uploaded={uploaded}/{session.CoarseTileCount} " +
+            $"gpuMips={_gpuMipCount} vramAvail={session.AvailableVramBytes} " +
+            $"resident={session.Lru.ResidentCount} " +
+            $"rbMax={_readbackMaxAbsError:G4} rbOverUlp={_readbackOverUlpCount} rbN={_readbackCompared} " +
+            $"· {SmoothPresenterNative.LastError(_host)}";
+    }
+
+    private int UploadCoarseTiles(SmoothTileSession session)
+    {
+        var uploaded = 0;
+        var lw = SmoothTileMath.LevelWidth(session.FullWidth, session.CoarseLevel);
+        var lh = SmoothTileMath.LevelHeight(session.FullHeight, session.CoarseLevel);
+        var (nx, ny) = SmoothTileMath.TileCounts(lw, lh);
+        for (var ty = 0; ty < ny; ty++)
+        {
+            for (var tx = 0; tx < nx; tx++)
+            {
+                var id = new SmoothTileId(session.CoarseLevel, tx, ty);
+                if (!session.Cpu.TryGet(id, out var bytes))
+                {
+                    continue;
+                }
+
+                if (!session.Lru.TryGetSlot(id, out var slot))
+                {
+                    if (!session.Lru.TryInsert(id, out slot, out _))
+                    {
+                        continue;
+                    }
+                }
+
+                var up = SmoothPresenterNative.TileUpload(_host, (uint)slot, bytes);
+                if (up == SmoothPresenterNative.StatusCode.DeviceLost)
+                {
+                    HandleDeviceLost();
+                    return uploaded;
+                }
+
+                if (up == SmoothPresenterNative.StatusCode.Ok)
+                {
+                    uploaded++;
+                }
+            }
+        }
+
+        return uploaded;
+    }
 
     public bool TryStart(double dipW, double dipH, float scaleX, float scaleY)
     {
@@ -93,7 +339,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         _life.MarkAttached(w, h);
-        _status = $"attached {w}x{h} {SmoothPresenterNative.GetBackend(_host)} — {SmoothPresenterNative.LastError(_host)}";
+        _status = $"attached {w}x{h} {SmoothPresenterNative.GetBackend(_host)}";
         return Tick();
     }
 
@@ -112,7 +358,6 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         if (dipW < 2 || dipH < 2)
         {
-            // Minimize / zero-size: skip resize; keep last good buffers.
             return;
         }
 
@@ -131,7 +376,6 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         if (resize != SmoothPresenterNative.StatusCode.Ok)
         {
-            // Do not CommitResize — lifecycle size stays at last good so we retry.
             _status = $"resize failed ({resize}): {SmoothPresenterNative.LastError(_host)}";
             return;
         }
@@ -163,7 +407,6 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         if (SmoothPresenterNative.TryLastFrameStats(_host, out var stats))
         {
             LastStats = stats;
-            // lastError cleared natively after a good present — note is empty unless skip/wait.
             var note = SmoothPresenterNative.LastError(_host);
             SmoothPresenterLog.AppendStats(_logDataDir, stats, note);
             _status =
@@ -175,7 +418,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         return true;
     }
 
-    public bool TryRecreateAfterDeviceLost(double dipW, double dipH, float scaleX, float scaleY)
+    public bool TryRecreateAfterDeviceLost(
+        double dipW,
+        double dipH,
+        float scaleX,
+        float scaleY,
+        SmoothTileSession? session = null)
     {
         if (_disposed || !_life.NeedsRecreate)
         {
@@ -183,7 +431,19 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         _life.BeginRecreate();
-        return TryStart(dipW, dipH, scaleX, scaleY);
+        if (!TryStart(dipW, dipH, scaleX, scaleY))
+        {
+            return false;
+        }
+
+        var target = session ?? _session;
+        if (target is null)
+        {
+            return true;
+        }
+
+        // ApplyVramBudget inside TryPrepare recreates the LRU — no separate Reset.
+        return TryPrepareV1TilePool(target);
     }
 
     public void Dispose()
@@ -233,6 +493,11 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     private void DestroyHost()
     {
+        if (_host != 0)
+        {
+            SmoothPresenterNative.TilePoolDestroy(_host);
+        }
+
         if (_swapChain != 0)
         {
             Marshal.Release(_swapChain);

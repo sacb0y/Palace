@@ -34,6 +34,10 @@
     <Content Include="Native\smooth\win-x64\THIRD_PARTY.md" Link="smooth\THIRD_PARTY.md" CopyToOutputDirectory="PreserveNewest" />
     <!-- DiligentCore Apache-2.0 full LICENSE (upstream License.txt @ v2.5.6; no NOTICE in that tag). -->
     <Content Include="Native\smooth\win-x64\ThirdParty\DiligentCore\LICENSE" Link="ThirdParty\DiligentCore\LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <!-- V1 Geo HLSL (mip CS + image pass). ToneMap.hlsl included from Imaging — no fork. -->
+    <Content Include="Native\smooth\shaders\SmoothMipDownsample.hlsl" Link="shaders\SmoothMipDownsample.hlsl" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Native\smooth\shaders\SmoothImage.hlsl" Link="shaders\SmoothImage.hlsl" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Palace.Imaging\Shaders\ToneMap.hlsl" Link="shaders\ToneMap.hlsl" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

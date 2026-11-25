@@ -80,4 +80,16 @@ public static class SmoothPresenterLog
     {
         Append(ResolvePath(dataDir), FormatLine(stats, note));
     }
+
+    public static void AppendNote(string? dataDir, string note)
+    {
+        if (string.IsNullOrWhiteSpace(note))
+        {
+            return;
+        }
+
+        var line = DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture)
+                   + " note=" + note.Replace('\n', ' ').Replace('\r', ' ');
+        Append(ResolvePath(dataDir), line);
+    }
 }
