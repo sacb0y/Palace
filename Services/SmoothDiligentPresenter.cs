@@ -354,24 +354,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         DestroyHost();
-        _host = SmoothPresenterNative.CreateHost(SmoothPresenterNative.Backend.Auto);
-        if (_host == 0)
-        {
-            var createErr = SmoothPresenterNative.LastError(0);
-            _status = "psv_create failed: " + createErr;
-            // Sticky TDR: native SetError("device still removed") before delete.
-            if (createErr.Contains("device still removed", StringComparison.Ordinal))
-            {
-                LastCreateWasDeviceLost = true;
-            }
-
-            return false;
-        }
-
-        LastCreateWasDeviceLost = false;
-        _life.MarkCreated();
-        // One file per run — never delete before harvest (Fenrir continue must not
-        // Remove-Item prior sessions). Release+DRED/GPU_EVIDENCE use the same path.
+        // Path before psv_create so DRED enable / create sticky-lost notes land in
+        // the per-run file (native AppendFormatted no-ops until path is set).
+        // Never delete before harvest — Fenrir continue must not Remove-Item.
         var runStamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
         var debugLogDir = string.IsNullOrWhiteSpace(_logDataDir)
             ? Path.GetTempPath()
@@ -396,6 +381,23 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         {
             // logging must not block start
         }
+
+        _host = SmoothPresenterNative.CreateHost(SmoothPresenterNative.Backend.Auto);
+        if (_host == 0)
+        {
+            var createErr = SmoothPresenterNative.LastError(0);
+            _status = "psv_create failed: " + createErr;
+            // Sticky TDR: native SetError("device still removed") before delete.
+            if (createErr.Contains("device still removed", StringComparison.Ordinal))
+            {
+                LastCreateWasDeviceLost = true;
+            }
+
+            return false;
+        }
+
+        LastCreateWasDeviceLost = false;
+        _life.MarkCreated();
 
         _ = SmoothPresenterNative.SetDpiScale(_host, scaleX, scaleY);
         _life.TrySetDpi(scaleX, scaleY);

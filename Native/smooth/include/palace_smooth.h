@@ -146,9 +146,9 @@ PSV_API int psv_debug_remove_device(void* host);
 /*
  * Append Diligent / D3D12 debug messages under this UTF-8 path (typically
  * PALACE_DATA_DIR/smooth-diligent-debug-<run>.log — one file per run; never
- * delete before harvest). Installs SetDebugMessageCallback and, when
- * PALACE_SMOOTH_NO_ASSERT_UI=1 or a path is set, SetBreakOnError(false) so
- * AssertionFailed does not MessageBox (nested Tick AV).
+ * delete before harvest). Call before psv_create so DRED/create notes are kept.
+ * Installs SetDebugMessageCallback and, when PALACE_SMOOTH_NO_ASSERT_UI=1 or a
+ * path is set, SetBreakOnError(false) so AssertionFailed does not MessageBox.
  *
  * PALACE_SMOOTH_DRED=1 (Release OK): enable DRED auto-breadcrumbs + page-fault
  * before CreateDevice; dump breadcrumbs / page-fault VA+names on deviceLost.
