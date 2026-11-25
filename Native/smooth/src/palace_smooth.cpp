@@ -768,4 +768,30 @@ PSV_API int psv_backend(void* host_ptr)
     return static_cast<Host*>(host_ptr)->backend;
 }
 
+PSV_API int psv_debug_remove_device(void* host_ptr)
+{
+#if !defined(_DEBUG)
+    (void)host_ptr;
+    return PSV_FAILED;
+#else
+    auto* host = static_cast<Host*>(host_ptr);
+    if (!host) {
+        return PSV_BAD_ARGUMENT;
+    }
+    if (!host->d3d12Device) {
+        SetError(host, "psv_debug_remove_device: no D3D12 device");
+        return PSV_FAILED;
+    }
+    ComPtr<ID3D12Device5> d5;
+    if (FAILED(host->d3d12Device.As(&d5)) || !d5) {
+        SetError(host, "psv_debug_remove_device: ID3D12Device5 unavailable");
+        return PSV_FAILED;
+    }
+    d5->RemoveDevice();
+    host->deviceLost = true;
+    SetError(host, "psv_debug_remove_device: RemoveDevice invoked");
+    return PSV_DEVICE_LOST;
+#endif
+}
+
 } // extern "C"

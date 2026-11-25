@@ -691,4 +691,28 @@ public static class SmoothPresenterNative
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_viewport_ready")]
     private static extern int NativeViewportReady(nint host);
+
+    /// <summary>
+    /// Debug evidence: native <c>ID3D12Device5::RemoveDevice</c>. Release DLL stubs
+    /// to <see cref="StatusCode.Failed"/>. Env: <c>PALACE_SMOOTH_TEST_REMOVE_DEVICE=1</c>.
+    /// </summary>
+    public static StatusCode DebugRemoveDevice(nint host)
+    {
+        if (host == 0 || !IsAvailable)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeDebugRemoveDevice(host);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_debug_remove_device")]
+    private static extern int NativeDebugRemoveDevice(nint host);
 }

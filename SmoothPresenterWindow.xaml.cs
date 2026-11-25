@@ -286,11 +286,27 @@ public sealed partial class SmoothPresenterWindow : Window
         if (_presenter.TryRecreateAfterDeviceLost(m.DipW, m.DipH, m.Sx, m.Sy, _tiles))
         {
             _poolReady = true;
-            StartBackgroundPyramid();
+            // Pyramid is image-scoped. GPU recreate re-uploads coarse + re-arms;
+            // do not rebuild CPU pyramid when it already finished.
+            if (_working is not null && _tiles is not null)
+            {
+                if (SmoothViewportArmPolicy.MustRebuildPyramidAfterGpuRecreate(_tiles.PyramidBuilt))
+                {
+                    StartBackgroundPyramid();
+                }
+                else
+                {
+                    _presenter.FinalizeV1CoarseUploads(_tiles);
+                    ArmV2Viewport(_tiles, _presenter, _working);
+                }
+            }
         }
 
-        TxtSmoothTiles.Text = (_tiles?.StatusLine() ?? "") + " · " + _presenter.TileStatus;
+        TxtSmoothTiles.Text = TilesStatusLine() + " · " + _presenter.TileStatus;
     }
+
+    private string TilesStatusLine() =>
+        _tiles?.StatusLine(SmoothDiligentPresenter.GpuEvidenceEnabled) ?? "";
 
     private void TryStartWhenPanelSized()
     {
@@ -464,7 +480,9 @@ public sealed partial class SmoothPresenterWindow : Window
 
                     presenter.FinalizeV1CoarseUploads(session);
                     ArmV2Viewport(session, presenter, working);
-                    TxtSmoothTiles.Text = session.StatusLine() + " · " + presenter.TileStatus;
+                    TxtSmoothTiles.Text =
+                        session.StatusLine(SmoothDiligentPresenter.GpuEvidenceEnabled)
+                        + " · " + presenter.TileStatus;
                 });
             },
             CancellationToken.None,
@@ -483,16 +501,7 @@ public sealed partial class SmoothPresenterWindow : Window
         }
 
         ApplyOrientationToPresenter();
-        var orient = SmoothViewport.ExifOrient.FromExif(_exifOrientation, _storedW, _storedH);
-        var (dipW, dipH, sx, sy) = PanelMetrics();
-        var panelW = (float)(dipW * sx);
-        var panelH = (float)(dipH * sy);
-        // Oriented w/h for fit (tiles stay storage-sized).
-        _fitZoom = SmoothViewport.FitZoom(panelW, panelH, orient.OrientedWidth, orient.OrientedHeight);
-        _zoom = SmoothViewport.ClampZoom(_fitZoom, _fitZoom);
-        _targetZoom = _zoom;
-        _tx = (panelW - (orient.OrientedWidth * _zoom)) * 0.5f;
-        _ty = (panelH - (orient.OrientedHeight * _zoom)) * 0.5f;
+        ApplyFitTransformFromPanel();
 
         // Should-fix: DisplayTarget from monitor HDR when known (not hardcoded Sdr203).
         // Same Windows HDR probe as HdrSwapchainPresenter (CCD, any path). Peak
@@ -504,6 +513,33 @@ public sealed partial class SmoothPresenterWindow : Window
             sdrWhiteNits: sdrWhite > 0f ? sdrWhite : ImagingConstants.RefWhiteNits);
         var packed = SmoothToneGpu.FromStats(working.Stats, display);
         _ = presenter.TryArmV2Viewport(_zoom, _tx, _ty, packed.ToneCb, packed.LutSamples);
+    }
+
+    /// <summary>
+    /// Oriented fit + centered pan → <see cref="SmoothDiligentPresenter.SetViewportTransform"/>.
+    /// Never re-arms tone/LUT.
+    /// </summary>
+    private void ApplyFitTransformFromPanel()
+    {
+        if (_presenter is null)
+        {
+            return;
+        }
+
+        ApplyOrientationToPresenter();
+        var orient = SmoothViewport.ExifOrient.FromExif(_exifOrientation, _storedW, _storedH);
+        var (dipW, dipH, sx, sy) = PanelMetrics();
+        var panelW = (float)(dipW * sx);
+        var panelH = (float)(dipH * sy);
+        var fit = SmoothViewportArmPolicy.FitCentered(
+            panelW, panelH, orient.OrientedWidth, orient.OrientedHeight);
+        _fitZoom = fit.FitZoom;
+        _zoom = fit.Zoom;
+        _targetZoom = fit.Zoom;
+        _tx = fit.Tx;
+        _ty = fit.Ty;
+        _presenter.SetViewportTransform(_zoom, _tx, _ty);
+        _transformDirty = false;
     }
 
     private void ScpSmooth_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -522,11 +558,17 @@ public sealed partial class SmoothPresenterWindow : Window
     private void RotateView(bool clockwise)
     {
         _exifOrientation = SmoothViewport.ExifOrient.Rotate90(_exifOrientation, clockwise);
-        ApplyOrientationToPresenter();
-        if (_tiles is not null && _presenter is not null && _working is not null)
+        // Before arm / during build: store orientation only. ArmV2Viewport at build
+        // completion applies SetOrientation + fit. Never re-arm tone/LUT on rotate.
+        if (_presenter is null
+            || !SmoothViewportArmPolicy.MayApplyRotateTransform(
+                _presenter.IsViewportArmed,
+                _presenter.PyramidBuildRunning))
         {
-            ArmV2Viewport(_tiles, _presenter, _working);
+            return;
         }
+
+        ApplyFitTransformFromPanel();
     }
 
     private void TickTransformEase()
@@ -650,7 +692,13 @@ public sealed partial class SmoothPresenterWindow : Window
             return;
         }
 
+        // ResizeBuffers only — never StartBackgroundPyramid (image-scoped).
         _presenter.Resize(dipW, dipH, sx, sy);
+        if (_presenter.IsViewportArmed)
+        {
+            ApplyFitTransformFromPanel();
+        }
+
         TxtSmoothStatus.Text = _presenter.Status;
     }
 
@@ -667,7 +715,13 @@ public sealed partial class SmoothPresenterWindow : Window
             return;
         }
 
+        // ResizeBuffers + fit only — never rebuild pyramid.
         _presenter.Resize(dipW, dipH, sx, sy);
+        if (_presenter.IsViewportArmed)
+        {
+            ApplyFitTransformFromPanel();
+        }
+
         TxtSmoothStatus.Text = _presenter.Status;
     }
 

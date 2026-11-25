@@ -92,10 +92,26 @@ public sealed class SmoothTileSession
         return BuildPyramidCore(cts.Token, gpuMip: null, afterLevel: null);
     }
 
-    public string StatusLine() =>
-        $"{(UsedWorkingDecode ? "V2" : "V1")} tiles {FullWidth}x{FullHeight} coarse=L{CoarseLevel} " +
-        $"coarseTiles={CoarseTileCount} pool={PoolCapacity} resident={Lru.ResidentCount} " +
-        $"cpuTiles={Cpu.Count} firstCoarseMs={FirstCoarseFrameMs} fmt={WorkingFormat} Border={SmoothTileMath.Border}";
+    /// <summary>True after <see cref="BuildPyramidCore"/> / Working build finished once.</summary>
+    public bool PyramidBuilt => FirstCoarseFrameMs > 0;
+
+    public string StatusLine() => StatusLine(gpuEvidenceOn: null);
+
+    /// <param name="gpuEvidenceOn">
+    /// When set, labels firstCoarseMs as OFF/ON (V1-style) so Fenrir can compare
+    /// pyramid-only vs pyramid+GPU-mip-evidence without conflating the two.
+    /// </param>
+    public string StatusLine(bool? gpuEvidenceOn)
+    {
+        var evidence = gpuEvidenceOn is null
+            ? ""
+            : gpuEvidenceOn.Value ? " gpuEvidence=ON" : " gpuEvidence=OFF";
+        return
+            $"{(UsedWorkingDecode ? "V2" : "V1")} tiles {FullWidth}x{FullHeight} coarse=L{CoarseLevel} " +
+            $"coarseTiles={CoarseTileCount} pool={PoolCapacity} resident={Lru.ResidentCount} " +
+            $"cpuTiles={Cpu.Count} firstCoarseMs={FirstCoarseFrameMs}{evidence} " +
+            $"fmt={WorkingFormat} Border={SmoothTileMath.Border}";
+    }
 
     /// <summary>
     /// V2: build the pyramid from Palace.Imaging Working L0 (cancel-aware).

@@ -48,6 +48,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private int _streamEnsureRunning;
     private readonly Func<SmoothTileId, uint?> _trySlice;
     private long _lastTickQpc;
+    private int _lastUploads;
     private const int MaxUploadsPerFrame = 4;
 
     /// <summary>True while a background pyramid build owns the session.</summary>
@@ -76,7 +77,16 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     public SmoothPresenterNative.FrameStats LastStats { get; private set; }
 
-    private static bool GpuEvidenceEnabled =>
+    /// <summary>Uploads performed in the last armed V2 frame (status line).</summary>
+    public int LastUploads => _lastUploads;
+
+    public bool IsViewportArmed => _viewportArmed;
+
+    /// <summary>
+    /// Debug: always on. Release: <c>PALACE_SMOOTH_GPU_EVIDENCE=1</c>.
+    /// Labels <c>firstCoarseMs</c> as ON vs OFF for Fenrir evidence.
+    /// </summary>
+    public static bool GpuEvidenceEnabled =>
 #if DEBUG
         true
 #else
@@ -374,8 +384,40 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         _life.MarkAttached(w, h);
         _status = $"attached {w}x{h} {SmoothPresenterNative.GetBackend(_host)}";
+#if DEBUG
+        MaybeInvokeTestRemoveDevice();
+#endif
         return Tick();
     }
+
+#if DEBUG
+    /// <summary>
+    /// Fenrir evidence: <c>PALACE_SMOOTH_TEST_REMOVE_DEVICE=1</c> → native
+    /// <c>ID3D12Device5::RemoveDevice</c> (compiled out of Release).
+    /// </summary>
+    private void MaybeInvokeTestRemoveDevice()
+    {
+        if (_host == 0)
+        {
+            return;
+        }
+
+        if (!string.Equals(
+                Environment.GetEnvironmentVariable("PALACE_SMOOTH_TEST_REMOVE_DEVICE"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var st = SmoothPresenterNative.DebugRemoveDevice(_host);
+        _status = $"test RemoveDevice → {st}";
+        if (st == SmoothPresenterNative.StatusCode.DeviceLost)
+        {
+            HandleDeviceLost();
+        }
+    }
+#endif
 
     public void Resize(double dipW, double dipH, float scaleX, float scaleY)
     {
@@ -414,6 +456,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
+        // Image-scoped pyramid — ResizeBuffers + present only. Never StartBackgroundPyramid.
+        // Caller (SizeChanged) recomputes fit/transform for the new panel size.
         _life.CommitResize(w, h);
         _ = Tick();
     }
@@ -437,9 +481,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         if (_pyramidBuildRunning)
         {
-            System.Diagnostics.Debug.Assert(
-                false,
-                "TryArmV2Viewport while pyramid build running");
+            // Contract: call only from build completion. Soft-fail — Debug.Assert
+            // FailFast killed R during an in-flight pyramid (v2-r-root-cause.md).
+            System.Diagnostics.Debug.WriteLine(
+                "TryArmV2Viewport while pyramid build running — ignored");
             return false;
         }
 
@@ -511,7 +556,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _status =
                 $"frame {stats.FrameIndex} {stats.Width}x{stats.Height} " +
                 $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}" +
-                (_viewportArmed ? $" z={_zoom:F2}" : "");
+                (_viewportArmed ? $" z={_zoom:F2} uploads={_lastUploads}" : "");
         }
 
         _life.MarkRunning();
@@ -525,12 +570,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
-        // Re-arm only from build completion — never stream mid-build.
-        System.Diagnostics.Debug.Assert(
-            !_pyramidBuildRunning,
-            "PushV2FrameIfArmed while pyramid build running");
+        // Never stream mid-build. Soft-fail — Debug.Assert FailFast is banned here
+        // (same class of crash as TryArmV2Viewport on R; see v2-r-root-cause.md).
         if (_pyramidBuildRunning)
         {
+            System.Diagnostics.Debug.WriteLine(
+                "PushV2FrameIfArmed while pyramid build running — skipped");
             return;
         }
 
@@ -565,6 +610,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
+        var totalUploads = uploads;
         if (_zoom < 1f && level < _session.MaxLevel && uploads < MaxUploadsPerFrame)
         {
             var parentUploads = StreamVisibleLevel(
@@ -573,7 +619,11 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             {
                 return;
             }
+
+            totalUploads += parentUploads;
         }
+
+        _lastUploads = totalUploads;
 
         SmoothViewportFrame.BuildInto(
             imgToDev,
