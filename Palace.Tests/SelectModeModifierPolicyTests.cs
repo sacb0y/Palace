@@ -43,7 +43,8 @@ public sealed class SelectModeModifierPolicyTests
     {
         var kind = SelectMode.EntryFromModifier();
         Assert.True(SelectMode.TileBodyClickReplacesAndExits(kind));
-        Assert.True(SelectMode.CheckboxClickTogglesOnly(kind));
+        Assert.False(SelectMode.AppliesTileBodyClickPolicy(kind, isCheckboxHit: true));
+        Assert.True(SelectMode.DefersCheckboxToItemsView(isCheckboxHit: true));
         Assert.True(SelectMode.ExitsWhenSelectionEmpty(true, 0));
     }
 

@@ -161,16 +161,22 @@ public partial class LibraryViewModel
     internal AssetItem? SelectionFocus => _selectionFocus;
 
     /// <summary>
-    /// Enter select mode from a modifier click / purposeful path and stamp entry kind.
+    /// Enter select mode from a modifier click / purposeful path. Entry kind is
+    /// stamped only when entering from off (or kind is still None) — later
+    /// modifier clicks must not overwrite purposeful entry.
     /// </summary>
     public void EnsureSelectMode(SelectEntryKind kind)
     {
-        if (!IsSelectMode)
+        var entering = !IsSelectMode;
+        if (entering)
         {
             IsSelectMode = true;
         }
 
-        MarkSelectEntry(kind);
+        if (entering || _selectEntryKind == SelectEntryKind.None)
+        {
+            MarkSelectEntry(kind);
+        }
     }
 
     /// <summary>Discard the dropped-selection slot after a newer user action.</summary>
@@ -210,9 +216,10 @@ public partial class LibraryViewModel
         }
 
         RestoreSelectionByIds(ids, loadPreview: true);
+        // No ids still visible under the current folder/filter — fall through to FileOp.
         if (_selection.Count == 0)
         {
-            return true;
+            return false;
         }
 
         EnsureSelectMode(SelectMode.EntryFromPurposeful());
@@ -362,7 +369,6 @@ public partial class LibraryViewModel
         }
 
         DroppedSelection.NotifyOtherAction();
-        SetSelectionFocus(item);
 
         // Shift range needs an anchor: last plain/Ctrl click, or the focused / preview tile.
         if ((range || addRange) && _selectionAnchor is null)
@@ -405,18 +411,24 @@ public partial class LibraryViewModel
 
                     var union = MosaicModifierSelect.UnionRange(
                         flags, priorIndexes, fromOrdered, toOrdered);
-                    SetSelection(union.Select(i => ordered[i]));
+                    SetSelection(union.Select(i => ordered[i]), loadPreview: false);
                 }
                 else
                 {
                     var indexes = MosaicModifierSelect.RangeIndexes(flags, fromOrdered, toOrdered);
-                    SetSelection(indexes.Select(i => ordered[i]));
+                    SetSelection(indexes.Select(i => ordered[i]), loadPreview: false);
                 }
 
+                // Keep Shift anchor; Preview/focus follow the clicked (range end) tile.
                 _selectionAnchor = priorAnchor;
+                _selectionFocus = item;
+                FinishSelectionChange(loadPreview: true);
                 return;
             }
         }
+
+        // Non-range: focus moves with the click target.
+        SetSelectionFocus(item);
 
         var displayed = DisplayedForSelection(refresh: true);
         if (!toggle)
@@ -460,13 +472,14 @@ public partial class LibraryViewModel
             if (item.IsSelected)
             {
                 selected.Add(item);
-                _selectionAnchor = item;
             }
             else
             {
                 selected.Remove(item);
             }
 
+            // Ctrl+click always moves the anchor, including when deselecting.
+            _selectionAnchor = item;
             _selection = selected.ToList();
         }
 

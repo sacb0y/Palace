@@ -3,9 +3,12 @@ namespace Palace.Helpers;
 /// <summary>
 /// Pure Explorer-style mosaic modifier / keyboard selection math (off WinUI).
 /// Reading-order ranges skip folder headers; Shift does not move the anchor.
+/// Up/Down use justified row stride when slots are provided.
 /// </summary>
 public static class MosaicModifierSelect
 {
+    public const double RowYEpsilon = 1.0;
+
     /// <summary>Shift / Ctrl / Ctrl+Shift click should auto-enter select mode.</summary>
     public static bool IsModifierClick(bool ctrl, bool shift) => ctrl || shift;
 
@@ -66,15 +69,28 @@ public static class MosaicModifierSelect
     public static bool MovesAnchor(bool ctrl, bool shift) =>
         !RangesFromAnchor(ctrl, shift) && !AddsRangeToSelection(ctrl, shift);
 
+    /// <summary>
+    /// Ctrl+click moves the anchor even when the tile is deselected.
+    /// </summary>
+    public static bool MovesAnchorOnToggle(bool selecting) => true;
+
     /// <summary>Arrow keys used for focus / extend.</summary>
     public static bool IsArrowKey(int virtualKey) =>
         virtualKey is 37 or 38 or 39 or 40; // Left Up Right Down
 
-    /// <summary>Shift+arrow extends selection from the anchor through the new focus.</summary>
+    public static bool IsVerticalArrow(int virtualKey) => virtualKey is 38 or 40; // Up Down
+
+    public static bool IsHorizontalArrow(int virtualKey) => virtualKey is 37 or 39; // Left Right
+
+    /// <summary>Shift+arrow (no Ctrl) extends selection from the anchor through the new focus.</summary>
     public static bool ExtendsWithShiftArrow(bool shift, bool ctrl, int virtualKey) =>
         shift && !ctrl && IsArrowKey(virtualKey);
 
-    /// <summary>Ctrl+arrow moves focus only (selection unchanged).</summary>
+    /// <summary>Ctrl+Shift+arrow adds the range from anchor through the new focus.</summary>
+    public static bool AddsRangeWithCtrlShiftArrow(bool shift, bool ctrl, int virtualKey) =>
+        shift && ctrl && IsArrowKey(virtualKey);
+
+    /// <summary>Ctrl+arrow (no Shift) moves focus only (selection unchanged).</summary>
     public static bool MovesFocusOnly(bool shift, bool ctrl, int virtualKey) =>
         ctrl && !shift && IsArrowKey(virtualKey);
 
@@ -113,11 +129,123 @@ public static class MosaicModifierSelect
         }
     }
 
+    /// <summary>
+    /// Arrow step: Left/Right stay reading-order; Up/Down use justified row
+    /// stride from <paramref name="slots"/> (nearest X in the adjacent row).
+    /// When slots are missing or lengths disagree, falls back to reading order.
+    /// </summary>
+    public static int StepFocus(
+        IReadOnlyList<bool> isHeader,
+        IReadOnlyList<MosaicSlot>? slots,
+        int from,
+        int virtualKey)
+    {
+        if (!IsArrowKey(virtualKey) || (uint)from >= (uint)isHeader.Count)
+        {
+            return -1;
+        }
+
+        if (IsHorizontalArrow(virtualKey)
+            || slots is null
+            || slots.Count != isHeader.Count)
+        {
+            return StepFocus(isHeader, from, ArrowDelta(virtualKey));
+        }
+
+        return StepFocusVertical(isHeader, slots, from, up: virtualKey == 38);
+    }
+
     /// <summary>Arrow virtual-key → reading-order delta (+1 forward, -1 back).</summary>
     public static int ArrowDelta(int virtualKey) => virtualKey switch
     {
-        37 or 38 => -1, // Left / Up
+        37 or 38 => -1, // Left / Up (Up only when no slots)
         39 or 40 => 1,  // Right / Down
         _ => 0,
     };
+
+    private static int StepFocusVertical(
+        IReadOnlyList<bool> isHeader,
+        IReadOnlyList<MosaicSlot> slots,
+        int from,
+        bool up)
+    {
+        if (isHeader[from])
+        {
+            return -1;
+        }
+
+        var fromSlot = slots[from];
+        var fromCenterX = fromSlot.X + (fromSlot.Width * 0.5);
+        var fromY = fromSlot.Y;
+
+        // Distinct row tops for non-header tiles, sorted.
+        var rows = new List<double>();
+        for (var i = 0; i < slots.Count; i++)
+        {
+            if (isHeader[i])
+            {
+                continue;
+            }
+
+            var y = slots[i].Y;
+            var found = false;
+            for (var r = 0; r < rows.Count; r++)
+            {
+                if (Math.Abs(rows[r] - y) <= RowYEpsilon)
+                {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                rows.Add(y);
+            }
+        }
+
+        rows.Sort();
+
+        var rowIndex = -1;
+        for (var r = 0; r < rows.Count; r++)
+        {
+            if (Math.Abs(rows[r] - fromY) <= RowYEpsilon)
+            {
+                rowIndex = r;
+                break;
+            }
+        }
+
+        if (rowIndex < 0)
+        {
+            return StepFocus(isHeader, from, up ? -1 : 1);
+        }
+
+        var nextRow = up ? rowIndex - 1 : rowIndex + 1;
+        if (nextRow < 0 || nextRow >= rows.Count)
+        {
+            return -1;
+        }
+
+        var targetY = rows[nextRow];
+        var best = -1;
+        var bestDist = double.MaxValue;
+        for (var i = 0; i < slots.Count; i++)
+        {
+            if (isHeader[i] || Math.Abs(slots[i].Y - targetY) > RowYEpsilon)
+            {
+                continue;
+            }
+
+            var cx = slots[i].X + (slots[i].Width * 0.5);
+            var dist = Math.Abs(cx - fromCenterX);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
 }
