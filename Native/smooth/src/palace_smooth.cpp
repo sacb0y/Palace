@@ -520,12 +520,7 @@ HRESULT BindAndDrawPattern(Host* host)
     draw.NumVertices = 3;
     host->diligentContext->Draw(draw);
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
-    host->diligentContext->Flush();
-    /* Unbind + release wrap so the next psv_resize can ResizeBuffers. */
-    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
-    PsvDrainD3D12InfoQueue(host);
-
-    /* Backbuffer must be COMMON|PRESENT before IDXGISwapChain::Present (D3D12). */
+    /* PRESENT barrier in the same submission as the draw (before Flush). */
     if (host->backend == PSV_BACKEND_D3D12 && backTex) {
         StateTransitionDesc barrier{
             backTex,
@@ -533,9 +528,11 @@ HRESULT BindAndDrawPattern(Host* host)
             RESOURCE_STATE_PRESENT,
             STATE_TRANSITION_FLAG_UPDATE_STATE};
         host->diligentContext->TransitionResourceStates(1, &barrier);
-        host->diligentContext->Flush();
     }
-
+    host->diligentContext->Flush();
+    /* Unbind + release wrap so the next psv_resize can ResizeBuffers. */
+    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    PsvDrainD3D12InfoQueue(host);
     backTex.Release();
     return S_OK;
 }

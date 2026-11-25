@@ -315,13 +315,7 @@ HRESULT BindAndDrawImage(Host* host)
     /* Hygiene: clear RTs before Flush so a Debug Close assert cannot leave RTs
      * bound for a nested Tick upload (MessageBox pump / reentrancy). */
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
-    host->diligentContext->Flush();
-    /* Always clear again after Flush even if Debug asserted mid-Close. */
-    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
-    PsvDrainD3D12InfoQueue(host);
-
-    /* Backbuffer must be COMMON|PRESENT before IDXGISwapChain::Present (D3D12).
-     * Flush so the barrier executes before DXGI's Present command list. */
+    /* PRESENT barrier in the same submission as the draw (before Flush). */
     if (host->backend == PSV_BACKEND_D3D12 && backTex) {
         StateTransitionDesc barrier{
             backTex,
@@ -329,8 +323,11 @@ HRESULT BindAndDrawImage(Host* host)
             RESOURCE_STATE_PRESENT,
             STATE_TRANSITION_FLAG_UPDATE_STATE};
         host->diligentContext->TransitionResourceStates(1, &barrier);
-        host->diligentContext->Flush();
     }
+    host->diligentContext->Flush();
+    /* Always clear again after Flush even if Debug asserted mid-Close. */
+    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    PsvDrainD3D12InfoQueue(host);
 
     backTex.Release();
     ClearError(host);
