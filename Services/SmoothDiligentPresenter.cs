@@ -375,6 +375,26 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             ? Path.Combine(Path.GetTempPath(), "smooth-diligent-debug.log")
             : Path.Combine(_logDataDir, "smooth-diligent-debug.log");
         _ = SmoothPresenterNative.SetDebugLogPath(debugLog);
+#if DEBUG
+        // Fenrir: packaged launches may not inherit launcher env — log what we see.
+        {
+            var remDev = Environment.GetEnvironmentVariable("PALACE_SMOOTH_TEST_REMOVE_DEVICE");
+            var remDevShown = string.IsNullOrEmpty(remDev) ? "(unset)" : remDev;
+            try
+            {
+                File.AppendAllText(
+                    debugLog,
+                    "smooth-debug source=palace severity=NOTE psv=- msg=PALACE_SMOOTH_TEST_REMOVE_DEVICE="
+                    + remDevShown
+                    + " func=- file=- line=0"
+                    + Environment.NewLine);
+            }
+            catch
+            {
+                // logging must not block start
+            }
+        }
+#endif
         _ = SmoothPresenterNative.SetDpiScale(_host, scaleX, scaleY);
         _life.TrySetDpi(scaleX, scaleY);
 
