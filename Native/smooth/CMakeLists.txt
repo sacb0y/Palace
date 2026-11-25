@@ -50,6 +50,7 @@ add_library(palace_smooth SHARED
   src/palace_smooth.cpp
   src/palace_smooth_tiles.cpp
   src/palace_smooth_image.cpp
+  src/palace_smooth_debug.cpp
 )
 set_property(TARGET palace_smooth PROPERTY
   MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

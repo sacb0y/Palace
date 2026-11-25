@@ -713,6 +713,32 @@ public static class SmoothPresenterNative
         }
     }
 
+    /// <summary>
+    /// Diligent / D3D12 debug messages → UTF-8 path (typically under
+    /// <c>PALACE_DATA_DIR</c>). Sets BreakOnError false when path is set so
+    /// AssertionFailed does not MessageBox. Env <c>PALACE_SMOOTH_NO_ASSERT_UI=1</c>
+    /// also disables the assert dialog.
+    /// </summary>
+    public static StatusCode SetDebugLogPath(string? utf8Path)
+    {
+        if (!IsAvailable || string.IsNullOrWhiteSpace(utf8Path))
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeSetDebugLogPath(utf8Path);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_debug_remove_device")]
     private static extern int NativeDebugRemoveDevice(nint host);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_set_debug_log_path")]
+    private static extern int NativeSetDebugLogPath([MarshalAs(UnmanagedType.LPUTF8Str)] string utf8Path);
 }

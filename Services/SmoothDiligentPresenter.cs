@@ -52,6 +52,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private bool _testRemoveDeviceFired;
     /// <summary>True after one successful armed present — next Tick may fire RemoveDevice.</summary>
     private bool _sawArmedPresent;
+    private readonly SmoothTickReentrancyGate _tickGate = new();
     private const int MaxUploadsPerFrame = 4;
 
     /// <summary>True while a background pyramid build owns the session.</summary>
@@ -369,6 +370,11 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         LastCreateWasDeviceLost = false;
         _life.MarkCreated();
+        // Diligent/D3D12 debug messages → PALACE_DATA_DIR/smooth-diligent-debug.log
+        var debugLog = string.IsNullOrWhiteSpace(_logDataDir)
+            ? Path.Combine(Path.GetTempPath(), "smooth-diligent-debug.log")
+            : Path.Combine(_logDataDir, "smooth-diligent-debug.log");
+        _ = SmoothPresenterNative.SetDebugLogPath(debugLog);
         _ = SmoothPresenterNative.SetDpiScale(_host, scaleX, scaleY);
         _life.TrySetDpi(scaleX, scaleY);
 
@@ -570,51 +576,65 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return false;
         }
 
-#if DEBUG
-        // After one armed present: RemoveDevice at Tick start (before any native).
-        if (MaybeInvokeTestRemoveDeviceOnceArmed())
+        // Nested Tick (Diligent MessageBox / dispatcher pump) must not touch native.
+        if (!_tickGate.TryEnter())
         {
+            _status = "tick reentered — skipped";
             return false;
         }
+
+        try
+        {
+#if DEBUG
+            // After one armed present: RemoveDevice at Tick start (before any native).
+            if (MaybeInvokeTestRemoveDeviceOnceArmed())
+            {
+                return false;
+            }
 #endif
 
-        PushV2FrameIfArmed();
-        if (_host == 0)
-        {
-            return false;
-        }
+            PushV2FrameIfArmed();
+            if (_host == 0)
+            {
+                return false;
+            }
 
-        var result = SmoothPresenterNative.RenderFrame(_host);
-        if (result == SmoothPresenterNative.StatusCode.DeviceLost)
-        {
-            HandleDeviceLost();
-            return false;
-        }
+            var result = SmoothPresenterNative.RenderFrame(_host);
+            if (result == SmoothPresenterNative.StatusCode.DeviceLost)
+            {
+                HandleDeviceLost();
+                return false;
+            }
 
-        if (result != SmoothPresenterNative.StatusCode.Ok)
-        {
-            _status = $"render failed ({result}): {SmoothPresenterNative.LastError(_host)}";
-            return false;
-        }
+            if (result != SmoothPresenterNative.StatusCode.Ok)
+            {
+                _status = $"render failed ({result}): {SmoothPresenterNative.LastError(_host)}";
+                return false;
+            }
 
-        if (SmoothPresenterNative.TryLastFrameStats(_host, out var stats))
-        {
-            LastStats = stats;
-            var note = SmoothPresenterNative.LastError(_host);
-            SmoothPresenterLog.AppendStats(_logDataDir, stats, note);
-            _status =
-                $"frame {stats.FrameIndex} {stats.Width}x{stats.Height} " +
-                $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}" +
-                (_viewportArmed ? $" z={_zoom:F2} uploads={_lastUploads}" : "");
-        }
+            if (SmoothPresenterNative.TryLastFrameStats(_host, out var stats))
+            {
+                LastStats = stats;
+                var note = SmoothPresenterNative.LastError(_host);
+                SmoothPresenterLog.AppendStats(_logDataDir, stats, note);
+                _status =
+                    $"frame {stats.FrameIndex} {stats.Width}x{stats.Height} " +
+                    $"total={stats.TotalMs:F2}ms wait={stats.WaitMs:F2} render={stats.RenderMs:F2} present={stats.PresentMs:F2}" +
+                    (_viewportArmed ? $" z={_zoom:F2} uploads={_lastUploads}" : "");
+            }
 
-        if (_viewportArmed)
-        {
-            _sawArmedPresent = true;
-        }
+            if (_viewportArmed)
+            {
+                _sawArmedPresent = true;
+            }
 
-        _life.MarkRunning();
-        return true;
+            _life.MarkRunning();
+            return true;
+        }
+        finally
+        {
+            _tickGate.Exit();
+        }
     }
 
     private void PushV2FrameIfArmed()

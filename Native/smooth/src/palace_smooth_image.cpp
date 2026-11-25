@@ -312,8 +312,13 @@ HRESULT BindAndDrawImage(Host* host)
     draw.NumVertices = 4;
     draw.NumInstances = host->instanceCount;
     host->diligentContext->Draw(draw);
-    host->diligentContext->Flush();
+    /* Hygiene: clear RTs before Flush so a Debug Close assert cannot leave RTs
+     * bound for a nested Tick upload (MessageBox pump / reentrancy). */
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    host->diligentContext->Flush();
+    /* Always clear again after Flush even if Debug asserted mid-Close. */
+    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    PsvDrainD3D12InfoQueue(host);
 
     /* PRESENT transition before Present (D3D12 debug layer). */
     if (host->backend == PSV_BACKEND_D3D12 && backTex) {

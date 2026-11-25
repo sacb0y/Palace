@@ -48,6 +48,9 @@ struct Host {
 
     ComPtr<ID3D12Device> d3d12Device;
     ComPtr<ID3D12CommandQueue> d3d12Queue;
+#if defined(PSV_TEST_HOOKS)
+    DWORD infoQueueCookie = 0;
+#endif
 
     ComPtr<ID3D11Device> d3d11Device;
     ComPtr<ID3D11DeviceContext> d3d11Context;
@@ -98,6 +101,21 @@ bool BindDxgiAdapter3(Host* host);
 
 /* Cheap DXGI removed poll. Sets host->deviceLost when reason != S_OK. */
 bool PollDeviceRemoved(Host* host);
+
+/* Debug log / Diligent callback / D3D12 InfoQueue (palace_smooth_debug.cpp). */
+void PsvSetApiTag(const char* tag);
+const char* PsvGetApiTag();
+void PsvInstallDiligentDebugLogging();
+void PsvAppendDebugNote(const char* note);
+void PsvSetupD3D12InfoQueue(Host* host);
+void PsvDrainD3D12InfoQueue(Host* host);
+
+struct PsvApiScope {
+    explicit PsvApiScope(const char* tag) { PsvSetApiTag(tag); }
+    ~PsvApiScope() { PsvSetApiTag(""); }
+    PsvApiScope(const PsvApiScope&) = delete;
+    PsvApiScope& operator=(const PsvApiScope&) = delete;
+};
 
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
 bool EnsureImagePipeline(Host* host);

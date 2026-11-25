@@ -335,6 +335,8 @@ bool InitDiligentD3D12(Host* host)
     if (!CreatePatternPipeline(host)) {
         return false;
     }
+    PsvInstallDiligentDebugLogging();
+    PsvSetupD3D12InfoQueue(host);
     host->diligentReady = true;
     ClearError(host);
     return true;
@@ -489,9 +491,11 @@ HRESULT BindAndDrawPattern(Host* host)
     DrawAttribs draw{};
     draw.NumVertices = 3;
     host->diligentContext->Draw(draw);
+    host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
     host->diligentContext->Flush();
     /* Unbind + release wrap so the next psv_resize can ResizeBuffers. */
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+    PsvDrainD3D12InfoQueue(host);
     backTex.Release();
     return S_OK;
 }
@@ -519,6 +523,7 @@ bool InitStubD3D12(Host* host)
         return false;
     }
     host->backend = PSV_BACKEND_D3D12;
+    PsvSetupD3D12InfoQueue(host);
     SetError(host, "stub D3D12 ready (Diligent not linked)");
     return true;
 }
@@ -765,6 +770,7 @@ PSV_API int psv_set_dpi_scale(void* host_ptr, float scale_x, float scale_y)
 
 PSV_API int psv_render_frame(void* host_ptr)
 {
+    PsvApiScope api("psv_render_frame");
     if (!host_ptr) {
         return PSV_BAD_ARGUMENT;
     }
@@ -822,6 +828,7 @@ PSV_API int psv_render_frame(void* host_ptr)
 
     hr = PresentSwapChain(host);
     QueryPerformanceCounter(&tPresent);
+    PsvDrainD3D12InfoQueue(host);
     if (host->deviceLost) {
         return PSV_DEVICE_LOST;
     }

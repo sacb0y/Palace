@@ -274,6 +274,7 @@ PSV_API void psv_tile_pool_destroy(void* host_ptr)
 
 PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_bytes, int byte_count)
 {
+    PsvApiScope api("psv_tile_upload");
     auto* host = static_cast<Host*>(host_ptr);
     if (!host || !rgba16f_bytes) {
         return PSV_BAD_ARGUMENT;
@@ -327,6 +328,7 @@ PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_
 
 PSV_API int psv_tile_readback(void* host_ptr, unsigned slice, void* out_rgba16f_bytes, int byte_count)
 {
+    PsvApiScope api("psv_tile_readback");
     auto* host = static_cast<Host*>(host_ptr);
     if (!host || !out_rgba16f_bytes) {
         return PSV_BAD_ARGUMENT;
@@ -418,6 +420,7 @@ PSV_API int psv_tile_mip_box(
     unsigned dst_slice,
     const unsigned* slices4x4)
 {
+    PsvApiScope api("psv_tile_mip_box");
     auto* host = static_cast<Host*>(host_ptr);
     if (!host || !slices4x4) {
         return PSV_BAD_ARGUMENT;
@@ -491,6 +494,12 @@ PSV_API int psv_tile_mip_box(
     copy.SrcTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     copy.DstTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     host->diligentContext->CopyTexture(copy);
+
+    /* Hygiene only (not the Close-fail fix): drop mip SRB Src/Dst so later
+     * UpdateTexture/CopyTexture/readback are not racing a live compute SRV bind. */
+    vSrc->Set(static_cast<IDeviceObject*>(nullptr));
+    vDst->Set(static_cast<IDeviceObject*>(nullptr));
+
     ClearError(host);
     return PSV_OK;
 #else
@@ -518,6 +527,7 @@ PSV_API int psv_tile_mip_ready(void* host_ptr)
 
 PSV_API int psv_flush(void* host_ptr)
 {
+    PsvApiScope api("psv_flush");
     auto* host = static_cast<Host*>(host_ptr);
     if (!host) {
         return PSV_BAD_ARGUMENT;
@@ -528,6 +538,7 @@ PSV_API int psv_flush(void* host_ptr)
     }
     if (host->diligentContext) {
         host->diligentContext->Flush();
+        PsvDrainD3D12InfoQueue(host);
     }
     return PSV_OK;
 #else

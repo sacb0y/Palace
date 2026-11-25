@@ -143,6 +143,14 @@ PSV_API int psv_viewport_ready(void* host);
  */
 PSV_API int psv_debug_remove_device(void* host);
 
+/*
+ * Append Diligent / D3D12 debug messages under this UTF-8 path (typically
+ * PALACE_DATA_DIR/smooth-diligent-debug.log). Installs SetDebugMessageCallback
+ * and, when PALACE_SMOOTH_NO_ASSERT_UI=1 or a path is set, SetBreakOnError(false)
+ * so AssertionFailed does not MessageBox (nested Tick AV).
+ */
+PSV_API int psv_set_debug_log_path(const char* utf8_path);
+
 #ifdef __cplusplus
 }
 #endif
