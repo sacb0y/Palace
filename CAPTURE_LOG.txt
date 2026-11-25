@@ -1,0 +1,103 @@
+﻿
+2026-11-25T07:44:54.1000380-05:00 START tip=1a8f72322051830cfe162018e8c73a2988666383 data=C:\Users\iadag\AppData\Local\Temp\palace-agent-data-207-fresh sfw=C:\Users\iadag\AppData\Local\Temp\palace-sfw-207-fresh
+2026-11-25T07:44:56.7775694-05:00 register+junction ok -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-207-fresh
+2026-11-25T07:45:01.1791828-05:00 pid=234068 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe hwnd=13636568
+2026-11-25T07:45:03.4071976-05:00 seeded 10f0b801970b427ca3a5e4000d65e8b9 project 0f3d7609553240e28bd6a687bdd3dfb4
+2026-11-25T07:45:07.2554644-05:00 pid=164004 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe hwnd=11287882
+2026-11-25T07:45:07.5510831-05:00 sel NavSettings
+2026-11-25T07:45:09.7172977-05:00 click BtnSettingsNav_Library
+2026-11-25T07:45:22.0060683-05:00 WARN TglIndexModel3D missing — mark 01/02 FAIL
+2026-11-25T07:45:22.0319658-05:00 sel NavLibrary
+2026-11-25T07:45:24.1636330-05:00 click BtnScan
+2026-11-25T07:45:24.1661491-05:00 scan started — waiting for assets
+2026-11-25T07:45:26.3139377-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:28.4192905-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:30.5287919-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:32.6434166-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:34.7541399-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:36.8700600-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:38.9852707-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:41.0966511-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:43.2177702-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:45.3315387-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:47.4347717-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:49.5361028-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:51.6455152-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:53.7448123-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:55.8666784-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:45:57.9695163-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:00.0947726-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:02.1969161-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:04.3111468-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:06.4164719-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:08.5251627-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:10.6379085-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:12.7501679-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:14.8681376-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:16.9754665-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:19.1046157-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:21.2299980-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:23.3453687-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:25.4474809-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:27.5515599-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:29.6539944-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:31.7625071-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:33.8645489-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:35.9889076-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:38.1055581-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:40.2099952-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:42.3238907-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:44.4443925-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:46.5628460-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:48.6811490-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:50.7922969-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:52.9174947-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:55.0176983-05:00 gate n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:46:55.0197036-05:00 GATE FAIL — insufficient assets or no Model3D; abort shots 03+
+2026-11-25T07:46:56.3242714-05:00 DONE verdict=FAIL gateOk=False shots=12
+2026-11-25T07:48:27.5841093-05:00 SourceFolder count=1 gate-pre=n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T07:48:34.3941067-05:00 pid=17228 hwnd=25639534 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe
+2026-11-25T07:48:34.7276263-05:00 sel NavSettings
+2026-11-25T07:48:36.0348301-05:00 click BtnSettingsNav_Library
+2026-11-25T08:05:39.3390959-05:00 SourceFolder count=1 gate-pre=n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T08:05:46.2914534-05:00 pid=231948 hwnd=2832118 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe
+2026-11-25T08:05:46.6093084-05:00 sel NavSettings
+2026-11-25T08:05:47.8988613-05:00 click BtnSettingsNav_Library
+2026-11-25T08:06:00.2235684-05:00 click TxtSettingsSearch
+2026-11-25T08:07:19.4412884-05:00 SourceFolder count=1 gate-pre=n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T08:07:26.8663596-05:00 pid=163348 hwnd=10028610 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe
+2026-11-25T08:07:27.2092534-05:00 sel NavSettings
+2026-11-25T08:07:28.2379907-05:00 sel BtnSettingsNav_Library
+2026-11-25T08:07:30.5807515-05:00 click expand-click-CardFormats
+2026-11-25T08:08:45.9535656-05:00 SourceFolder count=1 gate-pre=n=3;kinds={'Gif': 1, 'Image': 1, 'Video': 1};model3d=0
+2026-11-25T08:08:52.7960533-05:00 pid=231784 hwnd=15675458 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe
+2026-11-25T08:08:53.1159024-05:00 sel NavSettings
+2026-11-25T08:08:54.1471008-05:00 sel BtnSettingsNav_Library
+2026-11-25T08:08:56.2382044-05:00 expand CardFormats (header)
+2026-11-25T08:08:57.1644299-05:00 toggle state=Off
+2026-11-25T08:08:57.4888176-05:00 SHOT 01-settings-index-3d-off.png bytes=206819
+2026-11-25T08:08:57.7809612-05:00 click TglIndexModel3D -> On
+2026-11-25T08:08:58.7041431-05:00 SHOT 02-settings-index-3d-on.png bytes=203870
+2026-11-25T08:08:58.7280222-05:00 toggle after On=On
+2026-11-25T08:08:58.7792833-05:00 sel NavLibrary
+2026-11-25T08:09:01.0631401-05:00 click BtnScan
+2026-11-25T08:09:01.0666923-05:00 rescan for Model3D
+2026-11-25T08:09:03.2073044-05:00 gate n=4;kinds={'Gif': 1, 'Image': 1, 'Model3D': 1, 'Video': 1};model3d=1
+2026-11-25T08:09:03.2142001-05:00 GATE PASS
+2026-11-25T08:09:03.2349173-05:00 sel NavLibrary
+2026-11-25T08:09:05.5604134-05:00 SHOT 03-library-mosaic-badges.png bytes=208142
+2026-11-25T08:09:13.4004487-05:00 SHOT 04-library-overlay-3d-placeholder.png bytes=380753
+2026-11-25T08:09:13.9426374-05:00 sel NavTags
+2026-11-25T08:09:16.2516103-05:00 SHOT 05-tags-overlay.png bytes=201685
+2026-11-25T08:09:21.3761690-05:00 sel NavLibrary
+2026-11-25T08:09:31.2197491-05:00 SHOT 07-library-still.png bytes=373178
+2026-11-25T08:09:31.5401724-05:00 SHOT 06-gallery-window.png bytes=372419
+2026-11-25T08:09:31.8547017-05:00 SHOT 09-gallery-still.png bytes=369160
+2026-11-25T08:09:32.4145355-05:00 sel NavTags
+2026-11-25T08:09:41.8677616-05:00 SHOT 08-tags-still.png bytes=201681
+2026-11-25T08:09:42.2278171-05:00 sel NavLibrary
+2026-11-25T08:09:52.0130298-05:00 SHOT 10-library-video.png bytes=373176
+2026-11-25T08:09:52.3246442-05:00 SHOT 12-gallery-video.png bytes=373386
+2026-11-25T08:09:52.7638767-05:00 sel NavTags
+2026-11-25T08:10:02.2786350-05:00 SHOT 11-tags-video.png bytes=201526
+2026-11-25T08:10:03.5488322-05:00 DONE verdict=PASS

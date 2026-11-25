@@ -1,0 +1,10 @@
+﻿timestamp=2026-11-23T03:12:36.5686358Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac t527u: reproduce 4 viewer/mosaic bugs from 0.3.115 hand test; 5E1F only; synthetic temp HDR fixtures; no DPI changes	args=manual viewer repro (no ui-tests run); pkg PalaceOrganizeTest-5E1F
+timestamp=2026-11-23T03:43:11.8365282Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=FenrirDesktop capture tip 96ad839 media/pr-viewer-hdr-zoom
+timestamp=2026-11-23T04:07:50.7087365Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=edde086 Fenrir HDR zoom expanded capture
+timestamp=2026-11-23T04:30:42.4679138Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=fabb4c5 Fenrir HDR zoom integrity recapture
+timestamp=2026-11-23T04:40:40.6498004Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=fcffff9 Fenrir Actual native decode recheck
+timestamp=2026-11-23T04:53:30.9445838Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=51044e0 Fenrir portrait settle native decode
+timestamp=2026-11-23T04:55:32.5678940Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized desktop testing for viewer HDR zoom bugs A/B/C (PR #202)	args=51044e0 Fenrir portrait settle native decode
+timestamp=2026-11-24T22:56:57.4882793Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized FenrirDesktop HDR/presenter evidence for Smooth Viewer V0 PR #204 tip 07d395f; PalaceOrganizeTest-5E1F only; synthetic temp data; no DPI	args=(none)
+timestamp=2026-11-24T23:38:38.6382139Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=Isiac authorized FenrirDesktop Smooth V0 resize-fix recapture PR #204 tip 0bc99df; PalaceOrganizeTest-5E1F only; no DPI	args=(none)
+timestamp=2026-11-25T09:54:37.6528117Z	COMPUTERNAME=FENRIRDESKTOP	user=iadag	reason=FENRIR-STUDIO locked overnight; #207 UI shots	args=pr207-fenrir-ui-shots tip=1a8f723

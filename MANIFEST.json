@@ -1,0 +1,150 @@
+﻿{
+    "tip":  "1a8f72322051830cfe162018e8c73a2988666383",
+    "package":  "PalaceOrganizeTest-5E1F_0.3.121.0_x64__1z32rh13vfry6",
+    "host":  "FenrirDesktop",
+    "verdict":  "PASS",
+    "gateOk":  true,
+    "generated":  "2026-11-25T08:14:56.2700114-05:00",
+    "files":  [
+                  {
+                      "name":  "01-settings-index-3d-off.png",
+                      "bytes":  204252,
+                      "sha256":  "58445597422aa057b435de2eb18adb3f3685a6f1e384d92511762b3ea749633a"
+                  },
+                  {
+                      "name":  "01-settings-index-3d-off.png.caption.txt",
+                      "bytes":  86,
+                      "sha256":  "36242eb1bf8f70406273bb3232a26c2dc51a7408a6a5f0952c3bc06376cf7055"
+                  },
+                  {
+                      "name":  "02-settings-index-3d-on.png",
+                      "bytes":  203835,
+                      "sha256":  "99eaac4259698038866b656ae3f1e118957986cd185ed859337716e430ee46a6"
+                  },
+                  {
+                      "name":  "02-settings-index-3d-on.png.caption.txt",
+                      "bytes":  85,
+                      "sha256":  "99ee77a2266d6dc6da225098f1df361cc313288a277421f3c2b301921d098b66"
+                  },
+                  {
+                      "name":  "03-library-mosaic-badges.png",
+                      "bytes":  208142,
+                      "sha256":  "89a1c0c3526ab42e6b39ea31ba61ee0127c98bff6b11a8ce9bd991f096dcaf7c"
+                  },
+                  {
+                      "name":  "03-library-mosaic-badges.png.caption.txt",
+                      "bytes":  145,
+                      "sha256":  "223a1e5a690b04cc52e5f2aa0fa435b714b041c008a90440827cb1d7b98e353d"
+                  },
+                  {
+                      "name":  "04-library-overlay-3d-placeholder.png",
+                      "bytes":  380753,
+                      "sha256":  "3db87a1706c46028588e421f06ab0460cc0bc9d55278b823377673f6c06c625a"
+                  },
+                  {
+                      "name":  "04-library-overlay-3d-placeholder.png.caption.txt",
+                      "bytes":  128,
+                      "sha256":  "04f11cf7e367334e80367686b250de2905f8b0c4fd5ec4a8182abc046495da45"
+                  },
+                  {
+                      "name":  "05-tags-overlay.png",
+                      "bytes":  201683,
+                      "sha256":  "dbd65c7e6f917d88d658314833ea3c2771efc1cdb73ed1165c17bc731d76206d"
+                  },
+                  {
+                      "name":  "05-tags-overlay.png.caption.txt",
+                      "bytes":  128,
+                      "sha256":  "560a5143b3146b2dc0a87c87aed104efc17a8507aef96a5f663f4d7dd8904862"
+                  },
+                  {
+                      "name":  "06-gallery-window.png",
+                      "bytes":  214459,
+                      "sha256":  "ae4bff337bd056bbad0a35e732abb52b833648b6a3ccde2996536c03a827b4a4"
+                  },
+                  {
+                      "name":  "06-gallery-window.png.caption.txt",
+                      "bytes":  135,
+                      "sha256":  "3ecc96be7355ce638039b554743bd15a14593407205c4370fdb69524ea9fb7f3"
+                  },
+                  {
+                      "name":  "07-library-still.png",
+                      "bytes":  214459,
+                      "sha256":  "ae4bff337bd056bbad0a35e732abb52b833648b6a3ccde2996536c03a827b4a4"
+                  },
+                  {
+                      "name":  "07-library-still.png.caption.txt",
+                      "bytes":  126,
+                      "sha256":  "fe9e04363daef12fd30c4e9998fb5996020468008c8f7a4a3afef1cad7b14694"
+                  },
+                  {
+                      "name":  "08-tags-still.png",
+                      "bytes":  256793,
+                      "sha256":  "46fc788a58cb301a51c0d38ab2a56f02b5ca133446262f8d7aa1ea35e46c2765"
+                  },
+                  {
+                      "name":  "08-tags-still.png.caption.txt",
+                      "bytes":  154,
+                      "sha256":  "84ab4955360080af6b81a351d3b679da3ad875ccaf7b8bb2d76af4065bbb6626"
+                  },
+                  {
+                      "name":  "09-gallery-still.png",
+                      "bytes":  214413,
+                      "sha256":  "b6f0fcaf547dd514966bf3b58d39346462f6aaf0bd7cf86466399d3ce1cb38b6"
+                  },
+                  {
+                      "name":  "09-gallery-still.png.caption.txt",
+                      "bytes":  119,
+                      "sha256":  "6eab3f4e8d6a0f15cbf34e4c411045b6c8468360025111722b2118eb952c9ded"
+                  },
+                  {
+                      "name":  "10-library-video.png",
+                      "bytes":  205217,
+                      "sha256":  "100d3b810d3c3af742e08161c71f680431425b8ac82b6f4d70cde6670ee29c4d"
+                  },
+                  {
+                      "name":  "10-library-video.png.caption.txt",
+                      "bytes":  82,
+                      "sha256":  "a7b67fa657d9d0d4244e05cb8f74b7cd407140eae817f7fe8bb753969f3f37e9"
+                  },
+                  {
+                      "name":  "11-tags-video.png",
+                      "bytes":  205447,
+                      "sha256":  "fc73e6c12797a512f01722b7965c01ab0599ba24fd640277a8251187bca49b1d"
+                  },
+                  {
+                      "name":  "11-tags-video.png.caption.txt",
+                      "bytes":  154,
+                      "sha256":  "71abbf2666b06d19bcbc191182f9c4f0728cf3f9c36c3f04de99ec4fc4dc3992"
+                  },
+                  {
+                      "name":  "12-gallery-video.png",
+                      "bytes":  205217,
+                      "sha256":  "100d3b810d3c3af742e08161c71f680431425b8ac82b6f4d70cde6670ee29c4d"
+                  },
+                  {
+                      "name":  "12-gallery-video.png.caption.txt",
+                      "bytes":  78,
+                      "sha256":  "3bec6596fdd454ce9837d731ee29ea00af534bacfa8063ff883603a2ac37245e"
+                  },
+                  {
+                      "name":  "CAPTURE_LOG.txt",
+                      "bytes":  8895,
+                      "sha256":  "3a826d66123e0622da4a4e102cb5953a3d1c0d04dc0e6abce73ec9a6e8a076ba"
+                  },
+                  {
+                      "name":  "CAPTURE_LOG_fix.txt",
+                      "bytes":  1385,
+                      "sha256":  "20b43738316bbb48e2a89b947e6c7974b70e8792813c62a3c99334af473dc6b9"
+                  },
+                  {
+                      "name":  "desktop-override-shared.log",
+                      "bytes":  2183,
+                      "sha256":  "917808a346d29396531026f6c8cc0be3333be3abf3e64f2ef07f94bf9f719ee1"
+                  },
+                  {
+                      "name":  "REPORT.md",
+                      "bytes":  2115,
+                      "sha256":  "4bf4e90364c4d938a609ca274bf0a142a5121e6da5e80d89814ff118f3f799d6"
+                  }
+              ]
+}
