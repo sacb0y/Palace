@@ -43,7 +43,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private SmoothPresenterNative.TileInstance[] _instanceArray = new SmoothPresenterNative.TileInstance[64];
     private readonly ConcurrentQueue<SmoothTileId> _streamEnsureQueue = new();
     private readonly ConcurrentDictionary<SmoothTileId, byte> _streamEnsurePending = new();
+    private readonly ConcurrentDictionary<SmoothTileId, int> _streamVisibleGen = new();
+    private int _streamFrameGen;
     private int _streamEnsureRunning;
+    private readonly Func<SmoothTileId, uint?> _trySlice;
     private long _lastTickQpc;
     private const int MaxUploadsPerFrame = 4;
 
@@ -58,7 +61,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     {
         _panel = panel;
         _logDataDir = logDataDir;
+        // Cached once — avoid per-frame closure alloc for BuildInto.
+        _trySlice = TryGetSlice;
     }
+
+    private uint? TryGetSlice(SmoothTileId id) =>
+        _session is not null && _session.Lru.TryGetSlot(id, out var s) ? (uint)s : null;
 
     public string Status => _status;
 
@@ -548,8 +556,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         // Stream visible tiles from retained Working → Cpu → GPU (cap uploads/frame).
         // Also stream Level+1 when minifying (z<1) so ParentSlice can bind (N1).
+        // Bump frame gen so the stream worker can drop stale (no longer visible) ensures.
+        var frameGen = Interlocked.Increment(ref _streamFrameGen);
         var level = SmoothViewport.LevelForZoom(_zoom, _session.MaxLevel);
-        var uploads = StreamVisibleLevel(imgToDev, w, h, level, MaxUploadsPerFrame);
+        var uploads = StreamVisibleLevel(imgToDev, w, h, level, MaxUploadsPerFrame, frameGen);
         if (uploads < 0)
         {
             return;
@@ -558,15 +568,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         if (_zoom < 1f && level < _session.MaxLevel && uploads < MaxUploadsPerFrame)
         {
             var parentUploads = StreamVisibleLevel(
-                imgToDev, w, h, level + 1, MaxUploadsPerFrame - uploads);
+                imgToDev, w, h, level + 1, MaxUploadsPerFrame - uploads, frameGen);
             if (parentUploads < 0)
             {
                 return;
             }
         }
-
-        uint? TrySlice(SmoothTileId id) =>
-            _session.Lru.TryGetSlot(id, out var s) ? (uint)s : null;
 
         SmoothViewportFrame.BuildInto(
             imgToDev,
@@ -576,7 +583,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _session.FullWidth,
             _session.FullHeight,
             _session.MaxLevel,
-            TrySlice,
+            _trySlice,
             _crossfade,
             dtMs,
             _visibleScratch,
@@ -622,7 +629,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         float panelW,
         float panelH,
         int level,
-        int budget)
+        int budget,
+        int frameGen)
     {
         if (_session is null || _host == 0 || budget < 1)
         {
@@ -634,12 +642,14 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         var uploaded = 0;
         foreach (var (tx, ty) in _visibleScratch)
         {
+            var id = new SmoothTileId(level, tx, ty);
+            _streamVisibleGen[id] = frameGen;
+
             if (uploaded >= budget)
             {
-                break;
+                continue;
             }
 
-            var id = new SmoothTileId(level, tx, ty);
             if (_session.Lru.TryGetSlot(id, out _))
             {
                 continue;
@@ -702,7 +712,27 @@ internal sealed class SmoothDiligentPresenter : IDisposable
                     continue;
                 }
 
+                // Drop stale: scrolled/zoomed away before the worker ran.
+                var gen = Volatile.Read(ref _streamFrameGen);
+                if (!_streamVisibleGen.TryGetValue(id, out var marked) || marked != gen)
+                {
+                    continue;
+                }
+
                 _ = session.TryEnsureCpuTile(id, trackStreamLru: true);
+            }
+
+            // Bound the gen map (keys for tiles no longer current).
+            if (_streamVisibleGen.Count > 256)
+            {
+                var keep = Volatile.Read(ref _streamFrameGen);
+                foreach (var kv in _streamVisibleGen)
+                {
+                    if (kv.Value != keep)
+                    {
+                        _ = _streamVisibleGen.TryRemove(kv.Key, out _);
+                    }
+                }
             }
         }
         finally
@@ -800,6 +830,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         _streamEnsurePending.Clear();
+        _streamVisibleGen.Clear();
         if (_host != 0)
         {
             SmoothPresenterNative.TilePoolDestroy(_host);
