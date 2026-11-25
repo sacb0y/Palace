@@ -6,7 +6,6 @@ using Microsoft.UI.Xaml.Input;
 using Palace.Helpers;
 using Palace.Imaging;
 using Palace.Services;
-using Windows.Foundation;
 using CoreVirtualKeyStates = Windows.UI.Core.CoreVirtualKeyStates;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
 using VirtualKey = Windows.System.VirtualKey;
@@ -38,7 +37,9 @@ public sealed partial class SmoothPresenterWindow : Window
     private float _targetZoom = 1f;
     private float _fitZoom = 1f;
     private bool _panning;
-    private Point _lastPan;
+    /// <summary>Last zoom-about / pan point in device pixels (not DIP).</summary>
+    private float _lastPanX;
+    private float _lastPanY;
     private bool _transformDirty;
     private int _exifOrientation = 1;
     private int _storedW = 1;
@@ -548,9 +549,9 @@ public sealed partial class SmoothPresenterWindow : Window
             eased = _targetZoom;
         }
 
-        // Ease toward target about last cursor (device px); Point is double.
+        // Ease toward target about last cursor (device px).
         var about = SmoothViewport.ZoomAbout(
-            _zoom, _tx, _ty, eased, (float)_lastPan.X, (float)_lastPan.Y);
+            _zoom, _tx, _ty, eased, _lastPanX, _lastPanY);
         _zoom = about.Zoom;
         _tx = about.Tx;
         _ty = about.Ty;
@@ -565,10 +566,10 @@ public sealed partial class SmoothPresenterWindow : Window
         }
 
         var pt = e.GetCurrentPoint(ScpSmooth);
-        var (dipW, dipH, sx, sy) = PanelMetrics();
-        var cx = (float)(pt.Position.X * sx);
-        var cy = (float)(pt.Position.Y * sy);
-        _lastPan = new Point(cx, cy);
+        var (_, _, sx, sy) = PanelMetrics();
+        // Device px so TickTransformEase ZoomAbout matches pan space.
+        _lastPanX = (float)(pt.Position.X * sx);
+        _lastPanY = (float)(pt.Position.Y * sy);
 
         var delta = pt.Properties.MouseWheelDelta;
         var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
@@ -577,13 +578,8 @@ public sealed partial class SmoothPresenterWindow : Window
         var factor = ctrl
             ? (delta > 0 ? 1.05f : 1f / 1.05f)
             : (delta > 0 ? 1.12f : 1f / 1.12f);
+        // Only move the target — EaseZoom / ZoomAbout run on the timer (no skip).
         _targetZoom = SmoothViewport.ClampZoom(_targetZoom * factor, _fitZoom);
-        var about = SmoothViewport.ZoomAbout(_zoom, _tx, _ty, _targetZoom, cx, cy);
-        // Immediate ZoomAbout for responsiveness; EaseZoom catches up on timer.
-        _zoom = about.Zoom;
-        _tx = about.Tx;
-        _ty = about.Ty;
-        _transformDirty = true;
         e.Handled = true;
     }
 
@@ -596,7 +592,9 @@ public sealed partial class SmoothPresenterWindow : Window
         }
 
         _panning = true;
-        _lastPan = pt.Position;
+        var (_, _, sx, sy) = PanelMetrics();
+        _lastPanX = (float)(pt.Position.X * sx);
+        _lastPanY = (float)(pt.Position.Y * sy);
         ScpSmooth.CapturePointer(e.Pointer);
         e.Handled = true;
     }
@@ -610,11 +608,12 @@ public sealed partial class SmoothPresenterWindow : Window
 
         var pt = e.GetCurrentPoint(ScpSmooth);
         var (_, _, sx, sy) = PanelMetrics();
-        var dx = (float)((pt.Position.X - _lastPan.X) * sx);
-        var dy = (float)((pt.Position.Y - _lastPan.Y) * sy);
-        _tx += dx;
-        _ty += dy;
-        _lastPan = pt.Position;
+        var x = (float)(pt.Position.X * sx);
+        var y = (float)(pt.Position.Y * sy);
+        _tx += x - _lastPanX;
+        _ty += y - _lastPanY;
+        _lastPanX = x;
+        _lastPanY = y;
         _transformDirty = true;
         e.Handled = true;
     }
@@ -628,9 +627,7 @@ public sealed partial class SmoothPresenterWindow : Window
 
         _panning = false;
         ScpSmooth.ReleasePointerCapture(e.Pointer);
-        // Snap zoom at rest.
-        _zoom = _targetZoom;
-        _transformDirty = true;
+        // Do not snap _zoom here — TickTransformEase snaps at rest after ease.
         e.Handled = true;
     }
 

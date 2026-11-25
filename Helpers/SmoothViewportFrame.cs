@@ -58,25 +58,49 @@ public static class SmoothViewportFrame
         SmoothTileCrossfade crossfade,
         float dtMs)
     {
-        var level = SmoothViewport.LevelForZoom(zoom, maxLevel);
         var visible = new List<(int Tx, int Ty)>();
-        SmoothViewport.CollectVisibleTiles(
-            imgToDev, panelW, panelH, level, fullWidth, fullHeight, visible);
-
-        // Dedupe underlay parents so each ancestor is drawn once at opacity 1.
         var underlaySeen = new HashSet<SmoothTileId>();
-        var list = new List<DrawTile>(visible.Count * 2);
+        var list = new List<DrawTile>();
+        BuildInto(
+            imgToDev, panelW, panelH, zoom, fullWidth, fullHeight, maxLevel,
+            trySlice, crossfade, dtMs, visible, underlaySeen, list);
+        return list;
+    }
 
-        foreach (var (tx, ty) in visible)
+    /// <summary>
+    /// Same as <see cref="Build"/> but reuses caller scratch buffers (no per-frame alloc).
+    /// </summary>
+    public static void BuildInto(
+        in SmoothViewport.Affine2x3 imgToDev,
+        float panelW,
+        float panelH,
+        float zoom,
+        int fullWidth,
+        int fullHeight,
+        int maxLevel,
+        Func<SmoothTileId, uint?> trySlice,
+        SmoothTileCrossfade crossfade,
+        float dtMs,
+        List<(int Tx, int Ty)> visibleScratch,
+        HashSet<SmoothTileId> underlaySeenScratch,
+        List<DrawTile> listScratch)
+    {
+        var level = SmoothViewport.LevelForZoom(zoom, maxLevel);
+        visibleScratch.Clear();
+        SmoothViewport.CollectVisibleTiles(
+            imgToDev, panelW, panelH, level, fullWidth, fullHeight, visibleScratch);
+
+        underlaySeenScratch.Clear();
+        listScratch.Clear();
+
+        foreach (var (tx, ty) in visibleScratch)
         {
             var id = new SmoothTileId(level, tx, ty);
             var slice = trySlice(id);
 
             // Walk coarser ancestors for underlay / fallback (whole pyramid).
-            SmoothTileId? ancestorId = null;
-            uint? ancestorSlice = null;
             FindNearestResidentAncestor(
-                level, tx, ty, maxLevel, trySlice, out ancestorId, out ancestorSlice);
+                level, tx, ty, maxLevel, trySlice, out var ancestorId, out var ancestorSlice);
 
             if (slice is null)
             {
@@ -86,9 +110,9 @@ public static class SmoothViewportFrame
                 }
 
                 // No fine tile — draw the nearest resident ancestor opaque.
-                if (underlaySeen.Add(ancestorId.Value))
+                if (underlaySeenScratch.Add(ancestorId.Value))
                 {
-                    list.Add(MakeDraw(
+                    listScratch.Add(MakeDraw(
                         ancestorId.Value,
                         fullWidth,
                         fullHeight,
@@ -105,9 +129,9 @@ public static class SmoothViewportFrame
                 && ancestorId.Value != id;
 
             // Underlay: resident ancestor at opacity 1 under fading fine tiles.
-            if (hasCoarser && underlaySeen.Add(ancestorId!.Value))
+            if (hasCoarser && underlaySeenScratch.Add(ancestorId!.Value))
             {
-                list.Add(MakeDraw(
+                listScratch.Add(MakeDraw(
                     ancestorId.Value,
                     fullWidth,
                     fullHeight,
@@ -142,7 +166,7 @@ public static class SmoothViewportFrame
             var lw = SmoothTileMath.LevelWidth(fullWidth, level);
             var lh = SmoothTileMath.LevelHeight(fullHeight, level);
             var (ox, oy, cw, ch) = SmoothTileMath.ContentRect(tx, ty, lw, lh);
-            list.Add(new DrawTile(
+            listScratch.Add(new DrawTile(
                 id,
                 ImgOriginX: ox * levelScale,
                 ImgOriginY: oy * levelScale,
@@ -158,13 +182,12 @@ public static class SmoothViewportFrame
         }
 
         // Coarse → fine: sort so coarser parents draw first (Geo).
-        list.Sort(static (a, b) =>
+        listScratch.Sort(static (a, b) =>
         {
             var c = b.Level.CompareTo(a.Level);
             return c != 0 ? c : a.Opacity.CompareTo(b.Opacity);
         });
         crossfade.EndFrame();
-        return list;
     }
 
     private static void FindNearestResidentAncestor(

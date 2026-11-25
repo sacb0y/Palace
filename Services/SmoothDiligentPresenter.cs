@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml.Controls;
 using Palace.Helpers;
@@ -37,7 +38,12 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private bool _pyramidBuildRunning;
     private readonly float[] _viewPack = new float[32];
     private readonly List<(int Tx, int Ty)> _visibleScratch = new();
-    private readonly List<SmoothPresenterNative.TileInstance> _instancePool = new();
+    private readonly HashSet<SmoothTileId> _underlayScratch = new();
+    private readonly List<SmoothViewportFrame.DrawTile> _drawScratch = new();
+    private SmoothPresenterNative.TileInstance[] _instanceArray = new SmoothPresenterNative.TileInstance[64];
+    private readonly ConcurrentQueue<SmoothTileId> _streamEnsureQueue = new();
+    private readonly ConcurrentDictionary<SmoothTileId, byte> _streamEnsurePending = new();
+    private int _streamEnsureRunning;
     private long _lastTickQpc;
     private const int MaxUploadsPerFrame = 4;
 
@@ -562,7 +568,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         uint? TrySlice(SmoothTileId id) =>
             _session.Lru.TryGetSlot(id, out var s) ? (uint)s : null;
 
-        var draws = SmoothViewportFrame.Build(
+        SmoothViewportFrame.BuildInto(
             imgToDev,
             w,
             h,
@@ -572,17 +578,21 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _session.MaxLevel,
             TrySlice,
             _crossfade,
-            dtMs);
+            dtMs,
+            _visibleScratch,
+            _underlayScratch,
+            _drawScratch);
 
-        while (_instancePool.Count < draws.Count)
+        var drawCount = _drawScratch.Count;
+        if (_instanceArray.Length < drawCount)
         {
-            _instancePool.Add(default);
+            _instanceArray = new SmoothPresenterNative.TileInstance[Math.Max(drawCount, _instanceArray.Length * 2)];
         }
 
-        for (var i = 0; i < draws.Count; i++)
+        for (var i = 0; i < drawCount; i++)
         {
-            var d = draws[i];
-            _instancePool[i] = new SmoothPresenterNative.TileInstance
+            var d = _drawScratch[i];
+            _instanceArray[i] = new SmoothPresenterNative.TileInstance
             {
                 ImgOriginX = d.ImgOriginX,
                 ImgOriginY = d.ImgOriginY,
@@ -599,13 +609,14 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             };
         }
 
-        var instances = draws.Count == 0
-            ? Array.Empty<SmoothPresenterNative.TileInstance>()
-            : _instancePool.GetRange(0, draws.Count).ToArray();
-        _ = SmoothPresenterNative.ViewportSetInstances(_host, instances);
+        _ = SmoothPresenterNative.ViewportSetInstances(_host, _instanceArray, drawCount);
     }
 
-    /// <summary>Upload up to <paramref name="budget"/> missing tiles at <paramref name="level"/>. Returns -1 on device-lost.</summary>
+    /// <summary>
+    /// Upload up to <paramref name="budget"/> missing tiles at <paramref name="level"/>.
+    /// CPU ensure runs on a worker; this path only uploads already-resident CPU tiles.
+    /// Returns -1 on device-lost.
+    /// </summary>
     private int StreamVisibleLevel(
         in SmoothViewport.Affine2x3 imgToDev,
         float panelW,
@@ -634,8 +645,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
                 continue;
             }
 
-            if (!_session.TryEnsureCpuTile(id) || !_session.Cpu.TryGet(id, out var bytes))
+            if (!_session.Cpu.TryGet(id, out var bytes))
             {
+                // Off present/UI thread: queue rematerialize; upload next frames.
+                EnqueueStreamEnsure(id);
                 continue;
             }
 
@@ -658,6 +671,50 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         return uploaded;
+    }
+
+    private void EnqueueStreamEnsure(SmoothTileId id)
+    {
+        if (!_streamEnsurePending.TryAdd(id, 0))
+        {
+            return;
+        }
+
+        _streamEnsureQueue.Enqueue(id);
+        if (Interlocked.CompareExchange(ref _streamEnsureRunning, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(DrainStreamEnsureQueue);
+    }
+
+    private void DrainStreamEnsureQueue()
+    {
+        try
+        {
+            while (_streamEnsureQueue.TryDequeue(out var id))
+            {
+                _ = _streamEnsurePending.TryRemove(id, out _);
+                var session = _session;
+                if (session is null || _disposed || _pyramidBuildRunning)
+                {
+                    continue;
+                }
+
+                _ = session.TryEnsureCpuTile(id, trackStreamLru: true);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _streamEnsureRunning, 0);
+            // Race: items enqueued after we thought the queue was empty.
+            if (!_streamEnsureQueue.IsEmpty
+                && Interlocked.CompareExchange(ref _streamEnsureRunning, 1, 0) == 0)
+            {
+                _ = Task.Run(DrainStreamEnsureQueue);
+            }
+        }
     }
 
     public bool TryRecreateAfterDeviceLost(
@@ -738,6 +795,11 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private void DestroyHost()
     {
         _viewportArmed = false;
+        while (_streamEnsureQueue.TryDequeue(out _))
+        {
+        }
+
+        _streamEnsurePending.Clear();
         if (_host != 0)
         {
             SmoothPresenterNative.TilePoolDestroy(_host);

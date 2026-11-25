@@ -626,7 +626,11 @@ public static class SmoothPresenterNative
         }
     }
 
-    public static StatusCode ViewportSetInstances(nint host, TileInstance[] instances)
+    public static StatusCode ViewportSetInstances(nint host, TileInstance[] instances) =>
+        ViewportSetInstances(host, instances, instances?.Length ?? 0);
+
+    /// <summary>Upload the first <paramref name="count"/> instances (avoids per-frame ToArray resize).</summary>
+    public static StatusCode ViewportSetInstances(nint host, TileInstance[]? instances, int count)
     {
         if (host == 0 || !IsAvailable)
         {
@@ -635,12 +639,17 @@ public static class SmoothPresenterNative
 
         try
         {
-            if (instances is null || instances.Length == 0)
+            if (instances is null || count <= 0)
             {
                 return (StatusCode)NativeViewportSetInstances(host, null, 0);
             }
 
-            return (StatusCode)NativeViewportSetInstances(host, instances, (uint)instances.Length);
+            if (count > instances.Length)
+            {
+                count = instances.Length;
+            }
+
+            return (StatusCode)NativeViewportSetInstances(host, instances, (uint)count);
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
         {

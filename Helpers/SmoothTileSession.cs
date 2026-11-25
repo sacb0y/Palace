@@ -17,6 +17,7 @@ public sealed class SmoothTileSession
     private int _workingW;
     private int _workingH;
     private readonly Queue<SmoothTileId> _streamCpuOrder = new();
+    private readonly object _streamGate = new();
     private const int StreamCpuCap = 64;
 
     public int FullWidth { get; }
@@ -139,54 +140,67 @@ public sealed class SmoothTileSession
     /// <summary>
     /// Ensure a CPU tile exists for streaming uploads. Uses retained Working
     /// floats for finer levels after the pyramid has dropped them from Cpu.
-    /// Bounded LRU (~<see cref="StreamCpuCap"/>) for non-coarse tiles.
+    /// Bounded LRU (~<see cref="StreamCpuCap"/>) for non-coarse tiles —
+    /// only when <paramref name="trackStreamLru"/> (streaming path only;
+    /// pyramid <c>EnsureChildTile</c> must pass false).
     /// </summary>
-    public bool TryEnsureCpuTile(SmoothTileId id)
+    public bool TryEnsureCpuTile(SmoothTileId id, bool trackStreamLru = true)
     {
-        if (Cpu.TryGet(id, out _))
+        lock (_streamGate)
         {
-            return true;
-        }
-
-        if (id.Level < 0 || id.Level > MaxLevel)
-        {
-            return false;
-        }
-
-        byte[]? bytes = null;
-        if (id.Level == 0
-            && _retainedLevel0 is not null
-            && _retainedLevel0.TryGetValue(id, out var retained))
-        {
-            bytes = retained;
-        }
-        else if (_workingRgba is not null && _workingW > 0 && _workingH > 0)
-        {
-            // One mip source: all levels from retained Working floats.
-            bytes = SmoothWorkingDecode.TileFromWorkingAtLevel(
-                _workingRgba, _workingW, _workingH, id.Level, id.TileX, id.TileY);
-        }
-
-        if (bytes is null)
-        {
-            return false;
-        }
-
-        Cpu.Set(id, bytes);
-        if (id.Level < CoarseLevel)
-        {
-            _streamCpuOrder.Enqueue(id);
-            while (_streamCpuOrder.Count > StreamCpuCap)
+            if (Cpu.TryGet(id, out _))
             {
-                var drop = _streamCpuOrder.Dequeue();
-                if (drop.Level < CoarseLevel)
+                return true;
+            }
+
+            if (id.Level < 0 || id.Level > MaxLevel)
+            {
+                return false;
+            }
+
+            byte[]? bytes = null;
+            if (id.Level == 0
+                && _retainedLevel0 is not null
+                && _retainedLevel0.TryGetValue(id, out var retained))
+            {
+                bytes = retained;
+            }
+            else if (_workingRgba is not null && _workingW > 0 && _workingH > 0)
+            {
+                // One mip source: all levels from retained Working floats.
+                bytes = SmoothWorkingDecode.TileFromWorkingAtLevel(
+                    _workingRgba, _workingW, _workingH, id.Level, id.TileX, id.TileY);
+            }
+            else if (id.Level > 0
+                && _workingRgba is null
+                && _retainedLevel0 is not null)
+            {
+                // RGBA16F-only session: mid-levels retained on Cpu after build
+                // (see BuildPyramidCore); nothing to rematerialize here.
+                return false;
+            }
+
+            if (bytes is null)
+            {
+                return false;
+            }
+
+            Cpu.Set(id, bytes);
+            if (trackStreamLru && id.Level < CoarseLevel)
+            {
+                _streamCpuOrder.Enqueue(id);
+                while (_streamCpuOrder.Count > StreamCpuCap)
                 {
-                    _ = Cpu.Remove(drop);
+                    var drop = _streamCpuOrder.Dequeue();
+                    if (drop.Level < CoarseLevel)
+                    {
+                        _ = Cpu.Remove(drop);
+                    }
                 }
             }
-        }
 
-        return true;
+            return true;
+        }
     }
 
     private long BuildPyramidCore(
@@ -424,7 +438,8 @@ public sealed class SmoothTileSession
             return;
         }
 
-        if (_workingRgba is not null && TryEnsureCpuTile(id))
+        // Pyramid build path — do not enqueue into the stream CPU LRU.
+        if (_workingRgba is not null && TryEnsureCpuTile(id, trackStreamLru: false))
         {
             return;
         }
