@@ -7,6 +7,10 @@
 
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
 
@@ -15,41 +19,73 @@ namespace {
 constexpr unsigned kSlot = 512;
 constexpr unsigned kBorder = 2;
 
-bool EnsureShaderFactory(Host* host)
+/* Avoid Diligent GraphicsTools DefaultShaderSourceStreamFactory (not on our link set).
+ * SmoothMipDownsample.hlsl has no #includes — load bytes and compile as Source. */
+bool TryLoadShaderFile(Host* host, const char* fileName, std::string& out)
 {
-    if (host->shaderFactory) {
-        return true;
+    out.clear();
+    std::vector<std::string> dirs;
+    const char* raw = host->shaderSearchDirs[0] ? host->shaderSearchDirs : ".";
+    std::string cur;
+    for (const char* p = raw;; ++p) {
+        if (*p == ';' || *p == '\0') {
+            if (!cur.empty()) {
+                dirs.push_back(cur);
+                cur.clear();
+            }
+            if (*p == '\0') {
+                break;
+            }
+            continue;
+        }
+        cur.push_back(*p);
     }
-    const char* dirs = host->shaderSearchDirs[0] ? host->shaderSearchDirs : ".";
-    CreateDefaultShaderSourceStreamFactory(dirs, &host->shaderFactory);
-    if (!host->shaderFactory) {
-        SetError(host, "CreateDefaultShaderSourceStreamFactory failed");
-        return false;
+    if (dirs.empty()) {
+        dirs.emplace_back(".");
     }
-    return true;
+
+    for (const auto& dir : dirs) {
+        const std::string path = dir + "\\" + fileName;
+        std::ifstream in(path, std::ios::binary);
+        if (!in) {
+            const std::string pathFwd = dir + "/" + fileName;
+            in.open(pathFwd, std::ios::binary);
+            if (!in) {
+                continue;
+            }
+        }
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        out = ss.str();
+        if (!out.empty()) {
+            return true;
+        }
+    }
+    SetError(host, "SmoothMipDownsample.hlsl not found in shader search dirs");
+    return false;
 }
 
 bool CreateMipPipeline(Host* host)
 {
-    if (!EnsureShaderFactory(host)) {
+    std::string hlsl;
+    if (!TryLoadShaderFile(host, "SmoothMipDownsample.hlsl", hlsl)) {
         return false;
     }
+    /* SMOOTH_SRGB8=0 for RGBA16F Working (Geo); define before source for FXC/Diligent. */
+    const std::string source = std::string("#define SMOOTH_SRGB8 0\n") + hlsl;
 
     ShaderCreateInfo sci{};
     sci.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
     sci.Desc.ShaderType = SHADER_TYPE_COMPUTE;
     sci.EntryPoint = "SmoothMipDownsampleCS";
     sci.Desc.Name = "SmoothMipDownsampleCS";
-    sci.FilePath = "SmoothMipDownsample.hlsl";
-    sci.pShaderSourceStreamFactory = host->shaderFactory;
-    ShaderMacroHelper macros;
-    macros.AddShaderMacro("SMOOTH_SRGB8", 0);
-    sci.Macros = macros;
+    sci.Source = source.c_str();
+    sci.SourceLength = source.size();
 
     RefCntAutoPtr<IShader> cs;
     host->diligentDevice->CreateShader(sci, &cs);
     if (!cs) {
-        SetError(host, "CreateShader SmoothMipDownsampleCS failed (cs_5_0 / file missing?)");
+        SetError(host, "CreateShader SmoothMipDownsampleCS failed (cs_5_0)");
         return false;
     }
 
@@ -111,7 +147,6 @@ PSV_API int psv_set_shader_search_dirs(void* host_ptr, const char* utf8_dirs)
     } else {
         std::snprintf(host->shaderSearchDirs, sizeof(host->shaderSearchDirs), "%s", utf8_dirs);
     }
-    host->shaderFactory.Release();
     return PSV_OK;
 #else
     (void)utf8_dirs;

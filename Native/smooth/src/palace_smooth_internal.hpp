@@ -27,8 +27,6 @@ using Microsoft::WRL::ComPtr;
 #  include "Buffer.h"
 #  include "ShaderResourceBinding.h"
 #  include "RefCntAutoPtr.hpp"
-#  include "DefaultShaderSourceStreamFactory.h"
-#  include "ShaderMacroHelper.hpp"
 using namespace Diligent;
 #endif
 
@@ -65,10 +63,10 @@ struct Host {
     RefCntAutoPtr<IPipelineState> mipPso;
     RefCntAutoPtr<IShaderResourceBinding> mipSrb;
     RefCntAutoPtr<IBuffer> mipCb;
-    RefCntAutoPtr<IShaderSourceInputStreamFactory> shaderFactory;
     unsigned tileCapacity = 0;
     bool tilePoolReady = false;
     bool mipReady = false;
+    /* Semicolon-separated dirs for SmoothMipDownsample.hlsl (and later ToneMap includes). */
     char shaderSearchDirs[512]{};
 #endif
 
