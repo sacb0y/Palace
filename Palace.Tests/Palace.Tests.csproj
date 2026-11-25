@@ -141,6 +141,7 @@
     <Compile Include="..\Helpers\SmoothTileCrossfade.cs" Link="SmoothTileCrossfade.cs" />
     <Compile Include="..\Helpers\SmoothWorkingDecode.cs" Link="SmoothWorkingDecode.cs" />
     <Compile Include="..\Helpers\SmoothToneGpu.cs" Link="SmoothToneGpu.cs" />
+    <Compile Include="..\Helpers\SmoothSourceLoad.cs" Link="SmoothSourceLoad.cs" />
     <Compile Include="..\Helpers\PerformanceSettings.cs" Link="PerformanceSettings.cs" />
     <Compile Include="..\Helpers\SettingsPortable.cs" Link="SettingsPortable.cs" />
     <Compile Include="..\Helpers\ShellChrome.cs" Link="ShellChrome.cs" />

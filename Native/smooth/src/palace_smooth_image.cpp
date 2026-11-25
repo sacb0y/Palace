@@ -90,12 +90,13 @@ bool CreateImagePipeline(Host* host)
     blend.BlendOpAlpha = BLEND_OPERATION_ADD;
     blend.RenderTargetWriteMask = COLOR_MASK_ALL;
 
+    /* DYNAMIC so pool recreate / LUT swap can rebind without rebuilding the SRB. */
     ShaderResourceVariableDesc vars[] = {
         {SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, "SmoothViewCB", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
         {SHADER_TYPE_PIXEL, "SmoothToneCB", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
-        {SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, "Tiles", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
-        {SHADER_TYPE_PIXEL, "TileArr", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
-        {SHADER_TYPE_PIXEL, "ToneLut", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
+        {SHADER_TYPE_VERTEX | SHADER_TYPE_PIXEL, "Tiles", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_PIXEL, "TileArr", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
+        {SHADER_TYPE_PIXEL, "ToneLut", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         {SHADER_TYPE_PIXEL, "LinearClamp", SHADER_RESOURCE_VARIABLE_TYPE_STATIC},
     };
     psoCI.PSODesc.ResourceLayout.Variables = vars;
@@ -157,7 +158,7 @@ bool CreateImagePipeline(Host* host)
         return false;
     }
 
-    /* 1×1 R32F placeholder LUT until psv_viewport_set_lut. */
+    /* Fixed 256×1 R32F LUT (Geo); UpdateTexture overwrite — no per-image recreate. */
     TextureDesc ltd{};
     ltd.Name = "SmoothToneLut";
     ltd.Type = RESOURCE_DIM_TEX_2D;
@@ -313,6 +314,17 @@ HRESULT BindAndDrawImage(Host* host)
     host->diligentContext->Draw(draw);
     host->diligentContext->Flush();
     host->diligentContext->SetRenderTargets(0, nullptr, nullptr, RESOURCE_STATE_TRANSITION_MODE_NONE);
+
+    /* PRESENT transition before Present (D3D12 debug layer). */
+    if (host->backend == PSV_BACKEND_D3D12 && backTex) {
+        StateTransitionDesc barrier{
+            backTex,
+            RESOURCE_STATE_UNKNOWN,
+            RESOURCE_STATE_PRESENT,
+            STATE_TRANSITION_FLAG_UPDATE_STATE};
+        host->diligentContext->TransitionResourceStates(1, &barrier);
+    }
+
     backTex.Release();
     ClearError(host);
     SetError(host, "image pass drawn");
@@ -417,12 +429,12 @@ PSV_API int psv_viewport_set_lut(void* host_ptr, const float* samples, unsigned 
         return PSV_FAILED;
     }
 
-    if (!host->toneLut || host->toneLutSize != count) {
-        host->toneLut.Release();
+    /* Fixed 256 LUT: copy min(count, 256) samples; pad remainder by clamp. */
+    if (!host->toneLut) {
         TextureDesc ltd{};
         ltd.Name = "SmoothToneLut";
         ltd.Type = RESOURCE_DIM_TEX_2D;
-        ltd.Width = count;
+        ltd.Width = kDefaultLutSize;
         ltd.Height = 1;
         ltd.Format = TEX_FORMAT_R32_FLOAT;
         ltd.MipLevels = 1;
@@ -430,18 +442,25 @@ PSV_API int psv_viewport_set_lut(void* host_ptr, const float* samples, unsigned 
         ltd.Usage = USAGE_DEFAULT;
         host->diligentDevice->CreateTexture(ltd, nullptr, &host->toneLut);
         if (!host->toneLut) {
-            SetError(host, "CreateTexture ToneLut resize failed");
+            SetError(host, "CreateTexture ToneLut failed");
             return PSV_FAILED;
         }
-        host->toneLutSize = count;
+        host->toneLutSize = kDefaultLutSize;
+    }
+
+    float lut[kDefaultLutSize];
+    const unsigned n = count < kDefaultLutSize ? count : kDefaultLutSize;
+    std::memcpy(lut, samples, n * sizeof(float));
+    for (unsigned i = n; i < kDefaultLutSize; ++i) {
+        lut[i] = samples[n - 1];
     }
 
     TextureSubResData sub{};
-    sub.pData = samples;
-    sub.Stride = count * sizeof(float);
+    sub.pData = lut;
+    sub.Stride = kDefaultLutSize * sizeof(float);
     Box box{};
     box.MinX = 0;
-    box.MaxX = count;
+    box.MaxX = kDefaultLutSize;
     box.MinY = 0;
     box.MaxY = 1;
     box.MinZ = 0;

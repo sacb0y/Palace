@@ -27,10 +27,11 @@ public sealed class SmoothTileCrossfade
     }
 
     /// <summary>
-    /// Mark a tile as drawn this frame. New tiles start at 0 and rise over
-    /// <see cref="DurationMs"/>. Returns the opacity to bind on the instance.
+    /// Mark a tile as drawn this frame. New tiles start at 0 (or 1 when
+    /// <paramref name="seedOpaque"/> — no coarser resident / first paint) and
+    /// rise over <see cref="DurationMs"/>.
     /// </summary>
-    public float Tick(SmoothTileId id, float dtMs, bool resident)
+    public float Tick(SmoothTileId id, float dtMs, bool resident, bool seedOpaque = false)
     {
         _seenThisFrame.Add(id);
         if (!resident)
@@ -41,7 +42,7 @@ public sealed class SmoothTileCrossfade
 
         if (!_opacity.TryGetValue(id, out var o))
         {
-            o = 0f;
+            o = seedOpaque ? 1f : 0f;
         }
 
         if (o < 1f)

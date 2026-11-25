@@ -3,8 +3,11 @@ using Palace.Imaging;
 namespace Palace.Helpers;
 
 /// <summary>
-/// Packs Geo <c>psv_tone_cb</c> + optional ToneMapLut samples for the SmoothImage
-/// final PS. Tone params are fixed per image/display — never recalculated on zoom.
+/// Packs Geo <c>psv_tone_cb</c> + ToneMapLut samples for the SmoothImage final
+/// PS. Tone is fixed per image+display — never recalculated on zoom.
+/// PresentParams follow GalleryPresent / Geo: HDR OutputScale 203/80, clip
+/// peak/80, soft negatives; SDR OutputScale 1, or SdrWhite/80 when presenting
+/// Full on an HDR panel.
 /// </summary>
 public static class SmoothToneGpu
 {
@@ -12,18 +15,23 @@ public static class SmoothToneGpu
 
     public readonly record struct PackedTone(
         float[] ToneCb,
-        float[]? LutSamples,
+        float[] LutSamples,
         float InputMinPq,
         float InputMaxPq);
 
+    /// <summary>
+    /// Build tone CB + LUT once per image/display. PresentParams are derived
+    /// from <paramref name="display"/> (Geo), not passed by the caller.
+    /// </summary>
+    /// <param name="fullOnHdrPanel">
+    /// When true and <paramref name="display"/> is SDR-tonemap content on an
+    /// HDR panel, PresentParams use SdrWhite/80 (Geo). Default false → scale 1.
+    /// </param>
     public static PackedTone FromStats(
         ImageStats stats,
         DisplayTarget display,
-        float outputScale,
-        float clipScrgb,
-        float paperScrgb,
         float exposureEv = 0f,
-        bool softNegatives = true,
+        bool fullOnHdrPanel = false,
         ToneMapLut? lut = null)
     {
         var p = new ToneMapParams(stats, display, exposureEv);
@@ -32,6 +40,31 @@ public static class SmoothToneGpu
         var outputLimit = useHdr
             ? display.Ld
             : Math.Max(display.PeakNormalized, 1e-6f);
+
+        float outputScale;
+        float clipScrgb;
+        float softNegatives;
+        float paperScrgb;
+        if (useHdr)
+        {
+            // PresentMapImagingHdr: ×203/80, clip peak/80, keep negatives.
+            var map = GalleryPresent.PresentMapImagingHdr(display.PeakNits);
+            outputScale = map.OutputScale;
+            clipScrgb = map.ClipScrgb;
+            softNegatives = map.SoftNegatives ? 1f : 0f;
+            paperScrgb = outputScale;
+        }
+        else
+        {
+            // SDR: OutputScale 1, or SdrWhite/80 when Full on an HDR panel.
+            var map = GalleryPresent.PresentMapImagingFull(
+                displayIsHdr: fullOnHdrPanel,
+                display.SdrWhiteNits);
+            outputScale = map.OutputScale;
+            clipScrgb = map.ClipScrgb;
+            softNegatives = 0f;
+            paperScrgb = outputScale;
+        }
 
         var tone = new float[16];
         tone[0] = stats.Lc;
@@ -48,7 +81,7 @@ public static class SmoothToneGpu
         tone[11] = 1f; // HasLut
         tone[12] = outputScale;
         tone[13] = clipScrgb;
-        tone[14] = softNegatives ? 1f : 0f;
+        tone[14] = softNegatives;
         tone[15] = paperScrgb;
 
         return new PackedTone(tone, lut.Samples, lut.InputMinPq, lut.InputMaxPq);

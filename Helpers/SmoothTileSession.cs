@@ -12,6 +12,11 @@ namespace Palace.Helpers;
 public sealed class SmoothTileSession
 {
     private IReadOnlyDictionary<SmoothTileId, byte[]>? _level0Override;
+    private float[]? _workingRgba;
+    private int _workingW;
+    private int _workingH;
+    private readonly Queue<SmoothTileId> _streamCpuOrder = new();
+    private const int StreamCpuCap = 64;
 
     public int FullWidth { get; }
     public int FullHeight { get; }
@@ -25,6 +30,7 @@ public sealed class SmoothTileSession
     public string WorkingFormat { get; } = SmoothTileWorkingSpace.GpuFormat;
     public long AvailableVramBytes { get; private set; }
     public bool UsedWorkingDecode { get; private set; }
+    public bool HasRetainedWorking => _workingRgba is not null;
 
     public SmoothTileSession(int fullWidth, int fullHeight, long availableVramBytes = 0)
     {
@@ -90,7 +96,9 @@ public sealed class SmoothTileSession
         $"cpuTiles={Cpu.Count} firstCoarseMs={FirstCoarseFrameMs} fmt={WorkingFormat} Border={SmoothTileMath.Border}";
 
     /// <summary>
-    /// V2: build the pyramid from Palace.Imaging Working L0 tiles (cancel-aware).
+    /// V2: build the pyramid from Palace.Imaging Working L0 (cancel-aware).
+    /// Retains Working floats for on-demand finer-level CPU tiles after the
+    /// pyramid drops intermediate levels.
     /// </summary>
     public Task<long> BuildFromWorkingAsync(
         SmoothWorkingDecodeResult working,
@@ -105,8 +113,12 @@ public sealed class SmoothTileSession
                 nameof(working));
         }
 
-        _level0Override = working.Level0Tiles;
+        _level0Override = working.Level0Tiles.Count > 0 ? working.Level0Tiles : null;
+        _workingRgba = working.WorkingRgba;
+        _workingW = working.Width;
+        _workingH = working.Height;
         UsedWorkingDecode = true;
+        working.ClearNormalizedFrame();
         return Task.Run(
             () =>
             {
@@ -120,6 +132,47 @@ public sealed class SmoothTileSession
                 }
             },
             cancellationToken);
+    }
+
+    /// <summary>
+    /// Ensure a CPU tile exists for streaming uploads. Uses retained Working
+    /// floats for finer levels after the pyramid has dropped them from Cpu.
+    /// Bounded LRU (~<see cref="StreamCpuCap"/>) for non-coarse tiles.
+    /// </summary>
+    public bool TryEnsureCpuTile(SmoothTileId id)
+    {
+        if (Cpu.TryGet(id, out _))
+        {
+            return true;
+        }
+
+        if (_workingRgba is null || _workingW < 1 || _workingH < 1)
+        {
+            return false;
+        }
+
+        if (id.Level < 0 || id.Level > MaxLevel)
+        {
+            return false;
+        }
+
+        var bytes = SmoothWorkingDecode.TileFromWorkingAtLevel(
+            _workingRgba, _workingW, _workingH, id.Level, id.TileX, id.TileY);
+        Cpu.Set(id, bytes);
+        if (id.Level < CoarseLevel)
+        {
+            _streamCpuOrder.Enqueue(id);
+            while (_streamCpuOrder.Count > StreamCpuCap)
+            {
+                var drop = _streamCpuOrder.Dequeue();
+                if (drop.Level < CoarseLevel)
+                {
+                    _ = Cpu.Remove(drop);
+                }
+            }
+        }
+
+        return true;
     }
 
     private long BuildPyramidCore(
@@ -338,21 +391,28 @@ public sealed class SmoothTileSession
             return;
         }
 
-        if (id.Level == 0)
+        if (_level0Override is not null
+            && id.Level == 0
+            && _level0Override.TryGetValue(id, out var workingBytes))
         {
-            if (_level0Override is not null
-                && _level0Override.TryGetValue(id, out var workingBytes))
-            {
-                Cpu.Set(id, workingBytes);
-                return;
-            }
+            Cpu.Set(id, workingBytes);
+            return;
+        }
 
+        if (_workingRgba is not null && TryEnsureCpuTile(id))
+        {
+            return;
+        }
+
+        if (id.Level == 0 && !UsedWorkingDecode)
+        {
+            // Procedural fill is tests / legacy only — never the primary V2 path.
             Cpu.Set(id, MakeProceduralTile(id));
             return;
         }
 
         throw new InvalidOperationException(
-            $"Missing intermediate tile {id}; level>0 must come from prior mip, not procedural fill.");
+            $"Missing tile {id}; V2 requires retained Working, V1 level>0 must come from prior mip.");
     }
 
     private float[] AssembleParentFootprint(

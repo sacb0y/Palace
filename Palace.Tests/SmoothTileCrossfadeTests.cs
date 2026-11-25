@@ -18,6 +18,15 @@ public sealed class SmoothTileCrossfadeTests
     }
 
     [Fact]
+    public void SeedOpaque_StartsAtOne()
+    {
+        var xf = new SmoothTileCrossfade(durationMs: 100f);
+        var id = new SmoothTileId(0, 0, 0);
+        var a = xf.Tick(id, dtMs: 16f, resident: true, seedOpaque: true);
+        Assert.Equal(1f, a);
+    }
+
+    [Fact]
     public void EndFrame_DropsUnseen()
     {
         var xf = new SmoothTileCrossfade();

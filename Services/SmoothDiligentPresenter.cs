@@ -32,10 +32,24 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private float _zoom = 1f;
     private float _tx;
     private float _ty;
+    private float _orient00 = 1f;
+    private float _orient01;
+    private float _orient10;
+    private float _orient11 = 1f;
     private bool _viewportArmed;
+    private bool _pyramidBuildRunning;
     private readonly float[] _viewPack = new float[32];
     private readonly List<(int Tx, int Ty)> _visibleScratch = new();
+    private readonly List<SmoothPresenterNative.TileInstance> _instancePool = new();
     private long _lastTickQpc;
+    private const int MaxUploadsPerFrame = 4;
+
+    /// <summary>True while a background pyramid build owns the session.</summary>
+    public bool PyramidBuildRunning
+    {
+        get => _pyramidBuildRunning;
+        set => _pyramidBuildRunning = value;
+    }
 
     public SmoothDiligentPresenter(SwapChainPanel panel, string? logDataDir = null)
     {
@@ -394,8 +408,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     }
 
     /// <summary>
-    /// Arm V2 SmoothImage pass with fit zoom + tone LUT. No-op when the setting
-    /// is off or the tile pool is missing. Panel-sized SC — no 8192 DIP zoom.
+    /// Arm V2 SmoothImage pass with fit zoom + tone LUT. Call only from build
+    /// completion (never while a pyramid build is running). Panel-sized SC —
+    /// no 8192 DIP zoom. Cleared on device-lost / DestroyHost.
     /// </summary>
     public bool TryArmV2Viewport(
         float zoom,
@@ -406,6 +421,14 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     {
         if (_disposed || _host == 0 || _session is null || !ViewerSettings.SmoothPresenterEnabled)
         {
+            return false;
+        }
+
+        if (_pyramidBuildRunning)
+        {
+            System.Diagnostics.Debug.Assert(
+                false,
+                "TryArmV2Viewport while pyramid build running");
             return false;
         }
 
@@ -435,6 +458,17 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _tx = tx;
         _ty = ty;
     }
+
+    /// <summary>EXIF orientation matrix for <see cref="SmoothViewport.Affine2x3.FromZoomPan"/>.</summary>
+    public void SetOrientation(float o00, float o01, float o10, float o11)
+    {
+        _orient00 = o00;
+        _orient01 = o01;
+        _orient10 = o10;
+        _orient11 = o11;
+    }
+
+    public (float Zoom, float Tx, float Ty) GetViewportTransform() => (_zoom, _tx, _ty);
 
     public bool Tick()
     {
@@ -480,6 +514,15 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
+        // Re-arm only from build completion — never stream mid-build.
+        System.Diagnostics.Debug.Assert(
+            !_pyramidBuildRunning,
+            "PushV2FrameIfArmed while pyramid build running");
+        if (_pyramidBuildRunning)
+        {
+            return;
+        }
+
         var w = _life.Width;
         var h = _life.Height;
         if (w < 2 || h < 2)
@@ -494,25 +537,32 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _lastTickQpc = now;
         dtMs = Math.Clamp(dtMs, 1f, 100f);
 
-        var imgToDev = SmoothViewport.Affine2x3.FromZoomPan(_zoom, _tx, _ty);
+        var imgToDev = SmoothViewport.Affine2x3.FromZoomPan(
+            _zoom, _tx, _ty, _orient00, _orient01, _orient10, _orient11);
         SmoothViewport.PackViewCb(_viewPack, imgToDev, w, h, _zoom);
         _ = SmoothPresenterNative.ViewportSetView(
             _host,
             SmoothPresenterNative.ViewCb.FromPacked(_viewPack));
 
-        // Stream visible tiles into the GPU LRU (cross-fade on first residency).
+        // Stream visible tiles from retained Working → Cpu → GPU (cap uploads/frame).
         var level = SmoothViewport.LevelForZoom(_zoom, _session.MaxLevel);
         SmoothViewport.CollectVisibleTiles(
             imgToDev, w, h, level, _session.FullWidth, _session.FullHeight, _visibleScratch);
+        var uploads = 0;
         foreach (var (tx, ty) in _visibleScratch)
         {
+            if (uploads >= MaxUploadsPerFrame)
+            {
+                break;
+            }
+
             var id = new SmoothTileId(level, tx, ty);
             if (_session.Lru.TryGetSlot(id, out _))
             {
                 continue;
             }
 
-            if (!_session.Cpu.TryGet(id, out var bytes))
+            if (!_session.TryEnsureCpuTile(id) || !_session.Cpu.TryGet(id, out var bytes))
             {
                 continue;
             }
@@ -522,7 +572,17 @@ internal sealed class SmoothDiligentPresenter : IDisposable
                 continue;
             }
 
-            _ = SmoothPresenterNative.TileUpload(_host, (uint)slot, bytes);
+            var up = SmoothPresenterNative.TileUpload(_host, (uint)slot, bytes);
+            if (up == SmoothPresenterNative.StatusCode.DeviceLost)
+            {
+                HandleDeviceLost();
+                return;
+            }
+
+            if (up == SmoothPresenterNative.StatusCode.Ok)
+            {
+                uploads++;
+            }
         }
 
         uint? TrySlice(SmoothTileId id) =>
@@ -540,11 +600,15 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             _crossfade,
             dtMs);
 
-        var instances = new SmoothPresenterNative.TileInstance[draws.Count];
+        while (_instancePool.Count < draws.Count)
+        {
+            _instancePool.Add(default);
+        }
+
         for (var i = 0; i < draws.Count; i++)
         {
             var d = draws[i];
-            instances[i] = new SmoothPresenterNative.TileInstance
+            _instancePool[i] = new SmoothPresenterNative.TileInstance
             {
                 ImgOriginX = d.ImgOriginX,
                 ImgOriginY = d.ImgOriginY,
@@ -561,6 +625,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             };
         }
 
+        var instances = draws.Count == 0
+            ? Array.Empty<SmoothPresenterNative.TileInstance>()
+            : _instancePool.GetRange(0, draws.Count).ToArray();
         _ = SmoothPresenterNative.ViewportSetInstances(_host, instances);
     }
 
@@ -619,6 +686,8 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     private void HandleDeviceLost()
     {
+        _viewportArmed = false;
+        _crossfade.Clear();
         _life.MarkDeviceLost();
         _status = "device lost — recreate required";
         try
@@ -639,6 +708,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     private void DestroyHost()
     {
+        _viewportArmed = false;
         if (_host != 0)
         {
             SmoothPresenterNative.TilePoolDestroy(_host);

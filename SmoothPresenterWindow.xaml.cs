@@ -1,25 +1,43 @@
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Palace.Helpers;
+using Palace.Imaging;
 using Palace.Services;
+using Windows.Foundation;
+using Windows.System;
+using Windows.UI.Core;
 
 namespace Palace;
 
 /// <summary>
-/// Experimental Diligent SwapChainPanel host for Smooth Viewer V1/V2.
-/// Opened from Settings when the smooth presenter toggle is on (default off).
+/// Experimental Diligent SwapChainPanel host for Smooth Viewer V2.
+/// Primary path: Working decode (not procedural). Opened from Settings when
+/// the smooth presenter toggle is on (default off).
 /// </summary>
 public sealed partial class SmoothPresenterWindow : Window
 {
     private SmoothDiligentPresenter? _presenter;
     private SmoothTileSession? _tiles;
+    private SmoothWorkingDecode? _workingDecode;
+    private SmoothWorkingDecodeResult? _working;
     private DispatcherQueueTimer? _timer;
     private CancellationTokenSource? _buildCts;
     private Task? _buildTask;
     private bool _activated;
     private bool _hostStarted;
     private bool _poolReady;
+
+    private float _zoom = 1f;
+    private float _tx;
+    private float _ty;
+    private float _targetZoom = 1f;
+    private float _fitZoom = 1f;
+    private bool _panning;
+    private Point _lastPan;
+    private bool _transformDirty;
 
     public SmoothPresenterWindow()
     {
@@ -43,11 +61,17 @@ public sealed partial class SmoothPresenterWindow : Window
     private void PreparePresenter()
     {
         var dataDir = CatalogStore.DataDir();
-        _tiles = new SmoothTileSession(12000, 8000);
-        TxtSmoothTiles.Text = "waiting for presenter…";
+        // V2 primary: modest Working synthetic scene (not procedural pyramid).
+        // Real files go through SmoothSourceLoad + DecodePathAsync.
+        const int w = 2032;
+        const int h = 1524;
+        _tiles = new SmoothTileSession(w, h);
+        _workingDecode = new SmoothWorkingDecode();
+        TxtSmoothTiles.Text = "decoding Working…";
 
         _presenter = new SmoothDiligentPresenter(ScpSmooth, dataDir);
         TryStartWhenPanelSized();
+        _ = StartWorkingDecodeAsync(w, h);
 
         _timer = DispatcherQueue.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
@@ -65,18 +89,90 @@ public sealed partial class SmoothPresenterWindow : Window
                 return;
             }
 
+            TickTransformEase();
+
             if (_presenter.Lifecycle.NeedsRecreate)
             {
                 HandleNeedsRecreate();
             }
             else
             {
+                if (_transformDirty)
+                {
+                    _presenter.SetViewportTransform(_zoom, _tx, _ty);
+                    _transformDirty = false;
+                }
+
                 _ = _presenter.Tick();
             }
 
             TxtSmoothStatus.Text = _presenter.Status;
         };
         _timer.Start();
+    }
+
+    private async Task StartWorkingDecodeAsync(int w, int h)
+    {
+        if (_workingDecode is null)
+        {
+            return;
+        }
+
+        var src = new float[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var i = ((y * w) + x) * 4;
+                var u = x / (float)Math.Max(1, w - 1);
+                var v = y / (float)Math.Max(1, h - 1);
+                src[i] = 0.15f + 0.85f * u;
+                src[i + 1] = 0.1f + 0.5f * v;
+                src[i + 2] = 0.2f + 0.4f * (1f - u) * v;
+                src[i + 3] = 1f;
+            }
+        }
+
+        try
+        {
+            var result = await _workingDecode.DecodeAsync(
+                src, w, h, ImagingStillNormalize.OptionsForRadiance());
+            if (result is null)
+            {
+                TxtSmoothTiles.Text = "Working decode failed / over budget";
+                return;
+            }
+
+            _working = result;
+            // Session size must match decoded Working (fit may shrink ≥64MP).
+            if (_tiles is null
+                || _tiles.FullWidth != result.Width
+                || _tiles.FullHeight != result.Height)
+            {
+                _tiles = new SmoothTileSession(result.Width, result.Height);
+                _poolReady = false;
+                if (_presenter is not null && _hostStarted
+                    && _presenter.TryPrepareV1TilePool(_tiles))
+                {
+                    _poolReady = true;
+                }
+            }
+
+            TxtSmoothTiles.Text =
+                $"Working {result.Width}x{result.Height} gen={result.Generation} — building pyramid…";
+            if (_poolReady)
+            {
+                StartBackgroundPyramid();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // image change / close
+        }
+        catch (Exception ex)
+        {
+            TxtSmoothTiles.Text = "Working decode error: " + ex.Message;
+        }
     }
 
     private void HandleNeedsRecreate()
@@ -86,8 +182,8 @@ public sealed partial class SmoothPresenterWindow : Window
             return;
         }
 
-        // Cancel any in-flight pyramid; do not start a second build until the old one ends.
         _buildCts?.Cancel();
+        _workingDecode?.Cancel();
         if (_buildTask is not null && !_buildTask.IsCompleted)
         {
             TxtSmoothTiles.Text = "device lost — waiting for build cancel…";
@@ -96,6 +192,7 @@ public sealed partial class SmoothPresenterWindow : Window
 
         _buildTask = null;
         _poolReady = false;
+        _presenter.PyramidBuildRunning = false;
 
         var m = PanelMetrics();
         if (m.DipW < 2 || m.DipH < 2)
@@ -138,8 +235,15 @@ public sealed partial class SmoothPresenterWindow : Window
         if (_tiles is not null && _presenter.TryPrepareV1TilePool(_tiles))
         {
             _poolReady = true;
-            TxtSmoothTiles.Text = "pool ready — building pyramid (bg)…";
-            StartBackgroundPyramid();
+            if (_working is not null)
+            {
+                TxtSmoothTiles.Text = "pool ready — building pyramid (bg)…";
+                StartBackgroundPyramid();
+            }
+            else
+            {
+                TxtSmoothTiles.Text = "pool ready — waiting for Working decode…";
+            }
         }
         else
         {
@@ -149,7 +253,7 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void StartBackgroundPyramid()
     {
-        if (_tiles is null || _presenter is null || !_poolReady)
+        if (_tiles is null || _presenter is null || !_poolReady || _working is null)
         {
             return;
         }
@@ -165,7 +269,9 @@ public sealed partial class SmoothPresenterWindow : Window
         var cts = _buildCts;
         var session = _tiles;
         var presenter = _presenter;
+        var working = _working;
         var dq = DispatcherQueue;
+        presenter.PyramidBuildRunning = true;
 
         Action<SmoothGpuMipRequest> gpuMip = req =>
         {
@@ -202,7 +308,6 @@ public sealed partial class SmoothPresenterWindow : Window
             }
             catch (OperationCanceledException)
             {
-                // Do not dispose while a queued UI callback may still Set.
                 throw;
             }
 
@@ -249,13 +354,14 @@ public sealed partial class SmoothPresenterWindow : Window
             done.Dispose();
         };
 
-        var build = session.BuildPyramidAsync(cts.Token, gpuMip, afterLevel);
+        var build = session.BuildFromWorkingAsync(working, cts.Token, gpuMip, afterLevel);
         _buildTask = build;
         _ = build.ContinueWith(
             t =>
             {
                 dq.TryEnqueue(() =>
                 {
+                    presenter.PyramidBuildRunning = false;
                     if (cts.IsCancellationRequested || !ReferenceEquals(_tiles, session))
                     {
                         return;
@@ -263,7 +369,8 @@ public sealed partial class SmoothPresenterWindow : Window
 
                     if (t.IsFaulted)
                     {
-                        TxtSmoothTiles.Text = "tile build failed: " + (t.Exception?.GetBaseException().Message ?? "error");
+                        TxtSmoothTiles.Text =
+                            "tile build failed: " + (t.Exception?.GetBaseException().Message ?? "error");
                         return;
                     }
 
@@ -273,7 +380,7 @@ public sealed partial class SmoothPresenterWindow : Window
                     }
 
                     presenter.FinalizeV1CoarseUploads(session);
-                    ArmV2Viewport(session, presenter);
+                    ArmV2Viewport(session, presenter, working);
                     TxtSmoothTiles.Text = session.StatusLine() + " · " + presenter.TileStatus;
                 });
             },
@@ -282,7 +389,10 @@ public sealed partial class SmoothPresenterWindow : Window
             TaskScheduler.Default);
     }
 
-    private void ArmV2Viewport(SmoothTileSession session, SmoothDiligentPresenter presenter)
+    private void ArmV2Viewport(
+        SmoothTileSession session,
+        SmoothDiligentPresenter presenter,
+        SmoothWorkingDecodeResult working)
     {
         if (!ViewerSettings.SmoothPresenterEnabled)
         {
@@ -292,32 +402,126 @@ public sealed partial class SmoothPresenterWindow : Window
         var (dipW, dipH, sx, sy) = PanelMetrics();
         var panelW = (float)(dipW * sx);
         var panelH = (float)(dipH * sy);
-        var fit = SmoothViewport.FitZoom(panelW, panelH, session.FullWidth, session.FullHeight);
-        var zoom = SmoothViewport.ClampZoom(fit, fit);
-        // Center image in the panel (device px).
-        var tx = (panelW - (session.FullWidth * zoom)) * 0.5f;
-        var ty = (panelH - (session.FullHeight * zoom)) * 0.5f;
+        _fitZoom = SmoothViewport.FitZoom(panelW, panelH, session.FullWidth, session.FullHeight);
+        _zoom = SmoothViewport.ClampZoom(_fitZoom, _fitZoom);
+        _targetZoom = _zoom;
+        _tx = (panelW - (session.FullWidth * _zoom)) * 0.5f;
+        _ty = (panelH - (session.FullHeight * _zoom)) * 0.5f;
 
-        // Default SDR tone until a real Working decode supplies ImageStats.
-        var tone = new float[16];
-        tone[0] = 1f; // Lc
-        tone[1] = 0.5f; // P50
-        tone[2] = 1f; // Peak
-        tone[3] = 1f; // Ld
-        tone[4] = 0f; // EV
-        tone[5] = 1f; // gain
-        tone[6] = 0f; // SDR path
-        tone[7] = 1f; // output limit
-        tone[8] = 0f;
-        tone[9] = 1f;
-        tone[10] = 2f;
-        tone[11] = 0f; // no LUT yet
-        tone[12] = 1f; // OutputScale
-        tone[13] = 1f; // ClipScrgb
-        tone[14] = 0f; // SoftNegatives off for SDR
-        tone[15] = 1f; // PaperScrgb
+        var packed = SmoothToneGpu.FromStats(working.Stats, DisplayTarget.Sdr203);
+        _ = presenter.TryArmV2Viewport(_zoom, _tx, _ty, packed.ToneCb, packed.LutSamples);
+    }
 
-        _ = presenter.TryArmV2Viewport(zoom, tx, ty, tone, lutSamples: null);
+    private void TickTransformEase()
+    {
+        if (MathF.Abs(_targetZoom - _zoom) < 1e-4f)
+        {
+            if (_zoom != _targetZoom)
+            {
+                // Snap at rest.
+                _zoom = _targetZoom;
+                _transformDirty = true;
+            }
+
+            return;
+        }
+
+        var eased = SmoothViewport.EaseZoom(_zoom, _targetZoom, dtSeconds: 1f / 60f);
+        if (MathF.Abs(eased - _targetZoom) < 1e-3f)
+        {
+            eased = _targetZoom;
+        }
+
+        var (nz, ntx, nty) = SmoothViewport.ZoomAbout(_zoom, _tx, _ty, eased, _lastPan.X, _lastPan.Y);
+        // When not actively wheeling about a cursor, keep current pan pivot via last pan.
+        _ = nz;
+        var scale = eased / Math.Max(_zoom, 1e-6f);
+        // Re-zoom about panel center when no recent wheel point — use last pan as cursor.
+        var about = SmoothViewport.ZoomAbout(_zoom, _tx, _ty, eased, (float)_lastPan.X, (float)_lastPan.Y);
+        _zoom = about.Zoom;
+        _tx = about.Tx;
+        _ty = about.Ty;
+        _ = scale;
+        _ = ntx;
+        _ = nty;
+        _transformDirty = true;
+    }
+
+    private void ScpSmooth_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (_presenter is null || !_hostStarted)
+        {
+            return;
+        }
+
+        var pt = e.GetCurrentPoint(ScpSmooth);
+        var (dipW, dipH, sx, sy) = PanelMetrics();
+        var cx = (float)(pt.Position.X * sx);
+        var cy = (float)(pt.Position.Y * sy);
+        _lastPan = new Point(cx, cy);
+
+        var delta = pt.Properties.MouseWheelDelta;
+        var ctrl = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        // Ctrl+wheel = finer zoom steps; plain wheel = larger.
+        var factor = ctrl
+            ? (delta > 0 ? 1.05f : 1f / 1.05f)
+            : (delta > 0 ? 1.12f : 1f / 1.12f);
+        _targetZoom = SmoothViewport.ClampZoom(_targetZoom * factor, _fitZoom);
+        var about = SmoothViewport.ZoomAbout(_zoom, _tx, _ty, _targetZoom, cx, cy);
+        // Immediate ZoomAbout for responsiveness; EaseZoom catches up on timer.
+        _zoom = about.Zoom;
+        _tx = about.Tx;
+        _ty = about.Ty;
+        _transformDirty = true;
+        e.Handled = true;
+    }
+
+    private void ScpSmooth_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var pt = e.GetCurrentPoint(ScpSmooth);
+        if (!pt.Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        _panning = true;
+        _lastPan = pt.Position;
+        ScpSmooth.CapturePointer(e.Pointer);
+        e.Handled = true;
+    }
+
+    private void ScpSmooth_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_panning || _presenter is null)
+        {
+            return;
+        }
+
+        var pt = e.GetCurrentPoint(ScpSmooth);
+        var (_, _, sx, sy) = PanelMetrics();
+        var dx = (float)((pt.Position.X - _lastPan.X) * sx);
+        var dy = (float)((pt.Position.Y - _lastPan.Y) * sy);
+        _tx += dx;
+        _ty += dy;
+        _lastPan = pt.Position;
+        _transformDirty = true;
+        e.Handled = true;
+    }
+
+    private void ScpSmooth_PointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_panning)
+        {
+            return;
+        }
+
+        _panning = false;
+        ScpSmooth.ReleasePointerCapture(e.Pointer);
+        // Snap zoom at rest.
+        _zoom = _targetZoom;
+        _transformDirty = true;
+        e.Handled = true;
     }
 
     private void ScpSmooth_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -388,6 +592,15 @@ public sealed partial class SmoothPresenterWindow : Window
         _buildCts?.Dispose();
         _buildCts = null;
         _buildTask = null;
+        _workingDecode?.Cancel();
+        _workingDecode?.Dispose();
+        _workingDecode = null;
+        _working = null;
+        if (_presenter is not null)
+        {
+            _presenter.PyramidBuildRunning = false;
+        }
+
         _presenter?.Dispose();
         _presenter = null;
         _hostStarted = false;
