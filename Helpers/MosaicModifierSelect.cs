@@ -69,11 +69,6 @@ public static class MosaicModifierSelect
     public static bool MovesAnchor(bool ctrl, bool shift) =>
         !RangesFromAnchor(ctrl, shift) && !AddsRangeToSelection(ctrl, shift);
 
-    /// <summary>
-    /// Ctrl+click moves the anchor even when the tile is deselected.
-    /// </summary>
-    public static bool MovesAnchorOnToggle(bool selecting) => true;
-
     /// <summary>Arrow keys used for focus / extend.</summary>
     public static bool IsArrowKey(int virtualKey) =>
         virtualKey is 37 or 38 or 39 or 40; // Left Up Right Down

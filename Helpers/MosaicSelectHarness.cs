@@ -41,16 +41,13 @@ public sealed class MosaicSelectHarness
 
     public void EnsureSelectMode(SelectEntryKind kind)
     {
-        var entering = !IsSelectMode;
-        if (entering)
+        var next = SelectMode.NextEntryKind(IsSelectMode, _entryKind, kind);
+        if (!IsSelectMode)
         {
             IsSelectMode = true;
         }
 
-        if (entering || _entryKind == SelectEntryKind.None)
-        {
-            _entryKind = kind;
-        }
+        _entryKind = next;
     }
 
     public void MarkSelectEntry(SelectEntryKind kind) => _entryKind = kind;

@@ -46,6 +46,12 @@ public sealed class SelectModeTests
         Assert.False(SelectMode.DefersCheckboxToItemsView(isCheckboxHit: false));
         Assert.Equal(SelectEntryKind.Modifier, SelectMode.EntryFromModifier());
         Assert.Equal(SelectEntryKind.Purposeful, SelectMode.EntryFromPurposeful());
+        Assert.Equal(
+            SelectEntryKind.Purposeful,
+            SelectMode.NextEntryKind(true, SelectEntryKind.Purposeful, SelectEntryKind.Modifier));
+        Assert.Equal(
+            SelectEntryKind.Modifier,
+            SelectMode.NextEntryKind(false, SelectEntryKind.None, SelectEntryKind.Modifier));
     }
 
     [Fact]
