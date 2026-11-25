@@ -1,0 +1,65 @@
+{
+    "tip":  "b07ce28b6045c337f60db6b0a46b5fc77aa59caf",
+    "tip_short":  "b07ce28",
+    "branch":  "cursor/smooth-viewer-v1-tiles",
+    "pr":  206,
+    "package":  "PalaceOrganizeTest-5E1F",
+    "package_version":  "0.3.120.0",
+    "host":  "FenrirDesktop",
+    "verdict":  "PASS",
+    "off_configuration":  "Release",
+    "on_configuration":  "Debug",
+    "off_firstCoarseMs":  13749,
+    "on_firstCoarseMs":  45598,
+    "on_rbMax":  "1.382",
+    "on_rbN":  126,
+    "image_size":  "12000x8000 procedural",
+    "captured_at_america_new_york":  "2026-11-25 07:02:38 -05:00 America/New_York",
+    "files":  [
+                  {
+                      "name":  "CAPTURE_EVENTS.txt",
+                      "bytes":  9210,
+                      "sha256":  "e7288ca646f3ec1db792213374d85a19f766358f0cd111c4b73cecc1592195fe"
+                  },
+                  {
+                      "name":  "metrics-off.json",
+                      "bytes":  1321,
+                      "sha256":  "dc6f6ee02be0e72e8b0105534ede1ec481c1cfe1e641e96fea49cba62e040bdf"
+                  },
+                  {
+                      "name":  "metrics-on.json",
+                      "bytes":  2302,
+                      "sha256":  "db8471f137a76f1fc92fc82f8e54994f5b1d471d45eeaf75d249f282b774184d"
+                  },
+                  {
+                      "name":  "metrics-summary.json",
+                      "bytes":  5105,
+                      "sha256":  "f114a554b7de9d120624168842e48f76454d7074e2ceb79226e0f55b005ef8f9"
+                  },
+                  {
+                      "name":  "REPORT.md",
+                      "bytes":  3460,
+                      "sha256":  "7c1ee014b3cd06980a5c017b69496b6f1a2ecf3a95e4f3b17a3c5dd69567edba"
+                  },
+                  {
+                      "name":  "smooth-presenter-frames-off.log",
+                      "bytes":  46512,
+                      "sha256":  "bc70e60e6e43e08d03793f8005655783a0c759f2cf1275622a7f7493fcfa17ba"
+                  },
+                  {
+                      "name":  "smooth-presenter-frames-on.log",
+                      "bytes":  175308,
+                      "sha256":  "814ba98353dd29775225af311986b7587d86cad5c85db321a247aa05dd8a50d1"
+                  },
+                  {
+                      "name":  "status-samples-off.txt",
+                      "bytes":  978,
+                      "sha256":  "64f1369bd12f32397467960d0830829f6380ec02c9230ced827d02be7c2d96b3"
+                  },
+                  {
+                      "name":  "status-samples-on.txt",
+                      "bytes":  3878,
+                      "sha256":  "f2acf9d443cad1aac0c9c2c1dc8aa5bfe745802dc80943a25e59b580cacf623a"
+                  }
+              ]
+}

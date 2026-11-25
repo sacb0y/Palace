@@ -1,0 +1,33 @@
+﻿{
+    "run":  "on",
+    "configuration":  "Debug",
+    "evidenceMode":  "DEBUG_ALWAYS_ON",
+    "launch":  "AppsFolder",
+    "ready":  true,
+    "bestTiles":  "V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=45598 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24549425152 resident=6 rbMax=1.382 rbOverUlp=53741834 rbN=126 · ",
+    "bestStatus":  "frame 1331 2864x1449 total=0.81ms wait=0.00 render=0.28 present=0.53",
+    "firstCoarseMs":  45598,
+    "wallPyramidMs":  45407,
+    "rbMax":  "1.382",
+    "rbOverUlp":  53741834,
+    "rbN":  126,
+    "gpuVsCpuNoteCount":  126,
+    "gpuVsCpuNotesTail":  [
+                              "2026-11-25T12:02:33.7491459+00:00 note=gpu-vs-cpu mip#117 maxAbs=0 over1ulp=0",
+                              "2026-11-25T12:02:34.0128042+00:00 note=gpu-vs-cpu mip#118 maxAbs=0 over1ulp=0",
+                              "2026-11-25T12:02:34.2883637+00:00 note=gpu-vs-cpu mip#119 maxAbs=0 over1ulp=0",
+                              "2026-11-25T12:02:34.5137713+00:00 note=gpu-vs-cpu mip#120 maxAbs=0 over1ulp=0",
+                              "2026-11-25T12:02:34.7644187+00:00 note=gpu-vs-cpu mip#121 maxAbs=0.00195312 over1ulp=0",
+                              "2026-11-25T12:02:35.0547764+00:00 note=gpu-vs-cpu mip#122 maxAbs=1.38208 over1ulp=520180",
+                              "2026-11-25T12:02:35.3167243+00:00 note=gpu-vs-cpu mip#123 maxAbs=0.000244141 over1ulp=0",
+                              "2026-11-25T12:02:35.5902506+00:00 note=gpu-vs-cpu mip#124 maxAbs=1.38208 over1ulp=520180",
+                              "2026-11-25T12:02:35.8746357+00:00 note=gpu-vs-cpu mip#125 maxAbs=0.764404 over1ulp=778204",
+                              "2026-11-25T12:02:36.1615626+00:00 note=gpu-vs-cpu mip#126 maxAbs=0.342163 over1ulp=258048"
+                          ],
+    "frameLogBytes":  175308,
+    "imageSize":  "12000x8000 procedural (hardcoded SmoothTileSession; no file decode)",
+    "decodeMs":  null,
+    "decodeNote":  "N/A — synthetic procedural tiles",
+    "pyramidNote":  "firstCoarseMs = BuildPyramidCore stopwatch (CPU tiles + GPU mip CS + evidence readbacks in Debug)",
+    "uploadNote":  "UploadCoarseTiles after pyramid; not separately timed"
+}

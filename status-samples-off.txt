@@ -1,0 +1,5 @@
+﻿2026-11-25T06:47:41.0885511-05:00 TILES=[pool ready — building pyramid (bg)…] STATUS=[frame 17 2864x1449 total=0.60ms wait=0.00 render=0.25 present=0.35]
+2026-11-25T06:47:44.1392288-05:00 TILES=[pool ready — building pyramid (bg)…] STATUS=[frame 107 2864x1449 total=0.50ms wait=0.00 render=0.23 present=0.27]
+2026-11-25T06:47:47.2006234-05:00 TILES=[pool ready — building pyramid (bg)…] STATUS=[frame 195 2864x1449 total=0.70ms wait=0.00 render=0.28 present=0.41]
+2026-11-25T06:47:50.3124310-05:00 TILES=[pool ready — building pyramid (bg)…] STATUS=[frame 286 2864x1449 total=0.45ms wait=0.00 render=0.19 present=0.26]
+2026-11-25T06:47:53.3446998-05:00 TILES=[V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=13749 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24547459072 resident=6 rbMax=0 rbOverUlp=0 rbN=0 · ] STATUS=[frame 377 2864x1449 total=0.65ms wait=0.00 render=0.27 present=0.38]
