@@ -262,11 +262,5 @@ public static class ViewerInfoFields
         return text[..(maxChars - 1)] + "…";
     }
 
-    public static string KindLabel(AssetKind kind) => kind switch
-    {
-        AssetKind.Image => "Image",
-        AssetKind.Gif => "GIF",
-        AssetKind.Video => "Video",
-        _ => ""
-    };
+    public static string KindLabel(AssetKind kind) => AssetKindRegistry.Label(kind);
 }

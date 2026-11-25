@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="Palace.Controls.ViewerSurfaceHost"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Palace.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:helpers="using:Palace.Helpers"
+    xmlns:ic="using:FluentIcons.WinUI"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <!--
+      Single host for Still / Video / Mesh (D6). Library overlay, Tags overlay, and
+      GalleryWindow each own one instance. Mesh is a placeholder until Diligent lands;
+      hook / unhook / dispose stay on this control.
+    -->
+    <Grid>
+        <controls:GalleryStillSurface
+            x:Name="SrfStill"
+            Visibility="{x:Bind helpers:BindHelpers.SurfaceToVisibility(Surface, helpers:GallerySurfaceBind.Still), Mode=OneWay}" />
+        <MediaPlayerElement
+            x:Name="MpeVideo"
+            AreTransportControlsEnabled="True"
+            AutoPlay="False"
+            AutomationProperties.AutomationId="{x:Bind MediaAutomationId, Mode=OneWay}"
+            Visibility="{x:Bind helpers:BindHelpers.SurfaceToVisibility(Surface, helpers:GallerySurfaceBind.Video), Mode=OneWay}">
+            <MediaPlayerElement.TransportControls>
+                <MediaTransportControls IsVolumeButtonVisible="False" />
+            </MediaPlayerElement.TransportControls>
+        </MediaPlayerElement>
+        <Border
+            x:Name="BrdMesh"
+            AutomationProperties.AutomationId="{x:Bind MeshAutomationId, Mode=OneWay}"
+            Background="#E01C1C1C"
+            Visibility="{x:Bind helpers:BindHelpers.SurfaceToVisibility(Surface, helpers:GallerySurfaceBind.Mesh), Mode=OneWay}">
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="8">
+                <ic:FluentIcon
+                    HorizontalAlignment="Center"
+                    Icon="Cube"
+                    IconVariant="Regular"
+                    IconSize="48"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource BodyTextBlockStyle}"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="3D preview" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

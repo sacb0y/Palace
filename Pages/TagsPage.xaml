@@ -1625,6 +1625,28 @@
                             <MediaTransportControls IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
+                    <Border
+                        x:Name="BrdOverlayMesh"
+                        AutomationProperties.AutomationId="BrdGalleryOverlayMesh"
+                        Background="#E01C1C1C"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMesh), Mode=OneWay, FallbackValue=Collapsed}">
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8">
+                            <ic:FluentIcon
+                                HorizontalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Icon="Cube"
+                                IconSize="48"
+                                IconVariant="Regular" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource BodyTextBlockStyle}"
+                                Text="3D preview" />
+                        </StackPanel>
+                    </Border>
                     <controls:VolumeControl
                         x:Name="VolOverlay"
                         Canvas.ZIndex="2"

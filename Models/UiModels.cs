@@ -322,7 +322,7 @@ public partial class AssetItem : ObservableObject
                 return (double)Width.Value / Height.Value;
             }
 
-            return Kind == AssetKind.Video ? 16.0 / 9.0 : 1.0;
+            return Helpers.AssetKindRegistry.DefaultAspect(Kind);
         }
     }
 

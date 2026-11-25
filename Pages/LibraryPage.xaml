@@ -3352,6 +3352,29 @@
                             <MediaTransportControls IsVolumeButtonVisible="False" />
                         </MediaPlayerElement.TransportControls>
                     </MediaPlayerElement>
+                    <!-- Mesh placeholder until ViewerSurfaceHost consolidation (D6); Surface drives IsImage/IsVideo. -->
+                    <Border
+                        x:Name="BrdOverlayMesh"
+                        AutomationProperties.AutomationId="BrdGalleryOverlayMesh"
+                        Background="#E01C1C1C"
+                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsMesh), Mode=OneWay, FallbackValue=Collapsed}">
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8">
+                            <ic:FluentIcon
+                                HorizontalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Icon="Cube"
+                                IconSize="48"
+                                IconVariant="Regular" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource BodyTextBlockStyle}"
+                                Text="3D preview" />
+                        </StackPanel>
+                    </Border>
                     <!-- Paused browse swipe: AddHandler on MpeOverlay (touch only) so mouse/pen reach transport + ContextFlyout. -->
                     <controls:VolumeControl
                         x:Name="VolOverlay"

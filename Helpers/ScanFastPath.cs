@@ -17,10 +17,12 @@ namespace Palace.Helpers;
 /// Version 4 fixes EXIF UserComment UNICODE decode. Unchanged version 2–3 rows refresh generation
 /// metadata (and DateTaken when still on version 2) via <see cref="NeedsMetadataRefreshOnly"/> —
 /// no re-hash, and Rating / Notes / tags are not written.
+/// Version 5 adds <see cref="AssetKind.Model3D"/> kind mapping + kind-aware fast path (3D rows
+/// keep Width/Height null; content hash + IndexVersion is enough).
 /// </summary>
 public static class ScanFastPath
 {
-    public const int IndexVersion = 4;
+    public const int IndexVersion = 5;
 
     /// <summary>Last version before Date taken; such rows take the light backfill.</summary>
     public const int DateTakenBackfillFrom = 2;
@@ -71,7 +73,16 @@ public static class ScanFastPath
         && string.Equals(existing.DateModified, Stamp(lastWriteUtc), StringComparison.Ordinal)
         && existing.ContentHash is { Length: > 0 } hash
         && !HashService.IsCloudStub(hash)
-        && (existing.Undecodable || (existing.Width is > 0 && existing.Height is > 0));
+        && (existing.Undecodable
+            || SkipsPixelSize(existing.Kind)
+            || (existing.Width is > 0 && existing.Height is > 0));
+
+    /// <summary>
+    /// Model3D (and later Audio) have no meaningful Width/Height — require hash + IndexVersion only.
+    /// Fake 512×512 from a mesh thumb must not land in Width/Height (details would lie).
+    /// </summary>
+    public static bool SkipsPixelSize(AssetKind kind) =>
+        kind is AssetKind.Model3D;
 
     /// <summary>
     /// The fast path also needs a current cached thumbnail, except for a file already recorded as

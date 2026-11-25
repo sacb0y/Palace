@@ -29,6 +29,7 @@ public static class SettingsPortable
         LibrarySettings.WatchForChangesKey,
         LibrarySettings.IndexImagesKey,
         LibrarySettings.IndexVideoKey,
+        LibrarySettings.IndexModel3DKey,
         LibrarySettings.GenerateThumbsOnScanKey,
         PreviewPaneSettings.ModeKey,
         PreviewPaneSettings.WidthKey,

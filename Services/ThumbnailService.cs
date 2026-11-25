@@ -297,7 +297,7 @@ public sealed class ThumbnailService
                 cancellationToken.ThrowIfCancellationRequested();
                 // No system codec (MKV H.264 4:4:4, WebM VP9/AV1 …): bundled ffmpeg.
                 var tmp = dest + ".ff.jpg";
-                if (await FfmpegPoster.TryExtractAsync(filePath, tmp, MaxSide).ConfigureAwait(false))
+                if (await FfmpegPoster.TryExtractAsync(filePath, tmp, MaxSide, cancellationToken).ConfigureAwait(false))
                 {
                     ThumbFileReplace.TryMoveOverwrite(tmp, dest);
                     if (!File.Exists(dest))

@@ -4,6 +4,14 @@ using Palace.Models;
 
 namespace Palace.Helpers;
 
+/// <summary>x:Bind-friendly surface names (avoid enum literals in XAML helpers).</summary>
+public static class GallerySurfaceBind
+{
+    public const string Still = nameof(GallerySurface.Still);
+    public const string Video = nameof(GallerySurface.Video);
+    public const string Mesh = nameof(GallerySurface.Mesh);
+}
+
 public static class BindHelpers
 {
     public static Visibility BoolToVisibility(bool value) =>
@@ -11,6 +19,12 @@ public static class BindHelpers
 
     public static Visibility InvertBoolToVisibility(bool value) =>
         value ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>Viewer surface switch (Still / Video / Mesh) for ViewerSurfaceHost.</summary>
+    public static Visibility SurfaceToVisibility(GallerySurface current, string want) =>
+        string.Equals(current.ToString(), want, StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     /// <summary>Null-safe thumb for multi-select fan slots (avoids x:Bind NRE on null AssetItem).</summary>
     public static ImageSource? AssetThumb(AssetItem? item) => item?.ThumbImage;

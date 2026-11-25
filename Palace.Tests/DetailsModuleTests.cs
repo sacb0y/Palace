@@ -38,10 +38,12 @@ public sealed class DetailsModuleTests
     }
 
     [Fact]
-    public void Includes_AudioAndMesh_ReservedFalseUntilKindsExist()
+    public void Includes_AudioReserved_MeshForModel3D()
     {
         Assert.False(DetailsModuleCatalog.Includes(DetailsModuleKind.Audio, AssetKind.Other));
         Assert.False(DetailsModuleCatalog.Includes(DetailsModuleKind.Mesh3D, AssetKind.Other));
+        Assert.True(DetailsModuleCatalog.Includes(DetailsModuleKind.Mesh3D, AssetKind.Model3D));
+        Assert.Contains(DetailsModuleCatalog.ForKind(AssetKind.Model3D), m => m.Kind == DetailsModuleKind.Mesh3D);
         Assert.Equal("audio", DetailsModuleCatalog.Audio.Id);
         Assert.Equal("mesh3d", DetailsModuleCatalog.Mesh3D.Id);
     }

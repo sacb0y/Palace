@@ -11,11 +11,14 @@ public static class LibrarySettings
     public const string WatchForChangesKey = "LibraryWatchForChanges";
     public const string IndexImagesKey = "LibraryIndexImages";
     public const string IndexVideoKey = "LibraryIndexVideo";
+    public const string IndexModel3DKey = "LibraryIndexModel3D";
     public const string GenerateThumbsOnScanKey = "LibraryGenerateThumbsOnScan";
 
     public const bool DefaultWatchForChanges = true;
     public const bool DefaultIndexImages = true;
     public const bool DefaultIndexVideo = true;
+    /// <summary>Off until mesh thumbs / out-of-proc probe (D1) ship.</summary>
+    public const bool DefaultIndexModel3D = false;
     public const bool DefaultGenerateThumbsOnScan = true;
 
     public static bool WatchForChanges { get; private set; } = DefaultWatchForChanges;
@@ -23,6 +26,8 @@ public static class LibrarySettings
     public static bool IndexImages { get; private set; } = DefaultIndexImages;
 
     public static bool IndexVideo { get; private set; } = DefaultIndexVideo;
+
+    public static bool IndexModel3D { get; private set; } = DefaultIndexModel3D;
 
     public static bool GenerateThumbsOnScan { get; private set; } = DefaultGenerateThumbsOnScan;
 
@@ -32,11 +37,13 @@ public static class LibrarySettings
         bool watchForChanges,
         bool indexImages,
         bool indexVideo,
-        bool generateThumbsOnScan)
+        bool generateThumbsOnScan,
+        bool indexModel3D = DefaultIndexModel3D)
     {
         if (WatchForChanges == watchForChanges
             && IndexImages == indexImages
             && IndexVideo == indexVideo
+            && IndexModel3D == indexModel3D
             && GenerateThumbsOnScan == generateThumbsOnScan)
         {
             return;
@@ -45,6 +52,7 @@ public static class LibrarySettings
         WatchForChanges = watchForChanges;
         IndexImages = indexImages;
         IndexVideo = indexVideo;
+        IndexModel3D = indexModel3D;
         GenerateThumbsOnScan = generateThumbsOnScan;
         Changed?.Invoke(null, EventArgs.Empty);
     }
@@ -58,7 +66,7 @@ public static class LibrarySettings
 
     /// <summary>
     /// Whether scan / watcher should index this extension under current format toggles.
-    /// GIFs follow the Images toggle. 3D / audio stay out until those kinds ship.
+    /// GIFs follow the Images toggle. Audio stays out until that kind ships.
     /// </summary>
     public static bool IsIndexedExt(string? pathOrExt)
     {
@@ -68,13 +76,7 @@ public static class LibrarySettings
             return false;
         }
 
-        return PathSafe.KindFromExt(ext) switch
-        {
-            AssetKind.Video => IndexVideo,
-            AssetKind.Gif => IndexImages,
-            AssetKind.Image => IndexImages,
-            _ => false
-        };
+        return AssetKindRegistry.Get(PathSafe.KindFromExt(ext)).IndexEnabled();
     }
 
     /// <summary>One-line caption of image extensions Palace indexes today.</summary>
@@ -85,6 +87,10 @@ public static class LibrarySettings
     public static string VideoFormatsCaption { get; } =
         "MP4, MOV, MKV, WEBM, AVI";
 
+    /// <summary>One-line caption of 3D extensions (index toggle default off).</summary>
+    public static string Model3DFormatsCaption { get; } =
+        "GLB, GLTF, FBX";
+
     public static string FormatsPlaceholderCaption { get; } =
-        "3D and audio indexing land when those kinds ship.";
+        "Audio indexing lands when that kind ships.";
 }

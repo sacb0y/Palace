@@ -12,7 +12,8 @@ public sealed class LibrarySettingsTests
             LibrarySettings.DefaultWatchForChanges,
             LibrarySettings.DefaultIndexImages,
             LibrarySettings.DefaultIndexVideo,
-            LibrarySettings.DefaultGenerateThumbsOnScan);
+            LibrarySettings.DefaultGenerateThumbsOnScan,
+            LibrarySettings.DefaultIndexModel3D);
     }
 
     [Fact]
@@ -28,28 +29,35 @@ public sealed class LibrarySettingsTests
     [Fact]
     public void Apply_UpdatesStaticGates()
     {
-        LibrarySettings.Apply(watchForChanges: false, indexImages: true, indexVideo: false, generateThumbsOnScan: false);
+        LibrarySettings.Apply(
+            watchForChanges: false,
+            indexImages: true,
+            indexVideo: false,
+            generateThumbsOnScan: false,
+            indexModel3D: true);
         Assert.False(LibrarySettings.WatchForChanges);
         Assert.True(LibrarySettings.IndexImages);
         Assert.False(LibrarySettings.IndexVideo);
+        Assert.True(LibrarySettings.IndexModel3D);
         Assert.False(LibrarySettings.GenerateThumbsOnScan);
     }
 
     [Fact]
     public void IsIndexedExt_HonorsImageAndVideoToggles()
     {
-        LibrarySettings.Apply(true, indexImages: true, indexVideo: true, generateThumbsOnScan: true);
+        LibrarySettings.Apply(true, indexImages: true, indexVideo: true, generateThumbsOnScan: true, indexModel3D: false);
         Assert.True(LibrarySettings.IsIndexedExt(".png"));
         Assert.True(LibrarySettings.IsIndexedExt(".gif"));
         Assert.True(LibrarySettings.IsIndexedExt(".mp4"));
         Assert.False(LibrarySettings.IsIndexedExt(".txt"));
+        Assert.False(LibrarySettings.IsIndexedExt(".glb"));
 
-        LibrarySettings.Apply(true, indexImages: false, indexVideo: true, generateThumbsOnScan: true);
+        LibrarySettings.Apply(true, indexImages: false, indexVideo: true, generateThumbsOnScan: true, indexModel3D: false);
         Assert.False(LibrarySettings.IsIndexedExt(".png"));
         Assert.False(LibrarySettings.IsIndexedExt(".gif"));
         Assert.True(LibrarySettings.IsIndexedExt(".mp4"));
 
-        LibrarySettings.Apply(true, indexImages: true, indexVideo: false, generateThumbsOnScan: true);
+        LibrarySettings.Apply(true, indexImages: true, indexVideo: false, generateThumbsOnScan: true, indexModel3D: false);
         Assert.True(LibrarySettings.IsIndexedExt("photo.avif"));
         Assert.False(LibrarySettings.IsIndexedExt("clip.mov"));
     }
@@ -59,7 +67,7 @@ public sealed class LibrarySettingsTests
     {
         Assert.Contains("JPG", LibrarySettings.ImagesFormatsCaption, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("MP4", LibrarySettings.VideoFormatsCaption, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("3D", LibrarySettings.FormatsPlaceholderCaption, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("GLB", LibrarySettings.Model3DFormatsCaption, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("audio", LibrarySettings.FormatsPlaceholderCaption, StringComparison.OrdinalIgnoreCase);
     }
 }

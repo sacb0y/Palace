@@ -51,6 +51,17 @@ public sealed class ScanFastPathTests
         Assert.True(ScanFastPath.NeedsCurrentThumb(Indexed()));
 
     [Fact]
+    public void Model3D_without_pixel_size_takes_the_fast_path()
+    {
+        var asset = Indexed();
+        asset.Kind = AssetKind.Model3D;
+        asset.Width = null;
+        asset.Height = null;
+        Assert.True(ScanFastPath.SkipsPixelSize(AssetKind.Model3D));
+        Assert.True(ScanFastPath.IsUnchanged(asset, 1234, Written, onlineOnly: false));
+    }
+
+    [Fact]
     public void New_file_does_not() =>
         Assert.False(ScanFastPath.IsUnchanged(null, 1234, Written, onlineOnly: false));
 
@@ -117,7 +128,7 @@ public sealed class ScanFastPathTests
         Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(1), 1234, Written, onlineOnly: false));
         Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(3), 999, Written, onlineOnly: false));
         Assert.False(ScanFastPath.NeedsMetadataRefreshOnly(WithVersion(ScanFastPath.IndexVersion), 1234, Written, onlineOnly: false));
-        Assert.Equal(4, ScanFastPath.IndexVersion);
+        Assert.Equal(5, ScanFastPath.IndexVersion);
         Assert.Equal(ScanOutcome.Updated, ScanFastPath.MetadataRefreshOutcome);
     }
 

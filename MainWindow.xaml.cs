@@ -86,6 +86,7 @@ public sealed partial class MainWindow : Window
             }
 
             GalleryWindow.CloseAll();
+            _ = Services.AppServices.ShutdownAsync();
         };
     }
 

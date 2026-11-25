@@ -82,6 +82,13 @@ public static class PathSafe
     public static readonly HashSet<string> VideoExt =
         new(StringComparer.OrdinalIgnoreCase) { ".mp4", ".mov", ".mkv", ".webm", ".avi" };
 
+    /// <summary>
+    /// 3D catalog extensions (D2). <c>.obj</c> / <c>.vrm</c> later.
+    /// Indexing is gated by <see cref="LibrarySettings.IndexModel3D"/>.
+    /// </summary>
+    public static readonly HashSet<string> Model3DExt =
+        new(StringComparer.OrdinalIgnoreCase) { ".glb", ".gltf", ".fbx" };
+
     public static string Extension(string? pathOrExt)
     {
         if (string.IsNullOrWhiteSpace(pathOrExt))
@@ -136,28 +143,9 @@ public static class PathSafe
     private static bool ExtensionEquals(string? pathOrExt, string ext) =>
         string.Equals(Extension(pathOrExt), ext, StringComparison.OrdinalIgnoreCase);
 
-    public static bool IsCatalogExt(string ext) =>
-        ImageExt.Contains(ext) || GifExt.Contains(ext) || VideoExt.Contains(ext);
+    public static bool IsCatalogExt(string ext) => AssetKindRegistry.IsCatalogExt(ext);
 
-    public static Models.AssetKind KindFromExt(string ext)
-    {
-        if (GifExt.Contains(ext))
-        {
-            return Models.AssetKind.Gif;
-        }
-
-        if (VideoExt.Contains(ext))
-        {
-            return Models.AssetKind.Video;
-        }
-
-        if (ImageExt.Contains(ext))
-        {
-            return Models.AssetKind.Image;
-        }
-
-        return Models.AssetKind.Other;
-    }
+    public static Models.AssetKind KindFromExt(string ext) => AssetKindRegistry.FromExtension(ext);
 
     public static string CollapseDashes(string name)
     {

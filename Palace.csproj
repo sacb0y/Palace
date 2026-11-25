@@ -19,7 +19,7 @@
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
     <!-- Native/smooth/build|out is Diligent FetchContent — must not compile its .NET / SPIRV .cs into WinUI.
          Do not add SharpGen or build Diligent's .NET projects. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**;Native\smooth\build\**;Native\smooth\out\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Palace.Tests\**;Palace.Imaging\**;Palace.Mesh3d\**;Native\smooth\build\**;Native\smooth\out\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -63,6 +63,7 @@
   -->
   <ItemGroup>
     <ProjectReference Include="Palace.Imaging\Palace.Imaging.csproj" />
+    <ProjectReference Include="Palace.Mesh3d\Palace.Mesh3d.csproj" />
   </ItemGroup>
 
   <ItemGroup>

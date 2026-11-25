@@ -56,35 +56,61 @@ public partial class LibraryViewModel
     private Task ScanAsync() =>
         ErrorReporter.RunAsync("Scan", Notify, async () =>
         {
-            BeginBusy("Scanning…");
+            var ct = BeginBusyCancelable("Scanning…");
             try
             {
                 var report = await _scan.ScanAllAsync(
-                    new Progress<string>(p => StatusText = $"Scanning {Path.GetFileName(p)}"),
+                    new Progress<ScanProgress>(p =>
+                    {
+                        var name = string.IsNullOrEmpty(p.FileName) ? p.Phase : p.FileName;
+                        StatusText = p.Total > 0
+                            ? $"Scanning {name} ({p.Done}/{p.Total})"
+                            : $"Scanning {name}";
+                    }),
+                    ct,
                     projectId: AppServices.CurrentProject.Id);
                 await RefreshQuietAsync();
                 StatusText = ScanNotice.Summary(report);
                 ShowScanNotice(report);
             }
+            catch (OperationCanceledException)
+            {
+                StatusText = "Scan cancelled.";
+            }
             finally
             {
-                EndBusy();
+                EndBusyCancelable();
             }
         });
 
+    /// <summary>Same as CancelBusy — exposed for D7 / command bar naming.</summary>
+    [RelayCommand]
+    private void CancelScan() => CancelBusy();
+
     private async Task ScanFolderAsync(SourceFolder source)
     {
-        BeginBusy($"Scanning {source.Path}…");
+        var ct = BeginBusyCancelable($"Scanning {source.Path}…");
         try
         {
-            var report = await _scan.ScanSourceAsync(source);
+            var report = await _scan.ScanSourceAsync(
+                source,
+                new Progress<ScanProgress>(p =>
+                {
+                    var name = string.IsNullOrEmpty(p.FileName) ? p.Phase : p.FileName;
+                    StatusText = $"Scanning {name}";
+                }),
+                ct);
             await RefreshQuietAsync(source.Path);
             StatusText = ScanNotice.Summary(report, Path.GetFileName(source.Path));
             ShowScanNotice(report);
         }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Scan cancelled.";
+        }
         finally
         {
-            EndBusy();
+            EndBusyCancelable();
         }
     }
 

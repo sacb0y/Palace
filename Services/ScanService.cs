@@ -28,12 +28,14 @@ public sealed class ScanService
     }
 
     public async Task<ScanReport> ScanAllAsync(
-        IProgress<string>? progress = null,
+        IProgress<ScanProgress>? progress = null,
         CancellationToken ct = default,
         string? projectId = null)
     {
         var report = new ScanReport();
-        foreach (var source in await _catalog.GetSourceFoldersAsync(projectId))
+        // Leave the UI thread before any hash / metadata / thumb work (D7).
+        var sources = await _catalog.GetSourceFoldersAsync(projectId).ConfigureAwait(false);
+        foreach (var source in sources)
         {
             ct.ThrowIfCancellationRequested();
             var part = await ScanSourceAsync(source, progress, ct).ConfigureAwait(false);
@@ -43,7 +45,7 @@ public sealed class ScanService
         return report;
     }
 
-    public async Task<ScanReport> ScanSourceAsync(SourceFolder source, IProgress<string>? progress = null, CancellationToken ct = default)
+    public async Task<ScanReport> ScanSourceAsync(SourceFolder source, IProgress<ScanProgress>? progress = null, CancellationToken ct = default)
     {
         if (source.Kind != SourceKind.Local)
         {
@@ -94,7 +96,7 @@ public sealed class ScanService
     public async Task<ScanReport> ScanDirectoryAsync(
         SourceFolder source,
         string directory,
-        IProgress<string>? progress = null,
+        IProgress<ScanProgress>? progress = null,
         CancellationToken ct = default)
     {
         var report = new ScanReport();
@@ -117,7 +119,7 @@ public sealed class ScanService
         string root,
         ScanReport report,
         HashSet<string>? found,
-        IProgress<string>? progress,
+        IProgress<ScanProgress>? progress,
         CancellationToken ct)
     {
         var inaccessible = 0;
@@ -126,9 +128,17 @@ public sealed class ScanService
         {
             ct.ThrowIfCancellationRequested();
             var file = entry.Path;
-            if (!LibrarySettings.IsIndexedExt(Path.GetExtension(file)))
+            var ext = Path.GetExtension(file);
+            if (!LibrarySettings.IsIndexedExt(ext))
             {
-                if (!ScanNotice.IsIgnorable(file, entry.Attributes))
+                // Present on disk ≠ indexed. Keep catalog-known format paths in
+                // found so turning off a format toggle (or an older build) does
+                // not orphan 3D / video rows whose files are still there.
+                if (PathSafe.IsCatalogExt(ext))
+                {
+                    found?.Add(file);
+                }
+                else if (!ScanNotice.IsIgnorable(file, entry.Attributes))
                 {
                     report.NoteSkipped(file);
                 }
@@ -139,7 +149,7 @@ public sealed class ScanService
             found?.Add(file);
             if (progress is not null && ScanFastPath.ShouldReport(ref lastProgress, Environment.TickCount64))
             {
-                progress.Report(file);
+                progress.Report(ScanProgress.File(file, phase: "index"));
             }
             try
             {
@@ -297,7 +307,7 @@ public sealed class ScanService
 
     private async Task<ScanReport> ScanCloudSourceAsync(
         SourceFolder source,
-        IProgress<string>? progress,
+        IProgress<ScanProgress>? progress,
         CancellationToken ct)
     {
         var report = new ScanReport();
@@ -350,7 +360,7 @@ public sealed class ScanService
         string displayPrefix,
         HashSet<string> found,
         ScanReport report,
-        IProgress<string>? progress,
+        IProgress<ScanProgress>? progress,
         CancellationToken ct)
     {
         IReadOnlyList<CloudEntry> children;
@@ -377,7 +387,13 @@ public sealed class ScanService
 
             if (!LibrarySettings.IsIndexedExt(Path.GetExtension(child.Name)))
             {
-                if (!ScanNotice.IsIgnorable(child.Name, 0))
+                // Present ≠ indexed (D3): keep catalog formats in found so a
+                // format toggle off does not orphan cloud rows still listed.
+                if (PathSafe.IsCatalogExt(Path.GetExtension(child.Name)))
+                {
+                    found.Add(child.Id);
+                }
+                else if (!ScanNotice.IsIgnorable(child.Name, 0))
                 {
                     report.NoteSkipped(child.Name);
                 }
@@ -386,7 +402,7 @@ public sealed class ScanService
             }
 
             found.Add(child.Id);
-            progress?.Report(display);
+            progress?.Report(ScanProgress.File(display, phase: "index"));
             try
             {
                 report.NoteIndexed(await IndexCloudItemAsync(source, library, child, display, ct).ConfigureAwait(false));
