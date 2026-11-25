@@ -1,0 +1,1 @@
+﻿Zoom target=1.5 actual z=1.36 uploads=0 status=[frame 117 2864x1449 total=0.32ms wait=0.00 render=0.20 present=0.13 z=1.36 uploads=0] tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.

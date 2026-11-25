@@ -1,0 +1,7 @@
+﻿{
+    "sawRemove":  true,
+    "sawRearm":  true,
+    "frameBefore":  2,
+    "frameAfter":  2,
+    "envProbe":  "smooth-debug source=palace severity=NOTE psv=- msg=PALACE_SMOOTH_TEST_REMOVE_DEVICE=1 func=- file=- line=0"
+}

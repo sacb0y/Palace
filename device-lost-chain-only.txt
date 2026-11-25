@@ -1,0 +1,14 @@
+﻿tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 device-lost IN-PACKAGE-CMD-ENV
+ENV_PROBE: smooth-debug source=palace severity=NOTE psv=- msg=PALACE_SMOOTH_TEST_REMOVE_DEVICE=1 func=- file=- line=0
+PHASE armed frame=785 uploaded=6/6
+PHASE RemoveDevice: smooth-debug source=d3d12-infoqueue severity=MSG psv=- msg=ID3D12Device::RemoveDevice: Device removal has been triggered for the following reason (DXGI_ERROR_DEVICE_REMOVED: Plug-and-play stop has been exercised on this adapter. Odds are good that the adapter might no longer be available). func= file= line=0
+PHASE DeviceLost/ERROR: smooth-debug source=diligent severity=ERROR psv=- msg=Debug assertion failed in Diligent::CommandQueueD3D12Impl::GetCompletedFenceValue(), file CommandQueueD3D12Impl.cpp, line 108:
+PHASE recreate: CreateDevice count=1; NOTE count=2
+PHASE re-arm: frame 785 -> 3 uploaded=6/6 (first post-reset status)
+errorLines=3
+late: 2026-11-25T13:20:35.0554791-05:00 STATUS=[frame 2888 2864x1449 total=0.95ms wait=0.00 render=0.60 present=0.35 z=0.21 uploads=0] frame=2888 z=0.21 uploaded=6/6
+SUMMARY remove=True lost=True recreate=True rearm=True errorLines=3
+
+FENCE_ORDER confirm America/New_York:
+armed 13:19:07.360 → rearm-status 13:19:08.633 (Δ≈1.27s)
+log L123 RemoveDevice → L128/L130/L132 GetCompletedFenceValue ERROR×3 → L151 CreateDevice

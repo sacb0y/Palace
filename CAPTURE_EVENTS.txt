@@ -1,0 +1,169 @@
+﻿2026-11-25T13:28:38.1960739-05:00 ==== R3 MERGE PACK tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 ====
+2026-11-25T13:28:38.2137756-05:00 ==== OFF Release baseline ====
+2026-11-25T13:28:38.2362832-05:00 Release Palace ProductVersion=0.3.121+a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6
+2026-11-25T13:28:42.4248247-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-208-r3
+2026-11-25T13:28:42.6899027-05:00 launch CMD run=off cmd=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\fenrir-r3-off.cmd envKeys=System.Collections.Hashtable+KeyCollection
+2026-11-25T13:28:48.3705594-05:00 pid=204200 hwnd=3744148 run=off
+2026-11-25T13:28:48.8770226-05:00 select NavSettings (SelectionItem)
+2026-11-25T13:28:52.5235028-05:00 select BtnSettingsNav_Viewer (SelectionItem)
+2026-11-25T13:28:55.3431180-05:00 TglSmoothPresenter initial=Off
+2026-11-25T13:28:55.9669081-05:00 TglSmoothPresenter after=On
+2026-11-25T13:28:55.9981136-05:00 BtnOpenSmoothPresenter enabled=True
+2026-11-25T13:28:56.2810151-05:00 invoke BtnOpenSmoothPresenter
+2026-11-25T13:28:59.7237963-05:00 smooth hwnd=1449100
+2026-11-25T13:28:59.8131132-05:00 sample off z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 88 2864x1449 total=0.66ms wait=0.00 render=0.24 present=0.42
+2026-11-25T13:29:02.8886493-05:00 sample off z=0.21 uploads=4 firstCoarseMs=3203 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.66ms wait=0.00 render=2.09 present=1.57 z=0.21 uploads=4
+2026-11-25T13:29:04.0151551-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\10-off-coarse-ready.png bytes=41338 caption=OFF Release firstCoarseMs=3203 gpuMips=0 rbMax=0 uploaded=6/6 z=0.21 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:29:04.0551230-05:00 frame summary frame-times-off.json {"path":"C:\\Users\\iadag\\AppData\\Local\\Cursor\\AgentStores\\cursor_agent_stores\\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\\files\\media\\pr-smooth-v2-viewport-r3\\smooth-presenter-frames-off.log","lines":144,"parsedTotalMs":144,"scrapeField":"total_ms","p50":0.652,"p95":1.276,"p99":3.663,"min":0.362,"max":5.916}
+2026-11-25T13:29:04.0588022-05:00 OFF firstCoarseMs=3203 gpuMips=0 rbMax=0 uploaded=6/6
+2026-11-25T13:29:05.1911141-05:00 ==== ON Release + GPU_EVIDENCE ====
+2026-11-25T13:29:09.0754977-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-208-r3
+2026-11-25T13:29:09.1023630-05:00 launch CMD run=on cmd=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\fenrir-r3-on.cmd envKeys=System.Collections.Hashtable+KeyCollection
+2026-11-25T13:29:13.2854840-05:00 pid=208852 hwnd=38082094 run=on
+2026-11-25T13:29:13.7138467-05:00 select NavSettings (SelectionItem)
+2026-11-25T13:29:17.3548600-05:00 select BtnSettingsNav_Viewer (SelectionItem)
+2026-11-25T13:29:20.1734009-05:00 TglSmoothPresenter initial=Off
+2026-11-25T13:29:20.7987552-05:00 TglSmoothPresenter after=On
+2026-11-25T13:29:20.8268169-05:00 BtnOpenSmoothPresenter enabled=True
+2026-11-25T13:29:21.0870720-05:00 invoke BtnOpenSmoothPresenter
+2026-11-25T13:29:24.5066310-05:00 smooth hwnd=5846220
+2026-11-25T13:29:24.5640665-05:00 sample on z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 86 2864x1449 total=0.44ms wait=0.00 render=0.21 present=0.23
+2026-11-25T13:29:27.8380630-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.31ms wait=0.00 render=1.81 present=1.50 z=0.21 uploads=4
+2026-11-25T13:29:31.6082860-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.44ms wait=0.00 render=1.94 present=1.50 z=0.21 uploads=4
+2026-11-25T13:29:35.2763789-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.15ms wait=0.00 render=1.78 present=1.37 z=0.21 uploads=4
+2026-11-25T13:29:37.9347411-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.25ms wait=0.00 render=1.76 present=1.49 z=0.21 uploads=4
+2026-11-25T13:29:40.9591046-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.75ms wait=0.00 render=2.99 present=1.76 z=0.21 uploads=4
+2026-11-25T13:29:43.8575297-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.40ms wait=0.00 render=1.83 present=1.57 z=0.21 uploads=4
+2026-11-25T13:29:47.5952704-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.25ms wait=0.00 render=2.73 present=1.52 z=0.21 uploads=4
+2026-11-25T13:29:50.4088748-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.40ms wait=0.00 render=1.91 present=1.49 z=0.21 uploads=4
+2026-11-25T13:29:53.5550228-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.12ms wait=0.00 render=2.60 present=1.52 z=0.21 uploads=4
+2026-11-25T13:29:55.8602764-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.83ms wait=0.00 render=2.03 present=1.80 z=0.21 uploads=4
+2026-11-25T13:29:59.6323804-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=2.92ms wait=0.00 render=1.70 present=1.21 z=0.21 uploads=4
+2026-11-25T13:30:02.3791993-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.17ms wait=0.00 render=1.83 present=1.34 z=0.21 uploads=4
+2026-11-25T13:30:05.0674134-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.17ms wait=0.00 render=1.70 present=1.47 z=0.21 uploads=4
+2026-11-25T13:30:08.8405177-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.03ms wait=0.00 render=2.73 present=1.31 z=0.21 uploads=4
+2026-11-25T13:30:12.7256709-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.58ms wait=0.00 render=1.89 present=1.69 z=0.21 uploads=4
+2026-11-25T13:30:16.3552844-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.21ms wait=0.00 render=2.75 present=1.47 z=0.21 uploads=4
+2026-11-25T13:30:20.2210893-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.18ms wait=0.00 render=2.51 present=1.67 z=0.21 uploads=4
+2026-11-25T13:30:24.1537775-05:00 PHASE DeviceLost
+2026-11-25T13:30:24.1692265-05:00 PHASE recreate
+2026-11-25T13:30:24.1849100-05:00 PHASE coarse-reupload uploaded=6/6
+2026-11-25T13:30:24.1879426-05:00 sample on z= uploads= firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=device lost — recreate required
+2026-11-25T13:30:26.9229766-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.28ms wait=0.00 render=1.68 present=1.60 z=0.21 uploads=4
+2026-11-25T13:30:30.8408004-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.50ms wait=0.00 render=1.94 present=1.55 z=0.21 uploads=4
+2026-11-25T13:30:34.8882913-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.58ms wait=0.00 render=2.08 present=1.49 z=0.21 uploads=4
+2026-11-25T13:30:37.9909179-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.06ms wait=0.00 render=2.24 present=1.82 z=0.21 uploads=4
+2026-11-25T13:30:40.7819049-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=2.93ms wait=0.00 render=1.61 present=1.32 z=0.21 uploads=4
+2026-11-25T13:30:44.4395902-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.45ms wait=0.00 render=1.89 present=1.56 z=0.21 uploads=4
+2026-11-25T13:30:47.2907233-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.89ms wait=0.00 render=2.05 present=1.84 z=0.21 uploads=4
+2026-11-25T13:30:50.1401300-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=2.91ms wait=0.00 render=1.59 present=1.31 z=0.21 uploads=4
+2026-11-25T13:30:52.9147883-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.22ms wait=0.00 render=1.76 present=1.45 z=0.21 uploads=4
+2026-11-25T13:30:56.6263032-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.42ms wait=0.00 render=1.71 present=1.71 z=0.21 uploads=4
+2026-11-25T13:31:00.6008979-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.32ms wait=0.00 render=2.55 present=1.76 z=0.21 uploads=4
+2026-11-25T13:31:03.6069354-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.68ms wait=0.00 render=2.23 present=1.45 z=0.21 uploads=4
+2026-11-25T13:31:06.4996935-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.98ms wait=0.00 render=2.67 present=1.31 z=0.21 uploads=4
+2026-11-25T13:31:09.1923560-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.72ms wait=0.00 render=2.31 present=1.41 z=0.21 uploads=4
+2026-11-25T13:31:12.1104226-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.79ms wait=0.00 render=2.34 present=1.44 z=0.21 uploads=4
+2026-11-25T13:31:14.1696800-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.26ms wait=0.00 render=1.84 present=1.42 z=0.21 uploads=4
+2026-11-25T13:31:16.9889680-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.06ms wait=0.00 render=1.77 present=1.28 z=0.21 uploads=4
+2026-11-25T13:31:19.6483614-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.00ms wait=0.00 render=1.75 present=1.25 z=0.21 uploads=4
+2026-11-25T13:31:22.2665625-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.78ms wait=0.00 render=2.25 present=1.53 z=0.21 uploads=4
+2026-11-25T13:31:26.0769608-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.78ms wait=0.00 render=2.19 present=1.59 z=0.21 uploads=4
+2026-11-25T13:31:30.0858740-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.21ms wait=0.00 render=1.68 present=1.53 z=0.21 uploads=4
+2026-11-25T13:31:33.1180027-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.27ms wait=0.00 render=1.84 present=1.43 z=0.21 uploads=4
+2026-11-25T13:31:35.9186598-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.81ms wait=0.00 render=2.47 present=1.34 z=0.21 uploads=4
+2026-11-25T13:31:38.7398123-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.68ms wait=0.00 render=2.06 present=1.62 z=0.21 uploads=4
+2026-11-25T13:31:41.4726540-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.69ms wait=0.00 render=2.15 present=1.54 z=0.21 uploads=4
+2026-11-25T13:31:44.2945089-05:00 sample on z= uploads= firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=device lost — recreate required
+2026-11-25T13:31:47.0912101-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.24ms wait=0.00 render=1.78 present=1.46 z=0.21 uploads=4
+2026-11-25T13:31:50.6286647-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.07ms wait=0.00 render=1.67 present=1.40 z=0.21 uploads=4
+2026-11-25T13:31:54.1687851-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.24ms wait=0.00 render=1.68 present=1.56 z=0.21 uploads=4
+2026-11-25T13:31:56.9412599-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=4.50ms wait=0.00 render=3.05 present=1.45 z=0.21 uploads=4
+2026-11-25T13:32:00.6624169-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3484 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.36ms wait=0.00 render=1.86 present=1.50 z=0.21 uploads=4
+2026-11-25T13:32:06.3510391-05:00 ==== R3 CONTINUE ON (no NeedRb; Release gpuEvidence=ON may keep gpuMips=0) ====
+2026-11-25T13:32:10.6381965-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-208-r3
+2026-11-25T13:32:10.9379221-05:00 launch CMD run=on
+2026-11-25T13:32:17.1873650-05:00 pid=228168 hwnd=1973216
+2026-11-25T13:32:17.7335451-05:00 select NavSettings (SelectionItem)
+2026-11-25T13:32:21.3916527-05:00 select BtnSettingsNav_Viewer (SelectionItem)
+2026-11-25T13:32:24.1998508-05:00 TglSmoothPresenter initial=Off
+2026-11-25T13:32:24.8362413-05:00 TglSmoothPresenter after=On
+2026-11-25T13:32:24.8648398-05:00 BtnOpenSmoothPresenter enabled=True
+2026-11-25T13:32:25.1379307-05:00 invoke BtnOpenSmoothPresenter
+2026-11-25T13:32:28.5610349-05:00 smooth hwnd=2890798
+2026-11-25T13:32:28.6926978-05:00 sample on z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 92 2864x1449 total=0.61ms wait=0.00 render=0.25 present=0.36
+2026-11-25T13:32:31.7593114-05:00 sample on z=0.21 uploads=4 firstCoarseMs=3439 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.60ms wait=0.00 render=2.19 present=1.41 z=0.21 uploads=4
+2026-11-25T13:32:32.8701300-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\01-fit-coarse-ready.png bytes=41248 caption=ON Release+GPU_EVIDENCE fit firstCoarseMs=3439 gpuMips=0 rbMax=0 uploaded=6/6 z=0.21 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:34:04.5334694-05:00 zoom TIMEOUT target=1.5 lastZ=0.21
+2026-11-25T13:34:05.2974862-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\02-zoom-1p5.png bytes=41248 caption=Zoom target=1.5 actual z=0.21 uploads= status=[] tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:35:36.1790259-05:00 zoom TIMEOUT target=3.3 lastZ=0.21
+2026-11-25T13:35:37.0290583-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\02-zoom-3p3.png bytes=41289 caption=Zoom target=3.3 actual z=0.21 uploads= status=[] tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:37:07.8830693-05:00 zoom TIMEOUT target=32 lastZ=0.21
+2026-11-25T13:37:08.7258234-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\02-zoom-32.png bytes=41289 caption=Zoom target=32 actual z=0.21 uploads= status=[] tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:37:14.8703940-05:00 zoom hit target=3.3 z=3.22 uploads=0
+2026-11-25T13:37:16.6741993-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\03-pan.png bytes=96685 caption=Pan @z~3.3 before z=3.2 after z=3.14 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:37:21.7782330-05:00 zoom hit target=0.22 z=0.3 uploads=0
+2026-11-25T13:37:24.3405432-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\04-resize-at-fit.png bytes=283343 caption=Resize at fit before z=0.3 after z=0.3 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:37:24.4385504-05:00 frame summary frame-times-on.json {"path":"C:\\Users\\iadag\\AppData\\Local\\Cursor\\AgentStores\\cursor_agent_stores\\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\\files\\media\\pr-smooth-v2-viewport-r3\\smooth-presenter-frames-on.log","lines":1343,"parsedTotalMs":1247,"scrapeField":"total_ms","p50":0.801,"p95":3.955,"p99":4.717,"min":0.001,"max":6.732}
+2026-11-25T13:37:24.4421463-05:00 ON DONE firstCoarseMs=3439 gpuMips=0 rbMax=0
+2026-11-25T13:37:25.5393828-05:00 ==== device-lost recovery shot ====
+2026-11-25T13:41:03.9851263-05:00 ==== R3 zoom recapture + device-lost ====
+2026-11-25T13:41:08.2996051-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-208-r3
+2026-11-25T13:41:12.7763179-05:00 select NavSettings (SelectionItem)
+2026-11-25T13:41:16.4437765-05:00 select BtnSettingsNav_Viewer (SelectionItem)
+2026-11-25T13:41:19.2495321-05:00 TglSmoothPresenter initial=Off
+2026-11-25T13:41:19.8765729-05:00 TglSmoothPresenter after=On
+2026-11-25T13:41:19.9066552-05:00 BtnOpenSmoothPresenter enabled=True
+2026-11-25T13:41:20.1813827-05:00 invoke BtnOpenSmoothPresenter
+2026-11-25T13:41:23.6125811-05:00 smooth hwnd=3742568
+2026-11-25T13:41:23.7434605-05:00 sample onzoom z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 91 2864x1449 total=0.45ms wait=0.00 render=0.17 present=0.29
+2026-11-25T13:41:26.9664822-05:00 sample onzoom z=0.21 uploads=4 firstCoarseMs=3498 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.33ms wait=0.00 render=1.82 present=1.50 z=0.21 uploads=4
+2026-11-25T13:46:07.6562621-05:00 ==== R3 zoom warm+ladder + device-lost ====
+2026-11-25T13:46:11.9912455-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-208-r3
+2026-11-25T13:46:16.7440469-05:00 select NavSettings (SelectionItem)
+2026-11-25T13:46:20.3957364-05:00 select BtnSettingsNav_Viewer (SelectionItem)
+2026-11-25T13:46:23.2199348-05:00 TglSmoothPresenter initial=Off
+2026-11-25T13:46:23.8340628-05:00 TglSmoothPresenter after=On
+2026-11-25T13:46:23.8561600-05:00 BtnOpenSmoothPresenter enabled=True
+2026-11-25T13:46:24.1410450-05:00 invoke BtnOpenSmoothPresenter
+2026-11-25T13:46:27.5819261-05:00 smooth hwnd=38344238
+2026-11-25T13:46:27.7115298-05:00 sample onzoom2 z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 87 2864x1449 total=0.67ms wait=0.00 render=0.25 present=0.42
+2026-11-25T13:46:29.7542299-05:00 sample onzoom2 z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 152 2864x1449 total=0.67ms wait=0.00 render=0.27 present=0.41
+2026-11-25T13:46:33.3296351-05:00 sample onzoom2 z=0.21 uploads=4 firstCoarseMs=3856 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.40ms wait=0.00 render=1.85 present=1.56 z=0.21 uploads=4
+2026-11-25T13:46:35.1355274-05:00 warm baseZ=0.21
+2026-11-25T13:52:06.3440111-05:00 ==== R3 zoom warm+ladder + device-lost ====
+2026-11-25T13:52:10.5360935-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-208-r3
+2026-11-25T13:52:15.3129276-05:00 select NavSettings (SelectionItem)
+2026-11-25T13:52:18.9818658-05:00 select BtnSettingsNav_Viewer (SelectionItem)
+2026-11-25T13:52:21.8081316-05:00 TglSmoothPresenter initial=Off
+2026-11-25T13:52:22.4364167-05:00 TglSmoothPresenter after=On
+2026-11-25T13:52:22.4704397-05:00 BtnOpenSmoothPresenter enabled=True
+2026-11-25T13:52:22.7598511-05:00 invoke BtnOpenSmoothPresenter
+2026-11-25T13:52:26.1970099-05:00 smooth hwnd=4791212
+2026-11-25T13:52:26.3390409-05:00 sample onzoom2 z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 89 2864x1449 total=0.52ms wait=0.00 render=0.21 present=0.31
+2026-11-25T13:52:28.3874729-05:00 sample onzoom2 z= uploads= firstCoarseMs= uploaded= gpuMips= rbMax= status=frame 153 2864x1449 total=0.57ms wait=0.00 render=0.26 present=0.32
+2026-11-25T13:52:32.1086950-05:00 sample onzoom2 z=0.21 uploads=4 firstCoarseMs=3976 uploaded=6/6 gpuMips=0 rbMax=0 status=frame 2 2864x1449 total=3.59ms wait=0.00 render=1.81 present=1.78 z=0.21 uploads=4
+2026-11-25T13:52:33.9293232-05:00 warm baseZ=0.21
+2026-11-25T13:57:14.6543443-05:00 warm zoom unlocked z=0.31
+2026-11-25T13:57:17.4498910-05:00 zoom hit 1.5 z=1.36
+2026-11-25T13:57:18.0077758-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\02-zoom-1p5.png bytes=159128 caption=Zoom target=1.5 actual z=1.36 uploads=0 status=[frame 117 2864x1449 total=0.32ms wait=0.00 render=0.20 present=0.13 z=1.36 uploads=0] tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:57:19.8706145-05:00 zoom hit 3.3 z=3.37
+2026-11-25T13:57:20.4232545-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\02-zoom-3p3.png bytes=91048 caption=Zoom target=3.3 actual z=3.37 uploads=0 status=[frame 198 2864x1449 total=0.30ms wait=0.00 render=0.20 present=0.10 z=3.37 uploads=0] tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:57:24.8904954-05:00 zoom hit 32 z=31.95
+2026-11-25T13:57:25.4412535-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\02-zoom-32.png bytes=49976 caption=Zoom target=32 actual z=31.95 uploads=0 status=[frame 365 2864x1449 total=0.37ms wait=0.00 render=0.23 present=0.14 z=31.95 uploads=0] tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:57:25.4524142-05:00 ZOOM_OK
+2026-11-25T13:57:26.5399046-05:00 ==== device-lost recovery ====
+2026-11-25T13:57:30.6897046-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-208-r3
+2026-11-25T13:57:35.1994073-05:00 select NavSettings (SelectionItem)
+2026-11-25T13:57:38.8460189-05:00 select BtnSettingsNav_Viewer (SelectionItem)
+2026-11-25T13:57:41.6460061-05:00 TglSmoothPresenter initial=Off
+2026-11-25T13:57:42.2599533-05:00 TglSmoothPresenter after=On
+2026-11-25T13:57:42.2815942-05:00 BtnOpenSmoothPresenter enabled=True
+2026-11-25T13:57:42.5563721-05:00 invoke BtnOpenSmoothPresenter
+2026-11-25T13:57:45.9781969-05:00 smooth hwnd=7543226
+2026-11-25T13:57:46.0334863-05:00 ENV smooth-debug source=palace severity=NOTE psv=- msg=PALACE_SMOOTH_TEST_REMOVE_DEVICE=1 func=- file=- line=0
+2026-11-25T13:58:10.3073525-05:00 armed 2
+2026-11-25T13:58:10.3123794-05:00 RemoveDevice @2
+2026-11-25T13:58:11.8890279-05:00 CAPTURE C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v2-viewport-r3\05-after-device-lost-recovery.png bytes=774718 caption=After device-lost recovery 2->2 uploaded=6/6 z=0.21 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.
+2026-11-25T13:58:11.9024175-05:00 rearm 2
+2026-11-25T13:58:13.1093048-05:00 R3_PACK_DONE

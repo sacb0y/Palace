@@ -1,0 +1,11 @@
+﻿{
+    "path":  "C:\\Users\\iadag\\AppData\\Local\\Cursor\\AgentStores\\cursor_agent_stores\\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\\files\\media\\pr-smooth-v2-viewport-r3\\smooth-presenter-frames-on.log",
+    "lines":  1343,
+    "parsedTotalMs":  1247,
+    "scrapeField":  "total_ms",
+    "p50":  0.801,
+    "p95":  3.955,
+    "p99":  4.717,
+    "min":  0.001,
+    "max":  6.732
+}

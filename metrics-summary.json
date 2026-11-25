@@ -1,0 +1,34 @@
+﻿{
+    "tip":  "a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6",
+    "productVersion":  "0.3.121+a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6",
+    "host":  "FENRIRDESKTOP",
+    "off":  {
+                "uploaded":  "6/6",
+                "firstCoarseMs":  3203,
+                "gpuMips":  0,
+                "rbMax":  0
+            },
+    "on":  {
+               "uploaded":  "6/6",
+               "firstCoarseMs":  3439,
+               "gpuMips":  0,
+               "rbMax":  0
+           },
+    "deviceLost":  {
+                       "sawRemove":  true,
+                       "sawRearm":  true,
+                       "frameBefore":  2,
+                       "frameAfter":  2,
+                       "envProbe":  "smooth-debug source=palace severity=NOTE psv=- msg=PALACE_SMOOTH_TEST_REMOVE_DEVICE=1 func=- file=- line=0"
+                   },
+    "shots":  [
+                  "01-fit-coarse-ready.png",
+                  "02-zoom-1p5.png",
+                  "02-zoom-3p3.png",
+                  "02-zoom-32.png",
+                  "03-pan.png",
+                  "04-resize-at-fit.png",
+                  "05-after-device-lost-recovery.png",
+                  "10-off-coarse-ready.png"
+              ]
+}

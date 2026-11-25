@@ -1,0 +1,1 @@
+﻿Resize at fit before z=0.3 after z=0.3 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.

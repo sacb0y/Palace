@@ -1,0 +1,1 @@
+﻿ON Release+GPU_EVIDENCE fit firstCoarseMs=3439 gpuMips=0 rbMax=0 uploaded=6/6 z=0.21 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.

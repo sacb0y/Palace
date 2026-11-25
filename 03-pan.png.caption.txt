@@ -1,0 +1,1 @@
+﻿Pan @z~3.3 before z=3.2 after z=3.14 tip=a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6 HWND-PrintWindow 5E1F.

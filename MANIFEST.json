@@ -1,0 +1,123 @@
+{
+    "tip":  "a6dcdcb4f3a2b28feaf3d889dd9cd28369d73ea6",
+    "branch":  "media/pr-smooth-v2-viewport-r3",
+    "host":  "FENRIRDESKTOP",
+    "files":  [
+                  {
+                      "bytes":  41248,
+                      "name":  "01-fit-coarse-ready.png"
+                  },
+                  {
+                      "bytes":  157,
+                      "name":  "01-fit-coarse-ready.png.caption.txt"
+                  },
+                  {
+                      "bytes":  159128,
+                      "name":  "02-zoom-1p5.png"
+                  },
+                  {
+                      "bytes":  206,
+                      "name":  "02-zoom-1p5.png.caption.txt"
+                  },
+                  {
+                      "bytes":  49976,
+                      "name":  "02-zoom-32.png"
+                  },
+                  {
+                      "bytes":  207,
+                      "name":  "02-zoom-32.png.caption.txt"
+                  },
+                  {
+                      "bytes":  91048,
+                      "name":  "02-zoom-3p3.png"
+                  },
+                  {
+                      "bytes":  206,
+                      "name":  "02-zoom-3p3.png.caption.txt"
+                  },
+                  {
+                      "bytes":  96685,
+                      "name":  "03-pan.png"
+                  },
+                  {
+                      "bytes":  109,
+                      "name":  "03-pan.png.caption.txt"
+                  },
+                  {
+                      "bytes":  283343,
+                      "name":  "04-resize-at-fit.png"
+                  },
+                  {
+                      "bytes":  111,
+                      "name":  "04-resize-at-fit.png.caption.txt"
+                  },
+                  {
+                      "bytes":  774718,
+                      "name":  "05-after-device-lost-recovery.png"
+                  },
+                  {
+                      "bytes":  124,
+                      "name":  "05-after-device-lost-recovery.png.caption.txt"
+                  },
+                  {
+                      "bytes":  41338,
+                      "name":  "10-off-coarse-ready.png"
+                  },
+                  {
+                      "bytes":  141,
+                      "name":  "10-off-coarse-ready.png.caption.txt"
+                  },
+                  {
+                      "bytes":  25408,
+                      "name":  "CAPTURE_EVENTS.txt"
+                  },
+                  {
+                      "bytes":  1331,
+                      "name":  "device-lost-chain-only.txt"
+                  },
+                  {
+                      "bytes":  1146,
+                      "name":  "device-lost-NOTES.md"
+                  },
+                  {
+                      "bytes":  232,
+                      "name":  "device-lost-r3-phases.json"
+                  },
+                  {
+                      "bytes":  395,
+                      "name":  "frame-times-off.json"
+                  },
+                  {
+                      "bytes":  396,
+                      "name":  "frame-times-on.json"
+                  },
+                  {
+                      "bytes":  1992,
+                      "name":  "metrics-off.json"
+                  },
+                  {
+                      "bytes":  1988,
+                      "name":  "metrics-on.json"
+                  },
+                  {
+                      "bytes":  1240,
+                      "name":  "metrics-summary.json"
+                  },
+                  {
+                      "bytes":  320,
+                      "name":  "ON-NOTES.md"
+                  },
+                  {
+                      "bytes":  844,
+                      "name":  "REPORT.md"
+                  },
+                  {
+                      "bytes":  39325,
+                      "name":  "smooth-diligent-debug-devicelost.log"
+                  },
+                  {
+                      "bytes":  39329,
+                      "name":  "smooth-diligent-debug-r3-devicelost.log"
+                  }
+              ]
+}
