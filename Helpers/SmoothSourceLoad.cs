@@ -4,9 +4,9 @@ namespace Palace.Helpers;
 
 /// <summary>
 /// Load float RGBA for Smooth Working decode via existing Palace decoders
-/// (EXR / Radiance / path-gated). Refuses online-only sources. JXL / AVIF / WIC
-/// float paths are wired through the same entry; on Linux Cloud Agents tests
-/// inject buffers when platform codecs are unavailable.
+/// (EXR / Radiance / JXL / AVIF / WIC). Refuses online-only sources. App host
+/// registers JXL/AVIF/WIC via <see cref="TryLoadJxl"/> etc.; Linux tests inject
+/// buffers or use EXR/Radiance.
 /// </summary>
 public static class SmoothSourceLoad
 {
@@ -16,6 +16,15 @@ public static class SmoothSourceLoad
         int Height,
         NormalizeOptions Options,
         int Orientation);
+
+    /// <summary>Optional app-host JXL loader (wired from SmoothSourceAppLoad).</summary>
+    public static Func<string, CancellationToken, Loaded?>? TryLoadJxl { get; set; }
+
+    /// <summary>Optional app-host AVIF/HEIF loader.</summary>
+    public static Func<string, CancellationToken, Loaded?>? TryLoadAvif { get; set; }
+
+    /// <summary>Optional app-host WIC float loader (PNG/JPEG/TIFF/…).</summary>
+    public static Func<string, CancellationToken, Loaded?>? TryLoadWic { get; set; }
 
     /// <summary>
     /// Decode a local hydrated file into float RGBA + normalize options.
@@ -53,7 +62,8 @@ public static class SmoothSourceLoad
             var size = RadianceFile.TryReadSize(ms)
                 ?? throw new InvalidOperationException("Radiance size read failed.");
             ms.Position = 0;
-            var frame = RadianceFile.TryDecode(ms, size.Width, size.Height, ct)
+            // Full native decode — no box downscale over 64MP (strip/tile later).
+            var frame = RadianceFile.TryDecode(ms, destWidth: 0, destHeight: 0, ct)
                 ?? throw new InvalidOperationException("Radiance decode failed.");
             return new Loaded(
                 frame.ScrgbRgba,
@@ -65,18 +75,27 @@ public static class SmoothSourceLoad
 
         if (PathSafe.IsJxl(path))
         {
-            return LoadJxl(bytes, ct);
+            return TryLoadJxl?.Invoke(path, ct)
+                ?? throw new NotSupportedException(
+                    "JXL Smooth load requires app-host SmoothSourceAppLoad.Register().");
         }
 
         if (PathSafe.IsAvif(path) || PathSafe.IsHeif(path))
         {
-            return LoadAvifOrHeif(path, bytes, ct);
+            return TryLoadAvif?.Invoke(path, ct)
+                ?? throw new NotSupportedException(
+                    "AVIF/HEIF Smooth load requires app-host SmoothSourceAppLoad.Register().");
         }
 
-        // PNG / JPEG / TIFF / etc. — WIC on Windows app host; tests inject buffers.
+        var wic = TryLoadWic?.Invoke(path, ct);
+        if (wic is not null)
+        {
+            return wic.Value;
+        }
+
         throw new NotSupportedException(
             $"Smooth source format not wired for '{Path.GetExtension(path)}' on this host; " +
-            "use DecodeAsync with an injected float buffer or a Windows WIC path.");
+            "use DecodeAsync with an injected float buffer or register WIC via SmoothSourceAppLoad.");
     }
 
     /// <summary>Adapter for <see cref="SmoothWorkingDecode.DecodePathAsync"/>.</summary>
@@ -89,38 +108,16 @@ public static class SmoothSourceLoad
                 (loaded.Rgba, loaded.Width, loaded.Height, loaded.Options));
         };
 
-    private static Loaded LoadJxl(byte[] bytes, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        // JxlDecode is WinUI/Starward-backed; when unavailable, refuse clearly.
-        try
+    /// <summary>
+    /// Same as <see cref="LoaderForPath"/> but also surfaces EXIF orientation
+    /// for the view transform (tiles stay unbaked).
+    /// </summary>
+    public static Func<CancellationToken, Task<(float[] Rgba, int W, int H, NormalizeOptions Opts, int Orientation)?>>
+        LoaderForPathWithOrientation(string path) =>
+        ct =>
         {
-            var type = Type.GetType("Palace.Services.JxlDecode, Palace")
-                       ?? Type.GetType("Palace.Services.JxlDecode");
-            if (type is null)
-            {
-                throw new NotSupportedException("JXL decode type not loaded.");
-            }
-
-            // Prefer existing fixture helpers when present; otherwise fail soft.
-            _ = bytes;
-            throw new NotSupportedException(
-                "JXL float load for Smooth uses the app StillDecode/JxlDecode path; " +
-                "inject Working floats via DecodeAsync in tests.");
-        }
-        catch (NotSupportedException)
-        {
-            throw;
-        }
-    }
-
-    private static Loaded LoadAvifOrHeif(string path, byte[] bytes, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        _ = path;
-        _ = bytes;
-        throw new NotSupportedException(
-            "AVIF/HEIF float load for Smooth uses the app HdrAvifDecode path; " +
-            "inject Working floats via DecodeAsync in tests.");
-    }
+            var loaded = LoadLocalFile(path, ct);
+            return Task.FromResult<(float[] Rgba, int W, int H, NormalizeOptions Opts, int Orientation)?>(
+                (loaded.Rgba, loaded.Width, loaded.Height, loaded.Options, loaded.Orientation));
+        };
 }

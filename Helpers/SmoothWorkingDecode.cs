@@ -33,43 +33,11 @@ public sealed class SmoothWorkingDecode : IDisposable
         width > 0 && height > 0 && (long)width * height <= MaxSmoothWorkingPixels;
 
     /// <summary>
-    /// Box-fit so width×height ≤ <see cref="MaxSmoothWorkingPixels"/> before
-    /// normalize (provisional strip/tile path for ≥64MP sources).
+    /// Deprecated: do not box-downscale over 64MP — use strip/tile RGBA16F L0
+    /// (<see cref="DecodeStripToRgba16FAsync"/>). Kept for size math helpers.
     /// </summary>
-    public static (int Width, int Height) FitSmoothWorkingSize(int width, int height)
-    {
-        if (width <= 0 || height <= 0)
-        {
-            return (0, 0);
-        }
-
-        var pixels = (long)width * height;
-        if (pixels <= MaxSmoothWorkingPixels)
-        {
-            return (width, height);
-        }
-
-        var scale = Math.Sqrt(MaxSmoothWorkingPixels / (double)pixels);
-        var w = Math.Max(1, (int)Math.Floor(width * scale));
-        var h = Math.Max(1, (int)Math.Floor(height * scale));
-        while ((long)w * h > MaxSmoothWorkingPixels)
-        {
-            if (w >= h && w > 1)
-            {
-                w--;
-            }
-            else if (h > 1)
-            {
-                h--;
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return (w, h);
-    }
+    public static (int Width, int Height) FitSmoothWorkingSize(int width, int height) =>
+        (Math.Max(0, width), Math.Max(0, height));
 
     /// <summary>Cancel any in-flight decode (image change / dispose).</summary>
     public void Cancel()
@@ -336,6 +304,44 @@ public sealed class SmoothWorkingDecode : IDisposable
         a = (float)(sa * inv);
     }
 
+    /// <summary>
+    /// ≥64MP path: no full float Working and no box-downscale. Builds RGBA16F
+    /// L0 tiles in content-row strips from a pixel sampler (synthetic / strip
+    /// decode). Stats from a coarse subsample.
+    /// </summary>
+    public Task<SmoothWorkingDecodeResult?> DecodeStripToRgba16FAsync(
+        int width,
+        int height,
+        Func<int, int, (float R, float G, float B, float A)> sample,
+        CancellationToken external = default)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+        CancellationTokenSource linked;
+        int gen;
+        lock (_gate)
+        {
+            try
+            {
+                _cts?.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // ignore
+            }
+
+            _cts?.Dispose();
+            _generation++;
+            gen = _generation;
+            _cts = CancellationTokenSource.CreateLinkedTokenSource(external);
+            linked = _cts;
+        }
+
+        var token = linked.Token;
+        return Task.Run(
+            () => DecodeStripCore(width, height, sample, gen, token),
+            token);
+    }
+
     private SmoothWorkingDecodeResult? DecodeCore(
         float[] sourceRgba,
         int width,
@@ -350,22 +356,17 @@ public sealed class SmoothWorkingDecode : IDisposable
             return null;
         }
 
-        var src = sourceRgba;
-        var w = width;
-        var h = height;
-        if (!FitsSmoothWorkingBudget(w, h))
+        // Over budget: refuse full-float path — callers use DecodeStripToRgba16FAsync.
+        if (!FitsSmoothWorkingBudget(width, height))
         {
-            var (fw, fh) = FitSmoothWorkingSize(w, h);
-            src = BoxResize(src, w, h, fw, fh);
-            w = fw;
-            h = fh;
+            return null;
         }
 
         // Smooth path allows up to 64MP — bypass Imaging's 16MP eager TryRun cap.
         NormalizedFrame? frame;
         try
         {
-            frame = ImagingStillNormalize.Run(src, w, h, options);
+            frame = ImagingStillNormalize.Run(sourceRgba, width, height, options);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -386,13 +387,8 @@ public sealed class SmoothWorkingDecode : IDisposable
             }
         }
 
-        // Keep Working floats for on-demand finer tiles; do not eagerly allocate
-        // every L0 RGBA16F slot for large images (session materializes via
-        // TileFromWorkingLevel0 / TileFromWorkingAtLevel).
         var stats = Analyze.Run(frame);
         var working = frame.Rgba;
-        // Detach NormalizedFrame payload ownership into the result — callers
-        // may ClearNormalizedFrame after the session retains WorkingRgba.
         var result = new SmoothWorkingDecodeResult(frame, stats, working, gen);
 
         lock (_gate)
@@ -406,49 +402,111 @@ public sealed class SmoothWorkingDecode : IDisposable
         return result;
     }
 
-    private static float[] BoxResize(float[] src, int sw, int sh, int dw, int dh)
+    private SmoothWorkingDecodeResult? DecodeStripCore(
+        int width,
+        int height,
+        Func<int, int, (float R, float G, float B, float A)> sample,
+        int gen,
+        CancellationToken token)
     {
-        var dst = new float[dw * dh * 4];
-        for (var y = 0; y < dh; y++)
+        token.ThrowIfCancellationRequested();
+        if (width < 1 || height < 1)
         {
-            var sy0 = y * sh / dh;
-            var sy1 = Math.Max(sy0 + 1, (y + 1) * sh / dh);
-            sy1 = Math.Min(sy1, sh);
-            for (var x = 0; x < dw; x++)
+            return null;
+        }
+
+        // Prefer RGBA16F L0 tiles — never allocate width*height*4 floats.
+        var (nx, ny) = SmoothTileMath.TileCounts(width, height);
+        var tiles = new Dictionary<SmoothTileId, byte[]>(nx * ny);
+        var stripH = SmoothTileMath.ContentSize;
+        for (var ty = 0; ty < ny; ty++)
+        {
+            token.ThrowIfCancellationRequested();
+            for (var tx = 0; tx < nx; tx++)
             {
-                var sx0 = x * sw / dw;
-                var sx1 = Math.Max(sx0 + 1, (x + 1) * sw / dw);
-                sx1 = Math.Min(sx1, sw);
-                double r = 0, g = 0, b = 0, a = 0;
-                var n = 0;
-                for (var sy = sy0; sy < sy1; sy++)
-                {
-                    for (var sx = sx0; sx < sx1; sx++)
-                    {
-                        var si = ((sy * sw) + sx) * 4;
-                        r += src[si];
-                        g += src[si + 1];
-                        b += src[si + 2];
-                        a += src[si + 3];
-                        n++;
-                    }
-                }
+                var id = new SmoothTileId(0, tx, ty);
+                tiles[id] = TileFromSampler(sample, width, height, tx, ty);
+            }
 
-                var di = ((y * dw) + x) * 4;
-                if (n < 1)
-                {
-                    continue;
-                }
+            _ = stripH;
+        }
 
-                var inv = 1.0 / n;
-                dst[di] = (float)(r * inv);
-                dst[di + 1] = (float)(g * inv);
-                dst[di + 2] = (float)(b * inv);
-                dst[di + 3] = (float)(a * inv);
+        lock (_gate)
+        {
+            if (gen != _generation)
+            {
+                throw new OperationCanceledException(token);
             }
         }
 
-        return dst;
+        // Coarse subsample for Analyze-compatible ImageStats (Lc ≈ paper).
+        var step = Math.Max(1, (int)Math.Sqrt((width * (long)height) / 4096.0));
+        float maxRgb = 0, sumY = 0;
+        var n = 0;
+        for (var y = 0; y < height; y += step)
+        {
+            for (var x = 0; x < width; x += step)
+            {
+                var (r, g, b, _) = sample(x, y);
+                maxRgb = Math.Max(maxRgb, Math.Max(r, Math.Max(g, b)));
+                sumY += ImagingConstants.Bt2020Y(r, g, b);
+                n++;
+            }
+        }
+
+        var p50 = n > 0 ? sumY / n : 0.5f;
+        var lc = Math.Max(1f, maxRgb);
+        var stats = new ImageStats(
+            P50: p50,
+            P99995: maxRgb,
+            Max: maxRgb,
+            MaxRgb: maxRgb,
+            Lc: lc,
+            RefWhite: ImagingConstants.RefWhiteNits,
+            MetadataPeak: null,
+            SourceClipped: false,
+            SourceClipRatio: 0f);
+
+        // No NormalizedFrame / WorkingRgba — session uses Level0Tiles + rematerialize.
+        return new SmoothWorkingDecodeResult(
+            frame: null,
+            stats,
+            workingRgba: Array.Empty<float>(),
+            level0Tiles: tiles,
+            width,
+            height,
+            gen);
+    }
+
+    private static byte[] TileFromSampler(
+        Func<int, int, (float R, float G, float B, float A)> sample,
+        int width,
+        int height,
+        int tileX,
+        int tileY)
+    {
+        var (ox, oy, _, _) = SmoothTileMath.ContentRect(tileX, tileY, width, height);
+        var slot = SmoothTileMath.SlotSize;
+        var border = SmoothTileMath.Border;
+        var bytes = new byte[slot * slot * 8];
+        for (var sy = 0; sy < slot; sy++)
+        {
+            var cy = sy - border;
+            var iy = Math.Clamp(oy + cy, 0, height - 1);
+            for (var sx = 0; sx < slot; sx++)
+            {
+                var cx = sx - border;
+                var ix = Math.Clamp(ox + cx, 0, width - 1);
+                var (r, g, b, a) = sample(ix, iy);
+                var o = ((sy * slot) + sx) * 8;
+                WriteHalf(bytes, o, r);
+                WriteHalf(bytes, o + 2, g);
+                WriteHalf(bytes, o + 4, b);
+                WriteHalf(bytes, o + 6, a);
+            }
+        }
+
+        return bytes;
     }
 
     private static void WriteHalf(byte[] dest, int offset, float value)
@@ -459,7 +517,7 @@ public sealed class SmoothWorkingDecode : IDisposable
     }
 }
 
-/// <summary>One successful V2 Working decode. Session retains <see cref="WorkingRgba"/> for streaming.</summary>
+/// <summary>One successful V2 Working decode. Session retains Working floats and/or RGBA16F L0.</summary>
 public sealed class SmoothWorkingDecodeResult
 {
     private NormalizedFrame? _frame;
@@ -476,6 +534,7 @@ public sealed class SmoothWorkingDecodeResult
         Generation = generation;
         Width = frame.Width;
         Height = frame.Height;
+        Level0Tiles = new Dictionary<SmoothTileId, byte[]>();
     }
 
     /// <summary>Legacy ctor used by older call sites that still pass L0 tile maps.</summary>
@@ -489,14 +548,33 @@ public sealed class SmoothWorkingDecodeResult
         Level0Tiles = level0Tiles;
     }
 
+    /// <summary>Strip/tile path (≥64MP): RGBA16F L0 only, no float Working.</summary>
+    public SmoothWorkingDecodeResult(
+        NormalizedFrame? frame,
+        ImageStats stats,
+        float[] workingRgba,
+        IReadOnlyDictionary<SmoothTileId, byte[]> level0Tiles,
+        int width,
+        int height,
+        int generation)
+    {
+        _frame = frame;
+        Stats = stats;
+        WorkingRgba = workingRgba;
+        Level0Tiles = level0Tiles;
+        Width = width;
+        Height = height;
+        Generation = generation;
+    }
+
     public NormalizedFrame? Frame => _frame;
     public ImageStats Stats { get; }
     public float[] WorkingRgba { get; }
-    public IReadOnlyDictionary<SmoothTileId, byte[]> Level0Tiles { get; } =
-        new Dictionary<SmoothTileId, byte[]>();
+    public IReadOnlyDictionary<SmoothTileId, byte[]> Level0Tiles { get; }
     public int Generation { get; }
     public int Width { get; }
     public int Height { get; }
+    public bool HasFloatWorking => WorkingRgba.Length >= Width * Height * 4;
 
     /// <summary>
     /// Drop the <see cref="NormalizedFrame"/> wrapper after the session has

@@ -32,10 +32,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private float _zoom = 1f;
     private float _tx;
     private float _ty;
-    private float _orient00 = 1f;
-    private float _orient01;
-    private float _orient10;
-    private float _orient11 = 1f;
+    private SmoothViewport.ExifOrient _orient = SmoothViewport.ExifOrient.Identity(1, 1);
     private bool _viewportArmed;
     private bool _pyramidBuildRunning;
     private readonly float[] _viewPack = new float[32];
@@ -459,16 +456,16 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _ty = ty;
     }
 
-    /// <summary>EXIF orientation matrix for <see cref="SmoothViewport.Affine2x3.FromZoomPan"/>.</summary>
-    public void SetOrientation(float o00, float o01, float o10, float o11)
-    {
-        _orient00 = o00;
-        _orient01 = o01;
-        _orient10 = o10;
-        _orient11 = o11;
-    }
+    /// <summary>EXIF 1–8 matrix + translation (storage→upright); call before arm.</summary>
+    public void SetOrientation(in SmoothViewport.ExifOrient orient) => _orient = orient;
+
+    public SmoothViewport.ExifOrient Orientation => _orient;
 
     public (float Zoom, float Tx, float Ty) GetViewportTransform() => (_zoom, _tx, _ty);
+
+    public int OrientedWidth => _orient.OrientedWidth;
+
+    public int OrientedHeight => _orient.OrientedHeight;
 
     public bool Tick()
     {
@@ -537,51 +534,28 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         _lastTickQpc = now;
         dtMs = Math.Clamp(dtMs, 1f, 100f);
 
-        var imgToDev = SmoothViewport.Affine2x3.FromZoomPan(
-            _zoom, _tx, _ty, _orient00, _orient01, _orient10, _orient11);
+        var imgToDev = SmoothViewport.Affine2x3.FromZoomPan(_zoom, _tx, _ty, in _orient);
         SmoothViewport.PackViewCb(_viewPack, imgToDev, w, h, _zoom);
         _ = SmoothPresenterNative.ViewportSetView(
             _host,
             SmoothPresenterNative.ViewCb.FromPacked(_viewPack));
 
         // Stream visible tiles from retained Working → Cpu → GPU (cap uploads/frame).
+        // Also stream Level+1 when minifying (z<1) so ParentSlice can bind (N1).
         var level = SmoothViewport.LevelForZoom(_zoom, _session.MaxLevel);
-        SmoothViewport.CollectVisibleTiles(
-            imgToDev, w, h, level, _session.FullWidth, _session.FullHeight, _visibleScratch);
-        var uploads = 0;
-        foreach (var (tx, ty) in _visibleScratch)
+        var uploads = StreamVisibleLevel(imgToDev, w, h, level, MaxUploadsPerFrame);
+        if (uploads < 0)
         {
-            if (uploads >= MaxUploadsPerFrame)
-            {
-                break;
-            }
+            return;
+        }
 
-            var id = new SmoothTileId(level, tx, ty);
-            if (_session.Lru.TryGetSlot(id, out _))
+        if (_zoom < 1f && level < _session.MaxLevel && uploads < MaxUploadsPerFrame)
+        {
+            var parentUploads = StreamVisibleLevel(
+                imgToDev, w, h, level + 1, MaxUploadsPerFrame - uploads);
+            if (parentUploads < 0)
             {
-                continue;
-            }
-
-            if (!_session.TryEnsureCpuTile(id) || !_session.Cpu.TryGet(id, out var bytes))
-            {
-                continue;
-            }
-
-            if (!_session.Lru.TryInsert(id, out var slot, out _))
-            {
-                continue;
-            }
-
-            var up = SmoothPresenterNative.TileUpload(_host, (uint)slot, bytes);
-            if (up == SmoothPresenterNative.StatusCode.DeviceLost)
-            {
-                HandleDeviceLost();
                 return;
-            }
-
-            if (up == SmoothPresenterNative.StatusCode.Ok)
-            {
-                uploads++;
             }
         }
 
@@ -629,6 +603,61 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             ? Array.Empty<SmoothPresenterNative.TileInstance>()
             : _instancePool.GetRange(0, draws.Count).ToArray();
         _ = SmoothPresenterNative.ViewportSetInstances(_host, instances);
+    }
+
+    /// <summary>Upload up to <paramref name="budget"/> missing tiles at <paramref name="level"/>. Returns -1 on device-lost.</summary>
+    private int StreamVisibleLevel(
+        in SmoothViewport.Affine2x3 imgToDev,
+        float panelW,
+        float panelH,
+        int level,
+        int budget)
+    {
+        if (_session is null || _host == 0 || budget < 1)
+        {
+            return 0;
+        }
+
+        SmoothViewport.CollectVisibleTiles(
+            imgToDev, panelW, panelH, level, _session.FullWidth, _session.FullHeight, _visibleScratch);
+        var uploaded = 0;
+        foreach (var (tx, ty) in _visibleScratch)
+        {
+            if (uploaded >= budget)
+            {
+                break;
+            }
+
+            var id = new SmoothTileId(level, tx, ty);
+            if (_session.Lru.TryGetSlot(id, out _))
+            {
+                continue;
+            }
+
+            if (!_session.TryEnsureCpuTile(id) || !_session.Cpu.TryGet(id, out var bytes))
+            {
+                continue;
+            }
+
+            if (!_session.Lru.TryInsert(id, out var slot, out _))
+            {
+                continue;
+            }
+
+            var up = SmoothPresenterNative.TileUpload(_host, (uint)slot, bytes);
+            if (up == SmoothPresenterNative.StatusCode.DeviceLost)
+            {
+                HandleDeviceLost();
+                return -1;
+            }
+
+            if (up == SmoothPresenterNative.StatusCode.Ok)
+            {
+                uploaded++;
+            }
+        }
+
+        return uploaded;
     }
 
     public bool TryRecreateAfterDeviceLost(

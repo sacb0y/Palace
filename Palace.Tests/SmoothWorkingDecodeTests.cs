@@ -155,12 +155,30 @@ public sealed class SmoothWorkingDecodeTests
     }
 
     [Fact]
-    public void FitsSmoothWorkingBudget_Allows64MP()
+    public void FitsSmoothWorkingBudget_Allows64MP_NoBoxDownscale()
     {
         Assert.True(SmoothWorkingDecode.FitsSmoothWorkingBudget(8000, 8000)); // 64MP
         Assert.False(SmoothWorkingDecode.FitsSmoothWorkingBudget(9000, 9000));
+        // FitSmoothWorkingSize no longer shrinks — over-budget uses strip/tile path.
         var (fw, fh) = SmoothWorkingDecode.FitSmoothWorkingSize(12000, 8000);
-        Assert.True(SmoothWorkingDecode.FitsSmoothWorkingBudget(fw, fh));
+        Assert.Equal(12000, fw);
+        Assert.Equal(8000, fh);
+    }
+
+    [Fact]
+    public async Task DecodeStrip_ProducesRgba16FTiles_WithoutFullFloat()
+    {
+        const int w = 600;
+        const int h = 400;
+        using var decode = new SmoothWorkingDecode();
+        var result = await decode.DecodeStripToRgba16FAsync(
+            w,
+            h,
+            (x, y) => (0.5f, 0.25f, 0.125f, 1f));
+        Assert.NotNull(result);
+        Assert.False(result!.HasFloatWorking);
+        Assert.NotEmpty(result.Level0Tiles);
+        Assert.Equal(SmoothTileMath.BytesPerTileRgba16F(), result.Level0Tiles[new SmoothTileId(0, 0, 0)].Length);
     }
 
     [Fact]
@@ -179,6 +197,8 @@ public sealed class SmoothWorkingDecodeTests
             precision: 4);
         Assert.Equal(1f, packed.ToneCb[11]); // HasLut
         Assert.Equal(1f, packed.ToneCb[14]); // SoftNegatives
+        // ToneA.z = display PeakNormalized (1000/203), not image MaxRgb.
+        Assert.Equal(1000f / ImagingConstants.RefWhiteNits, packed.ToneCb[2], precision: 4);
     }
 
     [Fact]

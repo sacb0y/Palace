@@ -33,7 +33,7 @@
                 AutomationProperties.AutomationId="TxtSmoothHint"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Text="V2: Working decode → pyramid · wheel/Ctrl+wheel/pan on ScpSmooth · ZoomAbout+EaseZoom (full feel = V3) · Frame log → smooth-presenter-frames.log"
+                Text="V2: DecodePathAsync / ≥64MP strip · wheel/Ctrl+wheel/pan · R/Shift+R rotate · ZoomAbout+EaseZoom (full feel = V3)"
                 TextWrapping="WrapWholeWords" />
         </StackPanel>
         <SwapChainPanel
@@ -47,6 +47,7 @@
             PointerMoved="ScpSmooth_PointerMoved"
             PointerReleased="ScpSmooth_PointerReleased"
             PointerCanceled="ScpSmooth_PointerReleased"
-            PointerCaptureLost="ScpSmooth_PointerReleased" />
+            PointerCaptureLost="ScpSmooth_PointerReleased"
+            KeyDown="ScpSmooth_KeyDown" />
     </Grid>
 </Window>

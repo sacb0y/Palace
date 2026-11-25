@@ -87,6 +87,35 @@ public sealed class SmoothViewportFrameTests
 
         Assert.Contains(draws, d => d.Level == 1 && d.Opacity >= 1f);
         Assert.Contains(draws, d => d.Level == 0 && d.Opacity < 1f);
+        // N1: ParentSlice only when ancestor is exactly level+1.
+        Assert.Contains(draws, d => d.Level == 0 && d.ParentSlice == 2);
+    }
+
+    [Fact]
+    public void Build_ParentSlice_ClearedWhenAncestorDeeperThanLevelPlusOne()
+    {
+        var slots = new Dictionary<SmoothTileId, uint>
+        {
+            [new SmoothTileId(0, 0, 0)] = 1,
+            [new SmoothTileId(2, 0, 0)] = 9, // skip L1 — deeper only
+        };
+        var xf = new SmoothTileCrossfade(durationMs: 100f);
+        var m = SmoothViewport.Affine2x3.FromZoomPan(1f, 0f, 0f);
+        var draws = SmoothViewportFrame.Build(
+            m,
+            panelW: 400,
+            panelH: 400,
+            zoom: 1f,
+            fullWidth: 2032,
+            fullHeight: 2032,
+            maxLevel: 2,
+            trySlice: id => slots.TryGetValue(id, out var s) ? s : null,
+            crossfade: xf,
+            dtMs: 16f);
+
+        var fine = Assert.Single(draws, d => d.Level == 0);
+        Assert.Equal(0xFFFFFFFFu, fine.ParentSlice);
+        Assert.Contains(draws, d => d.Level == 2 && d.Opacity >= 1f);
     }
 
     [Fact]

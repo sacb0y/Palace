@@ -7,9 +7,9 @@ using Palace.Helpers;
 using Palace.Imaging;
 using Palace.Services;
 using Windows.Foundation;
-using Windows.System;
-using Windows.UI.Core;
+using CoreVirtualKeyStates = Windows.UI.Core.CoreVirtualKeyStates;
 using DispatcherQueueTimer = Microsoft.UI.Dispatching.DispatcherQueueTimer;
+using VirtualKey = Windows.System.VirtualKey;
 
 namespace Palace;
 
@@ -39,6 +39,10 @@ public sealed partial class SmoothPresenterWindow : Window
     private bool _panning;
     private Point _lastPan;
     private bool _transformDirty;
+    private int _exifOrientation = 1;
+    private int _storedW = 1;
+    private int _storedH = 1;
+    private string? _sourcePath;
 
     public SmoothPresenterWindow()
     {
@@ -61,18 +65,19 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void PreparePresenter()
     {
-        var dataDir = CatalogStore.DataDir();
-        // V2 primary: modest Working synthetic scene (not procedural pyramid).
-        // Real files go through SmoothSourceLoad + DecodePathAsync.
-        const int w = 2032;
-        const int h = 1524;
-        _tiles = new SmoothTileSession(w, h);
+        SmoothSourceAppLoad.Register();
+        var dataDir = Environment.GetEnvironmentVariable("PALACE_DATA_DIR");
+        if (string.IsNullOrWhiteSpace(dataDir))
+        {
+            dataDir = CatalogStore.DataDir();
+        }
+
         _workingDecode = new SmoothWorkingDecode();
         TxtSmoothTiles.Text = "decoding Working…";
 
         _presenter = new SmoothDiligentPresenter(ScpSmooth, dataDir);
         TryStartWhenPanelSized();
-        _ = StartWorkingDecodeAsync(w, h);
+        _ = StartWorkingDecodeAsync(dataDir);
 
         _timer = DispatcherQueue.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(16);
@@ -112,59 +117,66 @@ public sealed partial class SmoothPresenterWindow : Window
         _timer.Start();
     }
 
-    private async Task StartWorkingDecodeAsync(int w, int h)
+    private async Task StartWorkingDecodeAsync(string dataDir)
     {
         if (_workingDecode is null)
         {
             return;
         }
 
-        var src = new float[w * h * 4];
-        for (var y = 0; y < h; y++)
-        {
-            for (var x = 0; x < w; x++)
-            {
-                var i = ((y * w) + x) * 4;
-                var u = x / (float)Math.Max(1, w - 1);
-                var v = y / (float)Math.Max(1, h - 1);
-                src[i] = 0.15f + 0.85f * u;
-                src[i + 1] = 0.1f + 0.5f * v;
-                src[i + 2] = 0.2f + 0.4f * (1f - u) * v;
-                src[i + 3] = 1f;
-            }
-        }
-
         try
         {
-            var result = await _workingDecode.DecodeAsync(
-                src, w, h, ImagingStillNormalize.OptionsForRadiance());
-            if (result is null)
-            {
-                TxtSmoothTiles.Text = "Working decode failed / over budget";
-                return;
-            }
+            SmoothWorkingDecodeResult? result = null;
+            _exifOrientation = 1;
 
-            _working = result;
-            // Session size must match decoded Working (fit may shrink ≥64MP).
-            if (_tiles is null
-                || _tiles.FullWidth != result.Width
-                || _tiles.FullHeight != result.Height)
+            // Prefer a real file under PALACE_DATA_DIR when present.
+            _sourcePath = FindSmoothSource(dataDir);
+            if (_sourcePath is not null)
             {
-                _tiles = new SmoothTileSession(result.Width, result.Height);
-                _poolReady = false;
-                if (_presenter is not null && _hostStarted
-                    && _presenter.TryPrepareV1TilePool(_tiles))
+                TxtSmoothTiles.Text = "DecodePathAsync " + Path.GetFileName(_sourcePath) + "…";
+                result = await _workingDecode.DecodePathAsync(
+                    _sourcePath,
+                    SmoothSourceLoad.LoaderForPath(_sourcePath));
+                try
                 {
-                    _poolReady = true;
+                    var loaded = SmoothSourceLoad.LoadLocalFile(_sourcePath);
+                    _exifOrientation = Math.Clamp(loaded.Orientation, 1, 8);
+                }
+                catch
+                {
+                    _exifOrientation = 1;
                 }
             }
 
-            TxtSmoothTiles.Text =
-                $"Working {result.Width}x{result.Height} gen={result.Generation} — building pyramid…";
-            if (_poolReady)
+            if (result is null)
             {
-                StartBackgroundPyramid();
+                // Synthetic ≥64MP under PALACE_DATA_DIR — strip/tile RGBA16F L0 (no box downscale).
+                const int w = 10000;
+                const int h = 7000; // 70 MP
+                Directory.CreateDirectory(dataDir);
+                var marker = Path.Combine(dataDir, "smooth-v2-synth-64mp.marker");
+                await File.WriteAllTextAsync(
+                    marker,
+                    $"{w}x{h} strip RGBA16F L0 — no full float Working");
+                TxtSmoothTiles.Text = $"strip decode synthetic {w}x{h} (≥64MP)…";
+                result = await _workingDecode.DecodeStripToRgba16FAsync(
+                    w,
+                    h,
+                    (x, y) =>
+                    {
+                        var u = x / (float)Math.Max(1, w - 1);
+                        var v = y / (float)Math.Max(1, h - 1);
+                        return (0.15f + 0.85f * u, 0.1f + 0.5f * v, 0.2f + 0.4f * (1f - u) * v, 1f);
+                    });
             }
+
+            if (result is null)
+            {
+                TxtSmoothTiles.Text = "Working decode failed";
+                return;
+            }
+
+            await ApplyWorkingResultAsync(result);
         }
         catch (OperationCanceledException)
         {
@@ -174,6 +186,67 @@ public sealed partial class SmoothPresenterWindow : Window
         {
             TxtSmoothTiles.Text = "Working decode error: " + ex.Message;
         }
+    }
+
+    private static string? FindSmoothSource(string dataDir)
+    {
+        if (!Directory.Exists(dataDir))
+        {
+            return null;
+        }
+
+        foreach (var ext in new[] { "*.jxl", "*.avif", "*.exr", "*.hdr", "*.png", "*.jpg" })
+        {
+            foreach (var path in Directory.EnumerateFiles(dataDir, ext))
+            {
+                if (SmoothTileDecodeGate.MayDecodePath(path))
+                {
+                    return path;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private Task ApplyWorkingResultAsync(SmoothWorkingDecodeResult result)
+    {
+        _working = result;
+        _storedW = result.Width;
+        _storedH = result.Height;
+        if (_tiles is null
+            || _tiles.FullWidth != result.Width
+            || _tiles.FullHeight != result.Height)
+        {
+            _tiles = new SmoothTileSession(result.Width, result.Height);
+            _poolReady = false;
+            if (_presenter is not null && _hostStarted
+                && _presenter.TryPrepareV1TilePool(_tiles))
+            {
+                _poolReady = true;
+            }
+        }
+
+        ApplyOrientationToPresenter();
+        TxtSmoothTiles.Text =
+            $"Working {result.Width}x{result.Height} gen={result.Generation} orient={_exifOrientation} — building pyramid…";
+        if (_poolReady)
+        {
+            StartBackgroundPyramid();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void ApplyOrientationToPresenter()
+    {
+        if (_presenter is null)
+        {
+            return;
+        }
+
+        var orient = SmoothViewport.ExifOrient.FromExif(_exifOrientation, _storedW, _storedH);
+        _presenter.SetOrientation(orient);
     }
 
     private void HandleNeedsRecreate()
@@ -400,17 +473,43 @@ public sealed partial class SmoothPresenterWindow : Window
             return;
         }
 
+        ApplyOrientationToPresenter();
+        var orient = SmoothViewport.ExifOrient.FromExif(_exifOrientation, _storedW, _storedH);
         var (dipW, dipH, sx, sy) = PanelMetrics();
         var panelW = (float)(dipW * sx);
         var panelH = (float)(dipH * sy);
-        _fitZoom = SmoothViewport.FitZoom(panelW, panelH, session.FullWidth, session.FullHeight);
+        // Oriented w/h for fit (tiles stay storage-sized).
+        _fitZoom = SmoothViewport.FitZoom(panelW, panelH, orient.OrientedWidth, orient.OrientedHeight);
         _zoom = SmoothViewport.ClampZoom(_fitZoom, _fitZoom);
         _targetZoom = _zoom;
-        _tx = (panelW - (session.FullWidth * _zoom)) * 0.5f;
-        _ty = (panelH - (session.FullHeight * _zoom)) * 0.5f;
+        _tx = (panelW - (orient.OrientedWidth * _zoom)) * 0.5f;
+        _ty = (panelH - (orient.OrientedHeight * _zoom)) * 0.5f;
 
-        var packed = SmoothToneGpu.FromStats(working.Stats, DisplayTarget.Sdr203);
+        // Should-fix: DisplayTarget from monitor HDR when known (not hardcoded Sdr203).
+        var display = SmoothToneGpu.ResolveDisplayTarget(
+            displayIsHdr: null,
+            displayPeakNits: 0f);
+        var packed = SmoothToneGpu.FromStats(working.Stats, display);
         _ = presenter.TryArmV2Viewport(_zoom, _tx, _ty, packed.ToneCb, packed.LutSamples);
+    }
+
+    private void ScpSmooth_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != VirtualKey.R)
+        {
+            return;
+        }
+
+        var shift = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(CoreVirtualKeyStates.Down);
+        _exifOrientation = SmoothViewport.ExifOrient.Rotate90(_exifOrientation, clockwise: !shift);
+        ApplyOrientationToPresenter();
+        if (_tiles is not null && _presenter is not null && _working is not null)
+        {
+            ArmV2Viewport(_tiles, _presenter, _working);
+        }
+
+        e.Handled = true;
     }
 
     private void TickTransformEase()

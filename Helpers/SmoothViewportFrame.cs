@@ -118,12 +118,14 @@ public static class SmoothViewportFrame
                 _ = crossfade.Tick(ancestorId.Value, dtMs, resident: true, seedOpaque: true);
             }
 
+            // N1: ParentSlice only when the resident ancestor is exactly level+1.
+            // Deeper ancestors are underlay-only (drawn above at opacity 1).
             uint parentSlice = 0xFFFFFFFFu;
             float parentOx = 0, parentOy = 0;
-            if (hasCoarser)
+            if (hasCoarser && ancestorId!.Value.Level == level + 1)
             {
                 parentSlice = ancestorSlice!.Value;
-                var pScale = 1 << ancestorId!.Value.Level;
+                var pScale = 1 << ancestorId.Value.Level;
                 var plw = SmoothTileMath.LevelWidth(fullWidth, ancestorId.Value.Level);
                 var plh = SmoothTileMath.LevelHeight(fullHeight, ancestorId.Value.Level);
                 var (pox, poy, _, _) = SmoothTileMath.ContentRect(

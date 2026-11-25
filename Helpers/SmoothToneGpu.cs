@@ -69,7 +69,8 @@ public static class SmoothToneGpu
         var tone = new float[16];
         tone[0] = stats.Lc;
         tone[1] = stats.P50;
-        tone[2] = Math.Max(stats.MaxRgb, stats.Max);
+        // ToneA.z = display peak (normalized), not image MaxRgb/Max (Geo).
+        tone[2] = Math.Max(display.PeakNormalized, 1e-6f);
         tone[3] = display.Ld;
         tone[4] = exposureEv;
         tone[5] = p.ExposureGain;
@@ -85,5 +86,29 @@ public static class SmoothToneGpu
         tone[15] = paperScrgb;
 
         return new PackedTone(tone, lut.Samples, lut.InputMinPq, lut.InputMaxPq);
+    }
+
+    /// <summary>
+    /// Resolve <see cref="DisplayTarget"/> from swap-chain / monitor HDR probe
+    /// (should-fix: not hardcoded Sdr203). Falls back to Sdr203 when unknown.
+    /// </summary>
+    public static DisplayTarget ResolveDisplayTarget(
+        bool? displayIsHdr,
+        float displayPeakNits = 0f,
+        float sdrWhiteNits = ImagingConstants.RefWhiteNits)
+    {
+        if (displayIsHdr == true)
+        {
+            return ImagingHdrPresentToneMap.DisplayForPresent(displayPeakNits);
+        }
+
+        if (displayIsHdr == false)
+        {
+            return sdrWhiteNits <= ImagingConstants.ScrgbNits + 0.5f
+                ? DisplayTarget.Sdr80
+                : DisplayTarget.Sdr203;
+        }
+
+        return DisplayTarget.Sdr203;
     }
 }

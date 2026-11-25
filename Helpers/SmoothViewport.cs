@@ -70,6 +70,92 @@ public static class SmoothViewport
             float o10 = 0f,
             float o11 = 1f) =>
             new(zoom * o00, zoom * o01, tx, zoom * o10, zoom * o11, ty);
+
+        /// <summary>
+        /// Compose zoom/pan in oriented space with an EXIF storage→upright matrix
+        /// (linear + translation). <paramref name="tx"/>/<paramref name="ty"/> are
+        /// device-space pan after orientation.
+        /// </summary>
+        public static Affine2x3 FromZoomPan(
+            float zoom,
+            float tx,
+            float ty,
+            in ExifOrient orient) =>
+            // img_dev = zoom * R * img_storage + (zoom * T_orient + pan)
+            new(
+                zoom * orient.A,
+                zoom * orient.B,
+                (zoom * orient.Tx) + tx,
+                zoom * orient.C,
+                zoom * orient.D,
+                (zoom * orient.Ty) + ty);
+    }
+
+    /// <summary>
+    /// EXIF Orientation 1–8 as a storage→upright 2×3 (never baked into tiles).
+    /// </summary>
+    public readonly record struct ExifOrient(
+        float A,
+        float B,
+        float Tx,
+        float C,
+        float D,
+        float Ty,
+        int OrientedWidth,
+        int OrientedHeight)
+    {
+        public static ExifOrient Identity(int width, int height) =>
+            new(1, 0, 0, 0, 1, 0, width, height);
+
+        /// <summary>Map EXIF tag 1–8 to matrix + translation for <paramref name="storedW"/>×<paramref name="storedH"/>.</summary>
+        public static ExifOrient FromExif(int orientation, int storedW, int storedH)
+        {
+            if (storedW < 1 || storedH < 1)
+            {
+                return Identity(Math.Max(1, storedW), Math.Max(1, storedH));
+            }
+
+            var (ow, oh) = HdrPixels.OrientedSize(storedW, storedH, (uint)Math.Clamp(orientation, 1, 8));
+            // Storage (sx,sy) → upright (ux,uy). Matches HdrPixels.OrientedToSource inverse.
+            return orientation switch
+            {
+                2 => new(-1, 0, storedW - 1, 0, 1, 0, ow, oh),           // flip X
+                3 => new(-1, 0, storedW - 1, 0, -1, storedH - 1, ow, oh), // 180
+                4 => new(1, 0, 0, 0, -1, storedH - 1, ow, oh),            // flip Y
+                5 => new(0, 1, 0, 1, 0, 0, ow, oh),                       // transpose
+                6 => new(0, -1, storedH - 1, 1, 0, 0, ow, oh),            // 90 CW
+                7 => new(0, -1, storedH - 1, -1, 0, storedW - 1, ow, oh), // transverse
+                8 => new(0, 1, 0, -1, 0, storedW - 1, ow, oh),            // 90 CCW
+                _ => Identity(storedW, storedH),
+            };
+        }
+
+        /// <summary>Cycle EXIF 1→6→3→8→1 (90° CW) or reverse for CCW.</summary>
+        public static int Rotate90(int orientation, bool clockwise)
+        {
+            orientation = Math.Clamp(orientation, 1, 8);
+            // Only the pure-rotation subgroup for R / Shift+R.
+            ReadOnlySpan<int> cw = [1, 6, 3, 8];
+            var i = cw.IndexOf(orientation);
+            if (i < 0)
+            {
+                // Mirrored tags: snap to nearest rotation then step.
+                orientation = orientation switch
+                {
+                    2 or 5 or 7 => 6,
+                    4 => 8,
+                    _ => 1,
+                };
+                i = cw.IndexOf(orientation);
+            }
+
+            if (clockwise)
+            {
+                return cw[(i + 1) % cw.Length];
+            }
+
+            return cw[(i + cw.Length - 1) % cw.Length];
+        }
     }
 
     public static float ClampZoom(float zoom, float fitZoom) =>

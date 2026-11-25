@@ -12,6 +12,7 @@ namespace Palace.Helpers;
 public sealed class SmoothTileSession
 {
     private IReadOnlyDictionary<SmoothTileId, byte[]>? _level0Override;
+    private IReadOnlyDictionary<SmoothTileId, byte[]>? _retainedLevel0;
     private float[]? _workingRgba;
     private int _workingW;
     private int _workingH;
@@ -114,7 +115,8 @@ public sealed class SmoothTileSession
         }
 
         _level0Override = working.Level0Tiles.Count > 0 ? working.Level0Tiles : null;
-        _workingRgba = working.WorkingRgba;
+        _retainedLevel0 = _level0Override;
+        _workingRgba = working.HasFloatWorking ? working.WorkingRgba : null;
         _workingW = working.Width;
         _workingH = working.Height;
         UsedWorkingDecode = true;
@@ -146,18 +148,30 @@ public sealed class SmoothTileSession
             return true;
         }
 
-        if (_workingRgba is null || _workingW < 1 || _workingH < 1)
-        {
-            return false;
-        }
-
         if (id.Level < 0 || id.Level > MaxLevel)
         {
             return false;
         }
 
-        var bytes = SmoothWorkingDecode.TileFromWorkingAtLevel(
-            _workingRgba, _workingW, _workingH, id.Level, id.TileX, id.TileY);
+        byte[]? bytes = null;
+        if (id.Level == 0
+            && _retainedLevel0 is not null
+            && _retainedLevel0.TryGetValue(id, out var retained))
+        {
+            bytes = retained;
+        }
+        else if (_workingRgba is not null && _workingW > 0 && _workingH > 0)
+        {
+            // One mip source: all levels from retained Working floats.
+            bytes = SmoothWorkingDecode.TileFromWorkingAtLevel(
+                _workingRgba, _workingW, _workingH, id.Level, id.TileX, id.TileY);
+        }
+
+        if (bytes is null)
+        {
+            return false;
+        }
+
         Cpu.Set(id, bytes);
         if (id.Level < CoarseLevel)
         {
