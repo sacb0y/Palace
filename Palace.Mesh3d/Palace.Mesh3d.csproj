@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Palace.Mesh3d</RootNamespace>
+    <Description>WinUI-free 3D scene / composer model and IMeshRenderer seam (D11). Diligent P/Invoke lives in the app project.</Description>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

@@ -40,19 +40,11 @@
                     Background="{ThemeResource SmokeFillColorDefaultBrush}"
                     IsHitTestVisible="False"
                     Opacity="0.28" />
-                <controls:GalleryStillSurface
-                    x:Name="SrfWindowStill"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsImage), Mode=OneWay}" />
-                <MediaPlayerElement
-                    x:Name="MpeGallery"
-                    AreTransportControlsEnabled="True"
-                    AutoPlay="False"
-                    AutomationProperties.AutomationId="MpeGalleryWindow"
-                    Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(Gallery.IsVideo), Mode=OneWay}">
-                    <MediaPlayerElement.TransportControls>
-                        <MediaTransportControls IsVolumeButtonVisible="False" />
-                    </MediaPlayerElement.TransportControls>
-                </MediaPlayerElement>
+                <controls:ViewerSurfaceHost
+                    x:Name="SrfViewer"
+                    MediaAutomationId="MpeGalleryWindow"
+                    MeshAutomationId="BrdGalleryWindowMesh"
+                    Surface="{x:Bind Gallery.Surface, Mode=OneWay}" />
                 <controls:VolumeControl
                     x:Name="VolGallery"
                     Canvas.ZIndex="2"

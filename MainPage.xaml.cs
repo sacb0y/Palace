@@ -48,6 +48,10 @@ public sealed partial class MainPage : Page
                 ContentFrame.Navigate(typeof(LibraryPage));
                 break;
         }
+
+        // Trim back stack so a heavy 3D preview page cannot revive after leave (D10).
+        ContentFrame.BackStack.Clear();
+        ContentFrame.ForwardStack.Clear();
     }
 
     private async Task<string?> AskProjectNameAsync(string title, string primary, string initial)

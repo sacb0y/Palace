@@ -154,9 +154,11 @@ public partial class LibraryViewModel
                     targets.Select(t => t.Id).ToList(),
                     _selection.Select(s => s.Id).ToList()));
             PreviewPath = previewPath;
-            IsVideoPreview = !multi && !cloudish && asset.Kind == AssetKind.Video && previewPath is not null;
-            IsImagePreview = !multi && previewPath is not null &&
-                (cloudish || asset.Kind is AssetKind.Image or AssetKind.Gif);
+            var previewSurface = AssetKindRegistry.ResolvePreviewSurface(
+                asset.Kind, multi, cloudish, hasPreviewPath: previewPath is not null);
+            // Mesh uses the poster still in the dock — never a live render (D6).
+            IsVideoPreview = previewSurface == GallerySurface.Video;
+            IsImagePreview = previewSurface == GallerySurface.Still;
             ShowPreviewPlaceholder = !multi && GalleryMedia.ShowPlaceholderTile(
                 cloudish, asset.IsOrphan, previewPath is not null);
             PreviewPlaceholderKind = asset.Kind;

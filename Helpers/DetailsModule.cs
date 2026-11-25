@@ -91,7 +91,8 @@ public static class DetailsModuleCatalog
         DetailsModuleKind.ColorHdr or DetailsModuleKind.Histogram or DetailsModuleKind.Gamut =>
             kind is AssetKind.Image or AssetKind.Gif,
         DetailsModuleKind.Video => kind == AssetKind.Video,
-        DetailsModuleKind.Audio or DetailsModuleKind.Mesh3D => false,
+        DetailsModuleKind.Mesh3D => kind == AssetKind.Model3D,
+        DetailsModuleKind.Audio => false,
         _ => false
     };
 
@@ -106,6 +107,11 @@ public static class DetailsModuleCatalog
         if (Includes(DetailsModuleKind.Video, kind))
         {
             list.AddRange(VideoModules);
+        }
+
+        if (Includes(DetailsModuleKind.Mesh3D, kind))
+        {
+            list.AddRange(Mesh3DModules);
         }
 
         list.Add(Tags);

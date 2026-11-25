@@ -931,12 +931,19 @@
                                         OnContent="On" />
                                 </controls:SettingsCard>
                                 <controls:SettingsCard
-                                    x:Name="CardFormats3dPlaceholder"
-                                    AutomationProperties.AutomationId="CardFormats3dPlaceholder"
-                                    Description="{x:Bind ViewModel.FormatsPlaceholderCaption, Mode=OneWay}"
+                                    x:Name="CardFormats3d"
+                                    AutomationProperties.AutomationId="CardFormats3d"
+                                    Description="{x:Bind ViewModel.Model3DFormatsCaption, Mode=OneWay}"
                                     Header="3D"
-                                    IsEnabled="False"
-                                    Style="{StaticResource PalaceSettingsCardStyle}" />
+                                    Style="{StaticResource PalaceSettingsCardStyle}">
+                                    <ToggleSwitch
+                                        x:Name="TglIndexModel3D"
+                                        AutomationProperties.AutomationId="TglIndexModel3D"
+                                        AutomationProperties.Name="Index 3D models"
+                                        IsOn="{x:Bind ViewModel.IndexModel3D, Mode=TwoWay}"
+                                        OffContent="Off"
+                                        OnContent="On" />
+                                </controls:SettingsCard>
                                 <controls:SettingsCard
                                     x:Name="CardFormatsAudioPlaceholder"
                                     AutomationProperties.AutomationId="CardFormatsAudioPlaceholder"

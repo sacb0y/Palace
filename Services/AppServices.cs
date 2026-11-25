@@ -151,6 +151,8 @@ public static class AppServices
             return;
         }
 
+        // Cancel an in-flight scan / import before swapping catalogs (D7 / D10).
+        Library.CancelBusyCommand.Execute(null);
         Library.BeginBusy("Loading…");
         try
         {
@@ -163,6 +165,34 @@ public static class AppServices
         {
             Library.EndBusy();
         }
+    }
+
+    /// <summary>
+    /// Deterministic teardown on MainWindow.Closed (D10): cancel scans/imports,
+    /// stop watchers, drop open gallery windows' native presenters via CloseAll.
+    /// Heavy 3D preview pages use NavigationCacheMode=Disabled + OnNavigatedFrom dispose.
+    /// </summary>
+    public static async Task ShutdownAsync()
+    {
+        try
+        {
+            Library?.CancelBusyCommand.Execute(null);
+        }
+        catch
+        {
+            // Library may already be tearing down.
+        }
+
+        try
+        {
+            Watchers?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            ErrorReporter.LogOnly("AppServices.ShutdownAsync watchers", ex);
+        }
+
+        await Task.CompletedTask.ConfigureAwait(false);
     }
 
     private static void LoadPeakOverride()
@@ -271,7 +301,8 @@ public static class AppServices
             LibrarySettings.ParseBool(values[LibrarySettings.IndexVideoKey], LibrarySettings.DefaultIndexVideo),
             LibrarySettings.ParseBool(
                 values[LibrarySettings.GenerateThumbsOnScanKey],
-                LibrarySettings.DefaultGenerateThumbsOnScan));
+                LibrarySettings.DefaultGenerateThumbsOnScan),
+            LibrarySettings.ParseBool(values[LibrarySettings.IndexModel3DKey], LibrarySettings.DefaultIndexModel3D));
         PreviewPaneSettings.Apply(
             PreviewPaneSettings.ParseMode(values[PreviewPaneSettings.ModeKey]),
             PreviewPaneSettings.ParseUserShow(values[PreviewPaneSettings.UserShowKey]),

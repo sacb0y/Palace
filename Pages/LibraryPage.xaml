@@ -2067,6 +2067,19 @@
                                                 IconVariant="Regular" />
                                         </Border>
                                         <Border
+                                            Padding="4"
+                                            AutomationProperties.AutomationId="{x:Bind Model3DBadgeAutomationId, Mode=OneWay}"
+                                            AutomationProperties.Name="3D"
+                                            Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                                            CornerRadius="4"
+                                            Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ShowModel3DBadge), Mode=OneWay}">
+                                            <ic:FluentIcon
+                                                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                                Icon="Cube"
+                                                IconSize="Size16"
+                                                IconVariant="Regular" />
+                                        </Border>
+                                        <Border
                                             Padding="8,5"
                                             AutomationProperties.AutomationId="{x:Bind HdrBadgeAutomationId, Mode=OneWay}"
                                             AutomationProperties.Name="HDR"
@@ -3337,21 +3350,11 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid>
-                    <controls:GalleryStillSurface
-                        x:Name="SrfOverlayStill"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsImage), Mode=OneWay, FallbackValue=Collapsed}" />
-                    <MediaPlayerElement
-                        x:Name="MpeOverlay"
-                        AreTransportControlsEnabled="True"
-                        AutoPlay="False"
-                        AutomationProperties.AutomationId="MpeGalleryOverlay"
-                        DoubleTapped="GalleryOverlayVideo_DoubleTapped"
-                        IsDoubleTapEnabled="True"
-                        Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.OverlayGallery.IsVideo), Mode=OneWay, FallbackValue=Collapsed}">
-                        <MediaPlayerElement.TransportControls>
-                            <MediaTransportControls IsVolumeButtonVisible="False" />
-                        </MediaPlayerElement.TransportControls>
-                    </MediaPlayerElement>
+                    <controls:ViewerSurfaceHost
+                        x:Name="SrfViewer"
+                        MediaAutomationId="MpeGalleryOverlay"
+                        MeshAutomationId="BrdLibraryOverlayMesh"
+                        Surface="{x:Bind ViewModel.OverlayGallery.Surface, Mode=OneWay}" />
                     <!-- Paused browse swipe: AddHandler on MpeOverlay (touch only) so mouse/pen reach transport + ContextFlyout. -->
                     <controls:VolumeControl
                         x:Name="VolOverlay"

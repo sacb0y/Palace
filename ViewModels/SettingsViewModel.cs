@@ -82,6 +82,9 @@ public partial class SettingsViewModel : ObservableObject
     public partial bool IndexVideo { get; set; } = LibrarySettings.DefaultIndexVideo;
 
     [ObservableProperty]
+    public partial bool IndexModel3D { get; set; } = LibrarySettings.DefaultIndexModel3D;
+
+    [ObservableProperty]
     public partial bool GenerateThumbsOnScan { get; set; } = LibrarySettings.DefaultGenerateThumbsOnScan;
 
     [ObservableProperty]
@@ -92,6 +95,8 @@ public partial class SettingsViewModel : ObservableObject
     public string ImagesFormatsCaption { get; } = LibrarySettings.ImagesFormatsCaption;
 
     public string VideoFormatsCaption { get; } = LibrarySettings.VideoFormatsCaption;
+
+    public string Model3DFormatsCaption { get; } = LibrarySettings.Model3DFormatsCaption;
 
     public string FormatsPlaceholderCaption { get; } = LibrarySettings.FormatsPlaceholderCaption;
 
@@ -487,6 +492,7 @@ public partial class SettingsViewModel : ObservableObject
         WatchForChanges = LibrarySettings.WatchForChanges;
         IndexImages = LibrarySettings.IndexImages;
         IndexVideo = LibrarySettings.IndexVideo;
+        IndexModel3D = LibrarySettings.IndexModel3D;
         GenerateThumbsOnScan = LibrarySettings.GenerateThumbsOnScan;
         SelectedPreviewPane = PreviewPaneSettings.Mode;
     }
@@ -497,8 +503,9 @@ public partial class SettingsViewModel : ObservableObject
         values[LibrarySettings.WatchForChangesKey] = WatchForChanges;
         values[LibrarySettings.IndexImagesKey] = IndexImages;
         values[LibrarySettings.IndexVideoKey] = IndexVideo;
+        values[LibrarySettings.IndexModel3DKey] = IndexModel3D;
         values[LibrarySettings.GenerateThumbsOnScanKey] = GenerateThumbsOnScan;
-        LibrarySettings.Apply(WatchForChanges, IndexImages, IndexVideo, GenerateThumbsOnScan);
+        LibrarySettings.Apply(WatchForChanges, IndexImages, IndexVideo, GenerateThumbsOnScan, IndexModel3D);
         PersistPreviewPaneChrome();
     }
 
@@ -657,6 +664,17 @@ public partial class SettingsViewModel : ObservableObject
 
         PersistLibraryChrome();
         StatusText = value ? "Video will be indexed." : "Video skipped on scan.";
+    }
+
+    partial void OnIndexModel3DChanged(bool value)
+    {
+        if (_load.IsLoading)
+        {
+            return;
+        }
+
+        PersistLibraryChrome();
+        StatusText = value ? "3D models will be indexed." : "3D models skipped on scan.";
     }
 
     partial void OnGenerateThumbsOnScanChanged(bool value)
@@ -2523,7 +2541,28 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         StatusText = "Scanning " + picked.Name + "…";
-        await _scan.ScanSourceAsync(folder);
+        var ct = AppServices.Library.BeginBusyCancelable("Scanning " + picked.Name + "…");
+        try
+        {
+            await _scan.ScanSourceAsync(
+                folder,
+                new Progress<ScanProgress>(p =>
+                {
+                    var name = string.IsNullOrEmpty(p.FileName) ? p.Phase : p.FileName;
+                    StatusText = "Scanning " + name;
+                }),
+                ct);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Scan cancelled.";
+            return;
+        }
+        finally
+        {
+            AppServices.Library.EndBusyCancelable();
+        }
+
         await _watchers.RestartAsync();
         await LoadAsync();
         await AppServices.Library.LoadAsync();

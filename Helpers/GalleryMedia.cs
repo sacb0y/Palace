@@ -245,9 +245,15 @@ public static class GalleryMedia
     public static bool UsesShellThumbnail(AssetKind kind, string? path) =>
         kind == AssetKind.Video || PathSafe.UsesShellStillThumb(path);
 
-    /// <summary>WIC decode of the original — never online-only, never AVIF.</summary>
+    /// <summary>
+    /// WIC decode of the original — never online-only, never AVIF/shell stills,
+    /// never Model3D (mesh thumbs are out-of-proc later; D1 parked).
+    /// </summary>
     public static bool MayOpenOriginalForThumb(bool isOnlineOnly, AssetKind kind, string? path) =>
-        !isOnlineOnly && !UsesShellThumbnail(kind, path) && kind != AssetKind.Other;
+        !isOnlineOnly
+        && !UsesShellThumbnail(kind, path)
+        && kind != AssetKind.Other
+        && !ScanFastPath.SkipsPixelSize(kind);
 
     /// <summary>
     /// Never <c>ImageDimensions.TryRead</c> / <c>AvifFile</c> the original to
@@ -305,10 +311,17 @@ public static class GalleryMedia
         MosaicBadgeAutomationId("IcnCloudBadge_", assetId);
 
     public static bool ShowVideoBadge(bool isFolderHeader, bool isOrphan, AssetKind kind) =>
-        ShowKindBadge(isFolderHeader, isOrphan, kind == AssetKind.Video);
+        ShowKindBadge(isFolderHeader, isOrphan, AssetKindRegistry.BadgeId(kind) == "video");
 
     public static bool ShowGifBadge(bool isFolderHeader, bool isOrphan, AssetKind kind) =>
-        ShowKindBadge(isFolderHeader, isOrphan, kind == AssetKind.Gif);
+        ShowKindBadge(isFolderHeader, isOrphan, AssetKindRegistry.BadgeId(kind) == "gif");
+
+    public static bool ShowModel3DBadge(bool isFolderHeader, bool isOrphan, AssetKind kind) =>
+        ShowKindBadge(isFolderHeader, isOrphan, AssetKindRegistry.BadgeId(kind) == "model3d");
+
+    /// <summary>Single kind-badge gate from the registry (replaces per-kind bool sprawl).</summary>
+    public static bool KindBadge(bool isFolderHeader, bool isOrphan, AssetKind kind) =>
+        AssetKindRegistry.ShowKindBadge(isFolderHeader, isOrphan, kind);
 
     /// <summary>
     /// Fluent <c>Hdr</c> Regular exists at 20 and 24 DIP only. Mosaic
@@ -399,13 +412,10 @@ public static class GalleryMedia
     /// <summary>Provider stream is a real picture; a generic file icon is not.</summary>
     public static bool AcceptsProviderThumbnail(bool isImageType) => isImageType;
 
-    public static string PlaceholderIcon(AssetKind kind) => kind switch
-    {
-        AssetKind.Video => "Video",
-        AssetKind.Gif => "Gif",
-        AssetKind.Image => "Image",
-        _ => "Document"
-    };
+    public static string PlaceholderIcon(AssetKind kind) => AssetKindRegistry.Icon(kind);
+
+    public static string Model3DBadgeAutomationId(string? assetId) =>
+        MosaicBadgeAutomationId("IcnModel3DBadge_", assetId);
 
     public static bool ShouldUpgradeThumb(
         bool mayUpgrade,

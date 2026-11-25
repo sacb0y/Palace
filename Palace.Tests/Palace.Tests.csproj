@@ -84,6 +84,9 @@
     <Compile Include="..\Helpers\RadianceFile.cs" Link="RadianceFile.cs" />
     <Compile Include="..\Helpers\StillFormats.cs" Link="StillFormats.cs" />
     <Compile Include="..\Helpers\PathSafe.cs" Link="PathSafe.cs" />
+    <Compile Include="..\Helpers\AssetKindInfo.cs" Link="AssetKindInfo.cs" />
+    <Compile Include="..\Helpers\ScanProgress.cs" Link="ScanProgress.cs" />
+    <Compile Include="..\Helpers\ScanPresent.cs" Link="ScanPresent.cs" />
     <Compile Include="..\Helpers\HdrPixels.cs" Link="HdrPixels.cs" />
     <Compile Include="..\Helpers\HdrPresentCoalescer.cs" Link="HdrPresentCoalescer.cs" />
     <Compile Include="..\Helpers\HdrRasterize.cs" Link="HdrRasterize.cs" />
@@ -232,6 +235,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Palace.Imaging\Palace.Imaging.csproj" />
+    <ProjectReference Include="..\Palace.Mesh3d\Palace.Mesh3d.csproj" />
   </ItemGroup>
 
   <ItemGroup>

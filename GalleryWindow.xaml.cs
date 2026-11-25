@@ -33,6 +33,10 @@ public sealed partial class GalleryWindow : Window
     private TextBlock? _chipFadeOldTitle;
     private TextBlock? _chipFadeOldPos;
 
+    // ViewerSurfaceHost owns Still / Video / Mesh (D6); keep the old names for call sites.
+    private GalleryStillSurface SrfWindowStill => SrfViewer.Still;
+    private MediaPlayerElement MpeGallery => SrfViewer.Player;
+
     public GalleryWindow(GalleryViewModel gallery)
     {
         Gallery = gallery;
@@ -67,7 +71,8 @@ public sealed partial class GalleryWindow : Window
         {
             if (e.PropertyName is nameof(GalleryViewModel.StillRevision)
                 or nameof(GalleryViewModel.IsVideo)
-                or nameof(GalleryViewModel.IsImage))
+                or nameof(GalleryViewModel.IsImage)
+                or nameof(GalleryViewModel.Surface))
             {
                 UpdateMedia();
             }

@@ -51,6 +51,18 @@ public partial class GalleryViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsVideo { get; set; }
 
+    /// <summary>
+    /// Viewer surface kind (Still / Video / Mesh / None). Hosts switch on this
+    /// instead of a duplicated IsImage/IsVideo pair (D6).
+    /// </summary>
+    [ObservableProperty]
+    public partial GallerySurface Surface { get; set; }
+
+    public bool IsMesh => Surface == GallerySurface.Mesh;
+
+    partial void OnSurfaceChanged(GallerySurface value) =>
+        OnPropertyChanged(nameof(IsMesh));
+
     [ObservableProperty]
     public partial bool IsMissing { get; set; }
 
@@ -1288,6 +1300,7 @@ public partial class GalleryViewModel : ObservableObject
                 PreviewImageUri = null;
                 Title = "";
                 PositionLabel = "0 / 0";
+                Surface = GallerySurface.None;
                 IsImage = false;
                 IsVideo = false;
                 IsMissing = false;
@@ -1425,9 +1438,15 @@ public partial class GalleryViewModel : ObservableObject
                 : onlineOnly
                     ? "Online-only file. Opening downloads it."
                     : "";
-            IsVideo = playableVideo;
-            IsImage = !playableVideo && (!string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
-            IsMissing = !IsVideo && CurrentPath is null && string.IsNullOrEmpty(PreviewImageUri);
+            Surface = AssetKindRegistry.ResolveSurface(
+                item.Kind,
+                playableVideo,
+                hasStillOrPreview: !string.IsNullOrEmpty(PreviewImageUri) || !string.IsNullOrEmpty(stillPath));
+            IsVideo = Surface == GallerySurface.Video;
+            IsImage = Surface == GallerySurface.Still;
+            IsMissing = Surface == GallerySurface.None
+                && CurrentPath is null
+                && string.IsNullOrEmpty(PreviewImageUri);
             CanDownloadOriginal = apiOnly && !string.IsNullOrEmpty(item.CloudItemId);
             CanOpenInExplorer = onDisk && !apiOnly;
             CanGoPrevious = FindNavigableIndex(CurrentIndex, -1) is not null;

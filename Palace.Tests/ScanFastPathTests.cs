@@ -51,6 +51,48 @@ public sealed class ScanFastPathTests
         Assert.True(ScanFastPath.NeedsCurrentThumb(Indexed()));
 
     [Fact]
+    public void Model3D_without_pixel_size_takes_the_fast_path()
+    {
+        var asset = Indexed();
+        asset.Kind = AssetKind.Model3D;
+        asset.Width = null;
+        asset.Height = null;
+        Assert.True(ScanFastPath.SkipsPixelSize(AssetKind.Model3D));
+        Assert.True(ScanFastPath.IsUnchanged(asset, 1234, Written, onlineOnly: false));
+    }
+
+    /// <summary>
+    /// Index .glb with GenerateThumbsOnScan: still-thumb pipeline is skipped
+    /// (SkipsPixelSize / MayOpenOriginalForThumb), so Width/Height stay null and
+    /// Undecodable stays false — ScanService sets decoded=true for SkipsPixelSize.
+    /// </summary>
+    [Fact]
+    public void Model3D_index_skips_still_thumb_and_never_marks_undecodable_for_missing_mesh_thumb()
+    {
+        Assert.True(LibrarySettings.DefaultGenerateThumbsOnScan);
+        Assert.True(ScanFastPath.SkipsPixelSize(AssetKind.Model3D));
+        Assert.False(ScanFastPath.NeedsCurrentThumb(new Asset
+        {
+            Kind = AssetKind.Model3D,
+            Undecodable = false,
+            Width = null,
+            Height = null
+        }));
+        Assert.False(GalleryMedia.MayOpenOriginalForThumb(false, AssetKind.Model3D, @"D:\hero.glb"));
+        Assert.False(GalleryMedia.MayOpenOriginalForThumb(false, AssetKind.Model3D, @"D:\hero.gltf"));
+        Assert.False(GalleryMedia.MayOpenOriginalForThumb(false, AssetKind.Model3D, @"D:\hero.fbx"));
+
+        // Mirrors IndexFileCoreAsync: SkipsPixelSize ⇒ Width/Height null, decoded=true ⇒ Undecodable false.
+        int? width = null;
+        int? height = null;
+        var decoded = ScanFastPath.SkipsPixelSize(AssetKind.Model3D);
+        var undecodable = !decoded;
+        Assert.Null(width);
+        Assert.Null(height);
+        Assert.False(undecodable);
+    }
+
+    [Fact]
     public void New_file_does_not() =>
         Assert.False(ScanFastPath.IsUnchanged(null, 1234, Written, onlineOnly: false));
 

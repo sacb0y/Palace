@@ -5,7 +5,21 @@ public enum AssetKind
     Image,
     Gif,
     Video,
-    Other
+    Other,
+    /// <summary>3D mesh / scene (.glb / .gltf / .fbx). Appended — older builds parse unknown names as Other.</summary>
+    Model3D
+}
+
+/// <summary>
+/// Which viewer surface hosts the current gallery item. Computed once from
+/// <c>AssetKindRegistry</c> — not a duplicated IsImage / IsVideo pair per host.
+/// </summary>
+public enum GallerySurface
+{
+    None,
+    Still,
+    Video,
+    Mesh
 }
 
 public enum TagSource

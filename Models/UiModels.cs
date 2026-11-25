@@ -255,6 +255,9 @@ public partial class AssetItem : ObservableObject
     public bool ShowGifBadge =>
         GalleryMedia.ShowGifBadge(IsFolderHeader, IsOrphan, Kind);
 
+    public bool ShowModel3DBadge =>
+        GalleryMedia.ShowModel3DBadge(IsFolderHeader, IsOrphan, Kind);
+
     public bool ShowHdrBadge =>
         GalleryMedia.ShowHdrBadge(IsFolderHeader, IsOrphan, Path, IsHdr);
 
@@ -264,6 +267,8 @@ public partial class AssetItem : ObservableObject
 
     public string GifBadgeAutomationId => GalleryMedia.GifBadgeAutomationId(Id);
 
+    public string Model3DBadgeAutomationId => GalleryMedia.Model3DBadgeAutomationId(Id);
+
     public string HdrBadgeAutomationId => GalleryMedia.HdrBadgeAutomationId(Id);
 
     private void NotifyMosaicBadges()
@@ -271,6 +276,7 @@ public partial class AssetItem : ObservableObject
         OnPropertyChanged(nameof(ShowCloudBadge));
         OnPropertyChanged(nameof(ShowVideoBadge));
         OnPropertyChanged(nameof(ShowGifBadge));
+        OnPropertyChanged(nameof(ShowModel3DBadge));
         OnPropertyChanged(nameof(ShowHdrBadge));
     }
 
@@ -280,6 +286,7 @@ public partial class AssetItem : ObservableObject
     {
         OnPropertyChanged(nameof(ShowVideoBadge));
         OnPropertyChanged(nameof(ShowGifBadge));
+        OnPropertyChanged(nameof(ShowModel3DBadge));
         OnPropertyChanged(nameof(AspectRatio));
         OnPropertyChanged(nameof(AspectHintWidth));
     }
@@ -322,7 +329,7 @@ public partial class AssetItem : ObservableObject
                 return (double)Width.Value / Height.Value;
             }
 
-            return Kind == AssetKind.Video ? 16.0 / 9.0 : 1.0;
+            return Helpers.AssetKindRegistry.DefaultAspect(Kind);
         }
     }
 

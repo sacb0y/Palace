@@ -10,6 +10,7 @@ public sealed class WatcherService : IDisposable
     private readonly List<FileSystemWatcher> _watchers = [];
     private readonly Dictionary<string, CancellationTokenSource> _debounce = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
+    private readonly CancellationTokenSource _lifetimeCts = new();
     private Action<string>? _onChanged;
     private CancellationTokenSource? _notifyCts;
     private int _suppressDepth;
@@ -165,7 +166,8 @@ public sealed class WatcherService : IDisposable
                 await OrphanGonePathAsync(source, oldPath);
             }
 
-            await _scan.ScanDirectoryAsync(source, path);
+            // Honor app shutdown cancel (D7) — _lifetimeCts is cancelled in Dispose.
+            await _scan.ScanDirectoryAsync(source, path, ct: _lifetimeCts.Token);
             return true;
         }
 
@@ -275,6 +277,15 @@ public sealed class WatcherService : IDisposable
 
     public void Dispose()
     {
+        try
+        {
+            _lifetimeCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed.
+        }
+
         DisposeWatchers();
         lock (_gate)
         {
@@ -289,6 +300,8 @@ public sealed class WatcherService : IDisposable
             _notifyCts?.Dispose();
             _notifyCts = null;
         }
+
+        _lifetimeCts.Dispose();
     }
 
     private sealed class SuppressScope : IDisposable
