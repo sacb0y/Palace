@@ -1,0 +1,1 @@
+﻿Smooth presenter coarse tiles after ready. tip=69ff940afadda5b7bc692dac589c9b46ae86c92d run=off HWND-PrintWindow PW_RENDERFULLCONTENT. 5E1F.

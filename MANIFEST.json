@@ -1,80 +1,74 @@
 {
-    "tip":  "b07ce28b6045c337f60db6b0a46b5fc77aa59caf",
-    "tip_short":  "b07ce28",
-    "branch":  "cursor/smooth-viewer-v1-tiles",
-    "pr":  206,
-    "package":  "PalaceOrganizeTest-5E1F",
-    "package_version":  "0.3.120.0",
+    "tip":  "69ff940afadda5b7bc692dac589c9b46ae86c92d",
+    "package":  "PalaceOrganizeTest-5E1F_0.3.120.0_x64__1z32rh13vfry6",
     "host":  "FenrirDesktop",
-    "verdict":  "FAIL",
-    "gate":  "rbOverUlp == 0 (no half channel \u003e1 half-ULP)",
-    "gate_result":  "FAIL",
-    "units":  {
-                  "rbMax":  "absolute float error after half-\u003efloat (NOT ULP)",
-                  "rbOverUlp":  "count of half channels with |uint16_bits_cpu - uint16_bits_gpu| \u003e 1",
-                  "rbN":  "number of mip readbacks compared"
-              },
-    "off_configuration":  "Release",
-    "on_configuration":  "Debug",
-    "off_firstCoarseMs":  13749,
-    "on_firstCoarseMs":  45598,
-    "on_rbMax":  "1.382",
-    "on_rbOverUlp":  53741834,
-    "on_rbN":  126,
-    "image_size":  "12000x8000 procedural",
-    "decode":  "N/A procedural",
-    "captured_at_america_new_york":  "2026-11-25 07:02:38 -05:00 America/New_York",
-    "report_updated_america_new_york":  "2026-11-25 07:05:00 -05:00 America/New_York",
+    "verdict":  "PASS",
+    "generated":  "2026-11-25T07:41:29.4889974-05:00",
     "files":  [
                   {
                       "name":  "CAPTURE_EVENTS.txt",
-                      "bytes":  9210,
-                      "sha256":  "e7288ca646f3ec1db792213374d85a19f766358f0cd111c4b73cecc1592195fe"
-                  },
-                  {
-                      "name":  "MANIFEST.json",
-                      "bytes":  2803,
-                      "sha256":  "5b969d289fdaf9d7499fee325b5652f3cf145936d65141b32ffb76398530c38b"
+                      "bytes":  6010,
+                      "sha256":  "da80bee49e27eeb282c5925627d48b60cce386bddad76013a83ba12931c06644"
                   },
                   {
                       "name":  "metrics-off.json",
-                      "bytes":  1321,
-                      "sha256":  "dc6f6ee02be0e72e8b0105534ede1ec481c1cfe1e641e96fea49cba62e040bdf"
+                      "bytes":  1631,
+                      "sha256":  "28c9361b27d9f2a5d410d9db3f770705446ca293b049de0a3a5fa84367c3e48a"
                   },
                   {
                       "name":  "metrics-on.json",
-                      "bytes":  2302,
-                      "sha256":  "db8471f137a76f1fc92fc82f8e54994f5b1d471d45eeaf75d249f282b774184d"
+                      "bytes":  1661,
+                      "sha256":  "30d0c3b4a4cb0f6312af37211f66dac5c8a82729a0338026e95a6bf0a0573994"
                   },
                   {
                       "name":  "metrics-summary.json",
-                      "bytes":  5105,
-                      "sha256":  "f114a554b7de9d120624168842e48f76454d7074e2ceb79226e0f55b005ef8f9"
+                      "bytes":  3488,
+                      "sha256":  "5a9e9071fa4e91e46eecc692418fda56ddd1939730aaef8d8b961a9b4072afdf"
                   },
                   {
                       "name":  "REPORT.md",
-                      "bytes":  3938,
-                      "sha256":  "79701c87e5dbc3d6f52ea05cb6edd02281123b3d4f3f34de43b7b26fbaf16cf6"
+                      "bytes":  2821,
+                      "sha256":  "c3b4cd3f90012deca1e917110148accb5144954324651066f64c5bedc67de4ad"
+                  },
+                  {
+                      "name":  "screen-coarse-off.png",
+                      "bytes":  1046156,
+                      "sha256":  "ad48b3ad0193bb773b4d4f9762ad842428d2a4eaba7ff66d34bcb1e2986df5f1"
+                  },
+                  {
+                      "name":  "screen-coarse-off.png.caption.txt",
+                      "bytes":  145,
+                      "sha256":  "9e8c743ceaaf97884b81e5a6b2b7ec5ba49c7981a63ae14d7303c48184ec660d"
+                  },
+                  {
+                      "name":  "screen-coarse-on.png",
+                      "bytes":  1046757,
+                      "sha256":  "526871f97b539c60d67ce4ae44620d07354096ba968423b5139ec095809a812e"
+                  },
+                  {
+                      "name":  "screen-coarse-on.png.caption.txt",
+                      "bytes":  144,
+                      "sha256":  "f375a5f1376f9ac6f50b6f567dd41a7c5dca1e3df9573152f3cc049adbde8376"
                   },
                   {
                       "name":  "smooth-presenter-frames-off.log",
-                      "bytes":  46512,
-                      "sha256":  "bc70e60e6e43e08d03793f8005655783a0c759f2cf1275622a7f7493fcfa17ba"
+                      "bytes":  37781,
+                      "sha256":  "1bf1bfe539c839f17417343dc900195c69444089b6b30ca5589c00ffc58cb5d4"
                   },
                   {
                       "name":  "smooth-presenter-frames-on.log",
-                      "bytes":  175308,
-                      "sha256":  "814ba98353dd29775225af311986b7587d86cad5c85db321a247aa05dd8a50d1"
+                      "bytes":  145779,
+                      "sha256":  "dfd70708ec2ca2352a1f77cf625003a2c65f6c0016cb91929e95e4d3b12803f4"
                   },
                   {
                       "name":  "status-samples-off.txt",
-                      "bytes":  978,
-                      "sha256":  "64f1369bd12f32397467960d0830829f6380ec02c9230ced827d02be7c2d96b3"
+                      "bytes":  657,
+                      "sha256":  "71ab1402341c608eb108bfe506ac3b81b45e2e13c3dbbabd829e4bac7a2a55e9"
                   },
                   {
                       "name":  "status-samples-on.txt",
-                      "bytes":  3878,
-                      "sha256":  "f2acf9d443cad1aac0c9c2c1dc8aa5bfe745802dc80943a25e59b580cacf623a"
+                      "bytes":  2108,
+                      "sha256":  "dc1fddecba1b9bf8197034ee14d3e53a33c49a4100d318d6529ca8ac7eb2ba77"
                   }
               ]
 }

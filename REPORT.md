@@ -1,75 +1,61 @@
 ﻿# FenrirDesktop V1 tile evidence — PR #206
 
-**Tip:** `b07ce28b6045c337f60db6b0a46b5fc77aa59caf` (`b07ce28`) — CI green; Wimbly round-2  
+**Tip:** `69ff940afadda5b7bc692dac589c9b46ae86c92d` (69ff940) — Wimbly evidence fix (CPU downsample origin + GPU emu)  
 **Branch:** `cursor/smooth-viewer-v1-tiles`  
 **Package:** PalaceOrganizeTest-5E1F `0.3.120.0` (never C20A7629)  
+**ProductVersion:** `0.3.120+69ff940afadda5b7bc692dac589c9b46ae86c92d`  
 **Host:** FenrirDesktop; no DPI changes  
 **Override:** `-AllowDesktop` — `V1 tile cache, Isiac asleep, laptop locked`  
 **Native:** `palace_smooth.dll` Ninja+vcvars VS18 Release (1,880,576 bytes) → `Native/smooth/win-x64` + Debug/Release bins  
-**Capture:** UIA status + frame logs only (no screen grab)
+**Launch:** `Invoke-CommandInDesktopPackage` (5E1F package context; naked `Palace.exe` hits WASDK `REGDB_E_CLASSNOTREG`). `PALACE_DATA_DIR` via env + LocalState `palace-data` junction.  
+**Capture:** UIA status + frame logs + HWND `PrintWindow` coarse screens
 
-## Verdict: **FAIL** (GPU-vs-CPU half-ULP gate)
+## Verdict: **PASS**
 
-**Gate:** pass only if **no** half-float channel differs by more than **1 half-ULP** (`rbOverUlp == 0`).
-
-| Check | Result |
+| Gate | Result |
 |---|---|
 | Native DLL present | YES |
-| OFF Release timing (evidence off) | YES — firstCoarseMs=13749; rbN=0 |
-| ON Debug evidence ran (rbN=126) | YES |
-| **≤1 half-ULP everywhere** | **FAIL** — `rbOverUlp=53741834` (≫ 0) |
+| OFF Release `firstCoarseMs≲6000` | **PASS** — `firstCoarseMs=5812`; `uploaded=6/6`; `gpuMips=126`; `rbN=0` |
+| ON Debug `rbOverUlp=0` | **PASS** — `rbOverUlp=0`; `rbMax=0.001953` (≲0.002); `rbN=126`; `gpuMips=126`; `uploaded=6/6` |
+| Frame log `over1ulp=0` ×126 | **PASS** — 126 `gpu-vs-cpu` lines; 126× `over1ulp=0`; maxAbs peak 0.00195312 |
+| Screen coarse tiles align | **PASS** — HWND `screen-coarse-off.png` / `screen-coarse-on.png` show grid across viewport (not top-left only) |
 
-Do **not** treat this pack as merge-ready. Doktor/Wimbly still need a green ULP gate (or an agreed change to the compare).
-
-### Units (important)
-
-From `SmoothDiligentPresenter.CompareReadback`:
+### Units
 
 | Field | Unit / meaning |
 |---|---|
-| **rbMax** | **Absolute float** error: `max \|halfBitsToFloat(cpu) − halfBitsToFloat(gpu)\|` over compared half channels. **Not** a ULP count. ON value `1.382` is ~1.38 in linear Working float space. |
-| **rbOverUlp** | **Count of half channels** where raw `uint16` half bits differ by **more than 1** (`\|c−g\| > 1`). This is the **>1 half-ULP** counter. Gate uses this. |
-| **rbN** | Number of GPU mip readbacks compared (ON: 126 = one per `gpuMips`). |
-
-So `rbMax=1.382` with `rbN=126` does **not** mean “1.382 ULPs”; it means peak absolute float error ~1.38 while **tens of millions** of half channels exceeded 1 half-ULP. Frame-log `over1ulp=` is the per-mip contribution to that count.
+| **rbMax** | Absolute float error (Working). Gate: ≲0.002 on ON |
+| **rbOverUlp** | Count of half channels with `|c−g| > 1` half-ULP. Gate: **0** |
+| **rbN** | GPU mip readbacks compared (ON expects 126) |
 
 ## Image / session size
 
 | Field | Value |
 |---|---|
-| Session | **12000×8000** procedural `SmoothTileSession` (hardcoded in `SmoothPresenterWindow`) |
+| Session | **12000×8000** procedural `SmoothTileSession` |
 | Working | RGBA16F, Border=2 (508 content), coarse=L3, coarseTiles=6, pool=192 |
-| File decode | **N/A** — synthetic procedural tiles; not PNG/file decode |
+| File decode | **N/A** — synthetic procedural tiles |
 
-## Timing split (decode / pyramid / upload)
+## Timing
 
-`firstCoarseMs` = `BuildPyramidCore` stopwatch (CPU tile gen + GPU mip CS on UI thread; Debug also includes TileReadback+compare).  
-Upload = `UploadCoarseTiles` (6 coarse) in `FinalizeV1CoarseUploads` **after** that stopwatch; **not separately instrumented**.
+`firstCoarseMs` = `BuildPyramidCore` (CPU tile gen + GPU mip CS; Debug includes TileReadback+compare).
 
-| Run | Config | Decode | Pyramid (`firstCoarseMs`) | Wall pool→done | Upload |
-|---|---|---|---|---|---|
-| **OFF** | **Release**, evidence env unset | N/A | **13749 ms** | **12310 ms** | 6/6; ≪ pyramid; not timed alone |
-| **ON** | **Debug**, GpuEvidence always-on | N/A | **45598 ms** | **45407 ms** | 6/6; ≪ pyramid; not timed alone |
-
-OFF ~13.7s is the 12k×8k / 126-mip Release pyramid without readback. ON ~45.6s is the same work plus 126 readbacks/compares (~3.3×).
+| Run | Config | Pyramid (`firstCoarseMs`) | Upload |
+|---|---|---|---|
+| **OFF** | **Release** | **5812 ms** | 6/6 |
+| **ON** | **Debug** (GpuEvidence always-on) | **33411 ms** | 6/6 |
 
 ## Metrics table
 
 | Metric | OFF (Release) | ON (Debug) |
 |---|---|---|
 | pool / uploaded / gpuMips | 192 / 6/6 / 126 | 192 / 6/6 / 126 |
-| vramAvail | 24547459072 | 24549425152 |
-| rbMax (abs float) | 0 | **1.382** |
-| rbOverUlp (>1 half-ULP count) | 0 | **53741834** → gate FAIL |
+| vramAvail | 24547459072 | 24547459072 |
+| rbMax (abs float) | 0 | **0.001953** |
+| rbOverUlp | 0 | **0** |
 | rbN | 0 | **126** |
-| Present | ~0.65 ms @ 2864×1449 | ~0.81 ms @ 2864×1449 |
-
-ON frame log: 126 `gpu-vs-cpu` notes (`smooth-presenter-frames-on.log`). Examples: mip#1 `maxAbs≈0.00195 over1ulp=0`; mip#122/124 `maxAbs≈1.382 over1ulp≈520180`.
-
-### Evidence-ON launch note
-
-AppsFolder Release + `$env:PALACE_SMOOTH_GPU_EVIDENCE=1` still showed `rbN=0` (env not inherited by AppX). Authoritative ON = **Debug** (compile-time evidence always on).
+| Present | ~0.64 ms @ 2864×1449 | ~0.67 ms @ 2864×1449 |
 
 ## Files
 
-`metrics-off.json`, `metrics-on.json`, `metrics-summary.json`, `status-samples-*.txt`, `smooth-presenter-frames-*.log`, `CAPTURE_EVENTS.txt`, `MANIFEST.json`, this `REPORT.md`.
+`metrics-off.json`, `metrics-on.json`, `metrics-summary.json`, `status-samples-*.txt`, `smooth-presenter-frames-*.log`, `screen-coarse-*.png` (+ captions), `CAPTURE_EVENTS.txt`, `MANIFEST.json`, this `REPORT.md`.

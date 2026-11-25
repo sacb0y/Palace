@@ -1,84 +1,40 @@
-﻿2026-11-25T06:45:36.1132071-05:00 package=PalaceOrganizeTest-5E1F_0.3.120.0_x64__1z32rh13vfry6 install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64
-2026-11-25T06:45:36.1330788-05:00 ==== RUN off evidenceOn=False ====
-2026-11-25T06:45:37.1779241-05:00 launch run=off evidenceOn=False PALACE_DATA_DIR=C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-b07ce28 FRAME_LOG=C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\smooth-presenter-frames-off.log
-2026-11-25T06:45:40.6656916-05:00 pid=212856 path=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\Palace.exe
-2026-11-25T06:46:03.5747545-05:00 package=PalaceOrganizeTest-5E1F_0.3.120.0_x64__1z32rh13vfry6 install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64
-2026-11-25T06:46:03.5914545-05:00 ==== RUN off evidenceOn=False ====
-2026-11-25T06:46:04.6483501-05:00 launch run=off evidenceOn=False PALACE_DATA_DIR=C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-b07ce28 FRAME_LOG=C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\smooth-presenter-frames-off.log
-2026-11-25T06:46:08.1784248-05:00 pid=225644 path=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\Palace.exe
-2026-11-25T06:46:08.6681582-05:00 click NavSettings @ 366,1002
-2026-11-25T06:47:27.1699443-05:00 RESTART after Viewer-nav fix
-2026-11-25T06:47:28.4697364-05:00 package=PalaceOrganizeTest-5E1F_0.3.120.0_x64__1z32rh13vfry6 install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64
-2026-11-25T06:47:28.4808124-05:00 ==== RUN off evidenceOn=False ====
-2026-11-25T06:47:29.5315501-05:00 launch run=off evidenceOn=False PALACE_DATA_DIR=C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-b07ce28 FRAME_LOG=C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\smooth-presenter-frames-off.log
-2026-11-25T06:47:33.1645095-05:00 pid=209168 path=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\Palace.exe
-2026-11-25T06:47:33.6621997-05:00 click NavSettings @ 444,1080
-2026-11-25T06:47:35.0048549-05:00 click BtnSettingsNav_Viewer @ 658,456
-2026-11-25T06:47:36.7304846-05:00 click TglSmoothPresenter @ 1290,663
-2026-11-25T06:47:38.0867415-05:00 click BtnOpenSmoothPresenter @ 1398,663
-2026-11-25T06:47:40.1064422-05:00 smooth hwnd=17250200
-2026-11-25T06:47:41.0911048-05:00 sample off tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:47:44.1417411-05:00 sample off tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:47:47.2031890-05:00 sample off tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:47:50.3149828-05:00 sample off tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:47:53.3472126-05:00 sample off tiles=V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=13749 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24547459072 resident=6 rbMax=0 rbOverUlp=0 rbN=0 · 
-2026-11-25T06:47:53.4013204-05:00 done off ready=True tiles=V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=13749 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24547459072 resident=6 rbMax=0 rbOverUlp=0 rbN=0 ·  status=frame 377 2864x1449 total=0.65ms wait=0.00 render=0.27 present=0.38 frames=0
-2026-11-25T06:47:54.5014461-05:00 ==== RUN on evidenceOn=True ====
-2026-11-25T06:47:55.6724094-05:00 launch run=on evidenceOn=True PALACE_DATA_DIR=C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-b07ce28 FRAME_LOG=C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\smooth-presenter-frames-on.log
-2026-11-25T06:47:59.0850811-05:00 pid=190404 path=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\Palace.exe
-2026-11-25T06:47:59.4353582-05:00 click NavSettings @ 496,1132
-2026-11-25T06:48:00.7681675-05:00 click BtnSettingsNav_Viewer @ 710,508
-2026-11-25T06:48:02.4529493-05:00 click TglSmoothPresenter @ 1342,715
-2026-11-25T06:48:03.4995032-05:00 open btn disabled — click toggle again
-2026-11-25T06:48:03.8223940-05:00 click TglSmoothPresenter-retry @ 1342,715
-2026-11-25T06:48:05.1523078-05:00 click BtnOpenSmoothPresenter @ 1450,715
-2026-11-25T06:48:07.1659036-05:00 smooth hwnd=12325848
-2026-11-25T06:48:07.1955340-05:00 sample on tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:48:10.2334004-05:00 sample on tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:48:13.2791884-05:00 sample on tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:48:16.3252185-05:00 sample on tiles=pool ready — building pyramid (bg)…
-2026-11-25T06:48:19.3673330-05:00 sample on tiles=V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=11212 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24549687296 resident=6 rbMax=0 rbOverUlp=0 rbN=0 · 
-2026-11-25T06:48:19.3918452-05:00 done on ready=True tiles=V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=11212 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24549687296 resident=6 rbMax=0 rbOverUlp=0 rbN=0 ·  status=frame 441 2864x1449 total=0.70ms wait=0.00 render=0.28 present=0.43 frames=0
-2026-11-25T06:48:20.5040879-05:00 ALL_DONE
-2026-11-25T06:51:19.6091624-05:00 ON-DEBUG register install=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64
-2026-11-25T06:51:20.0697769-05:00 launch Debug AppsFolder
-2026-11-25T06:51:22.0627772-05:00 pid=220272 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe main=13119554
-2026-11-25T06:51:24.5417282-05:00 click NavSettings @600,1236
-2026-11-25T06:52:34.1520492-05:00 launch Debug
-2026-11-25T06:52:35.6879468-05:00 pid=201412 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe
-2026-11-25T06:52:37.9977251-05:00 sel NavSettings
-2026-11-25T06:52:40.8294418-05:00 sel Viewer
-2026-11-25T06:52:42.8461221-05:00 click TglSmooth
-2026-11-25T06:52:45.1538968-05:00 click Open
-2026-11-25T06:53:12.3453279-05:00 smooth=0
-2026-11-25T07:01:42.2891670-05:00 ON-DEBUG3 launch
-2026-11-25T07:01:43.8008978-05:00 pid=205556 main=16715650 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe
-2026-11-25T07:01:46.0583834-05:00 sel NavSettings
-2026-11-25T07:01:47.0862317-05:00 sel Viewer
-2026-11-25T07:01:48.2712222-05:00 click Tgl1
-2026-11-25T07:01:49.4234343-05:00 click Open
-2026-11-25T07:01:52.4580203-05:00 tilesElFound=True
-2026-11-25T07:01:52.5097173-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:01:54.5633719-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:01:56.6084308-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:01:58.6674910-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:00.7182433-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:02.7852754-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:04.8912746-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:06.9146917-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:09.0136296-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:11.0558283-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:13.0791996-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:15.1088853-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:17.2278912-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:19.2648919-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:21.2942625-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:23.4092013-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:25.4646429-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:27.5496407-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:29.6286478-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:31.6578204-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:33.7603082-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:35.8926417-05:00 sample pool ready — building pyramid (bg)…
-2026-11-25T07:02:37.9106657-05:00 sample V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=45598 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24549425152 resident=6 rbMax=1.382 rbOverUlp=53741834 rbN=126 · 
-2026-11-25T07:02:38.3092224-05:00 DONE rbN=126 rbMax=1.382 firstCoarseMs=45598 notes=126 wall=45407
+﻿
+2026-11-25T07:39:33.9721460-05:00 START tip=69ff940afadda5b7bc692dac589c9b46ae86c92d Mode=both host=FENRIRDESKTOP
+2026-11-25T07:39:33.9879688-05:00 ==== RUN off config=Release evidenceOn=False tip=69ff940afadda5b7bc692dac589c9b46ae86c92d ====
+2026-11-25T07:39:36.9279586-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-69ff940
+2026-11-25T07:39:38.2709912-05:00 launch PACKAGE-CONTEXT run=off evidenceOn=False exe=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\Palace.exe pfn=PalaceOrganizeTest-5E1F_1z32rh13vfry6 PALACE_DATA_DIR=C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-69ff940 FRAME_LOG=C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\smooth-presenter-frames-off.log
+2026-11-25T07:39:41.1722886-05:00 pid=192368 path=E:\wkspaces\Palace-main-af88283\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\Palace.exe hwnd=20055278
+2026-11-25T07:39:41.6615480-05:00 click NavSettings @ 600,1236
+2026-11-25T07:39:43.0293822-05:00 click BtnSettingsNav_Viewer @ 814,612
+2026-11-25T07:39:44.7258123-05:00 click TglSmoothPresenter @ 1446,819
+2026-11-25T07:39:46.0507224-05:00 click BtnOpenSmoothPresenter @ 1554,819
+2026-11-25T07:39:48.0747777-05:00 smooth hwnd=11222366
+2026-11-25T07:39:48.1774266-05:00 sample off firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:39:51.2345761-05:00 sample off firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:39:54.2912108-05:00 sample off firstCoarseMs=5812 uploaded=6/6 gpuMips=126 rbOverUlp=0 rbMax=0 rbN=0
+2026-11-25T07:39:56.3675243-05:00 done off ready=True metrics={"rawTiles":"V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=5812 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24547459072 resident=6 rbMax=0 rbOverUlp=0 rbN=0 · ","rawStatus":"frame 240 2864x1449 total=0.64ms wait=0.00 render=0.27 present=0.36","firstCoarseMs":5812,"pool":192,"uploaded":"6/6","gpuMips":126,"vramAvail":24547459072,"rbMax":0,"rbOverUlp":0,"rbN":0}
+2026-11-25T07:39:56.9692921-05:00 SCREEN C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\screen-coarse-off.png bytes=1046156
+2026-11-25T07:39:58.0919451-05:00 ==== RUN on config=Debug evidenceOn=True tip=69ff940afadda5b7bc692dac589c9b46ae86c92d ====
+2026-11-25T07:40:01.2146071-05:00 register install=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64 junction=C:\Users\iadag\AppData\Local\Packages\PalaceOrganizeTest-5E1F_1z32rh13vfry6\LocalState\palace-data -> C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-69ff940
+2026-11-25T07:40:02.3406246-05:00 launch PACKAGE-CONTEXT run=on evidenceOn=True exe=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe pfn=PalaceOrganizeTest-5E1F_1z32rh13vfry6 PALACE_DATA_DIR=C:\Users\iadag\AppData\Local\Temp\palace-agent-data-206-69ff940 FRAME_LOG=C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\smooth-presenter-frames-on.log
+2026-11-25T07:40:05.5499681-05:00 pid=113208 path=E:\wkspaces\Palace-main-af88283\bin\x64\Debug\net10.0-windows10.0.26100.0\win-x64\Palace.exe hwnd=20120814
+2026-11-25T07:40:05.9032028-05:00 click NavSettings @ 158,794
+2026-11-25T07:40:07.2550257-05:00 click BtnSettingsNav_Viewer @ 372,170
+2026-11-25T07:40:08.9753340-05:00 click TglSmoothPresenter @ 1004,377
+2026-11-25T07:40:10.3276227-05:00 click BtnOpenSmoothPresenter @ 1112,377
+2026-11-25T07:40:12.3409146-05:00 smooth hwnd=42012596
+2026-11-25T07:40:12.3645522-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:15.4194304-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:18.4888327-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:21.5448635-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:24.6176564-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:27.6478920-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:30.6710536-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:33.7075588-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:36.7528985-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:39.7763823-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:42.8416112-05:00 sample on firstCoarseMs= uploaded= gpuMips= rbOverUlp= rbMax= rbN=
+2026-11-25T07:40:45.8799488-05:00 sample on firstCoarseMs=33411 uploaded=6/6 gpuMips=126 rbOverUlp=0 rbMax=0.001953 rbN=126
+2026-11-25T07:40:45.9008476-05:00 done on ready=True metrics={"rawTiles":"V1 tiles 12000x8000 coarse=L3 coarseTiles=6 pool=192 resident=6 cpuTiles=6 firstCoarseMs=33411 fmt=RGBA16F Border=2 · pool=192 uploaded=6/6 gpuMips=126 vramAvail=24547459072 resident=6 rbMax=0.001953 rbOverUlp=0 rbN=126 · ","rawStatus":"frame 1095 2864x1449 total=0.67ms wait=0.00 render=0.27 present=0.39","firstCoarseMs":33411,"pool":192,"uploaded":"6/6","gpuMips":126,"vramAvail":24547459072,"rbMax":0.001953,"rbOverUlp":0,"rbN":126}
+2026-11-25T07:40:46.4842586-05:00 SCREEN C:\Users\iadag\AppData\Local\Cursor\AgentStores\cursor_agent_stores\bc-d62b1545-5b2a-41dd-ba13-2fb884394891\files\media\pr-smooth-v1-tiles\screen-coarse-on.png bytes=1046757
+2026-11-25T07:40:47.5905182-05:00 ALL_DONE
