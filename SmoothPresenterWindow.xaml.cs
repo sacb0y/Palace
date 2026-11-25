@@ -16,10 +16,10 @@ public sealed partial class SmoothPresenterWindow : Window
     private SmoothTileSession? _tiles;
     private DispatcherQueueTimer? _timer;
     private CancellationTokenSource? _buildCts;
+    private Task? _buildTask;
     private bool _activated;
     private bool _hostStarted;
     private bool _poolReady;
-    private bool _buildStarted;
 
     public SmoothPresenterWindow()
     {
@@ -43,7 +43,6 @@ public sealed partial class SmoothPresenterWindow : Window
     private void PreparePresenter()
     {
         var dataDir = CatalogStore.DataDir();
-        // Session shell only — pyramid waits for host + VRAM + pool (GPU mip marshal).
         _tiles = new SmoothTileSession(12000, 8000);
         TxtSmoothTiles.Text = "waiting for presenter…";
 
@@ -68,19 +67,7 @@ public sealed partial class SmoothPresenterWindow : Window
 
             if (_presenter.Lifecycle.NeedsRecreate)
             {
-                var m = PanelMetrics();
-                if (m.DipW >= 2 && m.DipH >= 2)
-                {
-                    _poolReady = false;
-                    _buildStarted = false;
-                    if (_presenter.TryRecreateAfterDeviceLost(m.DipW, m.DipH, m.Sx, m.Sy, _tiles))
-                    {
-                        _poolReady = true;
-                        StartBackgroundPyramid();
-                    }
-
-                    TxtSmoothTiles.Text = (_tiles?.StatusLine() ?? "") + " · " + _presenter.TileStatus;
-                }
+                HandleNeedsRecreate();
             }
             else
             {
@@ -90,6 +77,39 @@ public sealed partial class SmoothPresenterWindow : Window
             TxtSmoothStatus.Text = _presenter.Status;
         };
         _timer.Start();
+    }
+
+    private void HandleNeedsRecreate()
+    {
+        if (_presenter is null)
+        {
+            return;
+        }
+
+        // Cancel any in-flight pyramid; do not start a second build until the old one ends.
+        _buildCts?.Cancel();
+        if (_buildTask is not null && !_buildTask.IsCompleted)
+        {
+            TxtSmoothTiles.Text = "device lost — waiting for build cancel…";
+            return;
+        }
+
+        _buildTask = null;
+        _poolReady = false;
+
+        var m = PanelMetrics();
+        if (m.DipW < 2 || m.DipH < 2)
+        {
+            return;
+        }
+
+        if (_presenter.TryRecreateAfterDeviceLost(m.DipW, m.DipH, m.Sx, m.Sy, _tiles))
+        {
+            _poolReady = true;
+            StartBackgroundPyramid();
+        }
+
+        TxtSmoothTiles.Text = (_tiles?.StatusLine() ?? "") + " · " + _presenter.TileStatus;
     }
 
     private void TryStartWhenPanelSized()
@@ -129,12 +149,16 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void StartBackgroundPyramid()
     {
-        if (_buildStarted || _tiles is null || _presenter is null || !_poolReady)
+        if (_tiles is null || _presenter is null || !_poolReady)
         {
             return;
         }
 
-        _buildStarted = true;
+        if (_buildTask is not null && !_buildTask.IsCompleted)
+        {
+            return;
+        }
+
         _buildCts?.Cancel();
         _buildCts?.Dispose();
         _buildCts = new CancellationTokenSource();
@@ -143,15 +167,14 @@ public sealed partial class SmoothPresenterWindow : Window
         var presenter = _presenter;
         var dq = DispatcherQueue;
 
-        // Marshal GPU upload + TileMipBox onto the presenter/UI thread; bg waits.
-        session.GpuMip = req =>
+        Action<SmoothGpuMipRequest> gpuMip = req =>
         {
             if (cts.IsCancellationRequested)
             {
                 return;
             }
 
-            using var done = new ManualResetEventSlim(false);
+            var done = new ManualResetEventSlim(false);
             Exception? error = null;
             if (!dq.TryEnqueue(() =>
                 {
@@ -169,28 +192,66 @@ public sealed partial class SmoothPresenterWindow : Window
                     }
                 }))
             {
+                done.Dispose();
                 return;
             }
 
-            done.Wait(cts.Token);
+            try
+            {
+                done.Wait(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // Do not dispose while a queued UI callback may still Set.
+                throw;
+            }
+
+            done.Dispose();
             if (error is not null)
             {
                 throw error;
             }
         };
 
-        session.AfterLevel = () =>
+        Action afterLevel = () =>
         {
-            using var done = new ManualResetEventSlim(false);
-            _ = dq.TryEnqueue(() =>
+            if (cts.IsCancellationRequested)
             {
-                presenter.FlushGpu();
-                done.Set();
-            });
-            done.Wait(cts.Token);
+                return;
+            }
+
+            var done = new ManualResetEventSlim(false);
+            if (!dq.TryEnqueue(() =>
+                {
+                    try
+                    {
+                        presenter.FlushGpu();
+                    }
+                    finally
+                    {
+                        done.Set();
+                    }
+                }))
+            {
+                done.Dispose();
+                return;
+            }
+
+            try
+            {
+                done.Wait(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+
+            done.Dispose();
         };
 
-        _ = session.BuildPyramidAsync(cts.Token).ContinueWith(
+        var build = session.BuildPyramidAsync(cts.Token, gpuMip, afterLevel);
+        _buildTask = build;
+        _ = build.ContinueWith(
             t =>
             {
                 dq.TryEnqueue(() =>
@@ -203,6 +264,11 @@ public sealed partial class SmoothPresenterWindow : Window
                     if (t.IsFaulted)
                     {
                         TxtSmoothTiles.Text = "tile build failed: " + (t.Exception?.GetBaseException().Message ?? "error");
+                        return;
+                    }
+
+                    if (t.IsCanceled)
+                    {
                         return;
                     }
 
@@ -282,16 +348,10 @@ public sealed partial class SmoothPresenterWindow : Window
         _buildCts?.Cancel();
         _buildCts?.Dispose();
         _buildCts = null;
-        if (_tiles is not null)
-        {
-            _tiles.GpuMip = null;
-            _tiles.AfterLevel = null;
-        }
-
+        _buildTask = null;
         _presenter?.Dispose();
         _presenter = null;
         _hostStarted = false;
         _poolReady = false;
-        _buildStarted = false;
     }
 }

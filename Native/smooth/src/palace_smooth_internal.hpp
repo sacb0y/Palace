@@ -62,6 +62,7 @@ struct Host {
     /* V1 tile pool (RGBA16F Working, SMOOTH_SRGB8=0). */
     RefCntAutoPtr<ITexture> tileArray;
     RefCntAutoPtr<ITexture> mipScratch; /* TEX_2D_ARRAY ArraySize=1; never SRV+UAV same as pool */
+    RefCntAutoPtr<ITexture> readbackStaging; /* STAGING TEX_2D_ARRAY ArraySize=1, CPU_ACCESS_READ */
     RefCntAutoPtr<IPipelineState> mipPso;
     RefCntAutoPtr<IShaderResourceBinding> mipSrb;
     RefCntAutoPtr<IBuffer> mipCb;

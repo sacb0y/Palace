@@ -72,10 +72,9 @@ public sealed class SmoothMipDownsampleCpuTests
     }
 
     [Fact]
-    public void GpuVsCpu_BoxDownsampleTileSlot_MatchesFullCrop()
+    public void CpuTileSlot_MatchesFullDownsample()
     {
-        // Reference: full-image box then crop content vs TileSlot path (CPU stand-in
-        // for SmoothMipDownsampleCS; Fenrir compares the same against real GPU).
+        // CPU tile-slot path vs full-image box (Fenrir GPU-vs-CPU uses TileReadback).
         const int w = 32;
         const int h = 32;
         var src = new float[w * h * 4];
@@ -96,7 +95,6 @@ public sealed class SmoothMipDownsampleCpuTests
         Assert.Equal((w + 1) / 2, dw);
         Assert.Equal((h + 1) / 2, dh);
 
-        // Content (0,0) at L+1 lives at slot (Border,Border)
         var so = (2 * 512 + 2) * 4;
         Assert.Equal(full[0], slot[so], 5);
         Assert.Equal(full[1], slot[so + 1], 5);

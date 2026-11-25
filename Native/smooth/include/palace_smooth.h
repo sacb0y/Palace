@@ -90,6 +90,9 @@ PSV_API void psv_tile_pool_destroy(void* host);
 /* Upload one 512² RGBA16F Working tile (row-pitch = 512*8) into array slice. */
 PSV_API int psv_tile_upload(void* host, unsigned slice, const void* rgba16f_bytes, int byte_count);
 
+/* Read back one pool slice into a 512²×8 RGBA16F buffer (staging + WaitForIdle). */
+PSV_API int psv_tile_readback(void* host, unsigned slice, void* out_rgba16f_bytes, int byte_count);
+
 /*
  * Box-filter mip one parent slot via SmoothMipDownsampleCS.
  * slices4x4: 16 uints row-major child ring (-1..2); 0xFFFFFFFF = outside.

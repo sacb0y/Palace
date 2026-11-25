@@ -5,6 +5,7 @@
 
 #include "palace_smooth_internal.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
@@ -254,6 +255,7 @@ PSV_API void psv_tile_pool_destroy(void* host_ptr)
     host->mipPso.Release();
     host->mipCb.Release();
     host->mipScratch.Release();
+    host->readbackStaging.Release();
     host->tileArray.Release();
     host->tileCapacity = 0;
     host->tilePoolReady = false;
@@ -306,6 +308,90 @@ PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_
         sub,
         RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
         RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    ClearError(host);
+    return PSV_OK;
+#else
+    (void)slice;
+    (void)byte_count;
+    return PSV_MISSING_DILIGENT;
+#endif
+}
+
+PSV_API int psv_tile_readback(void* host_ptr, unsigned slice, void* out_rgba16f_bytes, int byte_count)
+{
+    auto* host = static_cast<Host*>(host_ptr);
+    if (!host || !out_rgba16f_bytes) {
+        return PSV_BAD_ARGUMENT;
+    }
+#if defined(PALACE_SMOOTH_WITH_DILIGENT)
+    if (host->deviceLost) {
+        SetError(host, "device lost");
+        return PSV_DEVICE_LOST;
+    }
+    if (!host->tilePoolReady || !host->tileArray || !host->diligentContext) {
+        SetError(host, "tile pool not created");
+        return PSV_NOT_ATTACHED;
+    }
+    if (slice >= host->tileCapacity) {
+        SetError(host, "tile slice out of range");
+        return PSV_BAD_ARGUMENT;
+    }
+    const int expected = static_cast<int>(kSlot * kSlot * 8);
+    if (byte_count != expected) {
+        SetError(host, "tile readback size must be 512*512*8");
+        return PSV_BAD_ARGUMENT;
+    }
+
+    if (!host->readbackStaging) {
+        TextureDesc sd{};
+        sd.Name = "SmoothTileReadback";
+        sd.Type = RESOURCE_DIM_TEX_2D_ARRAY;
+        sd.Width = kSlot;
+        sd.Height = kSlot;
+        sd.ArraySize = 1;
+        sd.Format = TEX_FORMAT_RGBA16_FLOAT;
+        sd.MipLevels = 1;
+        sd.Usage = USAGE_STAGING;
+        sd.BindFlags = BIND_NONE;
+        sd.CPUAccessFlags = CPU_ACCESS_READ;
+        host->diligentDevice->CreateTexture(sd, nullptr, &host->readbackStaging);
+        if (!host->readbackStaging) {
+            SetError(host, "CreateTexture readback staging failed");
+            return PSV_FAILED;
+        }
+    }
+
+    CopyTextureAttribs copy{};
+    copy.pSrcTexture = host->tileArray;
+    copy.SrcSlice = slice;
+    copy.pDstTexture = host->readbackStaging;
+    copy.DstSlice = 0;
+    copy.SrcTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+    copy.DstTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+    host->diligentContext->CopyTexture(copy);
+    host->diligentContext->WaitForIdle();
+
+    MappedTextureSubresource mapped{};
+    host->diligentContext->MapTextureSubresource(
+        host->readbackStaging,
+        0,
+        0,
+        MAP_READ,
+        MAP_FLAG_NONE,
+        nullptr,
+        mapped);
+    if (!mapped.pData) {
+        SetError(host, "MapTextureSubresource readback failed");
+        return PSV_FAILED;
+    }
+
+    auto* dst = static_cast<uint8_t*>(out_rgba16f_bytes);
+    const auto* src = static_cast<const uint8_t*>(mapped.pData);
+    const Uint64 srcStride = mapped.Stride != 0 ? mapped.Stride : static_cast<Uint64>(kSlot * 8);
+    for (unsigned y = 0; y < kSlot; ++y) {
+        std::memcpy(dst + static_cast<size_t>(y) * kSlot * 8, src + y * srcStride, kSlot * 8);
+    }
+    host->diligentContext->UnmapTextureSubresource(host->readbackStaging, 0, 0);
     ClearError(host);
     return PSV_OK;
 #else

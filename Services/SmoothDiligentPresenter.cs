@@ -23,6 +23,10 @@ internal sealed class SmoothDiligentPresenter : IDisposable
     private string _tileStatus = "tiles idle";
     private SmoothTileSession? _session;
     private int _gpuMipCount;
+    private float _readbackMaxAbsError;
+    private int _readbackOverUlpCount;
+    private int _readbackCompared;
+    private readonly byte[] _readbackScratch = new byte[SmoothTileMath.BytesPerTileRgba16F()];
 
     public SmoothDiligentPresenter(SwapChainPanel panel, string? logDataDir = null)
     {
@@ -38,9 +42,21 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
     public SmoothPresenterNative.FrameStats LastStats { get; private set; }
 
+    private static bool GpuEvidenceEnabled =>
+#if DEBUG
+        true
+#else
+        string.Equals(
+            Environment.GetEnvironmentVariable("PALACE_SMOOTH_GPU_EVIDENCE"),
+            "1",
+            StringComparison.Ordinal)
+#endif
+    ;
+
     /// <summary>
     /// Query real VRAM, size the session pool, create the GPU tile array.
     /// Pyramid build (with marshaled <see cref="ExecuteGpuMip"/>) follows.
+    /// ApplyVramBudget recreates the LRU — do not also call ResetLru beforehand.
     /// </summary>
     public bool TryPrepareV1TilePool(SmoothTileSession session)
     {
@@ -52,6 +68,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         _session = session;
         _gpuMipCount = 0;
+        _readbackMaxAbsError = 0;
+        _readbackOverUlpCount = 0;
+        _readbackCompared = 0;
 
         if (SmoothPresenterNative.QueryVideoMemory(_host, out _, out _, out var available) ==
             SmoothPresenterNative.StatusCode.Ok)
@@ -60,8 +79,9 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
         else
         {
-            // Still size to coarse floor when query fails.
-            session.ApplyVramBudget(session.CoarseTileCount * SmoothTileMath.BytesPerTileRgba16F());
+            // Query failed — default pool of 128 (not coarse-only floor).
+            // CapacityFromVramBytes uses available/8 ÷ bytes-per-tile.
+            session.ApplyVramBudget(128L * SmoothTileMath.BytesPerTileRgba16F() * 8);
         }
 
         var shaderDir = System.IO.Path.Combine(AppContext.BaseDirectory, "shaders");
@@ -119,10 +139,94 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
-        if (mip == SmoothPresenterNative.StatusCode.Ok)
+        if (mip != SmoothPresenterNative.StatusCode.Ok)
         {
-            _gpuMipCount++;
+            return;
         }
+
+        _gpuMipCount++;
+
+        if (!GpuEvidenceEnabled)
+        {
+            return;
+        }
+
+        var rb = SmoothPresenterNative.TileReadback(_host, req.DstSlice, _readbackScratch);
+        if (rb == SmoothPresenterNative.StatusCode.DeviceLost)
+        {
+            HandleDeviceLost();
+            return;
+        }
+
+        if (rb != SmoothPresenterNative.StatusCode.Ok)
+        {
+            return;
+        }
+
+        CompareReadback(req.ParentBytes, _readbackScratch);
+    }
+
+    private void CompareReadback(byte[] cpuParent, byte[] gpuParent)
+    {
+        var n = Math.Min(cpuParent.Length, gpuParent.Length) / 2;
+        var over = 0;
+        var maxAbs = 0f;
+        for (var i = 0; i < n; i++)
+        {
+            var c = (ushort)(cpuParent[i * 2] | (cpuParent[i * 2 + 1] << 8));
+            var g = (ushort)(gpuParent[i * 2] | (gpuParent[i * 2 + 1] << 8));
+            var cf = HalfBitsToFloat(c);
+            var gf = HalfBitsToFloat(g);
+            var err = MathF.Abs(cf - gf);
+            if (err > maxAbs)
+            {
+                maxAbs = err;
+            }
+
+            // >1 half-ULP at the larger magnitude (approx via nextafter-ish bit delta).
+            if (c != g && Math.Abs(c - g) > 1)
+            {
+                over++;
+            }
+        }
+
+        _readbackCompared++;
+        if (maxAbs > _readbackMaxAbsError)
+        {
+            _readbackMaxAbsError = maxAbs;
+        }
+
+        _readbackOverUlpCount += over;
+        SmoothPresenterLog.AppendNote(
+            _logDataDir,
+            $"gpu-vs-cpu mip#{_gpuMipCount} maxAbs={maxAbs:G6} over1ulp={over}");
+    }
+
+    private static float HalfBitsToFloat(ushort h)
+    {
+        var sign = (h >> 15) & 1;
+        var exp = (h >> 10) & 0x1f;
+        var mant = h & 0x3ff;
+        if (exp == 0)
+        {
+            if (mant == 0)
+            {
+                return sign == 0 ? 0f : -0f;
+            }
+
+            var f = mant / 1024f * MathF.Pow(2, -14);
+            return sign == 0 ? f : -f;
+        }
+
+        if (exp == 31)
+        {
+            return mant == 0
+                ? (sign == 0 ? float.PositiveInfinity : float.NegativeInfinity)
+                : float.NaN;
+        }
+
+        var val = (1f + mant / 1024f) * MathF.Pow(2, exp - 15);
+        return sign == 0 ? val : -val;
     }
 
     public void FlushGpu()
@@ -147,12 +251,15 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return;
         }
 
+        // V1 authoritative path: CPU coarse parents (GPU mips verified via readback in evidence mode).
         var uploaded = UploadCoarseTiles(session);
         FlushGpu();
         _tileStatus =
             $"pool={session.PoolCapacity} uploaded={uploaded}/{session.CoarseTileCount} " +
             $"gpuMips={_gpuMipCount} vramAvail={session.AvailableVramBytes} " +
-            $"resident={session.Lru.ResidentCount} · {SmoothPresenterNative.LastError(_host)}";
+            $"resident={session.Lru.ResidentCount} " +
+            $"rbMax={_readbackMaxAbsError:G4} rbOverUlp={_readbackOverUlpCount} rbN={_readbackCompared} " +
+            $"· {SmoothPresenterNative.LastError(_host)}";
     }
 
     private int UploadCoarseTiles(SmoothTileSession session)
@@ -359,7 +466,7 @@ internal sealed class SmoothDiligentPresenter : IDisposable
             return true;
         }
 
-        target.ResetLruForDeviceLost();
+        // ApplyVramBudget inside TryPrepare recreates the LRU — no separate Reset.
         return TryPrepareV1TilePool(target);
     }
 

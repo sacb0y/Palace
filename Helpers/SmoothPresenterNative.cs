@@ -380,6 +380,23 @@ public static class SmoothPresenterNative
         }
     }
 
+    public static StatusCode TileReadback(nint host, uint slice, byte[] outRgba16F)
+    {
+        if (host == 0 || !IsAvailable || outRgba16F is null)
+        {
+            return StatusCode.Failed;
+        }
+
+        try
+        {
+            return (StatusCode)NativeTileReadback(host, slice, outRgba16F, outRgba16F.Length);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return StatusCode.Failed;
+        }
+    }
+
     public static StatusCode TileMipBox(
         nint host,
         uint levelLW,
@@ -446,6 +463,9 @@ public static class SmoothPresenterNative
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_upload")]
     private static extern int NativeTileUpload(nint host, uint slice, byte[] rgba16f, int byteCount);
+
+    [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_readback")]
+    private static extern int NativeTileReadback(nint host, uint slice, byte[] outRgba16f, int byteCount);
 
     [DllImport(Lib, CallingConvention = CallingConvention.Cdecl, EntryPoint = "psv_tile_mip_box")]
     private static extern int NativeTileMipBox(

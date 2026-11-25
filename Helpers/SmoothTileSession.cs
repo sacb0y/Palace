@@ -4,8 +4,9 @@ namespace Palace.Helpers;
 /// V1 tile session: builds Working-space tiles on a background task, mips
 /// L→L+1 via <see cref="SmoothMipDownsampleCpu.BoxDownsampleTileSlot"/> (and
 /// optional GPU <c>TileMipBox</c>), pins the coarse set, and never retains every
-/// L0 tile in managed memory. EXIF is never baked; cloud online-only paths are
-/// refused via <see cref="SmoothTileDecodeGate"/>.
+/// L0 tile in managed memory. V1 decode is synthetic procedural Working;
+/// Palace.Imaging Working decode is V2. EXIF is never baked; cloud online-only
+/// paths are refused via <see cref="SmoothTileDecodeGate"/>.
 /// </summary>
 public sealed class SmoothTileSession
 {
@@ -20,15 +21,6 @@ public sealed class SmoothTileSession
     public int CoarseTileCount { get; private set; }
     public string WorkingFormat { get; } = SmoothTileWorkingSpace.GpuFormat;
     public long AvailableVramBytes { get; private set; }
-
-    /// <summary>
-    /// Optional GPU mip hook: upload children + dispatch TileMipBox for one parent
-    /// (must run on the presenter thread).
-    /// </summary>
-    public Action<SmoothGpuMipRequest>? GpuMip { get; set; }
-
-    /// <summary>Optional flush after each completed mip level (presenter thread).</summary>
-    public Action? AfterLevel { get; set; }
 
     public SmoothTileSession(int fullWidth, int fullHeight, long availableVramBytes = 0)
     {
@@ -58,44 +50,30 @@ public sealed class SmoothTileSession
     }
 
     /// <summary>
-    /// Background build. When <paramref name="sourcePath"/> is set, refuses
-    /// online-only / missing paths via <see cref="SmoothTileDecodeGate"/> (V1
-    /// still fills procedural Working tiles after the gate opens).
+    /// Background build. Callbacks are passed in (not mutated on the instance)
+    /// so device-lost recreate cannot race a second build against stale delegates.
     /// </summary>
-    public Task<long> BuildPyramidAsync(CancellationToken cancellationToken, string? sourcePath = null)
+    public Task<long> BuildPyramidAsync(
+        CancellationToken cancellationToken,
+        Action<SmoothGpuMipRequest>? gpuMip = null,
+        Action? afterLevel = null,
+        string? sourcePath = null)
     {
         if (sourcePath is not null && !SmoothTileDecodeGate.MayDecodePath(sourcePath))
         {
             throw new InvalidOperationException("Decode refused by SmoothTileDecodeGate.");
         }
 
-        return Task.Run(() => BuildPyramidCore(cancellationToken), cancellationToken);
+        return Task.Run(
+            () => BuildPyramidCore(cancellationToken, gpuMip, afterLevel),
+            cancellationToken);
     }
 
     /// <summary>Sync helper for unit tests (prefer modest sizes).</summary>
     public long BuildSyntheticLevel0AndCoarse()
     {
         using var cts = new CancellationTokenSource();
-        return BuildPyramidCore(cts.Token);
-    }
-
-    public void ResetLruForDeviceLost()
-    {
-        Lru.Reset();
-        var lw = SmoothTileMath.LevelWidth(FullWidth, CoarseLevel);
-        var lh = SmoothTileMath.LevelHeight(FullHeight, CoarseLevel);
-        var (tx, ty) = SmoothTileMath.TileCounts(lw, lh);
-        for (var y = 0; y < ty; y++)
-        {
-            for (var x = 0; x < tx; x++)
-            {
-                var id = new SmoothTileId(CoarseLevel, x, y);
-                if (Cpu.TryGet(id, out _))
-                {
-                    _ = Lru.TryInsert(id, out _, out _);
-                }
-            }
-        }
+        return BuildPyramidCore(cts.Token, gpuMip: null, afterLevel: null);
     }
 
     public string StatusLine() =>
@@ -103,7 +81,10 @@ public sealed class SmoothTileSession
         $"coarseTiles={CoarseTileCount} pool={PoolCapacity} resident={Lru.ResidentCount} " +
         $"cpuTiles={Cpu.Count} firstCoarseMs={FirstCoarseFrameMs} fmt={WorkingFormat} Border={SmoothTileMath.Border}";
 
-    private long BuildPyramidCore(CancellationToken cancellationToken)
+    private long BuildPyramidCore(
+        CancellationToken cancellationToken,
+        Action<SmoothGpuMipRequest>? gpuMip,
+        Action? afterLevel)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         Cpu.Clear();
@@ -132,8 +113,8 @@ public sealed class SmoothTileSession
         for (var level = 0; level < CoarseLevel; level++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            BuildNextLevelFromChildren(level, cancellationToken);
-            AfterLevel?.Invoke();
+            BuildNextLevelFromChildren(level, cancellationToken, gpuMip);
+            afterLevel?.Invoke();
             Cpu.RemoveLevel(level);
             Lru.ClearTempPins();
         }
@@ -141,7 +122,7 @@ public sealed class SmoothTileSession
         var lw = SmoothTileMath.LevelWidth(FullWidth, CoarseLevel);
         var lh = SmoothTileMath.LevelHeight(FullHeight, CoarseLevel);
         var (nx, ny) = SmoothTileMath.TileCounts(lw, lh);
-        // Drop intermediate GPU residency — only coarse stays pinned.
+        // V1 authoritative path is CPU parents; rematerialize coarse residency for upload.
         Lru.Reset();
         var count = 0;
         for (var y = 0; y < ny; y++)
@@ -166,7 +147,10 @@ public sealed class SmoothTileSession
         return FirstCoarseFrameMs;
     }
 
-    private void BuildNextLevelFromChildren(int childLevel, CancellationToken cancellationToken)
+    private void BuildNextLevelFromChildren(
+        int childLevel,
+        CancellationToken cancellationToken,
+        Action<SmoothGpuMipRequest>? gpuMip)
     {
         var parentLevel = childLevel + 1;
         var childW = SmoothTileMath.LevelWidth(FullWidth, childLevel);
@@ -183,8 +167,18 @@ public sealed class SmoothTileSession
                 cancellationToken.ThrowIfCancellationRequested();
                 var (ox, oy) = SmoothTileMath.ContentOrigin(px, py);
 
-                // Local float patch covering the CS footprint for this parent only.
-                var src = AssembleParentFootprint(childLevel, childW, childH, childNx, childNy, ox, oy, out var patchOriginX, out var patchOriginY, out var patchW, out var patchH);
+                var src = AssembleParentFootprint(
+                    childLevel,
+                    childW,
+                    childH,
+                    childNx,
+                    childNy,
+                    ox,
+                    oy,
+                    out var patchOriginX,
+                    out var patchOriginY,
+                    out var patchW,
+                    out var patchH);
                 var f32 = SmoothMipDownsampleCpu.BoxDownsampleTileSlot(
                     src,
                     patchW,
@@ -200,6 +194,7 @@ public sealed class SmoothTileSession
                 var slices = new uint[16];
                 var tempPinned = new List<SmoothTileId>(16);
                 var childUploads = new List<(SmoothTileId Id, uint Slot, byte[] Bytes)>(16);
+                var childMissing = false;
 
                 for (var i = 0; i < 16; i++)
                 {
@@ -213,16 +208,17 @@ public sealed class SmoothTileSession
                     EnsureChildTile(childId);
                     if (!Cpu.TryGet(childId, out var childBytes))
                     {
-                        slices[i] = SmoothTileMath.SliceOutside;
-                        continue;
+                        // In-image child must never become SliceOutside — skip GPU for this parent.
+                        childMissing = true;
+                        break;
                     }
 
                     if (!Lru.TryGetSlot(childId, out var childSlot))
                     {
                         if (!Lru.TryInsert(childId, out childSlot, out _))
                         {
-                            slices[i] = SmoothTileMath.SliceOutside;
-                            continue;
+                            childMissing = true;
+                            break;
                         }
                     }
 
@@ -232,40 +228,32 @@ public sealed class SmoothTileSession
                     childUploads.Add((childId, (uint)childSlot, childBytes));
                 }
 
-                if (!Lru.TryInsert(parentId, out var parentSlot, out _))
+                if (!childMissing && Lru.TryInsert(parentId, out var parentSlot, out _))
                 {
-                    foreach (var t in tempPinned)
-                    {
-                        Lru.SetTempPin(t, false);
-                    }
-
-                    continue;
+                    gpuMip?.Invoke(new SmoothGpuMipRequest(
+                        ChildLevelWidth: childW,
+                        ChildLevelHeight: childH,
+                        ParentContentOriginX: ox,
+                        ParentContentOriginY: oy,
+                        DstSlice: (uint)parentSlot,
+                        Slices4x4: slices,
+                        ParentBytes: bytes,
+                        ChildUploads: childUploads.ToArray()));
                 }
-
-                GpuMip?.Invoke(new SmoothGpuMipRequest(
-                    ChildLevelWidth: childW,
-                    ChildLevelHeight: childH,
-                    ParentContentOriginX: ox,
-                    ParentContentOriginY: oy,
-                    DstSlice: (uint)parentSlot,
-                    Slices4x4: slices,
-                    ParentBytes: bytes,
-                    ChildUploads: childUploads.ToArray()));
 
                 foreach (var t in tempPinned)
                 {
                     Lru.SetTempPin(t, false);
                 }
-
-                // Drop child rows that no later parent can need (keeps peak CPU << full L0).
-                DropFinishedChildRows(childLevel, childNx, childNy, py);
             }
+
+            // After the full parent row — not per-tile — drop finished child rows.
+            DropFinishedChildRows(childLevel, childNx, childNy, py);
         }
     }
 
     private void DropFinishedChildRows(int childLevel, int childNx, int childNy, int parentYDone)
     {
-        // Parents at py use child ty in [2*py-1, 2*py+2]. After py, rows < 2*py-1 are done.
         var dropBefore = (parentYDone * 2) - 1;
         if (dropBefore <= 0)
         {
@@ -294,15 +282,10 @@ public sealed class SmoothTileSession
             return;
         }
 
-        // Intermediate levels should already exist from prior BuildNextLevel pass.
-        // If missing, synthesize so mip wiring stays robust in tests.
-        Cpu.Set(id, MakeProceduralTile(id));
+        throw new InvalidOperationException(
+            $"Missing intermediate tile {id}; level>0 must come from prior mip, not procedural fill.");
     }
 
-    /// <summary>
-    /// Build a tight float32 patch for one parent mip (not the whole level).
-    /// Footprint ≈ parent content mapped to L (2×) plus CS border taps (~8 px).
-    /// </summary>
     private float[] AssembleParentFootprint(
         int childLevel,
         int childW,
