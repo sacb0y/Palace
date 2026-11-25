@@ -4,7 +4,8 @@
     "host":  "FenrirDesktop",
     "verdict":  "PASS",
     "gateOk":  true,
-    "generated":  "2026-11-25T08:14:56.2700114-05:00",
+    "galleryWindowSeparate":  true,
+    "generated":  "2026-11-25T08:22:20.7917129-05:00",
     "files":  [
                   {
                       "name":  "01-settings-index-3d-off.png",
@@ -58,13 +59,13 @@
                   },
                   {
                       "name":  "06-gallery-window.png",
-                      "bytes":  214459,
-                      "sha256":  "ae4bff337bd056bbad0a35e732abb52b833648b6a3ccde2996536c03a827b4a4"
+                      "bytes":  96048,
+                      "sha256":  "b6581264bb6887d6642cd548d1731e5e87fb8c2edfc87d711336bdb7a0447576"
                   },
                   {
                       "name":  "06-gallery-window.png.caption.txt",
-                      "bytes":  135,
-                      "sha256":  "3ecc96be7355ce638039b554743bd15a14593407205c4370fdb69524ea9fb7f3"
+                      "bytes":  172,
+                      "sha256":  "8a9db25d8ae4394e883a018a27bd2ea9ee1dd4c72d9811beac610c9e85d00309"
                   },
                   {
                       "name":  "07-library-still.png",
@@ -88,13 +89,13 @@
                   },
                   {
                       "name":  "09-gallery-still.png",
-                      "bytes":  214413,
-                      "sha256":  "b6f0fcaf547dd514966bf3b58d39346462f6aaf0bd7cf86466399d3ce1cb38b6"
+                      "bytes":  96048,
+                      "sha256":  "b6581264bb6887d6642cd548d1731e5e87fb8c2edfc87d711336bdb7a0447576"
                   },
                   {
                       "name":  "09-gallery-still.png.caption.txt",
-                      "bytes":  119,
-                      "sha256":  "6eab3f4e8d6a0f15cbf34e4c411045b6c8468360025111722b2118eb952c9ded"
+                      "bytes":  172,
+                      "sha256":  "8a9db25d8ae4394e883a018a27bd2ea9ee1dd4c72d9811beac610c9e85d00309"
                   },
                   {
                       "name":  "10-library-video.png",
@@ -118,13 +119,13 @@
                   },
                   {
                       "name":  "12-gallery-video.png",
-                      "bytes":  205217,
-                      "sha256":  "100d3b810d3c3af742e08161c71f680431425b8ac82b6f4d70cde6670ee29c4d"
+                      "bytes":  62269,
+                      "sha256":  "10a02e688cac5d983f1a29ca4c90a241aacb53cb6717c78337279f4fbb1cb095"
                   },
                   {
                       "name":  "12-gallery-video.png.caption.txt",
-                      "bytes":  78,
-                      "sha256":  "3bec6596fdd454ce9837d731ee29ea00af534bacfa8063ff883603a2ac37245e"
+                      "bytes":  183,
+                      "sha256":  "f90da01fd1a9641da1bb93f4248f4225314984fb49c6292f95071e5784ccd9dd"
                   },
                   {
                       "name":  "CAPTURE_LOG.txt",
@@ -137,14 +138,19 @@
                       "sha256":  "20b43738316bbb48e2a89b947e6c7974b70e8792813c62a3c99334af473dc6b9"
                   },
                   {
+                      "name":  "CAPTURE_LOG_GALLERY.txt",
+                      "bytes":  2875,
+                      "sha256":  "3371305d5b9c752ab1752f1654912e21eee50880b5f01faab313aa157869766c"
+                  },
+                  {
                       "name":  "desktop-override-shared.log",
                       "bytes":  2183,
                       "sha256":  "917808a346d29396531026f6c8cc0be3333be3abf3e64f2ef07f94bf9f719ee1"
                   },
                   {
                       "name":  "REPORT.md",
-                      "bytes":  2115,
-                      "sha256":  "4bf4e90364c4d938a609ca274bf0a142a5121e6da5e80d89814ff118f3f799d6"
+                      "bytes":  2962,
+                      "sha256":  "befd902c9d48192002e19473bd5e8002101d7815761ec507e8b22bb0be621196"
                   }
               ]
 }

@@ -1,1 +1,1 @@
-﻿GalleryWindow (still context). Tip 1a8f723 · 5E1F. HWND-PrintWindow. tip=1a8f72322051830cfe162018e8c73a2988666383 5E1F pid=207204
+﻿Separate GalleryWindow still-207.png HWND=44383692 title=[still-207.png] tip=1a8f72322051830cfe162018e8c73a2988666383 GrdGalleryWindow=YES separate-from-main=18484308.
