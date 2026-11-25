@@ -6,20 +6,35 @@
     "package":  "PalaceOrganizeTest-5E1F",
     "package_version":  "0.3.120.0",
     "host":  "FenrirDesktop",
-    "verdict":  "PASS",
+    "verdict":  "FAIL",
+    "gate":  "rbOverUlp == 0 (no half channel \u003e1 half-ULP)",
+    "gate_result":  "FAIL",
+    "units":  {
+                  "rbMax":  "absolute float error after half-\u003efloat (NOT ULP)",
+                  "rbOverUlp":  "count of half channels with |uint16_bits_cpu - uint16_bits_gpu| \u003e 1",
+                  "rbN":  "number of mip readbacks compared"
+              },
     "off_configuration":  "Release",
     "on_configuration":  "Debug",
     "off_firstCoarseMs":  13749,
     "on_firstCoarseMs":  45598,
     "on_rbMax":  "1.382",
+    "on_rbOverUlp":  53741834,
     "on_rbN":  126,
     "image_size":  "12000x8000 procedural",
+    "decode":  "N/A procedural",
     "captured_at_america_new_york":  "2026-11-25 07:02:38 -05:00 America/New_York",
+    "report_updated_america_new_york":  "2026-11-25 07:05:00 -05:00 America/New_York",
     "files":  [
                   {
                       "name":  "CAPTURE_EVENTS.txt",
                       "bytes":  9210,
                       "sha256":  "e7288ca646f3ec1db792213374d85a19f766358f0cd111c4b73cecc1592195fe"
+                  },
+                  {
+                      "name":  "MANIFEST.json",
+                      "bytes":  2803,
+                      "sha256":  "5b969d289fdaf9d7499fee325b5652f3cf145936d65141b32ffb76398530c38b"
                   },
                   {
                       "name":  "metrics-off.json",
@@ -38,8 +53,8 @@
                   },
                   {
                       "name":  "REPORT.md",
-                      "bytes":  3460,
-                      "sha256":  "7c1ee014b3cd06980a5c017b69496b6f1a2ecf3a95e4f3b17a3c5dd69567edba"
+                      "bytes":  3938,
+                      "sha256":  "79701c87e5dbc3d6f52ea05cb6edd02281123b3d4f3f34de43b7b26fbaf16cf6"
                   },
                   {
                       "name":  "smooth-presenter-frames-off.log",

@@ -65,5 +65,8 @@
                      "uploadNote":  "UploadCoarseTiles after pyramid; not separately timed"
                  }
              ],
-    "note":  "OFF=Release evidence env unset; ON=Debug (GpuEvidence always on). AppX via explorer does not inherit PALACE_SMOOTH_GPU_EVIDENCE — Release+env=1 via AppsFolder previously showed rbN=0."
+    "note":  "OFF=Release evidence env unset; ON=Debug (GpuEvidence always on). AppX via explorer does not inherit PALACE_SMOOTH_GPU_EVIDENCE — Release+env=1 via AppsFolder previously showed rbN=0.",
+    "verdict":  "FAIL",
+    "gate":  "rbOverUlp==0",
+    "gate_result":  "FAIL (on.rbOverUlp=53741834)"
 }
