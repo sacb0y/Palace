@@ -102,14 +102,24 @@ void UnbindAndIdleDiligent(Host* host);
 void PsvFinishDiligentFrame(Host* host);
 bool BindDxgiAdapter3(Host* host);
 
-/* Cheap DXGI removed poll. Sets host->deviceLost when reason != S_OK. */
-bool PollDeviceRemoved(Host* host);
+/* Cheap DXGI removed poll. Sets host->deviceLost when reason != S_OK.
+ * callSite: poll | present | create | tileUpload | tileMipBox | … */
+bool PollDeviceRemoved(Host* host, const char* callSite = "poll");
+
+/* First flip of deviceLost: log psv scope + callSite + HRESULT, then DRED dump. */
+void PsvMarkDeviceLost(Host* host, const char* callSite, HRESULT hr);
+
+/* Env PALACE_SMOOTH_DRED=1 (Release OK): auto-breadcrumbs + page-fault before CreateDevice. */
+void PsvTryEnableDredBeforeCreate();
+void PsvDumpDred(Host* host);
 
 /* Debug log / Diligent callback / D3D12 InfoQueue (palace_smooth_debug.cpp). */
 void PsvSetApiTag(const char* tag);
 const char* PsvGetApiTag();
 void PsvInstallDiligentDebugLogging();
 void PsvAppendDebugNote(const char* note);
+/* Non-Ok TileUpload / TileMipBox (and similar): status code + lastError string. */
+void PsvLogNonOkStatus(int code, const char* lastError);
 void PsvSetupD3D12InfoQueue(Host* host);
 void PsvDrainD3D12InfoQueue(Host* host);
 

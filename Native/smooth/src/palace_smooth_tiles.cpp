@@ -274,6 +274,19 @@ PSV_API void psv_tile_pool_destroy(void* host_ptr)
 #endif
 }
 
+namespace {
+
+int TileApiFail(Host* host, int code, const char* msg)
+{
+    if (msg && msg[0]) {
+        SetError(host, msg);
+    }
+    PsvLogNonOkStatus(code, host && !host->lastError.empty() ? host->lastError.c_str() : msg);
+    return code;
+}
+
+} // namespace
+
 PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_bytes, int byte_count)
 {
     PsvApiScope api("psv_tile_upload");
@@ -283,22 +296,18 @@ PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
     /* Cheap GetDeviceRemovedReason before any Diligent call — never UpdateTexture on TDR. */
-    if (PollDeviceRemoved(host)) {
-        SetError(host, "device lost");
-        return PSV_DEVICE_LOST;
+    if (PollDeviceRemoved(host, "tileUpload")) {
+        return TileApiFail(host, PSV_DEVICE_LOST, "device lost");
     }
     if (!host->tilePoolReady || !host->tileArray) {
-        SetError(host, "tile pool not created");
-        return PSV_NOT_ATTACHED;
+        return TileApiFail(host, PSV_NOT_ATTACHED, "tile pool not created");
     }
     if (slice >= host->tileCapacity) {
-        SetError(host, "tile slice out of range");
-        return PSV_BAD_ARGUMENT;
+        return TileApiFail(host, PSV_BAD_ARGUMENT, "tile slice out of range");
     }
     const int expected = static_cast<int>(kSlot * kSlot * 8);
     if (byte_count != expected) {
-        SetError(host, "tile upload size must be 512*512*8");
-        return PSV_BAD_ARGUMENT;
+        return TileApiFail(host, PSV_BAD_ARGUMENT, "tile upload size must be 512*512*8");
     }
 
     TextureSubResData sub{};
@@ -319,6 +328,9 @@ PSV_API int psv_tile_upload(void* host_ptr, unsigned slice, const void* rgba16f_
         sub,
         RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
         RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    if (PollDeviceRemoved(host, "tileUpload")) {
+        return TileApiFail(host, PSV_DEVICE_LOST, "device lost");
+    }
     ClearError(host);
     return PSV_OK;
 #else
@@ -336,7 +348,7 @@ PSV_API int psv_tile_readback(void* host_ptr, unsigned slice, void* out_rgba16f_
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (PollDeviceRemoved(host)) {
+    if (PollDeviceRemoved(host, "tileReadback")) {
         SetError(host, "device lost");
         return PSV_DEVICE_LOST;
     }
@@ -428,16 +440,14 @@ PSV_API int psv_tile_mip_box(
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (host->deviceLost) {
-        SetError(host, "device lost");
-        return PSV_DEVICE_LOST;
+    if (PollDeviceRemoved(host, "tileMipBox")) {
+        return TileApiFail(host, PSV_DEVICE_LOST, "device lost");
     }
     if (!host->tilePoolReady || !host->mipReady || !host->mipPso || !host->mipSrb || !host->mipCb) {
-        SetError(host, "mip pipeline not ready");
-        return PSV_FAILED;
+        return TileApiFail(host, PSV_FAILED, "mip pipeline not ready");
     }
     if (dst_slice >= host->tileCapacity) {
-        return PSV_BAD_ARGUMENT;
+        return TileApiFail(host, PSV_BAD_ARGUMENT, "tile mip dst_slice out of range");
     }
 
     SmoothMipCbCpu cb{};
@@ -458,8 +468,7 @@ PSV_API int psv_tile_mip_box(
     void* mapped = nullptr;
     host->diligentContext->MapBuffer(host->mipCb, MAP_WRITE, MAP_FLAG_DISCARD, mapped);
     if (!mapped) {
-        SetError(host, "MapBuffer mip CB failed");
-        return PSV_FAILED;
+        return TileApiFail(host, PSV_FAILED, "MapBuffer mip CB failed");
     }
     std::memcpy(mapped, &cb, sizeof(cb));
     host->diligentContext->UnmapBuffer(host->mipCb, MAP_WRITE);
@@ -467,16 +476,14 @@ PSV_API int psv_tile_mip_box(
     auto* srcSrv = host->tileArray->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
     auto* dstUav = host->mipScratch->GetDefaultView(TEXTURE_VIEW_UNORDERED_ACCESS);
     if (!srcSrv || !dstUav) {
-        SetError(host, "tile/mip views missing");
-        return PSV_FAILED;
+        return TileApiFail(host, PSV_FAILED, "tile/mip views missing");
     }
 
     auto* vSrc = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Src");
     auto* vDst = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "Dst");
     auto* vCb = host->mipSrb->GetVariableByName(SHADER_TYPE_COMPUTE, "SmoothMipCB");
     if (!vSrc || !vDst || !vCb) {
-        SetError(host, "mip SRB missing Src/Dst/SmoothMipCB (need MUTABLE layout)");
-        return PSV_FAILED;
+        return TileApiFail(host, PSV_FAILED, "mip SRB missing Src/Dst/SmoothMipCB (need MUTABLE layout)");
     }
     /* Rebind same views each call — no Set(nullptr) on MUTABLE vars. */
     vSrc->Set(srcSrv);
@@ -498,6 +505,9 @@ PSV_API int psv_tile_mip_box(
     copy.DstTextureTransitionMode = RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
     host->diligentContext->CopyTexture(copy);
 
+    if (PollDeviceRemoved(host, "tileMipBox")) {
+        return TileApiFail(host, PSV_DEVICE_LOST, "device lost");
+    }
     ClearError(host);
     return PSV_OK;
 #else
@@ -531,7 +541,7 @@ PSV_API int psv_flush(void* host_ptr)
         return PSV_BAD_ARGUMENT;
     }
 #if defined(PALACE_SMOOTH_WITH_DILIGENT)
-    if (PollDeviceRemoved(host)) {
+    if (PollDeviceRemoved(host, "flush")) {
         return PSV_DEVICE_LOST;
     }
     if (host->diligentContext) {

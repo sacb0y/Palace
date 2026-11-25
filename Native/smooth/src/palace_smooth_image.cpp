@@ -250,6 +250,7 @@ HRESULT BindAndDrawImage(Host* host)
             SetError(host, "GetBuffer D3D12 failed");
             return hr;
         }
+        bb->SetName(L"SmoothSwapchainBB");
         RefCntAutoPtr<IRenderDeviceD3D12> device12(host->diligentDevice, IID_RenderDeviceD3D12);
         device12->CreateTextureFromD3DResource(bb.Get(), RESOURCE_STATE_PRESENT, &backTex);
     } else {
@@ -267,6 +268,7 @@ HRESULT BindAndDrawImage(Host* host)
         SetError(host, "CreateTextureFromD3DResource failed");
         return E_FAIL;
     }
+    backTex->SetName("SmoothSwapchainBB");
 
     auto* rtv = backTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
     if (!rtv) {

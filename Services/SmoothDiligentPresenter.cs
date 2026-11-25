@@ -370,31 +370,33 @@ internal sealed class SmoothDiligentPresenter : IDisposable
 
         LastCreateWasDeviceLost = false;
         _life.MarkCreated();
-        // Diligent/D3D12 debug messages → PALACE_DATA_DIR/smooth-diligent-debug.log
-        var debugLog = string.IsNullOrWhiteSpace(_logDataDir)
-            ? Path.Combine(Path.GetTempPath(), "smooth-diligent-debug.log")
-            : Path.Combine(_logDataDir, "smooth-diligent-debug.log");
+        // One file per run — never delete before harvest (Fenrir continue must not
+        // Remove-Item prior sessions). Release+DRED/GPU_EVIDENCE use the same path.
+        var runStamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        var debugLogDir = string.IsNullOrWhiteSpace(_logDataDir)
+            ? Path.GetTempPath()
+            : _logDataDir;
+        var debugLog = Path.Combine(debugLogDir, "smooth-diligent-debug-" + runStamp + ".log");
         _ = SmoothPresenterNative.SetDebugLogPath(debugLog);
+        AppendSmoothEnvNote(debugLog, "PALACE_SMOOTH_DRED");
+        AppendSmoothEnvNote(debugLog, "PALACE_SMOOTH_GPU_EVIDENCE");
 #if DEBUG
-        // Fenrir: packaged launches may not inherit launcher env — log what we see.
-        {
-            var remDev = Environment.GetEnvironmentVariable("PALACE_SMOOTH_TEST_REMOVE_DEVICE");
-            var remDevShown = string.IsNullOrEmpty(remDev) ? "(unset)" : remDev;
-            try
-            {
-                File.AppendAllText(
-                    debugLog,
-                    "smooth-debug source=palace severity=NOTE psv=- msg=PALACE_SMOOTH_TEST_REMOVE_DEVICE="
-                    + remDevShown
-                    + " func=- file=- line=0"
-                    + Environment.NewLine);
-            }
-            catch
-            {
-                // logging must not block start
-            }
-        }
+        AppendSmoothEnvNote(debugLog, "PALACE_SMOOTH_TEST_REMOVE_DEVICE");
 #endif
+        try
+        {
+            File.AppendAllText(
+                debugLog,
+                "smooth-debug source=palace severity=NOTE psv=- msg=debugLogPath="
+                + debugLog
+                + " func=- file=- line=0"
+                + Environment.NewLine);
+        }
+        catch
+        {
+            // logging must not block start
+        }
+
         _ = SmoothPresenterNative.SetDpiScale(_host, scaleX, scaleY);
         _life.TrySetDpi(scaleX, scaleY);
 
@@ -985,6 +987,31 @@ internal sealed class SmoothDiligentPresenter : IDisposable
         }
 
         DestroyHost();
+    }
+
+    /// <summary>
+    /// Log env visibility into the per-run diligent debug log (Release OK).
+    /// Packaged launches may not inherit launcher env — surface what we see.
+    /// </summary>
+    private static void AppendSmoothEnvNote(string debugLog, string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        var shown = string.IsNullOrEmpty(value) ? "(unset)" : value;
+        try
+        {
+            File.AppendAllText(
+                debugLog,
+                "smooth-debug source=palace severity=NOTE psv=- msg="
+                + name
+                + "="
+                + shown
+                + " func=- file=- line=0"
+                + Environment.NewLine);
+        }
+        catch
+        {
+            // logging must not block start
+        }
     }
 
     private void DestroyHost()

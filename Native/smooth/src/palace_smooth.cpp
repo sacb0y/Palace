@@ -40,7 +40,39 @@ void ClearError(Host* host)
     }
 }
 
-bool PollDeviceRemoved(Host* host)
+void PsvMarkDeviceLost(Host* host, const char* callSite, HRESULT hr)
+{
+    if (!host) {
+        return;
+    }
+    const bool firstFlip = !host->deviceLost;
+    host->deviceLost = true;
+    const char* site = callSite && callSite[0] ? callSite : "unknown";
+    char err[160];
+    std::snprintf(
+        err,
+        sizeof(err),
+        "device removed hr=0x%08X site=%s",
+        static_cast<unsigned>(hr),
+        site);
+    SetError(host, err);
+    if (!firstFlip) {
+        return;
+    }
+    const char* psv = PsvGetApiTag();
+    char note[256];
+    std::snprintf(
+        note,
+        sizeof(note),
+        "deviceLost flip=true callSite=%s hr=0x%08X psv=%s",
+        site,
+        static_cast<unsigned>(hr),
+        psv && psv[0] ? psv : "-");
+    PsvAppendDebugNote(note);
+    PsvDumpDred(host);
+}
+
+bool PollDeviceRemoved(Host* host, const char* callSite)
 {
     if (!host) {
         return true;
@@ -51,14 +83,7 @@ bool PollDeviceRemoved(Host* host)
     if (host->d3d12Device) {
         const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
         if (reason != S_OK) {
-            host->deviceLost = true;
-            char buf[96];
-            std::snprintf(
-                buf,
-                sizeof(buf),
-                "device removed hr=0x%08X",
-                static_cast<unsigned>(reason));
-            SetError(host, buf);
+            PsvMarkDeviceLost(host, callSite ? callSite : "poll", reason);
             return true;
         }
         return false;
@@ -66,14 +91,7 @@ bool PollDeviceRemoved(Host* host)
     if (host->d3d11Device) {
         const HRESULT reason = host->d3d11Device->GetDeviceRemovedReason();
         if (reason != S_OK) {
-            host->deviceLost = true;
-            char buf[96];
-            std::snprintf(
-                buf,
-                sizeof(buf),
-                "device removed hr=0x%08X",
-                static_cast<unsigned>(reason));
-            SetError(host, buf);
+            PsvMarkDeviceLost(host, callSite ? callSite : "poll", reason);
             return true;
         }
     }
@@ -302,17 +320,22 @@ bool InitDiligentD3D12(Host* host)
 #if defined(PSV_TEST_HOOKS)
     TryEnableD3D12DebugLayerBeforeCreate();
 #endif
+    /* Release-safe: PALACE_SMOOTH_DRED=1 enables breadcrumbs + page-fault before create. */
+    PsvTryEnableDredBeforeCreate();
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&host->d3d12Device));
     if (FAILED(hr)) {
         SetError(host, "D3D12CreateDevice failed");
         return false;
     }
     /* TDR sticky: CreateDevice can hand back a removed device — never Diligent on it. */
-    if (host->d3d12Device->GetDeviceRemovedReason() != S_OK) {
-        SetError(host, "device still removed");
-        host->deviceLost = true;
-        host->d3d12Device.Reset();
-        return false;
+    {
+        const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
+        if (reason != S_OK) {
+            PsvMarkDeviceLost(host, "create", reason);
+            SetError(host, "device still removed");
+            host->d3d12Device.Reset();
+            return false;
+        }
     }
     D3D12_COMMAND_QUEUE_DESC qd{};
     qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -444,7 +467,7 @@ void UnbindAndIdleDiligent(Host* host)
         return;
     }
     /* Never Flush/WaitForIdle on a removed device — that path AVs under TDR. */
-    if (PollDeviceRemoved(host)) {
+    if (PollDeviceRemoved(host, "unbind")) {
         return;
     }
     /* Drop RT binds so DXGI ResizeBuffers can reclaim the backbuffer. */
@@ -465,7 +488,7 @@ void PsvFinishDiligentFrame(Host* host)
     if (!host || !host->diligentContext) {
         return;
     }
-    if (PollDeviceRemoved(host)) {
+    if (PollDeviceRemoved(host, "finishFrame")) {
         return;
     }
     /* Raw DXGI Present does not call Diligent ISwapChain::Present, so the engine
@@ -498,6 +521,7 @@ HRESULT BindAndDrawPattern(Host* host)
             SetError(host, "GetBuffer D3D12 failed");
             return hr;
         }
+        bb->SetName(L"SmoothSwapchainBB");
         RefCntAutoPtr<IRenderDeviceD3D12> device12(host->diligentDevice, IID_RenderDeviceD3D12);
         device12->CreateTextureFromD3DResource(bb.Get(), RESOURCE_STATE_PRESENT, &backTex);
     } else {
@@ -515,6 +539,7 @@ HRESULT BindAndDrawPattern(Host* host)
         SetError(host, "CreateTextureFromD3DResource failed");
         return E_FAIL;
     }
+    backTex->SetName("SmoothSwapchainBB");
 
     auto* rtv = backTex->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
     if (!rtv) {
@@ -566,16 +591,20 @@ bool InitStubD3D12(Host* host)
 #if defined(PSV_TEST_HOOKS)
     TryEnableD3D12DebugLayerBeforeCreate();
 #endif
+    PsvTryEnableDredBeforeCreate();
     HRESULT hr = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&host->d3d12Device));
     if (FAILED(hr)) {
         SetError(host, "stub D3D12CreateDevice failed");
         return false;
     }
-    if (host->d3d12Device->GetDeviceRemovedReason() != S_OK) {
-        SetError(host, "device still removed");
-        host->deviceLost = true;
-        host->d3d12Device.Reset();
-        return false;
+    {
+        const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
+        if (reason != S_OK) {
+            PsvMarkDeviceLost(host, "create", reason);
+            SetError(host, "device still removed");
+            host->d3d12Device.Reset();
+            return false;
+        }
     }
     D3D12_COMMAND_QUEUE_DESC qd{};
     qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -657,8 +686,13 @@ HRESULT PresentSwapChain(Host* host)
 {
     HRESULT hr = host->swapChain->Present(1, 0);
     if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) {
-        host->deviceLost = true;
-        SetError(host, "Present device lost");
+        HRESULT reason = hr;
+        if (host->d3d12Device) {
+            reason = host->d3d12Device->GetDeviceRemovedReason();
+        } else if (host->d3d11Device) {
+            reason = host->d3d11Device->GetDeviceRemovedReason();
+        }
+        PsvMarkDeviceLost(host, "present", reason);
         return hr;
     }
     if (FAILED(hr)) {
@@ -754,7 +788,7 @@ PSV_API int psv_create_composition_swapchain(void* host_ptr, unsigned width, uns
     *out_dxgi_swapchain = nullptr;
     auto* host = static_cast<Host*>(host_ptr);
     /* Never hard-clear deviceLost — derive from GetDeviceRemovedReason. */
-    if (PollDeviceRemoved(host)) {
+    if (PollDeviceRemoved(host, "create")) {
         SetError(host, "device still removed");
         return PSV_DEVICE_LOST;
     }
@@ -766,7 +800,7 @@ PSV_API int psv_create_composition_swapchain(void* host_ptr, unsigned width, uns
         deviceOrQueue = host->d3d11Device.Get();
     }
     if (FAILED(CreateCompositionSwapChainDxgi(host, width, height, deviceOrQueue))) {
-        if (PollDeviceRemoved(host)) {
+        if (PollDeviceRemoved(host, "create")) {
             SetError(host, "device still removed");
             return PSV_DEVICE_LOST;
         }
@@ -841,7 +875,7 @@ PSV_API int psv_render_frame(void* host_ptr)
         return PSV_NOT_ATTACHED;
     }
     /* Cheap removed poll before any Diligent work. */
-    if (PollDeviceRemoved(host)) {
+    if (PollDeviceRemoved(host, "poll")) {
         return PSV_DEVICE_LOST;
     }
 
@@ -893,7 +927,7 @@ PSV_API int psv_render_frame(void* host_ptr)
     hr = PresentSwapChain(host);
     QueryPerformanceCounter(&tPresent);
     PsvDrainD3D12InfoQueue(host);
-    if (host->deviceLost || PollDeviceRemoved(host)) {
+    if (host->deviceLost || PollDeviceRemoved(host, "present")) {
         return PSV_DEVICE_LOST;
     }
     if (FAILED(hr)) {
@@ -975,7 +1009,8 @@ PSV_API int psv_debug_remove_device(void* host_ptr)
         return PSV_FAILED;
     }
     d5->RemoveDevice();
-    host->deviceLost = true;
+    const HRESULT reason = host->d3d12Device->GetDeviceRemovedReason();
+    PsvMarkDeviceLost(host, "removeDevice", reason != S_OK ? reason : DXGI_ERROR_DEVICE_REMOVED);
     SetError(host, "psv_debug_remove_device: RemoveDevice invoked");
     return PSV_DEVICE_LOST;
 #endif

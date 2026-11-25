@@ -2,6 +2,9 @@
  * Diligent + D3D12 debug logging for Smooth Viewer automation.
  * Logs under PALACE_DATA_DIR (psv_set_debug_log_path). SetBreakOnError(false)
  * when automation env / log path is set — no MessageBox pump.
+ *
+ * PALACE_SMOOTH_DRED=1 (Release OK): enable DRED auto-breadcrumbs + page-fault
+ * before CreateDevice; dump on first deviceLost flip.
  */
 
 #include "palace_smooth_internal.hpp"
@@ -26,6 +29,9 @@ std::mutex g_logMutex;
 char g_logPath[MAX_PATH] = {};
 std::atomic<bool> g_logReady{false};
 thread_local const char* g_psvApiTag = "";
+std::atomic<bool> g_dredAttempted{false};
+std::atomic<bool> g_dredEnabled{false};
+std::atomic<bool> g_dredSkipLogged{false};
 
 #if defined(PSV_TEST_HOOKS)
 DWORD g_infoQueueCookie = 0;
@@ -166,6 +172,201 @@ void PsvInstallDiligentDebugLogging()
 void PsvAppendDebugNote(const char* note)
 {
     AppendFormatted("palace", "NOTE", note, nullptr, nullptr, 0);
+}
+
+void PsvLogNonOkStatus(int code, const char* lastError)
+{
+    char buf[512];
+    std::snprintf(
+        buf,
+        sizeof(buf),
+        "non-Ok api status code=%d lastError=%s",
+        code,
+        lastError && lastError[0] ? lastError : "(empty)");
+    AppendFormatted("palace", "ERROR", buf, nullptr, nullptr, 0);
+}
+
+void PsvTryEnableDredBeforeCreate()
+{
+    char env[8] = {};
+    const DWORD n = GetEnvironmentVariableA("PALACE_SMOOTH_DRED", env, sizeof(env));
+    if (n == 0 || env[0] != '1') {
+        if (!g_dredSkipLogged.exchange(true, std::memory_order_acq_rel)) {
+            AppendFormatted(
+                "palace",
+                "NOTE",
+                "PALACE_SMOOTH_DRED unset/off — skipping DRED enable",
+                nullptr,
+                nullptr,
+                0);
+        }
+        return;
+    }
+    if (g_dredAttempted.exchange(true, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    /* D3D12GetDebugInterface also surfaces ID3D12DeviceRemovedExtendedDataSettings
+     * (no EnableDebugLayer required). Needs Graphics Tools on some hosts. */
+    ComPtr<ID3D12DeviceRemovedExtendedDataSettings> dredSettings;
+    const HRESULT hr = D3D12GetDebugInterface(IID_PPV_ARGS(&dredSettings));
+    if (FAILED(hr) || !dredSettings) {
+        char buf[192];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "DRED: D3D12GetDebugInterface settings failed hr=0x%08X (Graphics Tools?)",
+            static_cast<unsigned>(hr));
+        AppendFormatted("palace", "WARN", buf, nullptr, nullptr, 0);
+        return;
+    }
+    dredSettings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    dredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
+    g_dredEnabled.store(true, std::memory_order_release);
+    AppendFormatted(
+        "palace",
+        "NOTE",
+        "DRED: auto-breadcrumbs + page-fault FORCED_ON before CreateDevice",
+        nullptr,
+        nullptr,
+        0);
+}
+
+namespace {
+
+void AppendWideName(char* dst, size_t dstBytes, const wchar_t* wide)
+{
+    if (!dst || dstBytes == 0) {
+        return;
+    }
+    dst[0] = '\0';
+    if (!wide || !wide[0]) {
+        return;
+    }
+    WideCharToMultiByte(CP_UTF8, 0, wide, -1, dst, static_cast<int>(dstBytes), nullptr, nullptr);
+}
+
+void DumpAllocationNodeList(const char* label, const D3D12_DRED_ALLOCATION_NODE* node)
+{
+    unsigned i = 0;
+    for (const auto* n = node; n; n = n->pNext, ++i) {
+        char nameA[256] = {};
+        if (n->ObjectNameA && n->ObjectNameA[0]) {
+            std::snprintf(nameA, sizeof(nameA), "%s", n->ObjectNameA);
+        } else {
+            AppendWideName(nameA, sizeof(nameA), n->ObjectNameW);
+        }
+        char buf[384];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "DRED %s[%u] type=%u name=%s",
+            label,
+            i,
+            static_cast<unsigned>(n->AllocationType),
+            nameA[0] ? nameA : "(unnamed)");
+        AppendFormatted("palace", "ERROR", buf, nullptr, nullptr, 0);
+        if (i >= 64) {
+            AppendFormatted("palace", "ERROR", "DRED allocation list truncated", nullptr, nullptr, 0);
+            break;
+        }
+    }
+}
+
+} // namespace
+
+void PsvDumpDred(Host* host)
+{
+    if (!host || !host->d3d12Device) {
+        AppendFormatted("palace", "NOTE", "DRED dump skipped — no D3D12 device", nullptr, nullptr, 0);
+        return;
+    }
+    if (!g_dredEnabled.load(std::memory_order_acquire)) {
+        AppendFormatted(
+            "palace",
+            "NOTE",
+            "DRED dump skipped — not enabled this process (set PALACE_SMOOTH_DRED=1 before create)",
+            nullptr,
+            nullptr,
+            0);
+        return;
+    }
+
+    ComPtr<ID3D12DeviceRemovedExtendedData> dred;
+    if (FAILED(host->d3d12Device.As(&dred)) || !dred) {
+        AppendFormatted("palace", "WARN", "DRED: QI ID3D12DeviceRemovedExtendedData failed", nullptr, nullptr, 0);
+        return;
+    }
+
+    D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT crumbs{};
+    if (SUCCEEDED(dred->GetAutoBreadcrumbsOutput(&crumbs)) && crumbs.pHeadAutoBreadcrumbNode) {
+        unsigned nodeIdx = 0;
+        for (const auto* node = crumbs.pHeadAutoBreadcrumbNode; node; node = node->pNext, ++nodeIdx) {
+            const UINT32 last = node->pLastBreadcrumbValue ? *node->pLastBreadcrumbValue : 0;
+            char listName[128] = {};
+            char queueName[128] = {};
+            if (node->pCommandListDebugNameA) {
+                std::snprintf(listName, sizeof(listName), "%s", node->pCommandListDebugNameA);
+            } else {
+                AppendWideName(listName, sizeof(listName), node->pCommandListDebugNameW);
+            }
+            if (node->pCommandQueueDebugNameA) {
+                std::snprintf(queueName, sizeof(queueName), "%s", node->pCommandQueueDebugNameA);
+            } else {
+                AppendWideName(queueName, sizeof(queueName), node->pCommandQueueDebugNameW);
+            }
+            char head[384];
+            std::snprintf(
+                head,
+                sizeof(head),
+                "DRED breadcrumb node=%u last=%u count=%u list=%s queue=%s",
+                nodeIdx,
+                static_cast<unsigned>(last),
+                static_cast<unsigned>(node->BreadcrumbCount),
+                listName[0] ? listName : "(unnamed)",
+                queueName[0] ? queueName : "(unnamed)");
+            AppendFormatted("palace", "ERROR", head, nullptr, nullptr, 0);
+
+            if (node->pCommandHistory && node->BreadcrumbCount > 0) {
+                /* Log the last few ops around the stall point. */
+                const UINT32 start =
+                    last > 8 ? last - 8 : 0;
+                const UINT32 end = node->BreadcrumbCount < last + 8 ? node->BreadcrumbCount : last + 8;
+                for (UINT32 i = start; i < end && i < node->BreadcrumbCount; ++i) {
+                    char op[160];
+                    std::snprintf(
+                        op,
+                        sizeof(op),
+                        "DRED breadcrumb[%u] op=%u%s",
+                        static_cast<unsigned>(i),
+                        static_cast<unsigned>(node->pCommandHistory[i]),
+                        i + 1 == last ? " <<last" : "");
+                    AppendFormatted("palace", "ERROR", op, nullptr, nullptr, 0);
+                }
+            }
+            if (nodeIdx >= 32) {
+                AppendFormatted("palace", "ERROR", "DRED breadcrumb nodes truncated", nullptr, nullptr, 0);
+                break;
+            }
+        }
+    } else {
+        AppendFormatted("palace", "NOTE", "DRED: no auto-breadcrumb output", nullptr, nullptr, 0);
+    }
+
+    D3D12_DRED_PAGE_FAULT_OUTPUT fault{};
+    if (SUCCEEDED(dred->GetPageFaultAllocationOutput(&fault))) {
+        char buf[256];
+        std::snprintf(
+            buf,
+            sizeof(buf),
+            "DRED pageFault VA=0x%llX",
+            static_cast<unsigned long long>(fault.PageFaultVA));
+        AppendFormatted("palace", "ERROR", buf, nullptr, nullptr, 0);
+        DumpAllocationNodeList("existing", fault.pHeadExistingAllocationNode);
+        DumpAllocationNodeList("recentFreed", fault.pHeadRecentFreedAllocationNode);
+    } else {
+        AppendFormatted("palace", "NOTE", "DRED: no page-fault output", nullptr, nullptr, 0);
+    }
 }
 
 #if defined(PSV_TEST_HOOKS)
