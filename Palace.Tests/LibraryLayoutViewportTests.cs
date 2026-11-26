@@ -205,22 +205,26 @@ public sealed class LibraryLayoutViewportTests
 
     /// <summary>
     /// Studio 01-770 path: every optional parked and full always-on + More still
-    /// exceeds available → Delete rejected icon-only (stays on face, never More).
-    /// Available already includes Preview gap slack.
+    /// exceeds available → Delete rejected icon+count (stays on face, never More;
+    /// count remains visible). Available already includes Preview gap slack.
     /// </summary>
     [Fact]
     public void ResolveLibraryToolbarOverflow_AllParkedStillTooWide_DeleteRejectedIconOnly()
     {
-        const double alwaysFull = 400; // Add folder + Scan + Delete rejected (label)
-        const double alwaysIcon = 280; // same with Delete rejected icon-only
+        const double alwaysFull = 400; // Add folder + Scan + Delete rejected (full label)
+        // Icon + visible count is wider than icon-alone but still under the full label.
+        const double alwaysIconCount = 310;
         const double more = 48;
         const double gap = LibraryColumnLayout.LibraryToolbarPreviewGapDip;
         double[] widths = [100, 100, 100, 100, 100];
 
-        // Room for icon face + More + gap, but not the full label face.
-        // icon face = 280+48 = 328; full face = 400+48 = 448.
-        const double available = 328 + gap; // live path subtracts gap before resolve
-        var availForResolve = available - gap; // 328
+        Assert.True(alwaysIconCount < alwaysFull);
+        Assert.Equal("3", DeleteRejected.ToolbarCountText(3));
+
+        // Room for icon+count face + More + gap, but not the full label face.
+        // icon+count face = 310+48 = 358; full face = 400+48 = 448.
+        const double available = 358 + gap;
+        var availForResolve = available - gap; // 358
 
         var plan = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
             availForResolve,
@@ -229,17 +233,30 @@ public sealed class LibraryLayoutViewportTests
             moreButtonWidth: more,
             previous: null,
             expandHysteresisDip: 0,
-            alwaysOnIconOnlyWidth: alwaysIcon,
+            alwaysOnIconOnlyWidth: alwaysIconCount,
             previousDeleteRejectedIconOnly: false);
 
         Assert.All(plan.Parked, p => Assert.True(p));
         Assert.True(plan.DeleteRejectedIconOnly);
 
-        var face = alwaysIcon + more;
+        var face = alwaysIconCount + more;
         Assert.True(face <= availForResolve);
         Assert.True(face + gap <= available);
 
-        // Wider: full label fits → clear icon-only.
+        // Icon+count still too wide → do not claim icon-only (never drop the count).
+        var stillTight = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            alwaysIconCount + more - 1,
+            widths,
+            alwaysFull,
+            moreButtonWidth: more,
+            previous: null,
+            expandHysteresisDip: 0,
+            alwaysOnIconOnlyWidth: alwaysIconCount,
+            previousDeleteRejectedIconOnly: false);
+        Assert.All(stillTight.Parked, p => Assert.True(p));
+        Assert.False(stillTight.DeleteRejectedIconOnly);
+
+        // Wider: full label fits → clear compact mode.
         var roomy = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
             448,
             widths,
@@ -247,7 +264,7 @@ public sealed class LibraryLayoutViewportTests
             moreButtonWidth: more,
             previous: plan.Parked,
             expandHysteresisDip: 0,
-            alwaysOnIconOnlyWidth: alwaysIcon,
+            alwaysOnIconOnlyWidth: alwaysIconCount,
             previousDeleteRejectedIconOnly: true);
         Assert.All(roomy.Parked, p => Assert.True(p));
         Assert.False(roomy.DeleteRejectedIconOnly);

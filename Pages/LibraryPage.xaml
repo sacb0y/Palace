@@ -147,6 +147,15 @@
                             VerticalAlignment="Center"
                             Foreground="#FF99A4"
                             Text="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}" />
+                        <!-- Icon+count last-resort overflow: keep visible N (same red). -->
+                        <TextBlock
+                            x:Name="TxtDeleteRejectedCount"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Foreground="#FF99A4"
+                            Text="{x:Bind ViewModel.DeleteRejectedToolbarCountText, Mode=OneWay}"
+                            Visibility="Collapsed" />
                     </StackPanel>
                 </Button>
                 <Button

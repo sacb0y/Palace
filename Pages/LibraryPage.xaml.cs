@@ -1329,16 +1329,18 @@ public sealed partial class LibraryPage : Page
         var alwaysCountBeforeDelete = alwaysCount;
         AddAlwaysOn(BtnDeleteRejected, ViewModel.ShowDeleteRejectedToolbar);
 
-        // Icon-only Delete rejected width for last-resort when full always-on + More
-        // still exceeds available (Studio 01-770 open-nav path).
+        // Icon+count Delete rejected width for last-resort when full always-on + More
+        // still exceeds available (Studio 01-770 open-nav path). Count stays visible.
         var alwaysOnIconOnly = alwaysOn;
         if (ViewModel.ShowDeleteRejectedToolbar)
         {
             TxtDeleteRejectedLabel.Visibility = Visibility.Collapsed;
+            TxtDeleteRejectedCount.Visibility = Visibility.Visible;
             BtnDeleteRejected.Measure(infinite);
-            var iconW = BtnDeleteRejected.DesiredSize.Width;
+            var iconCountW = BtnDeleteRejected.DesiredSize.Width;
+            TxtDeleteRejectedCount.Visibility = Visibility.Collapsed;
             TxtDeleteRejectedLabel.Visibility = Visibility.Visible;
-            if (double.IsFinite(iconW) && iconW > 0)
+            if (double.IsFinite(iconCountW) && iconCountW > 0)
             {
                 alwaysOnIconOnly = alwaysOnBeforeDelete;
                 if (alwaysCountBeforeDelete > 0)
@@ -1346,7 +1348,7 @@ public sealed partial class LibraryPage : Page
                     alwaysOnIconOnly += spacing;
                 }
 
-                alwaysOnIconOnly += iconW;
+                alwaysOnIconOnly += iconCountW;
             }
         }
 
@@ -1397,11 +1399,18 @@ public sealed partial class LibraryPage : Page
         MnuToolbarOrganize.Visibility = parked[3] ? Visibility.Visible : Visibility.Collapsed;
         MnuToolbarReview.Visibility = parked[4] ? Visibility.Visible : Visibility.Collapsed;
 
-        // Delete rejected stays on the face; icon-only collapses the label TextBlock.
-        // AutomationName + tooltip keep "Delete rejected (N)".
-        TxtDeleteRejectedLabel.Visibility = plan.DeleteRejectedIconOnly
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+        // Delete rejected stays on the face; compact mode shows trash + visible count
+        // (never drop the count). AutomationName + tooltip keep "Delete rejected (N)".
+        if (plan.DeleteRejectedIconOnly)
+        {
+            TxtDeleteRejectedLabel.Visibility = Visibility.Collapsed;
+            TxtDeleteRejectedCount.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            TxtDeleteRejectedLabel.Visibility = Visibility.Visible;
+            TxtDeleteRejectedCount.Visibility = Visibility.Collapsed;
+        }
 
         var anyParked = plan.AnyParked;
         // Separator between Organize/Review twins and New folder/Undo/Add to room twins.

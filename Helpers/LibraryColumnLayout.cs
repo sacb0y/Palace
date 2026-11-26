@@ -95,8 +95,9 @@ public static class LibraryColumnLayout
 
     /// <summary>
     /// Same as <see cref="ResolveLibraryToolbarOverflow(double,IReadOnlyList{double},double)"/>
-    /// plus More-button contribution, expand hysteresis, and Delete rejected icon-only
-    /// last resort when every optional is parked and the full face still overflows.
+    /// plus More-button contribution, expand hysteresis, and Delete rejected
+    /// icon+count last resort when every optional is parked and the full face
+    /// still overflows (count stays visible; never park Delete rejected into More).
     /// </summary>
     public static LibraryToolbarOverflowPlan ResolveLibraryToolbarOverflow(
         double available,
@@ -157,8 +158,8 @@ public static class LibraryColumnLayout
 
     /// <summary>
     /// Last resort when every optional is in More and full always-on + More still
-    /// exceeds available: collapse Delete rejected to icon-only on the face (never
-    /// park it into More). Expand back only past hysteresis.
+    /// exceeds available: collapse Delete rejected to icon+count on the face (never
+    /// park it into More; never drop the count). Expand back only past hysteresis.
     /// </summary>
     private static bool ResolveDeleteRejectedIconOnly(
         double available,
