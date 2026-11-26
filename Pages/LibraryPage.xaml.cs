@@ -83,6 +83,7 @@ public sealed partial class LibraryPage : Page
     /// for expand hysteresis in <see cref="UpdateLibraryToolbarOverflow"/>.
     /// </summary>
     private bool[]? _libraryToolbarParked;
+    private bool _libraryToolbarDeleteRejectedIconOnly;
     private NavigationView? _shellNav;
     private Frame? _shellContentFrame;
     private bool _shellNavHooked;
@@ -1264,7 +1265,11 @@ public sealed partial class LibraryPage : Page
         }
 
         var previewMargin = TglPreviewPane.Margin.Left + TglPreviewPane.Margin.Right;
-        var available = Math.Max(0, host - preview - previewMargin);
+        var faceMargin = SpnLibraryToolbarFace.Margin.Left + SpnLibraryToolbarFace.Margin.Right;
+        // Studio gate: face.Right <= Preview.Left − 4 DIP.
+        var available = Math.Max(
+            0,
+            host - preview - previewMargin - faceMargin - LibraryColumnLayout.LibraryToolbarPreviewGapDip);
 
         // Reveal every optional so Measure sees full face width. More must also be
         // Visible while measured — Collapsed DesiredSize is 0 and the resolver
@@ -1275,6 +1280,7 @@ public sealed partial class LibraryPage : Page
         BtnOrganize.Visibility = Visibility.Visible;
         BtnReview.Visibility = Visibility.Visible;
         BtnLibraryToolbarMore.Visibility = Visibility.Visible;
+        TxtDeleteRejectedLabel.Visibility = Visibility.Visible;
 
         SpnLibraryToolbarFace.Measure(infinite);
         var spacing = SpnLibraryToolbarFace.Spacing;
@@ -1291,7 +1297,7 @@ public sealed partial class LibraryPage : Page
             return w + leadingSpacing;
         }
 
-        // Always-on: Add folder, Scan, Delete rejected (when visible) — never park.
+        // Always-on: Add folder, Scan, Delete rejected (when visible) — never park into More.
         var alwaysOn = 0.0;
         var alwaysCount = 0;
         void AddAlwaysOn(FrameworkElement button, bool include)
@@ -1317,11 +1323,32 @@ public sealed partial class LibraryPage : Page
             alwaysCount++;
         }
 
-        // Face order starts Add folder / Scan; Delete rejected sits after Review in
-        // XAML but stays on the face — count it in always-on when visible.
         AddAlwaysOn(BtnAddFolder, include: true);
         AddAlwaysOn(BtnScan, include: true);
+        var alwaysOnBeforeDelete = alwaysOn;
+        var alwaysCountBeforeDelete = alwaysCount;
         AddAlwaysOn(BtnDeleteRejected, ViewModel.ShowDeleteRejectedToolbar);
+
+        // Icon-only Delete rejected width for last-resort when full always-on + More
+        // still exceeds available (Studio 01-770 open-nav path).
+        var alwaysOnIconOnly = alwaysOn;
+        if (ViewModel.ShowDeleteRejectedToolbar)
+        {
+            TxtDeleteRejectedLabel.Visibility = Visibility.Collapsed;
+            BtnDeleteRejected.Measure(infinite);
+            var iconW = BtnDeleteRejected.DesiredSize.Width;
+            TxtDeleteRejectedLabel.Visibility = Visibility.Visible;
+            if (double.IsFinite(iconW) && iconW > 0)
+            {
+                alwaysOnIconOnly = alwaysOnBeforeDelete;
+                if (alwaysCountBeforeDelete > 0)
+                {
+                    alwaysOnIconOnly += spacing;
+                }
+
+                alwaysOnIconOnly += iconW;
+            }
+        }
 
         // Park priority (not XAML order): Add to room → Undo → New folder → Organize → Review.
         var optional = new[]
@@ -1345,14 +1372,18 @@ public sealed partial class LibraryPage : Page
             moreWidth += spacing;
         }
 
-        var parked = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+        var plan = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
             available,
             optional,
             alwaysOn,
             moreWidth,
             _libraryToolbarParked,
-            LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip);
+            LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip,
+            alwaysOnIconOnly,
+            _libraryToolbarDeleteRejectedIconOnly);
+        var parked = plan.Parked;
         _libraryToolbarParked = parked;
+        _libraryToolbarDeleteRejectedIconOnly = plan.DeleteRejectedIconOnly;
 
         BtnAddToRoom.Visibility = parked[0] ? Visibility.Collapsed : Visibility.Visible;
         BtnUndo.Visibility = parked[1] ? Visibility.Collapsed : Visibility.Visible;
@@ -1366,7 +1397,13 @@ public sealed partial class LibraryPage : Page
         MnuToolbarOrganize.Visibility = parked[3] ? Visibility.Visible : Visibility.Collapsed;
         MnuToolbarReview.Visibility = parked[4] ? Visibility.Visible : Visibility.Collapsed;
 
-        var anyParked = parked[0] || parked[1] || parked[2] || parked[3] || parked[4];
+        // Delete rejected stays on the face; icon-only collapses the label TextBlock.
+        // AutomationName + tooltip keep "Delete rejected (N)".
+        TxtDeleteRejectedLabel.Visibility = plan.DeleteRejectedIconOnly
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        var anyParked = plan.AnyParked;
         // Separator between Organize/Review twins and New folder/Undo/Add to room twins.
         SepToolbarTight.Visibility =
             (parked[3] || parked[4]) && (parked[0] || parked[1] || parked[2])
