@@ -64,6 +64,11 @@ public sealed partial class LibraryPage : Page
     private bool _suppressBrowseChrome;
     /// <summary>Short-lived suppress for mode/range/header Select churn (not section toggle).</summary>
     private bool _suppressMosaicSelection;
+    /// <summary>
+    /// Ctrl/Shift modifier click: keep <see cref="_suppressMosaicSelection"/> through
+    /// ItemsView's PointerReleased Multiple toggle (one dispatcher turn is too early).
+    /// </summary>
+    private uint? _modifierSuppressPointerId;
     /// <summary>Last allocated mosaic width — HostWidth ceiling.</summary>
     private double _allocatedMosaicWidth;
     /// <summary>Preview reducer + 0.3.12 toggle / overlay / pin.</summary>
@@ -1423,7 +1428,7 @@ public sealed partial class LibraryPage : Page
         var shift = IsModifierKeyDown(VirtualKey.Shift);
         if (MosaicModifierSelect.IsModifierClick(ctrl, shift))
         {
-            if (TryHandleModifierClick(item, ctrl, shift))
+            if (TryHandleModifierClick(item, ctrl, shift, e.Pointer.PointerId))
             {
                 e.Handled = true;
             }
@@ -1509,10 +1514,11 @@ public sealed partial class LibraryPage : Page
     /// Shift / Ctrl / Ctrl+Shift click — auto-enter select mode and apply
     /// Explorer-style range / toggle / range-add. Still avoids Extended mode.
     /// Ctrl uses a deterministic model target; ItemsView Multiple's own pointer
-    /// toggle is suppressed until after the next dispatcher turn so it cannot
-    /// undo membership (Wimbly prove: AFTER=5 then chrome=4).
+    /// toggle is suppressed through PointerReleased (not merely the next
+    /// dispatcher turn) so Released cannot undo membership (Wimbly: model 5
+    /// through Dispatch2, chrome snaps to 4 after Released).
     /// </summary>
-    private bool TryHandleModifierClick(AssetItem item, bool ctrl, bool shift)
+    private bool TryHandleModifierClick(AssetItem item, bool ctrl, bool shift, uint pointerId)
     {
         if (ViewModel.IsGalleryOverlayOpen || item.IsFolderHeader)
         {
@@ -1528,6 +1534,7 @@ public sealed partial class LibraryPage : Page
 
         ViewModel.EnsureSelectMode(SelectMode.EntryFromModifier());
         _suppressMosaicSelection = true;
+        _modifierSuppressPointerId = pointerId;
         try
         {
             GrdAssets.SelectionMode = ItemsViewSelectionMode.Multiple;
@@ -1561,22 +1568,12 @@ public sealed partial class LibraryPage : Page
         catch
         {
             _suppressMosaicSelection = false;
+            _modifierSuppressPointerId = null;
             throw;
         }
 
-        // Keep suppress through ItemsView's follow-up pointer toggle, then re-stamp
-        // from the model (do not Apply ItemsView → VM).
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            try
-            {
-                RestoreMosaicSelectionHighlights();
-            }
-            finally
-            {
-                _suppressMosaicSelection = false;
-            }
-        });
+        // Re-stamp on next turn; keep suppress until PointerReleased.
+        DispatcherQueue.TryEnqueue(RestoreMosaicSelectionHighlights);
 
         return true;
     }
@@ -1682,6 +1679,23 @@ public sealed partial class LibraryPage : Page
         DisarmCanDrag();
         SyncMouseCanDragArm(e);
 
+        if (_modifierSuppressPointerId is uint modId && e.Pointer.PointerId == modId)
+        {
+            _modifierSuppressPointerId = null;
+            // After ItemsView's Released Multiple toggle: re-stamp from model, then lift suppress.
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    RestoreMosaicSelectionHighlights();
+                }
+                finally
+                {
+                    _suppressMosaicSelection = false;
+                }
+            });
+        }
+
         if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
         {
             return;
@@ -1714,6 +1728,22 @@ public sealed partial class LibraryPage : Page
     private void GrdAssets_RangeCaptureLost(object sender, PointerRoutedEventArgs e)
     {
         DisarmCanDrag();
+
+        if (_modifierSuppressPointerId is uint modId && e.Pointer.PointerId == modId)
+        {
+            _modifierSuppressPointerId = null;
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    RestoreMosaicSelectionHighlights();
+                }
+                finally
+                {
+                    _suppressMosaicSelection = false;
+                }
+            });
+        }
 
         if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
         {
