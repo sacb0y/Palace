@@ -21,8 +21,8 @@ public class ImagingHlslAgreementTests
         Assert.Contains("PalaceSdrMap", text, StringComparison.Ordinal);
         Assert.Contains("PalaceLutOrMap", text, StringComparison.Ordinal);
         Assert.Contains("abs(exposureEv) < 1e-6", text, StringComparison.Ordinal);
-        Assert.Contains("PipelineVersion = 6", text, StringComparison.Ordinal);
-        Assert.Equal(6, ImagingConstants.PipelineVersion);
+        Assert.Contains("PipelineVersion = 7", text, StringComparison.Ordinal);
+        Assert.Equal(7, ImagingConstants.PipelineVersion);
         Assert.Equal(203f, ImagingConstants.RefWhiteNits);
         Assert.Equal(0.10f, SdrToneCurve.MaxPaperDip);
     }

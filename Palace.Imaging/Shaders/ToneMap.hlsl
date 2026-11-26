@@ -2,7 +2,7 @@
 // Must stay in lockstep with ToneMapper.MapScalar / Bt2390Eetf / SdrToneCurve /
 // ToneMapLut.MapPixel (nonzero EV bypasses baked LUT → MapScalar).
 // Not compiled by the packaged app yet; present still CPU-rasters FP16.
-// PipelineVersion = 6. Working 1.0 = 203 nits (BT.2408).
+// PipelineVersion = 7. Working 1.0 = 203 nits (BT.2408).
 
 #ifndef PALACE_IMAGING_TONEMAP_HLSL
 #define PALACE_IMAGING_TONEMAP_HLSL

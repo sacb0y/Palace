@@ -135,22 +135,12 @@ public static class ImagingStillNormalize
     /// Options for a buffer that is already linear present scRGB
     /// (<c>HdrFrame.ScrgbRgba</c> — 1.0 = 80 nits). Never pair ScrgbRgba with
     /// <see cref="OptionsFromProbe"/> Sdr/Pq (that re-applies EOTF). For SDR,
-    /// Working matches <c>encoded + <see cref="OptionsForEncoded"/></c>.
+    /// Working matches <c>encoded + <see cref="OptionsForEncoded"/></c>. Prefer
+    /// Smooth LoadWic/Avif handing <c>EncodedRgba + OptionsForEncoded</c> when
+    /// available (HLG OOTF / SourceClipped parity).
     /// </summary>
     public static NormalizeOptions OptionsForPresentScrgb(float? metadataPeakNits = null) =>
         OptionsForJxr(metadataPeakNits);
-
-    /// <summary>
-    /// Smooth DecodePath source options for packed WIC/AVIF: linear scRGB
-    /// present buffers use <see cref="OptionsForPresentScrgb"/>; otherwise
-    /// <see cref="OptionsForEncoded"/> (same rule as HdrWicDecode buildWorking).
-    /// </summary>
-    public static NormalizeOptions OptionsForSmoothPackedSource(
-        HdrProbe probe,
-        bool bufferIsLinearScrgb) =>
-        bufferIsLinearScrgb
-            ? OptionsForPresentScrgb(probe.MaxCllNits)
-            : OptionsForEncoded(probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
 
     public static NormalizeOptions OptionsForJxl(
         JxlBufferTransfer actualBuffer,

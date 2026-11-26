@@ -58,20 +58,7 @@ internal static class SmoothSourceAppLoad
             scaling: ImageScaling.Actual,
             cancellation: ct,
             buildWorking: false);
-        if (frame?.ScrgbRgba is null || frame.Width < 1 || frame.Height < 1)
-        {
-            return null;
-        }
-
-        // ScrgbRgba is already EOTF'd present scRGB. OptionsFromProbe(Sdr/Pq)
-        // would double-EOTF (V2 A/B mute). Scrgb options = single linear path;
-        // SDR Working ≡ encoded + OptionsForEncoded (strip / Imaging buildWorking).
-        return new SmoothSourceLoad.Loaded(
-            frame.ScrgbRgba,
-            frame.Width,
-            frame.Height,
-            ImagingStillNormalize.OptionsForPresentScrgb(probe.MaxCllNits),
-            Orientation: 1);
+        return PreferEncodedOrPresentScrgb(frame, probe);
     }
 
     private static SmoothSourceLoad.Loaded? LoadWic(string path, CancellationToken ct)
@@ -85,16 +72,45 @@ internal static class SmoothSourceAppLoad
                 viewportPixelHeight: 0,
                 scaling: ImageScaling.Actual,
                 cancellation: ct,
-                buildWorking: false)
+                buildWorking: false,
+                retainEncoded: true)
             .GetAwaiter()
             .GetResult();
-        var frame = result.Frame;
-        if (frame?.ScrgbRgba is null || frame.Width < 1 || frame.Height < 1)
+        return PreferEncodedOrPresentScrgb(result.Frame, probe);
+    }
+
+    /// <summary>
+    /// Prefer <c>EncodedRgba + OptionsForEncoded</c> (same kernel as strip /
+    /// Imaging buildWorking — HLG OOTF / SourceClipped). Fall back to present
+    /// scRGB + <see cref="ImagingStillNormalize.OptionsForPresentScrgb"/> when
+    /// encoded was not retained (YUV / identity-GBR pack paths).
+    /// </summary>
+    private static SmoothSourceLoad.Loaded? PreferEncodedOrPresentScrgb(
+        HdrFrame? frame,
+        HdrProbe probe)
+    {
+        if (frame is null || frame.Width < 1 || frame.Height < 1)
         {
             return null;
         }
 
-        // Same single-EOTF contract as LoadAvif — see OptionsForPresentScrgb.
+        if (frame.EncodedRgba is { Length: > 0 } encoded
+            && frame.WorkingOptions is { } opts)
+        {
+            return new SmoothSourceLoad.Loaded(
+                encoded,
+                frame.Width,
+                frame.Height,
+                opts,
+                Orientation: 1);
+        }
+
+        if (frame.ScrgbRgba is null || frame.ScrgbRgba.Length < 4)
+        {
+            return null;
+        }
+
+        // ScrgbRgba is already EOTF'd — never OptionsFromProbe Sdr/Pq (double EOTF).
         return new SmoothSourceLoad.Loaded(
             frame.ScrgbRgba,
             frame.Width,
