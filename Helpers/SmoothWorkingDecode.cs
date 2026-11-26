@@ -575,11 +575,10 @@ public sealed class SmoothWorkingDecode : IDisposable
         var bandRows = SmoothTileMath.ContentSize + (2 * SmoothTileMath.Border);
         var band = new float[width * bandRows * 4];
 
-        // Coarse subsample for Analyze-compatible ImageStats — accumulate from
-        // each tile-row band during the fill pass (no fillStrip(y, 1) re-decode).
-        var step = Math.Max(1, (int)Math.Sqrt((width * (long)height) / 4096.0));
-        float maxRgb = 0, sumY = 0;
-        var n = 0;
+        // ImageStats via Analyze.Accumulator — same PQ hist / Lc as Analyze.Run
+        // (DecodeAsync). Feed every content row once (no gutter double-count;
+        // no mean-P50 / maxRgb-as-Lc mute). No fillStrip(y,1) re-decode.
+        var statsAcc = new Analyze.Accumulator();
 
         for (var ty = 0; ty < ny; ty++)
         {
@@ -606,22 +605,13 @@ public sealed class SmoothWorkingDecode : IDisposable
                 Array.Copy(stripBuf, 0, band, destOff, count);
             }
 
-            // Stats from content rows only (skip gutter overlap double-count).
+            // Every content row → Accumulator (matches Analyze.Run pixel set).
             var contentY0 = oy;
             var contentY1 = Math.Min(height, oy + Math.Max(1, ch));
-            for (var y = contentY0; y < contentY1; y += step)
+            for (var y = contentY0; y < contentY1; y++)
             {
                 var bandRow = y - y0;
-                for (var x = 0; x < width; x += step)
-                {
-                    var i = ((bandRow * width) + x) * 4;
-                    var r = band[i];
-                    var g = band[i + 1];
-                    var b = band[i + 2];
-                    maxRgb = Math.Max(maxRgb, Math.Max(r, Math.Max(g, b)));
-                    sumY += ImagingConstants.Bt2020Y(r, g, b);
-                    n++;
-                }
+                statsAcc.Add(band.AsSpan(bandRow * width * 4, width * 4), width, 1);
             }
 
             for (var tx = 0; tx < nx; tx++)
@@ -639,18 +629,7 @@ public sealed class SmoothWorkingDecode : IDisposable
             }
         }
 
-        var p50 = n > 0 ? sumY / n : 0.5f;
-        var lc = Math.Max(1f, maxRgb);
-        var stats = new ImageStats(
-            P50: p50,
-            P99995: maxRgb,
-            Max: maxRgb,
-            MaxRgb: maxRgb,
-            Lc: lc,
-            RefWhite: ImagingConstants.RefWhiteNits,
-            MetadataPeak: null,
-            SourceClipped: false,
-            SourceClipRatio: 0f);
+        var stats = statsAcc.Finish();
 
         // No NormalizedFrame / WorkingRgba — session uses Level0Tiles + rematerialize.
         return new SmoothWorkingDecodeResult(

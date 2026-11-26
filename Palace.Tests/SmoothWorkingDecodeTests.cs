@@ -244,9 +244,63 @@ public sealed class SmoothWorkingDecodeTests
         Assert.False(result!.HasFloatWorking);
         Assert.True(strips >= 1);
         Assert.NotEmpty(result.Level0Tiles);
-        // Stats accumulate from the tile-band pass — no fillStrip(y, 1) ~54× re-decode.
+        // Stats from Analyze.Accumulator during tile bands — no fillStrip(y, 1).
         Assert.Equal(0, singleRowFills);
         Assert.True(result.Stats.Lc > 0f);
+    }
+
+    /// <summary>
+    /// Wimbly #212: strip ImageStats ≡ DecodeAsync (Analyze.Run) within float eps.
+    /// Mean-P50 / maxRgb-as-Lc was muting tone vs normal.
+    /// </summary>
+    [Fact]
+    public async Task DecodeStrip_ImageStats_MatchDecodeAsync()
+    {
+        const int w = 64;
+        const int h = 48;
+        var src = new float[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var o = ((y * w) + x) * 4;
+                var t = x / (float)(w - 1);
+                var u = y / (float)(h - 1);
+                src[o] = 0.15f + 0.7f * t;
+                src[o + 1] = 0.55f + 0.3f * u;
+                src[o + 2] = 0.85f - 0.5f * t * u;
+                src[o + 3] = 1f;
+            }
+        }
+
+        var opts = ImagingStillNormalize.OptionsForRadiance();
+        using var decode = new SmoothWorkingDecode();
+        var normal = await decode.DecodeAsync(src, w, h, opts);
+        Assert.NotNull(normal);
+
+        // Working floats after DecodeAsync normalize — feed strip the same Working.
+        var working = normal!.WorkingRgba;
+        using var decodeStrip = new SmoothWorkingDecode();
+        var strip = await decodeStrip.DecodeStripToRgba16FAsync(
+            w,
+            h,
+            (y0, rows, dest) =>
+            {
+                for (var row = 0; row < rows; row++)
+                {
+                    var y = y0 + row;
+                    Array.Copy(working, y * w * 4, dest, row * w * 4, w * 4);
+                }
+            });
+        Assert.NotNull(strip);
+
+        const float eps = 1e-4f;
+        Assert.True(Math.Abs(normal.Stats.P50 - strip!.Stats.P50) <= eps);
+        Assert.True(Math.Abs(normal.Stats.P99995 - strip.Stats.P99995) <= eps);
+        Assert.True(Math.Abs(normal.Stats.Max - strip.Stats.Max) <= eps);
+        Assert.True(Math.Abs(normal.Stats.MaxRgb - strip.Stats.MaxRgb) <= eps);
+        Assert.True(Math.Abs(normal.Stats.Lc - strip.Stats.Lc) <= eps);
+        Assert.Equal(normal.Stats.RefWhite, strip.Stats.RefWhite);
     }
 
     [Fact]
