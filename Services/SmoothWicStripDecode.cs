@@ -22,10 +22,23 @@ internal static class SmoothWicStripDecode
     private const int WinCodecUnsupportedPixelFormat = unchecked((int)0x88982F80);
 
     /// <summary>
-    /// Probe pixel size without a full decode. Returns null when the path is
-    /// missing or WIC cannot open it.
+    /// Probe storage pixel size (EXIF ignored — matches strip decode) without a
+    /// full decode. Returns null when the path is missing or WIC cannot open it.
     /// </summary>
     public static async Task<(int Width, int Height)?> TryGetSizeAsync(
+        string path,
+        CancellationToken ct = default)
+    {
+        var probe = await TryGetSizeAndOrientationAsync(path, ct).ConfigureAwait(false);
+        return probe is { } p ? (p.Width, p.Height) : null;
+    }
+
+    /// <summary>
+    /// Storage size (IgnoreExif) + EXIF Orientation 1–8 for view compose.
+    /// Strip keeps tiles unbaked; callers set <c>_exifOrientation</c> so R /
+    /// fit/pan use <see cref="SmoothViewport.ExifOrient"/> oriented size.
+    /// </summary>
+    public static async Task<(int Width, int Height, int Orientation)?> TryGetSizeAndOrientationAsync(
         string path,
         CancellationToken ct = default)
     {
@@ -34,6 +47,7 @@ internal static class SmoothWicStripDecode
             return null;
         }
 
+        var orientation = ExifOrientation.TryRead(path);
         ct.ThrowIfCancellationRequested();
         var file = await StorageFile.GetFileFromPathAsync(path);
         ct.ThrowIfCancellationRequested();
@@ -41,7 +55,7 @@ internal static class SmoothWicStripDecode
         ct.ThrowIfCancellationRequested();
         var decoder = await BitmapDecoder.CreateAsync(stream);
         ct.ThrowIfCancellationRequested();
-        return ((int)decoder.PixelWidth, (int)decoder.PixelHeight);
+        return ((int)decoder.PixelWidth, (int)decoder.PixelHeight, orientation);
     }
 
     /// <summary>
@@ -184,7 +198,17 @@ internal static class SmoothWicStripDecode
         }
 
         var bytes = pixels.DetachPixelData();
-        var need = width * rows * 4;
+        int need;
+        try
+        {
+            need = checked(width * rows * 4);
+        }
+        catch (OverflowException ex)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(width), ex, "Strip float RGBA length overflows int.");
+        }
+
         if (dest.Length < need)
         {
             throw new ArgumentException("Strip dest too small.", nameof(dest));

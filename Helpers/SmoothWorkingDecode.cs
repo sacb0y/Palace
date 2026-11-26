@@ -568,12 +568,21 @@ public sealed class SmoothWorkingDecode : IDisposable
 
         // Prefer RGBA16F L0 tiles — never allocate width*height*4 floats.
         // Peak working buffer ≈ width × max(strip, tile band) × 16 bytes.
+        // Reject overflow on strip/band float lengths (Doktor #212).
+        if (!TryAllocStripFloats(width, DefaultStripRows, out var stripBuf)
+            || stripBuf is null)
+        {
+            return null;
+        }
+
         var (nx, ny) = SmoothTileMath.TileCounts(width, height);
         var tiles = new Dictionary<SmoothTileId, byte[]>(nx * ny);
         var stripRows = DefaultStripRows;
-        var stripBuf = new float[width * stripRows * 4];
         var bandRows = SmoothTileMath.ContentSize + (2 * SmoothTileMath.Border);
-        var band = new float[width * bandRows * 4];
+        if (!TryAllocStripFloats(width, bandRows, out var band) || band is null)
+        {
+            return null;
+        }
 
         // ImageStats via Analyze.Accumulator — same PQ hist / Lc as Analyze.Run
         // (DecodeAsync). Feed every content row once (no gutter double-count;
@@ -591,7 +600,10 @@ public sealed class SmoothWorkingDecode : IDisposable
             if (needH > bandRows)
             {
                 bandRows = needH;
-                band = new float[width * bandRows * 4];
+                if (!TryAllocStripFloats(width, bandRows, out band) || band is null)
+                {
+                    return null;
+                }
             }
 
             // Fill band via WICRect-sized strips — no full-image float.
@@ -680,6 +692,34 @@ public sealed class SmoothWorkingDecode : IDisposable
         var h = SmoothTileSession.Float32ToFloat16Bits(value);
         dest[offset] = (byte)(h & 0xff);
         dest[offset + 1] = (byte)(h >> 8);
+    }
+
+    /// <summary>
+    /// Allocate <c>width × rows × 4</c> floats with <c>checked</c> length.
+    /// Returns false on overflow (Doktor #212) — never wrap to a tiny buffer.
+    /// </summary>
+    internal static bool TryAllocStripFloats(int width, int rows, out float[]? buffer)
+    {
+        buffer = null;
+        if (width < 1 || rows < 1)
+        {
+            return false;
+        }
+
+        try
+        {
+            var len = checked(width * rows * 4);
+            buffer = new float[len];
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
+        catch (OutOfMemoryException)
+        {
+            return false;
+        }
     }
 }
 

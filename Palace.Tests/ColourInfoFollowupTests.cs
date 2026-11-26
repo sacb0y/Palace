@@ -210,6 +210,40 @@ public sealed class ColourInfoFollowupTests
     }
 
     [Fact]
+    public void PngHasUnsupportedIcc_IOException_FailClosed()
+    {
+        // Doktor #212: cannot verify iCCP → refuse strip (no silent wrong Working).
+        using var boom = new ThrowingReadStream();
+        Assert.True(IccProfile.PngHasUnsupportedIcc(boom));
+    }
+
+    private sealed class ThrowingReadStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => 0;
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() { }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new IOException("simulated read failure");
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+    }
+
+    [Fact]
     public void Probe_IccCurvWithOverflowingCount_IsRejectedWithoutThrowing()
     {
         // curv count 0x80000001: count * 2 wraps a uint; must be rejected as plain PNG.

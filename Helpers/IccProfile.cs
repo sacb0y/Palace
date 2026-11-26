@@ -58,13 +58,15 @@ public static class IccProfile
         }
         catch (IOException)
         {
-            return false;
+            // Fail-closed: cannot verify iCCP → strip must refuse (no silent wrong Working).
+            return true;
         }
     }
 
     /// <summary>
     /// Stream form of <see cref="PngHasUnsupportedIcc(string)"/>. Reads 8-byte
     /// chunk headers; skips non-colour payloads; loads only <c>iCCP</c>.
+    /// <see cref="IOException"/> → true (fail-closed).
     /// </summary>
     public static bool PngHasUnsupportedIcc(Stream stream)
     {
@@ -74,6 +76,18 @@ public static class IccProfile
             return false;
         }
 
+        try
+        {
+            return PngHasUnsupportedIccCore(stream);
+        }
+        catch (IOException)
+        {
+            return true;
+        }
+    }
+
+    private static bool PngHasUnsupportedIccCore(Stream stream)
+    {
         Span<byte> sig = stackalloc byte[8];
         if (ReadExact(stream, sig) < 8
             || sig[0] != 0x89

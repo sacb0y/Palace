@@ -161,11 +161,10 @@ public sealed partial class SmoothPresenterWindow : Window
             SmoothWorkingDecodeResult? result = null;
             _exifOrientation = 1;
 
-            // Prefer a real file under PALACE_DATA_DIR when present. JxlDecode /
-            // HdrAvifDecode / HdrWicDecode already return upright pixels (EXIF/irot
-            // applied by the decoder), so the loader's Orientation is 1 and the view
-            // orientation starts at identity; R / Shift+R rotate at draw time.
-            // Decode once, on the background task — no second LoadLocalFile here.
+            // Prefer a real file under PALACE_DATA_DIR when present.
+            // Within-budget DecodePath: decoders return upright pixels → orient=1.
+            // ≥64MP strip: IgnoreExif tiles + probe EXIF → _exifOrientation for
+            // ExifOrient fit/pan/R (Doktor #212). Decode once — no second load.
             _sourcePath = sourceDir is null ? null : FindSmoothSource(sourceDir);
             if (_sourcePath is not null)
             {
@@ -243,18 +242,21 @@ public sealed partial class SmoothPresenterWindow : Window
         }
 
         var name = Path.GetFileName(path);
-        var size = await SmoothWicStripDecode.TryGetSizeAsync(path);
+        var size = await SmoothWicStripDecode.TryGetSizeAndOrientationAsync(path);
         if (size is { } s)
         {
             var route = SmoothWorkingDecode.ClassifyFileRoute(path, s.Width, s.Height);
             switch (route)
             {
                 case SmoothWorkingDecode.WorkingRoute.Strip:
+                    // Tiles stay storage-oriented (IgnoreExif); probe EXIF so
+                    // fit/pan/R compose via ExifOrient oriented size (Doktor).
+                    _exifOrientation = s.Orientation is >= 1 and <= 8 ? s.Orientation : 1;
                     TxtSmoothTiles.Text =
-                        $"strip decode WIC {s.Width}x{s.Height} {name} (≥64MP)…";
+                        $"strip decode WIC {s.Width}x{s.Height} {name} (≥64MP) orient={_exifOrientation}…";
                     SmoothPresenterLog.AppendNote(
                         Environment.GetEnvironmentVariable("PALACE_DATA_DIR"),
-                        $"strip-file begin {name} {s.Width}x{s.Height}");
+                        $"strip-file begin {name} {s.Width}x{s.Height} orient={_exifOrientation}");
                     var peakBefore = Environment.WorkingSet;
                     var strip = await SmoothWicStripDecode.DecodeFileStripAsync(
                         _workingDecode, path);

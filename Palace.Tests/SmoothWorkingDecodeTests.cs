@@ -323,6 +323,19 @@ public sealed class SmoothWorkingDecodeTests
     }
 
     [Fact]
+    public void TryAllocStripFloats_RejectsOverflow()
+    {
+        // Doktor #212: checked width×rows×4 — never wrap to a tiny buffer.
+        Assert.False(SmoothWorkingDecode.TryAllocStripFloats(int.MaxValue, int.MaxValue, out var huge));
+        Assert.Null(huge);
+        Assert.False(SmoothWorkingDecode.TryAllocStripFloats(0, 10, out _));
+        Assert.False(SmoothWorkingDecode.TryAllocStripFloats(10, 0, out _));
+        Assert.True(SmoothWorkingDecode.TryAllocStripFloats(4, 2, out var ok));
+        Assert.NotNull(ok);
+        Assert.Equal(4 * 2 * 4, ok!.Length);
+    }
+
+    [Fact]
     public void SmoothToneGpu_FromStats_HdrPresentParams()
     {
         var stats = new ImageStats(
