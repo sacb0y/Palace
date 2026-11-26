@@ -46,6 +46,12 @@ internal sealed class HdrFrame
     /// <summary>Normalize options used for <see cref="Working"/> (transfer / primaries / peak).</summary>
     public NormalizeOptions? WorkingOptions { get; init; }
 
+    /// <summary>
+    /// Packed encoded / linear-source floats for Smooth DecodePath
+    /// (<c>encoded + OptionsForEncoded</c> / JXR Scrgb). Null when not retained.
+    /// </summary>
+    public float[]? EncodedRgba { get; init; }
+
     public bool HasStats => MaxNits > 0;
 
     private float _p99MaxRgbNits = -1f;
@@ -136,6 +142,11 @@ internal static class HdrWicDecode
     /// histogram / Fit discard), skip <see cref="HdrFrame.Working"/>. Pass true
     /// for gallery present that may keep Working.
     /// </param>
+    /// <param name="retainEncoded">
+    /// When true, keep packed encoded floats on <see cref="HdrFrame.EncodedRgba"/>
+    /// for Smooth DecodePath (<c>encoded + OptionsForEncoded</c>). Independent of
+    /// the 16MP Working budget.
+    /// </param>
     public static async Task<HdrDecodeResult> TryLoadAsync(
         string path,
         HdrProbe probe,
@@ -143,7 +154,8 @@ internal static class HdrWicDecode
         int viewportPixelHeight,
         ImageScaling scaling,
         CancellationToken cancellation,
-        bool buildWorking)
+        bool buildWorking,
+        bool retainEncoded = false)
     {
         BeginErrorStamp();
         if (!CloudFile.Exists(path) || CloudFile.IsOnlineOnly(path))
@@ -186,7 +198,7 @@ internal static class HdrWicDecode
                 var png = await Task.Run(
                     () => FromManagedPng(
                         path, probe, viewportPixelWidth, viewportPixelHeight, scaling, buildWorking,
-                        cancellation),
+                        cancellation, retainEncoded),
                     cancellation).ConfigureAwait(false);
                 if (png is not null)
                 {
@@ -335,7 +347,8 @@ internal static class HdrWicDecode
                         nativeW,
                         nativeH,
                         probe,
-                        buildWorking),
+                        buildWorking,
+                        retainEncoded),
                     cancellation).ConfigureAwait(false),
                 "wic"));
         }
@@ -1384,7 +1397,8 @@ internal static class HdrWicDecode
         int viewportPixelHeight,
         ImageScaling scaling,
         bool buildWorking,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default,
+        bool retainEncoded = false)
     {
         var encoded = PngFile.TryDecodeEncodedRgba(path, cancellation);
         if (encoded is null)
@@ -1414,7 +1428,8 @@ internal static class HdrWicDecode
             nativeW,
             nativeH,
             probe,
-            buildWorking && !willScale);
+            buildWorking && !willScale,
+            retainEncoded);
         if (frame is null)
         {
             return null;
@@ -1453,9 +1468,30 @@ internal static class HdrWicDecode
         HdrProbe probe,
         bool buildWorking)
     {
-        if (!buildWorking || !ImagingStillNormalize.FitsWorkingBudget(width, height))
+        var (working, opts, _) = TryUnpackNormalizeSource(
+            data, format, width, height, probe, buildWorking, retainEncoded: false);
+        return (working, opts);
+    }
+
+    /// <summary>
+    /// Unpack packed WIC floats for Normalize. <paramref name="retainEncoded"/>
+    /// keeps the source buffer even when Working is skipped (Smooth ≤64MP).
+    /// </summary>
+    private static (NormalizedFrame? Working, NormalizeOptions? Options, float[]? Encoded)
+        TryUnpackNormalizeSource(
+            byte[] data,
+            HdrPackedFormat format,
+            int width,
+            int height,
+            HdrProbe probe,
+            bool buildWorking,
+            bool retainEncoded)
+    {
+        var wantWorking = buildWorking
+            && ImagingStillNormalize.FitsWorkingBudget(width, height);
+        if (!wantWorking && !retainEncoded)
         {
-            return (null, null);
+            return (null, null, null);
         }
 
         try
@@ -1463,14 +1499,14 @@ internal static class HdrWicDecode
             var count = width * height;
             if (count <= 0 || !HdrPixels.HasPackedData(data, format, width, height))
             {
-                return (null, null);
+                return (null, null, null);
             }
 
             var identity = HdrColor.IsIdentityMatrix(probe.CicpMatrix);
             if (HdrPixels.IsYuv(format)
                 || HdrPixels.TreatAsYuv(format, HdrColor.NeedsYuvConvert(probe.Kind), identity))
             {
-                return (null, null);
+                return (null, null, null);
             }
 
             var encoded = new float[count * 4];
@@ -1495,12 +1531,17 @@ internal static class HdrWicDecode
                 : ImagingStillNormalize.OptionsForEncoded(
                     probe.Transfer, probe.CicpPrimaries, probe.MaxCllNits);
 
-            var working = ImagingStillNormalize.TryRun(encoded, width, height, opts);
-            return working is null ? (null, null) : (working, opts);
+            NormalizedFrame? working = null;
+            if (wantWorking)
+            {
+                working = ImagingStillNormalize.TryRun(encoded, width, height, opts);
+            }
+
+            return (working, opts, retainEncoded || working is not null ? encoded : null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return (null, null);
+            return (null, null, null);
         }
     }
 
@@ -1795,16 +1836,39 @@ internal static class HdrWicDecode
         int nativeWidth,
         int nativeHeight,
         HdrProbe probe,
-        bool buildWorking)
+        bool buildWorking,
+        bool retainEncoded = false)
     {
+        var (working, workingOpts, encoded) = TryUnpackNormalizeSource(
+            data, format, width, height, probe, buildWorking, retainEncoded);
+
+        // Smooth retainEncoded: keep EncodedRgba only — skip ScrgbRgba (~1GB @ 60MP).
+        if (retainEncoded && encoded is { Length: > 0 } && workingOpts is not null)
+        {
+            return new HdrFrame
+            {
+                ScrgbRgba = [],
+                Width = width,
+                Height = height,
+                NativeWidth = nativeWidth,
+                NativeHeight = nativeHeight,
+                MaxNits = 0,
+                AvgNits = 0,
+                MinNits = 0,
+                MaxScrgb = 0,
+                MaxScrgbChannel = '\0',
+                Working = working,
+                WorkingOptions = workingOpts,
+                EncodedRgba = encoded
+            };
+        }
+
         var converted = Convert(data, format, width, height, probe, wantRgba: true, default);
         if (converted is null)
         {
             return null;
         }
 
-        var (working, workingOpts) = TryBuildWorking(
-            data, format, width, height, probe, buildWorking);
         return new HdrFrame
         {
             ScrgbRgba = converted.Value.Rgba!,
@@ -1818,7 +1882,8 @@ internal static class HdrWicDecode
             MaxScrgb = converted.Value.MaxScrgb,
             MaxScrgbChannel = converted.Value.MaxScrgbChannel,
             Working = working,
-            WorkingOptions = workingOpts
+            WorkingOptions = workingOpts,
+            EncodedRgba = encoded
         };
     }
 

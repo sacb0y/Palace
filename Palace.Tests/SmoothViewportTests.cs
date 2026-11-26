@@ -94,4 +94,93 @@ public sealed class SmoothViewportTests
         Assert.Equal(32f, SmoothViewport.ClampZoom(64f, fitZoom: 0.2f));
         Assert.Equal(0.2f, SmoothViewport.ClampZoom(0.01f, fitZoom: 0.2f));
     }
+
+    [Fact]
+    public void WheelZoomFactor_GeoNotches()
+    {
+        Assert.Equal(1f, SmoothViewport.WheelZoomFactor(0));
+        Assert.Equal(MathF.Pow(2f, 0.25f), SmoothViewport.WheelZoomFactor(1), precision: 5);
+        Assert.Equal(MathF.Pow(2f, -0.25f), SmoothViewport.WheelZoomFactor(-1), precision: 5);
+        Assert.Equal(MathF.Pow(2f, 0.125f), SmoothViewport.WheelZoomFactor(1, fine: true), precision: 5);
+    }
+
+    [Fact]
+    public void ClampFrameDt_CapsAt50Ms()
+    {
+        Assert.Equal(0f, SmoothViewport.ClampFrameDt(-1f));
+        Assert.Equal(0.05f, SmoothViewport.ClampFrameDt(1f));
+        Assert.Equal(0.016f, SmoothViewport.ClampFrameDt(0.016f), precision: 5);
+    }
+
+    [Fact]
+    public void SnapPanTranslation_RoundsDevicePx()
+    {
+        var (tx, ty) = SmoothViewport.SnapPanTranslation(10.4f, -3.6f);
+        Assert.Equal(10f, tx);
+        Assert.Equal(-4f, ty);
+    }
+
+    [Fact]
+    public void ManipulationScaleTranslate_CentroidThenTranslationTimesScale()
+    {
+        // Isiac: scale about position, then T += Translation × scale.
+        var (z, tx, ty) = SmoothViewport.ManipulationScaleTranslate(
+            zoom: 1f,
+            tx: 0f,
+            ty: 0f,
+            scaleDelta: 2f,
+            centroidX: 100f,
+            centroidY: 50f,
+            translationX: 10f,
+            translationY: -4f,
+            fitZoom: 0.1f);
+        var about = SmoothViewport.PinchZoomAbout(
+            1f, 0f, 0f, 2f, 100f, 50f, fitZoom: 0.1f);
+        Assert.Equal(about.Zoom, z);
+        Assert.Equal(about.Tx + (10f * 2f), tx, precision: 4);
+        Assert.Equal(about.Ty + (-4f * 2f), ty, precision: 4);
+    }
+
+    [Fact]
+    public void ManipulationScaleTranslate_ScaleOne_AppliesTranslationOnly()
+    {
+        var (z, tx, ty) = SmoothViewport.ManipulationScaleTranslate(
+            zoom: 2f,
+            tx: 5f,
+            ty: 7f,
+            scaleDelta: 1f,
+            centroidX: 40f,
+            centroidY: 60f,
+            translationX: 3f,
+            translationY: -2f,
+            fitZoom: 0.1f);
+        Assert.Equal(2f, z);
+        Assert.Equal(5f + 3f, tx, precision: 4);
+        Assert.Equal(7f - 2f, ty, precision: 4);
+    }
+
+    [Fact]
+    public void IsActivePointerPan_SecondPointerDoesNotDriveTxTy()
+    {
+        Assert.True(SmoothViewport.IsActivePointerPan(
+            panning: true, capturedPointerId: 1u, eventPointerId: 1u));
+        Assert.False(SmoothViewport.IsActivePointerPan(
+            panning: true, capturedPointerId: 1u, eventPointerId: 2u));
+        Assert.False(SmoothViewport.IsActivePointerPan(
+            panning: false, capturedPointerId: 1u, eventPointerId: 1u));
+        Assert.True(SmoothViewport.AllowsPointerPanBegin(isMouseOrPen: true, leftButton: true));
+        Assert.False(SmoothViewport.AllowsPointerPanBegin(isMouseOrPen: false, leftButton: true));
+    }
+
+    [Fact]
+    public void PinchZoomAbout_ClampsAndAnchorsCentroid()
+    {
+        var (z, tx, ty) = SmoothViewport.PinchZoomAbout(
+            zoom: 1f, tx: 0f, ty: 0f, scaleDelta: 64f, centroidX: 100f, centroidY: 50f, fitZoom: 0.2f);
+        Assert.Equal(32f, z); // max clamp
+        // Cursor still maps to same image point after clamp.
+        var about = SmoothViewport.ZoomAbout(1f, 0f, 0f, 32f, 100f, 50f);
+        Assert.Equal(about.Tx, tx, precision: 3);
+        Assert.Equal(about.Ty, ty, precision: 3);
+    }
 }

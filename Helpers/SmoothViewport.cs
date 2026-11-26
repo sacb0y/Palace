@@ -16,6 +16,10 @@ public static class SmoothViewport
     public const float CrossfadeMsMin = 80f;
     public const float CrossfadeMsMax = 120f;
     public const float CrossfadeMsDefault = 100f;
+    /// <summary>Geo wheel: each notch multiplies zoom by 2^0.25 (Ctrl = half notch).</summary>
+    public const float WheelNotchLog2 = 0.25f;
+    /// <summary>Max frame dt for ease / snap (seconds) — clamps hitch overshoot.</summary>
+    public const float MaxFrameDtSeconds = 0.05f;
 
     /// <summary>
     /// GPU viewport path sizes the swap chain to the panel and applies zoom as
@@ -131,36 +135,63 @@ public static class SmoothViewport
             };
         }
 
-        /// <summary>Cycle EXIF 1→6→3→8→1 (90° CW) or reverse for CCW.</summary>
+        /// <summary>
+        /// Cycle 90° CW / CCW for R / Shift+R.
+        /// Plain: 1→6→3→8→1. Mirrored: 2→7→4→5→2 (Wimbly #212).
+        /// </summary>
         public static int Rotate90(int orientation, bool clockwise)
         {
             orientation = Math.Clamp(orientation, 1, 8);
-            // Only the pure-rotation subgroup for R / Shift+R.
-            ReadOnlySpan<int> cw = [1, 6, 3, 8];
-            var i = cw.IndexOf(orientation);
+            // Plain rotations vs mirrored — keep subgroups separate (do not snap).
+            ReadOnlySpan<int> plain = [1, 6, 3, 8];
+            ReadOnlySpan<int> mirrored = [2, 7, 4, 5];
+            var cycle = plain.IndexOf(orientation) >= 0 ? plain : mirrored;
+            var i = cycle.IndexOf(orientation);
             if (i < 0)
             {
-                // Mirrored tags: snap to nearest rotation then step.
-                orientation = orientation switch
-                {
-                    2 or 5 or 7 => 6,
-                    4 => 8,
-                    _ => 1,
-                };
-                i = cw.IndexOf(orientation);
+                return 1;
             }
 
             if (clockwise)
             {
-                return cw[(i + 1) % cw.Length];
+                return cycle[(i + 1) % cycle.Length];
             }
 
-            return cw[(i + cw.Length - 1) % cw.Length];
+            return cycle[(i + cycle.Length - 1) % cycle.Length];
         }
     }
 
     public static float ClampZoom(float zoom, float fitZoom) =>
         Math.Clamp(zoom, Math.Min(fitZoom, 1f), MaxZoom);
+
+    /// <summary>Clamp real frame dt so a hitch cannot overshoot ease/snap.</summary>
+    public static float ClampFrameDt(float dtSeconds) =>
+        Math.Clamp(dtSeconds, 0f, MaxFrameDtSeconds);
+
+    /// <summary>
+    /// Wheel notch factor: <c>2^(notches * 0.25)</c>. Negative notches zoom out.
+    /// Ctrl uses half-notch steps (<paramref name="fine"/>).
+    /// </summary>
+    public static float WheelZoomFactor(int notches, bool fine = false)
+    {
+        if (notches == 0)
+        {
+            return 1f;
+        }
+
+        var step = fine ? WheelNotchLog2 * 0.5f : WheelNotchLog2;
+        return MathF.Pow(2f, notches * step);
+    }
+
+    /// <summary>
+    /// Round pan T to whole device px. Call only when input is at rest
+    /// (ease settled, no active pan/pinch). Safe at any zoom including z≥4 at rest.
+    /// </summary>
+    public static (float Tx, float Ty) SnapPanTranslation(float tx, float ty) =>
+        (MathF.Round(tx), MathF.Round(ty));
+
+    public static bool IsEaseSettled(float zoom, float targetZoom, float epsilon = 1e-4f) =>
+        MathF.Abs(zoom - targetZoom) < epsilon;
 
     public static float FitZoom(float panelW, float panelH, float imgW, float imgH)
     {
@@ -191,6 +222,67 @@ public static class SmoothViewport
     }
 
     /// <summary>
+    /// Pinch / touchpad: apply scale 1:1 about centroid (no ease). Same clamp as wheel.
+    /// </summary>
+    public static (float Zoom, float Tx, float Ty) PinchZoomAbout(
+        float zoom,
+        float tx,
+        float ty,
+        float scaleDelta,
+        float centroidX,
+        float centroidY,
+        float fitZoom)
+    {
+        if (scaleDelta <= 1e-12f)
+        {
+            return (ClampZoom(zoom, fitZoom), tx, ty);
+        }
+
+        var next = ClampZoom(zoom * scaleDelta, fitZoom);
+        return ZoomAbout(zoom, tx, ty, next, centroidX, centroidY);
+    }
+
+    /// <summary>
+    /// Touch ManipulationDelta: scale about centroid, then
+    /// <c>T += Translation × scale</c> (Isiac #212 — stops two-finger fly-off).
+    /// Uses effective scale after <see cref="ClampZoom"/> so a clamped pinch
+    /// does not over-pan. Does not touch pointer-pan last-point state.
+    /// </summary>
+    public static (float Zoom, float Tx, float Ty) ManipulationScaleTranslate(
+        float zoom,
+        float tx,
+        float ty,
+        float scaleDelta,
+        float centroidX,
+        float centroidY,
+        float translationX,
+        float translationY,
+        float fitZoom)
+    {
+        var scale = scaleDelta <= 1e-12f ? 1f : scaleDelta;
+        var about = PinchZoomAbout(zoom, tx, ty, scale, centroidX, centroidY, fitZoom);
+        var effective = zoom > 1e-12f ? about.Zoom / zoom : 1f;
+        return (
+            about.Zoom,
+            about.Tx + (translationX * effective),
+            about.Ty + (translationY * effective));
+    }
+
+    /// <summary>
+    /// Pointer pan move/release: only the captured PointerId while panning
+    /// (second finger must not drive tx/ty).
+    /// </summary>
+    public static bool IsActivePointerPan(
+        bool panning,
+        uint? capturedPointerId,
+        uint eventPointerId) =>
+        panning && capturedPointerId is uint id && id == eventPointerId;
+
+    /// <summary>Pointer pan begin: Mouse/Pen + left button only (not Touch).</summary>
+    public static bool AllowsPointerPanBegin(bool isMouseOrPen, bool leftButton) =>
+        isMouseOrPen && leftButton;
+
+    /// <summary>
     /// Wheel ease toward target: <c>z += (zt - z) * (1 - exp(-dt/tau))</c>, tau≈70 ms.
     /// </summary>
     public static float EaseZoom(float current, float target, float dtSeconds, float tau = 0.07f)
@@ -200,7 +292,8 @@ public static class SmoothViewport
             return target;
         }
 
-        var a = 1f - MathF.Exp(-dtSeconds / tau);
+        var dt = ClampFrameDt(dtSeconds);
+        var a = 1f - MathF.Exp(-dt / tau);
         return current + ((target - current) * a);
     }
 

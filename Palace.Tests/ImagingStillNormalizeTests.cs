@@ -461,6 +461,76 @@ public class ImagingStillNormalizeTests
         Assert.Same(rgba, built.PresentRgba);
     }
 
+    /// <summary>
+    /// Wimbly #212: strip / row entry matches full <see cref="ImagingStillNormalize.Run"/>
+    /// Working within 1e-3/channel on a non-grey sRGB hue with alpha &lt; 1.
+    /// </summary>
+    [Fact]
+    public void NormalizeStrip_MatchesFullRun_SrgbGradientNonGreyAlpha()
+    {
+        const int w = 48;
+        const int h = 24;
+        var encoded = new float[w * h * 4];
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var t = x / (float)(w - 1);
+                var u = y / (float)(h - 1);
+                var o = ((y * w) + x) * 4;
+                // Non-grey hue (R≠G≠B) + alpha in (0,1).
+                encoded[o] = 0.15f + 0.7f * t;
+                encoded[o + 1] = 0.55f + 0.3f * u;
+                encoded[o + 2] = 0.85f - 0.5f * t * u;
+                encoded[o + 3] = 0.35f + 0.4f * t;
+            }
+        }
+
+        var opts = new NormalizeOptions(TransferKind.Sdr, ColorPrimaries.Bt709);
+        var full = ImagingStillNormalize.Run(encoded, w, h, opts);
+
+        var stripOut = new float[w * h * 4];
+        const int stripRows = 7;
+        for (var y0 = 0; y0 < h; y0 += stripRows)
+        {
+            var rows = Math.Min(stripRows, h - y0);
+            var band = new float[w * rows * 4];
+            encoded.AsSpan(y0 * w * 4, w * rows * 4).CopyTo(band);
+            ImagingStillNormalize.NormalizeStripInPlace(band, w, rows, opts);
+            band.AsSpan().CopyTo(stripOut.AsSpan(y0 * w * 4));
+        }
+
+        for (var i = 0; i < full.Rgba.Length; i++)
+        {
+            Assert.True(
+                Math.Abs(full.Rgba[i] - stripOut[i]) <= 1e-3f,
+                $"channel {i}: full={full.Rgba[i]} strip={stripOut[i]}");
+        }
+
+        // Sanity: at least one RGB channel moved vs encoded (EOTF applied).
+        Assert.NotEqual(encoded[0], stripOut[0]);
+        Assert.True(stripOut[3] < 1f);
+    }
+
+    /// <summary>Display P3 strip options must differ from Bt709 on a saturated red.</summary>
+    [Fact]
+    public void NormalizeStrip_DisplayP3_DiffersFromBt709()
+    {
+        var encoded = new float[] { 0.9f, 0.1f, 0.05f, 0.75f };
+        var bt709 = new NormalizeOptions(TransferKind.Sdr, ColorPrimaries.Bt709);
+        var p3 = new NormalizeOptions(TransferKind.Sdr, ColorPrimaries.DisplayP3);
+        var a = (float[])encoded.Clone();
+        var b = (float[])encoded.Clone();
+        ImagingStillNormalize.NormalizeStripInPlace(a, 1, 1, bt709);
+        ImagingStillNormalize.NormalizeStripInPlace(b, 1, 1, p3);
+        Assert.True(
+            Math.Abs(a[0] - b[0]) > 1e-3f
+            || Math.Abs(a[1] - b[1]) > 1e-3f
+            || Math.Abs(a[2] - b[2]) > 1e-3f);
+        Assert.Equal(0.75f, a[3], precision: 4);
+        Assert.Equal(0.75f, b[3], precision: 4);
+    }
+
     private static bool BuffersEqual(float[] a, float[] b)
     {
         if (a.Length != b.Length)

@@ -165,6 +165,85 @@ public sealed class ColourInfoFollowupTests
     }
 
     [Fact]
+    public void PngHasUnsupportedIcc_StripGate()
+    {
+        // Recognised Display P3 iCCP is OK for strip (OptionsFromProbe → P3).
+        Assert.False(IccProfile.PngHasUnsupportedIcc(Png(("iCCP", Iccp(IccRgb(P3Colorants, Para(2.4)))))));
+        // Unmapped iCCP without sRGB/cICP → strip must refuse (no silent wrong Working).
+        Assert.True(IccProfile.PngHasUnsupportedIcc(Png(("iCCP", Iccp(IccRgb(SrgbColorants, Para(2.4)))))));
+        Assert.True(IccProfile.PngHasUnsupportedIcc(Png(("iCCP", Iccp(IccRgb(P3Colorants, Para(1.0)))))));
+        // sRGB chunk wins — strip may treat as plain sRGB.
+        Assert.False(IccProfile.PngHasUnsupportedIcc(
+            Png(("sRGB", [0]), ("iCCP", Iccp(IccRgb(P3Colorants, Para(2.4)))))));
+        Assert.False(IccProfile.PngHasUnsupportedIcc(Png()));
+    }
+
+    [Fact]
+    public void PngHasUnsupportedIcc_PathStreamsHeadersOnly()
+    {
+        // Path form must match in-memory form without reading IDAT (FileStream).
+        var dir = Path.Combine(Path.GetTempPath(), "palace-icc-stream-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var ok = Path.Combine(dir, "p3.png");
+            var bad = Path.Combine(dir, "plain-icc.png");
+            File.WriteAllBytes(ok, Png(("iCCP", Iccp(IccRgb(P3Colorants, Para(2.4))))));
+            File.WriteAllBytes(bad, Png(("iCCP", Iccp(IccRgb(SrgbColorants, Para(2.4))))));
+            Assert.False(IccProfile.PngHasUnsupportedIcc(ok));
+            Assert.True(IccProfile.PngHasUnsupportedIcc(bad));
+            // ProbePath already caps ≤ ProbeByteLimit — not a whole-file PNG load.
+            Assert.True(HdrFile.ProbeByteLimit <= 256 * 1024);
+            Assert.Equal(HdrKind.WideGamutPng, HdrFile.ProbePath(ok).Kind);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+                // best-effort temp cleanup
+            }
+        }
+    }
+
+    [Fact]
+    public void PngHasUnsupportedIcc_IOException_FailClosed()
+    {
+        // Doktor #212: cannot verify iCCP → refuse strip (no silent wrong Working).
+        using var boom = new ThrowingReadStream();
+        Assert.True(IccProfile.PngHasUnsupportedIcc(boom));
+    }
+
+    private sealed class ThrowingReadStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => 0;
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() { }
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new IOException("simulated read failure");
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+    }
+
+    [Fact]
     public void Probe_IccCurvWithOverflowingCount_IsRejectedWithoutThrowing()
     {
         // curv count 0x80000001: count * 2 wraps a uint; must be rejected as plain PNG.

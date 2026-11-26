@@ -131,6 +131,17 @@ public static class ImagingStillNormalize
     public static NormalizeOptions OptionsForJxr(float? metadataPeakNits = null) =>
         new(TransferKind.Scrgb, ColorPrimaries.Bt709, MetadataPeakNits: metadataPeakNits);
 
+    /// <summary>
+    /// Options for a buffer that is already linear present scRGB
+    /// (<c>HdrFrame.ScrgbRgba</c> — 1.0 = 80 nits). Never pair ScrgbRgba with
+    /// <see cref="OptionsFromProbe"/> Sdr/Pq (that re-applies EOTF). For SDR,
+    /// Working matches <c>encoded + <see cref="OptionsForEncoded"/></c>. Prefer
+    /// Smooth LoadWic/Avif handing <c>EncodedRgba + OptionsForEncoded</c> when
+    /// available (HLG OOTF / SourceClipped parity).
+    /// </summary>
+    public static NormalizeOptions OptionsForPresentScrgb(float? metadataPeakNits = null) =>
+        OptionsForJxr(metadataPeakNits);
+
     public static NormalizeOptions OptionsForJxl(
         JxlBufferTransfer actualBuffer,
         HdrTransfer probeTransfer,
@@ -194,6 +205,36 @@ public static class ImagingStillNormalize
         int height,
         NormalizeOptions options) =>
         Normalize.Run(rgba, width, height, options);
+
+    /// <summary>
+    /// Strip / row entry for streamed decode (≥64MP). Same kernel as
+    /// <see cref="Run"/> / <c>DecodePathAsync</c> → Working: transfer +
+    /// primaries in-place on a <c>width × rows</c> RGBA float band. Callers
+    /// pass the same <see cref="NormalizeOptions"/> as
+    /// <see cref="SmoothSourceLoad.LoadLocalFile"/> (probe transfer /
+    /// primaries / ICC). Does not allocate a full-frame buffer.
+    /// </summary>
+    public static void NormalizeStripInPlace(
+        Span<float> rgba,
+        int width,
+        int rows,
+        NormalizeOptions options)
+    {
+        if (width < 1 || rows < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                width < 1 ? nameof(width) : nameof(rows));
+        }
+
+        var need = checked(width * rows * 4);
+        if (rgba.Length < need)
+        {
+            throw new ArgumentException(
+                "Strip buffer is smaller than width × rows × 4.", nameof(rgba));
+        }
+
+        Normalize.RunStrip(rgba[..need], width, rows, options);
+    }
 
     /// <summary>
     /// B2: budget + try/catch (incl. OOM). Returns null without throwing so

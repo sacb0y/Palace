@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Palace.Imaging;
 
 namespace Palace.Helpers;
 
@@ -14,6 +15,47 @@ public static class SmoothPresenterLog
     public const string DefaultFileName = "smooth-presenter-frames.log";
 
     private static readonly object Gate = new();
+    private static long _pendingInputQpc;
+    private static float _pendingTargetZoom = float.NaN;
+    private static int _pendingInputArmed;
+
+    /// <summary>
+    /// Present-path input latency: call from PointerWheelChanged when
+    /// <see cref="EnvVar"/> is set. Completed on the first Present whose
+    /// transform zoom reflects the target (see <see cref="TryCompleteInputLatency"/>).
+    /// </summary>
+    public static void MarkWheelInput(float targetZoom)
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(EnvVar)))
+        {
+            return;
+        }
+
+        _pendingInputQpc = System.Diagnostics.Stopwatch.GetTimestamp();
+        _pendingTargetZoom = targetZoom;
+        Volatile.Write(ref _pendingInputArmed, 1);
+    }
+
+    /// <summary>
+    /// First Present after <see cref="MarkWheelInput"/> — records present-path
+    /// latency. Ease may still be catching the target; log both z and target.
+    /// </summary>
+    public static void TryCompleteInputLatency(string? dataDir, float presentedZoom)
+    {
+        if (Interlocked.Exchange(ref _pendingInputArmed, 0) == 0)
+        {
+            return;
+        }
+
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var ms = (now - _pendingInputQpc) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        var target = _pendingTargetZoom;
+        AppendNote(
+            dataDir,
+            $"input_lat_ms={ms.ToString("F3", CultureInfo.InvariantCulture)} "
+            + $"z={presentedZoom.ToString("F4", CultureInfo.InvariantCulture)} "
+            + $"target={target.ToString("F4", CultureInfo.InvariantCulture)} path=present");
+    }
 
     public static string ResolvePath(string? dataDir)
     {
@@ -92,4 +134,25 @@ public static class SmoothPresenterLog
                    + " note=" + note.Replace('\n', ' ').Replace('\r', ' ');
         Append(ResolvePath(dataDir), line);
     }
+
+    /// <summary>
+    /// Studio A/B scrapes <c>note=ImageStats …</c> from the frame log after
+    /// Working decode (strip + DecodePath). Keep field names / order stable.
+    /// </summary>
+    public static string FormatImageStatsNote(ImageStats stats)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        return "ImageStats"
+            + " P50=" + stats.P50.ToString(inv)
+            + " P99995=" + stats.P99995.ToString(inv)
+            + " Max=" + stats.Max.ToString(inv)
+            + " MaxRgb=" + stats.MaxRgb.ToString(inv)
+            + " Lc=" + stats.Lc.ToString(inv)
+            + " RefWhite=" + stats.RefWhite.ToString(inv)
+            + " SourceClipped=" + stats.SourceClipped.ToString(inv)
+            + " SourceClipRatio=" + stats.SourceClipRatio.ToString(inv);
+    }
+
+    public static void AppendImageStats(string? dataDir, ImageStats stats) =>
+        AppendNote(dataDir, FormatImageStatsNote(stats));
 }
