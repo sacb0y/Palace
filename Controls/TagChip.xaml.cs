@@ -167,25 +167,29 @@ public sealed partial class TagChip : UserControl
     /// <summary>
     /// Desired size is the chip face only — star is HA=Right in the ChipWrap
     /// trailing gap and must not widen chips or change wrap (Wimbly 0.3.108).
-    /// Stretch HA still fills the face+gap arrange slot. ChipWrap measures children
-    /// at Infinity; a Stretch Grid measured at Infinity can report Width=0, which
-    /// made UIA BoundingRectangle zero and broke SendInput hover (ui-tests catch-up).
+    /// Stretch HA still fills the face+gap arrange slot. Measure GrdRoot once and
+    /// take width from BrdChip (GrdFace is Left). Never measure GrdFace out of band
+    /// then remeasure root at that width - that squeezed the face against the star
+    /// and clipped labels (Wimbly #211). Infinity Stretch may leave BrdChip at 0;
+    /// remeasure root at Width=Infinity once, then floor via TagChipMeasure.FaceWidth.
     /// </summary>
     protected override Size MeasureOverride(Size availableSize)
     {
-        // Face is HorizontalAlignment=Left — content-sized even when available is Infinity.
-        var infinite = new Size(double.PositiveInfinity, double.PositiveInfinity);
-        GrdFace.Measure(infinite);
-        var faceW = Math.Max(1, BrdChip.DesiredSize.Width);
+        GrdRoot.Measure(availableSize);
+
+        var chipW = BrdChip.DesiredSize.Width;
+        if (TagChipMeasure.NeedsUnconstrainedRemeasure(availableSize.Width, chipW))
+        {
+            var h = ChipWrap.IsFinitePositive(availableSize.Height)
+                ? availableSize.Height
+                : double.PositiveInfinity;
+            GrdRoot.Measure(new Size(double.PositiveInfinity, h));
+            chipW = BrdChip.DesiredSize.Width;
+        }
+
+        var faceW = TagChipMeasure.FaceWidth(availableSize.Width, chipW);
         var faceH = Math.Max(BrdChip.DesiredSize.Height, TagChipVisual.HeightDip);
-
-        // Finite board width: clip long labels; never re-measure Stretch root at Infinity.
-        var measureW = double.IsFinite(availableSize.Width) && availableSize.Width > 0
-            ? Math.Min(faceW, availableSize.Width)
-            : faceW;
-        GrdRoot.Measure(new Size(measureW, faceH));
-
-        return new Size(measureW, faceH);
+        return new Size(faceW, faceH);
     }
 
     public string Label

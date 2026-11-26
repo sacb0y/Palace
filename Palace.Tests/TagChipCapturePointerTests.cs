@@ -157,7 +157,7 @@ public sealed class TagChipCapturePointerTests
     }
 
     [Fact]
-    public void TagChip_MeasureOverride_FaceAtInfinity_NotStretchRootAtInfinity()
+    public void TagChip_MeasureOverride_GrdRootOnce_BrdChipFaceWidth()
     {
         var xaml = File.ReadAllText(Path.Combine(RepoRoot(), "Controls", "TagChip.xaml"));
         var cs = TagChipCode();
@@ -168,15 +168,14 @@ public sealed class TagChipCapturePointerTests
         var end = body.IndexOf("\n    public string Label", StringComparison.Ordinal);
         if (end < 0)
         {
-            end = Math.Min(body.Length, 1200);
+            end = Math.Min(body.Length, 1600);
         }
 
         body = body[..end];
-        // Measure Left-aligned face unconstrained; never GrdRoot.Measure(availableSize) alone
-        // when available is Infinity (Stretch DesiredWidth=0 → UIA zero-size).
-        Assert.Contains("GrdFace.Measure", body, StringComparison.Ordinal);
-        Assert.Contains("Math.Max(1", body, StringComparison.Ordinal);
-        Assert.Contains("GrdRoot.Measure(new Size(measureW, faceH))", body, StringComparison.Ordinal);
-        Assert.DoesNotContain("GrdRoot.Measure(availableSize)", body, StringComparison.Ordinal);
+        // Wimbly #211: one GrdRoot measure; width from BrdChip; no out-of-band GrdFace.
+        Assert.Contains("GrdRoot.Measure(availableSize)", body, StringComparison.Ordinal);
+        Assert.Contains("TagChipMeasure.FaceWidth", body, StringComparison.Ordinal);
+        Assert.Contains("NeedsUnconstrainedRemeasure", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("GrdFace.Measure", body, StringComparison.Ordinal);
     }
 }
