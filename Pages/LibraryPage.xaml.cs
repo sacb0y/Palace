@@ -274,6 +274,7 @@ public sealed partial class LibraryPage : Page
                 HookShellNavPaneTracking();
                 HookPreviewPaneSettings();
                 HookFolderTreeExpansion(); // Unloaded UnhookFolderTreeExpansion — idempotent _treeSyncHooked
+                HookModifierSuppressLifetime();
                 RefreshLibraryLayout();
                 RefreshMosaicToolbarOverflow();
                 CardViewerDetails.AttachInFlow(GrdGalleryOverlay);
@@ -315,6 +316,7 @@ public sealed partial class LibraryPage : Page
             HookOverlayGallery();
             RefreshRealizedTiles();
             HookFolderTreeExpansion();
+            HookModifierSuppressLifetime();
             TryHookMosaicScroll();
             LogLibraryShow(pageReused: false);
             if (ViewModel.Assets.Count > 0)
@@ -338,6 +340,7 @@ public sealed partial class LibraryPage : Page
             SrfOverlayStill.ChipCrossFadeRequested -= OnOverlayChipCrossFade;
             SrfOverlayStill.LongPressCommitted -= OnOverlayStillLongPress;
             UnhookFolderTreeExpansion();
+            UnhookModifierSuppressLifetime();
             // Delegate == (not ReferenceEquals) — fresh casts never match assigned slots.
             var mosaicReset = ViewModel.MosaicReset;
             OwnedDelegate.ClearIfOurs(ref mosaicReset, OnMosaicReset);
@@ -404,9 +407,78 @@ public sealed partial class LibraryPage : Page
         GrdAssets.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler(GrdAssets_RangeMoved), true);
         GrdAssets.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(GrdAssets_RangeReleased), true);
         GrdAssets.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(GrdAssets_RangeCaptureLost), true);
+        GrdAssets.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(GrdAssets_RangeCanceled), true);
         GrdAssets.AddHandler(UIElement.TappedEvent, new TappedEventHandler(GrdAssets_RangeTapped), true);
         GrdAssets.AddHandler(UIElement.HoldingEvent, new HoldingEventHandler(GrdAssets_RangeHolding), true);
         _gridHandlersAdded = true;
+    }
+
+    /// <summary>
+    /// Page LostFocus + window deactivation clear a stuck modifier suppress
+    /// (drag off grid / Alt+Tab never deliver Released to GrdAssets).
+    /// </summary>
+    private void HookModifierSuppressLifetime()
+    {
+        LostFocus -= LibraryPage_LostFocusClearModifierSuppress;
+        LostFocus += LibraryPage_LostFocusClearModifierSuppress;
+        if (App.Window is { } window)
+        {
+            window.Activated -= LibraryWindow_ActivatedClearModifierSuppress;
+            window.Activated += LibraryWindow_ActivatedClearModifierSuppress;
+        }
+    }
+
+    private void UnhookModifierSuppressLifetime()
+    {
+        LostFocus -= LibraryPage_LostFocusClearModifierSuppress;
+        if (App.Window is { } window)
+        {
+            window.Activated -= LibraryWindow_ActivatedClearModifierSuppress;
+        }
+
+        ClearModifierSelectionSuppress(enqueueRestore: false);
+    }
+
+    private void LibraryPage_LostFocusClearModifierSuppress(object sender, RoutedEventArgs e) =>
+        ClearModifierSelectionSuppress(enqueueRestore: false);
+
+    private void LibraryWindow_ActivatedClearModifierSuppress(object sender, WindowActivatedEventArgs e)
+    {
+        if (e.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            ClearModifierSelectionSuppress(enqueueRestore: false);
+        }
+    }
+
+    /// <summary>
+    /// Lift modifier-held mosaic suppress. When <paramref name="enqueueRestore"/>,
+    /// re-stamp ItemsView from the model after ItemsView's Released toggle.
+    /// </summary>
+    private void ClearModifierSelectionSuppress(bool enqueueRestore)
+    {
+        if (_modifierSuppressPointerId is null)
+        {
+            return;
+        }
+
+        _modifierSuppressPointerId = null;
+        if (enqueueRestore)
+        {
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    RestoreMosaicSelectionHighlights();
+                }
+                finally
+                {
+                    _suppressMosaicSelection = false;
+                }
+            });
+            return;
+        }
+
+        _suppressMosaicSelection = false;
     }
 
     private void PerformanceSettings_Changed(object? sender, EventArgs e)
@@ -1408,6 +1480,13 @@ public sealed partial class LibraryPage : Page
         // pre-armed (press alone is too late for WinUI's first-drag sample).
         SyncMouseCanDragArm(e);
 
+        // Prior modifier press never got Released/Canceled (drag off / Alt+Tab) —
+        // lift suppress so this press / plain selection can reach the VM.
+        if (MosaicModifierSelect.HasStaleModifierSuppress(_modifierSuppressPointerId))
+        {
+            ClearModifierSelectionSuppress(enqueueRestore: false);
+        }
+
         if (TryDismissPreviewOverlayOnEmptyGrid(e.OriginalSource as DependencyObject))
         {
             e.Handled = true;
@@ -1688,19 +1767,7 @@ public sealed partial class LibraryPage : Page
 
         if (MosaicModifierSelect.EndsModifierSuppress(_modifierSuppressPointerId, e.Pointer.PointerId))
         {
-            _modifierSuppressPointerId = null;
-            // After ItemsView's Released Multiple toggle: re-stamp from model, then lift suppress.
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                try
-                {
-                    RestoreMosaicSelectionHighlights();
-                }
-                finally
-                {
-                    _suppressMosaicSelection = false;
-                }
-            });
+            ClearModifierSelectionSuppress(enqueueRestore: true);
         }
 
         if (_rangeSelect is null || e.Pointer.PointerId != _rangePointerId)
@@ -1738,18 +1805,7 @@ public sealed partial class LibraryPage : Page
 
         if (MosaicModifierSelect.EndsModifierSuppress(_modifierSuppressPointerId, e.Pointer.PointerId))
         {
-            _modifierSuppressPointerId = null;
-            DispatcherQueue.TryEnqueue(() =>
-            {
-                try
-                {
-                    RestoreMosaicSelectionHighlights();
-                }
-                finally
-                {
-                    _suppressMosaicSelection = false;
-                }
-            });
+            ClearModifierSelectionSuppress(enqueueRestore: true);
         }
 
         if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
@@ -1764,6 +1820,19 @@ public sealed partial class LibraryPage : Page
                 return;
             }
 
+            EndRangeSelect(null);
+        }
+    }
+
+    private void GrdAssets_RangeCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        if (MosaicModifierSelect.EndsModifierSuppress(_modifierSuppressPointerId, e.Pointer.PointerId))
+        {
+            ClearModifierSelectionSuppress(enqueueRestore: true);
+        }
+
+        if (_rangeSelect is not null && e.Pointer.PointerId == _rangePointerId)
+        {
             EndRangeSelect(null);
         }
     }

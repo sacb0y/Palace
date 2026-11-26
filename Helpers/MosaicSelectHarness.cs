@@ -39,6 +39,12 @@ public sealed class MosaicSelectHarness
     public DroppedSelectionSlot Dropped { get; } = new();
     public int SelectionCount => _selection.Count(t => !t.IsHeader);
 
+    /// <summary>Mirrors page <c>_suppressMosaicSelection</c> while a modifier press is open.</summary>
+    public bool SuppressMosaicSelection { get; private set; }
+
+    /// <summary>Mirrors page <c>_modifierSuppressPointerId</c>.</summary>
+    public uint? ModifierSuppressPointerId { get; private set; }
+
     public void EnsureSelectMode(SelectEntryKind kind)
     {
         var next = SelectMode.NextEntryKind(IsSelectMode, _entryKind, kind);
@@ -154,6 +160,61 @@ public sealed class MosaicSelectHarness
         EnsureSelectMode(SelectMode.EntryFromModifier());
         var want = MosaicModifierSelect.CtrlClickWantsSelected(item.IsSelected);
         SetAssetSelected(item, want);
+    }
+
+    /// <summary>
+    /// RangePressed entry: lift a stuck modifier suppress before this press.
+    /// </summary>
+    public void OnRangePressedStart()
+    {
+        if (MosaicModifierSelect.HasStaleModifierSuppress(ModifierSuppressPointerId))
+        {
+            ClearModifierSuppress();
+        }
+    }
+
+    /// <summary>
+    /// Start a modifier pointer press. Stale open suppress (no matching release)
+    /// is lifted first so a following plain selection can apply.
+    /// </summary>
+    public void BeginModifierPress(uint pointerId)
+    {
+        OnRangePressedStart();
+        SuppressMosaicSelection = true;
+        ModifierSuppressPointerId = pointerId;
+    }
+
+    /// <summary>Matching Released / CaptureLost / Canceled.</summary>
+    public void EndModifierPress(uint pointerId)
+    {
+        if (!MosaicModifierSelect.EndsModifierSuppress(ModifierSuppressPointerId, pointerId))
+        {
+            return;
+        }
+
+        ClearModifierSuppress();
+    }
+
+    /// <summary>LostFocus / Unloaded / deactivation / stale RangePressed self-heal.</summary>
+    public void ClearModifierSuppress()
+    {
+        ModifierSuppressPointerId = null;
+        SuppressMosaicSelection = false;
+    }
+
+    /// <summary>
+    /// Plain body selection is blocked while suppress is held (ItemsView → VM
+    /// would be ignored). Used to assert self-heal after a stuck modifier press.
+    /// </summary>
+    public bool TryApplyPlainSelection(Tile item)
+    {
+        if (SuppressMosaicSelection)
+        {
+            return false;
+        }
+
+        SelectAsset(item, toggle: false);
+        return true;
     }
 
     public void ApplyTileBodyClick(Tile item)

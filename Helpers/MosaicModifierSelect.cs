@@ -26,11 +26,18 @@ public static class MosaicModifierSelect
 
     /// <summary>
     /// Modifier suppress must outlive PointerPressed into the matching
-    /// PointerReleased / CaptureLost (one dispatcher turn is too early —
-    /// ItemsView Multiple toggles on Released).
+    /// PointerReleased / CaptureLost / PointerCanceled (one dispatcher turn is
+    /// too early — ItemsView Multiple toggles on Released).
     /// </summary>
     public static bool EndsModifierSuppress(uint? suppressPointerId, uint endedPointerId) =>
         suppressPointerId is uint id && id == endedPointerId;
+
+    /// <summary>
+    /// Stale suppress from a press that never got Released/Canceled (drag off
+    /// grid, Alt+Tab, etc.). Next RangePressed must lift before continuing.
+    /// </summary>
+    public static bool HasStaleModifierSuppress(uint? suppressPointerId) =>
+        suppressPointerId is not null;
 
     /// <summary>Shift alone (no Ctrl) ranges from anchor without moving it.</summary>
     public static bool RangesFromAnchor(bool ctrl, bool shift) => shift && !ctrl;

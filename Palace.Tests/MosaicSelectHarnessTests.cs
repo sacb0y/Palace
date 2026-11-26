@@ -227,4 +227,28 @@ public sealed class MosaicSelectHarnessTests
         h.SimulateTagEditAfterDrop();
         Assert.False(h.TryRestoreDropped());
     }
+
+    [Fact]
+    public void StaleModifierPress_NextPressLiftsSuppress_PlainSelectionWorks()
+    {
+        var a = new MosaicSelectHarness.Tile("a");
+        var b = new MosaicSelectHarness.Tile("b");
+        var h = new MosaicSelectHarness([a, b]);
+        h.EnsureSelectMode(SelectMode.EntryFromModifier());
+        h.SelectAsset(a, toggle: false);
+
+        h.BeginModifierPress(pointerId: 11);
+        Assert.True(h.SuppressMosaicSelection);
+        Assert.Equal(11u, h.ModifierSuppressPointerId);
+        // No matching EndModifierPress (drag off / cancel never delivered).
+        Assert.False(h.TryApplyPlainSelection(b));
+
+        // Next RangePressed (plain) self-heals — suppress lifted, plain selection works.
+        h.OnRangePressedStart();
+        Assert.False(h.SuppressMosaicSelection);
+        Assert.Null(h.ModifierSuppressPointerId);
+        Assert.True(h.TryApplyPlainSelection(b));
+        Assert.Equal(1, h.SelectionCount);
+        Assert.Same(b, h.Selection[0]);
+    }
 }

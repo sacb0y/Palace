@@ -54,6 +54,8 @@ public sealed class MosaicModifierSelectTests
         Assert.True(MosaicModifierSelect.EndsModifierSuppress(42u, 42u));
         Assert.False(MosaicModifierSelect.EndsModifierSuppress(42u, 7u));
         Assert.False(MosaicModifierSelect.EndsModifierSuppress(null, 42u));
+        Assert.True(MosaicModifierSelect.HasStaleModifierSuppress(42u));
+        Assert.False(MosaicModifierSelect.HasStaleModifierSuppress(null));
     }
 
     [Fact]
