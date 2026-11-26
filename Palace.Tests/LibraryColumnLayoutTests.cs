@@ -122,9 +122,9 @@ public sealed class LibraryColumnLayoutTests
             + LibraryColumnLayout.GapsWidth;
         Assert.True(LibraryColumnLayout.MinWindowWidthDip >= contentFloor);
         Assert.Equal(770, LibraryColumnLayout.MinWindowWidthDip);
-        Assert.True(LibraryColumnLayout.LibraryToolbarOverflowBelowDip > LibraryColumnLayout.MinWindowWidthDip);
-        Assert.Equal(920, LibraryColumnLayout.LibraryToolbarOverflowBelowDip);
-        Assert.Equal(800, LibraryColumnLayout.LibraryToolbarTightBelowDip);
+        Assert.Equal(5, LibraryColumnLayout.LibraryToolbarOptionalCount);
+        Assert.Equal(24, LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip);
+        Assert.Equal(4, LibraryColumnLayout.LibraryToolbarPreviewGapDip);
         Assert.Equal(24, LibraryColumnLayout.PagePaddingHorizontalDip);
         Assert.Equal(12, LibraryColumnLayout.PagePaddingEdgeDip);
         Assert.Equal(248, LibraryColumnLayout.ShellNavPaneWidthDip);

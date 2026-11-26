@@ -26,6 +26,7 @@ public partial class LibraryViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowDeleteRejectedToolbar))]
     [NotifyPropertyChangedFor(nameof(DeleteRejectedToolbarLabel))]
+    [NotifyPropertyChangedFor(nameof(DeleteRejectedToolbarCountText))]
     [NotifyPropertyChangedFor(nameof(AllRejectedCountText))]
     [NotifyPropertyChangedFor(nameof(ShowRejectedActionBar))]
     [NotifyPropertyChangedFor(nameof(RejectedActionSummary))]
@@ -56,6 +57,9 @@ public partial class LibraryViewModel
     public bool ShowDeleteRejectedToolbar => RejectedCountInView > 0 && !IsTagBrowse;
 
     public string DeleteRejectedToolbarLabel => DeleteRejected.ToolbarLabel(RejectedCountInView);
+
+    /// <summary>Compact count beside the trash in icon+count overflow mode.</summary>
+    public string DeleteRejectedToolbarCountText => DeleteRejected.ToolbarCountText(RejectedCountInView);
 
     public string AllRejectedCountText => AllRejectedCount.ToString();
 

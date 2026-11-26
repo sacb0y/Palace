@@ -44,18 +44,22 @@ public static class LibraryColumnLayout
     public const double ShellNavCompactPaneWidthDip = 48;
 
     /// <summary>
-    /// Below this <b>window client</b> width (DIP), New folder / Undo / Add to room
-    /// move into the top toolbar overflow menu. Laptop script sizes are client DIP
-    /// (not Library grid width — that already excludes the nav pane).
+    /// Extra DIP required before un-parking a face button (expand). Shrink parks
+    /// as soon as desired &gt; available so Add to room is not clipped mid-label.
     /// </summary>
-    public const double LibraryToolbarOverflowBelowDip = 920;
+    public const double LibraryToolbarOverflowHysteresisDip = 24;
 
     /// <summary>
-    /// Below this <b>window client</b> width (DIP), also park Organize / Review in
-    /// More. Face buttons show at ≥800 client DIP; comparing Library grid width
-    /// instead kept them collapsed (grid ≈ client − 248 when the pane is open).
+    /// Live face must leave this many DIP before the Preview toggle's left edge
+    /// (matches Studio BoundingRectangle gate). Subtracted from available width.
     /// </summary>
-    public const double LibraryToolbarTightBelowDip = 800;
+    public const double LibraryToolbarPreviewGapDip = 4;
+
+    /// <summary>
+    /// Park priority length for <see cref="ResolveLibraryToolbarOverflow"/>:
+    /// Add to room → Undo → New folder → Organize → Review.
+    /// </summary>
+    public const int LibraryToolbarOptionalCount = 5;
 
     /// <summary>
     /// Horizontal page padding on <c>GrdLibraryColumns</c>.
@@ -66,13 +70,196 @@ public static class LibraryColumnLayout
     /// <summary>Left (or right) pad alone — half of <see cref="PagePaddingHorizontalDip"/>.</summary>
     public const double PagePaddingEdgeDip = 12;
 
-    /// <summary>True when Organize / Review should leave the face toolbar.</summary>
-    public static bool IsLibraryToolbarTight(double windowClientDip) =>
-        windowClientDip < LibraryToolbarTightBelowDip;
+    /// <summary>
+    /// Measurement-driven Library toolbar overflow. Parks optional face buttons
+    /// into More in fixed priority until always-on + remaining ≤ available.
+    /// <paramref name="orderedButtonWidths"/> is park-first order (index 0 parks
+    /// first): Add to room → Undo → New folder → Organize → Review. Each entry is
+    /// that button's contribution when visible (width + leading StackPanel spacing).
+    /// <paramref name="alwaysOnWidth"/> is Add folder / Scan / Delete rejected (when
+    /// on the face, full label) — never parked into More.
+    /// </summary>
+    public static LibraryToolbarOverflowPlan ResolveLibraryToolbarOverflow(
+        double available,
+        IReadOnlyList<double> orderedButtonWidths,
+        double alwaysOnWidth) =>
+        ResolveLibraryToolbarOverflow(
+            available,
+            orderedButtonWidths,
+            alwaysOnWidth,
+            moreButtonWidth: 0,
+            previous: null,
+            expandHysteresisDip: 0,
+            alwaysOnIconOnlyWidth: alwaysOnWidth,
+            previousDeleteRejectedIconOnly: false);
 
-    /// <summary>True when New folder / Undo / Add to room move into More.</summary>
-    public static bool IsLibraryToolbarCompact(double windowClientDip) =>
-        windowClientDip < LibraryToolbarOverflowBelowDip;
+    /// <summary>
+    /// Same as <see cref="ResolveLibraryToolbarOverflow(double,IReadOnlyList{double},double)"/>
+    /// plus More-button contribution, expand hysteresis, and Delete rejected
+    /// icon+count last resort when every optional is parked and the full face
+    /// still overflows (count stays visible; never park Delete rejected into More).
+    /// </summary>
+    public static LibraryToolbarOverflowPlan ResolveLibraryToolbarOverflow(
+        double available,
+        IReadOnlyList<double> orderedButtonWidths,
+        double alwaysOnWidth,
+        double moreButtonWidth,
+        bool[]? previous,
+        double expandHysteresisDip,
+        double alwaysOnIconOnlyWidth = -1,
+        bool previousDeleteRejectedIconOnly = false)
+    {
+        var n = orderedButtonWidths?.Count ?? 0;
+        if (n == 0)
+        {
+            return new LibraryToolbarOverflowPlan([], DeleteRejectedIconOnly: false);
+        }
+
+        var widths = orderedButtonWidths!;
+        var always = FiniteNonNeg(alwaysOnWidth);
+        var more = FiniteNonNeg(moreButtonWidth);
+        var avail = FiniteNonNeg(available);
+        var hyst = FiniteNonNeg(expandHysteresisDip);
+        var alwaysIcon = alwaysOnIconOnlyWidth >= 0
+            ? FiniteNonNeg(alwaysOnIconOnlyWidth)
+            : always;
+        if (alwaysIcon > always)
+        {
+            alwaysIcon = always;
+        }
+
+        // Shrink: park from the front until the face fits (More counted when any parked).
+        var parked = ParkUntilFits(avail, widths, always, more);
+
+        if (previous is not null && previous.Length == n && hyst > 0)
+        {
+            var prevCount = CountParked(previous);
+            var nextCount = CountParked(parked);
+            if (nextCount < prevCount)
+            {
+                // Expand only when the wider face still fits under available − hysteresis.
+                var withHyst = ParkUntilFits(Math.Max(0, avail - hyst), widths, always, more);
+                parked = CountParked(withHyst) < prevCount ? withHyst : previous;
+            }
+        }
+
+        var iconOnly = ResolveDeleteRejectedIconOnly(
+            avail,
+            widths,
+            always,
+            alwaysIcon,
+            more,
+            parked,
+            previousDeleteRejectedIconOnly,
+            hyst);
+
+        return new LibraryToolbarOverflowPlan(parked, iconOnly);
+    }
+
+    /// <summary>
+    /// Last resort when every optional is in More and full always-on + More still
+    /// exceeds available: collapse Delete rejected to icon+count on the face (never
+    /// park it into More; never drop the count). Expand back only past hysteresis.
+    /// </summary>
+    private static bool ResolveDeleteRejectedIconOnly(
+        double available,
+        IReadOnlyList<double> widths,
+        double alwaysOnFull,
+        double alwaysOnIconOnly,
+        double moreButtonWidth,
+        bool[] parked,
+        bool previousIconOnly,
+        double expandHysteresisDip)
+    {
+        if (alwaysOnIconOnly >= alwaysOnFull - 0.01)
+        {
+            return false;
+        }
+
+        var allParked = CountParked(parked) == widths.Count;
+        if (!allParked)
+        {
+            return false;
+        }
+
+        var fullFace = FaceWidth(widths, alwaysOnFull, moreButtonWidth, parkCount: widths.Count);
+
+        if (fullFace <= available)
+        {
+            // Room for the full label — clear compact mode, with hysteresis when expanding.
+            if (!previousIconOnly)
+            {
+                return false;
+            }
+
+            // Stay compact until full label fits under available − hysteresis.
+            return fullFace > Math.Max(0, available - expandHysteresisDip);
+        }
+
+        // Full face overflows — keep/enter icon+count even when that also overflows
+        // (never restore the wider full label; Doktor / 01-770).
+        return true;
+    }
+
+    private static bool[] ParkUntilFits(
+        double available,
+        IReadOnlyList<double> widths,
+        double alwaysOnWidth,
+        double moreButtonWidth)
+    {
+        var n = widths.Count;
+        var parked = new bool[n];
+        var parkCount = 0;
+        while (parkCount < n
+               && FaceWidth(widths, alwaysOnWidth, moreButtonWidth, parkCount) > available)
+        {
+            parked[parkCount] = true;
+            parkCount++;
+        }
+
+        return parked;
+    }
+
+    private static double FaceWidth(
+        IReadOnlyList<double> widths,
+        double alwaysOnWidth,
+        double moreButtonWidth,
+        int parkCount)
+    {
+        var sum = alwaysOnWidth;
+        for (var i = parkCount; i < widths.Count; i++)
+        {
+            var w = widths[i];
+            if (double.IsFinite(w) && w > 0)
+            {
+                sum += w;
+            }
+        }
+
+        if (parkCount > 0 && moreButtonWidth > 0)
+        {
+            sum += moreButtonWidth;
+        }
+
+        return sum;
+    }
+
+    private static int CountParked(bool[] parked)
+    {
+        var n = 0;
+        for (var i = 0; i < parked.Length; i++)
+        {
+            if (parked[i])
+            {
+                n++;
+            }
+        }
+
+        return n;
+    }
+
+    private static double FiniteNonNeg(double value) =>
+        double.IsFinite(value) && value > 0 ? value : 0;
 
     /// <summary>
     /// Width the shell <c>NavigationView</c> currently occupies from the window
@@ -320,6 +507,36 @@ public static class LibraryColumnLayout
             Math.Max(0, mosaic),
             0,
             PreviewHidden: true);
+    }
+}
+
+
+/// <summary>
+/// Optional buttons parked into More, plus Delete rejected icon-only last resort.
+/// </summary>
+public readonly record struct LibraryToolbarOverflowPlan(
+    bool[] Parked,
+    bool DeleteRejectedIconOnly)
+{
+    public bool AnyParked
+    {
+        get
+        {
+            if (Parked is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < Parked.Length; i++)
+            {
+                if (Parked[i])
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }
 

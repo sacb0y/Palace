@@ -78,14 +78,17 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <!-- Narrow widths: New folder / Undo / Add to room move into BtnLibraryToolbarMore.
-                 Preview toggle stays far right (Isiac icon-only). -->
+            <!-- Overflow is measurement-driven (UpdateLibraryToolbarOverflow): park Add to
+                 room → Undo → New folder → Organize / Review into More until the face fits
+                 left of the Preview toggle. Delete rejected stays on the face. -->
             <Grid>
             <StackPanel
+                x:Name="SpnLibraryToolbarFace"
                 HorizontalAlignment="Left"
                 Orientation="Horizontal"
                 Spacing="8">
                 <Button
+                    x:Name="BtnAddFolder"
                     AutomationProperties.AutomationId="BtnAddFolder"
                     AutomationProperties.Name="Add folder"
                     Command="{x:Bind ViewModel.AddFolderCommand}">
@@ -95,6 +98,7 @@
                     </StackPanel>
                 </Button>
                 <Button
+                    x:Name="BtnScan"
                     AutomationProperties.AutomationId="BtnScan"
                     AutomationProperties.Name="Scan"
                     Command="{x:Bind ViewModel.ScanCommand}"
@@ -134,14 +138,24 @@
                     AutomationProperties.Name="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}"
                     Command="{x:Bind ViewModel.DeleteRejectedFromToolbarCommand}"
                     Foreground="#FF99A4"
-                    ToolTipService.ToolTip="Delete rejected"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDeleteRejectedToolbar), Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
                         <TextBlock
+                            x:Name="TxtDeleteRejectedLabel"
                             VerticalAlignment="Center"
                             Foreground="#FF99A4"
                             Text="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}" />
+                        <!-- Icon+count last-resort overflow: keep visible N (same red). -->
+                        <TextBlock
+                            x:Name="TxtDeleteRejectedCount"
+                            VerticalAlignment="Center"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Foreground="#FF99A4"
+                            Text="{x:Bind ViewModel.DeleteRejectedToolbarCountText, Mode=OneWay}"
+                            Visibility="Collapsed" />
                     </StackPanel>
                 </Button>
                 <Button
@@ -209,13 +223,16 @@
                                 Text="Review"
                                 ToolTipService.ToolTip="Review selection or this folder (swipe left reject, right keep, up skip)"
                                 Visibility="Collapsed" />
+                            <!-- Face Delete rejected stays visible; a bound twin would
+                                 duplicate in More whenever compact/tight (same rule as
+                                 Organize / Review). Ctrl+Shift+Del is handled on the page. -->
                             <MenuFlyoutItem
                                 x:Name="MnuToolbarDeleteRejected"
                                 AutomationProperties.AutomationId="MnuToolbarDeleteRejected"
                                 Command="{x:Bind ViewModel.DeleteRejectedFromToolbarCommand}"
                                 KeyboardAcceleratorTextOverride="Ctrl+Shift+Del"
                                 Text="Delete rejected…"
-                                Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDeleteRejectedToolbar), Mode=OneWay}" />
+                                Visibility="Collapsed" />
                             <MenuFlyoutSeparator
                                 x:Name="SepToolbarTight"
                                 Visibility="Collapsed" />

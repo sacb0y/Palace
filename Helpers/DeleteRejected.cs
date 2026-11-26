@@ -145,6 +145,12 @@ public static class DeleteRejected
 
     public static string ToolbarLabel(int n) => $"Delete rejected ({n})";
 
+    /// <summary>
+    /// Compact face count next to the trash when the toolbar parks into icon+count
+    /// (last-resort overflow). AutomationName stays <see cref="ToolbarLabel"/>.
+    /// </summary>
+    public static string ToolbarCountText(int n) => Math.Max(0, n).ToString();
+
     public static string ConfirmPrimaryLabel(DeleteRejectedDestination destination, int n) =>
         destination == DeleteRejectedDestination.Permanent
             ? $"Delete {n} permanently"

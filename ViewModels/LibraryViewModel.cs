@@ -153,6 +153,9 @@ public partial class LibraryViewModel : ObservableObject
     public partial TagTreeNode? SelectedTag { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowDeleteRejectedToolbar))]
+    [NotifyPropertyChangedFor(nameof(ShowRejectedActionBar))]
+    [NotifyPropertyChangedFor(nameof(ShowRejectedEmpty))]
     public partial bool IsTagBrowse { get; set; }
 
     [ObservableProperty]
