@@ -442,9 +442,11 @@ public sealed partial class LibraryPage : Page
     private void LibraryPage_LostFocusClearModifierSuppress(object sender, RoutedEventArgs e) =>
         ClearModifierSelectionSuppress(enqueueRestore: false);
 
-    private void LibraryWindow_ActivatedClearModifierSuppress(object sender, WindowActivatedEventArgs e)
+    private void LibraryWindow_ActivatedClearModifierSuppress(
+        object sender,
+        Microsoft.UI.Xaml.WindowActivatedEventArgs e)
     {
-        if (e.WindowActivationState == WindowActivationState.Deactivated)
+        if (e.WindowActivationState == Microsoft.UI.Xaml.WindowActivationState.Deactivated)
         {
             ClearModifierSelectionSuppress(enqueueRestore: false);
         }
