@@ -63,11 +63,14 @@ internal static class SmoothSourceAppLoad
             return null;
         }
 
+        // ScrgbRgba is already EOTF'd present scRGB. OptionsFromProbe(Sdr/Pq)
+        // would double-EOTF (V2 A/B mute). Scrgb options = single linear path;
+        // SDR Working ≡ encoded + OptionsForEncoded (strip / Imaging buildWorking).
         return new SmoothSourceLoad.Loaded(
             frame.ScrgbRgba,
             frame.Width,
             frame.Height,
-            ImagingStillNormalize.OptionsFromProbe(probe),
+            ImagingStillNormalize.OptionsForPresentScrgb(probe.MaxCllNits),
             Orientation: 1);
     }
 
@@ -91,11 +94,12 @@ internal static class SmoothSourceAppLoad
             return null;
         }
 
+        // Same single-EOTF contract as LoadAvif — see OptionsForPresentScrgb.
         return new SmoothSourceLoad.Loaded(
             frame.ScrgbRgba,
             frame.Width,
             frame.Height,
-            ImagingStillNormalize.OptionsFromProbe(probe),
+            ImagingStillNormalize.OptionsForPresentScrgb(probe.MaxCllNits),
             Orientation: 1);
     }
 }
