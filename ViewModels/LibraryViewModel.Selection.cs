@@ -448,39 +448,59 @@ public partial class LibraryViewModel
         }
         else
         {
-            item.IsSelected = !item.IsSelected;
-            var selected = new HashSet<AssetItem>();
-            foreach (var asset in Assets)
-            {
-                if (asset.IsSelected)
-                {
-                    selected.Add(asset);
-                }
-            }
-
-            foreach (var asset in _mosaicOrder)
-            {
-                if (!asset.IsFolderHeader && asset.IsSelected && !displayed.Contains(asset))
-                {
-                    selected.Add(asset);
-                }
-            }
-
-            if (item.IsSelected)
-            {
-                selected.Add(item);
-            }
-            else
-            {
-                selected.Remove(item);
-            }
-
-            // Ctrl+click always moves the anchor, including when deselecting.
-            _selectionAnchor = item;
-            _selection = selected.ToList();
+            // Prefer SetAssetSelected for Ctrl+pointer — toggle-from-current races
+            // ItemsView Multiple's own pointer toggle (net zero). Kept for keyboard.
+            SetAssetSelected(item, wantSelected: !item.IsSelected, loadPreview: true);
+            return;
         }
 
         FinishSelectionChange(loadPreview: true);
+    }
+
+    /// <summary>
+    /// Deterministic Ctrl+click: set membership from the model, move anchor.
+    /// Does not flip-from-current (avoids double-toggle with ItemsView Multiple).
+    /// </summary>
+    public void SetAssetSelected(AssetItem item, bool wantSelected, bool loadPreview = true)
+    {
+        if (item.IsFolderHeader)
+        {
+            return;
+        }
+
+        DroppedSelection.NotifyOtherAction();
+        SetSelectionFocus(item);
+        _selectionAnchor = item;
+
+        var displayed = DisplayedForSelection(refresh: loadPreview);
+        var selected = new HashSet<AssetItem>();
+        foreach (var asset in Assets)
+        {
+            if (asset.IsSelected && !ReferenceEquals(asset, item))
+            {
+                selected.Add(asset);
+            }
+        }
+
+        foreach (var asset in _mosaicOrder)
+        {
+            if (!asset.IsFolderHeader
+                && asset.IsSelected
+                && !displayed.Contains(asset)
+                && !ReferenceEquals(asset, item))
+            {
+                selected.Add(asset);
+            }
+        }
+
+        item.IsSelected = wantSelected;
+        if (wantSelected)
+        {
+            selected.Add(item);
+        }
+
+        _selection = selected.ToList();
+        FinishSelectionChange(loadPreview);
     }
 
     /// <summary>

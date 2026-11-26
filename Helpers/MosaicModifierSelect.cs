@@ -18,6 +18,12 @@ public static class MosaicModifierSelect
     /// <summary>Ctrl alone (no Shift) toggles one tile and moves the anchor.</summary>
     public static bool TogglesOneTile(bool ctrl, bool shift) => ctrl && !shift;
 
+    /// <summary>
+    /// Desired selected state for Ctrl+click from the selection <em>model</em>
+    /// (not ItemsView's in-flight pointer toggle). Invert once — never flip twice.
+    /// </summary>
+    public static bool CtrlClickWantsSelected(bool modelSelected) => !modelSelected;
+
     /// <summary>Shift alone (no Ctrl) ranges from anchor without moving it.</summary>
     public static bool RangesFromAnchor(bool ctrl, bool shift) => shift && !ctrl;
 
