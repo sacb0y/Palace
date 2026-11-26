@@ -243,6 +243,46 @@ public static class SmoothViewport
     }
 
     /// <summary>
+    /// Touch ManipulationDelta: scale about centroid, then
+    /// <c>T += Translation × scale</c> (Isiac #212 — stops two-finger fly-off).
+    /// Uses effective scale after <see cref="ClampZoom"/> so a clamped pinch
+    /// does not over-pan. Does not touch pointer-pan last-point state.
+    /// </summary>
+    public static (float Zoom, float Tx, float Ty) ManipulationScaleTranslate(
+        float zoom,
+        float tx,
+        float ty,
+        float scaleDelta,
+        float centroidX,
+        float centroidY,
+        float translationX,
+        float translationY,
+        float fitZoom)
+    {
+        var scale = scaleDelta <= 1e-12f ? 1f : scaleDelta;
+        var about = PinchZoomAbout(zoom, tx, ty, scale, centroidX, centroidY, fitZoom);
+        var effective = zoom > 1e-12f ? about.Zoom / zoom : 1f;
+        return (
+            about.Zoom,
+            about.Tx + (translationX * effective),
+            about.Ty + (translationY * effective));
+    }
+
+    /// <summary>
+    /// Pointer pan move/release: only the captured PointerId while panning
+    /// (second finger must not drive tx/ty).
+    /// </summary>
+    public static bool IsActivePointerPan(
+        bool panning,
+        uint? capturedPointerId,
+        uint eventPointerId) =>
+        panning && capturedPointerId is uint id && id == eventPointerId;
+
+    /// <summary>Pointer pan begin: Mouse/Pen + left button only (not Touch).</summary>
+    public static bool AllowsPointerPanBegin(bool isMouseOrPen, bool leftButton) =>
+        isMouseOrPen && leftButton;
+
+    /// <summary>
     /// Wheel ease toward target: <c>z += (zt - z) * (1 - exp(-dt/tau))</c>, tau≈70 ms.
     /// </summary>
     public static float EaseZoom(float current, float target, float dtSeconds, float tau = 0.07f)

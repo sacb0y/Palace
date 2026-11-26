@@ -121,6 +121,58 @@ public sealed class SmoothViewportTests
     }
 
     [Fact]
+    public void ManipulationScaleTranslate_CentroidThenTranslationTimesScale()
+    {
+        // Isiac: scale about position, then T += Translation × scale.
+        var (z, tx, ty) = SmoothViewport.ManipulationScaleTranslate(
+            zoom: 1f,
+            tx: 0f,
+            ty: 0f,
+            scaleDelta: 2f,
+            centroidX: 100f,
+            centroidY: 50f,
+            translationX: 10f,
+            translationY: -4f,
+            fitZoom: 0.1f);
+        var about = SmoothViewport.PinchZoomAbout(
+            1f, 0f, 0f, 2f, 100f, 50f, fitZoom: 0.1f);
+        Assert.Equal(about.Zoom, z);
+        Assert.Equal(about.Tx + (10f * 2f), tx, precision: 4);
+        Assert.Equal(about.Ty + (-4f * 2f), ty, precision: 4);
+    }
+
+    [Fact]
+    public void ManipulationScaleTranslate_ScaleOne_AppliesTranslationOnly()
+    {
+        var (z, tx, ty) = SmoothViewport.ManipulationScaleTranslate(
+            zoom: 2f,
+            tx: 5f,
+            ty: 7f,
+            scaleDelta: 1f,
+            centroidX: 40f,
+            centroidY: 60f,
+            translationX: 3f,
+            translationY: -2f,
+            fitZoom: 0.1f);
+        Assert.Equal(2f, z);
+        Assert.Equal(5f + 3f, tx, precision: 4);
+        Assert.Equal(7f - 2f, ty, precision: 4);
+    }
+
+    [Fact]
+    public void IsActivePointerPan_SecondPointerDoesNotDriveTxTy()
+    {
+        Assert.True(SmoothViewport.IsActivePointerPan(
+            panning: true, capturedPointerId: 1u, eventPointerId: 1u));
+        Assert.False(SmoothViewport.IsActivePointerPan(
+            panning: true, capturedPointerId: 1u, eventPointerId: 2u));
+        Assert.False(SmoothViewport.IsActivePointerPan(
+            panning: false, capturedPointerId: 1u, eventPointerId: 1u));
+        Assert.True(SmoothViewport.AllowsPointerPanBegin(isMouseOrPen: true, leftButton: true));
+        Assert.False(SmoothViewport.AllowsPointerPanBegin(isMouseOrPen: false, leftButton: true));
+    }
+
+    [Fact]
     public void PinchZoomAbout_ClampsAndAnchorsCentroid()
     {
         var (z, tx, ty) = SmoothViewport.PinchZoomAbout(

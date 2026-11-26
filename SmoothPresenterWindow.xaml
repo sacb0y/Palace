@@ -40,7 +40,7 @@
             x:Name="ScpSmooth"
             Grid.Row="1"
             AutomationProperties.AutomationId="ScpSmooth"
-            ManipulationMode="Scale"
+            ManipulationMode="TranslateX,TranslateY,Scale"
             CompositionScaleChanged="ScpSmooth_CompositionScaleChanged"
             SizeChanged="ScpSmooth_SizeChanged"
             PointerWheelChanged="ScpSmooth_PointerWheelChanged"

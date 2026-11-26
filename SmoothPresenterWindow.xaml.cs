@@ -42,6 +42,8 @@ public sealed partial class SmoothPresenterWindow : Window
     private float _fitZoom = 1f;
     private bool _panning;
     private bool _pinching;
+    /// <summary>Captured pointer for Mouse/Pen pan only (not Touch).</summary>
+    private uint? _panPointerId;
     /// <summary>Last zoom-about / pan point in device pixels (not DIP).</summary>
     private float _lastPanX;
     private float _lastPanY;
@@ -877,6 +879,8 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
     {
+        // Touch pinch/pan owns the gesture — drop any Mouse/Pen pointer pan.
+        EndPointerPanClean();
         _pinching = true;
         _panSnapApplied = false;
         e.Handled = true;
@@ -884,13 +888,7 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
     {
-        if (_presenter is null || !_hostStarted)
-        {
-            return;
-        }
-
-        var scale = e.Delta.Scale;
-        if (MathF.Abs(scale - 1f) < 1e-6f)
+        if (_presenter is null || !_hostStarted || e.IsInertial)
         {
             return;
         }
@@ -898,15 +896,17 @@ public sealed partial class SmoothPresenterWindow : Window
         var (_, _, sx, sy) = PanelMetrics();
         var cx = (float)(e.Position.X * sx);
         var cy = (float)(e.Position.Y * sy);
-        _lastPanX = cx;
-        _lastPanY = cy;
-        // Pinch 1:1 — apply immediately, no ease; same clamp + centroid anchor.
-        var about = SmoothViewport.PinchZoomAbout(
-            _zoom, _tx, _ty, scale, cx, cy, _fitZoom);
-        _zoom = about.Zoom;
-        _targetZoom = about.Zoom;
-        _tx = about.Tx;
-        _ty = about.Ty;
+        var scale = e.Delta.Scale <= 0 ? 1f : (float)e.Delta.Scale;
+        var dx = (float)(e.Delta.Translation.X * sx);
+        var dy = (float)(e.Delta.Translation.Y * sy);
+        // Scale about centroid, then T += Translation×scale. Do not touch _lastPan
+        // (pointer pan is Mouse/Pen only — Isiac two-finger fly-off).
+        var next = SmoothViewport.ManipulationScaleTranslate(
+            _zoom, _tx, _ty, scale, cx, cy, dx, dy, _fitZoom);
+        _zoom = next.Zoom;
+        _targetZoom = next.Zoom;
+        _tx = next.Tx;
+        _ty = next.Ty;
         _transformDirty = true;
         _panSnapApplied = false;
         e.Handled = true;
@@ -921,19 +921,28 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_ManipulationInertiaStarting(object sender, ManipulationInertiaStartingRoutedEventArgs e)
     {
-        // No inertial zoom — pinch is 1:1 and ends on finger lift.
+        // No inertia — pinch/pan 1:1 ends on finger lift.
         e.Handled = true;
     }
 
     private void ScpSmooth_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        var device = e.Pointer.PointerDeviceType;
+        var isMouseOrPen = device is PointerDeviceType.Mouse or PointerDeviceType.Pen;
         var pt = e.GetCurrentPoint(ScpSmooth);
-        if (!pt.Properties.IsLeftButtonPressed)
+        if (!SmoothViewport.AllowsPointerPanBegin(isMouseOrPen, pt.Properties.IsLeftButtonPressed))
+        {
+            return;
+        }
+
+        // Already panning another pointer — ignore second (no tx/ty).
+        if (_panning)
         {
             return;
         }
 
         _panning = true;
+        _panPointerId = e.Pointer.PointerId;
         _panSnapApplied = false;
         var (_, _, sx, sy) = PanelMetrics();
         _lastPanX = (float)(pt.Position.X * sx);
@@ -944,7 +953,8 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (!_panning || _presenter is null)
+        if (_presenter is null
+            || !SmoothViewport.IsActivePointerPan(_panning, _panPointerId, e.Pointer.PointerId))
         {
             return;
         }
@@ -963,15 +973,28 @@ public sealed partial class SmoothPresenterWindow : Window
 
     private void ScpSmooth_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        if (!_panning)
+        // CaptureLost / Canceled / Released — only our captured Mouse/Pen id.
+        if (!SmoothViewport.IsActivePointerPan(_panning, _panPointerId, e.Pointer.PointerId))
+        {
+            return;
+        }
+
+        EndPointerPanClean();
+        TrySnapPanAtRest();
+        e.Handled = true;
+    }
+
+    /// <summary>Clear Mouse/Pen pan state without touching zoom (manip may own next).</summary>
+    private void EndPointerPanClean()
+    {
+        if (!_panning && _panPointerId is null)
         {
             return;
         }
 
         _panning = false;
-        ScpSmooth.ReleasePointerCapture(e.Pointer);
-        TrySnapPanAtRest();
-        e.Handled = true;
+        _panPointerId = null;
+        ScpSmooth.ReleasePointerCaptures();
     }
 
     private void ScpSmooth_SizeChanged(object sender, SizeChangedEventArgs e)
