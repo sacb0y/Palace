@@ -196,6 +196,36 @@ public static class ImagingStillNormalize
         Normalize.Run(rgba, width, height, options);
 
     /// <summary>
+    /// Strip / row entry for streamed decode (≥64MP). Same kernel as
+    /// <see cref="Run"/> / <c>DecodePathAsync</c> → Working: transfer +
+    /// primaries in-place on a <c>width × rows</c> RGBA float band. Callers
+    /// pass the same <see cref="NormalizeOptions"/> as
+    /// <see cref="SmoothSourceLoad.LoadLocalFile"/> (probe transfer /
+    /// primaries / ICC). Does not allocate a full-frame buffer.
+    /// </summary>
+    public static void NormalizeStripInPlace(
+        Span<float> rgba,
+        int width,
+        int rows,
+        NormalizeOptions options)
+    {
+        if (width < 1 || rows < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                width < 1 ? nameof(width) : nameof(rows));
+        }
+
+        var need = checked(width * rows * 4);
+        if (rgba.Length < need)
+        {
+            throw new ArgumentException(
+                "Strip buffer is smaller than width × rows × 4.", nameof(rgba));
+        }
+
+        Normalize.RunStrip(rgba[..need], width, rows, options);
+    }
+
+    /// <summary>
     /// B2: budget + try/catch (incl. OOM). Returns null without throwing so
     /// legacy present stays intact.
     /// </summary>

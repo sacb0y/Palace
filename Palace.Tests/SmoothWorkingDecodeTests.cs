@@ -218,12 +218,18 @@ public sealed class SmoothWorkingDecodeTests
         const int h = 400;
         using var decode = new SmoothWorkingDecode();
         var strips = 0;
+        var singleRowFills = 0;
         var result = await decode.DecodeStripToRgba16FAsync(
             w,
             h,
             (y0, rows, dest) =>
             {
                 strips++;
+                if (rows == 1)
+                {
+                    singleRowFills++;
+                }
+
                 Assert.True(rows <= SmoothWorkingDecode.DefaultStripRows);
                 Assert.True(dest.Length >= w * rows * 4);
                 for (var i = 0; i < w * rows; i++)
@@ -238,6 +244,9 @@ public sealed class SmoothWorkingDecodeTests
         Assert.False(result!.HasFloatWorking);
         Assert.True(strips >= 1);
         Assert.NotEmpty(result.Level0Tiles);
+        // Stats accumulate from the tile-band pass — no fillStrip(y, 1) ~54× re-decode.
+        Assert.Equal(0, singleRowFills);
+        Assert.True(result.Stats.Lc > 0f);
     }
 
     [Fact]

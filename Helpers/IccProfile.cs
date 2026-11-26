@@ -30,6 +30,64 @@ public static class IccProfile
             [0.708, 0.292, 0.170, 0.797, 0.131, 0.046]]),
     ];
 
+    /// <summary>
+    /// True when a PNG carries an <c>iCCP</c> profile Palace cannot map to
+    /// Working (not Display P3 / BT.2020 wide-gamut, no <c>sRGB</c> / <c>cICP</c>
+    /// override). Strip decode must refuse these — no silent wrong render.
+    /// </summary>
+    public static bool PngHasUnsupportedIcc(ReadOnlySpan<byte> data)
+    {
+        if (data.Length < 8 || data[0] != 0x89 || data[1] != (byte)'P')
+        {
+            return false;
+        }
+
+        var i = 8;
+        var hasSrgb = false;
+        var hasCicp = false;
+        var sawIccp = false;
+        var matchedWide = false;
+
+        while (i + 12 <= data.Length)
+        {
+            var len = (data[i] << 24) | (data[i + 1] << 16) | (data[i + 2] << 8) | data[i + 3];
+            if (len < 0 || i + 12 + len > data.Length)
+            {
+                break;
+            }
+
+            var type = System.Text.Encoding.ASCII.GetString(data.Slice(i + 4, 4));
+            var payload = data.Slice(i + 8, len);
+            if (type == "sRGB")
+            {
+                hasSrgb = true;
+            }
+            else if (type == "cICP")
+            {
+                hasCicp = true;
+            }
+            else if (type == "iCCP" && !sawIccp)
+            {
+                sawIccp = true;
+                if (FromPngIccp(payload) is { } profile
+                    && MatchWideGamut(profile) is not null)
+                {
+                    matchedWide = true;
+                }
+            }
+            else if (type is "IDAT" or "IEND")
+            {
+                break;
+            }
+
+            i += 12 + len;
+        }
+
+        // sRGB chunk wins over iCCP; cICP carries primaries. Unsupported =
+        // iCCP present, not matched wide-gamut, and neither sRGB nor cICP.
+        return sawIccp && !matchedWide && !hasSrgb && !hasCicp;
+    }
+
     /// <summary>Profile bytes from a PNG <c>iCCP</c> payload (name, NUL, method 0, zlib), or null.</summary>
     public static byte[]? FromPngIccp(ReadOnlySpan<byte> payload)
     {

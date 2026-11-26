@@ -1,4 +1,6 @@
+using System.Runtime.InteropServices;
 using Palace.Helpers;
+using Palace.Imaging;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
 
@@ -10,9 +12,15 @@ namespace Palace.Services;
 /// <see cref="BitmapTransform.Bounds"/> (WICRect strips of
 /// <see cref="SmoothWorkingDecode.DefaultStripRows"/> rows) — never a
 /// full-image float buffer. Prefers Rgba16 → float; falls back to Rgba8.
+/// Each strip is normalized to Working with the same
+/// <see cref="NormalizeOptions"/> as <see cref="SmoothSourceLoad.LoadLocalFile"/>
+/// (probe transfer / primaries / ICC) — never leaves raw encoded values.
 /// </summary>
 internal static class SmoothWicStripDecode
 {
+    /// <summary>WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT — Rgba16 not available.</summary>
+    private const int WinCodecUnsupportedPixelFormat = unchecked((int)0x88982F80);
+
     /// <summary>
     /// Probe pixel size without a full decode. Returns null when the path is
     /// missing or WIC cannot open it.
@@ -39,6 +47,7 @@ internal static class SmoothWicStripDecode
     /// <summary>
     /// Decode over-budget strip-capable file → RGBA16F L0 tiles. Cancels with
     /// <paramref name="decode"/>. Disposes the WIC stream when finished.
+    /// Throws when strip cannot apply a correct Working convert (e.g. unsupported ICC).
     /// </summary>
     public static async Task<SmoothWorkingDecodeResult?> DecodeFileStripAsync(
         SmoothWorkingDecode decode,
@@ -51,6 +60,8 @@ internal static class SmoothWicStripDecode
             throw new NotSupportedException(
                 "Strip decode is not available for this format: " + Path.GetExtension(path));
         }
+
+        var options = ResolveStripNormalizeOptions(path);
 
         var file = await StorageFile.GetFileFromPathAsync(path);
         external.ThrowIfCancellationRequested();
@@ -81,10 +92,39 @@ internal static class SmoothWicStripDecode
                 lock (gate)
                 {
                     external.ThrowIfCancellationRequested();
-                    FillStripCore(decoder, width, height, y0, rows, dest, external);
+                    FillStripCore(decoder, width, height, y0, rows, dest, options, external);
                 }
             },
             external).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Same <see cref="NormalizeOptions"/> as
+    /// <see cref="SmoothSourceLoad.LoadLocalFile"/> / WIC host load. Refuses
+    /// PNG iCCP profiles Palace cannot map (no silent wrong Working).
+    /// </summary>
+    internal static NormalizeOptions ResolveStripNormalizeOptions(string path)
+    {
+        if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            && File.Exists(path))
+        {
+            try
+            {
+                var bytes = File.ReadAllBytes(path);
+                if (IccProfile.PngHasUnsupportedIcc(bytes))
+                {
+                    throw new NotSupportedException(
+                        "Strip decode cannot apply unsupported ICC profile; refusing silent wrong Working.");
+                }
+            }
+            catch (IOException)
+            {
+                // Probe below may still succeed; do not mask IO as ICC refusal.
+            }
+        }
+
+        var probe = HdrFile.ProbePath(path);
+        return ImagingStillNormalize.OptionsFromProbe(probe);
     }
 
     private static void FillStripCore(
@@ -94,6 +134,7 @@ internal static class SmoothWicStripDecode
         int y0,
         int rows,
         float[] dest,
+        NormalizeOptions options,
         CancellationToken ct)
     {
         // Sync wait — Smooth decode already runs on a background Task.
@@ -130,8 +171,14 @@ internal static class SmoothWicStripDecode
                 .GetResult();
             used16 = true;
         }
-        catch
+        catch (OperationCanceledException)
         {
+            throw;
+        }
+        catch (Exception ex) when (IsPixelFormatUnsupported(ex))
+        {
+            // Rgba16 unavailable for this frame — fall back to Rgba8 only.
+            ct.ThrowIfCancellationRequested();
             pixels = decoder.GetPixelDataAsync(
                     BitmapPixelFormat.Rgba8,
                     BitmapAlphaMode.Premultiplied,
@@ -152,7 +199,7 @@ internal static class SmoothWicStripDecode
 
         if (used16)
         {
-            // Rgba16 unorm → float 0..1 (SDR PNG/JPEG strip path).
+            // Rgba16 unorm → encoded float 0..1 (same as HdrPixels.Read Rgba16).
             if (bytes.Length < need * 2)
             {
                 throw new InvalidOperationException("WIC Rgba16 strip short.");
@@ -176,5 +223,29 @@ internal static class SmoothWicStripDecode
                 dest[i] = bytes[i] / 255f;
             }
         }
+
+        // Encoded → Working (same kernel as DecodePathAsync → ImagingStillNormalize.Run).
+        // Must not leave raw encoded values in dest.
+        ImagingStillNormalize.NormalizeStripInPlace(dest.AsSpan(0, need), width, rows, options);
+    }
+
+    private static bool IsPixelFormatUnsupported(Exception ex)
+    {
+        if (ex is ArgumentException or NotSupportedException or InvalidCastException)
+        {
+            return true;
+        }
+
+        if (ex.HResult == WinCodecUnsupportedPixelFormat)
+        {
+            return true;
+        }
+
+        if (ex is COMException com && com.HResult == WinCodecUnsupportedPixelFormat)
+        {
+            return true;
+        }
+
+        return ex.InnerException is { } inner && IsPixelFormatUnsupported(inner);
     }
 }

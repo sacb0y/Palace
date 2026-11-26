@@ -575,6 +575,12 @@ public sealed class SmoothWorkingDecode : IDisposable
         var bandRows = SmoothTileMath.ContentSize + (2 * SmoothTileMath.Border);
         var band = new float[width * bandRows * 4];
 
+        // Coarse subsample for Analyze-compatible ImageStats — accumulate from
+        // each tile-row band during the fill pass (no fillStrip(y, 1) re-decode).
+        var step = Math.Max(1, (int)Math.Sqrt((width * (long)height) / 4096.0));
+        float maxRgb = 0, sumY = 0;
+        var n = 0;
+
         for (var ty = 0; ty < ny; ty++)
         {
             token.ThrowIfCancellationRequested();
@@ -600,6 +606,24 @@ public sealed class SmoothWorkingDecode : IDisposable
                 Array.Copy(stripBuf, 0, band, destOff, count);
             }
 
+            // Stats from content rows only (skip gutter overlap double-count).
+            var contentY0 = oy;
+            var contentY1 = Math.Min(height, oy + Math.Max(1, ch));
+            for (var y = contentY0; y < contentY1; y += step)
+            {
+                var bandRow = y - y0;
+                for (var x = 0; x < width; x += step)
+                {
+                    var i = ((bandRow * width) + x) * 4;
+                    var r = band[i];
+                    var g = band[i + 1];
+                    var b = band[i + 2];
+                    maxRgb = Math.Max(maxRgb, Math.Max(r, Math.Max(g, b)));
+                    sumY += ImagingConstants.Bt2020Y(r, g, b);
+                    n++;
+                }
+            }
+
             for (var tx = 0; tx < nx; tx++)
             {
                 var id = new SmoothTileId(0, tx, ty);
@@ -612,27 +636,6 @@ public sealed class SmoothWorkingDecode : IDisposable
             if (gen != _generation)
             {
                 throw new OperationCanceledException(token);
-            }
-        }
-
-        // Coarse subsample for Analyze-compatible ImageStats (Lc ≈ paper).
-        // Re-sample via thin strips so we never hold the full float frame.
-        var step = Math.Max(1, (int)Math.Sqrt((width * (long)height) / 4096.0));
-        float maxRgb = 0, sumY = 0;
-        var n = 0;
-        for (var y = 0; y < height; y += step)
-        {
-            token.ThrowIfCancellationRequested();
-            fillStrip(y, 1, stripBuf);
-            for (var x = 0; x < width; x += step)
-            {
-                var i = x * 4;
-                var r = stripBuf[i];
-                var g = stripBuf[i + 1];
-                var b = stripBuf[i + 2];
-                maxRgb = Math.Max(maxRgb, Math.Max(r, Math.Max(g, b)));
-                sumY += ImagingConstants.Bt2020Y(r, g, b);
-                n++;
             }
         }
 

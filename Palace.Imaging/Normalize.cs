@@ -105,6 +105,48 @@ public static class Normalize
         ClampNegLuminance(ref r, ref g, ref b);
     }
 
+    /// <summary>
+    /// Strip / row kernel shared with <see cref="Run"/>: encoded RGBA → Working
+    /// in-place for <paramref name="width"/> × <paramref name="rows"/>. No
+    /// full-frame allocation; clip-ratio stats are skipped (streamed path).
+    /// </summary>
+    public static void RunStrip(
+        Span<float> rgba,
+        int width,
+        int rows,
+        NormalizeOptions options)
+    {
+        var count = checked(width * rows);
+        if (rgba.Length < count * 4)
+        {
+            throw new ArgumentException(
+                "Strip buffer is smaller than width × rows × 4.", nameof(rgba));
+        }
+
+        Span<float> customM = stackalloc float[9];
+        var useCustom = options.UsesCustomChromaticities
+            && options.Chromaticities is { } chrom
+            && Primaries.TryFillBt2020Matrix(chrom, customM);
+        var matrix = useCustom ? customM : ReadOnlySpan<float>.Empty;
+
+        for (var i = 0; i < count; i++)
+        {
+            var o = i * 4;
+            var er = ColorMath.Sanitize(rgba[o]);
+            var eg = ColorMath.Sanitize(rgba[o + 1]);
+            var eb = ColorMath.Sanitize(rgba[o + 2]);
+            var ea = Math.Clamp(ColorMath.Sanitize(rgba[o + 3]), 0f, 1f);
+
+            ToWorking(er, eg, eb, options, matrix, out var r, out var g, out var b);
+            ClampNegLuminance(ref r, ref g, ref b);
+
+            rgba[o] = r;
+            rgba[o + 1] = g;
+            rgba[o + 2] = b;
+            rgba[o + 3] = ea;
+        }
+    }
+
     private static bool IsSourceClipSample(
         float er,
         float eg,

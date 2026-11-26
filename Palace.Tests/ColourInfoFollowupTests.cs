@@ -165,6 +165,20 @@ public sealed class ColourInfoFollowupTests
     }
 
     [Fact]
+    public void PngHasUnsupportedIcc_StripGate()
+    {
+        // Recognised Display P3 iCCP is OK for strip (OptionsFromProbe → P3).
+        Assert.False(IccProfile.PngHasUnsupportedIcc(Png(("iCCP", Iccp(IccRgb(P3Colorants, Para(2.4)))))));
+        // Unmapped iCCP without sRGB/cICP → strip must refuse (no silent wrong Working).
+        Assert.True(IccProfile.PngHasUnsupportedIcc(Png(("iCCP", Iccp(IccRgb(SrgbColorants, Para(2.4)))))));
+        Assert.True(IccProfile.PngHasUnsupportedIcc(Png(("iCCP", Iccp(IccRgb(P3Colorants, Para(1.0)))))));
+        // sRGB chunk wins — strip may treat as plain sRGB.
+        Assert.False(IccProfile.PngHasUnsupportedIcc(
+            Png(("sRGB", [0]), ("iCCP", Iccp(IccRgb(P3Colorants, Para(2.4)))))));
+        Assert.False(IccProfile.PngHasUnsupportedIcc(Png()));
+    }
+
+    [Fact]
     public void Probe_IccCurvWithOverflowingCount_IsRejectedWithoutThrowing()
     {
         // curv count 0x80000001: count * 2 wraps a uint; must be rejected as plain PNG.
