@@ -294,13 +294,16 @@ public sealed class SmoothWorkingDecodeTests
             });
         Assert.NotNull(strip);
 
-        const float eps = 1e-4f;
-        Assert.True(Math.Abs(normal.Stats.P50 - strip!.Stats.P50) <= eps);
-        Assert.True(Math.Abs(normal.Stats.P99995 - strip.Stats.P99995) <= eps);
-        Assert.True(Math.Abs(normal.Stats.Max - strip.Stats.Max) <= eps);
-        Assert.True(Math.Abs(normal.Stats.MaxRgb - strip.Stats.MaxRgb) <= eps);
-        Assert.True(Math.Abs(normal.Stats.Lc - strip.Stats.Lc) <= eps);
+        // Max/MaxRgb exact; P50/P99995/Lc within one Analyze PQ bin (fine-hist rebin).
+        Assert.Equal(normal.Stats.Max, strip!.Stats.Max);
+        Assert.Equal(normal.Stats.MaxRgb, strip.Stats.MaxRgb);
         Assert.Equal(normal.Stats.RefWhite, strip.Stats.RefWhite);
+        var w50 = Analyze.OneAnalyzeBinWidthWorking(normal.Stats.Max, normal.Stats.P50);
+        var w99 = Analyze.OneAnalyzeBinWidthWorking(normal.Stats.Max, normal.Stats.P99995);
+        var wLc = Analyze.OneAnalyzeBinWidthWorking(normal.Stats.Max, normal.Stats.Lc);
+        Assert.True(Math.Abs(normal.Stats.P50 - strip.Stats.P50) <= w50 + 1e-6f);
+        Assert.True(Math.Abs(normal.Stats.P99995 - strip.Stats.P99995) <= w99 + 1e-6f);
+        Assert.True(Math.Abs(normal.Stats.Lc - strip.Stats.Lc) <= wLc + 1e-6f);
     }
 
     [Fact]

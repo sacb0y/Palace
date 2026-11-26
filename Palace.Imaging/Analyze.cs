@@ -12,10 +12,16 @@ public static class Analyze
     public const int HistogramBins = 4096;
 
     /// <summary>
-    /// Streamed PQ-histogram accumulator. <see cref="Add"/> rows (or any RGBA
-    /// pixel span); <see cref="Finish"/> builds the same
-    /// <see cref="ImageStats"/> as <see cref="Run"/>. Used by strip decode so
-    /// Lc / P50 match DecodeAsync (mean-P50 / maxRgb-as-Lc muted tone).
+    /// Fixed fine PQ histogram over absolute PQ ∈ [0,1] for streamed strip
+    /// accumulate — O(1) memory (never stores every Y).
+    /// </summary>
+    public const int FineHistogramBins = 65536;
+
+    /// <summary>
+    /// Streamed PQ-histogram accumulator. <see cref="Add"/> bumps a fixed
+    /// <see cref="FineHistogramBins"/> hist + max/maxRgb; <see cref="Finish"/>
+    /// rebins to <see cref="HistogramBins"/> over [0,maxPq] then the shared
+    /// percentile / Lc tail. Used by strip decode (no float[] of every Y).
     /// </summary>
     public sealed class Accumulator
     {
@@ -23,9 +29,9 @@ public static class Analyze
         private readonly float? _metadataPeak;
         private readonly bool _sourceClipped;
         private readonly float _sourceClipRatio;
+        private readonly int[] _fine = new int[FineHistogramBins];
         private float _max;
         private float _maxRgb;
-        private float[] _y = new float[4096];
         private int _count;
 
         public Accumulator(
@@ -44,7 +50,7 @@ public static class Analyze
 
         /// <summary>
         /// Add Working-space RGBA pixels (<paramref name="rgba"/> length ≥
-        /// pixels×4). Same per-pixel max / Y collection as <see cref="Run"/>.
+        /// pixels×4). Tracks max / maxRgb and fine PQ hist only.
         /// </summary>
         public void Add(ReadOnlySpan<float> rgba, int pixelCount)
         {
@@ -59,7 +65,7 @@ public static class Analyze
                     "RGBA span smaller than pixelCount × 4.", nameof(rgba));
             }
 
-            EnsureYCapacity(_count + pixelCount);
+            var last = FineHistogramBins - 1;
             for (var i = 0; i < pixelCount; i++)
             {
                 var o = i * 4;
@@ -78,7 +84,10 @@ public static class Analyze
                     _maxRgb = m;
                 }
 
-                _y[_count++] = y;
+                var pq = ColorMath.NitsToPq(y * ImagingConstants.RefWhiteNits);
+                var bin = (int)Math.Clamp(pq * last, 0, last);
+                _fine[bin]++;
+                _count++;
             }
         }
 
@@ -102,65 +111,56 @@ public static class Analyze
                     _metadataPeak, _sourceClipped, _sourceClipRatio);
             }
 
-            return FinishFromSamples(
-                _y.AsSpan(0, _count),
+            var maxNits = Math.Max(_max, 1e-6f) * ImagingConstants.RefWhiteNits;
+            var maxPq = ColorMath.NitsToPq(maxNits);
+            var hist = RebinFineToAnalyze(_fine, maxPq);
+            return FinishFromHistogram(
+                hist,
+                _count,
                 _max,
                 _maxRgb,
+                maxPq,
                 _refWhite,
                 _metadataPeak,
                 _sourceClipped,
                 _sourceClipRatio);
         }
-
-        private void EnsureYCapacity(int need)
-        {
-            if (_y.Length >= need)
-            {
-                return;
-            }
-
-            var n = _y.Length;
-            while (n < need)
-            {
-                n = checked(n * 2);
-            }
-
-            Array.Resize(ref _y, n);
-        }
     }
 
-    /// <summary>Thin wrapper over <see cref="Accumulator"/>.</summary>
+    /// <summary>
+    /// Exact two-pass Analyze (unchanged vs pre-Accumulator). Shares only
+    /// <see cref="FinishFromHistogram"/> with the streamed path.
+    /// </summary>
     public static ImageStats Run(NormalizedFrame frame, float refWhite = 1f)
     {
-        var acc = new Accumulator(
-            refWhite,
-            frame.MetadataPeakNits,
-            frame.SourceClipped,
-            frame.SourceClipRatio);
         var count = frame.PixelCount;
-        if (count > 0)
-        {
-            acc.Add(frame.Rgba.AsSpan(0, count * 4), count);
-        }
-
-        return acc.Finish();
-    }
-
-    internal static ImageStats FinishFromSamples(
-        ReadOnlySpan<float> ySamples,
-        float max,
-        float maxRgb,
-        float refWhite,
-        float? metadataPeakNits,
-        bool sourceClipped,
-        float sourceClipRatio)
-    {
-        var count = ySamples.Length;
+        var rgba = frame.Rgba;
         if (count <= 0)
         {
             return new ImageStats(
                 0, 0, 0, 0, Math.Max(1f, refWhite), refWhite,
-                metadataPeakNits, sourceClipped, sourceClipRatio);
+                frame.MetadataPeakNits, false, 0);
+        }
+
+        var max = 0f;
+        var maxRgb = 0f;
+        for (var i = 0; i < count; i++)
+        {
+            var o = i * 4;
+            var r = rgba[o];
+            var g = rgba[o + 1];
+            var b = rgba[o + 2];
+            var y = Math.Max(0f, ImagingConstants.Bt2020Y(r, g, b));
+            if (y > max)
+            {
+                max = y;
+            }
+
+            var m = Math.Max(r, Math.Max(g, b));
+            if (m > maxRgb)
+            {
+                maxRgb = m;
+            }
         }
 
         // PQ histogram over [0, max] in nits — denser in shadows than linear bins.
@@ -169,13 +169,72 @@ public static class Analyze
         var hist = new int[HistogramBins];
         for (var i = 0; i < count; i++)
         {
-            var y = ySamples[i];
+            var o = i * 4;
+            var y = Math.Max(0f, ImagingConstants.Bt2020Y(rgba[o], rgba[o + 1], rgba[o + 2]));
             var pq = ColorMath.NitsToPq(y * ImagingConstants.RefWhiteNits);
             var bin = (int)Math.Clamp(
                 (pq / Math.Max(maxPq, 1e-8f)) * (HistogramBins - 1),
                 0,
                 HistogramBins - 1);
             hist[bin]++;
+        }
+
+        return FinishFromHistogram(
+            hist,
+            count,
+            max,
+            maxRgb,
+            maxPq,
+            refWhite,
+            frame.MetadataPeakNits,
+            frame.SourceClipped,
+            frame.SourceClipRatio);
+    }
+
+    /// <summary>
+    /// Rebin absolute-PQ fine hist [0,1] into Analyze hist over [0,maxPq].
+    /// Fine index i represents PQ = i/(fineBins-1) — same edge convention as
+    /// <see cref="Run"/> so black (bin 0) stays PQ 0.
+    /// </summary>
+    internal static int[] RebinFineToAnalyze(ReadOnlySpan<int> fine, float maxPq)
+    {
+        var hist = new int[HistogramBins];
+        var fineLast = fine.Length - 1;
+        var coarseLast = HistogramBins - 1;
+        var denom = Math.Max(maxPq, 1e-8f);
+        for (var i = 0; i < fine.Length; i++)
+        {
+            var c = fine[i];
+            if (c == 0)
+            {
+                continue;
+            }
+
+            var pq = i / (float)fineLast;
+            var bin = (int)Math.Clamp((pq / denom) * coarseLast, 0, coarseLast);
+            hist[bin] += c;
+        }
+
+        return hist;
+    }
+
+    /// <summary>Shared percentile / Lc / metadata tail for Run and Accumulator.</summary>
+    internal static ImageStats FinishFromHistogram(
+        ReadOnlySpan<int> hist,
+        int count,
+        float max,
+        float maxRgb,
+        float maxPq,
+        float refWhite,
+        float? metadataPeakNits,
+        bool sourceClipped,
+        float sourceClipRatio)
+    {
+        if (count <= 0)
+        {
+            return new ImageStats(
+                0, 0, 0, 0, Math.Max(1f, refWhite), refWhite,
+                metadataPeakNits, sourceClipped, sourceClipRatio);
         }
 
         var p50 = PercentileFromPqHistogram(hist, count, maxPq, PercentileP50);
@@ -227,5 +286,26 @@ public static class Analyze
         }
 
         return ColorMath.PqToNits(maxPq) / ImagingConstants.RefWhiteNits;
+    }
+
+    /// <summary>
+    /// Working-space width of one Analyze (<see cref="HistogramBins"/>) PQ bin
+    /// at <paramref name="atWorkingY"/> given frame max Y. Uses the larger of
+    /// forward/backward PQ steps so the top bin (at max) is non-zero.
+    /// </summary>
+    public static float OneAnalyzeBinWidthWorking(float maxY, float atWorkingY)
+    {
+        var maxNits = Math.Max(maxY, 1e-6f) * ImagingConstants.RefWhiteNits;
+        var maxPq = ColorMath.NitsToPq(maxNits);
+        var dPq = maxPq / (HistogramBins - 1);
+        var atPq = ColorMath.NitsToPq(
+            Math.Max(0f, atWorkingY) * ImagingConstants.RefWhiteNits);
+        atPq = Math.Clamp(atPq, 0f, maxPq);
+        var yAt = ColorMath.PqToNits(atPq) / ImagingConstants.RefWhiteNits;
+        var yFwd = ColorMath.PqToNits(Math.Min(maxPq, atPq + dPq)) / ImagingConstants.RefWhiteNits;
+        var yBack = ColorMath.PqToNits(Math.Max(0f, atPq - dPq)) / ImagingConstants.RefWhiteNits;
+        return Math.Max(
+            Math.Max(Math.Abs(yFwd - yAt), Math.Abs(yAt - yBack)),
+            1e-7f);
     }
 }
