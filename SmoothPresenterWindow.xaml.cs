@@ -255,15 +255,17 @@ public sealed partial class SmoothPresenterWindow : Window
                     _exifOrientation = s.Orientation is >= 1 and <= 8 ? s.Orientation : 1;
                     TxtSmoothTiles.Text =
                         $"strip decode WIC {s.Width}x{s.Height} {name} (≥64MP) orient={_exifOrientation}…";
+                    // Same CatalogStore.DataDir() as ImageStats / DisplayTarget notes
+                    // (Wimbly: not raw PALACE_DATA_DIR env — Studio scrapes one log).
                     SmoothPresenterLog.AppendNote(
-                        Environment.GetEnvironmentVariable("PALACE_DATA_DIR"),
+                        CatalogStore.DataDir(),
                         $"strip-file begin {name} {s.Width}x{s.Height} orient={_exifOrientation}");
                     var peakBefore = Environment.WorkingSet;
                     var strip = await SmoothWicStripDecode.DecodeFileStripAsync(
                         _workingDecode, path);
                     var peakAfter = Environment.WorkingSet;
                     SmoothPresenterLog.AppendNote(
-                        Environment.GetEnvironmentVariable("PALACE_DATA_DIR"),
+                        CatalogStore.DataDir(),
                         $"strip-file end {name} peakPrivateBytes={Math.Max(peakBefore, peakAfter)} "
                         + $"budgetFloatBytes={(long)s.Width * s.Height * 8}");
                     if (strip is null)
@@ -655,15 +657,13 @@ public sealed partial class SmoothPresenterWindow : Window
         ApplyFitTransformFromPanel();
 
         // DisplayTarget from Windows HDR probe. Peak unknown → DisplayForPresent
-        // 10000-nit default (gallery). SDR → Sdr203 (ignore CCD SdrWhiteLevel —
-        // Wimbly absolute 145/220 = 80/203 PeakNormalized mute).
+        // 10000-nit default (gallery). SDR → Sdr203. Raw CCD white logged only.
         var windowsHdr = DisplayHdr.TryWindowsHdrEnabled(null);
         var sdrWhiteRaw = DisplayHdr.TrySdrWhiteLevelNits(null);
         var display = SmoothToneGpu.ResolveDisplayTarget(
             displayIsHdr: windowsHdr,
-            displayPeakNits: 0f,
-            sdrWhiteNits: sdrWhiteRaw > 0f ? sdrWhiteRaw : ImagingConstants.RefWhiteNits);
-        // VERIFY breadcrumb (Studio scrapes): raw CCD + resolved DisplayTarget.
+            displayPeakNits: 0f);
+        // Studio scrapes: resolved DisplayTarget + raw CCD / Windows HDR.
         SmoothPresenterLog.AppendNote(
             CatalogStore.DataDir(),
             "DisplayTarget"

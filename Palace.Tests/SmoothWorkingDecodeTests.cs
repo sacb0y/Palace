@@ -335,25 +335,33 @@ public sealed class SmoothWorkingDecodeTests
         Assert.Equal(4 * 2 * 4, ok!.Length);
     }
 
-    [Fact]
-    public void ResolveDisplayTarget_Sdr_IgnoresSdrWhite80_PeakNormalizedOne()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(null)]
+    public void ResolveDisplayTarget_FalseOrNull_Sdr203(bool? hdr)
     {
-        // Wimbly #212: displayIsHdr==false + CCD SdrWhiteLevel 80 must NOT
-        // pick Sdr80 (PeakNormalized 80/203 → absolute red ~145 from 220).
-        var d = SmoothToneGpu.ResolveDisplayTarget(
-            displayIsHdr: false,
-            displayPeakNits: 0f,
-            sdrWhiteNits: ImagingConstants.ScrgbNits);
+        // Wimbly fold: no sdrWhiteNits arg; false/null → Sdr203.
+        var d = SmoothToneGpu.ResolveDisplayTarget(displayIsHdr: hdr, displayPeakNits: 0f);
         Assert.False(d.IsHdrOutput);
+        Assert.Equal(DisplayTarget.Sdr203.PeakNits, d.PeakNits);
         Assert.Equal(1f, d.PeakNormalized, precision: 5);
-        Assert.Equal(ImagingConstants.RefWhiteNits, d.PeakNits);
+    }
+
+    [Fact]
+    public void ResolveDisplayTarget_TrueWithPeak_DisplayForPresent()
+    {
+        var expected = ImagingHdrPresentToneMap.DisplayForPresent(1000f);
+        var d = SmoothToneGpu.ResolveDisplayTarget(displayIsHdr: true, displayPeakNits: 1000f);
+        Assert.True(d.IsHdrOutput);
+        Assert.Equal(expected.PeakNits, d.PeakNits);
+        Assert.Equal(expected.PeakNormalized, d.PeakNormalized);
     }
 
     [Fact]
     public void FromStats_SdrAbsolute_MidGray128_AndRed220()
     {
         // Encoded mid-gray 128 + red (220,40,40) → working → FromStats after
-        // ResolveDisplayTarget(false,80). PeakNormalized must stay 1 so Option A
+        // ResolveDisplayTarget(false). PeakNormalized must stay 1 so Option A
         // does not apply the 80/203 mute (Wimbly PrintWindow ~145).
         var midLin = ColorMath.SrgbEotf(128f / 255f);
         var rLin = ColorMath.SrgbEotf(220f / 255f);
@@ -370,7 +378,7 @@ public sealed class SmoothWorkingDecodeTests
             SourceClipped: false,
             SourceClipRatio: 0f);
         var display = SmoothToneGpu.ResolveDisplayTarget(
-            displayIsHdr: false, displayPeakNits: 0f, sdrWhiteNits: 80f);
+            displayIsHdr: false, displayPeakNits: 0f);
         var packed = SmoothToneGpu.FromStats(stats, display);
         Assert.Equal(1f, packed.ToneCb[2], precision: 5); // PeakNormalized
         Assert.Equal(0f, packed.ToneCb[6]); // UseHdrPath

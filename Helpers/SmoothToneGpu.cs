@@ -90,24 +90,21 @@ public static class SmoothToneGpu
 
     /// <summary>
     /// Resolve <see cref="DisplayTarget"/> from swap-chain / monitor HDR probe.
-    /// SDR (<paramref name="displayIsHdr"/> == false): Working 1.0 = 203 nits
-    /// (<see cref="DisplayTarget.Sdr203"/>) — ignore CCD <c>SdrWhiteLevel</c>
-    /// (Wimbly #212: 80 nits → PeakNormalized 80/203 muted absolute ~145/220).
-    /// HDR: <see cref="ImagingHdrPresentToneMap.DisplayForPresent"/>. Unknown → Sdr203.
+    /// SDR / unknown (<paramref name="displayIsHdr"/> != true): Working 1.0 = 203
+    /// (<see cref="DisplayTarget.Sdr203"/>). CCD <c>SdrWhiteLevel</c> is logged
+    /// at arm only — not an input here (Wimbly #212).
+    /// HDR: <see cref="ImagingHdrPresentToneMap.DisplayForPresent"/>.
     /// </summary>
     public static DisplayTarget ResolveDisplayTarget(
         bool? displayIsHdr,
-        float displayPeakNits = 0f,
-        float sdrWhiteNits = ImagingConstants.RefWhiteNits)
+        float displayPeakNits = 0f)
     {
-        _ = sdrWhiteNits; // SDR path ignores CCD paper white (absolute Working 203).
-
         if (displayIsHdr == true)
         {
             return ImagingHdrPresentToneMap.DisplayForPresent(displayPeakNits);
         }
 
-        // SDR or unknown: Working 1.0 = 203. Never Sdr80 from SdrWhiteLevel.
+        // false or null: Working 1.0 = 203.
         return DisplayTarget.Sdr203;
     }
 }

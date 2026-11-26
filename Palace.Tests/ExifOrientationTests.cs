@@ -11,7 +11,12 @@ public class ExifOrientationTests
 {
     [Theory]
     [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
     [InlineData(6)]
+    [InlineData(7)]
     [InlineData(8)]
     public void TryRead_SynthJpeg_ReturnsTag(int orientation)
     {
@@ -21,7 +26,12 @@ public class ExifOrientationTests
 
     [Theory]
     [InlineData(1, 100, 200, 100, 200)]
+    [InlineData(2, 100, 200, 100, 200)]
+    [InlineData(3, 100, 200, 100, 200)]
+    [InlineData(4, 100, 200, 100, 200)]
+    [InlineData(5, 100, 200, 200, 100)]
     [InlineData(6, 100, 200, 200, 100)]
+    [InlineData(7, 100, 200, 200, 100)]
     [InlineData(8, 100, 200, 200, 100)]
     public void StripVsNormal_DisplayedOrientationAndDims(
         int exif,
@@ -42,6 +52,19 @@ public class ExifOrientationTests
         Assert.Equal(
             HdrPixels.OrientedSize(storedW, storedH, (uint)exif),
             (normalOrient.OrientedWidth, normalOrient.OrientedHeight));
+    }
+
+    [Theory]
+    [InlineData(2, 7)]
+    [InlineData(7, 4)]
+    [InlineData(4, 5)]
+    [InlineData(5, 2)]
+    [InlineData(1, 6)]
+    public void Strip_R_Rotate90_CyclesExif(int before, int afterCw)
+    {
+        Assert.Equal(afterCw, SmoothViewport.ExifOrient.Rotate90(before, clockwise: true));
+        var e = SmoothViewport.ExifOrient.FromExif(afterCw, 100, 200);
+        Assert.Equal(HdrPixels.OrientedSize(100, 200, (uint)afterCw), (e.OrientedWidth, e.OrientedHeight));
     }
 
     [Fact]

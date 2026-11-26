@@ -135,31 +135,29 @@ public static class SmoothViewport
             };
         }
 
-        /// <summary>Cycle EXIF 1→6→3→8→1 (90° CW) or reverse for CCW.</summary>
+        /// <summary>
+        /// Cycle 90° CW / CCW for R / Shift+R.
+        /// Plain: 1→6→3→8→1. Mirrored: 2→7→4→5→2 (Wimbly #212).
+        /// </summary>
         public static int Rotate90(int orientation, bool clockwise)
         {
             orientation = Math.Clamp(orientation, 1, 8);
-            // Only the pure-rotation subgroup for R / Shift+R.
-            ReadOnlySpan<int> cw = [1, 6, 3, 8];
-            var i = cw.IndexOf(orientation);
+            // Plain rotations vs mirrored — keep subgroups separate (do not snap).
+            ReadOnlySpan<int> plain = [1, 6, 3, 8];
+            ReadOnlySpan<int> mirrored = [2, 7, 4, 5];
+            var cycle = plain.IndexOf(orientation) >= 0 ? plain : mirrored;
+            var i = cycle.IndexOf(orientation);
             if (i < 0)
             {
-                // Mirrored tags: snap to nearest rotation then step.
-                orientation = orientation switch
-                {
-                    2 or 5 or 7 => 6,
-                    4 => 8,
-                    _ => 1,
-                };
-                i = cw.IndexOf(orientation);
+                return 1;
             }
 
             if (clockwise)
             {
-                return cw[(i + 1) % cw.Length];
+                return cycle[(i + 1) % cycle.Length];
             }
 
-            return cw[(i + cw.Length - 1) % cw.Length];
+            return cycle[(i + cycle.Length - 1) % cycle.Length];
         }
     }
 
