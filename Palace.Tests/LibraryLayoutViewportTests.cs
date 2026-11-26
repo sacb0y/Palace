@@ -243,7 +243,7 @@ public sealed class LibraryLayoutViewportTests
         Assert.True(face <= availForResolve);
         Assert.True(face + gap <= available);
 
-        // Icon+count still too wide → do not claim icon-only (never drop the count).
+        // Even icon+count too wide → stay compact (never restore the wider full label).
         var stillTight = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
             alwaysIconCount + more - 1,
             widths,
@@ -254,16 +254,31 @@ public sealed class LibraryLayoutViewportTests
             alwaysOnIconOnlyWidth: alwaysIconCount,
             previousDeleteRejectedIconOnly: false);
         Assert.All(stillTight.Parked, p => Assert.True(p));
-        Assert.False(stillTight.DeleteRejectedIconOnly);
+        Assert.True(stillTight.DeleteRejectedIconOnly);
 
-        // Wider: full label fits → clear compact mode.
-        var roomy = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
-            448,
+        // Expand hysteresis: full label fits raw available but not available − hyst → stay compact.
+        const double hyst = LibraryColumnLayout.LibraryToolbarOverflowHysteresisDip;
+        var fullFace = alwaysFull + more; // 448
+        var almost = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            fullFace + hyst - 1,
             widths,
             alwaysFull,
             moreButtonWidth: more,
             previous: plan.Parked,
-            expandHysteresisDip: 0,
+            expandHysteresisDip: hyst,
+            alwaysOnIconOnlyWidth: alwaysIconCount,
+            previousDeleteRejectedIconOnly: true);
+        Assert.All(almost.Parked, p => Assert.True(p));
+        Assert.True(almost.DeleteRejectedIconOnly);
+
+        // Full label fits under available − hyst → clear compact mode.
+        var roomy = LibraryColumnLayout.ResolveLibraryToolbarOverflow(
+            fullFace + hyst,
+            widths,
+            alwaysFull,
+            moreButtonWidth: more,
+            previous: plan.Parked,
+            expandHysteresisDip: hyst,
             alwaysOnIconOnlyWidth: alwaysIconCount,
             previousDeleteRejectedIconOnly: true);
         Assert.All(roomy.Parked, p => Assert.True(p));

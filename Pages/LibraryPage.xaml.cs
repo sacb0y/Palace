@@ -84,6 +84,7 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     private bool[]? _libraryToolbarParked;
     private bool _libraryToolbarDeleteRejectedIconOnly;
+    private bool _libraryToolbarOverflowBusy;
     private NavigationView? _shellNav;
     private Frame? _shellContentFrame;
     private bool _shellNavHooked;
@@ -1243,11 +1244,30 @@ public sealed partial class LibraryPage : Page
     /// </summary>
     private void UpdateLibraryToolbarOverflow()
     {
+        if (_libraryToolbarOverflowBusy)
+        {
+            return;
+        }
+
         var host = GrdLibraryToolbarHost.ActualWidth;
         if (!double.IsFinite(host) || host < 1)
         {
             return;
         }
+
+        _libraryToolbarOverflowBusy = true;
+        try
+        {
+            UpdateLibraryToolbarOverflowCore(host);
+        }
+        finally
+        {
+            _libraryToolbarOverflowBusy = false;
+        }
+    }
+
+    private void UpdateLibraryToolbarOverflowCore(double host)
+    {
 
         // Preview is always on the face — prefer live ActualWidth when Visible
         // (DesiredSize after a Collapsed trap would under-reserve).

@@ -183,21 +183,22 @@ public static class LibraryColumnLayout
         }
 
         var fullFace = FaceWidth(widths, alwaysOnFull, moreButtonWidth, parkCount: widths.Count);
-        var iconFace = FaceWidth(widths, alwaysOnIconOnly, moreButtonWidth, parkCount: widths.Count);
 
         if (fullFace <= available)
         {
-            // Room for the full label — clear icon-only, with hysteresis when expanding.
+            // Room for the full label — clear compact mode, with hysteresis when expanding.
             if (!previousIconOnly)
             {
                 return false;
             }
 
+            // Stay compact until full label fits under available − hysteresis.
             return fullFace > Math.Max(0, available - expandHysteresisDip);
         }
 
-        // Full face overflows; icon-only is usable only when it actually fits.
-        return iconFace <= available;
+        // Full face overflows — keep/enter icon+count even when that also overflows
+        // (never restore the wider full label; Doktor / 01-770).
+        return true;
     }
 
     private static bool[] ParkUntilFits(

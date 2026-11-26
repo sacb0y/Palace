@@ -138,7 +138,7 @@
                     AutomationProperties.Name="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}"
                     Command="{x:Bind ViewModel.DeleteRejectedFromToolbarCommand}"
                     Foreground="#FF99A4"
-                    ToolTipService.ToolTip="Delete rejected"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.DeleteRejectedToolbarLabel, Mode=OneWay}"
                     Visibility="{x:Bind helpers:BindHelpers.BoolToVisibility(ViewModel.ShowDeleteRejectedToolbar), Mode=OneWay}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <ic:FluentIcon Icon="Delete" IconSize="Size16" IconVariant="Regular" />
