@@ -1508,6 +1508,9 @@ public sealed partial class LibraryPage : Page
     /// <summary>
     /// Shift / Ctrl / Ctrl+Shift click — auto-enter select mode and apply
     /// Explorer-style range / toggle / range-add. Still avoids Extended mode.
+    /// Ctrl uses a deterministic model target; ItemsView Multiple's own pointer
+    /// toggle is suppressed until after the next dispatcher turn so it cannot
+    /// undo membership (Wimbly prove: AFTER=5 then chrome=4).
     /// </summary>
     private bool TryHandleModifierClick(AssetItem item, bool ctrl, bool shift)
     {
@@ -1538,7 +1541,10 @@ public sealed partial class LibraryPage : Page
             }
             else if (MosaicModifierSelect.TogglesOneTile(ctrl, shift))
             {
-                // First Ctrl+click while Single: keep the preview tile, then toggle target.
+                // Model state before ItemsView's deferred Multiple toggle.
+                var wantSelected = MosaicModifierSelect.CtrlClickWantsSelected(item.IsSelected);
+
+                // First Ctrl+click while Single: keep the preview tile, then set target.
                 if (ViewModel.SelectionCount <= 1
                     && ViewModel.SelectedAsset is { IsFolderHeader: false } one
                     && !ReferenceEquals(one, item)
@@ -1547,15 +1553,30 @@ public sealed partial class LibraryPage : Page
                     ViewModel.SelectAsset(one, toggle: false);
                 }
 
-                ViewModel.SelectAsset(item, toggle: true);
+                ViewModel.SetAssetSelected(item, wantSelected);
             }
 
             RestoreMosaicSelectionHighlights();
         }
-        finally
+        catch
         {
             _suppressMosaicSelection = false;
+            throw;
         }
+
+        // Keep suppress through ItemsView's follow-up pointer toggle, then re-stamp
+        // from the model (do not Apply ItemsView → VM).
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                RestoreMosaicSelectionHighlights();
+            }
+            finally
+            {
+                _suppressMosaicSelection = false;
+            }
+        });
 
         return true;
     }

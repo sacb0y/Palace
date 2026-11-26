@@ -126,14 +126,45 @@ public sealed class MosaicSelectHarnessTests
         var h = new MosaicSelectHarness([a, b]);
         h.EnsureSelectMode(SelectMode.EntryFromModifier());
         h.SelectAsset(a, toggle: false);
-        h.SelectAsset(b, toggle: true);
+        h.CtrlClick(b);
         Assert.Same(b, h.Anchor);
         Assert.Equal(2, h.SelectionCount);
 
-        h.SelectAsset(b, toggle: true); // deselect b
+        h.CtrlClick(b); // deselect b
         Assert.Same(b, h.Anchor);
         Assert.False(b.IsSelected);
         Assert.Equal(1, h.SelectionCount);
+    }
+
+    [Fact]
+    public void CtrlClick_InMultiple_ChangesCountByExactlyOne()
+    {
+        var tiles = Enumerable.Range(0, 5)
+            .Select(i => new MosaicSelectHarness.Tile(((char)('a' + i)).ToString()))
+            .ToArray();
+        var h = new MosaicSelectHarness(tiles);
+        h.EnsureSelectMode(SelectMode.EntryFromModifier());
+        h.SelectAsset(tiles[0], toggle: false);
+        h.SelectAsset(tiles[3], toggle: false, range: true); // a..d → 4
+        Assert.Equal(4, h.SelectionCount);
+        Assert.False(tiles[4].IsSelected);
+
+        var before = h.SelectionCount;
+        h.CtrlClick(tiles[4]); // add e
+        Assert.Equal(before + 1, h.SelectionCount);
+        Assert.True(tiles[4].IsSelected);
+        Assert.Same(tiles[4], h.Anchor);
+
+        before = h.SelectionCount;
+        h.CtrlClick(tiles[4]); // remove e
+        Assert.Equal(before - 1, h.SelectionCount);
+        Assert.False(tiles[4].IsSelected);
+        Assert.Same(tiles[4], h.Anchor);
+
+        // Second Ctrl on same unselected target would add again (±1), never net-zero.
+        before = h.SelectionCount;
+        h.CtrlClick(tiles[2]);
+        Assert.Equal(before - 1, h.SelectionCount); // c was in a..d
     }
 
     [Fact]

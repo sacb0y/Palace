@@ -115,8 +115,25 @@ public sealed class MosaicSelectHarness
             return;
         }
 
-        item.IsSelected = !item.IsSelected;
-        if (item.IsSelected)
+        // Deterministic Ctrl path (same as LibraryViewModel.SetAssetSelected).
+        SetAssetSelected(item, MosaicModifierSelect.CtrlClickWantsSelected(item.IsSelected));
+    }
+
+    /// <summary>
+    /// Ctrl+click from the model: set membership once (no flip-from-current race).
+    /// </summary>
+    public void SetAssetSelected(Tile item, bool wantSelected)
+    {
+        if (item.IsHeader)
+        {
+            return;
+        }
+
+        Dropped.NotifyOtherAction();
+        _focus = item;
+        _anchor = item;
+        item.IsSelected = wantSelected;
+        if (wantSelected)
         {
             if (!_selection.Contains(item))
             {
@@ -128,9 +145,15 @@ public sealed class MosaicSelectHarness
             _selection.Remove(item);
         }
 
-        // Ctrl+click always moves the anchor, including when deselecting.
-        _anchor = item;
         MaybeExitWhenEmpty();
+    }
+
+    /// <summary>Explorer Ctrl+click: invert model membership once; count changes by ±1.</summary>
+    public void CtrlClick(Tile item)
+    {
+        EnsureSelectMode(SelectMode.EntryFromModifier());
+        var want = MosaicModifierSelect.CtrlClickWantsSelected(item.IsSelected);
+        SetAssetSelected(item, want);
     }
 
     public void ApplyTileBodyClick(Tile item)
